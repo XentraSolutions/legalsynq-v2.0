@@ -4,10 +4,12 @@ using BuildingBlocks.Context;
 using CareConnect.Application.Cache;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
+using CareConnect.Infrastructure.Data;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using System.Text.Json;
 using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
@@ -246,6 +248,13 @@ public static class NetworkEndpoints
             return Results.Ok(detail.Providers);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+
+        // ── Network Referral Monitor ────────────────────────────────────────────
+        // GET /api/network/referrals — all referrals for this tenant's network,
+        // accessible to the lien company's network manager to see law-firm → provider flows.
+        app.MapGet("/api/network/referrals", GetNetworkReferralsAsync)
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
     }
 
     // ── BLK-COMP-01: Shared audit helper ─────────────────────────────────────────
@@ -304,5 +313,69 @@ public static class NetworkEndpoints
         {
             return Task.CompletedTask;
         }
+    }
+
+    // ── GET /api/network/referrals ─────────────────────────────────────────────
+    // Network Manager Referral Monitor — scoped to the caller's tenant.
+    // Returns all referrals flowing through the network (sent by law firms to providers).
+    // Supports ?status=, ?search= (client name, case #, referrer, provider), ?page=, ?pageSize=.
+    private static async Task<IResult> GetNetworkReferralsAsync(
+        CareConnectDbContext    db,
+        ICurrentRequestContext  ctx,
+        [FromQuery] int     page     = 1,
+        [FromQuery] int     pageSize = 50,
+        [FromQuery] string? status   = null,
+        [FromQuery] string? search   = null,
+        CancellationToken   ct       = default)
+    {
+        var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
+        var query = db.Referrals
+            .Include(r => r.Provider)
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId);
+
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(r => r.Status == status);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            query = query.Where(r =>
+                EF.Functions.Like((r.ClientFirstName + " " + r.ClientLastName).ToLower(), "%" + s + "%") ||
+                (r.CaseNumber    != null && EF.Functions.Like(r.CaseNumber.ToLower(),    "%" + s + "%")) ||
+                (r.ReferrerName  != null && EF.Functions.Like(r.ReferrerName.ToLower(),  "%" + s + "%")) ||
+                (r.Provider      != null && EF.Functions.Like(r.Provider.Name.ToLower(), "%" + s + "%")));
+        }
+
+        query = query.OrderByDescending(r => r.CreatedAtUtc);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => new
+            {
+                id                      = r.Id,
+                status                  = r.Status,
+                urgency                 = r.Urgency,
+                clientFirstName         = r.ClientFirstName,
+                clientLastName          = r.ClientLastName,
+                caseNumber              = r.CaseNumber,
+                requestedService        = r.RequestedService,
+                providerName            = r.Provider != null ? r.Provider.Name : (string?)null,
+                providerOrganizationName = r.Provider != null ? r.Provider.OrganizationName : (string?)null,
+                referringOrganizationId = r.ReferringOrganizationId,
+                referrerName            = r.ReferrerName,
+                referrerEmail           = r.ReferrerEmail,
+                createdAtUtc            = r.CreatedAtUtc,
+                updatedAtUtc            = r.UpdatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items, total, page, pageSize });
     }
 }

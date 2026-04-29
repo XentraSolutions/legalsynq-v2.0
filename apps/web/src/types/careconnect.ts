@@ -502,6 +502,33 @@ export interface AdminReferralPage {
   pageSize: number;
 }
 
+// ── Network Referral Monitor (lien company / network manager view) ─────────────
+
+/** One referral row in the network manager's referral monitor. */
+export interface NetworkReferralItem {
+  id:                       string;
+  status:                   string;
+  urgency:                  string;
+  clientFirstName:          string;
+  clientLastName:           string;
+  caseNumber:               string | null;
+  requestedService:         string;
+  providerName:             string | null;
+  providerOrganizationName: string | null;
+  referringOrganizationId:  string | null;
+  referrerName:             string | null;
+  referrerEmail:            string | null;
+  createdAtUtc:             string;
+  updatedAtUtc:             string;
+}
+
+export interface NetworkReferralPage {
+  items:    NetworkReferralItem[];
+  total:    number;
+  page:     number;
+  pageSize: number;
+}
+
 // ── LSCC-01-005: Referral Performance Metrics ─────────────────────────────────
 
 export interface PerformanceSummary {

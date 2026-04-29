@@ -26,6 +26,7 @@ import type {
   NetworkSummary,
   NetworkDetail,
   NetworkProviderMarker,
+  NetworkReferralPage,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -183,5 +184,19 @@ export const careConnectServerApi = {
     /** GET /api/networks/{id}/providers/markers — map markers for providers in network */
     getMarkers: (id: string) =>
       serverApi.get<NetworkProviderMarker[]>(`/careconnect/api/networks/${id}/providers/markers`),
+  },
+
+  // Network Referral Monitor — lien company / network manager view of all referrals
+  networkReferrals: {
+    /** GET /api/network/referrals — all referrals in the network, grouped by law firm */
+    list: (params: {
+      page?:     number;
+      pageSize?: number;
+      status?:   string;
+      search?:   string;
+    } = {}) =>
+      serverApi.get<NetworkReferralPage>(
+        `/careconnect/api/network/referrals${toQs(params as Record<string, unknown>)}`,
+      ),
   },
 };
