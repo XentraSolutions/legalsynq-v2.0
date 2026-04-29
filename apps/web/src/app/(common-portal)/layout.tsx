@@ -14,7 +14,6 @@ import { OrgType } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
-
 export const metadata = { title: 'CareConnect Portal' };
 
 export default async function CommonPortalLayout({
@@ -22,9 +21,6 @@ export default async function CommonPortalLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Pages within this layout each call requireExternalPortal with their own
-  // returnTo path. The layout guard here ensures unauthenticated requests
-  // are redirected to /login before the page renders.
   const session = await requireExternalPortal();
 
   const orgLabel =
@@ -37,11 +33,20 @@ export default async function CommonPortalLayout({
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
           {/* Brand + portal label */}
           <div className="flex items-center gap-3">
+            {/* CareConnect wordmark */}
             <Link
               href="/provider/dashboard"
-              className="text-sm font-semibold text-gray-900 hover:text-primary transition-colors"
+              className="flex items-center gap-2 group"
             >
-              LegalSynq
+              <span
+                className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-colors"
+                style={{ backgroundColor: '#e0f2fe' }}
+              >
+                <i className="ri-heart-pulse-line text-[13px]" style={{ color: '#0284c7' }} />
+              </span>
+              <span className="text-sm font-semibold text-gray-900 group-hover:text-sky-700 transition-colors">
+                CareConnect
+              </span>
             </Link>
             <span className="text-gray-300 select-none">|</span>
             <span className="text-sm text-gray-500">{orgLabel}</span>
@@ -80,7 +85,7 @@ export default async function CommonPortalLayout({
       {/* Footer */}
       <footer className="border-t border-gray-100 bg-white py-4">
         <p className="text-center text-xs text-gray-400">
-          LegalSynq CareConnect &mdash; Secure Provider Portal
+          CareConnect &mdash; Secure Provider Portal
         </p>
       </footer>
     </div>
