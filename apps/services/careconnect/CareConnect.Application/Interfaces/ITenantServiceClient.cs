@@ -32,6 +32,17 @@ public interface ITenantServiceClient
         string            tenantName,
         string            tenantCode,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the subdomain slug for a given tenant ID.
+    /// Calls GET /api/v1/tenants/{id}/subdomain on the Tenant service.
+    ///
+    /// Returns null when the tenant is not found, the Tenant service is unreachable,
+    /// or BaseUrl is not configured. Callers must fall back to AppBaseUrl when null.
+    /// </summary>
+    Task<string?> GetSubdomainAsync(
+        Guid              tenantId,
+        CancellationToken ct = default);
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────

@@ -58,6 +58,7 @@ public class ReferralHardeningTests
             new Mock<INotificationRepository>().Object,
             new Mock<INotificationsProducer>().Object,
             config,
+            new Mock<ITenantServiceClient>().Object,
             NullLogger<ReferralEmailService>.Instance);
     }
 

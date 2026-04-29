@@ -43,7 +43,8 @@ public class ReferralEmailServiceTests
         var producer      = new Mock<INotificationsProducer>();
         ILogger<ReferralEmailService> logger = NullLogger<ReferralEmailService>.Instance;
 
-        return new ReferralEmailService(notifications.Object, producer.Object, config, logger);
+        return new ReferralEmailService(notifications.Object, producer.Object, config,
+            new Mock<ITenantServiceClient>().Object, logger);
     }
 
     // ── Token format ─────────────────────────────────────────────────────────
@@ -285,7 +286,8 @@ public class ReferralEmailServiceTests
         var producer      = new Mock<INotificationsProducer>();
         ILogger<ReferralEmailService> logger = NullLogger<ReferralEmailService>.Instance;
 
-        var svc  = new ReferralEmailService(notifications.Object, producer.Object, config, logger);
+        var svc  = new ReferralEmailService(notifications.Object, producer.Object, config,
+            new Mock<ITenantServiceClient>().Object, logger);
         var id   = Guid.NewGuid();
         var tok  = svc.GenerateViewToken(id, tokenVersion: 1);
         var res  = svc.ValidateViewToken(tok);

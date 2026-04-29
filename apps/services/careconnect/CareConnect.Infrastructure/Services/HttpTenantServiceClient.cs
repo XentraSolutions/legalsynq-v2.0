@@ -174,6 +174,55 @@ public sealed class HttpTenantServiceClient : ITenantServiceClient
         }
     }
 
+    // ── GET /api/v1/tenants/{id}/subdomain ────────────────────────────────────
+
+    public async Task<string?> GetSubdomainAsync(
+        Guid              tenantId,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+        {
+            _logger.LogDebug("BLK-CC-01 GetSubdomain skipped (BaseUrl not configured) for tenant '{TenantId}'.", tenantId);
+            return null;
+        }
+
+        try
+        {
+            using var client = BuildClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync(
+                $"api/v1/tenants/{tenantId}/subdomain", cts.Token);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "BLK-CC-01 GetSubdomain returned HTTP {Status} for tenant '{TenantId}'.",
+                    (int)response.StatusCode, tenantId);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<SubdomainResponse>(
+                cancellationToken: cts.Token);
+
+            return string.IsNullOrWhiteSpace(result?.Subdomain) ? null : result.Subdomain;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("BLK-CC-01 GetSubdomain timed out for tenant '{TenantId}'.", tenantId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "BLK-CC-01 GetSubdomain failed for tenant '{TenantId}'.", tenantId);
+            return null;
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildClient()
@@ -215,5 +264,11 @@ public sealed class HttpTenantServiceClient : ITenantServiceClient
 
         [JsonPropertyName("subdomain")]
         public string? Subdomain  { get; set; }
+    }
+
+    private sealed class SubdomainResponse
+    {
+        [JsonPropertyName("subdomain")]
+        public string? Subdomain { get; set; }
     }
 }

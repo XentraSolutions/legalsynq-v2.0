@@ -220,6 +220,7 @@ public class ReferralClientEmailTests
             notifRepo,
             producer,
             config,
+            new Mock<ITenantServiceClient>().Object,
             NullLogger<ReferralEmailService>.Instance);
     }
 

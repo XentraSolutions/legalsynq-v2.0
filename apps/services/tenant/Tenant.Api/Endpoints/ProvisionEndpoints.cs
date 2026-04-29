@@ -74,6 +74,35 @@ public static class ProvisionEndpoints
             return Results.Created($"/api/v1/tenants/{result.TenantId}", result);
         })
         .AllowAnonymous();  // token check is manual above; AdminOnly JWT is checked inside IsAuthorized
+
+        // ── GET /api/v1/tenants/{id}/subdomain ────────────────────────────────
+        //
+        // Service-to-service: returns the subdomain slug for a given tenant.
+        // Used by CareConnect to build tenant-branded email links.
+        //
+        // Auth: X-Provisioning-Token (same secret as /provision) OR admin JWT.
+        // Dev mode (ProvisioningSecret empty): allowed without token.
+        //
+        // 200 { subdomain: "acme" }
+        // 401 missing/invalid auth
+        // 404 tenant not found
+        group.MapGet("/{id:guid}/subdomain", async (
+            Guid            id,
+            HttpContext      httpContext,
+            ITenantService   svc,
+            IConfiguration   configuration,
+            ILoggerFactory   loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Tenant.Api.ProvisionEndpoints");
+            if (!IsAuthorized(httpContext, configuration, log))
+                return Results.Unauthorized();
+
+            var result = await svc.GetByIdAsync(id, ct);
+            if (result is null) return Results.NotFound();
+            return Results.Ok(new { subdomain = result.Subdomain });
+        })
+        .AllowAnonymous();
     }
 
     // ── Auth helper ───────────────────────────────────────────────────────────

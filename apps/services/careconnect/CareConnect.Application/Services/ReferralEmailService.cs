@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using BuildingBlocks.DataGovernance;
@@ -34,22 +35,32 @@ public class ReferralEmailService : IReferralEmailService
     private const int TokenExpiryDays      = 30;
     private const string DevFallbackSecret = "LEGALSYNQ-DEV-REFERRAL-TOKEN-SECRET-2026";
 
-    private readonly INotificationRepository      _notifications;
-    private readonly INotificationsProducer       _producer;
+    private readonly INotificationRepository       _notifications;
+    private readonly INotificationsProducer        _producer;
     private readonly ILogger<ReferralEmailService> _logger;
+    private readonly ITenantServiceClient          _tenantClient;
     private readonly string _tokenSecret;
     private readonly string _appBaseUrl;
+    private readonly string _appBaseDomain;
+
+    // Short-lived in-process cache: avoids one HTTP call per email for the same tenant.
+    // Keyed by TenantId → subdomain slug. Never evicted (process lifetime cache is fine
+    // for a slug that never changes after provisioning).
+    private readonly ConcurrentDictionary<Guid, string> _subdomainCache = new();
 
     public ReferralEmailService(
-        INotificationRepository  notifications,
-        INotificationsProducer   producer,
-        IConfiguration           configuration,
+        INotificationRepository       notifications,
+        INotificationsProducer        producer,
+        IConfiguration                configuration,
+        ITenantServiceClient          tenantClient,
         ILogger<ReferralEmailService> logger)
     {
         _notifications = notifications;
         _producer      = producer;
         _logger        = logger;
-        _appBaseUrl    = (configuration["AppBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+        _tenantClient  = tenantClient;
+        _appBaseUrl    = (configuration["AppBaseUrl"]    ?? "http://localhost:3000").TrimEnd('/');
+        _appBaseDomain = (configuration["AppBaseDomain"] ?? string.Empty).Trim().TrimStart('.');
 
         // CC2-INT-B03: Hard enforcement — DevFallbackSecret is blocked outside Development.
         // IsNullOrWhiteSpace ensures a blank/whitespace-only value is treated the same as a missing secret.
@@ -73,6 +84,38 @@ public class ReferralEmailService : IReferralEmailService
         {
             _tokenSecret = secret;
         }
+    }
+
+    // ── Tenant URL helper ─────────────────────────────────────────────────────
+    //
+    // Builds a tenant-branded URL:
+    //   AppBaseDomain configured → https://{subdomain}.{AppBaseDomain}{path}
+    //   AppBaseDomain empty / subdomain unavailable → {AppBaseUrl}{path}
+    //
+    // Subdomain is cached in-process for the lifetime of the service instance.
+
+    private async Task<string> BuildTenantUrlAsync(
+        Guid tenantId, string path, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(_appBaseDomain))
+            return _appBaseUrl + path;
+
+        if (!_subdomainCache.TryGetValue(tenantId, out var subdomain))
+        {
+            subdomain = await _tenantClient.GetSubdomainAsync(tenantId, ct);
+            if (!string.IsNullOrWhiteSpace(subdomain))
+                _subdomainCache.TryAdd(tenantId, subdomain);
+        }
+
+        if (string.IsNullOrWhiteSpace(subdomain))
+        {
+            _logger.LogDebug(
+                "ReferralEmailService: subdomain not found for tenant {TenantId} — using AppBaseUrl fallback.",
+                tenantId);
+            return _appBaseUrl + path;
+        }
+
+        return $"https://{subdomain}.{_appBaseDomain}{path}";
     }
 
     // ── Token helpers ─────────────────────────────────────────────────────────
@@ -171,7 +214,7 @@ public class ReferralEmailService : IReferralEmailService
         var dedupeKey = $"referral:{referral.Id}:created:provider";
 
         var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
+        var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
         var subject    = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
         var body       = BuildNewReferralEmailHtml(referral, provider, threadLink);
 
@@ -245,7 +288,7 @@ public class ReferralEmailService : IReferralEmailService
         }
 
         var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
+        var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
         var subject    = $"Referral (resent) — {referral.ClientFirstName} {referral.ClientLastName}";
         var body       = BuildNewReferralEmailHtml(referral, provider, threadLink);
 
@@ -293,7 +336,7 @@ public class ReferralEmailService : IReferralEmailService
 
         var dedupeKey = $"referral:{referral.Id}:provider_assigned:{provider.Id}{dedupeKeySuffix}";
         var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var viewLink  = $"{_appBaseUrl}/referrals/view?token={token}";
+        var viewLink  = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/view?token={token}", ct);
         var subject   = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
         var body      = BuildProviderAssignedEmailHtml(referral, provider, viewLink);
 
@@ -620,7 +663,7 @@ public class ReferralEmailService : IReferralEmailService
                     return;
                 }
                 var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
-                var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
+                var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
                 subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
                 body      = BuildNewReferralEmailHtml(referral, provider, threadLink);
                 toAddress = provider.Email;
@@ -727,7 +770,7 @@ public class ReferralEmailService : IReferralEmailService
                     return;
                 }
                 var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
-                var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
+                var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
                 subject   = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
                 body      = BuildProviderAssignedEmailHtml(referral, provider, threadLink);
                 toAddress = provider.Email;
@@ -761,7 +804,7 @@ public class ReferralEmailService : IReferralEmailService
         CancellationToken ct = default)
     {
         var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
+        var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
 
         var provName = referral.Provider is not null
             ? (string.IsNullOrWhiteSpace(referral.Provider.OrganizationName)
