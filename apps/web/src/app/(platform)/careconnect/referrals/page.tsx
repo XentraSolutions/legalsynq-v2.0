@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { requireOrg } from '@/lib/auth-guards';
-import { ProductRole } from '@/types';
+import { ProductRole, OrgType } from '@/types';
 import { checkCareConnectReceiverAccess } from '@/lib/careconnect-access';
 import { ReferralAccessBlocked } from '@/components/careconnect/referral-access-blocked';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
@@ -335,7 +335,8 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
 
   const isReferrer        = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver        = session.productRoles.includes(ProductRole.CareConnectReceiver);
-  const isNetworkManager  = session.productRoles.includes(ProductRole.CareConnectNetworkManager);
+  const isNetworkManager  = session.productRoles.includes(ProductRole.CareConnectNetworkManager)
+                          || session.orgType === OrgType.LienOwner;
 
   // LSCC-01-002-02: Enforce the admin-controlled access model.
   if (!isReferrer && !isReceiver && !isNetworkManager) {
