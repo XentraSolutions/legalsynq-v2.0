@@ -157,7 +157,16 @@ var app = builder.Build();
     // migrations as applied but the actual DDL was never executed.
     // Uses idempotent DDL (CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS)
     // to guarantee the B06+ schema objects exist before handing off to EF.
-    await EnsureSchemaObjectsAsync(db, app.Logger);
+    // Wrapped in try/catch so a transient DB error during repair does not
+    // prevent EF Core Migrate() from running (schema repair is advisory).
+    try
+    {
+        await EnsureSchemaObjectsAsync(db, app.Logger);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "EnsureSchemaObjects schema repair failed — proceeding with EF Core Migrate()");
+    }
 
     db.Database.Migrate();
     app.Logger.LogInformation("CareConnect database migrations applied successfully.");
@@ -483,4 +492,10 @@ static async Task EnsureSchemaObjectsAsync(
     }
 
     logger.LogInformation("EnsureSchemaObjects: {Count} DDL change(s) applied.", applied);
+
+    // Close the connection so that EF Core's Migrate() can manage its own
+    // connection lifecycle cleanly (Pomelo may behave unexpectedly when
+    // Migrate() is invoked on a DbContext whose connection is already open).
+    if (conn.State == System.Data.ConnectionState.Open)
+        await conn.CloseAsync();
 }
