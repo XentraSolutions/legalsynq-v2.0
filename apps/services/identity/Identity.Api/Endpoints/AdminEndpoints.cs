@@ -7394,16 +7394,20 @@ public static partial class AdminEndpointsLscc010
         {
             try
             {
-                var rehydrated = Tenant.Rehydrate(
-                    id:   body.TenantId,
-                    code: body.TenantId.ToString("N")[..12]);
+                var code      = body.TenantId.ToString("N")[..12];
+                var rehydrated = Tenant.Rehydrate(id: body.TenantId, code: code);
                 db.Tenants.Add(rehydrated);
                 await db.SaveChangesAsync(ct);
             }
             catch (DbUpdateException)
             {
-                // Concurrent request already inserted — that's fine, continue.
+                // Concurrent request already inserted — clear tracker and re-verify.
                 db.ChangeTracker.Clear();
+                tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
+                if (!tenantExists)
+                    return Results.Problem(
+                        $"Could not rehydrate tenant '{body.TenantId}' in Identity. " +
+                        "The tenant must be provisioned before creating an organization.");
             }
         }
 
@@ -7469,7 +7473,7 @@ public static partial class AdminEndpointsLscc010
     /// service boundary (no public gateway route exists for this path).
     /// </summary>
     public static async Task<IResult> ProvisionProviderUser(
-        Guid                                  orgId,
+        Guid                                  id,
         ProvisionProviderUserRequest          body,
         IdentityDbContext                     db,
         IPasswordHasher                       passwordHasher,
@@ -7488,12 +7492,12 @@ public static partial class AdminEndpointsLscc010
 
         var org = await db.Organizations
             .AsNoTracking()
-            .Where(o => o.Id == orgId)
+            .Where(o => o.Id == id)
             .Select(o => new { o.Id, o.TenantId, o.Name })
             .FirstOrDefaultAsync(ct);
 
         if (org is null)
-            return Results.NotFound(new { error = $"Organization '{orgId}' not found." });
+            return Results.NotFound(new { error = $"Organization '{id}' not found." });
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
 
@@ -7508,7 +7512,7 @@ public static partial class AdminEndpointsLscc010
         {
             logger.LogInformation(
                 "LSCC-010 ProvisionProviderUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
-                emailLower, org.TenantId, orgId);
+                emailLower, org.TenantId, id);
             return Results.Ok(new ProvisionProviderUserResponse(
                 existingUser.Id, InvitationId: null, IsNew: false, InvitationSent: false));
         }
@@ -7548,7 +7552,7 @@ public static partial class AdminEndpointsLscc010
             Actor         = new AuditEventActorDto { Type = ActorType.System, Name = "careconnect-autoprovision" },
             Entity        = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action        = "ProviderUserProvisioned",
-            Description   = $"Provider user '{emailLower}' provisioned via CareConnect auto-provision (org {orgId}).",
+            Description   = $"Provider user '{emailLower}' provisioned via CareConnect auto-provision (org {id}).",
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.provider.provisioned", invitation.Id.ToString()),
             Tags           = ["user-management", "provider", "autoprovision"],
         });
@@ -7599,7 +7603,7 @@ public static partial class AdminEndpointsLscc010
     /// No permission guard — trusted internal M2M path (same policy as provision-user).
     /// </summary>
     public static async Task<IResult> SelfRegisterUser(
-        Guid                    orgId,
+        Guid                    id,
         SelfRegisterUserRequest body,
         IdentityDbContext       db,
         IPasswordHasher         passwordHasher,
@@ -7618,12 +7622,12 @@ public static partial class AdminEndpointsLscc010
 
         var org = await db.Organizations
             .AsNoTracking()
-            .Where(o => o.Id == orgId)
+            .Where(o => o.Id == id)
             .Select(o => new { o.Id, o.TenantId, o.Name })
             .FirstOrDefaultAsync(ct);
 
         if (org is null)
-            return Results.NotFound(new { error = $"Organization '{orgId}' not found." });
+            return Results.NotFound(new { error = $"Organization '{id}' not found." });
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
 
@@ -7638,7 +7642,7 @@ public static partial class AdminEndpointsLscc010
         {
             logger.LogInformation(
                 "CC2-ENROLL SelfRegisterUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
-                emailLower, org.TenantId, orgId);
+                emailLower, org.TenantId, id);
             return Results.Ok(new SelfRegisterUserResponse(existingUser.Id, IsNew: false));
         }
 
@@ -7647,6 +7651,12 @@ public static partial class AdminEndpointsLscc010
         var user     = User.Create(org.TenantId, emailLower, hash, body.FirstName.Trim(), lastName);
         // User.Create produces an active user by default — no Deactivate() call here.
         db.Users.Add(user);
+
+        // CC2-ENROLL-FIRM: create primary org membership so the user can log in immediately.
+        var membership = UserOrganizationMembership.Create(user.Id, id, memberRole: MemberRole.Member);
+        membership.SetPrimary();
+        db.UserOrganizationMemberships.Add(membership);
+
         await db.SaveChangesAsync(ct);
 
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
@@ -7662,14 +7672,14 @@ public static partial class AdminEndpointsLscc010
             Actor         = new AuditEventActorDto { Type = ActorType.System, Name = "careconnect-enrollment" },
             Entity        = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action        = "SelfEnrolled",
-            Description   = $"User '{emailLower}' self-enrolled via CareConnect enrollment form (org {orgId}).",
+            Description   = $"User '{emailLower}' self-enrolled via CareConnect enrollment form (org {id}).",
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.self.enrolled", user.Id.ToString()),
             Tags           = ["user-management", "provider", "self-enrollment"],
         });
 
         logger.LogInformation(
             "CC2-ENROLL SelfRegisterUser: user {UserId} ({Email}) created and active in org {OrgId}.",
-            user.Id, emailLower, orgId);
+            user.Id, emailLower, id);
 
         return Results.Created(
             $"/api/admin/users/{user.Id}",
@@ -7703,16 +7713,24 @@ public static partial class AdminEndpointsLscc010
         {
             try
             {
-                var rehydrated = Tenant.Rehydrate(
-                    id:   body.TenantId,
-                    code: body.TenantId.ToString("N")[..12]);   // deterministic short code
+                var code      = body.TenantId.ToString("N")[..12];
+                var rehydrated = Tenant.Rehydrate(id: body.TenantId, code: code);
                 db.Tenants.Add(rehydrated);
                 await db.SaveChangesAsync(ct);
             }
             catch (DbUpdateException)
             {
-                // Concurrent request already inserted — that's fine, continue.
+                // Concurrent request already inserted — clear the tracker and re-verify.
                 db.ChangeTracker.Clear();
+
+                // After clearing, confirm the tenant really is in the DB now.
+                // If it still isn't (e.g. code-uniqueness clash with a different tenant row),
+                // return an error rather than letting the Organization FK fail later.
+                tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
+                if (!tenantExists)
+                    return Results.Problem(
+                        $"Could not rehydrate tenant '{body.TenantId}' in Identity. " +
+                        "The tenant must be provisioned before creating an organization.");
             }
         }
 
