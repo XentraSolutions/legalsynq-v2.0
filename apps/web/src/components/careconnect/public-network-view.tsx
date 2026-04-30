@@ -777,9 +777,7 @@ function ReferralPanel({
               icon="ri-briefcase-line" avatarBg="bg-indigo-500"
               title="Law firm"
               subtitle="Who is sending the referral"
-              open={openSection === 'firm'}
               hasError={!!(fieldErrors['firmName'] || fieldErrors['email'])}
-              onToggle={() => setSection(s => s === 'firm' ? 'patient' : 'firm')}
             >
               <div className="px-5 pb-4 space-y-3">
                 <PanelField label="Firm name" required error={fieldErrors['firmName']}>
@@ -826,9 +824,7 @@ function ReferralPanel({
               icon="ri-user-heart-line" avatarBg="bg-teal-500"
               title="Patient"
               subtitle="Who is being referred"
-              open={openSection === 'patient'}
               hasError={!!(fieldErrors['patientName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail'])}
-              onToggle={() => setSection(s => s === 'patient' ? 'firm' : 'patient')}
             >
               <div className="px-5 pb-4 space-y-3">
                 <PanelField label="Patient name" required error={fieldErrors['patientName']}>
@@ -936,8 +932,6 @@ function ReferralPanel({
               title="Providers"
               subtitle="Who will treat the patient"
               badge={providers.length}
-              open={openSection === 'providers'}
-              onToggle={() => setSection(s => s === 'providers' ? 'patient' : 'providers')}
             >
               <div className="px-5 pb-4 space-y-3">
                 {providers.map(p => {
@@ -1028,43 +1022,36 @@ function ReferralPanel({
 // ── Section row ───────────────────────────────────────────────────────────────
 
 function SectionRow({
-  icon, avatarBg, title, subtitle, badge, open, hasError, onToggle, children,
+  icon, avatarBg, title, subtitle, badge, hasError, children,
 }: {
-  icon:       string;
-  avatarBg:   string;
-  title:      string;
-  subtitle:   string;
-  badge?:     number;
-  open:       boolean;
-  hasError?:  boolean;
-  onToggle:   () => void;
-  children:   ReactNode;
+  icon:      string;
+  avatarBg:  string;
+  title:     string;
+  subtitle:  string;
+  badge?:    number;
+  hasError?: boolean;
+  children:  ReactNode;
 }) {
   return (
     <div className="border-b border-gray-100">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-gray-50 transition-colors"
-      >
-        <div className={`relative w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center flex-shrink-0`}>
-          <i className={`${icon} text-base text-white`} />
+      <div className="flex items-center gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100">
+        <div className={`relative w-7 h-7 rounded-full ${avatarBg} flex items-center justify-center flex-shrink-0`}>
+          <i className={`${icon} text-sm text-white`} />
           {hasError && (
             <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white" />
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-semibold ${hasError ? 'text-red-700' : 'text-gray-800'}`}>{title}</p>
+          <p className={`text-xs font-semibold uppercase tracking-wide ${hasError ? 'text-red-600' : 'text-gray-500'}`}>{title}</p>
           <p className="text-xs text-gray-400">{subtitle}</p>
         </div>
         {badge !== undefined && (
-          <span className="w-5 h-5 rounded-full bg-gray-800 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+          <span className="w-5 h-5 rounded-full bg-gray-700 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
             {badge}
           </span>
         )}
-        <i className={`ri-arrow-${open ? 'up' : 'down'}-s-line text-gray-400 text-sm flex-shrink-0`} />
-      </button>
-      {open && children}
+      </div>
+      {children}
     </div>
   );
 }
