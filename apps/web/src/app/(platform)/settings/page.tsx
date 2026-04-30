@@ -1,5 +1,6 @@
 import { requireOrg } from '@/lib/auth-guards';
 import { ChangePasswordForm } from './change-password-form';
+import { MapProviderSetting } from '@/components/settings/map-provider-setting';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export default async function SettingsPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Account Settings</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Manage your security preferences.</p>
+            <p className="text-sm text-gray-500 mt-0.5">Manage your security and display preferences.</p>
           </div>
           <a
             href="/profile"
@@ -47,6 +48,9 @@ export default async function SettingsPage() {
             )}
           </div>
         </div>
+
+        {/* ── Map provider card ─────────────────────────────────────────── */}
+        <MapProviderSetting />
 
         {/* ── Change password card ──────────────────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-xl px-6 py-6">
