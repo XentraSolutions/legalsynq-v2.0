@@ -1028,6 +1028,7 @@ function ReferralPanel({
           treatmentTypes={treatmentTypes}
           providerFiles={providerFiles}
           state={state}
+          tenantId={tenantId}
           onConfirm={confirmAndSend}
           onBack={() => setState('form')}
           onClose={() => window.location.reload()}
@@ -1056,13 +1057,14 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ReferralConfirmModal({
-  form, providers, treatmentTypes, providerFiles, state, onConfirm, onBack, onClose,
+  form, providers, treatmentTypes, providerFiles, state, tenantId, onConfirm, onBack, onClose,
 }: {
   form:           ReferralForm;
   providers:      PublicProviderItem[];
   treatmentTypes: TreatmentType[];
   providerFiles:  Record<string, File | null>;
   state:          PanelState;
+  tenantId:       string;
   onConfirm:      () => void;
   onBack:         () => void;
   onClose:        () => void;
@@ -1138,6 +1140,7 @@ function ReferralConfirmModal({
                       </p>
                       <a
                         href={`/enroll?${new URLSearchParams({
+                          tenantId:            tenantId,
                           ...(form.email       ? { email:   form.email }       : {}),
                           ...(form.firmName    ? { firm:    form.firmName }    : {}),
                           ...(form.phone       ? { phone:   form.phone }       : {}),
