@@ -944,12 +944,13 @@ function ReferralPanel({
                           <span className="text-xs text-gray-500">Attach document</span>
                           <input
                             type="file"
-                            className="sr-only"
+                            className="hidden"
                             accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.xls,.xlsx"
                             disabled={state === 'submitting'}
                             onChange={e => {
                               const f = e.target.files?.[0] ?? null;
                               if (f) setProviderFiles(prev => ({ ...prev, [p.id]: f }));
+                              e.target.value = '';
                             }}
                           />
                         </label>

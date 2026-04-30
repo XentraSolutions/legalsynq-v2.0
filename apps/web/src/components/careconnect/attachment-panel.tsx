@@ -311,7 +311,7 @@ export function AttachmentPanel({ entityType, entityId, canUpload = false }: Att
             <input
               ref={fileInputRef}
               type="file"
-              className="sr-only"
+              className="hidden"
               id={`attachment-upload-${entityId}`}
               onChange={handleFileChange}
               disabled={uploading}
