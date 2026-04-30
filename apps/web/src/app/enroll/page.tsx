@@ -64,7 +64,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
 
         <p className="text-center text-xs text-gray-400 mt-6">
           Already have an account?{' '}
-          <a href="/login" className="text-blue-600 hover:underline">Sign in</a>
+          <a href="https://careconnect-demo.legalsynq.com/login" className="text-blue-600 hover:underline">Sign in</a>
         </p>
       </div>
     </main>

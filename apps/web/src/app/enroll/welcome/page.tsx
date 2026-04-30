@@ -19,7 +19,7 @@ export default function EnrollWelcomePage() {
 
         <div className="space-y-3">
           <a
-            href="/login"
+            href="https://careconnect-demo.legalsynq.com/login"
             className="block w-full py-3 px-6 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors"
           >
             <i className="ri-login-box-line mr-2" />

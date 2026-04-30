@@ -153,7 +153,8 @@ export function FirmStatusClient({ token, data }: Props) {
   const [isPending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const loginUrl = `/login?returnTo=${encodeURIComponent('/careconnect/dashboard')}&reason=referral-portal`;
+  const loginUrl = 'https://careconnect-demo.legalsynq.com/login';
+  const enrollUrl = '/enroll';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,7 +205,7 @@ export function FirmStatusClient({ token, data }: Props) {
               </p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 160 }}>
-              <a href={loginUrl} style={s.btnPrimary}>Get full portal access</a>
+              <a href={enrollUrl} style={s.btnPrimary}>Get full portal access</a>
               <a href={loginUrl} style={{ ...s.btnOutline, fontSize: 12, padding: '7px 16px' }}>Already have access? Log in</a>
             </div>
           </div>
