@@ -46,10 +46,22 @@ public class UserProductAccessService : IUserProductAccessService
         if (user == null)
             throw new InvalidOperationException($"User {userId} not found in tenant {tenantId}.");
 
-        var productEntitled = await _db.TenantProductEntitlements
-            .AnyAsync(e => e.TenantId == tenantId && e.ProductCode == code && e.Status == EntitlementStatus.Active, ct);
-        if (!productEntitled)
-            throw new InvalidOperationException($"Product '{code}' is not entitled to tenant {tenantId}.");
+        // Auto-entitle the tenant to the product if not already active.
+        // A TenantAdmin granting a product to a user implicitly means the tenant
+        // should have access; requiring a separate entitlement step is an internal
+        // concern that should not surface as an error to the portal user.
+        var entitlement = await _db.TenantProductEntitlements
+            .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.ProductCode == code, ct);
+
+        if (entitlement is null)
+        {
+            entitlement = TenantProductEntitlement.Create(tenantId, code, createdByUserId: actorUserId);
+            _db.TenantProductEntitlements.Add(entitlement);
+        }
+        else if (entitlement.Status != EntitlementStatus.Active)
+        {
+            entitlement.Enable(actorUserId);
+        }
 
         var existing = await _db.UserProductAccessRecords
             .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.UserId == userId && a.ProductCode == code, ct);
