@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import Link from 'next/link';
+import { autoProvision } from './actions';
 
 interface ReferralPublicSummary {
   referralId:       string;
@@ -33,6 +34,7 @@ export function ActivationForm({ summary, token, referralId }: ActivationFormPro
   const [status,   setStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
   const [error,    setError]    = useState('');
   const [provision, setProvision] = useState<ProvisionState | null>(null);
+  const [, startTransition]    = useTransition();
 
   const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
 
@@ -40,7 +42,7 @@ export function ActivationForm({ summary, token, referralId }: ActivationFormPro
   // Fallback login URL used if the auto-provision endpoint does not return one.
   const fallbackLoginUrl = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${referralId}`)}&reason=referral-view`;
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !email.trim()) {
       setError('Please enter your name and email address.');
@@ -49,38 +51,25 @@ export function ActivationForm({ summary, token, referralId }: ActivationFormPro
     setStatus('loading');
     setError('');
 
-    try {
-      const resp = await fetch(`/api/careconnect/api/referrals/${referralId}/auto-provision`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          token,
-          requesterName:  name.trim(),
-          requesterEmail: email.trim(),
-        }),
-      });
+    startTransition(async () => {
+      const result = await autoProvision(referralId, token, name.trim(), email.trim());
 
-      if (!resp.ok) {
+      if (result.error) {
         setStatus('error');
-        setError('Something went wrong. Please try again or contact the referring party.');
+        setError(result.error);
         return;
       }
 
-      const data = await resp.json();
+      const loginUrl = result.loginUrl ?? fallbackLoginUrl;
 
-      const loginUrl = (data.loginUrl as string | null) ?? fallbackLoginUrl;
-
-      if (data.success && !data.alreadyActive) {
+      if (result.success && !result.alreadyActive) {
         setProvision({ outcome: 'provisioned', loginUrl, name: name.trim() });
-      } else if (data.success && data.alreadyActive) {
+      } else if (result.success && result.alreadyActive) {
         setProvision({ outcome: 'alreadyActive', loginUrl, name: name.trim() });
       } else {
         setProvision({ outcome: 'fallback', loginUrl: null, name: name.trim() });
       }
-    } catch {
-      setStatus('error');
-      setError('Connection error. Please check your internet connection and try again.');
-    }
+    });
   }
 
   // ── Provisioned (happy path) ──────────────────────────────────────────────

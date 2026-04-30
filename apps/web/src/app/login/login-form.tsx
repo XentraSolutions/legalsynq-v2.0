@@ -18,6 +18,14 @@ const REASON_MESSAGES: Record<string, { icon: string; text: string }> = {
     icon: 'ri-lock-unlock-line',
     text: 'Your access permissions have changed. Please sign in again to continue.',
   },
+  'referral-view': {
+    icon: 'ri-links-line',
+    text: 'Sign in to view and manage this referral from your provider dashboard.',
+  },
+  'referral-portal': {
+    icon: 'ri-links-line',
+    text: 'Sign in to access the referral details and respond from your dashboard.',
+  },
 };
 
 /**

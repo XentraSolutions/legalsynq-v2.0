@@ -187,6 +187,17 @@ public class Referral : AuditableEntity
     }
 
     /// <summary>
+    /// Transitions this referral from New/NewOpened → Declined.
+    /// Used by both authenticated provider users and the public token-based decline flow.
+    /// </summary>
+    public void Decline(Guid? updatedByUserId)
+    {
+        Status          = ValidStatuses.Declined;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
+    /// <summary>
     /// LSCC-005-01: Invalidates all previously issued view tokens by incrementing
     /// the token version. Any token carrying an older version will be rejected.
     /// </summary>

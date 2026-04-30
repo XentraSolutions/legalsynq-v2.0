@@ -677,6 +677,93 @@ public class ReferralService : IReferralService
         return ToResponse(loaded!);
     }
 
+    public async Task<ReferralResponse> DeclineByTokenAsync(
+        Guid referralId,
+        string token,
+        CancellationToken ct = default)
+    {
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)
+        {
+            EmitInvalidTokenAudit(token, "malformed-or-expired", null);
+            throw new UnauthorizedAccessException("Invalid or expired view token.");
+        }
+
+        if (tokenResult.ReferralId != referralId)
+            throw new UnauthorizedAccessException("Token does not match the requested referral.");
+
+        var referral = await _referrals.GetByIdGlobalAsync(referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        if (tokenResult.TokenVersion != referral.TokenVersion)
+        {
+            _logger.LogWarning(
+                "Decline attempt with revoked token for referral {ReferralId}.",
+                referral.Id);
+            EmitInvalidTokenAudit(token, "revoked", referralId);
+            throw new UnauthorizedAccessException("This referral link has been revoked. Please contact the referring party for a new link.");
+        }
+
+        if (referral.Status != Referral.ValidStatuses.New && referral.Status != Referral.ValidStatuses.NewOpened)
+        {
+            throw new InvalidOperationException(
+                $"Referral is not in Pending (New) status — current status: '{referral.Status}'.");
+        }
+
+        var provider = referral.Provider
+            ?? throw new InvalidOperationException($"Provider data missing for referral '{referralId}'.");
+
+        var history = ReferralStatusHistory.Create(
+            referral.Id,
+            referral.TenantId,
+            referral.Status,
+            Referral.ValidStatuses.Declined,
+            changedByUserId: null,
+            notes: "Declined via public token link.");
+
+        referral.Decline(updatedByUserId: null);
+        await _referrals.UpdateAsync(referral, history, ct: ct);
+
+        var scopeFactory2 = _scopeFactory;
+        var logger2       = _logger;
+        _ = Task.Run(async () =>
+        {
+            using var scope2   = scopeFactory2.CreateScope();
+            var       emailSvc = scope2.ServiceProvider.GetRequiredService<IReferralEmailService>();
+            try { await emailSvc.SendRejectionNotificationsAsync(referral, provider, null, CancellationToken.None); }
+            catch (Exception ex)
+            {
+                logger2.LogWarning(ex,
+                    "Background decline notification failed for referral {ReferralId}.", referral.Id);
+            }
+        });
+
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.declined.by-token",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = referral.TenantId.ToString() },
+            Actor         = new AuditEventActorDto { Id = "public-token", Type = ActorType.System, Name = "PublicTokenDecline" },
+            Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action        = "ReferralDeclinedByToken",
+            Description   = $"Referral '{referral.Id}' declined via public view token.",
+            Outcome       = "success",
+            CorrelationId  = _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString(),
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.declined.by-token", referral.Id.ToString()),
+            Tags           = ["referral", "declined", "public-token"],
+        });
+
+        var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
+        return ToResponse(loaded!);
+    }
+
     // ── LSCC-005-01: Hardening methods ───────────────────────────────────────
 
     /// <summary>

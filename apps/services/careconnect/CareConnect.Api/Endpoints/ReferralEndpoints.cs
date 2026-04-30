@@ -502,17 +502,57 @@ public static class ReferralEndpoints
         });
         // Note: no .RequireAuthorization — token-gated, intentionally public
 
-        // LSCC-01-002-01: Public token-only acceptance is permanently retired.
-        // This endpoint no longer mutates referral state.
-        // Providers must log in to accept referrals from the authenticated referral detail page.
-        // Valid token links are still routed into the login + returnTo flow by /referrals/view.
-        group.MapPost("/{id:guid}/accept-by-token", (Guid id) =>
-            Results.Problem(
-                detail: "Direct token-based acceptance is no longer supported. " +
-                        "Please log in to the platform to view and accept this referral.",
-                statusCode: StatusCodes.Status410Gone,
-                title: "Acceptance path retired"));
-        // Note: intentionally public — must remain accessible to serve legacy links safely
+        // POST /api/referrals/{id}/accept-by-token
+        // Public, HMAC view-token gated. Accepts the referral directly from the provider thread page.
+        group.MapPost("/{id:guid}/accept-by-token", async (
+            Guid id,
+            [FromBody] AcceptByTokenRequest request,
+            IReferralService referralService,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+            try
+            {
+                var result = await referralService.AcceptByTokenAsync(id, request.Token, ct);
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
+            }
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+
+        // POST /api/referrals/{id}/decline-by-token
+        // Public, HMAC view-token gated. Declines the referral directly from the provider thread page.
+        group.MapPost("/{id:guid}/decline-by-token", async (
+            Guid id,
+            [FromBody] AcceptByTokenRequest request,
+            IReferralService referralService,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+            try
+            {
+                var result = await referralService.DeclineByTokenAsync(id, request.Token, ct);
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
+            }
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
     }
 }
 

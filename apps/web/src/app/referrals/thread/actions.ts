@@ -2,6 +2,64 @@
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
+export interface TokenActionResult {
+  success: boolean;
+  error?:  string;
+  status?: string;
+}
+
+export async function acceptReferralByToken(
+  referralId: string,
+  token:       string,
+): Promise<TokenActionResult> {
+  try {
+    const resp = await fetch(
+      `${GATEWAY_URL}/careconnect/api/referrals/${referralId}/accept-by-token`,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ token }),
+        cache:   'no-store',
+      },
+    );
+    if (resp.status === 409) return { success: false, error: 'This referral has already been responded to.' };
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      return { success: false, error: (body as { detail?: string }).detail ?? 'Could not accept the referral. Please try again.' };
+    }
+    const data = await resp.json();
+    return { success: true, status: (data as { status?: string }).status };
+  } catch {
+    return { success: false, error: 'Network error. Please check your connection and try again.' };
+  }
+}
+
+export async function declineReferralByToken(
+  referralId: string,
+  token:       string,
+): Promise<TokenActionResult> {
+  try {
+    const resp = await fetch(
+      `${GATEWAY_URL}/careconnect/api/referrals/${referralId}/decline-by-token`,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ token }),
+        cache:   'no-store',
+      },
+    );
+    if (resp.status === 409) return { success: false, error: 'This referral has already been responded to.' };
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      return { success: false, error: (body as { detail?: string }).detail ?? 'Could not decline the referral. Please try again.' };
+    }
+    const data = await resp.json();
+    return { success: true, status: (data as { status?: string }).status };
+  } catch {
+    return { success: false, error: 'Network error. Please check your connection and try again.' };
+  }
+}
+
 export interface PostCommentResult {
   success: boolean;
   error?: string;

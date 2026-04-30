@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, useRef } from 'react';
-import { postComment } from './actions';
+import { postComment, acceptReferralByToken, declineReferralByToken } from './actions';
 
 interface Comment {
   id:         string;
@@ -39,6 +39,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
   New:        { label: 'Awaiting Your Response', color: '#92400e', bg: '#fffbeb', border: '#fcd34d' },
   NewOpened:  { label: 'Opened — Pending Response', color: '#1e40af', bg: '#eff6ff', border: '#93c5fd' },
   Accepted:   { label: 'Accepted',                  color: '#065f46', bg: '#ecfdf5', border: '#6ee7b7' },
+  Declined:   { label: 'Declined',                  color: '#991b1b', bg: '#fef2f2', border: '#fca5a5' },
   Rejected:   { label: 'Declined',                  color: '#991b1b', bg: '#fef2f2', border: '#fca5a5' },
   Cancelled:  { label: 'Cancelled',                 color: '#374151', bg: '#f9fafb', border: '#d1d5db' },
   InProgress: { label: 'In Progress',               color: '#5b21b6', bg: '#f5f3ff', border: '#c4b5fd' },
@@ -96,6 +97,8 @@ const s: Record<string, React.CSSProperties> = {
                padding: '20px 24px', marginBottom: 20, color: '#fff' },
 };
 
+type ActionState = 'idle' | 'accepting' | 'declining' | 'accepted' | 'declined' | 'error';
+
 export function ThreadClient({ token, data }: Props) {
   const [comments,      setComments]  = useState<Comment[]>(data.comments);
   const [senderName,    setSenderName] = useState('');
@@ -105,13 +108,47 @@ export function ThreadClient({ token, data }: Props) {
   const [isPending,     startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const st = STATUS_MAP[data.status] ?? { label: data.status, color: '#374151', bg: '#f9fafb', border: '#d1d5db' };
+  const [actionState,   setActionState]  = useState<ActionState>('idle');
+  const [actionError,   setActionError]  = useState('');
+  const [liveStatus,    setLiveStatus]   = useState(data.status);
 
-  const isActionable = data.status === 'New' || data.status === 'NewOpened';
+  const st = STATUS_MAP[liveStatus] ?? { label: liveStatus, color: '#374151', bg: '#f9fafb', border: '#d1d5db' };
+
+  const isActionable = (liveStatus === 'New' || liveStatus === 'NewOpened') && actionState !== 'accepted' && actionState !== 'declined';
   const referralId   = data.referralId;
   const loginReturnTo = encodeURIComponent(`/provider/referrals/${referralId}`);
   const activateUrl  = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}`;
   const loginUrl     = `/login?returnTo=${loginReturnTo}&reason=referral-view`;
+
+  const handleAccept = () => {
+    setActionError('');
+    setActionState('accepting');
+    startTransition(async () => {
+      const result = await acceptReferralByToken(referralId, token);
+      if (!result.success) {
+        setActionState('error');
+        setActionError(result.error ?? 'Could not accept the referral. Please try again.');
+        return;
+      }
+      setActionState('accepted');
+      setLiveStatus('Accepted');
+    });
+  };
+
+  const handleDecline = () => {
+    setActionError('');
+    setActionState('declining');
+    startTransition(async () => {
+      const result = await declineReferralByToken(referralId, token);
+      if (!result.success) {
+        setActionState('error');
+        setActionError(result.error ?? 'Could not decline the referral. Please try again.');
+        return;
+      }
+      setActionState('declined');
+      setLiveStatus('Declined');
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,20 +217,73 @@ export function ThreadClient({ token, data }: Props) {
           </div>
         </div>
 
-        {/* Accept / Decline — only shown while actionable */}
-        {isActionable && (
+        {/* Accept / Decline */}
+        {(isActionable || actionState === 'accepted' || actionState === 'declined' || actionState === 'error') && (
           <div style={s.card}>
             <h2 style={s.cardTitle}>Your Response</h2>
-            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
-              Log in or activate your account to accept or decline this referral from within your secure provider dashboard.
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <a href={loginUrl} style={{ ...s.btnPrimary, flex: 1 }}>Accept Referral</a>
-              <a href={loginUrl} style={{ ...s.btnDanger, flex: 1 }}>Decline Referral</a>
-            </div>
-            <p style={{ margin: '10px 0 0', fontSize: 11, color: '#9ca3af', textAlign: 'center' as const }}>
-              Requires secure login — your response is recorded in your dashboard.
-            </p>
+
+            {/* Success: accepted */}
+            {actionState === 'accepted' && (
+              <div style={{ background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 8, padding: '14px 18px' }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#065f46' }}>
+                  Referral accepted — thank you!
+                </p>
+                <p style={{ margin: '6px 0 0', fontSize: 13, color: '#047857' }}>
+                  The referring party has been notified. You can log in to your provider dashboard to view full patient details and manage the case.
+                </p>
+                <a href={loginUrl} style={{ ...s.btnPrimary, marginTop: 14, display: 'inline-block', width: 'auto', padding: '9px 20px', fontSize: 13 }}>
+                  Go to dashboard
+                </a>
+              </div>
+            )}
+
+            {/* Success: declined */}
+            {actionState === 'declined' && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '14px 18px' }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#991b1b' }}>
+                  Referral declined.
+                </p>
+                <p style={{ margin: '6px 0 0', fontSize: 13, color: '#b91c1c' }}>
+                  The referring party has been notified. If you change your mind, please contact them directly.
+                </p>
+              </div>
+            )}
+
+            {/* Error banner */}
+            {actionState === 'error' && actionError && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '10px 14px', marginBottom: 14 }}>
+                <p style={{ margin: 0, fontSize: 14, color: '#991b1b' }}>{actionError}</p>
+              </div>
+            )}
+
+            {/* Action buttons — shown while pending or idle/error */}
+            {isActionable && (
+              <>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+                  Respond directly from this page, or log in to your provider dashboard.
+                </p>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={handleAccept}
+                    disabled={isPending}
+                    style={{ ...s.btnPrimary, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                  >
+                    {actionState === 'accepting' ? 'Accepting…' : 'Accept Referral'}
+                  </button>
+                  <button
+                    onClick={handleDecline}
+                    disabled={isPending}
+                    style={{ ...s.btnDanger, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                  >
+                    {actionState === 'declining' ? 'Declining…' : 'Decline Referral'}
+                  </button>
+                </div>
+                <p style={{ margin: '10px 0 0', fontSize: 11, color: '#9ca3af', textAlign: 'center' as const }}>
+                  Your response is securely recorded.{' '}
+                  <a href={loginUrl} style={{ color: '#6b7280', textDecoration: 'underline' }}>Log in</a> to manage from your dashboard.
+                </p>
+              </>
+            )}
           </div>
         )}
 
