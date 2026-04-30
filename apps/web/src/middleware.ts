@@ -58,6 +58,8 @@ const PUBLIC_PATHS = [
   '/referrals/thread',
   // LSCC-008: Provider activation funnel — no session required
   '/referrals/activate',
+  // Law firm referral status email link — public, token-gated
+  '/referrals/firm-status',
   // CC2-INT-B07: Public tenant network directory — no session required
   '/network',
   '/careconnect/network',
