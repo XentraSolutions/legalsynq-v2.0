@@ -242,7 +242,8 @@ if command -v dotnet &>/dev/null; then
             "TenantService__BaseUrl=http://localhost:5005" \
             "TenantService__ProvisioningToken=${TenantService__ProvisioningToken:-}" \
             "AppBaseUrl=${_portal_url}" \
-            "AppBaseDomain=${_portal_domain}"
+            "AppBaseDomain=${_portal_domain}" \
+            "ReferralToken__Secret=${FLOW_SERVICE_TOKEN_SECRET:-}"
           PID_CARECONNECT=$! ;;
         Documents.Api) launch_svc "$_svc_label" "$csproj"; PID_DOCUMENTS=$! ;;
         Liens.Api)     launch_svc "$_svc_label" "$csproj"; PID_LIENS=$! ;;
