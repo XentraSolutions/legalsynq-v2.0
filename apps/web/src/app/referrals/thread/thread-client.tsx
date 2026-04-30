@@ -19,15 +19,25 @@ interface Attachment {
 }
 
 interface ThreadData {
-  referralId:  string;
-  status:      string;
-  clientName:  string;
-  service:     string;
-  providerName: string;
-  referrerName: string | null;
-  createdAt:   string;
-  comments:    Comment[];
-  attachments: Attachment[];
+  referralId:    string;
+  status:        string;
+  // Patient
+  clientName:    string;
+  clientPhone:   string | null;
+  clientEmail:   string | null;
+  clientDob:     string | null;
+  caseNumber:    string | null;
+  // Referral
+  service:       string;
+  urgency:       string | null;
+  notes:         string | null;
+  providerName:  string;
+  // Law firm / referrer
+  referrerName:  string | null;
+  referrerEmail: string | null;
+  createdAt:     string;
+  comments:      Comment[];
+  attachments:   Attachment[];
 }
 
 interface Props {
@@ -199,7 +209,7 @@ export function ThreadClient({ token, data }: Props) {
 
         {/* Status + referral summary */}
         <div style={s.card}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap' as const, gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap' as const, gap: 8 }}>
             <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Referral Summary</h2>
             <span style={{
               background: st.bg, color: st.color,
@@ -209,11 +219,43 @@ export function ThreadClient({ token, data }: Props) {
               {st.label}
             </span>
           </div>
+
+          {/* Referral meta */}
           <div style={s.grid2}>
-            <FieldBlock label="Patient"      value={data.clientName} />
-            <FieldBlock label="Service"      value={data.service} />
-            <FieldBlock label="Referred by"  value={data.referrerName ?? '—'} />
-            <FieldBlock label="Submitted"    value={formatDate(data.createdAt)} />
+            <FieldBlock label="Service"   value={data.service} />
+            <FieldBlock label="Submitted" value={formatDate(data.createdAt)} />
+            {data.urgency && <FieldBlock label="Urgency" value={data.urgency} />}
+            {data.caseNumber && <FieldBlock label="Case #" value={data.caseNumber} />}
+          </div>
+
+          {/* Notes */}
+          {data.notes && (
+            <div style={{ marginTop: 14 }}>
+              <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Notes</p>
+              <p style={{ margin: 0, fontSize: 14, color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{data.notes}</p>
+            </div>
+          )}
+
+          {/* Divider */}
+          <div style={{ borderTop: '1px solid #e2e8f0', margin: '18px 0' }} />
+
+          {/* Patient information */}
+          <p style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Patient Information</p>
+          <div style={s.grid2}>
+            <FieldBlock label="Full Name"    value={data.clientName} />
+            {data.clientDob  && <FieldBlock label="Date of Birth" value={data.clientDob} />}
+            {data.clientPhone && <FieldBlock label="Phone"         value={data.clientPhone} />}
+            {data.clientEmail && <FieldBlock label="Email"         value={data.clientEmail} />}
+          </div>
+
+          {/* Divider */}
+          <div style={{ borderTop: '1px solid #e2e8f0', margin: '18px 0' }} />
+
+          {/* Referring law firm */}
+          <p style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referring Law Firm</p>
+          <div style={s.grid2}>
+            <FieldBlock label="Contact Name"  value={data.referrerName ?? '—'} />
+            {data.referrerEmail && <FieldBlock label="Email" value={data.referrerEmail} />}
           </div>
         </div>
 

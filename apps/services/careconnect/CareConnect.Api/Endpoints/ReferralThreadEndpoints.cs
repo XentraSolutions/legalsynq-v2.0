@@ -67,14 +67,26 @@ public static class ReferralThreadEndpoints
 
             return Results.Ok(new
             {
-                referralId   = referral.Id,
-                tenantId     = referral.TenantId,
-                status       = referral.Status,
-                clientName   = $"{referral.ClientFirstName} {referral.ClientLastName}".Trim(),
-                service      = referral.RequestedService,
-                providerName = provName,
-                referrerName = referral.ReferrerName,
-                createdAt    = referral.CreatedAtUtc,
+                referralId    = referral.Id,
+                tenantId      = referral.TenantId,
+                status        = referral.Status,
+                // Patient information
+                clientName    = $"{referral.ClientFirstName} {referral.ClientLastName}".Trim(),
+                clientPhone   = referral.ClientPhone,
+                clientEmail   = referral.ClientEmail,
+                clientDob     = referral.ClientDob.HasValue
+                    ? referral.ClientDob.Value.ToString("MM/dd/yyyy")
+                    : null,
+                caseNumber    = referral.CaseNumber,
+                // Referral metadata
+                service       = referral.RequestedService,
+                urgency       = referral.Urgency,
+                notes         = referral.Notes,
+                providerName  = provName,
+                // Law firm / referrer information
+                referrerName  = referral.ReferrerName,
+                referrerEmail = referral.ReferrerEmail,
+                createdAt     = referral.CreatedAtUtc,
                 comments,
                 attachments,
             });
