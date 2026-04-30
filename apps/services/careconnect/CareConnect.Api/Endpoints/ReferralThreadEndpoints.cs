@@ -47,6 +47,18 @@ public static class ReferralThreadEndpoints
                 })
                 .ToListAsync(ct);
 
+            var attachments = await db.ReferralAttachments
+                .Where(a => a.ReferralId == referral.Id)
+                .OrderBy(a => a.CreatedAtUtc)
+                .Select(a => new
+                {
+                    id            = a.Id,
+                    fileName      = a.FileName,
+                    contentType   = a.ContentType,
+                    fileSizeBytes = a.FileSizeBytes,
+                })
+                .ToListAsync(ct);
+
             var provName = referral.Provider is not null
                 ? (string.IsNullOrWhiteSpace(referral.Provider.OrganizationName)
                     ? referral.Provider.Name
@@ -63,6 +75,7 @@ public static class ReferralThreadEndpoints
                 referrerName = referral.ReferrerName,
                 createdAt    = referral.CreatedAtUtc,
                 comments,
+                attachments,
             });
         }).AllowAnonymous();
 
