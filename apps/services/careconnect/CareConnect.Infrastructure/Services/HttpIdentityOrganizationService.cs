@@ -345,8 +345,14 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         client.BaseAddress = new Uri(_options.BaseUrl!.TrimEnd('/') + "/");
         client.Timeout     = TimeSpan.FromSeconds(_options.TimeoutSeconds);
 
-        if (!string.IsNullOrWhiteSpace(_options.AuthHeaderName) &&
-            !string.IsNullOrWhiteSpace(_options.AuthHeaderValue))
+        // BLK-SEC-01: Prefer ProvisioningToken (X-Provisioning-Token header) for internal calls.
+        if (!string.IsNullOrWhiteSpace(_options.ProvisioningToken))
+        {
+            client.DefaultRequestHeaders.TryAddWithoutValidation(
+                "X-Provisioning-Token", _options.ProvisioningToken);
+        }
+        else if (!string.IsNullOrWhiteSpace(_options.AuthHeaderName) &&
+                 !string.IsNullOrWhiteSpace(_options.AuthHeaderValue))
         {
             client.DefaultRequestHeaders.TryAddWithoutValidation(
                 _options.AuthHeaderName, _options.AuthHeaderValue);

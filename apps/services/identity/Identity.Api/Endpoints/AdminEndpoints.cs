@@ -7388,10 +7388,24 @@ public static partial class AdminEndpointsLscc010
         if (body.ProviderCcId == Guid.Empty) return Results.BadRequest(new { error = "providerCcId is required." });
         if (string.IsNullOrWhiteSpace(body.ProviderName)) return Results.BadRequest(new { error = "providerName is required." });
 
-        // Validate tenant exists
+        // TENANT-B12: Rehydrate the tenant record if Identity doesn't know it yet.
         var tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
         if (!tenantExists)
-            return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
+        {
+            try
+            {
+                var rehydrated = Tenant.Rehydrate(
+                    id:   body.TenantId,
+                    code: body.TenantId.ToString("N")[..12]);
+                db.Tenants.Add(rehydrated);
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Concurrent request already inserted — that's fine, continue.
+                db.ChangeTracker.Clear();
+            }
+        }
 
         var name = OrgName(body.ProviderName, body.ProviderCcId);
 
@@ -7680,9 +7694,27 @@ public static partial class AdminEndpointsLscc010
         if (string.IsNullOrWhiteSpace(body.FirmName))            return Results.BadRequest(new { error = "firmName is required." });
         if (string.IsNullOrWhiteSpace(body.ContactEmail))        return Results.BadRequest(new { error = "contactEmail is required." });
 
+        // TENANT-B12: The Tenant service is the source of record for tenants.
+        // If this tenant is not yet known to Identity (e.g. created via Tenant service or
+        // provisioned before this dual-write convention), rehydrate a minimal record so
+        // the FK constraint on Organizations.TenantId is satisfied.
         var tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
         if (!tenantExists)
-            return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
+        {
+            try
+            {
+                var rehydrated = Tenant.Rehydrate(
+                    id:   body.TenantId,
+                    code: body.TenantId.ToString("N")[..12]);   // deterministic short code
+                db.Tenants.Add(rehydrated);
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Concurrent request already inserted — that's fine, continue.
+                db.ChangeTracker.Clear();
+            }
+        }
 
         // Idempotency key: deterministic name embedding email so the same firm contact always maps to the same org
         var idempotencyName = $"{body.FirmName.Trim()} [firm:{body.ContactEmail.Trim().ToLowerInvariant()}]";

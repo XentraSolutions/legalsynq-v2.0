@@ -115,7 +115,8 @@ export interface FirmRegisterPayload {
 }
 
 export async function registerFirmEnrollment(payload: FirmRegisterPayload): Promise<RegisterResult> {
-  const { tenantId, ...body } = payload;
+  const { tenantId, ...rest } = payload;
+  const body = { ...rest, tenantId };
   try {
     const res = await fetch(
       `${GATEWAY_URL}/careconnect/api/public/enrollment/register-firm`,
@@ -126,8 +127,8 @@ export async function registerFirmEnrollment(payload: FirmRegisterPayload): Prom
       },
     );
     if (!res.ok) {
-      const data = await res.json().catch(() => ({})) as { message?: string };
-      return { ok: false, error: data.message ?? 'Registration failed. Please try again.' };
+      const data = await res.json().catch(() => ({})) as { message?: string; detail?: string; error?: string };
+      return { ok: false, error: data.message ?? data.detail ?? data.error ?? 'Registration failed. Please try again.' };
     }
     return { ok: true };
   } catch {
