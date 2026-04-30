@@ -228,15 +228,18 @@ export async function fetchPublicNetworkDetail(
 // ── CC2-INT-B08: Public referral initiation ─────────────────────────────────
 
 export interface PublicReferralRequest {
-  providerId:       string;
-  senderName:       string;
-  senderEmail:      string;
-  patientFirstName: string;
-  patientLastName:  string;
-  patientPhone:     string;
-  patientEmail?:    string;
-  serviceType?:     string;
-  notes?:           string;
+  providerId:            string;
+  senderName:            string;
+  senderEmail:           string;
+  patientFirstName:      string;
+  patientLastName:       string;
+  patientPhone:          string;
+  patientEmail?:         string;
+  patientDateOfBirth?:   string;   // YYYY-MM-DD
+  patientDateOfAccident?: string;  // YYYY-MM-DD
+  patientAddress?:       string;
+  serviceType?:          string;
+  notes?:                string;
 }
 
 export interface PublicReferralResponse {

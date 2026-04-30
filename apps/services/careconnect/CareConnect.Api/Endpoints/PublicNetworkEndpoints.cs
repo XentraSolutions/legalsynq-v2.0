@@ -392,6 +392,15 @@ public static class PublicNetworkEndpoints
 
             // Map to the internal CreateReferralRequest.
             // ReferrerName/ReferrerEmail drive the signed-token email notification flow.
+            // Assemble structured notes: user-supplied notes + address + dates of accident.
+            var notesParts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(req.Notes))
+                notesParts.Add(req.Notes.Trim());
+            if (!string.IsNullOrWhiteSpace(req.PatientAddress))
+                notesParts.Add($"Patient Address: {req.PatientAddress.Trim()}");
+            if (req.PatientDateOfAccident.HasValue)
+                notesParts.Add($"Date of Accident: {req.PatientDateOfAccident.Value:yyyy-MM-dd}");
+
             var createReq = new CreateReferralRequest
             {
                 ProviderId              = req.ProviderId,
@@ -399,11 +408,14 @@ public static class PublicNetworkEndpoints
                 ClientLastName          = req.PatientLastName.Trim(),
                 ClientPhone             = req.PatientPhone.Trim(),
                 ClientEmail             = req.PatientEmail?.Trim() ?? string.Empty,
+                ClientDob               = req.PatientDateOfBirth.HasValue
+                                            ? req.PatientDateOfBirth.Value.ToDateTime(TimeOnly.MinValue)
+                                            : null,
                 RequestedService        = string.IsNullOrWhiteSpace(req.ServiceType)
                                             ? "General Referral"
                                             : req.ServiceType.Trim(),
                 Urgency                 = Referral.ValidUrgencies.Normal,
-                Notes                   = req.Notes?.Trim(),
+                Notes                   = notesParts.Count > 0 ? string.Join("\n", notesParts) : null,
                 ReferrerName            = req.SenderName.Trim(),
                 ReferrerEmail           = req.SenderEmail.Trim(),
                 ReferringOrganizationId = null,   // public — no org context
@@ -619,6 +631,19 @@ public static class PublicNetworkEndpoints
 
         if (!string.IsNullOrWhiteSpace(req.PatientEmail) && !IsValidEmail(req.PatientEmail))
             errors["patientEmail"] = "Please enter a valid patient email address.";
+
+        if (!req.PatientDateOfBirth.HasValue)
+            errors["patientDateOfBirth"] = "Patient date of birth is required.";
+        else if (req.PatientDateOfBirth.Value > DateOnly.FromDateTime(DateTime.UtcNow))
+            errors["patientDateOfBirth"] = "Date of birth cannot be in the future.";
+
+        if (!req.PatientDateOfAccident.HasValue)
+            errors["patientDateOfAccident"] = "Date of accident is required.";
+        else if (req.PatientDateOfAccident.Value > DateOnly.FromDateTime(DateTime.UtcNow))
+            errors["patientDateOfAccident"] = "Date of accident cannot be in the future.";
+
+        if (req.PatientAddress is not null && req.PatientAddress.Length > 500)
+            errors["patientAddress"] = "Address must not exceed 500 characters.";
 
         if (req.ServiceType is not null && req.ServiceType.Length > 200)
             errors["serviceType"] = "Service type must not exceed 200 characters.";

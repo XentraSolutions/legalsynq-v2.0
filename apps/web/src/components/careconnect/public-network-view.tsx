@@ -466,18 +466,24 @@ interface TreatmentType {
 }
 
 interface ReferralForm {
-  patientName:     string;
-  patientPhone:    string;
-  treatmentTypeId: string;
-  notes:           string;
-  firmName:        string;
-  contactName:     string;
-  email:           string;
-  phone:           string;
+  patientName:          string;
+  patientPhone:         string;
+  patientEmail:         string;
+  patientAddress:       string;
+  patientDob:           string;   // YYYY-MM-DD
+  patientDateOfAccident: string;  // YYYY-MM-DD
+  treatmentTypeId:      string;
+  notes:                string;
+  firmName:             string;
+  contactName:          string;
+  email:                string;
+  phone:                string;
 }
 
 const EMPTY_FORM: ReferralForm = {
-  patientName: '', patientPhone: '', treatmentTypeId: '', notes: '',
+  patientName: '', patientPhone: '', patientEmail: '',
+  patientAddress: '', patientDob: '', patientDateOfAccident: '',
+  treatmentTypeId: '', notes: '',
   firmName: '', contactName: '', email: '', phone: '',
 };
 
@@ -498,6 +504,11 @@ function ReferralPanel({
   const [providerFiles,  setProviderFiles] = useState<Record<string, File | null>>({});
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
 
+  // ── Address autocomplete ─────────────────────────────────────────────────
+  const [addrSuggestions, setAddrSuggestions] = useState<Array<{ displayName: string; addressLine1: string; city: string; state: string; postalCode: string }>>([]);
+  const [showAddrSugg,    setShowAddrSugg]    = useState(false);
+  const addrDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     fetch('/api/public/careconnect/api/public/treatment-types', {
       headers: { 'X-Tenant-Id': tenantId },
@@ -512,11 +523,41 @@ function ReferralPanel({
     setErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
   }, []);
 
+  const handleAddressInput = useCallback((value: string) => {
+    update('patientAddress', value);
+    setShowAddrSugg(false);
+    if (addrDebounce.current) clearTimeout(addrDebounce.current);
+    if (value.trim().length < 4) { setAddrSuggestions([]); return; }
+    addrDebounce.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}`);
+        if (res.ok) {
+          const data = await res.json() as Array<{ displayName: string; addressLine1: string; city: string; state: string; postalCode: string }>;
+          setAddrSuggestions(data.slice(0, 5));
+          setShowAddrSugg(data.length > 0);
+        }
+      } catch { /* ignore */ }
+    }, 350);
+  }, [update]);
+
+  const applyAddrSuggestion = useCallback((s: { displayName: string; addressLine1: string; city: string; state: string; postalCode: string }) => {
+    const full = [s.addressLine1 || s.displayName, s.city, s.state, s.postalCode].filter(Boolean).join(', ');
+    update('patientAddress', full);
+    setAddrSuggestions([]);
+    setShowAddrSugg(false);
+  }, [update]);
+
   const validate = useCallback((): Record<string, string> => {
     const errs: Record<string, string> = {};
     if (!form.patientName.trim()) errs['patientName'] = 'Patient name is required.';
     if (!form.patientPhone.trim()) errs['patientPhone'] = 'Patient phone is required.';
     else if (!isValidPhone(form.patientPhone)) errs['patientPhone'] = 'Enter a valid 10-digit phone number.';
+    if (form.patientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patientEmail.trim()))
+      errs['patientEmail'] = 'Enter a valid email address.';
+    if (!form.patientDob) errs['patientDob'] = 'Date of birth is required.';
+    else if (new Date(form.patientDob) > new Date()) errs['patientDob'] = 'Date of birth cannot be in the future.';
+    if (!form.patientDateOfAccident) errs['patientDateOfAccident'] = 'Date of accident is required.';
+    else if (new Date(form.patientDateOfAccident) > new Date()) errs['patientDateOfAccident'] = 'Date of accident cannot be in the future.';
     if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
     if (!form.email.trim()) errs['email'] = 'Email is required.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs['email'] = 'Enter a valid email address.';
@@ -530,8 +571,10 @@ function ReferralPanel({
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      if (errs['firmName'] || errs['email'])                    setSection('firm');
-      else if (errs['patientName'] || errs['patientPhone'])     setSection('patient');
+      if (errs['firmName'] || errs['email'])
+        setSection('firm');
+      else if (errs['patientName'] || errs['patientPhone'] || errs['patientDob'] || errs['patientDateOfAccident'] || errs['patientEmail'])
+        setSection('patient');
       return;
     }
 
@@ -545,17 +588,21 @@ function ReferralPanel({
     const serviceTypeName   = selectedTreatment?.name.trim() || undefined;
 
     const payloads: PublicReferralRequest[] = providers.map(p => ({
-      providerId:       p.id,
-      senderName:       form.contactName.trim() || form.firmName.trim(),
-      senderEmail:      form.email.trim(),
-      patientFirstName: firstName,
-      patientLastName:  lastName,
-      patientPhone:     stripPhone(form.patientPhone),
-      serviceType:      serviceTypeName,
-      notes:            [
+      providerId:             p.id,
+      senderName:             form.contactName.trim() || form.firmName.trim(),
+      senderEmail:            form.email.trim(),
+      patientFirstName:       firstName,
+      patientLastName:        lastName,
+      patientPhone:           stripPhone(form.patientPhone),
+      patientEmail:           form.patientEmail.trim() || undefined,
+      patientDateOfBirth:     form.patientDob || undefined,
+      patientDateOfAccident:  form.patientDateOfAccident || undefined,
+      patientAddress:         form.patientAddress.trim() || undefined,
+      serviceType:            serviceTypeName,
+      notes:                  [
         form.notes,
-        form.phone ? `Firm phone: ${form.phone}` : '',
-        form.firmName ? `Firm: ${form.firmName}` : '',
+        form.phone    ? `Firm phone: ${form.phone}` : '',
+        form.firmName ? `Firm: ${form.firmName}`   : '',
       ].filter(Boolean).join('\n') || undefined,
     }));
 
@@ -595,7 +642,7 @@ function ReferralPanel({
       if (Object.keys(apiErrors).length > 0) {
         setErrors(apiErrors);
         const keys = Object.keys(apiErrors);
-        if (keys.some(k => k === 'patientFirstName' || k === 'patientLastName' || k === 'patientPhone'))
+        if (keys.some(k => ['patientFirstName','patientLastName','patientPhone','patientDateOfBirth','patientDateOfAccident','patientEmail'].includes(k)))
           setSection('patient');
         else if (keys.some(k => k === 'senderName' || k === 'senderEmail'))
           setSection('firm');
@@ -789,7 +836,7 @@ function ReferralPanel({
               title="Patient"
               subtitle="Who is being referred"
               open={openSection === 'patient'}
-              hasError={!!(fieldErrors['patientName'] || fieldErrors['patientPhone'])}
+              hasError={!!(fieldErrors['patientName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail'])}
               onToggle={() => setSection(s => s === 'patient' ? 'firm' : 'patient')}
             >
               <div className="px-5 pb-4 space-y-3">
@@ -802,7 +849,7 @@ function ReferralPanel({
                     className={panelInputCls(!!fieldErrors['patientName'])}
                   />
                 </PanelField>
-                <PanelField label="Patient contact" required error={fieldErrors['patientPhone']}>
+                <PanelField label="Patient phone" required error={fieldErrors['patientPhone']}>
                   <input
                     type="tel" required value={form.patientPhone}
                     placeholder="(555) 555-5555"
@@ -811,6 +858,62 @@ function ReferralPanel({
                     className={panelInputCls(!!fieldErrors['patientPhone'])}
                   />
                 </PanelField>
+                <PanelField label="Patient email" hint="optional" error={fieldErrors['patientEmail']}>
+                  <input
+                    type="email" value={form.patientEmail}
+                    placeholder="patient@example.com"
+                    onChange={e => update('patientEmail', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(!!fieldErrors['patientEmail'])}
+                  />
+                </PanelField>
+                {/* Address with autofill */}
+                <PanelField label="Patient address" hint="optional" error={fieldErrors['patientAddress']}>
+                  <div className="relative">
+                    <input
+                      type="text" value={form.patientAddress}
+                      placeholder="Start typing an address…"
+                      autoComplete="off"
+                      onChange={e => handleAddressInput(e.target.value)}
+                      onBlur={() => setTimeout(() => setShowAddrSugg(false), 150)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(!!fieldErrors['patientAddress'])}
+                    />
+                    {showAddrSugg && addrSuggestions.length > 0 && (
+                      <ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto text-xs">
+                        {addrSuggestions.map((s, i) => (
+                          <li
+                            key={i}
+                            onMouseDown={() => applyAddrSuggestion(s)}
+                            className="px-3 py-2 cursor-pointer hover:bg-blue-50 truncate"
+                          >
+                            {s.displayName}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </PanelField>
+                <div className="grid grid-cols-2 gap-3">
+                  <PanelField label="Date of birth" required error={fieldErrors['patientDob']}>
+                    <input
+                      type="date" required value={form.patientDob}
+                      max={new Date().toISOString().split('T')[0]}
+                      onChange={e => update('patientDob', e.target.value)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(!!fieldErrors['patientDob'])}
+                    />
+                  </PanelField>
+                  <PanelField label="Date of accident" required error={fieldErrors['patientDateOfAccident']}>
+                    <input
+                      type="date" required value={form.patientDateOfAccident}
+                      max={new Date().toISOString().split('T')[0]}
+                      onChange={e => update('patientDateOfAccident', e.target.value)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(!!fieldErrors['patientDateOfAccident'])}
+                    />
+                  </PanelField>
+                </div>
                 <PanelField label="Treatment type" hint="optional">
                   <select
                     value={form.treatmentTypeId}
@@ -896,7 +999,7 @@ function ReferralPanel({
 
             {/* Validation summary */}
             {Object.keys(fieldErrors).length > 0 && state !== 'submitting' && (() => {
-              const hasPatientErr = !!(fieldErrors['patientName'] || fieldErrors['patientPhone']);
+              const hasPatientErr = !!(fieldErrors['patientName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail']);
               const hasFirmErr    = !!(fieldErrors['firmName']    || fieldErrors['email']);
               const sections = [hasPatientErr && 'Patient', hasFirmErr && 'Law firm'].filter(Boolean).join(' and ');
               return (

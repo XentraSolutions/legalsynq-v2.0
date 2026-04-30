@@ -95,6 +95,15 @@ public sealed class PublicReferralRequest
     /// <summary>Patient email (optional).</summary>
     public string? PatientEmail { get; set; }
 
+    /// <summary>Patient date of birth (required for referral intake).</summary>
+    public DateOnly? PatientDateOfBirth { get; set; }
+
+    /// <summary>Date of accident / incident (required for personal-injury referrals).</summary>
+    public DateOnly? PatientDateOfAccident { get; set; }
+
+    /// <summary>Patient address — free-text, optional.</summary>
+    public string? PatientAddress { get; set; }
+
     /// <summary>
     /// Type of service requested (optional free text).
     /// Defaults to "General Referral" when omitted.
