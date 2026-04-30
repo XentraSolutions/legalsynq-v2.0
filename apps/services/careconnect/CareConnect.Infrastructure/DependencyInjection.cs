@@ -117,6 +117,9 @@ public static class DependencyInjection
         services.AddScoped<IIdentityOrganizationService, HttpIdentityOrganizationService>();
         services.AddScoped<IAutoProvisionService, AutoProvisionService>();
 
+        // CC2-ENROLL: Self-enrollment OTP store (singleton — intentionally in-memory)
+        services.AddSingleton<CareConnect.Application.Services.EnrollmentOtpStore>();
+
         // BLK-CC-01: Tenant service client (check-code, provision) — replaces retired Identity endpoints
         services.AddScoped<ITenantServiceClient, HttpTenantServiceClient>();
 

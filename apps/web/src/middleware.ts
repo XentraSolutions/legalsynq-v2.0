@@ -64,6 +64,9 @@ const PUBLIC_PATHS = [
   '/network',
   '/careconnect/network',
   '/api/public/',
+  // CC2-ENROLL: Provider self-enrollment form — no session required
+  '/enroll',
+  '/api/geocode/',
 ];
 
 export function middleware(request: NextRequest) {

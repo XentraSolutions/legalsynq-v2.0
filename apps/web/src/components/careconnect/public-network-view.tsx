@@ -239,6 +239,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
                         selected={selectedIds.has(provider.id)}
                         hovered={hoveredId === provider.id}
                         compact
+                        tenantId={tenantId}
                         onHover={setHovered}
                         onToggle={toggleSelect}
                         ref={el => { cardRefs.current[provider.id] = el; }}
@@ -284,6 +285,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
                       selected={selectedIds.has(provider.id)}
                       hovered={hoveredId === provider.id}
                       compact={false}
+                      tenantId={tenantId}
                       onHover={setHovered}
                       onToggle={toggleSelect}
                       ref={el => { cardRefs.current[provider.id] = el; }}
@@ -334,10 +336,13 @@ const ProviderCard = forwardRef<
     selected: boolean;
     hovered:  boolean;
     compact:  boolean;
+    tenantId: string;
     onHover:  (id: string | null) => void;
     onToggle: (id: string) => void;
   }
->(function ProviderCard({ provider, number, selected, hovered, compact, onHover, onToggle }, ref) {
+>(function ProviderCard({ provider, number, selected, hovered, compact, tenantId, onHover, onToggle }, ref) {
+  const enrollUrl = `/enroll?id=${provider.id}&tenantId=${encodeURIComponent(tenantId)}`;
+  const canEnroll = provider.accessStage === 'URL';
   return (
     <div
       ref={ref}
@@ -406,6 +411,22 @@ const ProviderCard = forwardRef<
               )}
             </span>
           </div>
+
+          {/* Enrollment CTA — only for providers not yet on the portal */}
+          {canEnroll && (
+            <a
+              href={enrollUrl}
+              onClick={e => e.stopPropagation()}
+              className={[
+                'inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-800 transition-colors',
+                compact ? 'text-xs mt-1.5' : 'text-sm mt-2',
+              ].join(' ')}
+              title="Get Full Portal Access"
+            >
+              <i className={compact ? 'ri-arrow-right-circle-line text-xs' : 'ri-arrow-right-circle-line text-sm'} />
+              {compact ? 'Get Portal Access' : 'Get Full Portal Access'}
+            </a>
+          )}
         </div>
 
         {/* Select button */}
