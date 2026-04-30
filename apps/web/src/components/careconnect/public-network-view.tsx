@@ -725,27 +725,6 @@ function ReferralPanel({
           </div>
         )}
 
-        {/* Success */}
-        {hasProviders && state === 'success' && (
-          <div className="p-8 text-center space-y-4">
-            <div className="mx-auto w-14 h-14 rounded-full bg-green-50 flex items-center justify-center">
-              <i className="ri-checkbox-circle-line text-green-600 text-3xl" />
-            </div>
-            <div>
-              <p className="text-base font-semibold text-gray-900">Referrals sent!</p>
-              <p className="text-sm text-gray-500 mt-1">
-                Successfully sent to {providers.length} provider{providers.length !== 1 ? 's' : ''}.
-                Each provider will receive an email notification.
-              </p>
-            </div>
-            <button
-              onClick={() => { onClearSelection(); setState('form'); setErrors({}); setErrMsg(''); }}
-              className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Send another referral
-            </button>
-          </div>
-        )}
 
         {/* Error */}
         {hasProviders && state === 'error' && (
@@ -1015,15 +994,17 @@ function ReferralPanel({
         )}
       </div>
 
-      {/* Confirmation modal overlay */}
-      {state === 'confirm' && (
+      {/* Confirmation / success modal overlay */}
+      {(state === 'confirm' || state === 'submitting' || state === 'success') && (
         <ReferralConfirmModal
           form={form}
           providers={providers}
           treatmentTypes={treatmentTypes}
           providerFiles={providerFiles}
+          state={state}
           onConfirm={confirmAndSend}
           onBack={() => setState('form')}
+          onClose={() => window.location.reload()}
         />
       )}
     </div>
@@ -1049,120 +1030,217 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ReferralConfirmModal({
-  form, providers, treatmentTypes, providerFiles, onConfirm, onBack,
+  form, providers, treatmentTypes, providerFiles, state, onConfirm, onBack, onClose,
 }: {
   form:           ReferralForm;
   providers:      PublicProviderItem[];
   treatmentTypes: TreatmentType[];
   providerFiles:  Record<string, File | null>;
+  state:          PanelState;
   onConfirm:      () => void;
   onBack:         () => void;
+  onClose:        () => void;
 }) {
   const treatment = treatmentTypes.find(t => t.id === form.treatmentTypeId);
+  const isSending = state === 'submitting';
+  const isSent    = state === 'success';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
 
-        {/* Modal header */}
-        <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-100">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-              <i className="ri-send-plane-line text-white text-base" />
+        {/* ── SENDING screen ─────────────────────────────────────────────── */}
+        {isSending && (
+          <div className="flex flex-col items-center justify-center py-16 px-8 gap-5">
+            <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
+              <span className="w-7 h-7 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin" />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Review &amp; Confirm</h2>
-              <p className="text-xs text-gray-400">
-                Sending to {providers.length} provider{providers.length !== 1 ? 's' : ''}
-              </p>
+            <div className="text-center">
+              <p className="text-base font-semibold text-gray-900">Sending referral…</p>
+              <p className="text-xs text-gray-400 mt-1">Please wait while we notify the provider{providers.length !== 1 ? 's' : ''}.</p>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Scrollable details */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+        {/* ── SENT / SUCCESS screen ──────────────────────────────────────── */}
+        {isSent && (
+          <>
+            <div className="flex-1 overflow-y-auto">
+              {/* Top success banner */}
+              <div className="px-6 pt-8 pb-6 text-center border-b border-gray-100">
+                <div className="mx-auto w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mb-4">
+                  <i className="ri-checkbox-circle-fill text-green-500 text-4xl" />
+                </div>
+                <h2 className="text-lg font-bold text-gray-900">Referral Sent!</h2>
+                <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                  Successfully sent to{' '}
+                  <strong className="text-gray-700">
+                    {providers.length} provider{providers.length !== 1 ? 's' : ''}
+                  </strong>.
+                </p>
+              </div>
 
-          {/* Law firm */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2 flex items-center gap-1.5">
-              <i className="ri-briefcase-line" /> Law Firm
-            </p>
-            <div className="space-y-1.5 pl-1">
-              <ConfirmRow label="Firm name"    value={form.firmName}    />
-              <ConfirmRow label="Contact name" value={form.contactName} />
-              <ConfirmRow label="Email"        value={form.email}       />
-              <ConfirmRow label="Phone"        value={form.phone}       />
-            </div>
-          </div>
-
-          {/* Patient */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-teal-500 mb-2 flex items-center gap-1.5">
-              <i className="ri-user-heart-line" /> Patient
-            </p>
-            <div className="space-y-1.5 pl-1">
-              <ConfirmRow label="Name"              value={form.patientName}          />
-              <ConfirmRow label="Phone"             value={form.patientPhone}         />
-              <ConfirmRow label="Email"             value={form.patientEmail}         />
-              <ConfirmRow label="Date of birth"     value={fmtDate(form.patientDob)}               />
-              <ConfirmRow label="Date of accident"  value={fmtDate(form.patientDateOfAccident)}    />
-              <ConfirmRow label="Address"           value={form.patientAddress}       />
-              <ConfirmRow label="Treatment type"    value={treatment?.name}           />
-            </div>
-          </div>
-
-          {/* Notes */}
-          {form.notes.trim() && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1.5">
-                <i className="ri-file-text-line" /> Notes
-              </p>
-              <p className="text-xs text-gray-700 pl-1 leading-relaxed whitespace-pre-wrap">{form.notes.trim()}</p>
-            </div>
-          )}
-
-          {/* Providers */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-1.5">
-              <i className="ri-hospital-line" /> Providers
-            </p>
-            <div className="space-y-1.5 pl-1">
-              {providers.map(p => {
-                const file = providerFiles[p.id];
-                return (
-                  <div key={p.id} className="flex items-center gap-2 text-xs text-gray-800">
-                    <i className="ri-checkbox-circle-fill text-blue-500 flex-shrink-0" />
-                    <span className="font-medium">{p.name}</span>
-                    {file && (
-                      <span className="ml-auto text-gray-400 flex items-center gap-1">
-                        <i className="ri-attachment-line" />{file.name.length > 18 ? file.name.slice(0, 18) + '…' : file.name}
-                      </span>
-                    )}
+              {/* Email copy notice */}
+              <div className="px-6 py-5 border-b border-gray-100">
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <i className="ri-mail-check-line text-blue-500 text-sm" />
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Check your inbox</p>
+                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                      A copy of this referral has been sent to{' '}
+                      <strong className="text-gray-700">{form.email}</strong>. Use the link in that
+                      email to track the referral status at any time.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-        {/* Footer actions */}
-        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex-1 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
-          >
-            Go Back
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-          >
-            <i className="ri-send-plane-line" />
-            Confirm &amp; Send
-          </button>
-        </div>
+              {/* Activate account CTA */}
+              <div className="px-6 py-5">
+                <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 p-4">
+                  <div className="flex gap-3 items-start">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <i className="ri-rocket-line text-indigo-600 text-sm" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-indigo-900">Activate your free account</p>
+                      <p className="text-xs text-indigo-700 mt-1 leading-relaxed">
+                        Get a full dashboard to track all your referrals, view responses, and manage
+                        your cases in one place — completely free.
+                      </p>
+                      <a
+                        href="/enroll"
+                        className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+                      >
+                        <i className="ri-user-add-line" />
+                        Get free access
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── REVIEW screen (default) ───────────────────────────────────── */}
+        {!isSending && !isSent && (
+          <>
+            {/* Modal header */}
+            <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                  <i className="ri-send-plane-line text-white text-base" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Review &amp; Confirm</h2>
+                  <p className="text-xs text-gray-400">
+                    Sending to {providers.length} provider{providers.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable details */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+
+              {/* Law firm */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2 flex items-center gap-1.5">
+                  <i className="ri-briefcase-line" /> Law Firm
+                </p>
+                <div className="space-y-1.5 pl-1">
+                  <ConfirmRow label="Firm name"    value={form.firmName}    />
+                  <ConfirmRow label="Contact name" value={form.contactName} />
+                  <ConfirmRow label="Email"        value={form.email}       />
+                  <ConfirmRow label="Phone"        value={form.phone}       />
+                </div>
+              </div>
+
+              {/* Patient */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-teal-500 mb-2 flex items-center gap-1.5">
+                  <i className="ri-user-heart-line" /> Patient
+                </p>
+                <div className="space-y-1.5 pl-1">
+                  <ConfirmRow label="Name"             value={form.patientName}                     />
+                  <ConfirmRow label="Phone"            value={form.patientPhone}                    />
+                  <ConfirmRow label="Email"            value={form.patientEmail}                    />
+                  <ConfirmRow label="Date of birth"    value={fmtDate(form.patientDob)}             />
+                  <ConfirmRow label="Date of accident" value={fmtDate(form.patientDateOfAccident)}  />
+                  <ConfirmRow label="Address"          value={form.patientAddress}                  />
+                  <ConfirmRow label="Treatment type"   value={treatment?.name}                      />
+                </div>
+              </div>
+
+              {/* Notes */}
+              {form.notes.trim() && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1.5">
+                    <i className="ri-file-text-line" /> Notes
+                  </p>
+                  <p className="text-xs text-gray-700 pl-1 leading-relaxed whitespace-pre-wrap">{form.notes.trim()}</p>
+                </div>
+              )}
+
+              {/* Providers */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-1.5">
+                  <i className="ri-hospital-line" /> Providers
+                </p>
+                <div className="space-y-1.5 pl-1">
+                  {providers.map(p => {
+                    const file = providerFiles[p.id];
+                    return (
+                      <div key={p.id} className="flex items-center gap-2 text-xs text-gray-800">
+                        <i className="ri-checkbox-circle-fill text-blue-500 flex-shrink-0" />
+                        <span className="font-medium">{p.name}</span>
+                        {file && (
+                          <span className="ml-auto text-gray-400 flex items-center gap-1">
+                            <i className="ri-attachment-line" />{file.name.length > 18 ? file.name.slice(0, 18) + '…' : file.name}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex gap-3">
+              <button
+                type="button"
+                onClick={onBack}
+                className="flex-1 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <i className="ri-send-plane-line" />
+                Confirm &amp; Send
+              </button>
+            </div>
+          </>
+        )}
+
       </div>
     </div>
   );
