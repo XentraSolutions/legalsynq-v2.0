@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useRef } from 'react';
+import { useState, useTransition, useRef, useCallback } from 'react';
 import { postComment, acceptReferralByToken, declineReferralByToken } from './actions';
 
 interface Comment {
@@ -121,6 +121,36 @@ export function ThreadClient({ token, data }: Props) {
   const [actionState,   setActionState]  = useState<ActionState>('idle');
   const [actionError,   setActionError]  = useState('');
   const [liveStatus,    setLiveStatus]   = useState(data.status);
+
+  // Per-attachment loading: attachmentId → 'view' | 'download' | null
+  const [attLoading, setAttLoading] = useState<Record<string, 'view' | 'download' | null>>({});
+  const [attError,   setAttError]   = useState<Record<string, string | null>>({});
+
+  const openAttachment = useCallback(async (attachmentId: string, forDownload: boolean) => {
+    const key = forDownload ? 'download' : 'view';
+    setAttLoading(prev => ({ ...prev, [attachmentId]: key }));
+    setAttError(prev => ({ ...prev, [attachmentId]: null }));
+    try {
+      const url =
+        `/api/public/careconnect/api/referrals/${data.referralId}/public-attachments/${attachmentId}/url` +
+        `?token=${encodeURIComponent(token)}&download=${forDownload}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        setAttError(prev => ({ ...prev, [attachmentId]: 'Could not load this document. Please try again.' }));
+        return;
+      }
+      const body = await res.json() as { url?: string };
+      if (!body.url) {
+        setAttError(prev => ({ ...prev, [attachmentId]: 'Document URL unavailable.' }));
+        return;
+      }
+      window.open(body.url, '_blank', 'noopener,noreferrer');
+    } catch {
+      setAttError(prev => ({ ...prev, [attachmentId]: 'Network error. Please try again.' }));
+    } finally {
+      setAttLoading(prev => ({ ...prev, [attachmentId]: null }));
+    }
+  }, [data.referralId, token]);
 
   const st = STATUS_MAP[liveStatus] ?? { label: liveStatus, color: '#374151', bg: '#f9fafb', border: '#d1d5db' };
 
@@ -334,25 +364,67 @@ export function ThreadClient({ token, data }: Props) {
           <div style={s.card}>
             <h2 style={s.cardTitle}>Documents ({data.attachments.length})</h2>
             {data.attachments.map(att => {
-              const dlUrl =
-                `/api/public/careconnect/api/referrals/${referralId}/public-attachments/${att.id}/url` +
-                `?token=${encodeURIComponent(token)}&download=true`;
+              const loading  = attLoading[att.id] ?? null;
+              const errMsg   = attError[att.id] ?? null;
+              const busy     = loading !== null;
               return (
-                <a key={att.id} href={dlUrl} target="_blank" rel="noopener noreferrer" style={s.attRow}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5">
-                    <path strokeLinecap="round" strokeLinejoin="round"
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {att.fileName}
-                    </p>
-                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{formatBytes(att.fileSizeBytes)}</p>
+                <div key={att.id}>
+                  <div style={{ ...s.attRow, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.75 : 1 }}
+                       onClick={() => !busy && openAttachment(att.id, false)}
+                       role="button"
+                       tabIndex={0}
+                       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!busy) openAttachment(att.id, false); } }}
+                       aria-label={`View ${att.fileName}`}
+                  >
+                    {/* File icon */}
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5" style={{ flexShrink: 0 }}>
+                      <path strokeLinecap="round" strokeLinejoin="round"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+
+                    {/* Name + size */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {att.fileName}
+                      </p>
+                      <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>
+                        {formatBytes(att.fileSizeBytes)}
+                        {loading === 'view' && <span style={{ marginLeft: 6, color: '#6b7280' }}>Opening…</span>}
+                        {loading === 'download' && <span style={{ marginLeft: 6, color: '#6b7280' }}>Downloading…</span>}
+                      </p>
+                    </div>
+
+                    {/* Actions: view (eye) + download */}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                      {/* View button */}
+                      <button
+                        title="View document"
+                        disabled={busy}
+                        onClick={e => { e.stopPropagation(); openAttachment(att.id, false); }}
+                        style={{ background: 'none', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center' }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                      {/* Download button */}
+                      <button
+                        title="Download document"
+                        disabled={busy}
+                        onClick={e => { e.stopPropagation(); openAttachment(att.id, true); }}
+                        style={{ background: 'none', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center' }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                </a>
+                  {errMsg && (
+                    <p style={{ margin: '-4px 0 8px', fontSize: 12, color: '#dc2626', paddingLeft: 4 }}>{errMsg}</p>
+                  )}
+                </div>
               );
             })}
           </div>
