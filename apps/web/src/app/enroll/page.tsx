@@ -4,6 +4,10 @@ import { EnrollmentForm }         from './enrollment-form';
 interface SearchParams {
   id?:       string;
   tenantId?: string;
+  email?:    string;
+  firm?:     string;
+  phone?:    string;
+  contact?:  string;
 }
 
 interface PageProps {
@@ -11,10 +15,9 @@ interface PageProps {
 }
 
 export default async function EnrollPage({ searchParams }: PageProps) {
-  const { id: providerId, tenantId } = await searchParams;
+  const { id: providerId, tenantId, email, firm, phone, contact } = await searchParams;
 
   let prefill = null;
-  let alreadyEnrolled = false;
 
   if (providerId && tenantId) {
     try {
@@ -24,8 +27,17 @@ export default async function EnrollPage({ searchParams }: PageProps) {
     }
   }
 
-  // If prefill is null but we have an id, the provider wasn't found or is already enrolled.
-  // The EnrollmentForm handles both the pre-filled and fresh-start states.
+  // Build referral prefill from URL params if present (passed from referral success modal)
+  const parts   = (contact ?? '').trim().split(/\s+/);
+  const refFirst = parts[0] ?? '';
+  const refLast  = parts.slice(1).join(' ');
+  const referralPrefill = (email || firm || phone || contact) ? {
+    companyName: firm    ?? '',
+    email:       email   ?? '',
+    phone:       phone   ?? '',
+    firstName:   refFirst,
+    lastName:    refLast,
+  } : null;
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -47,6 +59,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
           prefill={prefill}
           providerId={providerId ?? null}
           tenantId={tenantId ?? null}
+          referralPrefill={referralPrefill}
         />
 
         <p className="text-center text-xs text-gray-400 mt-6">

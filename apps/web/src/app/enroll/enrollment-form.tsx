@@ -16,34 +16,43 @@ interface AddressSuggestion {
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
+interface ReferralPrefill {
+  companyName: string;
+  email:       string;
+  phone:       string;
+  firstName:   string;
+  lastName:    string;
+}
+
 interface EnrollmentFormProps {
-  prefill:    EnrollmentPrefill | null;
-  providerId: string | null;
-  tenantId:   string | null;
+  prefill:         EnrollmentPrefill | null;
+  providerId:      string | null;
+  tenantId:        string | null;
+  referralPrefill: ReferralPrefill | null;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function EnrollmentForm({ prefill, providerId, tenantId }: EnrollmentFormProps) {
+export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill }: EnrollmentFormProps) {
   const router = useRouter();
 
-  // Form fields
-  const [companyName,  setCompanyName]  = useState(prefill?.companyName  ?? '');
-  const companyType  = prefill?.companyType ?? 'Provider';
-  const [email,        setEmail]        = useState(prefill?.email        ?? '');
-  const [phone,        setPhone]        = useState(prefill?.phone        ?? '');
+  // Form fields — provider prefill wins over referral prefill; referral prefill wins over empty
+  const [companyName,  setCompanyName]  = useState(prefill?.companyName  ?? referralPrefill?.companyName ?? '');
+  const companyType  = prefill?.companyType ?? 'LawFirm';
+  const [email,        setEmail]        = useState(prefill?.email        ?? referralPrefill?.email       ?? '');
+  const [phone,        setPhone]        = useState(prefill?.phone        ?? referralPrefill?.phone       ?? '');
   const [addressLine1, setAddressLine1] = useState(prefill?.addressLine1 ?? '');
   const [city,         setCity]         = useState(prefill?.city         ?? '');
   const [state,        setState]        = useState(prefill?.state        ?? '');
   const [postalCode,   setPostalCode]   = useState(prefill?.postalCode   ?? '');
-  const [firstName,    setFirstName]    = useState('');
-  const [lastName,     setLastName]     = useState('');
+  const [firstName,    setFirstName]    = useState(referralPrefill?.firstName ?? '');
+  const [lastName,     setLastName]     = useState(referralPrefill?.lastName  ?? '');
   const [password,     setPassword]     = useState('');
   const [confirmPwd,   setConfirmPwd]   = useState('');
   const [agreeTerms,   setAgreeTerms]   = useState(false);
 
   // OTP state
-  const originalEmail = prefill?.email ?? '';
+  const originalEmail = prefill?.email ?? referralPrefill?.email ?? '';
   const emailChanged  = email.trim().toLowerCase() !== originalEmail.trim().toLowerCase();
   const [otpSent,      setOtpSent]      = useState(false);
   const [otpCode,      setOtpCode]      = useState('');

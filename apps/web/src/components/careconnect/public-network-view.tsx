@@ -1137,7 +1137,12 @@ function ReferralConfirmModal({
                         your cases in one place — completely free.
                       </p>
                       <a
-                        href="/enroll"
+                        href={`/enroll?${new URLSearchParams({
+                          ...(form.email       ? { email:   form.email }       : {}),
+                          ...(form.firmName    ? { firm:    form.firmName }    : {}),
+                          ...(form.phone       ? { phone:   form.phone }       : {}),
+                          ...(form.contactName ? { contact: form.contactName } : {}),
+                        }).toString()}`}
                         className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
                       >
                         <i className="ri-user-add-line" />
