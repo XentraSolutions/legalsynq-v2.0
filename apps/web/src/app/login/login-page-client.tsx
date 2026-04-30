@@ -199,18 +199,18 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
         {/* Mobile logo */}
         <div className="lg:hidden mb-10">
           <img
-            src="/synqconnect-logo.png"
-            alt="SynqConnect"
+            src="/careconnect-logo.png"
+            alt="CareConnect"
             className="h-9 w-auto mx-auto"
           />
         </div>
 
         <div className="w-full max-w-sm">
-          {/* SynqConnect logo above the form heading */}
+          {/* CareConnect logo above the form heading */}
           <div className="mb-6">
             <img
-              src="/synqconnect-logo.png"
-              alt="SynqConnect"
+              src="/careconnect-logo.png"
+              alt="CareConnect"
               className="h-9 w-auto"
             />
           </div>
