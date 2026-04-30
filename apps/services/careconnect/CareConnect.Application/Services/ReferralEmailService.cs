@@ -213,11 +213,10 @@ public class ReferralEmailService : IReferralEmailService
 
         var dedupeKey = $"referral:{referral.Id}:created:provider";
 
-        var token          = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var threadLink     = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
-        var firmStatusLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={token}", ct);
-        var subject        = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
-        var body           = BuildNewReferralEmailHtml(referral, provider, threadLink);
+        var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
+        var subject    = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
+        var body       = BuildNewReferralEmailHtml(referral, provider, threadLink);
 
         var notification = CareConnectNotification.Create(
             tenantId:          referral.TenantId,
@@ -248,7 +247,7 @@ public class ReferralEmailService : IReferralEmailService
         {
             var refDedupeKey = $"referral:{referral.Id}:created:referrer";
             var refSubject   = $"Referral submitted — {referral.ClientFirstName} {referral.ClientLastName}";
-            var refBody      = BuildReferrerSubmissionHtml(referral, provider, firmStatusLink);
+            var refBody      = BuildReferrerSubmissionHtml(referral, provider, threadLink);
 
             var refNotif = CareConnectNotification.Create(
                 tenantId:          referral.TenantId,
@@ -258,7 +257,7 @@ public class ReferralEmailService : IReferralEmailService
                 recipientType:     NotificationRecipientType.InternalUser,
                 recipientAddress:  referral.ReferrerEmail,
                 subject:           refSubject,
-                message:           firmStatusLink,
+                message:           threadLink,
                 scheduledForUtc:   null,
                 createdByUserId:   referral.CreatedByUserId,
                 triggerSource:     NotificationSource.Initial,
@@ -409,11 +408,9 @@ public class ReferralEmailService : IReferralEmailService
 
         if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
         {
-            var refDedupeKey    = $"{dedupePrefix}:referrer";
-            var refSubject      = $"Your referral was accepted — {referral.ClientFirstName} {referral.ClientLastName}";
-            var acceptToken     = GenerateViewToken(referral.Id, referral.TokenVersion);
-            var acceptStatusUrl = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={acceptToken}", ct);
-            var refBody         = BuildReferrerAcceptanceHtml(referral, provider, acceptStatusUrl);
+            var refDedupeKey = $"{dedupePrefix}:referrer";
+            var refSubject = $"Your referral was accepted — {referral.ClientFirstName} {referral.ClientLastName}";
+            var refBody    = BuildReferrerAcceptanceHtml(referral, provider);
 
             var refNotif = CareConnectNotification.Create(
                 tenantId:          referral.TenantId,
@@ -526,11 +523,9 @@ public class ReferralEmailService : IReferralEmailService
 
         if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
         {
-            var refDedupeKey    = $"{dedupePrefix}:referrer";
-            var refSubject      = $"Your referral was declined — {referral.ClientFirstName} {referral.ClientLastName}";
-            var rejectToken     = GenerateViewToken(referral.Id, referral.TokenVersion);
-            var rejectStatusUrl = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={rejectToken}", ct);
-            var refBody         = BuildReferrerRejectionHtml(referral, provider, rejectStatusUrl);
+            var refDedupeKey = $"{dedupePrefix}:referrer";
+            var refSubject = $"Your referral was declined — {referral.ClientFirstName} {referral.ClientLastName}";
+            var refBody    = BuildReferrerRejectionHtml(referral, provider);
 
             var refNotif = CareConnectNotification.Create(
                 tenantId:          referral.TenantId,
@@ -603,11 +598,9 @@ public class ReferralEmailService : IReferralEmailService
 
         if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
         {
-            var refDedupeKey   = $"{dedupePrefix}:referrer";
-            var refSubject     = $"Your referral was cancelled — {referral.ClientFirstName} {referral.ClientLastName}";
-            var cancelToken    = GenerateViewToken(referral.Id, referral.TokenVersion);
-            var cancelStatusUrl = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={cancelToken}", ct);
-            var refBody        = BuildReferrerCancellationHtml(referral, provider, cancelStatusUrl);
+            var refDedupeKey = $"{dedupePrefix}:referrer";
+            var refSubject = $"Your referral was cancelled — {referral.ClientFirstName} {referral.ClientLastName}";
+            var refBody    = BuildReferrerCancellationHtml(referral, provider);
 
             var refNotif = CareConnectNotification.Create(
                 tenantId:          referral.TenantId,
@@ -698,10 +691,8 @@ public class ReferralEmailService : IReferralEmailService
                     await _notifications.UpdateAsync(notification, ct);
                     return;
                 }
-                var retryAcceptToken  = GenerateViewToken(referral.Id, referral.TokenVersion);
-                var retryAcceptStatus = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={retryAcceptToken}", ct);
                 subject = $"Your referral was accepted — {referral.ClientFirstName} {referral.ClientLastName}";
-                body    = BuildReferrerAcceptanceHtml(referral, provider, retryAcceptStatus);
+                body    = BuildReferrerAcceptanceHtml(referral, provider);
                 break;
             }
             // LSCC-01-002: client acceptance email retry
@@ -740,10 +731,8 @@ public class ReferralEmailService : IReferralEmailService
                     await _notifications.UpdateAsync(notification, ct);
                     return;
                 }
-                var retryRejectToken  = GenerateViewToken(referral.Id, referral.TokenVersion);
-                var retryRejectStatus = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={retryRejectToken}", ct);
                 subject = $"Your referral was declined — {referral.ClientFirstName} {referral.ClientLastName}";
-                body    = BuildReferrerRejectionHtml(referral, provider, retryRejectStatus);
+                body    = BuildReferrerRejectionHtml(referral, provider);
                 break;
             }
             case NotificationType.ReferralCancelledProvider:
@@ -768,10 +757,8 @@ public class ReferralEmailService : IReferralEmailService
                     await _notifications.UpdateAsync(notification, ct);
                     return;
                 }
-                var retryCancelToken  = GenerateViewToken(referral.Id, referral.TokenVersion);
-                var retryCancelStatus = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={retryCancelToken}", ct);
                 subject = $"Your referral was cancelled — {referral.ClientFirstName} {referral.ClientLastName}";
-                body    = BuildReferrerCancellationHtml(referral, provider, retryCancelStatus);
+                body    = BuildReferrerCancellationHtml(referral, provider);
                 break;
             }
             case NotificationType.ReferralProviderAssigned:
@@ -816,9 +803,8 @@ public class ReferralEmailService : IReferralEmailService
         ReferralComment comment,
         CancellationToken ct = default)
     {
-        var token          = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var threadLink     = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
-        var firmStatusLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={token}", ct);
+        var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
 
         var provName = referral.Provider is not null
             ? (string.IsNullOrWhiteSpace(referral.Provider.OrganizationName)
@@ -828,29 +814,26 @@ public class ReferralEmailService : IReferralEmailService
 
         var isFromReferrer = comment.SenderType == "referrer";
 
-        // Notify the other party — use role-specific link in notification email
+        // Notify the other party
         string? toAddress;
         string  recipientLabel;
-        string  notifLink;
         if (isFromReferrer)
         {
-            // referrer posted → notify provider with thread link
+            // referrer posted → notify provider
             toAddress      = referral.Provider?.Email;
             recipientLabel = provName;
-            notifLink      = threadLink;
         }
         else
         {
-            // provider posted → notify referrer with firm-status link
+            // provider posted → notify referrer
             toAddress      = referral.ReferrerEmail;
             recipientLabel = referral.ReferrerName ?? "the law firm";
-            notifLink      = firmStatusLink;
         }
 
         if (string.IsNullOrWhiteSpace(toAddress)) return;
 
         var subject  = $"New message on referral — {referral.ClientFirstName} {referral.ClientLastName}";
-        var body     = BuildCommentNotificationHtml(referral, comment, provName, notifLink);
+        var body     = BuildCommentNotificationHtml(referral, comment, provName, threadLink);
         var dedupeKey = $"referral:{referral.Id}:comment:{comment.Id}";
 
         var recipientType = isFromReferrer
@@ -1114,9 +1097,9 @@ public class ReferralEmailService : IReferralEmailService
             {Section("Patient Details", patientRows)}
             {Section("Provider", providerRows)}
             <div style="text-align:center;margin:28px 0">
-              <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">Track Referral Status</a>
+              <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">Track Referral &amp; Send Messages</a>
             </div>
-            <p style="margin:0;font-size:13px;color:#6b7280">Use the link above to check the referral status and send messages to the provider. For full access to all your referrals in one place, upgrade to the CareConnect portal.</p>
+            <p style="margin:0;font-size:13px;color:#6b7280">Use the link above to check the referral status and communicate directly with the provider.</p>
             """;
 
         return Wrap("Referral Submitted", body, footer);
@@ -1200,7 +1183,7 @@ public class ReferralEmailService : IReferralEmailService
         return Wrap("Referral Accepted", body);
     }
 
-    private static string BuildReferrerAcceptanceHtml(Referral r, Provider p, string statusLink)
+    private static string BuildReferrerAcceptanceHtml(Referral r, Provider p)
     {
         var provName  = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var greeting  = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
@@ -1220,9 +1203,6 @@ public class ReferralEmailService : IReferralEmailService
               <strong>{r.ClientFirstName} {r.ClientLastName}</strong>.
             </p>
             {Section("Referral Summary", summaryRows)}
-            <div style="text-align:center;margin:28px 0">
-              <a href="{statusLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral Status</a>
-            </div>
             """;
 
         return Wrap("Your Referral Was Accepted", body, footer);
@@ -1268,7 +1248,7 @@ public class ReferralEmailService : IReferralEmailService
         return Wrap("Referral Declined", body);
     }
 
-    private static string BuildReferrerRejectionHtml(Referral r, Provider p, string statusLink)
+    private static string BuildReferrerRejectionHtml(Referral r, Provider p)
     {
         var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var greeting = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
@@ -1288,9 +1268,6 @@ public class ReferralEmailService : IReferralEmailService
               <strong>{r.ClientFirstName} {r.ClientLastName}</strong>.
             </p>
             {Section("Referral Summary", summaryRows)}
-            <div style="text-align:center;margin:28px 0">
-              <a href="{statusLink}" style="display:inline-block;background:#6b7280;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral Status</a>
-            </div>
             """;
 
         return Wrap("Your Referral Was Declined", body, footer);
@@ -1316,7 +1293,7 @@ public class ReferralEmailService : IReferralEmailService
         return Wrap("Referral Cancelled", body);
     }
 
-    private static string BuildReferrerCancellationHtml(Referral r, Provider p, string statusLink)
+    private static string BuildReferrerCancellationHtml(Referral r, Provider p)
     {
         var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var greeting = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
@@ -1336,9 +1313,6 @@ public class ReferralEmailService : IReferralEmailService
               to <strong>{provName}</strong> has been cancelled.
             </p>
             {Section("Referral Summary", summaryRows)}
-            <div style="text-align:center;margin:28px 0">
-              <a href="{statusLink}" style="display:inline-block;background:#6b7280;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral Status</a>
-            </div>
             """;
 
         return Wrap("Your Referral Was Cancelled", body, footer);
