@@ -487,7 +487,7 @@ const EMPTY_FORM: ReferralForm = {
   firmName: '', contactName: '', email: '', phone: '',
 };
 
-type PanelState = 'form' | 'submitting' | 'success' | 'error';
+type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error';
 
 function ReferralPanel({
   providers, tenantId, onClearSelection,
@@ -563,18 +563,19 @@ function ReferralPanel({
     return errs;
   }, [form]);
 
-  const handleSubmit = useCallback(async (e: FormEvent) => {
+  // Validate then show confirmation modal
+  const handleSubmit = useCallback((e: FormEvent) => {
     e.preventDefault();
     setErrMsg('');
-
     const errs = validate();
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs);
-      return;
-    }
-
-    setState('submitting');
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
+    setState('confirm');
+  }, [validate]);
+
+  // Called from confirmation modal — actually sends the referral
+  const confirmAndSend = useCallback(async () => {
+    setState('submitting');
 
     const [firstName, ...rest] = form.patientName.trim().split(' ');
     const lastName = rest.join(' ') || firstName;
@@ -634,13 +635,11 @@ function ReferralPanel({
       const msg = err && typeof err === 'object' && 'message' in err
         ? (err as { message: string }).message
         : 'Something went wrong. Please try again.';
-      if (Object.keys(apiErrors).length > 0) {
-        setErrors(apiErrors);
-      }
+      if (Object.keys(apiErrors).length > 0) { setErrors(apiErrors); }
       setErrMsg(msg);
       setState('error');
     }
-  }, [form, providers, tenantId, validate, treatmentTypes, providerFiles]);
+  }, [form, providers, tenantId, treatmentTypes, providerFiles]);
 
   const hasProviders = providers.length > 0;
 
@@ -768,7 +767,7 @@ function ReferralPanel({
         )}
 
         {/* Form */}
-        {hasProviders && (state === 'form' || state === 'submitting') && (
+        {hasProviders && (state === 'form' || state === 'confirm' || state === 'submitting') && (
           <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto">
 
@@ -1014,6 +1013,156 @@ function ReferralPanel({
           </div>
           </form>
         )}
+      </div>
+
+      {/* Confirmation modal overlay */}
+      {state === 'confirm' && (
+        <ReferralConfirmModal
+          form={form}
+          providers={providers}
+          treatmentTypes={treatmentTypes}
+          providerFiles={providerFiles}
+          onConfirm={confirmAndSend}
+          onBack={() => setState('form')}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Referral confirmation modal ────────────────────────────────────────────────
+
+function fmtDate(iso: string): string {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function ConfirmRow({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <div className="flex gap-3 text-xs">
+      <span className="w-36 flex-shrink-0 text-gray-400 font-medium">{label}</span>
+      <span className="text-gray-800 font-medium break-words">{value}</span>
+    </div>
+  );
+}
+
+function ReferralConfirmModal({
+  form, providers, treatmentTypes, providerFiles, onConfirm, onBack,
+}: {
+  form:           ReferralForm;
+  providers:      PublicProviderItem[];
+  treatmentTypes: TreatmentType[];
+  providerFiles:  Record<string, File | null>;
+  onConfirm:      () => void;
+  onBack:         () => void;
+}) {
+  const treatment = treatmentTypes.find(t => t.id === form.treatmentTypeId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+
+        {/* Modal header */}
+        <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+              <i className="ri-send-plane-line text-white text-base" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Review &amp; Confirm</h2>
+              <p className="text-xs text-gray-400">
+                Sending to {providers.length} provider{providers.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable details */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+
+          {/* Law firm */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2 flex items-center gap-1.5">
+              <i className="ri-briefcase-line" /> Law Firm
+            </p>
+            <div className="space-y-1.5 pl-1">
+              <ConfirmRow label="Firm name"    value={form.firmName}    />
+              <ConfirmRow label="Contact name" value={form.contactName} />
+              <ConfirmRow label="Email"        value={form.email}       />
+              <ConfirmRow label="Phone"        value={form.phone}       />
+            </div>
+          </div>
+
+          {/* Patient */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-teal-500 mb-2 flex items-center gap-1.5">
+              <i className="ri-user-heart-line" /> Patient
+            </p>
+            <div className="space-y-1.5 pl-1">
+              <ConfirmRow label="Name"              value={form.patientName}          />
+              <ConfirmRow label="Phone"             value={form.patientPhone}         />
+              <ConfirmRow label="Email"             value={form.patientEmail}         />
+              <ConfirmRow label="Date of birth"     value={fmtDate(form.patientDob)}               />
+              <ConfirmRow label="Date of accident"  value={fmtDate(form.patientDateOfAccident)}    />
+              <ConfirmRow label="Address"           value={form.patientAddress}       />
+              <ConfirmRow label="Treatment type"    value={treatment?.name}           />
+            </div>
+          </div>
+
+          {/* Notes */}
+          {form.notes.trim() && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1.5">
+                <i className="ri-file-text-line" /> Notes
+              </p>
+              <p className="text-xs text-gray-700 pl-1 leading-relaxed whitespace-pre-wrap">{form.notes.trim()}</p>
+            </div>
+          )}
+
+          {/* Providers */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-1.5">
+              <i className="ri-hospital-line" /> Providers
+            </p>
+            <div className="space-y-1.5 pl-1">
+              {providers.map(p => {
+                const file = providerFiles[p.id];
+                return (
+                  <div key={p.id} className="flex items-center gap-2 text-xs text-gray-800">
+                    <i className="ri-checkbox-circle-fill text-blue-500 flex-shrink-0" />
+                    <span className="font-medium">{p.name}</span>
+                    {file && (
+                      <span className="ml-auto text-gray-400 flex items-center gap-1">
+                        <i className="ri-attachment-line" />{file.name.length > 18 ? file.name.slice(0, 18) + '…' : file.name}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex-1 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+          >
+            Go Back
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <i className="ri-send-plane-line" />
+            Confirm &amp; Send
+          </button>
+        </div>
       </div>
     </div>
   );
