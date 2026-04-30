@@ -34,6 +34,7 @@ export interface Appearance {
 
 export interface CareConnectSettings {
   requireAvailabilityCheck: boolean;
+  defaultMapProvider: 'osm' | 'google';
 }
 
 export interface AppSettings {
@@ -52,6 +53,7 @@ export const GLOBAL_DEFAULTS: AppSettings = {
   },
   careConnect: {
     requireAvailabilityCheck: false,
+    defaultMapProvider: 'osm',
   },
 };
 

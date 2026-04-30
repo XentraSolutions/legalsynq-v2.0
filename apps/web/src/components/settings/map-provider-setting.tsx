@@ -1,11 +1,13 @@
 'use client';
 
 import { useMapProvider, googleMapsKey, type MapProvider } from '@/lib/use-map-provider';
+import { useSettings } from '@/contexts/settings-context';
 
 const hasKey = !!googleMapsKey();
 
 export function MapProviderSetting() {
-  const [provider, setProvider] = useMapProvider();
+  const { careConnect } = useSettings();
+  const [provider, setProvider] = useMapProvider(careConnect.defaultMapProvider);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl px-6 py-6">

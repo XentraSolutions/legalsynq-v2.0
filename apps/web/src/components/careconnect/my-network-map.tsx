@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useMapProvider, googleMapsKey } from '@/lib/use-map-provider';
+import { useSettings } from '@/contexts/settings-context';
 import type { NetworkProviderMarker } from '@/types/careconnect';
 
 export interface MyNetworkMapProps {
@@ -21,7 +22,8 @@ const GoogleMap = dynamic(
 );
 
 export function MyNetworkMap(props: MyNetworkMapProps) {
-  const [provider] = useMapProvider();
+  const { careConnect } = useSettings();
+  const [provider] = useMapProvider(careConnect.defaultMapProvider);
   const hasGoogleKey = !!googleMapsKey();
 
   if (provider === 'google' && hasGoogleKey) {

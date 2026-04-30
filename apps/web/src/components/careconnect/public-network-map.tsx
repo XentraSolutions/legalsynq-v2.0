@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useMapProvider, googleMapsKey } from '@/lib/use-map-provider';
+import { useSettings } from '@/contexts/settings-context';
 import type { PublicProviderMarker } from '@/lib/public-network-api';
 
 export interface NumberedMarker extends PublicProviderMarker {
@@ -26,7 +27,8 @@ const GoogleMap = dynamic(
 );
 
 export function PublicNetworkMap(props: PublicNetworkMapProps) {
-  const [provider] = useMapProvider();
+  const { careConnect } = useSettings();
+  const [provider] = useMapProvider(careConnect.defaultMapProvider);
   const hasGoogleKey = !!googleMapsKey();
 
   if (provider === 'google' && hasGoogleKey) {

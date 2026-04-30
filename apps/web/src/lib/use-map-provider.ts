@@ -6,18 +6,19 @@ export type MapProvider = 'osm' | 'google';
 
 const STORAGE_KEY = 'map_provider';
 
-function readProvider(): MapProvider {
-  if (typeof window === 'undefined') return 'osm';
+function readProvider(defaultProvider: MapProvider = 'osm'): MapProvider {
+  if (typeof window === 'undefined') return defaultProvider;
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    return v === 'google' ? 'google' : 'osm';
+    if (v === 'google' || v === 'osm') return v;
+    return defaultProvider;
   } catch {
-    return 'osm';
+    return defaultProvider;
   }
 }
 
-export function useMapProvider(): [MapProvider, (p: MapProvider) => void] {
-  const [provider, setProvider] = useState<MapProvider>(readProvider);
+export function useMapProvider(defaultProvider: MapProvider = 'osm'): [MapProvider, (p: MapProvider) => void] {
+  const [provider, setProvider] = useState<MapProvider>(() => readProvider(defaultProvider));
 
   const update = (p: MapProvider) => {
     try { localStorage.setItem(STORAGE_KEY, p); } catch { /* ignore */ }

@@ -2815,6 +2815,7 @@ public static class AdminEndpoints
         new("default_product_code",   "Default Product",          "SynqFund", "string", "Product assigned to new tenants by default.",                                        true),
         new("support_email",          "Support Email",            "support@legalsynq.com", "string", "Email address displayed in the support footer.",                        true),
         new("require_availability_check","Require Availability Check", false, "boolean", "When enabled, law firms must verify provider availability before creating a referral. When disabled, referrals can be sent to any provider.", true),
+        new("google_maps_enabled",       "Google Maps",                false, "boolean", "Use Google Maps as the default map provider across CareConnect views. Requires a Google Maps API key to be configured at build time.", true),
         // LS-ID-TNT-016-01: Platform-wide base URL configuration for portal links and email links.
         new("platform.portalBaseDomain", "Portal Base Domain",    "", "string", "Base domain for tenant-subdomain portal URLs (e.g. demo.legalsynq.com). Each tenant's slug is prepended automatically.", true),
         new("platform.portalBaseUrl",    "Portal Base URL",       "", "string", "Fallback portal URL used when Portal Base Domain is not set (e.g. https://portal.legalsynq.com).",                       true),
