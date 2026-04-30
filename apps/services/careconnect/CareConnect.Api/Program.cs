@@ -452,7 +452,7 @@ static async Task EnsureSchemaObjectsAsync(
         // Seed default treatment types (deterministic GUIDs — idempotent on re-run via INSERT IGNORE)
         try
         {
-            await using var cmd = db.CreateCommand();
+            using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT IGNORE INTO `cc_TreatmentTypes` (`Id`, `Name`, `Category`, `DisplayOrder`, `IsActive`) VALUES
                 ('a1000001-0000-0000-0000-000000000001', 'Chiropractic Care',        'Musculoskeletal',    10, 1),
