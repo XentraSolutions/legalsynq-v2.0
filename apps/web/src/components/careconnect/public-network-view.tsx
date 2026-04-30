@@ -142,12 +142,16 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="flex-shrink-0 border-b border-gray-200 bg-white shadow-sm">
         <div className="flex items-center gap-3 px-5 pt-3 pb-2">
+          {/* Tenant logo */}
+          <img
+            src={`/api/branding/logo/public?tenantCode=${encodeURIComponent(tenantCode)}`}
+            alt=""
+            className="h-8 w-auto object-contain flex-shrink-0"
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
           <h1 className="text-lg font-bold text-gray-900 leading-tight">
-            {detail.networkName}
+            Provider Network
           </h1>
-          <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase bg-gray-100 px-2 py-0.5 rounded">
-            {tenantCode.replace(/-/g, ' ')}
-          </span>
           <span className="ml-auto text-sm text-gray-500">
             {detail.providers.length} provider{detail.providers.length !== 1 ? 's' : ''}
           </span>
