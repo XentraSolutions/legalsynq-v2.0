@@ -500,7 +500,6 @@ function ReferralPanel({
   const [state,          setState]         = useState<PanelState>('form');
   const [errorMsg,       setErrMsg]        = useState('');
   const [fieldErrors,    setErrors]        = useState<Record<string, string>>({});
-  const [openSection,    setSection]       = useState<'patient' | 'firm' | 'providers'>('firm');
   const [providerFiles,  setProviderFiles] = useState<Record<string, File | null>>({});
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
 
@@ -571,10 +570,6 @@ function ReferralPanel({
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      if (errs['firmName'] || errs['email'])
-        setSection('firm');
-      else if (errs['patientName'] || errs['patientPhone'] || errs['patientDob'] || errs['patientDateOfAccident'] || errs['patientEmail'])
-        setSection('patient');
       return;
     }
 
@@ -641,11 +636,6 @@ function ReferralPanel({
         : 'Something went wrong. Please try again.';
       if (Object.keys(apiErrors).length > 0) {
         setErrors(apiErrors);
-        const keys = Object.keys(apiErrors);
-        if (keys.some(k => ['patientFirstName','patientLastName','patientPhone','patientDateOfBirth','patientDateOfAccident','patientEmail'].includes(k)))
-          setSection('patient');
-        else if (keys.some(k => k === 'senderName' || k === 'senderEmail'))
-          setSection('firm');
       }
       setErrMsg(msg);
       setState('error');
@@ -692,7 +682,7 @@ function ReferralPanel({
       </div>
 
       {/* Panel body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* Empty state */}
         {!hasProviders && (
@@ -779,7 +769,8 @@ function ReferralPanel({
 
         {/* Form */}
         {hasProviders && (state === 'form' || state === 'submitting') && (
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto">
 
             {/* Law firm section */}
             <SectionRow
@@ -1011,21 +1002,22 @@ function ReferralPanel({
                 </div>
               );
             })()}
+          </div>
 
-            {/* Submit */}
-            <div className="px-5 py-4 border-t border-gray-100">
-              <button
-                type="submit"
-                disabled={state === 'submitting'}
-                className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
-              >
-                {state === 'submitting' ? (
-                  <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
-                ) : (
-                  <><i className="ri-send-plane-line" />Send Referral{providers.length > 1 ? `s (${providers.length})` : ''}</>
-                )}
-              </button>
-            </div>
+          {/* Submit — pinned outside scroll area */}
+          <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 bg-white">
+            <button
+              type="submit"
+              disabled={state === 'submitting'}
+              className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+            >
+              {state === 'submitting' ? (
+                <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
+              ) : (
+                <><i className="ri-send-plane-line" />Send Referral{providers.length > 1 ? `s (${providers.length})` : ''}</>
+              )}
+            </button>
+          </div>
           </form>
         )}
       </div>
