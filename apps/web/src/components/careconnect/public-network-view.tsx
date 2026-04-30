@@ -4,9 +4,9 @@
  * CC2-INT-B07 — Public Network View.
  * CC2-INT-B08 — Public Referral Initiation.
  *
- * Three-panel layout (Split mode): compact provider list | live map | referral panel.
+ * Layout: left 2/3 (provider list + map) | right 1/3 (always-visible referral panel).
  * View modes: Split (default) | List | Map.
- * Multi-select providers → persistent side panel with Patient / Law Firm / Providers sections.
+ * Multi-select providers → right panel with Patient / Law Firm / Providers form sections.
  */
 
 import { useState, useMemo, useCallback, useRef, forwardRef, useEffect, type FormEvent, type ReactNode } from 'react';
@@ -17,7 +17,6 @@ import type {
   PublicProviderItem,
   PublicProviderMarker,
   PublicReferralRequest,
-  PublicReferralResponse,
 } from '@/lib/public-network-api';
 import type { NumberedMarker } from './public-network-map';
 
@@ -39,19 +38,15 @@ type ViewMode = 'split' | 'list' | 'map';
 export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetworkViewProps) {
   const [search,      setSearch]      = useState('');
   const [viewMode,    setViewMode]    = useState<ViewMode>('split');
-  const [showAll,     setShowAll]     = useState(false);   // false = accepting only
+  const [showAll,     setShowAll]     = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [hoveredId,   setHovered]     = useState<string | null>(null);
-  const [panelOpen,   setPanelOpen]   = useState(false);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Markers: start from backend data; auto-geocode providers missing coordinates
   const [markers, setMarkers] = useState<PublicProviderMarker[]>(detail.markers);
 
   useEffect(() => {
     if (detail.providers.length === 0) return;
-    // A provider needs geocoding if it has no marker at all, OR if its marker
-    // has 0,0 coordinates (backend now returns 0.0 for providers with no stored lat/lng).
     const missing = detail.providers.filter(p => {
       const m = detail.markers.find(mk => mk.id === p.id);
       return !m || (m.latitude === 0 && m.longitude === 0);
@@ -59,7 +54,6 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
     if (missing.length === 0) return;
 
     let cancelled = false;
-
     async function geocodeMissing() {
       const results: PublicProviderMarker[] = [...detail.markers];
       await Promise.all(
@@ -82,20 +76,17 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
       );
       if (!cancelled) setMarkers(results);
     }
-
     geocodeMissing();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Marker lookup by provider id
   const markerById = useMemo<Record<string, PublicProviderMarker>>(() => {
     const m: Record<string, PublicProviderMarker> = {};
     for (const mk of markers) m[mk.id] = mk;
     return m;
   }, [markers]);
 
-  // Filtered + searched list
   const filtered = useMemo(() => {
     let list = detail.providers;
     if (!showAll) list = list.filter(p => p.acceptingReferrals);
@@ -109,7 +100,6 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
     return list;
   }, [detail.providers, search, showAll]);
 
-  // Numbered markers for the map — exclude ungeocoded providers (lat/lng = 0).
   const displayedMarkers = useMemo<NumberedMarker[]>(() => {
     const result: NumberedMarker[] = [];
     let idx = 1;
@@ -131,7 +121,6 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-    setPanelOpen(true);
   }
 
   function handleMapSelect(id: string) {
@@ -145,19 +134,14 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
 
   const selectedProviders = detail.providers.filter(p => selectedIds.has(p.id));
   const hasMarkers        = markers.some(m => m.latitude !== 0 || m.longitude !== 0);
-  const allCount          = detail.providers.filter(p => p.acceptingReferrals).length;
   const shownCount        = filtered.length;
 
-  const showList = viewMode === 'split' || viewMode === 'list';
-  const showMap  = viewMode === 'split' || viewMode === 'map';
-
   return (
-    <div className="flex flex-col h-screen bg-white overflow-hidden">
+    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="flex-shrink-0 border-b border-gray-200 bg-white">
-        {/* Row 1: network name + tenant + count */}
-        <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+      <header className="flex-shrink-0 border-b border-gray-200 bg-white shadow-sm">
+        <div className="flex items-center gap-3 px-5 pt-3 pb-2">
           <h1 className="text-lg font-bold text-gray-900 leading-tight">
             {detail.networkName}
           </h1>
@@ -169,10 +153,9 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
           </span>
         </div>
 
-        {/* Row 2: view tabs + search + filters */}
-        <div className="flex items-center gap-2 px-4 pb-2">
+        <div className="flex items-center gap-2 px-5 pb-2.5">
           {/* View tabs */}
-          <div className="flex items-center border border-gray-200 rounded-md overflow-hidden flex-shrink-0">
+          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden flex-shrink-0">
             {(['split', 'list', 'map'] as ViewMode[]).map(m => (
               <button
                 key={m}
@@ -194,164 +177,256 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
             <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none" />
             <input
               type="search"
-              placeholder="Search providers..."
+              placeholder="Search by name, location, or specialty…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-md
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg
                          focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100
-                         placeholder-gray-400"
+                         placeholder-gray-400 bg-white"
             />
           </div>
 
-          {/* Filter button */}
+          {/* Filter */}
           <button
             onClick={() => setShowAll(v => !v)}
             className={[
-              'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-md flex-shrink-0 transition-colors',
+              'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg flex-shrink-0 transition-colors',
               showAll
                 ? 'bg-gray-900 text-white border-gray-900'
                 : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
             ].join(' ')}
           >
             <i className="ri-filter-3-line" />
-            Filters
+            {showAll ? 'All providers' : 'Accepting only'}
           </button>
 
-          {/* Filter count */}
-          <span className="text-xs text-gray-500 font-medium flex-shrink-0">
-            {shownCount}/{detail.providers.length}
+          <span className="text-xs text-gray-400 font-medium flex-shrink-0">
+            {shownCount} of {detail.providers.length}
           </span>
 
-          {/* Selected badge */}
           {selectedIds.size > 0 && (
-            <button
-              onClick={() => setPanelOpen(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-md flex-shrink-0 hover:bg-blue-700 transition-colors"
-            >
-              {selectedIds.size} Selected
-            </button>
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg flex-shrink-0">
+              <i className="ri-check-line text-xs" />
+              {selectedIds.size} selected
+            </span>
           )}
         </div>
       </header>
 
-      {/* ── Body ───────────────────────────────────────────────────────────── */}
+      {/* ── Body: left content + right panel ───────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left: provider list */}
-        {showList && (
-          <div className="w-[220px] flex-shrink-0 border-r border-gray-200 overflow-y-auto bg-white">
-            {filtered.length === 0 ? (
-              <div className="p-4 text-center">
-                <p className="text-xs text-gray-400">No providers found</p>
+        {/* ── LEFT: 2/3 provider content ──────────────────────────────────── */}
+        <div className="flex flex-1 overflow-hidden">
+
+          {/* Split mode: scrollable list + map side-by-side */}
+          {viewMode === 'split' && (
+            <>
+              {/* Provider list column */}
+              <div className="w-[300px] flex-shrink-0 border-r border-gray-200 overflow-y-auto bg-white">
+                {filtered.length === 0 ? (
+                  <div className="p-6 text-center">
+                    <i className="ri-map-pin-line text-2xl text-gray-300 mb-2 block" />
+                    <p className="text-sm text-gray-400">No providers match your search</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {filtered.map((provider, i) => (
+                      <ProviderCard
+                        key={provider.id}
+                        provider={provider}
+                        number={indexFor(provider.id) ?? i + 1}
+                        selected={selectedIds.has(provider.id)}
+                        hovered={hoveredId === provider.id}
+                        compact
+                        onHover={setHovered}
+                        onToggle={toggleSelect}
+                        ref={el => { cardRefs.current[provider.id] = el; }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="py-1">
-                {filtered.map((provider, i) => (
-                  <ProviderRow
-                    key={provider.id}
-                    provider={provider}
-                    number={indexFor(provider.id) ?? i + 1}
-                    selected={selectedIds.has(provider.id)}
-                    hovered={hoveredId === provider.id}
-                    onHover={setHovered}
-                    onToggle={toggleSelect}
-                    ref={el => { cardRefs.current[provider.id] = el; }}
+
+              {/* Map */}
+              <div className="flex-1 relative">
+                {hasMarkers ? (
+                  <PublicNetworkMap
+                    markers={displayedMarkers}
+                    selectedId={hoveredId}
+                    onSelect={handleMapSelect}
+                    onRequestReferral={handleMapReferral}
                   />
-                ))}
+                ) : (
+                  <div className="h-full bg-gray-100 flex items-center justify-center">
+                    <p className="text-sm text-gray-400">No location data available</p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            </>
+          )}
 
-        {/* Center: map */}
-        {showMap && (
-          <div className="flex-1 relative">
-            {hasMarkers ? (
-              <PublicNetworkMap
-                markers={displayedMarkers}
-                selectedId={hoveredId}
-                onSelect={handleMapSelect}
-                onRequestReferral={handleMapReferral}
-              />
-            ) : (
-              <div className="h-full bg-gray-100 flex items-center justify-center">
-                <p className="text-sm text-gray-400">No location data available</p>
-              </div>
-            )}
-          </div>
-        )}
+          {/* List mode: rich provider grid */}
+          {viewMode === 'list' && (
+            <div className="flex-1 overflow-y-auto bg-gray-50 p-5">
+              {filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <i className="ri-map-pin-line text-3xl text-gray-300 mb-3 block" />
+                  <p className="text-sm text-gray-400">No providers match your search</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  {filtered.map((provider, i) => (
+                    <ProviderCard
+                      key={provider.id}
+                      provider={provider}
+                      number={indexFor(provider.id) ?? i + 1}
+                      selected={selectedIds.has(provider.id)}
+                      hovered={hoveredId === provider.id}
+                      compact={false}
+                      onHover={setHovered}
+                      onToggle={toggleSelect}
+                      ref={el => { cardRefs.current[provider.id] = el; }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-        {/* Right: referral panel */}
-        {panelOpen && selectedIds.size > 0 && (
-          <ReferralPanel
-            providers={selectedProviders}
-            tenantId={tenantId}
-            allCount={allCount}
-            onClose={() => { setPanelOpen(false); setSelectedIds(new Set()); }}
-          />
-        )}
+          {/* Map mode: full map */}
+          {viewMode === 'map' && (
+            <div className="flex-1 relative">
+              {hasMarkers ? (
+                <PublicNetworkMap
+                  markers={displayedMarkers}
+                  selectedId={hoveredId}
+                  onSelect={handleMapSelect}
+                  onRequestReferral={handleMapReferral}
+                />
+              ) : (
+                <div className="h-full bg-gray-100 flex items-center justify-center">
+                  <p className="text-sm text-gray-400">No location data available</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── RIGHT: 1/3 always-visible referral panel ────────────────────── */}
+        <ReferralPanel
+          providers={selectedProviders}
+          tenantId={tenantId}
+          onClearSelection={() => setSelectedIds(new Set())}
+        />
       </div>
     </div>
   );
 }
 
-// ── Provider row (compact list card) ─────────────────────────────────────────
+// ── Provider card ─────────────────────────────────────────────────────────────
 
-const ProviderRow = forwardRef<
+const ProviderCard = forwardRef<
   HTMLDivElement,
   {
     provider: PublicProviderItem;
     number:   number;
     selected: boolean;
     hovered:  boolean;
+    compact:  boolean;
     onHover:  (id: string | null) => void;
     onToggle: (id: string) => void;
   }
->(function ProviderRow({ provider, number, selected, hovered, onHover, onToggle }, ref) {
-  const tags = [
-    provider.primaryCategory,
-  ].filter(Boolean) as string[];
-
+>(function ProviderCard({ provider, number, selected, hovered, compact, onHover, onToggle }, ref) {
   return (
     <div
       ref={ref}
       onMouseEnter={() => onHover(provider.id)}
       onMouseLeave={() => onHover(null)}
       className={[
-        'flex items-start gap-2 px-3 py-2.5 cursor-default border-b border-gray-100 transition-colors',
-        hovered   ? 'bg-blue-50'  : 'hover:bg-gray-50',
-        selected  ? 'bg-blue-50'  : '',
+        'transition-colors',
+        compact ? 'p-3' : 'p-4 rounded-xl border',
+        hovered || selected
+          ? compact ? 'bg-blue-50' : 'border-blue-300 bg-blue-50 shadow-sm'
+          : compact ? 'hover:bg-gray-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm',
       ].join(' ')}
     >
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-900 leading-tight truncate">
-          {provider.name}
-        </p>
-        <p className="text-xs text-gray-500 truncate mt-0.5">
-          {provider.city}, {provider.state}
-          {provider.primaryCategory ? ` · ${provider.primaryCategory}` : ''}
-        </p>
-        {tags.length > 0 && (
-          <p className="text-xs text-gray-400 mt-0.5 truncate">
-            {tags.join(' · ')}
-          </p>
-        )}
-      </div>
+      <div className="flex items-start gap-3">
+        {/* Number badge */}
+        <div className={[
+          'rounded-full text-white text-xs font-bold flex-shrink-0 flex items-center justify-center',
+          compact ? 'w-6 h-6 mt-0.5' : 'w-8 h-8',
+          selected ? 'bg-blue-600' : 'bg-gray-400',
+        ].join(' ')}>
+          {number}
+        </div>
 
-      {/* Select toggle */}
-      <button
-        onClick={() => onToggle(provider.id)}
-        className={[
-          'flex-shrink-0 w-6 h-6 rounded flex items-center justify-center transition-colors mt-0.5',
-          selected
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-100 text-gray-400 hover:bg-gray-200',
-        ].join(' ')}
-        title={selected ? 'Remove from selection' : 'Select provider'}
-      >
-        <i className={selected ? 'ri-check-line text-xs' : 'ri-add-line text-xs'} />
-      </button>
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className={['font-semibold text-gray-900 leading-tight', compact ? 'text-sm' : 'text-base'].join(' ')}>
+            {provider.name}
+          </p>
+          {provider.organizationName && (
+            <p className={['text-gray-500 mt-0.5 truncate', compact ? 'text-xs' : 'text-sm'].join(' ')}>
+              {provider.organizationName}
+            </p>
+          )}
+          <p className={['text-gray-400 mt-0.5', compact ? 'text-xs' : 'text-sm'].join(' ')}>
+            {provider.city}, {provider.state}
+            {!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}
+          </p>
+          {provider.phone && !compact && (
+            <p className="text-sm text-gray-500 mt-1 flex items-center gap-1.5">
+              <i className="ri-phone-line text-gray-400 text-xs" />
+              {provider.phone}
+            </p>
+          )}
+          {provider.phone && compact && (
+            <p className="text-xs text-gray-400 mt-0.5">{provider.phone}</p>
+          )}
+
+          {/* Badges */}
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {provider.primaryCategory && (
+              <span className={['bg-gray-100 text-gray-600 rounded-full font-medium', compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'].join(' ')}>
+                {provider.primaryCategory}
+              </span>
+            )}
+            <span className={[
+              'rounded-full font-medium flex items-center gap-1',
+              compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5',
+              provider.acceptingReferrals
+                ? 'bg-green-50 text-green-700'
+                : 'bg-gray-100 text-gray-500',
+            ].join(' ')}>
+              {provider.acceptingReferrals ? (
+                <><i className="ri-checkbox-circle-line" />Accepting</>
+              ) : (
+                'Not accepting'
+              )}
+            </span>
+          </div>
+        </div>
+
+        {/* Select button */}
+        <button
+          onClick={() => onToggle(provider.id)}
+          className={[
+            'flex-shrink-0 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1',
+            compact ? 'px-2 py-1' : 'px-3 py-1.5',
+            selected
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200',
+          ].join(' ')}
+          title={selected ? 'Remove from selection' : 'Select provider'}
+        >
+          {selected ? (
+            <><i className="ri-check-line" />{compact ? '' : 'Selected'}</>
+          ) : (
+            <><i className="ri-add-line" />{compact ? '' : 'Select'}</>
+          )}
+        </button>
+      </div>
     </div>
   );
 });
@@ -384,18 +459,17 @@ const EMPTY_FORM: ReferralForm = {
 type PanelState = 'form' | 'submitting' | 'success' | 'error';
 
 function ReferralPanel({
-  providers, tenantId, allCount, onClose,
+  providers, tenantId, onClearSelection,
 }: {
-  providers: PublicProviderItem[];
-  tenantId:  string;
-  allCount:  number;
-  onClose:   () => void;
+  providers:        PublicProviderItem[];
+  tenantId:         string;
+  onClearSelection: () => void;
 }) {
-  const [form,           setForm]         = useState<ReferralForm>(EMPTY_FORM);
-  const [state,          setState]        = useState<PanelState>('form');
-  const [errorMsg,       setErrMsg]       = useState('');
-  const [fieldErrors,    setErrors]       = useState<Record<string, string>>({});
-  const [openSection,    setSection]      = useState<'patient' | 'firm' | 'providers'>('firm');
+  const [form,           setForm]          = useState<ReferralForm>(EMPTY_FORM);
+  const [state,          setState]         = useState<PanelState>('form');
+  const [errorMsg,       setErrMsg]        = useState('');
+  const [fieldErrors,    setErrors]        = useState<Record<string, string>>({});
+  const [openSection,    setSection]       = useState<'patient' | 'firm' | 'providers'>('firm');
   const [providerFiles,  setProviderFiles] = useState<Record<string, File | null>>({});
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
 
@@ -415,8 +489,7 @@ function ReferralPanel({
 
   const validate = useCallback((): Record<string, string> => {
     const errs: Record<string, string> = {};
-    const name = form.patientName.trim();
-    if (!name) errs['patientName'] = 'Patient name is required.';
+    if (!form.patientName.trim()) errs['patientName'] = 'Patient name is required.';
     if (!form.patientPhone.trim()) errs['patientPhone'] = 'Patient phone is required.';
     else if (!isValidPhone(form.patientPhone)) errs['patientPhone'] = 'Enter a valid 10-digit phone number.';
     if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
@@ -432,8 +505,8 @@ function ReferralPanel({
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      if (errs['firmName'] || errs['email'])           setSection('firm');
-      else if (errs['patientName'] || errs['patientPhone']) setSection('patient');
+      if (errs['firmName'] || errs['email'])                    setSection('firm');
+      else if (errs['patientName'] || errs['patientPhone'])     setSection('patient');
       return;
     }
 
@@ -507,64 +580,136 @@ function ReferralPanel({
     }
   }, [form, providers, tenantId, validate, treatmentTypes, providerFiles]);
 
+  const hasProviders = providers.length > 0;
+
   return (
-    <div className="w-[320px] flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+    <div className="w-1/3 min-w-[340px] max-w-[480px] flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden shadow-sm">
+
       {/* Panel header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <span className="text-sm font-semibold text-gray-800">
-          Your selection{' '}
-          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-xs font-bold text-gray-700 ml-1">
-            {providers.length}
-          </span>
-        </span>
-        <button
-          onClick={onClose}
-          className="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-        >
-          <i className="ri-close-line text-sm" />
-        </button>
+      <div className="flex-shrink-0 px-5 py-4 border-b border-gray-100 bg-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">Send a Referral</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {hasProviders
+                ? `${providers.length} provider${providers.length !== 1 ? 's' : ''} selected`
+                : 'Select providers from the list'}
+            </p>
+          </div>
+          {hasProviders && (
+            <button
+              onClick={() => { onClearSelection(); setState('form'); setErrors({}); setErrMsg(''); }}
+              className="text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {/* Selected provider chips */}
+        {hasProviders && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {providers.map(p => (
+              <span key={p.id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-200">
+                <i className="ri-hospital-line text-blue-500" />
+                {p.name.length > 22 ? p.name.slice(0, 22) + '…' : p.name}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Panel body */}
       <div className="flex-1 overflow-y-auto">
-        {state === 'success' ? (
-          <div className="p-6 text-center space-y-4">
-            <div className="mx-auto w-12 h-12 rounded-full bg-green-50 flex items-center justify-center">
-              <i className="ri-checkbox-circle-line text-green-600 text-2xl" />
+
+        {/* Empty state */}
+        {!hasProviders && (
+          <div className="flex flex-col items-center justify-center h-full px-6 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+              <i className="ri-send-plane-line text-blue-400 text-3xl" />
+            </div>
+            <p className="text-sm font-semibold text-gray-700 mb-2">No providers selected</p>
+            <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
+              Browse the directory and click <strong className="text-gray-600">Select</strong> on one or more providers to send them a referral.
+            </p>
+            <div className="mt-6 w-full max-w-xs space-y-2 text-left">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className="ri-briefcase-line text-xs text-indigo-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-700">Your firm info</p>
+                  <p className="text-xs text-gray-400">Name and email of the referring party</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                <div className="w-6 h-6 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className="ri-user-heart-line text-xs text-teal-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-700">Patient details</p>
+                  <p className="text-xs text-gray-400">Name, phone, and treatment type</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className="ri-hospital-line text-xs text-gray-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-700">Providers</p>
+                  <p className="text-xs text-gray-400">Send to one or multiple providers at once</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Success */}
+        {hasProviders && state === 'success' && (
+          <div className="p-8 text-center space-y-4">
+            <div className="mx-auto w-14 h-14 rounded-full bg-green-50 flex items-center justify-center">
+              <i className="ri-checkbox-circle-line text-green-600 text-3xl" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">Referrals sent!</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Sent to {providers.length} provider{providers.length !== 1 ? 's' : ''}.
+              <p className="text-base font-semibold text-gray-900">Referrals sent!</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Successfully sent to {providers.length} provider{providers.length !== 1 ? 's' : ''}.
+                Each provider will receive an email notification.
               </p>
             </div>
             <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              onClick={() => { onClearSelection(); setState('form'); setErrors({}); setErrMsg(''); }}
+              className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Done
+              Send another referral
             </button>
           </div>
-        ) : state === 'error' ? (
-          <div className="p-6 text-center space-y-4">
-            <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
-              <i className="ri-error-warning-line text-red-500 text-2xl" />
+        )}
+
+        {/* Error */}
+        {hasProviders && state === 'error' && (
+          <div className="p-8 text-center space-y-4">
+            <div className="mx-auto w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
+              <i className="ri-error-warning-line text-red-500 text-3xl" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">Submission failed</p>
-              <p className="text-xs text-gray-500 mt-1">{errorMsg}</p>
+              <p className="text-base font-semibold text-gray-900">Submission failed</p>
+              <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
             </div>
             <button
               onClick={() => setState('form')}
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
             >
               Try again
             </button>
           </div>
-        ) : (
+        )}
+
+        {/* Form */}
+        {hasProviders && (state === 'form' || state === 'submitting') && (
           <form onSubmit={handleSubmit}>
 
-            {/* ── Law firm section ── */}
+            {/* Law firm section */}
             <SectionRow
               icon="ri-briefcase-line" avatarBg="bg-indigo-500"
               title="Law firm"
@@ -573,7 +718,7 @@ function ReferralPanel({
               hasError={!!(fieldErrors['firmName'] || fieldErrors['email'])}
               onToggle={() => setSection(s => s === 'firm' ? 'patient' : 'firm')}
             >
-              <div className="px-4 pb-3 space-y-2">
+              <div className="px-5 pb-4 space-y-3">
                 <PanelField label="Firm name" required error={fieldErrors['firmName']}>
                   <input
                     type="text" required value={form.firmName}
@@ -613,7 +758,7 @@ function ReferralPanel({
               </div>
             </SectionRow>
 
-            {/* ── Patient section ── */}
+            {/* Patient section */}
             <SectionRow
               icon="ri-user-heart-line" avatarBg="bg-teal-500"
               title="Patient"
@@ -622,7 +767,7 @@ function ReferralPanel({
               hasError={!!(fieldErrors['patientName'] || fieldErrors['patientPhone'])}
               onToggle={() => setSection(s => s === 'patient' ? 'firm' : 'patient')}
             >
-              <div className="px-4 pb-3 space-y-2">
+              <div className="px-5 pb-4 space-y-3">
                 <PanelField label="Patient name" required error={fieldErrors['patientName']}>
                   <input
                     type="text" required value={form.patientName}
@@ -657,7 +802,7 @@ function ReferralPanel({
                 <PanelField label="Notes" hint="optional">
                   <textarea
                     rows={3} value={form.notes}
-                    placeholder="Background, urgency, prior treatment..."
+                    placeholder="Background, urgency, prior treatment…"
                     onChange={e => update('notes', e.target.value)}
                     disabled={state === 'submitting'}
                     className={panelInputCls(false) + ' resize-none'}
@@ -666,7 +811,7 @@ function ReferralPanel({
               </div>
             </SectionRow>
 
-            {/* ── Providers section ── */}
+            {/* Providers section */}
             <SectionRow
               icon="ri-hospital-line" avatarBg="bg-gray-700"
               title="Providers"
@@ -675,22 +820,22 @@ function ReferralPanel({
               open={openSection === 'providers'}
               onToggle={() => setSection(s => s === 'providers' ? 'patient' : 'providers')}
             >
-              <div className="px-4 pb-3 space-y-3">
+              <div className="px-5 pb-4 space-y-3">
                 {providers.map(p => {
                   const file = providerFiles[p.id] ?? null;
                   return (
-                    <div key={p.id} className="rounded-lg border border-gray-100 bg-gray-50 p-2.5 space-y-2">
+                    <div key={p.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-2">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                           <i className="ri-hospital-line text-xs text-blue-600" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-gray-800 truncate">{p.name}</p>
+                          <p className="text-sm font-medium text-gray-800 truncate">{p.name}</p>
                           <p className="text-xs text-gray-400 truncate">{p.city}, {p.state}</p>
                         </div>
                       </div>
                       {file ? (
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-50 border border-blue-200">
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-blue-50 border border-blue-200">
                           <i className="ri-file-line text-blue-600 text-sm flex-shrink-0" />
                           <span className="text-xs text-blue-700 truncate flex-1">{file.name}</span>
                           <button
@@ -703,9 +848,9 @@ function ReferralPanel({
                           </button>
                         </div>
                       ) : (
-                        <label className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-dashed cursor-pointer transition-colors ${state === 'submitting' ? 'opacity-50 pointer-events-none' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'}`}>
+                        <label className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border border-dashed cursor-pointer transition-colors ${state === 'submitting' ? 'opacity-50 pointer-events-none' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'}`}>
                           <i className="ri-upload-2-line text-gray-400 text-sm" />
-                          <span className="text-xs text-gray-500">Attach document for {p.name}</span>
+                          <span className="text-xs text-gray-500">Attach document</span>
                           <input
                             type="file"
                             className="sr-only"
@@ -724,16 +869,13 @@ function ReferralPanel({
               </div>
             </SectionRow>
 
-            {/* Validation summary (shows after a failed submit attempt) */}
+            {/* Validation summary */}
             {Object.keys(fieldErrors).length > 0 && state !== 'submitting' && (() => {
               const hasPatientErr = !!(fieldErrors['patientName'] || fieldErrors['patientPhone']);
               const hasFirmErr    = !!(fieldErrors['firmName']    || fieldErrors['email']);
-              const sections = [
-                hasPatientErr && 'Patient',
-                hasFirmErr    && 'Law firm',
-              ].filter(Boolean).join(' and ');
+              const sections = [hasPatientErr && 'Patient', hasFirmErr && 'Law firm'].filter(Boolean).join(' and ');
               return (
-                <div className="mx-4 mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2">
+                <div className="mx-5 mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2">
                   <i className="ri-error-warning-line text-red-500 text-sm mt-0.5 flex-shrink-0" />
                   <p className="text-xs text-red-700">
                     Please complete required fields in the <strong>{sections}</strong> section{sections.includes('and') ? 's' : ''}.
@@ -743,16 +885,16 @@ function ReferralPanel({
             })()}
 
             {/* Submit */}
-            <div className="px-4 py-4 border-t border-gray-100">
+            <div className="px-5 py-4 border-t border-gray-100">
               <button
                 type="submit"
                 disabled={state === 'submitting'}
-                className="w-full py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+                className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
               >
                 {state === 'submitting' ? (
-                  <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
+                  <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
                 ) : (
-                  <>Send Referral{providers.length > 1 ? `s (${providers.length})` : ''}</>
+                  <><i className="ri-send-plane-line" />Send Referral{providers.length > 1 ? `s (${providers.length})` : ''}</>
                 )}
               </button>
             </div>
@@ -783,7 +925,7 @@ function SectionRow({
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-gray-50 transition-colors"
       >
         <div className={`relative w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center flex-shrink-0`}>
           <i className={`${icon} text-base text-white`} />
@@ -816,7 +958,7 @@ function PanelField({
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">
+      <label className="block text-xs font-medium text-gray-600 mb-1.5">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
         {hint && <span className="ml-1 text-gray-400 font-normal">({hint})</span>}
@@ -835,8 +977,5 @@ function panelInputCls(hasError: boolean) {
       : 'border-gray-200 focus:border-blue-400 focus:ring-blue-100',
   ].join(' ');
 }
-
-// ── Success / Error screens (kept for map popup referrals) ────────────────────
-// (These are no longer used for the panel flow but kept for potential future use)
 
 export type { PublicNetworkViewProps };
