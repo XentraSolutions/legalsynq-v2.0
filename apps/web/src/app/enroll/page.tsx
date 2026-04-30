@@ -8,6 +8,7 @@ interface SearchParams {
   firm?:     string;
   phone?:    string;
   contact?:  string;
+  isFirm?:   string;
 }
 
 interface PageProps {
@@ -15,7 +16,7 @@ interface PageProps {
 }
 
 export default async function EnrollPage({ searchParams }: PageProps) {
-  const { id: providerId, tenantId, email, firm, phone, contact } = await searchParams;
+  const { id: providerId, tenantId, email, firm, phone, contact, isFirm } = await searchParams;
 
   let prefill = null;
 
@@ -27,7 +28,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
     }
   }
 
-  // Build referral prefill from URL params if present (passed from referral success modal)
+  // Build referral prefill from URL params if present (passed from referral success modal or firm-status page)
   const parts   = (contact ?? '').trim().split(/\s+/);
   const refFirst = parts[0] ?? '';
   const refLast  = parts.slice(1).join(' ');
@@ -38,6 +39,9 @@ export default async function EnrollPage({ searchParams }: PageProps) {
     firstName:   refFirst,
     lastName:    refLast,
   } : null;
+
+  // Firm enrollment: law firm coming from referral status page (has tenantId but no providerId)
+  const isFirmEnrollment = (isFirm === 'true') || (!providerId && !!tenantId);
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -60,6 +64,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
           providerId={providerId ?? null}
           tenantId={tenantId ?? null}
           referralPrefill={referralPrefill}
+          isFirmEnrollment={isFirmEnrollment}
         />
 
         <p className="text-center text-xs text-gray-400 mt-6">

@@ -97,6 +97,8 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/organizations/{id:guid}/provision-user",          AdminEndpointsLscc010.ProvisionProviderUser);
         // CC2-ENROLL: Self-enrollment — creates active user with direct password (no invitation email)
         routes.MapPost("/api/admin/organizations/{id:guid}/self-register",           AdminEndpointsLscc010.SelfRegisterUser);
+        // CC2-ENROLL-FIRM: Law firm self-enrollment — creates a LAW_FIRM org (keyed on tenantId + email)
+        routes.MapPost("/api/admin/organizations/law-firm",                          AdminEndpointsLscc010.CreateLawFirmOrganization);
         routes.MapPut("/api/admin/organizations/{id:guid}", UpdateOrganization);
         routes.MapPatch("/api/admin/organizations/{id:guid}/provider-mode", UpdateOrganizationProviderMode);
 
@@ -7660,7 +7662,65 @@ public static partial class AdminEndpointsLscc010
             new SelfRegisterUserResponse(user.Id, IsNew: true));
     }
 
+    // =========================================================================
+    // CC2-ENROLL-FIRM: Law firm self-enrollment — create LAW_FIRM org
+    // =========================================================================
+
+    /// <summary>
+    /// POST /api/admin/organizations/law-firm
+    /// Creates a minimal LAW_FIRM Organization for a law firm self-enrolling via CareConnect.
+    /// Idempotent — keyed on (tenantId, email) so repeated submissions return the same org.
+    /// </summary>
+    public static async Task<IResult> CreateLawFirmOrganization(
+        CreateLawFirmOrgRequest body,
+        IdentityDbContext       db,
+        CancellationToken       ct)
+    {
+        if (body.TenantId  == Guid.Empty)                        return Results.BadRequest(new { error = "tenantId is required." });
+        if (string.IsNullOrWhiteSpace(body.FirmName))            return Results.BadRequest(new { error = "firmName is required." });
+        if (string.IsNullOrWhiteSpace(body.ContactEmail))        return Results.BadRequest(new { error = "contactEmail is required." });
+
+        var tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
+        if (!tenantExists)
+            return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
+
+        // Idempotency key: deterministic name embedding email so the same firm contact always maps to the same org
+        var idempotencyName = $"{body.FirmName.Trim()} [firm:{body.ContactEmail.Trim().ToLowerInvariant()}]";
+
+        var existing = await db.Organizations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(o => o.TenantId == body.TenantId
+                                   && o.OrgType   == OrgType.LawFirm
+                                   && o.Name      == idempotencyName, ct);
+
+        if (existing is not null)
+            return Results.Ok(new CreateLawFirmOrgResponse(existing.Id, existing.Name, IsNew: false));
+
+        var org = Organization.Create(
+            tenantId:    body.TenantId,
+            name:        idempotencyName,
+            orgType:     OrgType.LawFirm,
+            displayName: body.FirmName.Trim());
+
+        db.Organizations.Add(org);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created(
+            $"/api/admin/organizations/{org.Id}",
+            new CreateLawFirmOrgResponse(org.Id, org.Name, IsNew: true));
+    }
+
     // Keep the request/response records accessible to the route registration above
+    public record CreateLawFirmOrgRequest(
+        Guid   TenantId,
+        string FirmName,
+        string ContactEmail);
+
+    private record CreateLawFirmOrgResponse(
+        Guid   Id,
+        string Name,
+        bool   IsNew);
+
     public record CreateProviderOrgRequest(
         Guid   TenantId,
         Guid   ProviderCcId,

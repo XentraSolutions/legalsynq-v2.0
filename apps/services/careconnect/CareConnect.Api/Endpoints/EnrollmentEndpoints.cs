@@ -276,6 +276,89 @@ public static class EnrollmentEndpoints
 
             return Results.Ok(new { success = true });
         });
+
+        // POST /api/public/enrollment/register-firm
+        // Law firm self-enrollment: creates a LAW_FIRM Identity org and active user.
+        // No providerId required — law firms are not CareConnect providers.
+        // No OTP required — they are creating a brand-new account.
+        group.MapPost("/register-firm", async (
+            HttpContext               http,
+            IConfiguration           config,
+            FirmEnrollmentRegisterRequest body,
+            IIdentityOrganizationService identityOrgs,
+            IAuditEventClient         auditClient,
+            ILoggerFactory            loggerFactory,
+            CancellationToken         ct) =>
+        {
+            var logger = loggerFactory.CreateLogger("CC2-ENROLL-FIRM.Register");
+
+            var tenantId = ValidateTrustBoundary(http, config);
+            if (tenantId is null)
+                return Results.StatusCode(403);
+
+            if (string.IsNullOrWhiteSpace(body.CompanyName))
+                return Results.BadRequest(new { message = "Company name is required." });
+            if (string.IsNullOrWhiteSpace(body.Email) || !IsValidEmail(body.Email))
+                return Results.BadRequest(new { message = "A valid email address is required." });
+            if (string.IsNullOrWhiteSpace(body.Password) || body.Password.Length < 8)
+                return Results.BadRequest(new { message = "Password must be at least 8 characters." });
+            if (string.IsNullOrWhiteSpace(body.FirstName))
+                return Results.BadRequest(new { message = "First name is required." });
+
+            // Use the tenantId supplied in the payload (the CareConnect tenant that owns the referral)
+            // rather than the trust-boundary resolved one which may differ.
+            var firmTenantId = body.TenantId != Guid.Empty ? body.TenantId : tenantId.Value;
+
+            // Step 1: Create / resolve the LAW_FIRM org
+            var orgId = await identityOrgs.EnsureLawFirmOrganizationAsync(
+                firmTenantId, body.CompanyName.Trim(), body.Email.Trim(), ct);
+
+            if (orgId is null)
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL-FIRM Identity org creation failed for firm '{CompanyName}'.", body.CompanyName);
+                return Results.Problem("Account setup could not complete. Please try again or contact support.");
+            }
+
+            // Step 2: Create active user with chosen password
+            var registerResult = await identityOrgs.RegisterUserDirectlyAsync(
+                orgId.Value,
+                body.Email.Trim(),
+                body.Password,
+                body.FirstName.Trim(),
+                body.LastName?.Trim(),
+                ct);
+
+            if (registerResult is null)
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL-FIRM Identity user registration failed for firm '{CompanyName}'.", body.CompanyName);
+                return Results.Problem("Account setup could not complete. Please try again or contact support.");
+            }
+
+            _ = auditClient.IngestAsync(new LegalSynq.AuditClient.DTOs.IngestAuditEventRequest
+            {
+                EventType     = "careconnect.lawfirm.self.enrolled",
+                EventCategory = LegalSynq.AuditClient.Enums.EventCategory.Administrative,
+                SourceSystem  = "careconnect",
+                SourceService = "enrollment-api",
+                Visibility    = AuditVisibility.Tenant,
+                Severity      = LegalSynq.AuditClient.Enums.SeverityLevel.Info,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+                Scope         = new LegalSynq.AuditClient.DTOs.AuditEventScopeDto { ScopeType = LegalSynq.AuditClient.Enums.ScopeType.Tenant, TenantId = firmTenantId.ToString() },
+                Actor         = new LegalSynq.AuditClient.DTOs.AuditEventActorDto { Type = LegalSynq.AuditClient.Enums.ActorType.User, Name = body.Email.Trim() },
+                Entity        = new LegalSynq.AuditClient.DTOs.AuditEventEntityDto { Type = "LawFirm", Id = orgId.Value.ToString() },
+                Action        = "SelfEnrolled",
+                Description   = $"Law firm '{body.CompanyName.Trim()}' self-enrolled via CareConnect portal (email: {body.Email.Trim()}).",
+                Tags          = ["self-enrollment", "law-firm", "referral-portal"],
+            });
+
+            logger.LogInformation(
+                "CC2-ENROLL-FIRM Law firm '{CompanyName}' self-enrolled. UserId={UserId} OrgId={OrgId}.",
+                body.CompanyName, registerResult.UserId, orgId.Value);
+
+            return Results.Ok(new { success = true });
+        });
     }
 
     // ── Trust boundary validation ──────────────────────────────────────────────
@@ -413,4 +496,17 @@ public static class EnrollmentEndpoints
         string? State        = null,
         string? PostalCode   = null,
         string? OtpCode      = null);
+
+    public record FirmEnrollmentRegisterRequest(
+        Guid    TenantId,
+        string  CompanyName,
+        string  Email,
+        string  Password,
+        string  FirstName,
+        string? LastName     = null,
+        string? Phone        = null,
+        string? AddressLine1 = null,
+        string? City         = null,
+        string? State        = null,
+        string? PostalCode   = null);
 }

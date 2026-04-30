@@ -68,6 +68,7 @@ public static class ReferralThreadEndpoints
             return Results.Ok(new
             {
                 referralId   = referral.Id,
+                tenantId     = referral.TenantId,
                 status       = referral.Status,
                 clientName   = $"{referral.ClientFirstName} {referral.ClientLastName}".Trim(),
                 service      = referral.RequestedService,

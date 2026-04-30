@@ -100,6 +100,41 @@ export interface RegisterPayload {
   tenantId:     string;
 }
 
+export interface FirmRegisterPayload {
+  tenantId:     string;
+  companyName:  string;
+  email:        string;
+  password:     string;
+  firstName:    string;
+  lastName?:    string;
+  phone?:       string;
+  addressLine1?: string;
+  city?:        string;
+  state?:       string;
+  postalCode?:  string;
+}
+
+export async function registerFirmEnrollment(payload: FirmRegisterPayload): Promise<RegisterResult> {
+  const { tenantId, ...body } = payload;
+  try {
+    const res = await fetch(
+      `${GATEWAY_URL}/careconnect/api/public/enrollment/register-firm`,
+      {
+        method:  'POST',
+        headers: publicHeaders(tenantId),
+        body:    JSON.stringify(body),
+      },
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { message?: string };
+      return { ok: false, error: data.message ?? 'Registration failed. Please try again.' };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Network error. Please try again.' };
+  }
+}
+
 export async function registerEnrollment(payload: RegisterPayload): Promise<RegisterResult> {
   const { tenantId, ...body } = payload;
   try {

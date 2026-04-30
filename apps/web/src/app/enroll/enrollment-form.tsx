@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect, type FormEvent } from 'react';
-import { sendOtp, registerEnrollment, type EnrollmentPrefill } from './actions';
+import { sendOtp, registerEnrollment, registerFirmEnrollment, type EnrollmentPrefill } from './actions';
 import { useRouter } from 'next/navigation';
 
 // ── Address suggestion (from /api/geocode/address) ────────────────────────────
@@ -25,15 +25,16 @@ interface ReferralPrefill {
 }
 
 interface EnrollmentFormProps {
-  prefill:         EnrollmentPrefill | null;
-  providerId:      string | null;
-  tenantId:        string | null;
-  referralPrefill: ReferralPrefill | null;
+  prefill:           EnrollmentPrefill | null;
+  providerId:        string | null;
+  tenantId:          string | null;
+  referralPrefill:   ReferralPrefill | null;
+  isFirmEnrollment?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill }: EnrollmentFormProps) {
+export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill, isFirmEnrollment = false }: EnrollmentFormProps) {
   const router = useRouter();
 
   // Form fields — provider prefill wins over referral prefill; referral prefill wins over empty
@@ -51,9 +52,9 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill 
   const [confirmPwd,   setConfirmPwd]   = useState('');
   const [agreeTerms,   setAgreeTerms]   = useState(false);
 
-  // OTP state
+  // OTP state — firm enrollments skip OTP (new account, no existing email on record)
   const originalEmail = prefill?.email ?? referralPrefill?.email ?? '';
-  const emailChanged  = email.trim().toLowerCase() !== originalEmail.trim().toLowerCase();
+  const emailChanged  = !isFirmEnrollment && email.trim().toLowerCase() !== originalEmail.trim().toLowerCase();
   const [otpSent,      setOtpSent]      = useState(false);
   const [otpCode,      setOtpCode]      = useState('');
   const [otpVerified,  setOtpVerified]  = useState(false);
@@ -144,7 +145,7 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill 
     if (password.length < 8) return 'Password must be at least 8 characters.';
     if (password !== confirmPwd) return 'Passwords do not match.';
     if (!agreeTerms) return 'You must agree to the Terms & Conditions to continue.';
-    if (emailChanged && !otpCode.trim()) return 'Enter the verification code sent to your new email address.';
+    if (!isFirmEnrollment && emailChanged && !otpCode.trim()) return 'Enter the verification code sent to your new email address.';
     return null;
   }
 
@@ -157,27 +158,47 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill 
     const validationError = validate();
     if (validationError) { setSubmitError(validationError); return; }
 
-    if (!providerId || !tenantId) {
+    setSubmitting(true);
+
+    let result;
+    if (isFirmEnrollment && tenantId) {
+      // Law firm coming from referral status page — use firm-specific enrollment endpoint
+      result = await registerFirmEnrollment({
+        tenantId,
+        companyName:  companyName.trim(),
+        email:        email.trim(),
+        password,
+        firstName:    firstName.trim(),
+        lastName:     lastName.trim() || undefined,
+        phone:        phone.trim() || undefined,
+        addressLine1: addressLine1.trim() || undefined,
+        city:         city.trim() || undefined,
+        state:        state.trim() || undefined,
+        postalCode:   postalCode.trim() || undefined,
+      });
+    } else if (providerId && tenantId) {
+      // Provider self-enrollment from network directory
+      result = await registerEnrollment({
+        providerId,
+        companyName:  companyName.trim(),
+        email:        email.trim(),
+        password,
+        firstName:    firstName.trim(),
+        lastName:     lastName.trim() || undefined,
+        phone:        phone.trim() || undefined,
+        addressLine1: addressLine1.trim() || undefined,
+        city:         city.trim() || undefined,
+        state:        state.trim() || undefined,
+        postalCode:   postalCode.trim() || undefined,
+        otpCode:      emailChanged ? otpCode.trim() : undefined,
+        tenantId,
+      });
+    } else {
+      setSubmitting(false);
       setSubmitError('Missing provider or tenant context. Please return to the network directory and try again.');
       return;
     }
 
-    setSubmitting(true);
-    const result = await registerEnrollment({
-      providerId:   providerId,
-      companyName:  companyName.trim(),
-      email:        email.trim(),
-      password,
-      firstName:    firstName.trim(),
-      lastName:     lastName.trim() || undefined,
-      phone:        phone.trim() || undefined,
-      addressLine1: addressLine1.trim() || undefined,
-      city:         city.trim() || undefined,
-      state:        state.trim() || undefined,
-      postalCode:   postalCode.trim() || undefined,
-      otpCode:      emailChanged ? otpCode.trim() : undefined,
-      tenantId,
-    });
     setSubmitting(false);
 
     if (result.ok) {

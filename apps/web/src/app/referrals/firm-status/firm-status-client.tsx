@@ -13,6 +13,7 @@ interface Comment {
 
 interface ThreadData {
   referralId:   string;
+  tenantId:     string;
   status:       string;
   clientName:   string;
   service:      string;
@@ -154,7 +155,11 @@ export function FirmStatusClient({ token, data }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const loginUrl = 'https://careconnect-demo.legalsynq.com/login';
-  const enrollUrl = '/enroll';
+  const enrollParams = new URLSearchParams({
+    tenantId: data.tenantId,
+    ...(data.referrerName ? { contact: data.referrerName } : {}),
+  });
+  const enrollUrl = `/enroll?${enrollParams.toString()}`;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

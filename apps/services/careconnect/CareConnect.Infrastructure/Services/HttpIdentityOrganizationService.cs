@@ -271,6 +271,72 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         }
     }
 
+    // ── CC2-ENROLL-FIRM: Law firm self-enrollment ────────────────────────────
+
+    public async Task<Guid?> EnsureLawFirmOrganizationAsync(
+        Guid              tenantId,
+        string            firmName,
+        string            contactEmail,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+        {
+            _logger.LogDebug(
+                "CC2-ENROLL-FIRM Identity law-firm org creation skipped (BaseUrl not configured) for '{FirmName}'.",
+                firmName);
+            return null;
+        }
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var body = new { tenantId, firmName, contactEmail };
+
+            using var response = await client.PostAsJsonAsync(
+                "api/admin/organizations/law-firm", body, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "CC2-ENROLL-FIRM Identity law-firm org creation returned HTTP {Status} for '{FirmName}'.",
+                    (int)response.StatusCode, firmName);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<CreateLawFirmOrgResponse>(
+                cancellationToken: cts.Token);
+
+            if (result is null || result.Id == Guid.Empty)
+            {
+                _logger.LogWarning(
+                    "CC2-ENROLL-FIRM Identity law-firm org creation returned null or empty Id for '{FirmName}'.",
+                    firmName);
+                return null;
+            }
+
+            _logger.LogInformation(
+                "CC2-ENROLL-FIRM Identity org {OrgId} {IsNew} for law firm '{FirmName}'.",
+                result.Id, result.IsNew ? "created" : "already exists", firmName);
+
+            return result.Id;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "CC2-ENROLL-FIRM Identity law-firm org creation timed out for '{FirmName}'.", firmName);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "CC2-ENROLL-FIRM Identity law-firm org creation failed for '{FirmName}'.", firmName);
+            return null;
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildIdentityClient()
@@ -290,6 +356,18 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
     }
 
     // ── Private response models ───────────────────────────────────────────────
+
+    private sealed class CreateLawFirmOrgResponse
+    {
+        [JsonPropertyName("id")]
+        public Guid   Id    { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name  { get; set; } = string.Empty;
+
+        [JsonPropertyName("isNew")]
+        public bool   IsNew { get; set; }
+    }
 
     private sealed class CreateProviderOrgResponse
     {

@@ -68,6 +68,23 @@ public interface IIdentityOrganizationService
         string            firstName,
         string?           lastName,
         CancellationToken ct = default);
+
+    // ── CC2-ENROLL-FIRM: Law firm self-enrollment — org creation ─────────────
+
+    /// <summary>
+    /// Creates or resolves a minimal LAW_FIRM Organization in Identity for a law firm
+    /// self-enrolling via the CareConnect portal from a referral status page.
+    ///
+    /// Idempotency: keyed on (tenantId, contactEmail). Repeated calls with the same inputs
+    /// return the same org ID.
+    ///
+    /// Returns the Identity OrganizationId on success, null on any failure.
+    /// </summary>
+    Task<Guid?> EnsureLawFirmOrganizationAsync(
+        Guid              tenantId,
+        string            firmName,
+        string            contactEmail,
+        CancellationToken ct = default);
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────
