@@ -90,6 +90,27 @@ if [ -n "$ROOT_NEXT_REAL" ] && [ -d "$ROOT_NEXT_REAL" ]; then
     echo "[dedup] Linked apps/web/node_modules/next → $ROOT_NEXT_REAL"
   fi
 fi
+# Deduplicate React for apps/web: running `pnpm add` inside apps/web creates a
+# separate pnpm store (apps/web/node_modules/.pnpm/) with its own React copy.
+# This creates two React instances — one resolved by webpack bundles (apps/web
+# local store), another used by Next.js's SSR renderer (root store) — causing:
+#   "TypeError: Cannot read properties of null (reading 'useContext')"
+# during static page prerendering (e.g. /404, /500 via pages/_error.js).
+# Fix: force apps/web/node_modules/react → same physical directory as root.
+PNPM_REACT="$ROOT/node_modules/.pnpm/react@18.3.1/node_modules/react"
+PNPM_REACT_DOM="$ROOT/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom"
+WEB_REACT_REAL="$(readlink -f "$WEB_NM/react" 2>/dev/null || true)"
+WEB_REACT_DOM_REAL="$(readlink -f "$WEB_NM/react-dom" 2>/dev/null || true)"
+if [ -d "$PNPM_REACT" ] && [ "$WEB_REACT_REAL" != "$PNPM_REACT" ]; then
+  rm -rf "$WEB_NM/react"
+  ln -s "$PNPM_REACT" "$WEB_NM/react"
+  echo "[dedup] Linked apps/web/node_modules/react → root pnpm store"
+fi
+if [ -d "$PNPM_REACT_DOM" ] && [ "$WEB_REACT_DOM_REAL" != "$PNPM_REACT_DOM" ]; then
+  rm -rf "$WEB_NM/react-dom"
+  ln -s "$PNPM_REACT_DOM" "$WEB_NM/react-dom"
+  echo "[dedup] Linked apps/web/node_modules/react-dom → root pnpm store"
+fi
 cd "$ROOT/apps/web"
 rm -rf .next
 # Remove stray app-level lockfile so Next.js sees only the workspace-root
