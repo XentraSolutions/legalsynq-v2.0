@@ -206,6 +206,71 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         }
     }
 
+    // ── CC2-ENROLL: Self-enrollment — direct password registration ────────────
+
+    /// <inheritdoc />
+    public async Task<SelfRegisterResult?> RegisterUserDirectlyAsync(
+        Guid              orgId,
+        string            email,
+        string            password,
+        string            firstName,
+        string?           lastName,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+        {
+            _logger.LogDebug(
+                "CC2-ENROLL Identity self-register skipped (BaseUrl not configured) for org {OrgId}.", orgId);
+            return null;
+        }
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var body = new { email, password, firstName, lastName };
+
+            using var response = await client.PostAsJsonAsync(
+                $"api/admin/organizations/{orgId}/self-register", body, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "CC2-ENROLL Identity self-register returned HTTP {Status} for org {OrgId}.",
+                    (int)response.StatusCode, orgId);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<SelfRegisterResponse>(
+                cancellationToken: cts.Token);
+
+            if (result is null || result.UserId == Guid.Empty)
+            {
+                _logger.LogWarning(
+                    "CC2-ENROLL Identity self-register returned null/empty userId for org {OrgId}.", orgId);
+                return null;
+            }
+
+            _logger.LogInformation(
+                "CC2-ENROLL Identity user {UserId} {IsNew} for org {OrgId}.",
+                result.UserId, result.IsNew ? "created" : "already existed", orgId);
+
+            return new SelfRegisterResult { UserId = result.UserId, IsNew = result.IsNew };
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("CC2-ENROLL Identity self-register timed out for org {OrgId}.", orgId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CC2-ENROLL Identity self-register failed for org {OrgId}.", orgId);
+            return null;
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildIdentityClient()
@@ -251,5 +316,14 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
         [JsonPropertyName("invitationSent")]
         public bool  InvitationSent { get; set; }
+    }
+
+    private sealed class SelfRegisterResponse
+    {
+        [JsonPropertyName("userId")]
+        public Guid UserId { get; set; }
+
+        [JsonPropertyName("isNew")]
+        public bool IsNew  { get; set; }
     }
 }

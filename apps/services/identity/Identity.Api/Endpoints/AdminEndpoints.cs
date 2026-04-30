@@ -95,6 +95,8 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/organizations/{id:guid}",                          AdminEndpointsLscc010.GetOrganizationById);
         // CC2-INT-B04: M2M user provisioning for provider activation (no permission gate — internal only)
         routes.MapPost("/api/admin/organizations/{id:guid}/provision-user",          AdminEndpointsLscc010.ProvisionProviderUser);
+        // CC2-ENROLL: Self-enrollment — creates active user with direct password (no invitation email)
+        routes.MapPost("/api/admin/organizations/{id:guid}/self-register",           AdminEndpointsLscc010.SelfRegisterUser);
         routes.MapPut("/api/admin/organizations/{id:guid}", UpdateOrganization);
         routes.MapPatch("/api/admin/organizations/{id:guid}/provider-mode", UpdateOrganizationProviderMode);
 
@@ -7563,6 +7565,101 @@ public static partial class AdminEndpointsLscc010
             new ProvisionProviderUserResponse(user.Id, invitation.Id, IsNew: true, invitationSent));
     }
 
+    // =========================================================================
+    // CC2-ENROLL: Self-enrollment — direct password registration (no invitation)
+    // =========================================================================
+
+    /// <summary>
+    /// POST /api/admin/organizations/{orgId}/self-register
+    ///
+    /// CC2-ENROLL: M2M endpoint called by CareConnect during self-enrollment.
+    /// Creates an immediately ACTIVE Identity user with the caller-supplied password.
+    /// No invitation email is sent — the user has already chosen their password
+    /// in the enrollment form.
+    ///
+    /// Idempotent: if a user with this email already exists in the org's tenant
+    /// the existing user is returned (isNew=false) and no duplicate is created.
+    ///
+    /// No permission guard — trusted internal M2M path (same policy as provision-user).
+    /// </summary>
+    public static async Task<IResult> SelfRegisterUser(
+        Guid                    orgId,
+        SelfRegisterUserRequest body,
+        IdentityDbContext       db,
+        IPasswordHasher         passwordHasher,
+        IAuditEventClient       auditClient,
+        ILoggerFactory          loggerFactory,
+        CancellationToken       ct)
+    {
+        var logger = loggerFactory.CreateLogger("AdminEndpointsLscc010.SelfRegisterUser");
+
+        if (string.IsNullOrWhiteSpace(body.Email))
+            return Results.BadRequest(new { error = "email is required." });
+        if (string.IsNullOrWhiteSpace(body.Password))
+            return Results.BadRequest(new { error = "password is required." });
+        if (string.IsNullOrWhiteSpace(body.FirstName))
+            return Results.BadRequest(new { error = "firstName is required." });
+
+        var org = await db.Organizations
+            .AsNoTracking()
+            .Where(o => o.Id == orgId)
+            .Select(o => new { o.Id, o.TenantId, o.Name })
+            .FirstOrDefaultAsync(ct);
+
+        if (org is null)
+            return Results.NotFound(new { error = $"Organization '{orgId}' not found." });
+
+        var emailLower = body.Email.ToLowerInvariant().Trim();
+
+        // Idempotency: return existing user if already present in the tenant
+        var existingUser = await db.Users
+            .AsNoTracking()
+            .Where(u => u.TenantId == org.TenantId && u.Email == emailLower)
+            .Select(u => new { u.Id })
+            .FirstOrDefaultAsync(ct);
+
+        if (existingUser is not null)
+        {
+            logger.LogInformation(
+                "CC2-ENROLL SelfRegisterUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
+                emailLower, org.TenantId, orgId);
+            return Results.Ok(new SelfRegisterUserResponse(existingUser.Id, IsNew: false));
+        }
+
+        var lastName = string.IsNullOrWhiteSpace(body.LastName) ? "User" : body.LastName.Trim();
+        var hash     = passwordHasher.Hash(body.Password);
+        var user     = User.Create(org.TenantId, emailLower, hash, body.FirstName.Trim(), lastName);
+        // User.Create produces an active user by default — no Deactivate() call here.
+        db.Users.Add(user);
+        await db.SaveChangesAsync(ct);
+
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.self.enrolled",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = org.TenantId.ToString() },
+            Actor         = new AuditEventActorDto { Type = ActorType.System, Name = "careconnect-enrollment" },
+            Entity        = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action        = "SelfEnrolled",
+            Description   = $"User '{emailLower}' self-enrolled via CareConnect enrollment form (org {orgId}).",
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.self.enrolled", user.Id.ToString()),
+            Tags           = ["user-management", "provider", "self-enrollment"],
+        });
+
+        logger.LogInformation(
+            "CC2-ENROLL SelfRegisterUser: user {UserId} ({Email}) created and active in org {OrgId}.",
+            user.Id, emailLower, orgId);
+
+        return Results.Created(
+            $"/api/admin/users/{user.Id}",
+            new SelfRegisterUserResponse(user.Id, IsNew: true));
+    }
+
     // Keep the request/response records accessible to the route registration above
     public record CreateProviderOrgRequest(
         Guid   TenantId,
@@ -7584,6 +7681,16 @@ public static partial class AdminEndpointsLscc010
         Guid? InvitationId,
         bool  IsNew,
         bool  InvitationSent);
+
+    public record SelfRegisterUserRequest(
+        string  Email,
+        string  Password,
+        string  FirstName,
+        string? LastName = null);
+
+    public record SelfRegisterUserResponse(
+        Guid UserId,
+        bool IsNew);
 
     // =========================================================================
     // LS-COR-AUT-011D: AUTHORIZATION SIMULATION

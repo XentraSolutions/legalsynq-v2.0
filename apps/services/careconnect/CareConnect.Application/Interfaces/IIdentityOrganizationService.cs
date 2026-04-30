@@ -52,9 +52,31 @@ public interface IIdentityOrganizationService
         string            firstName,
         string?           lastName,
         CancellationToken ct = default);
+
+    // ── CC2-ENROLL: Self-enrollment — direct password registration ────────────
+
+    /// <summary>
+    /// Creates an immediately ACTIVE Identity user with the caller-supplied password.
+    /// No invitation email is sent — the user has set their password in the enrollment form.
+    ///
+    /// Returns (UserId, isNew) on success, null on any failure.
+    /// </summary>
+    Task<SelfRegisterResult?> RegisterUserDirectlyAsync(
+        Guid              orgId,
+        string            email,
+        string            password,
+        string            firstName,
+        string?           lastName,
+        CancellationToken ct = default);
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────
+
+public sealed class SelfRegisterResult
+{
+    public Guid UserId { get; init; }
+    public bool IsNew  { get; init; }
+}
 
 public sealed class ProvisionProviderUserResult
 {
