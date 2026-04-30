@@ -43,6 +43,18 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
   const [hoveredId,   setHovered]     = useState<string | null>(null);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  const [dark, setDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('cc-network-theme') === 'dark';
+  });
+  function toggleDark() {
+    setDark(prev => {
+      const next = !prev;
+      localStorage.setItem('cc-network-theme', next ? 'dark' : 'light');
+      return next;
+    });
+  }
+
   const [markers, setMarkers] = useState<PublicProviderMarker[]>(detail.markers);
 
   useEffect(() => {
@@ -137,10 +149,10 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
   const shownCount        = filtered.length;
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+    <div data-theme={dark ? 'dark' : 'light'} className="flex flex-col h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="flex-shrink-0 border-b border-gray-200 bg-white shadow-sm">
+      <header className="flex-shrink-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
         <div className="flex items-center gap-3 px-5 pt-3 pb-2">
           {/* Tenant logo */}
           <img
@@ -149,17 +161,26 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
             className="h-8 w-auto object-contain flex-shrink-0"
             onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
           />
-          <h1 className="text-lg font-bold text-gray-900 leading-tight">
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">
             Provider Network
           </h1>
-          <span className="ml-auto text-sm text-gray-500">
+          <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
             {detail.providers.length} provider{detail.providers.length !== 1 ? 's' : ''}
           </span>
+
+          {/* Dark / light toggle */}
+          <button
+            onClick={toggleDark}
+            title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="ml-1 w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+          >
+            <i className={dark ? 'ri-sun-line text-base' : 'ri-moon-line text-base'} />
+          </button>
         </div>
 
         <div className="flex items-center gap-2 px-5 pb-2.5">
           {/* View tabs */}
-          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+          <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex-shrink-0">
             {(['split', 'list', 'map'] as ViewMode[]).map(m => (
               <button
                 key={m}
@@ -167,8 +188,8 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
                 className={[
                   'px-3 py-1.5 text-xs font-medium capitalize transition-colors',
                   viewMode === m
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-50',
+                    ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
                 ].join(' ')}
               >
                 {m}
@@ -178,15 +199,15 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
 
           {/* Search */}
           <div className="flex-1 relative">
-            <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none" />
+            <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm pointer-events-none" />
             <input
               type="search"
               placeholder="Search by name, location, or specialty…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg
-                         focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100
-                         placeholder-gray-400 bg-white"
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+                         focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
+                         placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
             />
           </div>
 
@@ -196,8 +217,8 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
             className={[
               'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg flex-shrink-0 transition-colors',
               showAll
-                ? 'bg-gray-900 text-white border-gray-900'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 border-gray-900 dark:border-gray-100'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500',
             ].join(' ')}
           >
             <i className="ri-filter-3-line" />
@@ -227,14 +248,14 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
           {viewMode === 'split' && (
             <>
               {/* Provider list column */}
-              <div className="w-[300px] flex-shrink-0 border-r border-gray-200 overflow-y-auto bg-white">
+              <div className="w-[300px] flex-shrink-0 border-r border-gray-200 dark:border-gray-700 overflow-y-auto bg-white dark:bg-gray-900">
                 {filtered.length === 0 ? (
                   <div className="p-6 text-center">
-                    <i className="ri-map-pin-line text-2xl text-gray-300 mb-2 block" />
+                    <i className="ri-map-pin-line text-2xl text-gray-300 dark:text-gray-600 mb-2 block" />
                     <p className="text-sm text-gray-400">No providers match your search</p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100">
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
                     {filtered.map((provider, i) => (
                       <ProviderCard
                         key={provider.id}
@@ -273,10 +294,10 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
 
           {/* List mode: rich provider grid */}
           {viewMode === 'list' && (
-            <div className="flex-1 overflow-y-auto bg-gray-50 p-5">
+            <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950 p-5">
               {filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <i className="ri-map-pin-line text-3xl text-gray-300 mb-3 block" />
+                  <i className="ri-map-pin-line text-3xl text-gray-300 dark:text-gray-600 mb-3 block" />
                   <p className="text-sm text-gray-400">No providers match your search</p>
                 </div>
               ) : (
@@ -356,8 +377,12 @@ const ProviderCard = forwardRef<
         'transition-colors',
         compact ? 'p-3' : 'p-4 rounded-xl border',
         hovered || selected
-          ? compact ? 'bg-blue-50' : 'border-blue-300 bg-blue-50 shadow-sm'
-          : compact ? 'hover:bg-gray-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm',
+          ? compact
+            ? 'bg-blue-50 dark:bg-blue-950/40'
+            : 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-950/40 shadow-sm'
+          : compact
+            ? 'hover:bg-gray-50 dark:hover:bg-gray-800'
+            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm',
       ].join(' ')}
     >
       <div className="flex items-start gap-3">
@@ -365,39 +390,39 @@ const ProviderCard = forwardRef<
         <div className={[
           'rounded-full text-white text-xs font-bold flex-shrink-0 flex items-center justify-center',
           compact ? 'w-6 h-6 mt-0.5' : 'w-8 h-8',
-          selected ? 'bg-blue-600' : 'bg-gray-400',
+          selected ? 'bg-blue-600' : 'bg-gray-400 dark:bg-gray-500',
         ].join(' ')}>
           {number}
         </div>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className={['font-semibold text-gray-900 leading-tight', compact ? 'text-sm' : 'text-base'].join(' ')}>
+          <p className={['font-semibold text-gray-900 dark:text-white leading-tight', compact ? 'text-sm' : 'text-base'].join(' ')}>
             {provider.name}
           </p>
           {provider.organizationName && (
-            <p className={['text-gray-500 mt-0.5 truncate', compact ? 'text-xs' : 'text-sm'].join(' ')}>
+            <p className={['text-gray-500 dark:text-gray-400 mt-0.5 truncate', compact ? 'text-xs' : 'text-sm'].join(' ')}>
               {provider.organizationName}
             </p>
           )}
-          <p className={['text-gray-400 mt-0.5', compact ? 'text-xs' : 'text-sm'].join(' ')}>
+          <p className={['text-gray-400 dark:text-gray-500 mt-0.5', compact ? 'text-xs' : 'text-sm'].join(' ')}>
             {provider.city}, {provider.state}
             {!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}
           </p>
           {provider.phone && !compact && (
-            <p className="text-sm text-gray-500 mt-1 flex items-center gap-1.5">
-              <i className="ri-phone-line text-gray-400 text-xs" />
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
+              <i className="ri-phone-line text-gray-400 dark:text-gray-500 text-xs" />
               {provider.phone}
             </p>
           )}
           {provider.phone && compact && (
-            <p className="text-xs text-gray-400 mt-0.5">{provider.phone}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{provider.phone}</p>
           )}
 
           {/* Badges */}
           <div className="flex flex-wrap gap-1.5 mt-2">
             {provider.primaryCategory && (
-              <span className={['bg-gray-100 text-gray-600 rounded-full font-medium', compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'].join(' ')}>
+              <span className={['bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full font-medium', compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'].join(' ')}>
                 {provider.primaryCategory}
               </span>
             )}
@@ -405,8 +430,8 @@ const ProviderCard = forwardRef<
               'rounded-full font-medium flex items-center gap-1',
               compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5',
               provider.acceptingReferrals
-                ? 'bg-green-50 text-green-700'
-                : 'bg-gray-100 text-gray-500',
+                ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
             ].join(' ')}>
               {provider.acceptingReferrals ? (
                 <><i className="ri-checkbox-circle-line" />Accepting</>
@@ -422,7 +447,7 @@ const ProviderCard = forwardRef<
               href={enrollUrl}
               onClick={e => e.stopPropagation()}
               className={[
-                'inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-800 transition-colors',
+                'inline-flex items-center gap-1 font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors',
                 compact ? 'text-xs mt-1.5' : 'text-sm mt-2',
               ].join(' ')}
               title="Get Full Portal Access"
@@ -441,7 +466,7 @@ const ProviderCard = forwardRef<
             compact ? 'px-2 py-1' : 'px-3 py-1.5',
             selected
               ? 'bg-blue-600 text-white hover:bg-blue-700'
-              : 'bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200',
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-700 dark:hover:text-blue-400',
           ].join(' ')}
           title={selected ? 'Remove from selection' : 'Select provider'}
         >
@@ -644,13 +669,13 @@ function ReferralPanel({
   const hasProviders = providers.length > 0;
 
   return (
-    <div className="w-1/3 min-w-[340px] max-w-[480px] flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden shadow-sm">
+    <div className="w-1/3 min-w-[340px] max-w-[480px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col overflow-hidden shadow-sm">
 
       {/* Panel header */}
-      <div className="flex-shrink-0 px-5 py-4 border-b border-gray-100 bg-white">
+      <div className="flex-shrink-0 px-5 py-4 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-gray-900">Send a Referral</h2>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Send a Referral</h2>
             <p className="text-xs text-gray-400 mt-0.5">
               {hasProviders
                 ? `${providers.length} provider${providers.length !== 1 ? 's' : ''} selected`
@@ -660,7 +685,7 @@ function ReferralPanel({
           {hasProviders && (
             <button
               onClick={() => { onClearSelection(); setState('form'); setErrors({}); setErrMsg(''); }}
-              className="text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
+              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline transition-colors"
             >
               Clear
             </button>
@@ -671,8 +696,8 @@ function ReferralPanel({
         {hasProviders && (
           <div className="flex flex-wrap gap-1.5 mt-3">
             {providers.map(p => (
-              <span key={p.id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-200">
-                <i className="ri-hospital-line text-blue-500" />
+              <span key={p.id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full border border-blue-200 dark:border-blue-700">
+                <i className="ri-hospital-line text-blue-500 dark:text-blue-400" />
                 {p.name.length > 22 ? p.name.slice(0, 22) + '…' : p.name}
               </span>
             ))}
@@ -686,38 +711,38 @@ function ReferralPanel({
         {/* Empty state */}
         {!hasProviders && (
           <div className="flex flex-col items-center justify-center h-full px-6 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-4">
               <i className="ri-send-plane-line text-blue-400 text-3xl" />
             </div>
-            <p className="text-sm font-semibold text-gray-700 mb-2">No providers selected</p>
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">No providers selected</p>
             <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
-              Browse the directory and click <strong className="text-gray-600">Select</strong> on one or more providers to send them a referral.
+              Browse the directory and click <strong className="text-gray-600 dark:text-gray-300">Select</strong> on one or more providers to send them a referral.
             </p>
             <div className="mt-6 w-full max-w-xs space-y-2 text-left">
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <i className="ri-briefcase-line text-xs text-indigo-600" />
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className="ri-briefcase-line text-xs text-indigo-600 dark:text-indigo-400" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gray-700">Your firm info</p>
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Your firm info</p>
                   <p className="text-xs text-gray-400">Name and email of the referring party</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                <div className="w-6 h-6 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <i className="ri-user-heart-line text-xs text-teal-600" />
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                <div className="w-6 h-6 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className="ri-user-heart-line text-xs text-teal-600 dark:text-teal-400" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gray-700">Patient details</p>
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Patient details</p>
                   <p className="text-xs text-gray-400">Name, phone, and treatment type</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <i className="ri-hospital-line text-xs text-gray-600" />
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className="ri-hospital-line text-xs text-gray-600 dark:text-gray-300" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gray-700">Providers</p>
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Providers</p>
                   <p className="text-xs text-gray-400">Send to one or multiple providers at once</p>
                 </div>
               </div>
@@ -729,12 +754,12 @@ function ReferralPanel({
         {/* Error */}
         {hasProviders && state === 'error' && (
           <div className="p-8 text-center space-y-4">
-            <div className="mx-auto w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
+            <div className="mx-auto w-14 h-14 rounded-full bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
               <i className="ri-error-warning-line text-red-500 text-3xl" />
             </div>
             <div>
-              <p className="text-base font-semibold text-gray-900">Submission failed</p>
-              <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
+              <p className="text-base font-semibold text-gray-900 dark:text-white">Submission failed</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{errorMsg}</p>
             </div>
             <button
               onClick={() => setState('form')}
@@ -845,12 +870,12 @@ function ReferralPanel({
                       className={panelInputCls(!!fieldErrors['patientAddress'])}
                     />
                     {showAddrSugg && addrSuggestions.length > 0 && (
-                      <ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto text-xs">
+                      <ul className="absolute z-50 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-44 overflow-y-auto text-xs">
                         {addrSuggestions.map((s, i) => (
                           <li
                             key={i}
                             onMouseDown={() => applyAddrSuggestion(s)}
-                            className="px-3 py-2 cursor-pointer hover:bg-blue-50 truncate"
+                            className="px-3 py-2 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-900 dark:text-white truncate"
                           >
                             {s.displayName}
                           </li>
@@ -915,33 +940,33 @@ function ReferralPanel({
                 {providers.map(p => {
                   const file = providerFiles[p.id] ?? null;
                   return (
-                    <div key={p.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-2">
+                    <div key={p.id} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 space-y-2">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                          <i className="ri-hospital-line text-xs text-blue-600" />
+                        <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
+                          <i className="ri-hospital-line text-xs text-blue-600 dark:text-blue-400" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-800 truncate">{p.name}</p>
+                          <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.name}</p>
                           <p className="text-xs text-gray-400 truncate">{p.city}, {p.state}</p>
                         </div>
                       </div>
                       {file ? (
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-blue-50 border border-blue-200">
-                          <i className="ri-file-line text-blue-600 text-sm flex-shrink-0" />
-                          <span className="text-xs text-blue-700 truncate flex-1">{file.name}</span>
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700">
+                          <i className="ri-file-line text-blue-600 dark:text-blue-400 text-sm flex-shrink-0" />
+                          <span className="text-xs text-blue-700 dark:text-blue-300 truncate flex-1">{file.name}</span>
                           <button
                             type="button"
                             onClick={() => setProviderFiles(prev => ({ ...prev, [p.id]: null }))}
                             disabled={state === 'submitting'}
-                            className="text-blue-400 hover:text-blue-600 flex-shrink-0"
+                            className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 flex-shrink-0"
                           >
                             <i className="ri-close-line text-sm" />
                           </button>
                         </div>
                       ) : (
-                        <label className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border border-dashed cursor-pointer transition-colors ${state === 'submitting' ? 'opacity-50 pointer-events-none' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'}`}>
-                          <i className="ri-upload-2-line text-gray-400 text-sm" />
-                          <span className="text-xs text-gray-500">Attach document</span>
+                        <label className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border border-dashed cursor-pointer transition-colors ${state === 'submitting' ? 'opacity-50 pointer-events-none' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}>
+                          <i className="ri-upload-2-line text-gray-400 dark:text-gray-500 text-sm" />
+                          <span className="text-xs text-gray-500 dark:text-gray-400">Attach document</span>
                           <input
                             type="file"
                             className="hidden"
@@ -967,9 +992,9 @@ function ReferralPanel({
               const hasFirmErr    = !!(fieldErrors['firmName']    || fieldErrors['email']);
               const sections = [hasPatientErr && 'Patient', hasFirmErr && 'Law firm'].filter(Boolean).join(' and ');
               return (
-                <div className="mx-5 mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2">
+                <div className="mx-5 mb-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 flex items-start gap-2">
                   <i className="ri-error-warning-line text-red-500 text-sm mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-red-700">
+                  <p className="text-xs text-red-700 dark:text-red-300">
                     Please complete required fields in the <strong>{sections}</strong> section{sections.includes('and') ? 's' : ''}.
                   </p>
                 </div>
@@ -978,7 +1003,7 @@ function ReferralPanel({
           </div>
 
           {/* Submit — pinned outside scroll area */}
-          <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 bg-white">
+          <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900">
             <button
               type="submit"
               disabled={state === 'submitting'}
@@ -1025,7 +1050,7 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
   return (
     <div className="flex gap-3 text-xs">
       <span className="w-36 flex-shrink-0 text-gray-400 font-medium">{label}</span>
-      <span className="text-gray-800 font-medium break-words">{value}</span>
+      <span className="text-gray-800 dark:text-gray-100 font-medium break-words">{value}</span>
     </div>
   );
 }
@@ -1048,16 +1073,16 @@ function ReferralConfirmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
 
         {/* ── SENDING screen ─────────────────────────────────────────────── */}
         {isSending && (
           <div className="flex flex-col items-center justify-center py-16 px-8 gap-5">
-            <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
-              <span className="w-7 h-7 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+            <div className="w-14 h-14 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+              <span className="w-7 h-7 border-[3px] border-blue-200 dark:border-blue-700 border-t-blue-600 rounded-full animate-spin" />
             </div>
             <div className="text-center">
-              <p className="text-base font-semibold text-gray-900">Sending referral…</p>
+              <p className="text-base font-semibold text-gray-900 dark:text-white">Sending referral…</p>
               <p className="text-xs text-gray-400 mt-1">Please wait while we notify the provider{providers.length !== 1 ? 's' : ''}.</p>
             </div>
           </div>
@@ -1068,30 +1093,30 @@ function ReferralConfirmModal({
           <>
             <div className="flex-1 overflow-y-auto">
               {/* Top success banner */}
-              <div className="px-6 pt-8 pb-6 text-center border-b border-gray-100">
-                <div className="mx-auto w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mb-4">
+              <div className="px-6 pt-8 pb-6 text-center border-b border-gray-100 dark:border-gray-700">
+                <div className="mx-auto w-16 h-16 rounded-full bg-green-50 dark:bg-green-900/30 flex items-center justify-center mb-4">
                   <i className="ri-checkbox-circle-fill text-green-500 text-4xl" />
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">Referral Sent!</h2>
-                <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Referral Sent!</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Successfully sent to{' '}
-                  <strong className="text-gray-700">
+                  <strong className="text-gray-700 dark:text-gray-200">
                     {providers.length} provider{providers.length !== 1 ? 's' : ''}
                   </strong>.
                 </p>
               </div>
 
               {/* Email copy notice */}
-              <div className="px-6 py-5 border-b border-gray-100">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700">
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <i className="ri-mail-check-line text-blue-500 text-sm" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-800">Check your inbox</p>
-                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Check your inbox</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
                       A copy of this referral has been sent to{' '}
-                      <strong className="text-gray-700">{form.email}</strong>. Use the link in that
+                      <strong className="text-gray-700 dark:text-gray-200">{form.email}</strong>. Use the link in that
                       email to track the referral status at any time.
                     </p>
                   </div>
@@ -1100,14 +1125,14 @@ function ReferralConfirmModal({
 
               {/* Activate account CTA */}
               <div className="px-6 py-5">
-                <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 p-4">
+                <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 border border-indigo-100 dark:border-indigo-700/50 p-4">
                   <div className="flex gap-3 items-start">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <i className="ri-rocket-line text-indigo-600 text-sm" />
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <i className="ri-rocket-line text-indigo-600 dark:text-indigo-400 text-sm" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-bold text-indigo-900">Activate your free account</p>
-                      <p className="text-xs text-indigo-700 mt-1 leading-relaxed">
+                      <p className="text-sm font-bold text-indigo-900 dark:text-indigo-200">Activate your free account</p>
+                      <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1 leading-relaxed">
                         Get a full dashboard to track all your referrals, view responses, and manage
                         your cases in one place — completely free.
                       </p>
@@ -1125,11 +1150,11 @@ function ReferralConfirmModal({
             </div>
 
             {/* Footer */}
-            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100">
+            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 dark:border-gray-700">
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                className="w-full py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 Done
               </button>
@@ -1141,13 +1166,13 @@ function ReferralConfirmModal({
         {!isSending && !isSent && (
           <>
             {/* Modal header */}
-            <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-100">
+            <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
                   <i className="ri-send-plane-line text-white text-base" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-gray-900">Review &amp; Confirm</h2>
+                  <h2 className="text-base font-bold text-gray-900 dark:text-white">Review &amp; Confirm</h2>
                   <p className="text-xs text-gray-400">
                     Sending to {providers.length} provider{providers.length !== 1 ? 's' : ''}
                   </p>
@@ -1193,20 +1218,20 @@ function ReferralConfirmModal({
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1.5">
                     <i className="ri-file-text-line" /> Notes
                   </p>
-                  <p className="text-xs text-gray-700 pl-1 leading-relaxed whitespace-pre-wrap">{form.notes.trim()}</p>
+                  <p className="text-xs text-gray-700 dark:text-gray-300 pl-1 leading-relaxed whitespace-pre-wrap">{form.notes.trim()}</p>
                 </div>
               )}
 
               {/* Providers */}
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5">
                   <i className="ri-hospital-line" /> Providers
                 </p>
                 <div className="space-y-1.5 pl-1">
                   {providers.map(p => {
                     const file = providerFiles[p.id];
                     return (
-                      <div key={p.id} className="flex items-center gap-2 text-xs text-gray-800">
+                      <div key={p.id} className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-100">
                         <i className="ri-checkbox-circle-fill text-blue-500 flex-shrink-0" />
                         <span className="font-medium">{p.name}</span>
                         {file && (
@@ -1222,11 +1247,11 @@ function ReferralConfirmModal({
             </div>
 
             {/* Footer actions */}
-            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex gap-3">
+            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 dark:border-gray-700 flex gap-3">
               <button
                 type="button"
                 onClick={onBack}
-                className="flex-1 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                className="flex-1 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 Go Back
               </button>
@@ -1261,20 +1286,20 @@ function SectionRow({
   children:  ReactNode;
 }) {
   return (
-    <div className="border-b border-gray-100">
-      <div className="flex items-center gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100">
+    <div className="border-b border-gray-100 dark:border-gray-700">
+      <div className="flex items-center gap-3 px-5 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
         <div className={`relative w-7 h-7 rounded-full ${avatarBg} flex items-center justify-center flex-shrink-0`}>
           <i className={`${icon} text-sm text-white`} />
           {hasError && (
-            <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white" />
+            <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white dark:border-gray-800" />
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className={`text-xs font-semibold uppercase tracking-wide ${hasError ? 'text-red-600' : 'text-gray-500'}`}>{title}</p>
+          <p className={`text-xs font-semibold uppercase tracking-wide ${hasError ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>{title}</p>
           <p className="text-xs text-gray-400">{subtitle}</p>
         </div>
         {badge !== undefined && (
-          <span className="w-5 h-5 rounded-full bg-gray-700 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+          <span className="w-5 h-5 rounded-full bg-gray-700 dark:bg-gray-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
             {badge}
           </span>
         )}
@@ -1293,7 +1318,7 @@ function PanelField({
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1.5">
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1.5">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
         {hint && <span className="ml-1 text-gray-400 font-normal">({hint})</span>}
@@ -1307,9 +1332,10 @@ function PanelField({
 function panelInputCls(hasError: boolean) {
   return [
     'w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 transition-colors',
+    'bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500',
     hasError
-      ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
-      : 'border-gray-200 focus:border-blue-400 focus:ring-blue-100',
+      ? 'border-red-300 dark:border-red-600 focus:border-red-400 dark:focus:border-red-500 focus:ring-red-100 dark:focus:ring-red-900/30'
+      : 'border-gray-200 dark:border-gray-600 focus:border-blue-400 dark:focus:border-blue-500 focus:ring-blue-100 dark:focus:ring-blue-900/30',
   ].join(' ');
 }
 
