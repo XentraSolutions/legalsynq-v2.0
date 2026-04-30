@@ -137,13 +137,13 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
         {/* Logo */}
         <div className="relative z-10 mb-auto">
           <Image
-            src="/legalsynq-logo-white.png"
-            alt="LegalSynq"
-            width={220}
-            height={52}
+            src="/careconnect-logo.png"
+            alt="CareConnect"
+            width={308}
+            height={73}
             priority
             unoptimized
-            className="h-12 w-auto"
+            className="h-[67px] w-auto"
           />
         </div>
 
@@ -196,25 +196,7 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
       {/* ── Right panel — login form ───────────────────────────────────────── */}
       <div className="flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 px-6 py-12 bg-gray-50">
 
-        {/* Mobile logo */}
-        <div className="lg:hidden mb-10">
-          <img
-            src="/careconnect-logo.png"
-            alt="CareConnect"
-            className="h-9 w-auto mx-auto"
-          />
-        </div>
-
         <div className="w-full max-w-sm">
-          {/* CareConnect logo above the form heading */}
-          <div className="mb-6">
-            <img
-              src="/careconnect-logo.png"
-              alt="CareConnect"
-              className="h-9 w-auto"
-            />
-          </div>
-
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Welcome back</h1>
             <p className="mt-1.5 text-sm text-gray-500">Sign in to your CareConnect portal</p>
