@@ -161,6 +161,9 @@ export interface ReferralDetail extends ReferralSummary {
   providerEmailStatus?:       string;
   providerEmailAttempts?:     number;
   providerEmailFailureReason?: string;
+  // CC-REFERRER-EMAIL: referrer identity returned by the backend for participant checks
+  referrerEmail?:             string | null;
+  referrerName?:              string | null;
 }
 
 export interface CreateReferralRequest {
