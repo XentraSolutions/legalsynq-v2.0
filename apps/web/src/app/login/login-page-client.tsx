@@ -139,11 +139,11 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
           <Image
             src="/careconnect-logo.png"
             alt="CareConnect"
-            width={308}
+            width={300}
             height={73}
             priority
             unoptimized
-            className="h-[67px] w-auto"
+            className="w-[300px] h-auto"
           />
         </div>
 

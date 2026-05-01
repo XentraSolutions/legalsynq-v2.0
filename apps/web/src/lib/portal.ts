@@ -11,7 +11,7 @@ export const PORTAL_CONFIGS = {
     landingPath:     '/careconnect/dashboard',
     showAppSwitcher: false,
     showBottomNav:   false,
-    logoSrc:         '/product-icons/synqconnect.png',
+    logoSrc:         '/careconnect-logo.png',
     logoLabel:       'CareConnect',
   },
 } as const;

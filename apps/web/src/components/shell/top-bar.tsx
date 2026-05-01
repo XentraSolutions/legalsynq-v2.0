@@ -79,15 +79,13 @@ export function TopBar() {
 
       {/* ── Logo — portal logo or tenant branding logo ───────────────────── */}
       {portalConfig ? (
-        <Link href={portalConfig.landingPath} className="flex items-center gap-2.5 shrink-0">
+        <Link href={portalConfig.landingPath} className="flex items-center shrink-0">
           <img
             src={portalConfig.logoSrc}
             alt={portalConfig.logoLabel}
-            className="h-7 w-7 object-contain"
+            style={{ width: 300 }}
+            className="object-contain"
           />
-          <span className="text-white font-semibold text-[15px] tracking-tight">
-            {portalConfig.logoLabel}
-          </span>
         </Link>
       ) : (
         <Link href="/dashboard" className="flex items-center shrink-0">
