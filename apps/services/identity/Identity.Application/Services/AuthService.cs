@@ -70,6 +70,25 @@ public class AuthService : IAuthService
             tenant = await _tenantRepository.GetBySubdomainAsync(subNorm, ct);
         }
 
+        // AUTH-B01: Final fallback — use the Tenant-service-resolved TenantId when both
+        // code and subdomain lookups miss.  This handles the case where the common portal
+        // (e.g. careconnect-demo.legalsynq.com) has its canonical record in the Tenant
+        // service but the Identity idt_Tenants write-through row carries a different code
+        // or has no subdomain populated yet.  When found this way, we skip the
+        // ProvisioningStatus guard: the BFF already confirmed the tenant is active by
+        // resolving it from the Tenant service, so a Pending stub in Identity is just
+        // a stale write-through record, not a real provisioning-in-progress signal.
+        var tenantFoundViaIdFallback = false;
+        if (tenant is null && request.TenantId.HasValue && request.TenantId.Value != Guid.Empty)
+        {
+            _logger.LogInformation(
+                "AUTH-B01: Code+subdomain lookup missed for {Code}, trying TenantId fallback {TenantId}",
+                tenantCodeNorm, request.TenantId.Value);
+            tenant = await _tenantRepository.GetByIdAsync(request.TenantId.Value, ct);
+            if (tenant is not null)
+                tenantFoundViaIdFallback = true;
+        }
+
         if (tenant is null || !tenant.IsActive)
         {
             var reason = tenant is null ? "TenantNotFound" : "TenantInactive";
@@ -80,18 +99,24 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
-        if (tenant.ProvisioningStatus == ProvisioningStatus.Verifying)
+        // Skip provisioning-status guards when the tenant was resolved by the
+        // Tenant-service-authoritative TenantId: the stub in Identity may still be
+        // Pending, but the real tenant is live.
+        if (!tenantFoundViaIdFallback)
         {
-            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantVerificationRetrying", ipAddress: ipAddress);
-            throw new InvalidOperationException(
-                $"Tenant '{tenantCodeNorm}' is currently verifying DNS configuration. " +
-                "This process typically completes within a few minutes. Please try again shortly.");
-        }
+            if (tenant.ProvisioningStatus == ProvisioningStatus.Verifying)
+            {
+                EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantVerificationRetrying", ipAddress: ipAddress);
+                throw new InvalidOperationException(
+                    $"Tenant '{tenantCodeNorm}' is currently verifying DNS configuration. " +
+                    "This process typically completes within a few minutes. Please try again shortly.");
+            }
 
-        if (tenant.ProvisioningStatus != ProvisioningStatus.Active)
-        {
-            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotProvisioned", ipAddress: ipAddress);
-            throw new InvalidOperationException($"Tenant '{tenantCodeNorm}' is not fully provisioned (status: {tenant.ProvisioningStatus}). Please wait for setup to complete.");
+            if (tenant.ProvisioningStatus != ProvisioningStatus.Active)
+            {
+                EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotProvisioned", ipAddress: ipAddress);
+                throw new InvalidOperationException($"Tenant '{tenantCodeNorm}' is not fully provisioned (status: {tenant.ProvisioningStatus}). Please wait for setup to complete.");
+            }
         }
 
         var normalizedEmail = emailNorm;

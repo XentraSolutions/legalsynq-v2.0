@@ -120,6 +120,14 @@ public class Tenant
         var slug = SlugGenerator.Normalize(code);
         var name = displayName?.Trim() ?? slug;
 
+        // AUTH-B01: honour the caller-supplied status so stubs created for FK
+        // satisfaction can be marked Active immediately (the real tenant IS active
+        // — it just hasn't been written through to Identity yet).
+        var provisioningStatus = status is not null
+            && Enum.TryParse<ProvisioningStatus>(status, ignoreCase: true, out var parsed)
+            ? parsed
+            : ProvisioningStatus.Pending;
+
         var now = DateTime.UtcNow;
         return new Tenant
         {
@@ -129,7 +137,7 @@ public class Tenant
             IsActive                 = true,
             Subdomain                = subdomain?.Trim().ToLowerInvariant(),
             PreferredSubdomain       = subdomain?.Trim().ToLowerInvariant() ?? slug,
-            ProvisioningStatus       = ProvisioningStatus.Pending,
+            ProvisioningStatus       = provisioningStatus,
             ProvisioningFailureStage = ProvisioningFailureStage.None,
             VerificationAttemptCount = 0,
             IsVerificationRetryExhausted = false,

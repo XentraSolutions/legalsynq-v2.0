@@ -7714,7 +7714,10 @@ public static partial class AdminEndpointsLscc010
             try
             {
                 var code      = body.TenantId.ToString("N")[..12];
-                var rehydrated = Tenant.Rehydrate(id: body.TenantId, code: code);
+                // AUTH-B01: rehydrate as Active — the real tenant exists and is live;
+                // this stub satisfies the Identity FK constraint until the next full
+                // tenant write-through from the Tenant service occurs.
+                var rehydrated = Tenant.Rehydrate(id: body.TenantId, code: code, status: "Active");
                 db.Tenants.Add(rehydrated);
                 await db.SaveChangesAsync(ct);
             }

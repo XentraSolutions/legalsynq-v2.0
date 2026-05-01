@@ -85,7 +85,42 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const outgoingBody = JSON.stringify({ tenantCode, email, password, subdomain: rawSubdomain });
+  // AUTH-B01: Resolve the real TenantId from the Tenant service so Identity can
+  // use it as a fallback when its local code/subdomain lookup misses.  This handles
+  // the common portal (e.g. careconnect-demo.legalsynq.com) whose idt_Tenants
+  // write-through row may carry a different code or have no subdomain set.
+  let resolvedTenantId: string | null = null;
+  let resolvedTenantCode: string = tenantCode;
+  if (rawSubdomain) {
+    try {
+      const tenantRes = await fetch(
+        `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-subdomain/${encodeURIComponent(rawSubdomain)}`,
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+      if (tenantRes.ok) {
+        const tenantData = await tenantRes.json();
+        if (tenantData?.tenantId) {
+          resolvedTenantId = tenantData.tenantId as string;
+          // Prefer the Tenant-service-authoritative code over the raw subdomain slug.
+          if (tenantData?.code) resolvedTenantCode = tenantData.code as string;
+          console.log(`[login] AUTH-B01 tenant resolved: id=${resolvedTenantId} code=${resolvedTenantCode}`);
+        }
+      } else {
+        console.log(`[login] AUTH-B01 tenant resolve by-subdomain returned ${tenantRes.status}, proceeding without tenantId fallback`);
+      }
+    } catch (err) {
+      // Non-fatal — Identity will still try code+subdomain lookup as before.
+      console.warn(`[login] AUTH-B01 tenant resolve fetch failed:`, err);
+    }
+  }
+
+  const outgoingBody = JSON.stringify({
+    tenantCode: resolvedTenantCode,
+    email,
+    password,
+    subdomain: rawSubdomain,
+    tenantId: resolvedTenantId,
+  });
   const outgoingBytes = new TextEncoder().encode(outgoingBody);
 
   let identityRes: Response;
