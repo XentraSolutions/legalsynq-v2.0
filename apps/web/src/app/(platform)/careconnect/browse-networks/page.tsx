@@ -1,8 +1,8 @@
-import Link                    from 'next/link';
 import { requireOrg }           from '@/lib/auth-guards';
 import { careConnectServerApi }  from '@/lib/careconnect-server-api';
 import { ServerApiError }        from '@/lib/server-api-client';
 import type { NetworkSummary }   from '@/types/careconnect';
+import { NetworkCard }            from '@/components/careconnect/network-card';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
  * and click through to submit referrals to providers within each network.
  */
 export default async function BrowseNetworksPage() {
-  await requireOrg();
+  const session = await requireOrg();
 
   let networks: NetworkSummary[] = [];
   let fetchError: string | null  = null;
@@ -45,6 +45,8 @@ export default async function BrowseNetworksPage() {
     );
   }
 
+  const tenantLogoUrl = `/api/branding/logo/public?tenantCode=${encodeURIComponent(session.tenantCode)}`;
+
   return (
     <div className="space-y-6">
       <div>
@@ -56,52 +58,9 @@ export default async function BrowseNetworksPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {networks.map(network => (
-          <NetworkCard key={network.id} network={network} />
+          <NetworkCard key={network.id} network={network} tenantLogoUrl={tenantLogoUrl} />
         ))}
       </div>
     </div>
-  );
-}
-
-function NetworkCard({ network }: { network: NetworkSummary }) {
-  const initials = network.name
-    .split(' ')
-    .slice(0, 2)
-    .map(w => w[0] ?? '')
-    .join('')
-    .toUpperCase();
-
-  return (
-    <Link
-      href={`/careconnect/browse-networks/${network.id}`}
-      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
-    >
-      {/* Logo placeholder */}
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-blue-50 text-blue-600 text-lg font-bold group-hover:bg-blue-100 transition-colors">
-        {initials || <i className="ri-share-circle-line text-2xl" />}
-      </div>
-
-      {/* Name */}
-      <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors line-clamp-2">
-        {network.name}
-      </p>
-
-      {/* Description */}
-      {network.description && (
-        <p className="mt-1 text-xs text-gray-500 line-clamp-2">{network.description}</p>
-      )}
-
-      {/* Provider count */}
-      <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-400">
-        <i className="ri-hospital-line" />
-        <span>{network.providerCount} provider{network.providerCount !== 1 ? 's' : ''}</span>
-      </div>
-
-      {/* CTA */}
-      <div className="mt-4 flex items-center gap-1 text-xs font-medium text-blue-600 group-hover:text-blue-700">
-        View providers & refer
-        <i className="ri-arrow-right-line" />
-      </div>
-    </Link>
   );
 }
