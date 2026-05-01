@@ -25,8 +25,9 @@ interface ThreadData {
 }
 
 interface Props {
-  token: string;
-  data:  ThreadData;
+  token:           string;
+  data:            ThreadData;
+  hasPortalAccess: boolean;
 }
 
 type StatusKey = 'New' | 'NewOpened' | 'Accepted' | 'Rejected' | 'Cancelled' | 'InProgress';
@@ -146,7 +147,7 @@ function StatusTracker({ status }: { status: string }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function FirmStatusClient({ token, data }: Props) {
+export function FirmStatusClient({ token, data, hasPortalAccess }: Props) {
   const [comments,  setComments]  = useState<Comment[]>(data.comments);
   const [senderName, setSenderName] = useState(data.referrerName ?? '');
   const [message,   setMessage]   = useState('');
@@ -200,23 +201,36 @@ export function FirmStatusClient({ token, data }: Props) {
           </div>
         </div>
 
-        {/* Portal upgrade CTA */}
-        <div style={s.upgradeBox}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' as const }}>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>
-                See all your referrals in one place
+        {/* Portal CTA — login prompt if already registered, upgrade panel otherwise */}
+        {hasPortalAccess ? (
+          <div style={{ ...s.upgradeBox, borderLeft: '4px solid #16a34a', background: '#f0fdf4' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' as const }}>
+              <p style={{ margin: 0, fontSize: 14, color: '#166534' }}>
+                Log in to CareConnect to view all your referrals and track responses in one place.
               </p>
-              <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>
-                Upgrade to a CareConnect portal account to track all referral statuses, view full patient records, communicate with providers, and generate reports — no more checking individual links.
-              </p>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 160 }}>
-              <a href={enrollUrl} style={s.btnPrimary}>Get full portal access</a>
-              <a href={loginUrl} style={{ ...s.btnOutline, fontSize: 12, padding: '7px 16px' }}>Already have access? Log in</a>
+              <a href={loginUrl} style={{ ...s.btnPrimary, background: '#16a34a', whiteSpace: 'nowrap' as const }}>
+                Log in to CareConnect
+              </a>
             </div>
           </div>
-        </div>
+        ) : (
+          <div style={s.upgradeBox}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' as const }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>
+                  See all your referrals in one place
+                </p>
+                <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>
+                  Upgrade to a CareConnect portal account to track all referral statuses, view full patient records, communicate with providers, and generate reports — no more checking individual links.
+                </p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 160 }}>
+                <a href={enrollUrl} style={s.btnPrimary}>Get full portal access</a>
+                <a href={loginUrl} style={{ ...s.btnOutline, fontSize: 12, padding: '7px 16px' }}>Already have access? Log in</a>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Message thread */}
         <div style={s.card}>
