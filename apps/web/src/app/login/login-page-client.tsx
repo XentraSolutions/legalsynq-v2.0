@@ -144,6 +144,7 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
             priority
             unoptimized
             className="w-full max-w-[300px] h-auto"
+            data-testid="cc-desktop-logo"
           />
         </div>
 

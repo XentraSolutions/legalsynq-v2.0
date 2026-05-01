@@ -55,7 +55,7 @@ export default defineConfig({
     },
     {
       name:                'next-app',
-      command:             'GATEWAY_URL=http://localhost:15001 npx next dev -p 3001',
+      command:             'GATEWAY_URL=http://localhost:15001 CC_COMMON_PORTAL_HOSTNAME=test-careconnect.local npx next dev -p 3001',
       url:                 'http://localhost:3001',
       reuseExistingServer: !process.env.CI,
       timeout:             60_000,

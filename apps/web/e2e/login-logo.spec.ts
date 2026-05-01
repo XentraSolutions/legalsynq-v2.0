@@ -10,6 +10,14 @@ import { test, expect } from '@playwright/test';
  *   Desktop left-panel logo  [data-testid="ls-desktop-logo"]:  h-12 w-auto → ~48 px tall
  *   Mobile right-panel logo  [data-testid="ls-mobile-logo"]:   h-8  w-auto → ~32 px tall
  *
+ * CareConnect portal logo (careconnect-logo.png):
+ *   Intrinsic dimensions: 301 × 66 px → aspect ratio ≈ 4.56 : 1
+ *   CSS class: w-full max-w-[300px] h-auto — rendered in the left panel (desktop only).
+ *   The portal layout is activated when the incoming host header matches the
+ *   CC_COMMON_PORTAL_HOSTNAME environment variable.  In tests we send
+ *   x-forwarded-host: test-careconnect.local (matching the value baked into the
+ *   playwright.config.ts webServer command) to trigger the CareConnect layout.
+ *
  * These tests fail if:
  *   - the wrong logo is visible at a given breakpoint
  *   - the rendered height falls outside the expected CSS-driven range
@@ -124,6 +132,105 @@ test.describe('Login page logo', () => {
       expect(logoBox!.width).toBeLessThanOrEqual(containerBox!.width   + 2);
       expect(logoBox!.height).toBeLessThanOrEqual(containerBox!.height + 2);
     }
+  });
+
+});
+
+// ── CareConnect portal login logo ─────────────────────────────────────────────
+
+/**
+ * The CareConnect portal layout is activated server-side by matching the
+ * x-forwarded-host header against CC_COMMON_PORTAL_HOSTNAME.
+ *
+ * careconnect-logo.png intrinsic dimensions: 301 × 66 px → ratio ≈ 4.56 : 1
+ * CSS: w-full max-w-[300px] h-auto — logo lives in the left panel (desktop only).
+ * The left panel itself is hidden below the lg breakpoint (1024 px), so the
+ * CareConnect logo is only visible at desktop widths.
+ */
+
+const CC_PORTAL_HOST = 'test-careconnect.local';
+
+const CC_ASPECT_MIN = 4.0;
+const CC_ASPECT_MAX = 5.2;
+
+const DESKTOP_VIEWPORTS = VIEWPORTS.filter(vp => vp.width >= LG_BREAKPOINT);
+const NARROW_VIEWPORTS  = VIEWPORTS.filter(vp => vp.width <  LG_BREAKPOINT);
+
+test.describe('CareConnect portal login logo', () => {
+
+  test.beforeEach(async ({ page }) => {
+    await page.setExtraHTTPHeaders({ 'x-forwarded-host': CC_PORTAL_HOST });
+  });
+
+  for (const vp of DESKTOP_VIEWPORTS) {
+    test(`renders correctly at ${vp.label} (${vp.width}px wide)`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto('/login');
+      await page.waitForLoadState('networkidle');
+
+      const logo = page.locator('[data-testid="cc-desktop-logo"]');
+      await expect(logo).toBeVisible();
+
+      const box = await logo.boundingBox();
+      expect(box, 'CareConnect desktop logo must have a bounding box').not.toBeNull();
+
+      // max-w-[300px] constrains the width; h-auto scales height proportionally
+      expect(box!.width).toBeGreaterThan(0);
+      expect(box!.width).toBeLessThanOrEqual(302); // max-w-[300px] + 2px tolerance
+
+      expect(box!.height).toBeGreaterThan(0);
+
+      // 301 × 66 px → ratio ≈ 4.56 : 1
+      const ratio = box!.width / box!.height;
+      expect(
+        ratio,
+        `CareConnect logo aspect ratio should be ~4.56 : 1, got ${ratio.toFixed(2)}`,
+      ).toBeGreaterThan(CC_ASPECT_MIN);
+      expect(
+        ratio,
+        `CareConnect logo aspect ratio should be ~4.56 : 1, got ${ratio.toFixed(2)}`,
+      ).toBeLessThan(CC_ASPECT_MAX);
+    });
+  }
+
+  for (const vp of NARROW_VIEWPORTS) {
+    test(`left-panel logo is not rendered at ${vp.label} (${vp.width}px wide)`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto('/login');
+      await page.waitForLoadState('networkidle');
+
+      // The CareConnect left panel is hidden below lg; the logo must not be visible.
+      const logo = page.locator('[data-testid="cc-desktop-logo"]');
+      await expect(logo).toBeHidden();
+    });
+  }
+
+  test('CareConnect logo does not overflow its container at desktop width', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/login');
+    await page.waitForLoadState('networkidle');
+
+    const logo = page.locator('[data-testid="cc-desktop-logo"]');
+    await expect(logo).toBeVisible();
+
+    const logoBox      = await logo.boundingBox();
+    const containerBox = await logo.locator('..').boundingBox();
+
+    expect(logoBox,      'CareConnect logo bounding box must exist').not.toBeNull();
+    expect(containerBox, 'CareConnect logo container bounding box must exist').not.toBeNull();
+
+    expect(logoBox!.width).toBeLessThanOrEqual(containerBox!.width   + 2);
+    expect(logoBox!.height).toBeLessThanOrEqual(containerBox!.height + 2);
+  });
+
+  test('LegalSynq desktop logo is absent in the CareConnect portal layout', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/login');
+    await page.waitForLoadState('networkidle');
+
+    // The LegalSynq-branded left-panel element must not appear in the portal layout.
+    const lsLogo = page.locator('[data-testid="ls-desktop-logo"]');
+    await expect(lsLogo).toHaveCount(0);
   });
 
 });
