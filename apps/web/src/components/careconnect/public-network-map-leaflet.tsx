@@ -54,6 +54,10 @@ function FlyToMarkers({ markers }: { markers: NumberedMarker[] }) {
 
 export function PublicNetworkMapLeaflet({ markers, selectedId, onSelect, onRequestReferral }: PublicNetworkMapProps) {
   return (
+    // isolation:isolate creates a stacking context that scopes Leaflet's internal
+    // z-indexes (200–800) so they cannot bleed above fixed overlays/modals on
+    // Windows Firefox/Edge.
+    <div style={{ height: '100%', width: '100%', isolation: 'isolate' }}>
     <MapContainer center={US_CENTER} zoom={4} style={{ height: '100%', width: '100%' }} scrollWheelZoom zoomControl>
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -91,5 +95,6 @@ export function PublicNetworkMapLeaflet({ markers, selectedId, onSelect, onReque
         </Marker>
       ))}
     </MapContainer>
+    </div>
   );
 }

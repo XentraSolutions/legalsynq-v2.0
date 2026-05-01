@@ -61,6 +61,7 @@ export function ProviderMapLeaflet({
   const zoom = centerLat != null ? 11 : defaultZoom;
 
   return (
+    <div style={{ height: '100%', width: '100%', isolation: 'isolate' }}>
     <MapContainer
       center={center}
       zoom={zoom}
@@ -116,5 +117,6 @@ export function ProviderMapLeaflet({
         );
       })}
     </MapContainer>
+    </div>
   );
 }

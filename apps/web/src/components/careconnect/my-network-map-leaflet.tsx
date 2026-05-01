@@ -21,10 +21,11 @@ export function MyNetworkMapLeaflet({ markers, selectedId, onSelect }: MyNetwork
   const zoom = withCoords.length > 0 ? 10 : 4;
 
   return (
+    <div style={{ isolation: 'isolate', height: '480px', width: '100%', borderRadius: '0.75rem' }}>
     <MapContainer
       center={center}
       zoom={zoom}
-      style={{ height: '480px', width: '100%', borderRadius: '0.75rem' }}
+      style={{ height: '100%', width: '100%', borderRadius: '0.75rem' }}
       scrollWheelZoom={false}
     >
       <TileLayer
@@ -70,5 +71,6 @@ export function MyNetworkMapLeaflet({ markers, selectedId, onSelect }: MyNetwork
         );
       })}
     </MapContainer>
+    </div>
   );
 }
