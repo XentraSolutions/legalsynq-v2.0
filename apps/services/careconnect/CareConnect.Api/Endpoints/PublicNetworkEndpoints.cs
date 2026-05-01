@@ -374,7 +374,7 @@ public static class PublicNetworkEndpoints
             IIdentityOrganizationService identityOrgs,
             CancellationToken          ct) =>
         {
-            var tenantId = ValidateTrustBoundary(http, config);
+            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId is null)
                 return Results.StatusCode(403);
 
