@@ -126,6 +126,8 @@ function AppSwitcher() {
   // LS-ID-TNT-009: prefer userProducts (user-level effective access from JWT product_codes)
   // over enabledProducts (tenant-level) so the switcher shows only products the user can
   // actually use. Both empty → PlatformAdmin / unconfigured; show all.
+  // Note: portal-level restriction is enforced at the TopBar level — AppSwitcher is hidden
+  // entirely on restricted portals, so no portal filtering is needed here.
   const visibleProducts: typeof ALL_PRODUCTS[number][] = (() => {
     if (isLoading || !session) return [];                   // not ready yet
     const up = session.userProducts ?? [];
@@ -133,15 +135,7 @@ function AppSwitcher() {
     const productList = up.length > 0 ? up : ep;           // user-level beats tenant-level
     if (productList.length === 0) return [...ALL_PRODUCTS]; // PlatformAdmin / unconfigured
     const ids = new Set(productList.map(code => PRODUCT_CODE_TO_NAV_KEY[code]).filter(Boolean));
-    let products = ALL_PRODUCTS.filter(p => ids.has(p.id));
-
-    // Apply portal-level restriction using shared portal config.
-    const portalCfg = getClientPortalConfig();
-    if (portalCfg) {
-      products = products.filter(p => p.id === portalCfg.productId);
-    }
-
-    return products;
+    return ALL_PRODUCTS.filter(p => ids.has(p.id));
   })();
 
   useEffect(() => {

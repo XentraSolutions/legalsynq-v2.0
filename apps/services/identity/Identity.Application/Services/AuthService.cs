@@ -264,18 +264,32 @@ public class AuthService : IAuthService
         // All product roles come exclusively from EffectiveAccessService (direct + group-inherited).
         var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, userWithRoles.Id, ct);
 
-        var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
-            userWithRoles, tenant, roleNames, org, effectiveAccess.ProductRolesFlat,
-            sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
-            productCodes: effectiveAccess.Products,
-            permissions: effectiveAccess.Permissions);
-
         // Phase H: derive org_type code from OrganizationTypeId FK (authoritative) when available;
         // fall back to the stored OrgType string for compatibility.
         // TODO [Phase H — remove OrgType string]: remove OrgType string from UserResponse once column is dropped.
         var orgTypeForResponse = org is not null
             ? (Domain.OrgTypeMapper.TryResolveCode(org.OrganizationTypeId) ?? org.OrgType)
             : null;
+
+        // CC-AUTH-01: Law firms are intrinsically CareConnect referrers.
+        // If the user belongs to a LAW_FIRM org and has no CareConnect product role yet
+        // (i.e. explicit provisioning hasn't run), auto-inject the referrer role so the
+        // backend product-access filter passes without a manual provisioning step.
+        // Mirrors how LienOwner implies NetworkManager in the front-end access rules.
+        var productRolesFlat = effectiveAccess.ProductRolesFlat;
+        const string CcProductPrefix   = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":";
+        const string CcReferrerRole    = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":CareConnectReferrer";
+        if (string.Equals(orgTypeForResponse, Domain.OrgType.LawFirm, StringComparison.OrdinalIgnoreCase)
+            && !productRolesFlat.Any(r => r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            productRolesFlat = [.. productRolesFlat, CcReferrerRole];
+        }
+
+        var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
+            userWithRoles, tenant, roleNames, org, productRolesFlat,
+            sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
+            productCodes: effectiveAccess.Products,
+            permissions: effectiveAccess.Permissions);
 
         var userResponse = new UserResponse(
             userWithRoles.Id,
@@ -287,7 +301,7 @@ public class AuthService : IAuthService
             roleNames,
             org?.Id,
             orgTypeForResponse,
-            effectiveAccess.ProductRolesFlat);
+            productRolesFlat);
 
         // Canonical audit: fire-and-observe — never throw, never gate login on audit success.
         var now = DateTimeOffset.UtcNow;
