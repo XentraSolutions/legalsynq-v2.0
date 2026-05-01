@@ -85,12 +85,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // AUTH-B01: Resolve the real TenantId from the Tenant service so Identity can
-  // use it as a fallback when its local code/subdomain lookup misses.  This handles
-  // the common portal (e.g. careconnect-demo.legalsynq.com) whose idt_Tenants
-  // write-through row may carry a different code or have no subdomain set.
+  // AUTH-B01 / AUTH-CC01: Resolve tenant from the Tenant service.
+  // - If the subdomain maps to a known tenant, pass tenantId + code (AUTH-B01 fallback path).
+  // - If the Tenant service returns 404, this is the common portal (multi-tenant); tell
+  //   Identity to resolve the tenant from the user's email instead (AUTH-CC01).
   let resolvedTenantId: string | null = null;
   let resolvedTenantCode: string = tenantCode;
+  let resolveByEmail = false;
+
   if (rawSubdomain) {
     try {
       const tenantRes = await fetch(
@@ -101,10 +103,14 @@ export async function POST(request: NextRequest) {
         const tenantData = await tenantRes.json();
         if (tenantData?.tenantId) {
           resolvedTenantId = tenantData.tenantId as string;
-          // Prefer the Tenant-service-authoritative code over the raw subdomain slug.
           if (tenantData?.code) resolvedTenantCode = tenantData.code as string;
           console.log(`[login] AUTH-B01 tenant resolved: id=${resolvedTenantId} code=${resolvedTenantCode}`);
         }
+      } else if (tenantRes.status === 404) {
+        // Common portal — subdomain is not a tenant identifier.
+        // Identity will resolve the tenant from the user's email.
+        resolveByEmail = true;
+        console.log(`[login] AUTH-CC01 subdomain=${rawSubdomain} not found in Tenant service — resolving by email`);
       } else {
         console.log(`[login] AUTH-B01 tenant resolve by-subdomain returned ${tenantRes.status}, proceeding without tenantId fallback`);
       }
@@ -115,11 +121,12 @@ export async function POST(request: NextRequest) {
   }
 
   const outgoingBody = JSON.stringify({
-    tenantCode: resolvedTenantCode,
+    tenantCode: resolveByEmail ? null : resolvedTenantCode,
     email,
     password,
     subdomain: rawSubdomain,
     tenantId: resolvedTenantId,
+    resolveByEmail,
   });
   const outgoingBytes = new TextEncoder().encode(outgoingBody);
 

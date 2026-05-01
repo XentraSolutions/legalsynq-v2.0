@@ -52,14 +52,85 @@ public class AuthService : IAuthService
         var sw = Stopwatch.StartNew();
         // Canonical audit helpers — used when a login failure must be emitted before re-throwing.
         // fire-and-observe: never awaited, never allowed to gate the primary auth response.
-        var tenantCodeNorm  = request.TenantCode.ToLowerInvariant().Trim();
+        var tenantCodeNorm  = (request.TenantCode ?? string.Empty).ToLowerInvariant().Trim();
         var emailNorm       = request.Email.ToLowerInvariant().Trim();
+
+        // AUTH-CC01: Common-portal email-based tenant resolution.
+        // When the portal cannot resolve a tenant from the subdomain (e.g. the common portal
+        // careconnect-demo.legalsynq.com serves multiple tenants), the BFF sets ResolveByEmail=true.
+        // We look up the user globally by email, find their tenant, then proceed with the normal
+        // password-verification path.  Always throw UnauthorizedAccessException on any failure so
+        // the caller cannot distinguish "email not found" from "wrong password".
+        if (request.ResolveByEmail)
+        {
+            _logger.LogInformation("AUTH-CC01: email-based tenant resolution for email={EmailMasked}", PiiGuard.MaskEmail(emailNorm));
+            var globalUser = await _userRepository.GetByEmailAsync(emailNorm, ct);
+            if (globalUser is null || !globalUser.IsActive)
+            {
+                _logger.LogWarning(
+                    "AUTH-CC01: LoginAsync failed: UserNotFoundOrInactive emailMasked={EmailMasked} ip={Ip}",
+                    PiiGuard.MaskEmail(emailNorm), ipAddress);
+                EmitLoginFailed(emailNorm, tenantCode: "common-portal", userId: null, reason: "UserNotFound", ipAddress: ipAddress);
+                throw new UnauthorizedAccessException();
+            }
+
+            var globalTenant = await _tenantRepository.GetByIdAsync(globalUser.TenantId, ct);
+            if (globalTenant is null || !globalTenant.IsActive)
+            {
+                _logger.LogWarning(
+                    "AUTH-CC01: LoginAsync failed: TenantNotFoundOrInactive tenantId={TenantId} emailMasked={EmailMasked} ip={Ip}",
+                    globalUser.TenantId, PiiGuard.MaskEmail(emailNorm), ipAddress);
+                EmitLoginFailed(emailNorm, tenantCode: "common-portal", userId: null, reason: "TenantNotFound", ipAddress: ipAddress);
+                throw new UnauthorizedAccessException();
+            }
+
+            // Re-use the tail of the normal flow (lock check, password verify, JWT issue).
+            // We construct a synthetic request scoped to the resolved tenant so we can fall
+            // through to the shared code below without duplication.
+            request = request with { TenantCode = globalTenant.Code, TenantId = globalTenant.Id, ResolveByEmail = false };
+            tenantCodeNorm = globalTenant.Code.ToLowerInvariant().Trim();
+            _logger.LogInformation(
+                "AUTH-CC01: Resolved tenant {TenantCode} ({TenantId}) for email={EmailMasked}",
+                globalTenant.Code, globalTenant.Id, PiiGuard.MaskEmail(emailNorm));
+
+            // Skip all tenant-lookup branches; go straight to user+lock+password checks.
+            var ccUser = globalUser.IsLocked ? null : globalUser; // honour lock state below
+            if (globalUser.IsLocked)
+            {
+                _logger.LogWarning(
+                    "AUTH-CC01: LoginAsync failed: AccountLocked userId={UserId} tenantCode={TenantCode} emailMasked={EmailMasked} ip={Ip}",
+                    globalUser.Id, globalTenant.Code, PiiGuard.MaskEmail(emailNorm), ipAddress);
+                EmitLoginFailed(emailNorm, tenantCode: globalTenant.Code, userId: globalUser.Id.ToString(), reason: "AccountLocked", ipAddress: ipAddress);
+                EmitLockedLoginBlocked(globalUser, globalTenant, ipAddress);
+                throw new UnauthorizedAccessException();
+            }
+
+            var ccValid = _passwordHasher.Verify(request.Password, globalUser.PasswordHash);
+            if (!ccValid)
+            {
+                _logger.LogWarning(
+                    "AUTH-CC01: LoginAsync failed: InvalidCredentials userId={UserId} tenantCode={TenantCode} emailMasked={EmailMasked} ip={Ip}",
+                    globalUser.Id, globalTenant.Code, PiiGuard.MaskEmail(emailNorm), ipAddress);
+                EmitLoginFailed(emailNorm, tenantCode: globalTenant.Code, userId: globalUser.Id.ToString(), reason: "InvalidCredentials", ipAddress: ipAddress);
+                throw new UnauthorizedAccessException();
+            }
+
+            var ccUserWithRoles = await _userRepository.GetByIdWithRolesAsync(globalUser.Id, ct);
+            if (ccUserWithRoles is null)
+            {
+                EmitLoginFailed(emailNorm, tenantCode: globalTenant.Code, userId: globalUser.Id.ToString(), reason: "RoleLookupFailed", ipAddress: ipAddress);
+                throw new UnauthorizedAccessException();
+            }
+
+            // Delegate the rest (role extraction, membership, JWT) to the shared tail.
+            return await BuildLoginResponseAsync(ccUserWithRoles, globalTenant, request, sw, ipAddress, ct);
+        }
 
         var tenant = await _tenantRepository.GetByCodeAsync(tenantCodeNorm, ct);
 
         if (tenant is null)
         {
-            var upperCode = request.TenantCode.ToUpperInvariant().Trim();
+            var upperCode = (request.TenantCode ?? string.Empty).ToUpperInvariant().Trim();
             tenant = await _tenantRepository.GetByCodeAsync(upperCode, ct);
         }
 
@@ -162,6 +233,22 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
+        return await BuildLoginResponseAsync(userWithRoles, tenant, request, sw, ipAddress, ct);
+    }
+
+    /// <summary>
+    /// Shared tail for LoginAsync: given a fully-validated user (with roles loaded) and their
+    /// resolved tenant, assembles the JWT, audit event, and LoginResponse.  Called from both
+    /// the normal tenant-code path and the AUTH-CC01 common-portal email-resolution path.
+    /// </summary>
+    private async Task<LoginResponse> BuildLoginResponseAsync(
+        User   userWithRoles,
+        Tenant tenant,
+        LoginRequest request,
+        Stopwatch sw,
+        string? ipAddress,
+        CancellationToken ct)
+    {
         // Phase G: ScopedRoleAssignments (GLOBAL) is the sole authoritative role source.
         // UserRoles table has been dropped (migration 20260330200004).
         var roleNames = userWithRoles.ScopedRoleAssignments
@@ -170,12 +257,12 @@ public class AuthService : IAuthService
             .ToList();
 
         // Load org membership for JWT context (primary org)
-        var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);
+        var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(userWithRoles.Id, ct);
         var org = orgMembership?.Organization;
 
         // LS-COR-AUT-003/006: compute effective access from the single source-of-truth model.
         // All product roles come exclusively from EffectiveAccessService (direct + group-inherited).
-        var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, user.Id, ct);
+        var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, userWithRoles.Id, ct);
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
             userWithRoles, tenant, roleNames, org, effectiveAccess.ProductRolesFlat,
