@@ -7,7 +7,7 @@ import {
 } from '@/lib/public-network-api';
 import { PublicNetworkView }         from '@/components/careconnect/public-network-view';
 import type { PrefillLawFirm }       from '@/components/careconnect/public-network-view';
-import { ProductRole, OrgType }      from '@/types';
+import { ProductRole }               from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,10 +24,9 @@ export default async function BrowseNetworkDetailPage({ params }: Props) {
   const { id }  = await params;
   const session = await requireProductRole(ProductRole.CareConnectReferrer);
 
-  // Lien company users (network managers or LIEN_OWNER org) are redirected away.
-  const isNetworkManager = session.productRoles.includes(ProductRole.CareConnectNetworkManager);
-  const isLienOwner      = session.orgType === OrgType.LienOwner;
-  if (isNetworkManager || isLienOwner) redirect('/careconnect/dashboard');
+  // Network managers are lien company operators — they manage networks, not browse them.
+  if (session.productRoles.includes(ProductRole.CareConnectNetworkManager))
+    redirect('/careconnect/dashboard');
 
   let detail: PublicNetworkDetail | null = null;
 

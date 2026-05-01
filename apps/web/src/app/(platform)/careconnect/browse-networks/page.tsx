@@ -4,7 +4,7 @@ import { careConnectServerApi }  from '@/lib/careconnect-server-api';
 import { ServerApiError }        from '@/lib/server-api-client';
 import type { NetworkSummary }   from '@/types/careconnect';
 import { NetworkCard }            from '@/components/careconnect/network-card';
-import { ProductRole, OrgType }  from '@/types';
+import { ProductRole }           from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,11 +18,9 @@ export default async function BrowseNetworksPage() {
   // Requires CareConnectReferrer role; redirects to /dashboard if absent.
   const session = await requireProductRole(ProductRole.CareConnectReferrer);
 
-  // Belt-and-suspenders: lien company users (network managers or LIEN_OWNER
-  // org type) should never reach this page — they have their own management views.
-  const isNetworkManager = session.productRoles.includes(ProductRole.CareConnectNetworkManager);
-  const isLienOwner      = session.orgType === OrgType.LienOwner;
-  if (isNetworkManager || isLienOwner) redirect('/careconnect/dashboard');
+  // Network managers are lien company operators — they manage networks, not browse them.
+  if (session.productRoles.includes(ProductRole.CareConnectNetworkManager))
+    redirect('/careconnect/dashboard');
 
   let networks: NetworkSummary[] = [];
   let fetchError: string | null  = null;

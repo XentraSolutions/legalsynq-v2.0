@@ -25,6 +25,12 @@ public interface IResolutionService
     Task<TenantResolutionResponse?> ResolveByCodeAsync(string code, CancellationToken ct = default);
 
     /// <summary>
+    /// Resolves a tenant by its primary GUID.
+    /// Used by cross-tenant public directory lookups (e.g. Common CareConnect portal).
+    /// </summary>
+    Task<TenantResolutionResponse?> ResolveByIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
     /// TENANT-B08 — Evicts resolution cache entries for the given code and/or subdomain.
     /// Called after a successful tenant sync so resolution reads immediately reflect updated data.
     /// </summary>
