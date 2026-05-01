@@ -6,9 +6,13 @@ export function ForgotPasswordForm() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
+  // Hide the tenant code field whenever a subdomain is present in the URL —
+  // the BFF resolves the tenant from the Host header on any *.legalsynq.com domain
+  // (including the common portal careconnect-demo.legalsynq.com).
   const hasTenantSubdomain = mounted && (() => {
     const host = window.location.hostname;
-    return /^[a-z0-9-]+\.demo\.legalsynq\.com$/i.test(host);
+    const parts = host.split('.');
+    return parts.length >= 3 && !host.startsWith('localhost');
   })();
   const showTenantField = mounted && !hasTenantSubdomain;
 

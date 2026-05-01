@@ -671,6 +671,16 @@ public static class AuthEndpoints
                     .FirstOrDefaultAsync(t => t.Subdomain == subNorm && t.IsActive, ct);
             }
 
+            // AUTH-B01: fall back to TenantId when code+subdomain lookup misses
+            // (e.g. common portal careconnect-demo.legalsynq.com where the stored
+            // code differs from the raw subdomain).
+            if (tenant is null && body.TenantId.HasValue)
+            {
+                logger.LogInformation("[forgot-password] Code+subdomain lookup missed, trying TenantId={TenantId}", body.TenantId.Value);
+                tenant = await db.Tenants
+                    .FirstOrDefaultAsync(t => t.Id == body.TenantId.Value, ct);
+            }
+
             if (tenant is null)
             {
                 logger.LogWarning("[forgot-password] Tenant not found for code={TenantCode}", body.TenantCode);
@@ -796,5 +806,5 @@ public static class AuthEndpoints
     private record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     private record SetAvatarRequest(string DocumentId);
     private record SetPhoneRequest(string? Phone);
-    private record ForgotPasswordRequest(string TenantCode, string Email, string? Subdomain = null);
+    private record ForgotPasswordRequest(string TenantCode, string Email, string? Subdomain = null, Guid? TenantId = null);
 }

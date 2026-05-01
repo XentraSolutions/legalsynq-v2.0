@@ -72,12 +72,39 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // AUTH-B01: resolve the real TenantId from the Tenant service so Identity can
+  // use it as a fallback when its local code/subdomain lookup misses.
+  let resolvedTenantId: string | null = null;
+  let resolvedTenantCode: string = tenantCode;
+  if (rawSubdomain) {
+    try {
+      const tenantRes = await fetch(
+        `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-subdomain/${encodeURIComponent(rawSubdomain)}`,
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+      if (tenantRes.ok) {
+        const tenantData = await tenantRes.json();
+        if (tenantData?.tenantId) {
+          resolvedTenantId = tenantData.tenantId as string;
+          if (tenantData?.code) resolvedTenantCode = tenantData.code as string;
+        }
+      }
+    } catch {
+      // Non-fatal — Identity will fall back to code+subdomain lookup as before.
+    }
+  }
+
   let identityRes: Response;
   try {
     identityRes = await fetch(`${GATEWAY_URL}/identity/api/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenantCode, email, subdomain: rawSubdomain }),
+      body: JSON.stringify({
+        tenantCode: resolvedTenantCode,
+        email,
+        subdomain: rawSubdomain,
+        tenantId: resolvedTenantId,
+      }),
     });
   } catch (err) {
     console.error(`[forgot-password] Identity service fetch error:`, err);
