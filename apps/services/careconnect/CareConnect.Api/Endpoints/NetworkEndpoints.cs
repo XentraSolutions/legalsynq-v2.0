@@ -255,6 +255,51 @@ public static class NetworkEndpoints
         app.MapGet("/api/network/referrals", GetNetworkReferralsAsync)
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+
+        // ── Referrer read-only network directory ────────────────────────────────
+        // CC-REFERRER-BROWSE: Law firm portal users (CareConnectReferrer) can
+        // browse all active networks within the tenant and view provider maps
+        // so they know which providers to target when submitting referrals.
+        var dirGroup = app.MapGroup("/api/networks/directory")
+            .RequireAuthorization(Policies.AuthenticatedUser);
+
+        // List all networks (summary) — referrers see name, description, provider count
+        dirGroup.MapGet("/", async (
+            INetworkService      service,
+            ICurrentRequestContext ctx,
+            CancellationToken    ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var networks = await service.GetAllAsync(tenantId, ct);
+            return Results.Ok(networks);
+        })
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+
+        // Get network with full provider list
+        dirGroup.MapGet("/{id:guid}", async (
+            Guid                  id,
+            INetworkService       service,
+            ICurrentRequestContext ctx,
+            CancellationToken     ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var detail = await service.GetByIdAsync(tenantId, id, ct);
+            return Results.Ok(detail);
+        })
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+
+        // Get provider map markers for a specific network
+        dirGroup.MapGet("/{id:guid}/markers", async (
+            Guid                  id,
+            INetworkService       service,
+            ICurrentRequestContext ctx,
+            CancellationToken     ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var markers = await service.GetMarkersAsync(tenantId, id, ct);
+            return Results.Ok(markers);
+        })
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
     }
 
     // ── BLK-COMP-01: Shared audit helper ─────────────────────────────────────────

@@ -186,6 +186,21 @@ export const careConnectServerApi = {
       serverApi.get<NetworkProviderMarker[]>(`/careconnect/api/networks/${id}/providers/markers`),
   },
 
+  // CC-REFERRER-BROWSE: Read-only network directory for law firm referrers
+  browseNetworks: {
+    /** GET /api/networks/directory — list all active networks (referrer-accessible) */
+    list: () =>
+      serverApi.get<NetworkSummary[]>(`/careconnect/api/networks/directory`),
+
+    /** GET /api/networks/directory/{id} — get network detail with provider list */
+    getById: (id: string) =>
+      serverApi.get<NetworkDetail>(`/careconnect/api/networks/directory/${id}`),
+
+    /** GET /api/networks/directory/{id}/markers — map markers for network providers */
+    getMarkers: (id: string) =>
+      serverApi.get<NetworkProviderMarker[]>(`/careconnect/api/networks/directory/${id}/markers`),
+  },
+
   // Network Referral Monitor — lien company / network manager view of all referrals
   networkReferrals: {
     /** GET /api/network/referrals — all referrals in the network, grouped by law firm */
