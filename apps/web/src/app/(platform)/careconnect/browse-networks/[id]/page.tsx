@@ -1,12 +1,13 @@
 import Link                         from 'next/link';
-import { notFound }                  from 'next/navigation';
-import { requireAuthenticated }      from '@/lib/auth-guards';
+import { notFound, redirect }        from 'next/navigation';
+import { requireProductRole }        from '@/lib/auth-guards';
 import {
   fetchPublicNetworkDetail,
   type PublicNetworkDetail,
 } from '@/lib/public-network-api';
 import { PublicNetworkView }         from '@/components/careconnect/public-network-view';
 import type { PrefillLawFirm }       from '@/components/careconnect/public-network-view';
+import { ProductRole, OrgType }      from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,12 @@ interface Props {
  */
 export default async function BrowseNetworkDetailPage({ params }: Props) {
   const { id }  = await params;
-  const session = await requireAuthenticated();
+  const session = await requireProductRole(ProductRole.CareConnectReferrer);
+
+  // Lien company users (network managers or LIEN_OWNER org) are redirected away.
+  const isNetworkManager = session.productRoles.includes(ProductRole.CareConnectNetworkManager);
+  const isLienOwner      = session.orgType === OrgType.LienOwner;
+  if (isNetworkManager || isLienOwner) redirect('/careconnect/dashboard');
 
   let detail: PublicNetworkDetail | null = null;
 

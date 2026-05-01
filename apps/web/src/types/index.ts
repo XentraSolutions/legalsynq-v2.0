@@ -105,6 +105,8 @@ export interface NavItem {
   badge?: string;
   badgeKey?: string;
   requiredRoles?: ProductRoleValue[];
+  /** Item is hidden when user has ANY of these roles, even if requiredRoles also matches. */
+  excludedRoles?: ProductRoleValue[];
   sellModeOnly?: boolean;
   adminOnly?: boolean;
   /** Item is hidden for these org types (e.g. hide Network from PROVIDER orgs). */

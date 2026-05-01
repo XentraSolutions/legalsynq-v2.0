@@ -1,18 +1,28 @@
-import { requireOrg }           from '@/lib/auth-guards';
+import { redirect }             from 'next/navigation';
+import { requireProductRole }    from '@/lib/auth-guards';
 import { careConnectServerApi }  from '@/lib/careconnect-server-api';
 import { ServerApiError }        from '@/lib/server-api-client';
 import type { NetworkSummary }   from '@/types/careconnect';
 import { NetworkCard }            from '@/components/careconnect/network-card';
+import { ProductRole, OrgType }  from '@/types';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * /careconnect/browse-networks — Available provider networks directory.
- * CC-REFERRER-BROWSE: Law firm referrers can browse all active networks
- * and click through to submit referrals to providers within each network.
+ * CC-REFERRER-BROWSE: Accessible only to elevated law firm referrers
+ * (CareConnectReferrer role). Network managers (lien companies) are
+ * redirected to the dashboard — they manage networks, they don't browse them.
  */
 export default async function BrowseNetworksPage() {
-  const session = await requireOrg();
+  // Requires CareConnectReferrer role; redirects to /dashboard if absent.
+  const session = await requireProductRole(ProductRole.CareConnectReferrer);
+
+  // Belt-and-suspenders: lien company users (network managers or LIEN_OWNER
+  // org type) should never reach this page — they have their own management views.
+  const isNetworkManager = session.productRoles.includes(ProductRole.CareConnectNetworkManager);
+  const isLienOwner      = session.orgType === OrgType.LienOwner;
+  if (isNetworkManager || isLienOwner) redirect('/careconnect/dashboard');
 
   let networks: NetworkSummary[] = [];
   let fetchError: string | null  = null;
