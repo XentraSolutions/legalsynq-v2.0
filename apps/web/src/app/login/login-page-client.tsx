@@ -10,18 +10,23 @@ import { useTenantBranding } from '@/providers/tenant-branding-provider';
 function TenantLogo() {
   const branding = useTenantBranding();
 
-  const sources: string[] = [];
+  // Build source list in priority order. Mirror the top-bar strategy so the
+  // login page shows whichever logo variant is actually available.
+  // logoDocumentId  = standard logo (dark, good on light background — try first)
+  // logoWhiteDocumentId = white variant (needs dark pill wrapper)
+  // logoUrl         = direct CDN URL
+  const sources: Array<{ url: string; isWhite: boolean }> = [];
   if (branding.logoDocumentId)
-    sources.push(`/api/branding/logo/${branding.logoDocumentId}`);
+    sources.push({ url: `/api/branding/logo/${branding.logoDocumentId}`, isWhite: false });
+  if (branding.logoWhiteDocumentId)
+    sources.push({ url: `/api/branding/logo/${branding.logoWhiteDocumentId}`, isWhite: true });
   if (branding.logoUrl)
-    sources.push(branding.logoUrl);
-  if (branding.tenantCode)
-    sources.push(`/api/branding/logo/public?tenantCode=${branding.tenantCode}`);
+    sources.push({ url: branding.logoUrl, isWhite: false });
 
   const [srcIndex, setSrcIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
 
-  const sourcesKey = sources.join('|');
+  const sourcesKey = sources.map(s => s.url).join('|');
   useEffect(() => {
     setSrcIndex(0);
     setExhausted(false);
@@ -38,14 +43,25 @@ function TenantLogo() {
     }
   }
 
+  const current = sources[srcIndex];
+
   return (
     <div className="mb-6">
-      <img
-        src={sources[srcIndex]}
-        alt={branding.displayName || 'Organization logo'}
-        className="max-h-16 max-w-[220px] object-contain"
-        onError={handleError}
-      />
+      {/* White-variant logos are invisible on the light login background —
+          wrap them in a small dark pill so they remain legible. */}
+      <div
+        className={current?.isWhite
+          ? 'inline-flex items-center justify-center px-4 py-2 rounded-lg'
+          : undefined}
+        style={current?.isWhite ? { backgroundColor: '#0f1928' } : undefined}
+      >
+        <img
+          src={current?.url}
+          alt={branding.displayName || 'Organization logo'}
+          className="max-h-14 max-w-[200px] object-contain"
+          onError={handleError}
+        />
+      </div>
     </div>
   );
 }

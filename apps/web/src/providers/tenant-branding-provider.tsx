@@ -67,18 +67,25 @@ export function useTenantBranding(): TenantBranding {
 // ── Tenant code resolution ───────────────────────────────────────────────────
 
 function resolveTenantCode(): string | null {
+  // 1. Cookie — set by the auth layer after login; most reliable source.
   const cookieTenant = document.cookie
     .split('; ')
     .find(c => c.startsWith('tenant_code='))
     ?.split('=')[1];
   if (cookieTenant) return cookieTenant;
 
-  const host = window.location.hostname;
-  const parts = host.split('.');
-  if (parts.length >= 3 && !host.startsWith('localhost')) {
-    return parts[0];
+  // 2. Subdomain — only in production. In dev/Replit the hostname subdomain is
+  //    a container ID (e.g. "abc123.kirk.replit.dev"), not a tenant code, so
+  //    we skip this step and fall through to NEXT_PUBLIC_TENANT_CODE instead.
+  if (process.env.NEXT_PUBLIC_ENV !== 'development') {
+    const host  = window.location.hostname;
+    const parts = host.split('.');
+    if (parts.length >= 3 && !host.startsWith('localhost')) {
+      return parts[0];
+    }
   }
 
+  // 3. Explicit env var — used in dev / Replit.
   const envTenantCode = process.env.NEXT_PUBLIC_TENANT_CODE;
   if (envTenantCode) return envTenantCode;
 
