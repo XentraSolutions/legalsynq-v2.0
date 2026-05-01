@@ -10,15 +10,18 @@ namespace CareConnect.Application.Services;
 // CC2-INT-B06 / CC2-INT-B06-01 — provider network management with shared provider registry
 public class NetworkService : INetworkService
 {
-    private readonly INetworkRepository  _networks;
+    private readonly INetworkRepository      _networks;
+    private readonly ICategoryRepository     _categories;
     private readonly ILogger<NetworkService> _logger;
 
     public NetworkService(
-        INetworkRepository  networks,
+        INetworkRepository      networks,
+        ICategoryRepository     categories,
         ILogger<NetworkService> logger)
     {
-        _networks  = networks;
-        _logger    = logger;
+        _networks   = networks;
+        _categories = categories;
+        _logger     = logger;
     }
 
     // ── Network CRUD ─────────────────────────────────────────────────────────
@@ -176,6 +179,28 @@ public class NetworkService : INetworkService
                 npi:               np.Npi);
 
             await _networks.AddProviderToRegistryAsync(provider, ct);
+
+            // Sync provider categories (types) if provided
+            if (np.CategoryCodes is { Count: > 0 } codes)
+            {
+                var categoryEntities = await _categories.GetByCodesAsync(codes, ct);
+
+                // Build ordered list: primary first, then the rest
+                var orderedIds = new List<Guid>();
+                if (!string.IsNullOrWhiteSpace(np.PrimaryCategoryCode))
+                {
+                    var primary = categoryEntities.FirstOrDefault(
+                        c => string.Equals(c.Code, np.PrimaryCategoryCode, StringComparison.OrdinalIgnoreCase));
+                    if (primary is not null) orderedIds.Add(primary.Id);
+                }
+                orderedIds.AddRange(categoryEntities
+                    .Where(c => !string.Equals(c.Code, np.PrimaryCategoryCode, StringComparison.OrdinalIgnoreCase))
+                    .Select(c => c.Id));
+
+                if (orderedIds.Count > 0)
+                    await _networks.SyncProviderCategoriesAsync(provider.Id, orderedIds, ct);
+            }
+
             _logger.LogInformation(
                 "New provider {ProviderId} ({Name}) registered in shared registry by tenant {TenantId}.",
                 provider.Id, provider.Name, tenantId);

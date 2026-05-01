@@ -591,17 +591,19 @@ export interface ProviderSearchResult {
 export interface AddProviderToNetworkRequest {
   existingProviderId?: string;
   newProvider?: {
-    name:               string;
-    organizationName?:  string;
-    email:              string;
-    phone:              string;
-    addressLine1:       string;
-    city:               string;
-    state:              string;
-    postalCode:         string;
-    isActive:           boolean;
-    acceptingReferrals: boolean;
-    npi?:               string;
+    name:                string;
+    organizationName?:   string;
+    email:               string;
+    phone:               string;
+    addressLine1:        string;
+    city:                string;
+    state:               string;
+    postalCode:          string;
+    isActive:            boolean;
+    acceptingReferrals:  boolean;
+    npi?:                string;
+    categoryCodes?:      string[];
+    primaryCategoryCode?: string;
   };
 }
 

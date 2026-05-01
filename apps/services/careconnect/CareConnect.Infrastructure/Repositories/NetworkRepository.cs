@@ -166,4 +166,22 @@ public class NetworkRepository : INetworkRepository
     {
         await _db.Providers.AddAsync(provider, ct);
     }
+
+    public async Task SyncProviderCategoriesAsync(Guid providerId, List<Guid> categoryIds, CancellationToken ct = default)
+    {
+        var existing = await _db.ProviderCategories
+            .Where(pc => pc.ProviderId == providerId)
+            .ToListAsync(ct);
+
+        _db.ProviderCategories.RemoveRange(existing);
+
+        foreach (var catId in categoryIds)
+        {
+            _db.ProviderCategories.Add(new ProviderCategory
+            {
+                ProviderId = providerId,
+                CategoryId = catId,
+            });
+        }
+    }
 }

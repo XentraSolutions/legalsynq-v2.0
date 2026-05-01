@@ -26,4 +26,11 @@ public interface INetworkRepository
     Task<Provider?> GetProviderByIdGlobalAsync(Guid id, CancellationToken ct = default);
     Task<Provider?> GetProviderByNpiAsync(string npi, CancellationToken ct = default);
     Task AddProviderToRegistryAsync(Provider provider, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces all category associations for a provider with the supplied list.
+    /// Order is preserved: the first ID is treated as primary by convention.
+    /// Does NOT call SaveChanges — caller is responsible.
+    /// </summary>
+    Task SyncProviderCategoriesAsync(Guid providerId, List<Guid> categoryIds, CancellationToken ct = default);
 }

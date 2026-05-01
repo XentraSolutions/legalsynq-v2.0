@@ -101,4 +101,8 @@ public sealed record NewProviderData(
     string  PostalCode,
     bool    IsActive,
     bool    AcceptingReferrals,
-    string? Npi);
+    string? Npi,
+    /// <summary>Category codes (e.g. "IMG", "PAIN"). The primary category code should be first.</summary>
+    List<string>? CategoryCodes = null,
+    /// <summary>The code of the default/primary provider type (must be present in CategoryCodes).</summary>
+    string? PrimaryCategoryCode = null);

@@ -6,11 +6,15 @@ namespace CareConnect.Infrastructure.Data.Configurations;
 
 public class CategoryConfiguration : IEntityTypeConfiguration<Category>
 {
-    private static readonly Guid ChiroId = new("40000000-0000-0000-0000-000000000001");
-    private static readonly Guid PtId     = new("40000000-0000-0000-0000-000000000002");
-    private static readonly Guid OrthoId  = new("40000000-0000-0000-0000-000000000003");
-    private static readonly Guid ImgId    = new("40000000-0000-0000-0000-000000000004");
-    private static readonly Guid PainId   = new("40000000-0000-0000-0000-000000000005");
+    private static readonly Guid ChiroId   = new("40000000-0000-0000-0000-000000000001");
+    private static readonly Guid PtId      = new("40000000-0000-0000-0000-000000000002");
+    private static readonly Guid OrthoId   = new("40000000-0000-0000-0000-000000000003");
+    private static readonly Guid ImgId     = new("40000000-0000-0000-0000-000000000004");
+    private static readonly Guid PainId    = new("40000000-0000-0000-0000-000000000005");
+    private static readonly Guid ExtremId  = new("40000000-0000-0000-0000-000000000006");
+    private static readonly Guid SpineId   = new("40000000-0000-0000-0000-000000000007");
+    private static readonly Guid NeuroId   = new("40000000-0000-0000-0000-000000000008");
+    private static readonly Guid SurgeryId = new("40000000-0000-0000-0000-000000000009");
 
     public void Configure(EntityTypeBuilder<Category> builder)
     {
@@ -33,11 +37,15 @@ public class CategoryConfiguration : IEntityTypeConfiguration<Category>
                .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasData(
-            CreateCategory(ChiroId, "Chiropractic",     "CHIRO", null,                     true),
-            CreateCategory(PtId,    "Physical Therapy",  "PT",    null,                     true),
-            CreateCategory(OrthoId, "Orthopedic",        "ORTHO", null,                     true),
-            CreateCategory(ImgId,   "Imaging",           "IMG",   null,                     true),
-            CreateCategory(PainId,  "Pain Management",   "PAIN",  null,                     true)
+            CreateCategory(ChiroId,   "Chiropractic",     "CHIRO",   null, true),
+            CreateCategory(PtId,      "Physical Therapy",  "PT",      null, true),
+            CreateCategory(OrthoId,   "Orthopedic",        "ORTHO",   null, true),
+            CreateCategory(ImgId,     "Imaging",           "IMG",     null, true),
+            CreateCategory(PainId,    "Pain Management",   "PAIN",    null, true),
+            CreateCategory(ExtremId,  "Extremities",       "EXTREM",  null, true),
+            CreateCategory(SpineId,   "Spine Surgeon",     "SPINE",   null, true),
+            CreateCategory(NeuroId,   "Neurology",         "NEURO",   null, true),
+            CreateCategory(SurgeryId, "Surgery Center",    "SURGERY", null, true)
         );
     }
 
