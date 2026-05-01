@@ -55,5 +55,20 @@ public static class ResolutionEndpoints
                 : Results.Ok(result);
         })
         .AllowAnonymous();
+
+        // ── GET /api/v1/public/resolve/by-id/{id:guid} ────────────────────────
+        // Used by cross-tenant public directory lookups (Common CareConnect portal).
+        group.MapGet("/by-id/{id:guid}", async (
+            Guid                id,
+            IResolutionService  svc,
+            CancellationToken   ct) =>
+        {
+            var result = await svc.ResolveByIdAsync(id, ct);
+
+            return result is null
+                ? Results.NotFound(new { error = new { code = "not_found", message = $"No tenant found with id '{id}'." } })
+                : Results.Ok(result);
+        })
+        .AllowAnonymous();
     }
 }

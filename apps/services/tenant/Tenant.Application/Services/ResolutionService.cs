@@ -218,6 +218,52 @@ public class ResolutionService : IResolutionService
         return result;
     }
 
+    // ── by-id ─────────────────────────────────────────────────────────────────
+
+    public async Task<TenantResolutionResponse?> ResolveByIdAsync(
+        Guid              id,
+        CancellationToken ct = default)
+    {
+        _metrics.IncrementResolutionAttempted();
+
+        var cacheKey = $"resolution:id:{id}";
+
+        if (_features.TenantReadCachingEnabled && _cache.TryGetValue(cacheKey, out TenantResolutionResponse? cached))
+        {
+            _metrics.IncrementResolutionCacheHit();
+            _metrics.IncrementResolutionSucceeded();
+            return cached;
+        }
+
+        _metrics.IncrementResolutionCacheMiss();
+
+        var tenant = await _tenants.GetByIdAsync(id, ct);
+        if (tenant is null)
+        {
+            _metrics.IncrementResolutionFailed();
+            return null;
+        }
+
+        var primaryDomain = await _domains.GetActivePrimarySubdomainByTenantAsync(tenant.Id, ct);
+        var branding      = await _brandings.GetByTenantIdAsync(tenant.Id, ct);
+
+        var result = new TenantResolutionResponse(
+            tenant.Id,
+            tenant.Code,
+            tenant.DisplayName,
+            tenant.Status.ToString(),
+            MatchedBy:      "Id",
+            MatchedHost:    primaryDomain?.Host,
+            PrimaryColor:   branding?.PrimaryColor,
+            LogoDocumentId: branding?.LogoDocumentId ?? tenant.LogoDocumentId);
+
+        if (_features.TenantReadCachingEnabled)
+            _cache.Set(cacheKey, result, CacheTtl());
+
+        _metrics.IncrementResolutionSucceeded();
+        return result;
+    }
+
     // ── Cache eviction ────────────────────────────────────────────────────────
 
     /// <summary>
