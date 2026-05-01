@@ -1,4 +1,6 @@
 using Identity.Application.Interfaces;
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Api.Endpoints;
 
@@ -10,6 +12,7 @@ namespace Identity.Api.Endpoints;
 ///
 /// POST /api/internal/users/assign-tenant  — assign user to tenant + optional roles
 /// POST /api/internal/users/assign-roles   — assign roles to a user (idempotent)
+/// GET  /api/internal/users/portal-access  — check if email has active CareConnect portal access
 ///
 /// Auth: X-Provisioning-Token header must match TenantService:ProvisioningSecret.
 ///       When ProvisioningSecret is empty/unset, the check is skipped (dev mode).
@@ -132,6 +135,49 @@ public static class UserMembershipEndpoints
                 log.LogWarning(ex, "[UserMembership] AssignRoles failed for user {UserId}", body.UserId);
                 return Results.NotFound(new { error = ex.Message });
             }
+        });
+
+        // ── GET /api/internal/users/portal-access?email=xxx ──────────────────
+        //
+        // CC-PORTAL-CHECK: Checks whether an email address belongs to a fully-activated
+        // CareConnect referrer (active user with password set, in a LAW_FIRM org).
+        // Returns { hasPortalAccess: bool } — always HTTP 200. Never discloses user
+        // existence alone; only the combined access state (safe post-referral-submit context).
+        //
+        // Auth: X-Provisioning-Token (same pattern as assign-tenant / assign-roles).
+
+        group.MapGet("/portal-access", async (
+            HttpContext       httpContext,
+            string?           email,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.PortalAccess");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "portal-access"))
+                return Results.Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { hasPortalAccess = false });
+
+            var emailNorm = email.Trim().ToLowerInvariant();
+
+            // A referrer is "activated" when all three conditions hold:
+            //   1. An active user record with this email exists.
+            //   2. The user has a password set (PasswordHash non-empty) — not merely invited.
+            //   3. The user has an active membership in at least one LAW_FIRM organization.
+            var hasAccess = await db.Users
+                .Where(u => u.Email == emailNorm && u.IsActive && u.PasswordHash != string.Empty)
+                .AnyAsync(u => db.UserOrganizationMemberships
+                    .Where(m => m.UserId == u.Id && m.IsActive)
+                    .Join(db.Organizations.Where(o => o.OrgType == "LAW_FIRM" && o.IsActive),
+                          m => m.OrganizationId, o => o.Id, (m, o) => o.Id)
+                    .Any(),
+                    ct);
+
+            return Results.Ok(new { hasPortalAccess = hasAccess });
         });
     }
 

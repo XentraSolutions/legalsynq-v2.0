@@ -527,6 +527,7 @@ function ReferralPanel({
   const [fieldErrors,    setErrors]        = useState<Record<string, string>>({});
   const [providerFiles,  setProviderFiles] = useState<Record<string, File | null>>({});
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
+  const [hasPortalAccess, setHasPortalAccess] = useState(false);
 
   // ── Address autocomplete ─────────────────────────────────────────────────
   const [addrSuggestions, setAddrSuggestions] = useState<Array<{ displayName: string; addressLine1: string; city: string; state: string; postalCode: string }>>([]);
@@ -653,6 +654,19 @@ function ReferralPanel({
       }));
 
       setState('success');
+
+      // CC-PORTAL-CHECK: fire-and-forget — check if the law firm email already has
+      // an active portal account so the success screen shows the right CTA.
+      if (form.email) {
+        fetch(`/api/public/careconnect/api/public/referrer-status?email=${encodeURIComponent(form.email)}`, {
+          headers: { 'X-Tenant-Id': tenantId },
+        })
+          .then(r => r.ok ? r.json() : null)
+          .then((data: { hasPortalAccess: boolean } | null) => {
+            if (data?.hasPortalAccess) setHasPortalAccess(true);
+          })
+          .catch(() => {});
+      }
     } catch (err: unknown) {
       const apiErrors = err && typeof err === 'object' && 'errors' in err
         ? (err as { errors: Record<string, string> }).errors
@@ -1029,6 +1043,7 @@ function ReferralPanel({
           providerFiles={providerFiles}
           state={state}
           tenantId={tenantId}
+          hasPortalAccess={hasPortalAccess}
           onConfirm={confirmAndSend}
           onBack={() => setState('form')}
           onClose={() => window.location.reload()}
@@ -1057,17 +1072,18 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ReferralConfirmModal({
-  form, providers, treatmentTypes, providerFiles, state, tenantId, onConfirm, onBack, onClose,
+  form, providers, treatmentTypes, providerFiles, state, tenantId, hasPortalAccess, onConfirm, onBack, onClose,
 }: {
-  form:           ReferralForm;
-  providers:      PublicProviderItem[];
-  treatmentTypes: TreatmentType[];
-  providerFiles:  Record<string, File | null>;
-  state:          PanelState;
-  tenantId:       string;
-  onConfirm:      () => void;
-  onBack:         () => void;
-  onClose:        () => void;
+  form:             ReferralForm;
+  providers:        PublicProviderItem[];
+  treatmentTypes:   TreatmentType[];
+  providerFiles:    Record<string, File | null>;
+  state:            PanelState;
+  tenantId:         string;
+  hasPortalAccess:  boolean;
+  onConfirm:        () => void;
+  onBack:           () => void;
+  onClose:          () => void;
 }) {
   const treatment = treatmentTypes.find(t => t.id === form.treatmentTypeId);
   const isSending = state === 'submitting';
@@ -1125,35 +1141,59 @@ function ReferralConfirmModal({
                 </div>
               </div>
 
-              {/* Activate account CTA */}
+              {/* Account CTA — login if already registered, activate if not */}
               <div className="px-6 py-5">
-                <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 border border-indigo-100 dark:border-indigo-700/50 p-4">
-                  <div className="flex gap-3 items-start">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <i className="ri-rocket-line text-indigo-600 dark:text-indigo-400 text-sm" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-indigo-900 dark:text-indigo-200">Activate your free account</p>
-                      <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1 leading-relaxed">
-                        Get a full dashboard to track all your referrals, view responses, and manage
-                        your cases in one place — completely free.
-                      </p>
-                      <a
-                        href={`/enroll?${new URLSearchParams({
-                          tenantId:            tenantId,
-                          ...(form.email       ? { email:   form.email }       : {}),
-                          ...(form.firmName    ? { firm:    form.firmName }    : {}),
-                          ...(form.phone       ? { phone:   form.phone }       : {}),
-                          ...(form.contactName ? { contact: form.contactName } : {}),
-                        }).toString()}`}
-                        className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
-                      >
-                        <i className="ri-user-add-line" />
-                        Get free access
-                      </a>
+                {hasPortalAccess ? (
+                  <div className="rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-100 dark:border-green-700/50 p-4">
+                    <div className="flex gap-3 items-start">
+                      <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i className="ri-shield-check-line text-green-600 dark:text-green-400 text-sm" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-green-900 dark:text-green-200">You already have portal access</p>
+                        <p className="text-xs text-green-700 dark:text-green-300 mt-1 leading-relaxed">
+                          Log in to CareConnect to view this referral, track responses, and manage
+                          all your cases in one place.
+                        </p>
+                        <a
+                          href="/login"
+                          className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          <i className="ri-login-circle-line" />
+                          Login to CareConnect
+                        </a>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 border border-indigo-100 dark:border-indigo-700/50 p-4">
+                    <div className="flex gap-3 items-start">
+                      <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i className="ri-rocket-line text-indigo-600 dark:text-indigo-400 text-sm" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-indigo-900 dark:text-indigo-200">Activate your free account</p>
+                        <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1 leading-relaxed">
+                          Get a full dashboard to track all your referrals, view responses, and manage
+                          your cases in one place — completely free.
+                        </p>
+                        <a
+                          href={`/enroll?${new URLSearchParams({
+                            tenantId:            tenantId,
+                            ...(form.email       ? { email:   form.email }       : {}),
+                            ...(form.firmName    ? { firm:    form.firmName }    : {}),
+                            ...(form.phone       ? { phone:   form.phone }       : {}),
+                            ...(form.contactName ? { contact: form.contactName } : {}),
+                          }).toString()}`}
+                          className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+                        >
+                          <i className="ri-user-add-line" />
+                          Get free access
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

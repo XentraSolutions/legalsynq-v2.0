@@ -337,6 +337,50 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         }
     }
 
+    // ── CC-PORTAL-CHECK: Referrer portal access lookup ────────────────────────
+
+    /// <inheritdoc />
+    public async Task<bool> CheckReferrerPortalAccessAsync(
+        string            email,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled || string.IsNullOrWhiteSpace(email))
+            return false;
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var url = $"api/internal/users/portal-access?email={Uri.EscapeDataString(email.Trim())}";
+            using var response = await client.GetAsync(url, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "CC-PORTAL-CHECK Identity portal-access returned HTTP {Status} for email check.",
+                    (int)response.StatusCode);
+                return false;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<PortalAccessResponse>(
+                cancellationToken: cts.Token);
+
+            return result?.HasPortalAccess ?? false;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("CC-PORTAL-CHECK Identity portal-access check timed out.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CC-PORTAL-CHECK Identity portal-access check failed.");
+            return false;
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildIdentityClient()
@@ -409,5 +453,11 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
         [JsonPropertyName("isNew")]
         public bool IsNew  { get; set; }
+    }
+
+    private sealed class PortalAccessResponse
+    {
+        [JsonPropertyName("hasPortalAccess")]
+        public bool HasPortalAccess { get; set; }
     }
 }

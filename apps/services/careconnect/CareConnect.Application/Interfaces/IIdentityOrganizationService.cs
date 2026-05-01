@@ -85,6 +85,21 @@ public interface IIdentityOrganizationService
         string            firmName,
         string            contactEmail,
         CancellationToken ct = default);
+
+    // ── CC-PORTAL-CHECK: Referrer portal access lookup ────────────────────────
+
+    /// <summary>
+    /// Returns true if the supplied email address belongs to a fully-activated
+    /// CareConnect referrer (active user, password set, member of a LAW_FIRM org).
+    ///
+    /// Used by the public referral success screen to decide whether to show
+    /// "Activate your free account" or "Login to CareConnect to view your referrals".
+    ///
+    /// Always returns false on any infrastructure failure — never throws.
+    /// </summary>
+    Task<bool> CheckReferrerPortalAccessAsync(
+        string            email,
+        CancellationToken ct = default);
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────

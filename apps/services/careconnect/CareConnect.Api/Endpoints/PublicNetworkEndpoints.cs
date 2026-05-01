@@ -354,6 +354,37 @@ public static class PublicNetworkEndpoints
         .AllowAnonymous()
         .RequireRateLimiting("public-referral-limit")
         .DisableAntiforgery();
+
+        // ── GET /api/public/referrer-status?email=xxx ────────────────────────
+        // CC-PORTAL-CHECK — After a public referral is submitted, the success screen
+        // checks whether the law firm's email is already registered with an active
+        // CareConnect portal account.
+        //
+        // Response: { hasPortalAccess: bool }
+        //   true  → show "Login to CareConnect to view your referrals"
+        //   false → show "Activate your free account" (default enrollment CTA)
+        //
+        // Delegates the user-record lookup to the Identity service via
+        // IIdentityOrganizationService.CheckReferrerPortalAccessAsync.
+        // Any infrastructure failure → hasPortalAccess = false (safe default).
+        app.MapGet("/api/public/referrer-status", async (
+            string?                    email,
+            HttpContext                 http,
+            IConfiguration             config,
+            IIdentityOrganizationService identityOrgs,
+            CancellationToken          ct) =>
+        {
+            var tenantId = ValidateTrustBoundary(http, config);
+            if (tenantId is null)
+                return Results.StatusCode(403);
+
+            if (string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { hasPortalAccess = false });
+
+            var hasAccess = await identityOrgs.CheckReferrerPortalAccessAsync(email.Trim(), ct);
+            return Results.Ok(new { hasPortalAccess = hasAccess });
+        })
+        .AllowAnonymous();
     }
 
     private static async Task<IResult> HandlePublicReferral(
