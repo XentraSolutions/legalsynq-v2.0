@@ -93,6 +93,19 @@ export function TopBar() {
   );
 }
 
+// Portals whose product switcher is restricted to a specific set.
+// Keyed by raw subdomain (first segment of the hostname).
+const PORTAL_PRODUCT_ALLOWLIST: Record<string, string[]> = {
+  'careconnect-demo': ['careconnect'],
+};
+
+function getPortalSubdomain(): string | null {
+  if (typeof window === 'undefined') return null;
+  const parts = window.location.hostname.split('.');
+  if (parts.length >= 3 && parts[0] !== 'www') return parts[0];
+  return null;
+}
+
 // ── App switcher button + popout ──────────────────────────────────────────────
 
 function AppSwitcher() {
@@ -112,7 +125,15 @@ function AppSwitcher() {
     const productList = up.length > 0 ? up : ep;           // user-level beats tenant-level
     if (productList.length === 0) return [...ALL_PRODUCTS]; // PlatformAdmin / unconfigured
     const ids = new Set(productList.map(code => PRODUCT_CODE_TO_NAV_KEY[code]).filter(Boolean));
-    return ALL_PRODUCTS.filter(p => ids.has(p.id));
+    let products = ALL_PRODUCTS.filter(p => ids.has(p.id));
+
+    // Apply portal-level restriction — e.g. careconnect-demo only shows CareConnect.
+    const portalAllowlist = PORTAL_PRODUCT_ALLOWLIST[getPortalSubdomain() ?? ''];
+    if (portalAllowlist) {
+      products = products.filter(p => portalAllowlist.includes(p.id));
+    }
+
+    return products;
   })();
 
   useEffect(() => {
