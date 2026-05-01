@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
     userId:       user.id,
     email:        user.email,
     tenantId:     user.tenantId,
-    tenantCode:   user.tenantCode ?? tenantCode,
+    tenantCode:   user.tenantCode ?? resolvedTenantCode,
     orgId:        user.organizationId ?? null,
     orgType:      user.orgType ?? null,
     productRoles: user.productRoles ?? [],
@@ -219,8 +219,8 @@ export async function POST(request: NextRequest) {
     // domain: intentionally omitted — scopes to exact request origin only
   });
 
-  const resolvedTenantCode = user.tenantCode ?? tenantCode;
-  response.cookies.set('tenant_code', resolvedTenantCode, {
+  const cookieTenantCode = user.tenantCode ?? resolvedTenantCode;
+  response.cookies.set('tenant_code', cookieTenantCode, {
     httpOnly: false,
     secure:   IS_PROD,
     sameSite: IS_PROD ? 'strict' : 'lax',
