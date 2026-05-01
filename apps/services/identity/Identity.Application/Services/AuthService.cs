@@ -278,7 +278,7 @@ public class AuthService : IAuthService
         // Mirrors how LienOwner implies NetworkManager in the front-end access rules.
         var productRolesFlat = effectiveAccess.ProductRolesFlat;
         const string CcProductPrefix   = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":";
-        const string CcReferrerRole    = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":CareConnectReferrer";
+        const string CcReferrerRole    = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":CARECONNECT_REFERRER";
         if (string.Equals(orgTypeForResponse, Domain.OrgType.LawFirm, StringComparison.OrdinalIgnoreCase)
             && !productRolesFlat.Any(r => r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase)))
         {

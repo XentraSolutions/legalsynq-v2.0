@@ -81,8 +81,16 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
       )}
 
       {referral && (() => {
-        const isReferrerOfReferral = hasReferrerRole && !!session.orgId
-          && referral.referringOrganizationId === session.orgId;
+        // Standard org-based participant check.
+        // CC-REFERRER-EMAIL: also treat the user as the referrer when the referral was
+        // submitted publicly (no org) but their email matches — covers law firms that
+        // activated their portal after sending public referrals.
+        const isReferrerOfReferral = hasReferrerRole && (
+          (!!session.orgId && referral.referringOrganizationId === session.orgId) ||
+          (!referral.referringOrganizationId &&
+           !!session.email &&
+           referral.referrerEmail?.toLowerCase() === session.email.toLowerCase())
+        );
         const isReceiverOfReferral = hasReceiverRole && !!session.orgId
           && referral.receivingOrganizationId === session.orgId;
         return <>
