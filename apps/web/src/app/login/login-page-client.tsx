@@ -140,7 +140,7 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
             src="/careconnect-logo.png"
             alt="CareConnect"
             width={300}
-            height={73}
+            height={66}
             priority
             unoptimized
             className="w-full max-w-[300px] h-auto"
