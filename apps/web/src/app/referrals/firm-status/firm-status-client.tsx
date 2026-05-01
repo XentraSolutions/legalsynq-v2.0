@@ -12,15 +12,16 @@ interface Comment {
 }
 
 interface ThreadData {
-  referralId:   string;
-  tenantId:     string;
-  status:       string;
-  clientName:   string;
-  service:      string;
-  providerName: string;
-  referrerName: string | null;
-  createdAt:    string;
-  comments:     Comment[];
+  referralId:    string;
+  tenantId:      string;
+  status:        string;
+  clientName:    string;
+  service:       string;
+  providerName:  string;
+  referrerName:  string | null;
+  referrerEmail: string | null;
+  createdAt:     string;
+  comments:      Comment[];
 }
 
 interface Props {
@@ -157,7 +158,8 @@ export function FirmStatusClient({ token, data }: Props) {
   const loginUrl = 'https://careconnect-demo.legalsynq.com/login';
   const enrollParams = new URLSearchParams({
     tenantId: data.tenantId,
-    ...(data.referrerName ? { contact: data.referrerName } : {}),
+    ...(data.referrerEmail ? { email:   data.referrerEmail } : {}),
+    ...(data.referrerName  ? { contact: data.referrerName  } : {}),
   });
   const enrollUrl = `/enroll?${enrollParams.toString()}`;
 
