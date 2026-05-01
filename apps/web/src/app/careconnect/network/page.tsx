@@ -1,5 +1,6 @@
 import { headers }                  from 'next/headers';
 import { PublicNetworkView }        from '@/components/careconnect/public-network-view';
+import { AccessCodeGate }           from '@/components/careconnect/access-code-gate';
 import {
   resolveTenantFromCode,
   fetchPublicNetworks,
@@ -58,11 +59,13 @@ export default async function PublicNetworkPage() {
 
   return (
     <div className="h-screen overflow-hidden">
-      <PublicNetworkView
-        detail={detail}
-        tenantCode={tenant.tenantCode}
-        tenantId={tenant.tenantId}
-      />
+      <AccessCodeGate>
+        <PublicNetworkView
+          detail={detail}
+          tenantCode={tenant.tenantCode}
+          tenantId={tenant.tenantId}
+        />
+      </AccessCodeGate>
     </div>
   );
 }
