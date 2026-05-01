@@ -10,7 +10,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: '/careconnect/dashboard',    label: 'Dashboard',    icon: 'ri-dashboard-line' },
         { href: '/careconnect/referrals',    label: 'Referrals',    icon: 'ri-file-list-3-line', badgeKey: 'newReferrals' },
         // CC-REFERRER-BROWSE: read-only network directory for law firm referrers
-        { href: '/careconnect/browse-networks', label: 'Network',   icon: 'ri-share-circle-line', requiredRoles: [ProductRole.CareConnectReferrer] },
+        { href: '/careconnect/browse-networks', label: 'Available Networks', icon: 'ri-share-circle-line', requiredRoles: [ProductRole.CareConnectReferrer] },
         // Network management — only visible to NetworkManagers
         { href: '/careconnect/my-network',   label: 'My Network',   icon: 'ri-settings-4-line', requiredRoles: [ProductRole.CareConnectNetworkManager] },
         // CC2-INT-B06: full multi-network management — only visible to Network Managers
