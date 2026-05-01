@@ -6,6 +6,7 @@ import {
   type PublicNetworkDetail,
 } from '@/lib/public-network-api';
 import { PublicNetworkView }         from '@/components/careconnect/public-network-view';
+import type { PrefillLawFirm }       from '@/components/careconnect/public-network-view';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,11 @@ export default async function BrowseNetworkDetailPage({ params }: Props) {
 
   if (!detail) return notFound();
 
+  const prefillLawFirm: PrefillLawFirm = {
+    firmName:    session.orgName ?? '',
+    email:       session.email,
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] -mx-4 -mt-4 overflow-hidden">
       {/* Slim breadcrumb */}
@@ -51,6 +57,7 @@ export default async function BrowseNetworkDetailPage({ params }: Props) {
           detail={detail}
           tenantCode={session.tenantCode}
           tenantId={session.tenantId}
+          prefillLawFirm={prefillLawFirm}
         />
       </div>
     </div>

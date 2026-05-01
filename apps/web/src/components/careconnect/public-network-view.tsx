@@ -25,17 +25,25 @@ const PublicNetworkMap = dynamic(
   { ssr: false, loading: () => <div className="h-full w-full bg-gray-100 animate-pulse" /> },
 );
 
+export interface PrefillLawFirm {
+  firmName:    string;
+  email:       string;
+  contactName?: string;
+}
+
 interface PublicNetworkViewProps {
-  detail:     PublicNetworkDetail;
-  tenantCode: string;
-  tenantId:   string;
+  detail:          PublicNetworkDetail;
+  tenantCode:      string;
+  tenantId:        string;
+  /** When provided, the law firm section is hidden and pre-filled (authenticated referrer flow). */
+  prefillLawFirm?: PrefillLawFirm;
 }
 
 type ViewMode = 'split' | 'list' | 'map';
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 
-export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetworkViewProps) {
+export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm }: PublicNetworkViewProps) {
   const [search,      setSearch]      = useState('');
   const [viewMode,    setViewMode]    = useState<ViewMode>('split');
   const [showAll,     setShowAll]     = useState(false);
@@ -345,6 +353,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
           providers={selectedProviders}
           tenantId={tenantId}
           onClearSelection={() => setSelectedIds(new Set())}
+          prefillLawFirm={prefillLawFirm}
         />
       </div>
     </div>
@@ -515,13 +524,18 @@ const EMPTY_FORM: ReferralForm = {
 type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error';
 
 function ReferralPanel({
-  providers, tenantId, onClearSelection,
+  providers, tenantId, onClearSelection, prefillLawFirm,
 }: {
   providers:        PublicProviderItem[];
   tenantId:         string;
   onClearSelection: () => void;
+  prefillLawFirm?:  PrefillLawFirm;
 }) {
-  const [form,           setForm]          = useState<ReferralForm>(EMPTY_FORM);
+  const [form,           setForm]          = useState<ReferralForm>(() =>
+    prefillLawFirm
+      ? { ...EMPTY_FORM, firmName: prefillLawFirm.firmName, email: prefillLawFirm.email, contactName: prefillLawFirm.contactName ?? '' }
+      : EMPTY_FORM
+  );
   const [state,          setState]         = useState<PanelState>('form');
   const [errorMsg,       setErrMsg]        = useState('');
   const [fieldErrors,    setErrors]        = useState<Record<string, string>>({});
@@ -583,9 +597,11 @@ function ReferralPanel({
     else if (new Date(form.patientDob) > new Date()) errs['patientDob'] = 'Date of birth cannot be in the future.';
     if (!form.patientDateOfAccident) errs['patientDateOfAccident'] = 'Date of accident is required.';
     else if (new Date(form.patientDateOfAccident) > new Date()) errs['patientDateOfAccident'] = 'Date of accident cannot be in the future.';
-    if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
-    if (!form.email.trim()) errs['email'] = 'Email is required.';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs['email'] = 'Enter a valid email address.';
+    if (!prefillLawFirm) {
+      if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
+      if (!form.email.trim()) errs['email'] = 'Email is required.';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs['email'] = 'Enter a valid email address.';
+    }
     return errs;
   }, [form]);
 
@@ -789,52 +805,64 @@ function ReferralPanel({
           <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto">
 
-            {/* Law firm section */}
-            <SectionRow
-              icon="ri-briefcase-line" avatarBg="bg-indigo-500"
-              title="Law firm"
-              subtitle="Who is sending the referral"
-              hasError={!!(fieldErrors['firmName'] || fieldErrors['email'])}
-            >
-              <div className="px-5 pb-4 space-y-3">
-                <PanelField label="Firm name" required error={fieldErrors['firmName']}>
-                  <input
-                    type="text" required value={form.firmName}
-                    placeholder="Acme Injury Law"
-                    onChange={e => update('firmName', e.target.value)}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(!!fieldErrors['firmName'])}
-                  />
-                </PanelField>
-                <PanelField label="Contact name">
-                  <input
-                    type="text" value={form.contactName}
-                    placeholder="Paralegal or attorney"
-                    onChange={e => update('contactName', e.target.value)}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(false)}
-                  />
-                </PanelField>
-                <PanelField label="Email" required error={fieldErrors['email']}>
-                  <input
-                    type="email" required value={form.email}
-                    placeholder="intake@firm.example"
-                    onChange={e => update('email', e.target.value)}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(!!fieldErrors['email'])}
-                  />
-                </PanelField>
-                <PanelField label="Phone">
-                  <input
-                    type="tel" value={form.phone}
-                    placeholder="(555) 555-5555"
-                    onChange={e => update('phone', formatPhoneInput(e.target.value))}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(false)}
-                  />
-                </PanelField>
+            {/* Law firm section — hidden when the user is a known authenticated referrer */}
+            {prefillLawFirm ? (
+              <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 bg-indigo-50/60">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500">
+                  <i className="ri-briefcase-line text-white text-sm" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-indigo-700 truncate">{prefillLawFirm.firmName}</p>
+                  <p className="text-[11px] text-indigo-500 truncate">{prefillLawFirm.email}</p>
+                </div>
               </div>
-            </SectionRow>
+            ) : (
+              <SectionRow
+                icon="ri-briefcase-line" avatarBg="bg-indigo-500"
+                title="Law firm"
+                subtitle="Who is sending the referral"
+                hasError={!!(fieldErrors['firmName'] || fieldErrors['email'])}
+              >
+                <div className="px-5 pb-4 space-y-3">
+                  <PanelField label="Firm name" required error={fieldErrors['firmName']}>
+                    <input
+                      type="text" required value={form.firmName}
+                      placeholder="Acme Injury Law"
+                      onChange={e => update('firmName', e.target.value)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(!!fieldErrors['firmName'])}
+                    />
+                  </PanelField>
+                  <PanelField label="Contact name">
+                    <input
+                      type="text" value={form.contactName}
+                      placeholder="Paralegal or attorney"
+                      onChange={e => update('contactName', e.target.value)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(false)}
+                    />
+                  </PanelField>
+                  <PanelField label="Email" required error={fieldErrors['email']}>
+                    <input
+                      type="email" required value={form.email}
+                      placeholder="intake@firm.example"
+                      onChange={e => update('email', e.target.value)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(!!fieldErrors['email'])}
+                    />
+                  </PanelField>
+                  <PanelField label="Phone">
+                    <input
+                      type="tel" value={form.phone}
+                      placeholder="(555) 555-5555"
+                      onChange={e => update('phone', formatPhoneInput(e.target.value))}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(false)}
+                    />
+                  </PanelField>
+                </div>
+              </SectionRow>
+            )}
 
             {/* Patient section */}
             <SectionRow
@@ -1044,6 +1072,7 @@ function ReferralPanel({
           state={state}
           tenantId={tenantId}
           hasPortalAccess={hasPortalAccess}
+          prefillLawFirm={prefillLawFirm}
           onConfirm={confirmAndSend}
           onBack={() => setState('form')}
           onClose={() => window.location.reload()}
@@ -1072,7 +1101,7 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ReferralConfirmModal({
-  form, providers, treatmentTypes, providerFiles, state, tenantId, hasPortalAccess, onConfirm, onBack, onClose,
+  form, providers, treatmentTypes, providerFiles, state, tenantId, hasPortalAccess, prefillLawFirm, onConfirm, onBack, onClose,
 }: {
   form:             ReferralForm;
   providers:        PublicProviderItem[];
@@ -1081,6 +1110,7 @@ function ReferralConfirmModal({
   state:            PanelState;
   tenantId:         string;
   hasPortalAccess:  boolean;
+  prefillLawFirm?:  PrefillLawFirm;
   onConfirm:        () => void;
   onBack:           () => void;
   onClose:          () => void;
@@ -1232,17 +1262,19 @@ function ReferralConfirmModal({
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
 
               {/* Law firm */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2 flex items-center gap-1.5">
-                  <i className="ri-briefcase-line" /> Law Firm
-                </p>
-                <div className="space-y-1.5 pl-1">
-                  <ConfirmRow label="Firm name"    value={form.firmName}    />
-                  <ConfirmRow label="Contact name" value={form.contactName} />
-                  <ConfirmRow label="Email"        value={form.email}       />
-                  <ConfirmRow label="Phone"        value={form.phone}       />
+              {!prefillLawFirm && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2 flex items-center gap-1.5">
+                    <i className="ri-briefcase-line" /> Law Firm
+                  </p>
+                  <div className="space-y-1.5 pl-1">
+                    <ConfirmRow label="Firm name"    value={form.firmName}    />
+                    <ConfirmRow label="Contact name" value={form.contactName} />
+                    <ConfirmRow label="Email"        value={form.email}       />
+                    <ConfirmRow label="Phone"        value={form.phone}       />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Patient */}
               <div>

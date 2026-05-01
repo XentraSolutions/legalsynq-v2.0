@@ -83,7 +83,7 @@ export function TopBar() {
           <img
             src={portalConfig.logoSrc}
             alt={portalConfig.logoLabel}
-            style={{ width: 300, maxWidth: "100%" }}
+            style={{ height: 36, width: 'auto', maxWidth: 240 }}
             className="object-contain"
           />
         </Link>
