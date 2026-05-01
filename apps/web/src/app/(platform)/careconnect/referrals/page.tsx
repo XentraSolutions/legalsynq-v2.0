@@ -270,7 +270,10 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
   const searchParamsData = await searchParams;
   const session = await requireOrg();
 
-  const isReferrer        = session.productRoles.includes(ProductRole.CareConnectReferrer);
+  // LawFirm org type is intrinsically a referrer even if the explicit product role
+  // hasn't been assigned yet — mirrors how LienOwner implies NetworkManager.
+  const isReferrer        = session.productRoles.includes(ProductRole.CareConnectReferrer)
+                          || session.orgType === OrgType.LawFirm;
   const isReceiver        = session.productRoles.includes(ProductRole.CareConnectReceiver);
   const isNetworkManager  = session.productRoles.includes(ProductRole.CareConnectNetworkManager)
                           || session.orgType === OrgType.LienOwner;
