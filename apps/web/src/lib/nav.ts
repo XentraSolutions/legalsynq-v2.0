@@ -16,9 +16,12 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           requiredRoles:    [ProductRole.CareConnectReferrer],
           excludedRoles:    [ProductRole.CareConnectNetworkManager],
           hiddenForOrgTypes:[OrgType.LienOwner] },
-        // Lien company network management — only their own network.
+        // Lien company network management — visible to network managers AND to
+        // any TenantAdmin at a LIEN_OWNER org (covers the case where the admin
+        // hasn't been explicitly granted the NetworkManager product role yet).
         { href: '/careconnect/my-network', label: 'My Network', icon: 'ri-settings-4-line',
-          requiredRoles: [ProductRole.CareConnectNetworkManager] },
+          requiredRoles:                 [ProductRole.CareConnectNetworkManager],
+          visibleForTenantAdminInOrgTypes:[OrgType.LienOwner] },
         // Multi-network admin view — internal/admin use only; hidden from lien company orgs.
         { href: '/careconnect/networks', label: 'Networks', icon: 'ri-share-forward-2-line',
           requiredRoles:    [ProductRole.CareConnectNetworkManager],
@@ -142,13 +145,28 @@ export function resolveEnabledNavKeys(enabledProducts: string[]): Set<string> {
   return keys;
 }
 
-export function filterNavByRoles(sections: NavSection[], userRoles: ProductRoleValue[]): NavSection[] {
+export function filterNavByRoles(
+  sections:     NavSection[],
+  userRoles:    ProductRoleValue[],
+  isTenantAdmin = false,
+  orgType?:     OrgTypeValue | null,
+): NavSection[] {
   return sections
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
         // Hide immediately if the user holds any excluded role.
         if (item.excludedRoles?.some(role => userRoles.includes(role))) return false;
+
+        // TenantAdmin override: show this item if the user is a tenant admin in
+        // a matching org type, regardless of product-role state.
+        if (
+          item.visibleForTenantAdminInOrgTypes &&
+          isTenantAdmin &&
+          orgType &&
+          item.visibleForTenantAdminInOrgTypes.includes(orgType)
+        ) return true;
+
         if (!item.requiredRoles || item.requiredRoles.length === 0) return true;
         return item.requiredRoles.some(role => userRoles.includes(role));
       }),
@@ -157,12 +175,13 @@ export function filterNavByRoles(sections: NavSection[], userRoles: ProductRoleV
 }
 
 export function filterNavByAccess(
-  sections: NavSection[],
-  userRoles: ProductRoleValue[],
-  isSellMode: boolean,
-  orgType?: OrgTypeValue | null,
+  sections:     NavSection[],
+  userRoles:    ProductRoleValue[],
+  isSellMode:   boolean,
+  orgType?:     OrgTypeValue | null,
+  isTenantAdmin = false,
 ): NavSection[] {
-  return filterNavByRoles(sections, userRoles)
+  return filterNavByRoles(sections, userRoles, isTenantAdmin, orgType)
     .filter((s) => !s.sellModeOnly || isSellMode)
     .map((s) => ({
       ...s,

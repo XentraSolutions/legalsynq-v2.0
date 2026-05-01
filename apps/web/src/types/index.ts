@@ -111,6 +111,13 @@ export interface NavItem {
   adminOnly?: boolean;
   /** Item is hidden for these org types (e.g. hide Network from PROVIDER orgs). */
   hiddenForOrgTypes?: OrgTypeValue[];
+  /**
+   * Makes this item visible whenever the user is a TenantAdmin AND their org type
+   * matches one of the listed values — even if they don't hold the requiredRoles.
+   * Use for management-level features that all tenant admins of a given org type
+   * should access regardless of product-role provisioning state.
+   */
+  visibleForTenantAdminInOrgTypes?: OrgTypeValue[];
 }
 
 export interface NavSection {

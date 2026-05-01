@@ -56,7 +56,7 @@ export function Sidebar() {
   const width    = !mounted ? 220 : collapsed ? 52 : 220;
   const rawSections = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
   const sections = session
-    ? filterNavByAccess(rawSections, session.productRoles, isSellMode, session.orgType)
+    ? filterNavByAccess(rawSections, session.productRoles, isSellMode, session.orgType, session.isTenantAdmin)
     : rawSections;
   const meta     = selectedProductId ? PRODUCT_META[selectedProductId] : null;
 
