@@ -157,7 +157,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm
   const shownCount        = filtered.length;
 
   return (
-    <div data-theme={dark ? 'dark' : 'light'} className="flex flex-col h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden">
+    <div data-theme={dark ? 'dark' : 'light'} className="flex flex-col h-full bg-gray-50 dark:bg-gray-950 overflow-hidden">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="flex-shrink-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">

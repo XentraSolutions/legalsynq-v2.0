@@ -57,10 +57,12 @@ export default async function PublicNetworkPage() {
   }
 
   return (
-    <PublicNetworkView
-      detail={detail}
-      tenantCode={tenant.tenantCode}
-      tenantId={tenant.tenantId}
-    />
+    <div className="h-screen overflow-hidden">
+      <PublicNetworkView
+        detail={detail}
+        tenantCode={tenant.tenantCode}
+        tenantId={tenant.tenantId}
+      />
+    </div>
   );
 }

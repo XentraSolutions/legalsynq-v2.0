@@ -47,7 +47,7 @@ export default async function BrowseNetworkDetailPage({ params }: Props) {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-5rem)] -mx-4 -mt-4 overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] -mx-6 -mt-6 overflow-hidden">
       {/* Slim breadcrumb */}
       <div className="shrink-0 px-4 py-2 border-b border-gray-100 bg-white">
         <nav className="flex items-center gap-1.5 text-xs text-gray-500">
