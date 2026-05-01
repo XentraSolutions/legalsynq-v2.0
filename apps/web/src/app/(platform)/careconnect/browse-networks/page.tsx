@@ -4,7 +4,7 @@ import { careConnectServerApi }  from '@/lib/careconnect-server-api';
 import { ServerApiError }        from '@/lib/server-api-client';
 import type { NetworkSummary }   from '@/types/careconnect';
 import { NetworkCard }            from '@/components/careconnect/network-card';
-import { ProductRole }           from '@/types';
+import { ProductRole, OrgType }  from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +18,14 @@ export default async function BrowseNetworksPage() {
   // Requires CareConnectReferrer role; redirects to /dashboard if absent.
   const session = await requireProductRole(ProductRole.CareConnectReferrer);
 
-  // Network managers are lien company operators — they manage networks, not browse them.
-  if (session.productRoles.includes(ProductRole.CareConnectNetworkManager))
-    redirect('/careconnect/dashboard');
+  // Lien company users must never access browse-networks, regardless of which
+  // product roles their account carries. NetworkManager is the typical case;
+  // the OrgType check covers any edge case where a lien-owner user only holds
+  // CareConnectReferrer (e.g. during a partial provisioning state).
+  if (
+    session.productRoles.includes(ProductRole.CareConnectNetworkManager) ||
+    session.orgType === OrgType.LienOwner
+  ) redirect('/careconnect/dashboard');
 
   let networks: NetworkSummary[] = [];
   let fetchError: string | null  = null;
