@@ -645,17 +645,20 @@ function ReferralPanel({
     }));
 
     try {
-      const responses = await Promise.all(payloads.map(payload =>
-        fetch('/api/public/careconnect/api/public/referrals', {
+      const responses = await Promise.all(payloads.map(async payload => {
+        const res = await fetch('/api/public/careconnect/api/public/referrals', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId },
           body:    JSON.stringify(payload),
-        }).then(res => {
-          if (res.status === 422) return res.json().then(b => { throw b; });
-          if (!res.ok)           return res.json().then(b => { throw b; }).catch(() => { throw new Error('Server error'); });
-          return res.json() as Promise<{ referralId: string; providerId: string }>;
-        }),
-      ));
+        });
+        if (!res.ok) {
+          // Parse the error body; fall back to a generic message if parsing fails.
+          let body: unknown;
+          try { body = await res.json(); } catch { throw new Error('Server error'); }
+          throw body;
+        }
+        return res.json() as Promise<{ referralId: string; providerId: string }>;
+      }));
 
       await Promise.allSettled(responses.map(r => {
         const fileForProvider = providerFiles[r.providerId] ?? null;
@@ -687,9 +690,18 @@ function ReferralPanel({
       const apiErrors = err && typeof err === 'object' && 'errors' in err
         ? (err as { errors: Record<string, string> }).errors
         : {};
-      const msg = err && typeof err === 'object' && 'message' in err
-        ? (err as { message: string }).message
-        : 'Something went wrong. Please try again.';
+      // Extract the most useful message: prefer 'message', fall back to ProblemDetails
+      // 'detail' or 'title', then a generic fallback.
+      const msg =
+        err instanceof Error
+          ? err.message
+          : err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
+            ? (err as { message: string }).message
+            : err && typeof err === 'object' && 'detail' in err && typeof (err as { detail: unknown }).detail === 'string'
+              ? (err as { detail: string }).detail
+              : err && typeof err === 'object' && 'title' in err && typeof (err as { title: unknown }).title === 'string'
+                ? (err as { title: string }).title
+                : 'Something went wrong. Please try again.';
       if (Object.keys(apiErrors).length > 0) { setErrors(apiErrors); }
       setErrMsg(msg);
       setState('error');

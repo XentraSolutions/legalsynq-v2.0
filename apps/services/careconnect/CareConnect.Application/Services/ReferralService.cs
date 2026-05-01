@@ -236,7 +236,9 @@ public class ReferralService : IReferralService
         });
 
         var loaded = await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
-        return ToResponse(loaded!);
+        if (loaded is null)
+            throw new NotFoundException($"Referral '{referral.Id}' was not found after creation — this may indicate a tenant ID mismatch or a race condition.");
+        return ToResponse(loaded);
     }
 
     public async Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default, bool bypassTenantScope = false, string? actorName = null)

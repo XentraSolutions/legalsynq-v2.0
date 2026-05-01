@@ -159,15 +159,21 @@ public class ReferralRepository : IReferralRepository
         if (ids.Count == 0)
             return new Dictionary<Guid, string>();
 
-        return await _db.NetworkProviders
+        // Fetch matching (ProviderId, NetworkName) pairs from the database.
+        // GroupBy + First() cannot be reliably translated to SQL by EF Core / Pomelo MySQL,
+        // so we pull the flat list into memory and group in .NET.
+        var rows = await _db.NetworkProviders
             .AsNoTracking()
             .Where(np => ids.Contains(np.ProviderId))
             .Join(_db.ProviderNetworks,
                 np => np.ProviderNetworkId,
                 pn => pn.Id,
                 (np, pn) => new { np.ProviderId, pn.Name })
+            .ToListAsync(ct);
+
+        // One provider may belong to multiple networks; keep the first network name per provider.
+        return rows
             .GroupBy(x => x.ProviderId)
-            .Select(g => new { ProviderId = g.Key, NetworkName = g.First().Name })
-            .ToDictionaryAsync(x => x.ProviderId, x => x.NetworkName, ct);
+            .ToDictionary(g => g.Key, g => g.First().Name);
     }
 }
