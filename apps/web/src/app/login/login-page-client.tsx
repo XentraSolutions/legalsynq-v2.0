@@ -255,6 +255,7 @@ function LegalSynqLoginLayout({ year }: { year: number | null }) {
             priority
             unoptimized
             className="h-12 w-auto"
+            data-testid="ls-desktop-logo"
           />
         </div>
 
@@ -310,7 +311,7 @@ function LegalSynqLoginLayout({ year }: { year: number | null }) {
       <div className="flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 px-6 py-12 bg-gray-50">
 
         {/* Mobile-only logo */}
-        <div className="lg:hidden mb-10">
+        <div className="lg:hidden mb-10" data-testid="ls-mobile-logo-wrap">
           <Image
             src="/legalsynq-logo.png"
             alt="LegalSynq"
@@ -319,6 +320,7 @@ function LegalSynqLoginLayout({ year }: { year: number | null }) {
             priority
             unoptimized
             className="h-8 w-auto mx-auto"
+            data-testid="ls-mobile-logo"
           />
         </div>
 
