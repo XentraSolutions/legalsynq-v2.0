@@ -1,6 +1,8 @@
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { requireOrg } from '@/lib/auth-guards';
 import { PRODUCT_META, PRODUCT_NAV, orgTypeLabel, resolveEnabledNavKeys } from '@/lib/nav';
+import { getServerPortalConfig } from '@/lib/portal';
 import { AppShell } from '@/components/shell/app-shell';
 import Link from 'next/link';
 
@@ -11,39 +13,20 @@ export const dynamic = 'force-dynamic';
  * Dashboard — default landing page after login.
  * Shows a welcome card and quick-access tiles for each product.
  */
-// Portals that are scoped to a specific subset of products.
-// Keyed by the raw subdomain (first segment of the hostname).
-// This prevents products from other tenants leaking into portal-scoped views.
-const PORTAL_PRODUCT_ALLOWLIST: Record<string, string[]> = {
-  'careconnect-demo': ['careconnect'],
-};
-
-function extractSubdomain(rawHost: string): string | null {
-  const host = (rawHost.split(',')[0] ?? '').trim().split(':')[0].toLowerCase();
-  const parts = host.split('.');
-  if (parts.length >= 3 && parts[0] !== 'www') return parts[0];
-  return null;
-}
-
 export default async function DashboardPage() {
   const session = await requireOrg();
 
-  // Determine the current portal's subdomain so we can apply product allowlists.
-  const headersList = await headers();
-  const rawHost  = headersList.get('x-forwarded-host') ?? headersList.get('host') ?? '';
-  const subdomain = extractSubdomain(rawHost);
-  const portalAllowlist = subdomain ? (PORTAL_PRODUCT_ALLOWLIST[subdomain] ?? null) : null;
+  // Portal-specific overrides: redirect to the portal's own landing page.
+  const headersList  = await headers();
+  const rawHost      = headersList.get('x-forwarded-host') ?? headersList.get('host') ?? '';
+  const portalConfig = getServerPortalConfig(rawHost);
+  if (portalConfig) redirect(portalConfig.landingPath);
 
   // Filter product tiles to only those enabled for this tenant.
   // resolveEnabledNavKeys falls back to ALL products when the list is empty
   // (e.g. PlatformAdmin sessions, or tenants with no entitlements configured yet).
-  const enabledKeys = resolveEnabledNavKeys(session.enabledProducts ?? []);
-  let productEntries = Object.entries(PRODUCT_META).filter(([id]) => enabledKeys.has(id));
-
-  // Apply portal-level product restriction — e.g. careconnect-demo only shows CareConnect.
-  if (portalAllowlist) {
-    productEntries = productEntries.filter(([id]) => portalAllowlist.includes(id));
-  }
+  const enabledKeys    = resolveEnabledNavKeys(session.enabledProducts ?? []);
+  const productEntries = Object.entries(PRODUCT_META).filter(([id]) => enabledKeys.has(id));
 
   return (
     <AppShell>

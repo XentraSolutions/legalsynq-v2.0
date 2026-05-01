@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { useProduct } from '@/contexts/product-context';
 import { useSettings } from '@/contexts/settings-context';
 import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV, buildNavGroups, filterNavByAccess } from '@/lib/nav';
+import { getClientPortalConfig, type PortalConfig } from '@/lib/portal';
 import { useSession } from '@/hooks/use-session';
 import { useNavBadges } from '@/hooks/use-nav-badges';
 import { useProviderMode } from '@/hooks/use-provider-mode';
@@ -24,13 +25,15 @@ export function Sidebar() {
   const { isSellMode }        = useProviderMode();
   const adminSections         = session ? buildNavGroups(session) : [];
 
-  const [collapsed, setCollapsed] = useState(false);
-  const [mounted,   setMounted]   = useState(false);
+  const [collapsed,    setCollapsed]    = useState(false);
+  const [mounted,      setMounted]      = useState(false);
+  const [portalConfig, setPortalConfig] = useState<PortalConfig | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'true') setCollapsed(true);
     setMounted(true);
+    setPortalConfig(getClientPortalConfig());
   }, []);
 
   function toggle() {
@@ -166,29 +169,31 @@ export function Sidebar() {
       </div>
 
       {/* ── Global bottom section (Account / Activity Log) ─────────────────── */}
-      <div className="shrink-0 border-t border-gray-100 py-2">
-        {GLOBAL_BOTTOM_NAV.heading && !collapsed && (
-          <p className="px-5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
-            {GLOBAL_BOTTOM_NAV.heading}
-          </p>
-        )}
-        <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
-          {GLOBAL_BOTTOM_NAV.items
-            .filter(item => !(selectedProductId === 'lien' && item.href === '/my-work'))
-            .filter(item => !item.adminOnly || (session?.isPlatformAdmin || session?.isTenantAdmin))
-            .map(item => (
-            <SidebarItem
-              key={item.href + item.label}
-              item={item}
-              pathname={currentPathname}
-              collapsed={collapsed}
-              activeColor={nav.activeColor}
-              activeBg={nav.activeBg}
-              isActive={item === activeNavItem}
-            />
-          ))}
-        </nav>
-      </div>
+      {(portalConfig ? portalConfig.showBottomNav : true) && (
+        <div className="shrink-0 border-t border-gray-100 py-2">
+          {GLOBAL_BOTTOM_NAV.heading && !collapsed && (
+            <p className="px-5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
+              {GLOBAL_BOTTOM_NAV.heading}
+            </p>
+          )}
+          <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
+            {GLOBAL_BOTTOM_NAV.items
+              .filter(item => !(selectedProductId === 'lien' && item.href === '/my-work'))
+              .filter(item => !item.adminOnly || (session?.isPlatformAdmin || session?.isTenantAdmin))
+              .map(item => (
+              <SidebarItem
+                key={item.href + item.label}
+                item={item}
+                pathname={currentPathname}
+                collapsed={collapsed}
+                activeColor={nav.activeColor}
+                activeBg={nav.activeBg}
+                isActive={item === activeNavItem}
+              />
+            ))}
+          </nav>
+        </div>
+      )}
     </aside>
   );
 }

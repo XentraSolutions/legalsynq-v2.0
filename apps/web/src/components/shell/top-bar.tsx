@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useSession } from '@/hooks/use-session';
 import { useProduct } from '@/contexts/product-context';
 import { orgTypeLabel, PRODUCT_CODE_TO_NAV_KEY } from '@/lib/nav';
+import { getClientPortalConfig, type PortalConfig } from '@/lib/portal';
 import { useTenantBranding } from '@/providers/tenant-branding-provider';
 import { NotificationBell } from '@/components/shell/notification-bell';
 
@@ -58,21 +59,41 @@ export function TopBar() {
   const { session, clearSession } = useSession();
   const branding = useTenantBranding();
 
+  const [portalConfig, setPortalConfig] = useState<PortalConfig | null>(null);
+  useEffect(() => { setPortalConfig(getClientPortalConfig()); }, []);
+
+  const showSwitcher = portalConfig ? portalConfig.showAppSwitcher : true;
+
   return (
     <header
       className="flex items-center h-14 px-4 shrink-0 gap-3"
       style={{ backgroundColor: '#0f1928' }}
     >
-      {/* ── App switcher ────────────────────────────────────────────────── */}
-      <AppSwitcher />
+      {/* ── App switcher (hidden on portal-specific portals) ─────────────── */}
+      {showSwitcher && <AppSwitcher />}
 
       {/* ── Vertical divider ────────────────────────────────────────────── */}
-      <div className="self-center h-5 w-px shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }} />
+      {showSwitcher && (
+        <div className="self-center h-5 w-px shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }} />
+      )}
 
-      {/* ── Logo ────────────────────────────────────────────────────────── */}
-      <Link href="/dashboard" className="flex items-center shrink-0">
-        <TenantLogo branding={branding} hasSession={!!session} />
-      </Link>
+      {/* ── Logo — portal logo or tenant branding logo ───────────────────── */}
+      {portalConfig ? (
+        <Link href={portalConfig.landingPath} className="flex items-center gap-2.5 shrink-0">
+          <img
+            src={portalConfig.logoSrc}
+            alt={portalConfig.logoLabel}
+            className="h-7 w-7 object-contain"
+          />
+          <span className="text-white font-semibold text-[15px] tracking-tight">
+            {portalConfig.logoLabel}
+          </span>
+        </Link>
+      ) : (
+        <Link href="/dashboard" className="flex items-center shrink-0">
+          <TenantLogo branding={branding} hasSession={!!session} />
+        </Link>
+      )}
 
       {/* ── Spacer ──────────────────────────────────────────────────────── */}
       <div className="flex-1" />
@@ -91,19 +112,6 @@ export function TopBar() {
       )}
     </header>
   );
-}
-
-// Portals whose product switcher is restricted to a specific set.
-// Keyed by raw subdomain (first segment of the hostname).
-const PORTAL_PRODUCT_ALLOWLIST: Record<string, string[]> = {
-  'careconnect-demo': ['careconnect'],
-};
-
-function getPortalSubdomain(): string | null {
-  if (typeof window === 'undefined') return null;
-  const parts = window.location.hostname.split('.');
-  if (parts.length >= 3 && parts[0] !== 'www') return parts[0];
-  return null;
 }
 
 // ── App switcher button + popout ──────────────────────────────────────────────
@@ -127,10 +135,10 @@ function AppSwitcher() {
     const ids = new Set(productList.map(code => PRODUCT_CODE_TO_NAV_KEY[code]).filter(Boolean));
     let products = ALL_PRODUCTS.filter(p => ids.has(p.id));
 
-    // Apply portal-level restriction — e.g. careconnect-demo only shows CareConnect.
-    const portalAllowlist = PORTAL_PRODUCT_ALLOWLIST[getPortalSubdomain() ?? ''];
-    if (portalAllowlist) {
-      products = products.filter(p => portalAllowlist.includes(p.id));
+    // Apply portal-level restriction using shared portal config.
+    const portalCfg = getClientPortalConfig();
+    if (portalCfg) {
+      products = products.filter(p => p.id === portalCfg.productId);
     }
 
     return products;
