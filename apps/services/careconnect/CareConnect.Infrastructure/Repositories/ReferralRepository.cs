@@ -152,4 +152,22 @@ public class ReferralRepository : IReferralRepository
             .OrderBy(r => r.ReassignedAtUtc)
             .ToListAsync(ct);
     }
+
+    public async Task<Dictionary<Guid, string>> GetProviderNetworkNamesAsync(IEnumerable<Guid> providerIds, CancellationToken ct = default)
+    {
+        var ids = providerIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new Dictionary<Guid, string>();
+
+        return await _db.NetworkProviders
+            .AsNoTracking()
+            .Where(np => ids.Contains(np.ProviderId))
+            .Join(_db.ProviderNetworks,
+                np => np.ProviderNetworkId,
+                pn => pn.Id,
+                (np, pn) => new { np.ProviderId, pn.Name })
+            .GroupBy(x => x.ProviderId)
+            .Select(g => new { ProviderId = g.Key, NetworkName = g.First().Name })
+            .ToDictionaryAsync(x => x.ProviderId, x => x.NetworkName, ct);
+    }
 }

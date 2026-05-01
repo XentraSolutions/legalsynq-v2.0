@@ -116,6 +116,7 @@ export interface ReferralSummary {
   referringOrganizationId?: string;
   receivingOrganizationId?:  string;
   organizationRelationshipId?: string;
+  networkName?: string | null;
 }
 
 // LSCC-005-01 / LSCC-005-02: notification delivery record

@@ -29,6 +29,9 @@ public class ReferralResponse
     // before the law firm activated their portal, where ReferringOrganizationId is null).
     public string? ReferrerEmail { get; set; }
 
+    // Network the provider belongs to (first network membership; null if provider not in any network).
+    public string? NetworkName { get; set; }
+
     // LSCC-005-01: hardening fields
     public int     TokenVersion          { get; set; } = 1;
     public string? ProviderEmailStatus   { get; set; }

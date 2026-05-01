@@ -64,9 +64,20 @@ public class ReferralService : IReferralService
 
         var (items, totalCount) = await _referrals.SearchAsync(tenantId, query, ct);
 
+        var networkNames = await _referrals.GetProviderNetworkNamesAsync(
+            items.Select(r => r.ProviderId), ct);
+
+        var responses = items.Select(r =>
+        {
+            var resp = ToResponse(r);
+            if (networkNames.TryGetValue(r.ProviderId, out var name))
+                resp.NetworkName = name;
+            return resp;
+        }).ToList();
+
         return new PagedResponse<ReferralResponse>
         {
-            Items = items.Select(r => ToResponse(r)).ToList(),
+            Items = responses,
             Page = query.Page,
             PageSize = query.PageSize,
             TotalCount = totalCount

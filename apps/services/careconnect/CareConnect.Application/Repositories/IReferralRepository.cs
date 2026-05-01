@@ -17,4 +17,6 @@ public interface IReferralRepository
     Task<List<ReferralStatusHistory>> GetHistoryByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
     Task AddProviderReassignmentAsync(ReferralProviderReassignment reassignment, CancellationToken ct = default);
     Task<List<ReferralProviderReassignment>> GetProviderReassignmentsByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
+    /// <summary>Returns a map of ProviderId → first network name for the given provider IDs.</summary>
+    Task<Dictionary<Guid, string>> GetProviderNetworkNamesAsync(IEnumerable<Guid> providerIds, CancellationToken ct = default);
 }
