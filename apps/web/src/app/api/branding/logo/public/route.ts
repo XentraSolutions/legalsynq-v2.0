@@ -63,7 +63,12 @@ async function fetchLogoDocFromIdentity(tenantCode: string): Promise<string | nu
   }
 }
 
-async function fetchLogoDocFromTenant(tenantCode: string): Promise<string | null> {
+interface TenantLogoIds {
+  logoDocumentId:      string | null;
+  logoWhiteDocumentId: string | null;
+}
+
+async function fetchLogoIdsFromTenant(tenantCode: string): Promise<TenantLogoIds> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), BRANDING_TIMEOUT_MS);
   try {
@@ -78,17 +83,28 @@ async function fetchLogoDocFromTenant(tenantCode: string): Promise<string | null
         { signal: controller.signal },
       );
     }
-    if (!res.ok) return null;
+    if (!res.ok) return { logoDocumentId: null, logoWhiteDocumentId: null };
     const data = await res.json();
-    return data?.logoDocumentId ?? null;
+    return {
+      logoDocumentId:      data?.logoDocumentId      ?? null,
+      logoWhiteDocumentId: data?.logoWhiteDocumentId ?? null,
+    };
   } catch {
-    return null;
+    return { logoDocumentId: null, logoWhiteDocumentId: null };
   } finally {
     clearTimeout(timer);
   }
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
+
+/** Fetch image bytes from the Documents service for a given document ID.
+ *  Returns the Response on success (2xx), null on 404, throws on network error. */
+async function fetchLogoBytes(docId: string): Promise<Response | null> {
+  const res = await fetch(`${GATEWAY_URL}/documents/public/logo/${docId}`);
+  if (res.status === 404) return null;
+  return res;
+}
 
 export async function GET(req: NextRequest) {
   const tenantCode = resolveTenantCode(req);
@@ -97,72 +113,77 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 404 });
   }
 
-  let docId: string | null = null;
+  let ids: TenantLogoIds = { logoDocumentId: null, logoWhiteDocumentId: null };
   let source = 'none';
 
   if (READ_SOURCE === 'Tenant') {
     logoCounters.tenantAttempted();
-    docId  = await fetchLogoDocFromTenant(tenantCode);
-    if (docId) {
+    ids = await fetchLogoIdsFromTenant(tenantCode);
+    if (ids.logoDocumentId || ids.logoWhiteDocumentId) {
       logoCounters.tenantSucceeded();
       source = 'tenant';
-    } else {
-      source = 'none';
     }
 
   } else if (READ_SOURCE === 'HybridFallback') {
     logoCounters.tenantAttempted();
-    docId = await fetchLogoDocFromTenant(tenantCode);
-    if (docId) {
+    ids = await fetchLogoIdsFromTenant(tenantCode);
+    if (ids.logoDocumentId || ids.logoWhiteDocumentId) {
       logoCounters.tenantSucceeded();
       source = 'tenant';
     } else {
       logoCounters.hybridTriggered();
-      console.warn('[logo-public] HybridFallback: Tenant fetch returned no logoDocumentId, falling back to Identity', { tenantCode });
-      docId  = await fetchLogoDocFromIdentity(tenantCode);
-      if (docId) {
+      console.warn('[logo-public] HybridFallback: Tenant fetch returned no logo ids, falling back to Identity', { tenantCode });
+      const identityDocId = await fetchLogoDocFromIdentity(tenantCode);
+      if (identityDocId) {
         logoCounters.identityFallbackOk();
         source = 'identity_fallback';
-      } else {
-        source = 'none';
+        ids = { logoDocumentId: identityDocId, logoWhiteDocumentId: null };
       }
     }
 
   } else {
-    // Identity mode — ROLLBACK ONLY. Set TENANT_BRANDING_READ_SOURCE=Identity explicitly.
+    // Identity mode — ROLLBACK ONLY.
     console.warn(
       '[DEPRECATION] [logo-public] TENANT_BRANDING_READ_SOURCE=Identity is deprecated. ' +
       'Switch to Tenant. Identity mode retained for emergency rollback only.',
       { tenantCode },
     );
     logoCounters.identityModeRead();
-    docId  = await fetchLogoDocFromIdentity(tenantCode);
-    source = docId ? 'identity' : 'none';
+    const identityDocId = await fetchLogoDocFromIdentity(tenantCode);
+    source = identityDocId ? 'identity' : 'none';
+    ids = { logoDocumentId: identityDocId, logoWhiteDocumentId: null };
   }
 
-  console.log('[logo-public]', JSON.stringify({ mode: READ_SOURCE, source, tenantCode, hasDoc: !!docId }));
+  const hasAnyId = !!(ids.logoDocumentId || ids.logoWhiteDocumentId);
+  console.log('[logo-public]', JSON.stringify({ mode: READ_SOURCE, source, tenantCode, hasDoc: hasAnyId }));
 
-  if (!docId) {
+  if (!hasAnyId) {
     return new NextResponse(null, { status: 404 });
   }
 
+  // Try logoDocumentId first, then logoWhiteDocumentId as a fallback.
+  // This mirrors the client-side TenantLogo fallback chain.
+  const candidates = [ids.logoDocumentId, ids.logoWhiteDocumentId].filter(Boolean) as string[];
+
   try {
-    const logoRes = await fetch(`${GATEWAY_URL}/documents/public/logo/${docId}`);
-
-    if (!logoRes.ok) {
-      return new NextResponse(null, { status: logoRes.status });
+    for (const docId of candidates) {
+      const logoRes = await fetchLogoBytes(docId);
+      if (!logoRes) continue;          // 404 from Documents — try next candidate
+      if (!logoRes.ok) {
+        return new NextResponse(null, { status: logoRes.status });
+      }
+      const contentType = logoRes.headers.get('content-type') ?? 'image/png';
+      const buffer      = await logoRes.arrayBuffer();
+      return new NextResponse(buffer, {
+        status: 200,
+        headers: {
+          'Content-Type':  contentType,
+          'Cache-Control': 'public, max-age=3600, s-maxage=3600',
+        },
+      });
     }
-
-    const contentType = logoRes.headers.get('content-type') ?? 'image/png';
-    const buffer      = await logoRes.arrayBuffer();
-
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        'Content-Type':  contentType,
-        'Cache-Control': 'public, max-age=3600, s-maxage=3600',
-      },
-    });
+    // All candidates returned 404 from Documents service
+    return new NextResponse(null, { status: 404 });
   } catch {
     return new NextResponse(null, { status: 502 });
   }
