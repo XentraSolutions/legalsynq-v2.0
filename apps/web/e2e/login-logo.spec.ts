@@ -23,6 +23,13 @@ const VIEWPORTS = [
   { label: 'desktop', width: 1280, height: 800  },
 ];
 
+/**
+ * Viewports for which we capture pixel-level baseline screenshots.
+ * Tablet is intentionally excluded — it shares the mobile logo path and the
+ * mobile baseline already covers that code branch.
+ */
+const SCREENSHOT_VIEWPORTS = ['mobile', 'desktop'] as const;
+
 const LG_BREAKPOINT = 1024;
 
 const LOGO_ASPECT_MIN = 3.0;
@@ -62,6 +69,10 @@ test.describe('Login page logo', () => {
         expect(ratio, `Desktop logo aspect ratio should be ~3.51 : 1, got ${ratio.toFixed(2)}`).toBeGreaterThan(LOGO_ASPECT_MIN);
         expect(ratio, `Desktop logo aspect ratio should be ~3.51 : 1, got ${ratio.toFixed(2)}`).toBeLessThan(LOGO_ASPECT_MAX);
 
+        if ((SCREENSHOT_VIEWPORTS as readonly string[]).includes(vp.label)) {
+          await expect(logo).toHaveScreenshot(`logo-${vp.label}.png`);
+        }
+
       } else {
         // ── Mobile / tablet: mobile logo must be visible ───────────────────────
 
@@ -85,6 +96,10 @@ test.describe('Login page logo', () => {
         const ratio = box!.width / box!.height;
         expect(ratio, `Mobile logo aspect ratio should be ~3.51 : 1, got ${ratio.toFixed(2)}`).toBeGreaterThan(LOGO_ASPECT_MIN);
         expect(ratio, `Mobile logo aspect ratio should be ~3.51 : 1, got ${ratio.toFixed(2)}`).toBeLessThan(LOGO_ASPECT_MAX);
+
+        if ((SCREENSHOT_VIEWPORTS as readonly string[]).includes(vp.label)) {
+          await expect(logo).toHaveScreenshot(`logo-${vp.label}.png`);
+        }
       }
     });
   }

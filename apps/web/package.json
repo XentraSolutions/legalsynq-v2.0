@@ -8,7 +8,8 @@
     "start": "next start -p 3000",
     "type-check": "tsc --noEmit",
     "test": "tsx --test src/lib/__tests__/*.test.ts && vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:update-snapshots": "playwright test --update-snapshots"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

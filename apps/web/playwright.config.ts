@@ -18,6 +18,15 @@ export default defineConfig({
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
 
+  snapshotDir: './e2e/login-logo.spec.ts-snapshots',
+  snapshotPathTemplate: '{snapshotDir}/{arg}{ext}',
+
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.01,
+    },
+  },
+
   use: {
     baseURL: 'http://localhost:3001',
     trace: 'on-first-retry',
