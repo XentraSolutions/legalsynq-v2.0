@@ -143,7 +143,7 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
             height={73}
             priority
             unoptimized
-            className="w-[300px] h-auto"
+            className="w-full max-w-[300px] h-auto"
           />
         </div>
 
