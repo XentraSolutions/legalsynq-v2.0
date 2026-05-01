@@ -1017,6 +1017,8 @@ public class ReferralService : IReferralService
         ReferringOrganizationId = r.ReferringOrganizationId,
         ReceivingOrganizationId = r.ReceivingOrganizationId,
         OrganizationRelationshipId = r.OrganizationRelationshipId,
+        // CC-REFERRER-EMAIL: surface for participant-check in endpoints
+        ReferrerEmail = r.ReferrerEmail,
         // LSCC-005-01: hardening fields
         TokenVersion          = r.TokenVersion,
         ProviderEmailStatus   = latestNotif?.Status,

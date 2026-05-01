@@ -59,6 +59,10 @@ public static class ReferralEndpoints
             else
             {
                 query.ReferringOrgId = ctx.OrgId;
+                // CC-REFERRER-EMAIL: also surface public referrals submitted before the
+                // law firm activated their portal (those have ReferrerEmail set but no
+                // ReferringOrganizationId).
+                query.ReferrerEmail = ctx.Email;
             }
 
             var result = await service.SearchAsync(tenantId, query, ct);
@@ -117,6 +121,8 @@ public static class ReferralEndpoints
 
         // LSCC-002: Row-level access control — caller must be an admin or a participant
         // (ReferringOrganizationId or ReceivingOrganizationId matches their org).
+        // CC-REFERRER-EMAIL: also grants access when the referral was submitted publicly
+        // (no ReferringOrganizationId) but the caller's email matches ReferrerEmail.
         // Returns 404 (not 403) for non-participants to avoid confirming record existence.
         group.MapGet("/{id:guid}", async (
             Guid id,
@@ -133,7 +139,11 @@ public static class ReferralEndpoints
             {
                 var isParticipant =
                     (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
-                    (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId);
+                    (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId) ||
+                    // CC-REFERRER-EMAIL: public referral matched by email
+                    (!string.IsNullOrWhiteSpace(ctx.Email) &&
+                     referral.ReferringOrganizationId == null &&
+                     string.Equals(referral.ReferrerEmail, ctx.Email, StringComparison.OrdinalIgnoreCase));
 
                 if (!isParticipant)
                     return Results.NotFound();
@@ -167,7 +177,11 @@ public static class ReferralEndpoints
             {
                 var isParticipant =
                     (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
-                    (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId);
+                    (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId) ||
+                    // CC-REFERRER-EMAIL: public referral matched by email
+                    (!string.IsNullOrWhiteSpace(ctx.Email) &&
+                     referral.ReferringOrganizationId == null &&
+                     string.Equals(referral.ReferrerEmail, ctx.Email, StringComparison.OrdinalIgnoreCase));
                 if (!isParticipant)
                     return Results.NotFound();
             }
@@ -220,7 +234,11 @@ public static class ReferralEndpoints
             {
                 var isParticipant =
                     (ctx.OrgId.HasValue && existing.ReferringOrganizationId == ctx.OrgId) ||
-                    (ctx.OrgId.HasValue && existing.ReceivingOrganizationId  == ctx.OrgId);
+                    (ctx.OrgId.HasValue && existing.ReceivingOrganizationId  == ctx.OrgId) ||
+                    // CC-REFERRER-EMAIL: public referral matched by email
+                    (!string.IsNullOrWhiteSpace(ctx.Email) &&
+                     existing.ReferringOrganizationId == null &&
+                     string.Equals(existing.ReferrerEmail, ctx.Email, StringComparison.OrdinalIgnoreCase));
                 if (!isParticipant)
                     return Results.NotFound();
             }
@@ -251,7 +269,11 @@ public static class ReferralEndpoints
             {
                 var isParticipant =
                     (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
-                    (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId);
+                    (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId) ||
+                    // CC-REFERRER-EMAIL: public referral matched by email
+                    (!string.IsNullOrWhiteSpace(ctx.Email) &&
+                     referral.ReferringOrganizationId == null &&
+                     string.Equals(referral.ReferrerEmail, ctx.Email, StringComparison.OrdinalIgnoreCase));
                 if (!isParticipant)
                     return Results.NotFound();
             }

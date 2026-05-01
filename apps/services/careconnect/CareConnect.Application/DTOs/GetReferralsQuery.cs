@@ -16,5 +16,11 @@ public class GetReferralsQuery
     public Guid? ReferringOrgId { get; set; }
     public Guid? ReceivingOrgId { get; set; }
 
+    // CC-REFERRER-EMAIL: when set, also includes referrals submitted publicly
+    // (no ReferringOrganizationId) whose ReferrerEmail matches this address.
+    // Allows law firms that activated their portal after submitting public referrals
+    // to see those earlier submissions in their referral list.
+    public string? ReferrerEmail { get; set; }
+
     public bool CrossTenantReceiver { get; set; }
 }

@@ -25,6 +25,10 @@ public class ReferralResponse
     public Guid? ReceivingOrganizationId { get; set; }
     public Guid? OrganizationRelationshipId { get; set; }
 
+    // CC-REFERRER-EMAIL: email of the referrer (set for public referrals submitted
+    // before the law firm activated their portal, where ReferringOrganizationId is null).
+    public string? ReferrerEmail { get; set; }
+
     // LSCC-005-01: hardening fields
     public int     TokenVersion          { get; set; } = 1;
     public string? ProviderEmailStatus   { get; set; }

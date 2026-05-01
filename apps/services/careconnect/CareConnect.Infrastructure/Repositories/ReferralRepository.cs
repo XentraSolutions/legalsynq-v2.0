@@ -63,8 +63,18 @@ public class ReferralRepository : IReferralRepository
         if (query.CreatedTo.HasValue)
             q = q.Where(r => r.CreatedAtUtc <= query.CreatedTo.Value);
 
-        if (query.ReferringOrgId.HasValue)
-            q = q.Where(r => r.ReferringOrganizationId == query.ReferringOrgId.Value);
+        // CC-REFERRER-EMAIL: include referrals by org ID, and also any publicly-submitted
+        // referrals (ReferringOrganizationId IS NULL) whose ReferrerEmail matches the
+        // caller's email — covering referrals sent before the law firm activated their portal.
+        if (query.ReferringOrgId.HasValue || !string.IsNullOrWhiteSpace(query.ReferrerEmail))
+        {
+            var emailLower = query.ReferrerEmail?.Trim().ToLower();
+            q = q.Where(r =>
+                (query.ReferringOrgId.HasValue && r.ReferringOrganizationId == query.ReferringOrgId.Value) ||
+                (!string.IsNullOrWhiteSpace(emailLower) && r.ReferrerEmail != null &&
+                 r.ReferringOrganizationId == null &&
+                 r.ReferrerEmail.ToLower() == emailLower));
+        }
 
         if (!query.CrossTenantReceiver && query.ReceivingOrgId.HasValue)
             q = q.Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
