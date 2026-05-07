@@ -47,7 +47,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </h2>
 
           <p className="text-[15px] text-white/70 leading-relaxed max-w-sm mb-12">
-            Manage tenants, users, entitlements, and platform operations from a single secure interface.
+            Manage tenants, users, entitlements, and platform operations from one secure, unified interface.
           </p>
 
           <div className="space-y-4">
