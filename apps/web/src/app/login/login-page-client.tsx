@@ -284,7 +284,7 @@ function LegalSynqLoginLayout({ year }: { year: number | null }) {
           />
 
           <h2 className="text-3xl xl:text-4xl font-bold text-white leading-tight tracking-tight mb-4">
-            Synchronizing legal-medical workflows
+            Synchronizing legal &amp; medical workflows
           </h2>
 
           <p className="text-[15px] text-slate-400 leading-relaxed mb-10 max-w-xs">
