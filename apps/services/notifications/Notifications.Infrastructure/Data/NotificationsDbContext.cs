@@ -27,6 +27,7 @@ public class NotificationsDbContext : DbContext
     public DbSet<TenantBranding> TenantBrandings => Set<TenantBranding>();
     public DbSet<UsageMeterEvent> UsageMeterEvents => Set<UsageMeterEvent>();
     public DbSet<SmsContactPreference> SmsContactPreferences => Set<SmsContactPreference>();
+    public DbSet<SmsPreferenceHistory> SmsPreferenceHistories => Set<SmsPreferenceHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,5 +52,6 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.TenantBrandingConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.UsageMeterEventConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsContactPreferenceConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsPreferenceHistoryConfiguration());
     }
 }

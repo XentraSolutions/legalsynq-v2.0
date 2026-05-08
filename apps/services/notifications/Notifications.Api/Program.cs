@@ -432,6 +432,41 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
             logger.LogInformation("Created missing table ntf_SmsContactPreferences");
         }
 
+        // ── LS-NOTIF-SMS-003: Ensure ntf_SmsPreferenceHistories table exists ────
+        using var histTableCheckCmd = conn.CreateCommand();
+        histTableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsPreferenceHistories'";
+        var histTableExists = Convert.ToInt32(await histTableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!histTableExists)
+        {
+            using var createHistCmd = conn.CreateCommand();
+            createHistCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsPreferenceHistories` (
+                    `Id`                char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `TenantId`          char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `Phone`             varchar(50)     CHARACTER SET utf8mb4 NOT NULL,
+                    `PreviousState`     varchar(20)     CHARACTER SET utf8mb4 NULL,
+                    `NewState`          varchar(20)     CHARACTER SET utf8mb4 NOT NULL,
+                    `Source`            varchar(50)     CHARACTER SET utf8mb4 NOT NULL,
+                    `Reason`            text            CHARACTER SET utf8mb4 NULL,
+                    `KeywordReceived`   varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `Provider`          varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `ProviderMessageId` varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `ProviderConfigId`  char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `InboundToNumber`   varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `CreatedBy`         varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `MetadataJson`      text            CHARACTER SET utf8mb4 NULL,
+                    `CreatedAt`         datetime(6)     NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_SmsPreferenceHistories_TenantId_Phone` (`TenantId`, `Phone`),
+                    KEY `IX_SmsPreferenceHistories_Phone` (`Phone`)
+                ) CHARACTER SET=utf8mb4;";
+            await createHistCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsPreferenceHistories");
+        }
+
         logger.LogInformation("EnsureNotificationsSchemaColumns complete");
     }
     finally
@@ -447,8 +482,10 @@ static async Task SeedMigrationHistoryIfNeededAsync(NotificationsDbContext db, I
     // not contain them we insert them so MigrateAsync skips re-running them.
     var alreadyApplied = new[]
     {
-        ("20260418043535_InitialCreate",   "8.0.2"),
-        ("20260419000001_AddRetryFields",  "8.0.2"),
+        ("20260418043535_InitialCreate",        "8.0.2"),
+        ("20260419000001_AddRetryFields",       "8.0.2"),
+        ("20260508000001_AddSmsPreference",     "8.0.2"),
+        ("20260508000002_AddSmsPreferenceHistory", "8.0.2"),
     };
 
     try

@@ -19,6 +19,7 @@ public class WebhookIngestionServiceImpl : IWebhookIngestionService
     private readonly IDeliveryIssueService _deliveryIssueSvc;
     private readonly IContactSuppressionRepository _suppressionRepo;
     private readonly ISmsPreferenceService _smsPreferenceSvc;
+    private readonly IInboundSmsResolverService _inboundSmsResolver;
     private readonly SendGridVerifier _sendGridVerifier;
     private readonly TwilioVerifier _twilioVerifier;
     private readonly IAuditEventClient _auditClient;
@@ -33,12 +34,14 @@ public class WebhookIngestionServiceImpl : IWebhookIngestionService
         IWebhookLogRepository webhookLogRepo, INotificationEventRepository eventRepo, INotificationAttemptRepository attemptRepo,
         IDeliveryStatusService deliveryStatusSvc, IRecipientContactHealthService contactHealthSvc, IDeliveryIssueService deliveryIssueSvc,
         IContactSuppressionRepository suppressionRepo, ISmsPreferenceService smsPreferenceSvc,
+        IInboundSmsResolverService inboundSmsResolver,
         SendGridVerifier sendGridVerifier, TwilioVerifier twilioVerifier,
         IAuditEventClient auditClient, ILogger<WebhookIngestionServiceImpl> logger)
     {
         _webhookLogRepo = webhookLogRepo; _eventRepo = eventRepo; _attemptRepo = attemptRepo;
         _deliveryStatusSvc = deliveryStatusSvc; _contactHealthSvc = contactHealthSvc; _deliveryIssueSvc = deliveryIssueSvc;
         _suppressionRepo = suppressionRepo; _smsPreferenceSvc = smsPreferenceSvc;
+        _inboundSmsResolver = inboundSmsResolver;
         _sendGridVerifier = sendGridVerifier; _twilioVerifier = twilioVerifier;
         _auditClient = auditClient; _logger = logger;
     }
@@ -154,37 +157,72 @@ public class WebhookIngestionServiceImpl : IWebhookIngestionService
 
     private async Task ProcessTwilioEventAsync(Dictionary<string, string> formParams)
     {
-        // ── LS-NOTIF-SMS-002: Inbound SMS keyword processing ─────────────────────
+        // ── LS-NOTIF-SMS-003: Inbound SMS processing with tenant resolution ──────
         // Twilio sends inbound messages to the same webhook URL with Direction=inbound or inbound-api.
-        // These are NOT outbound status callbacks — detect and handle separately.
+        // These are NOT outbound status callbacks — detect, resolve tenant, then handle separately.
         var direction = formParams.GetValueOrDefault("Direction", "");
         if (InboundDirections.Contains(direction))
         {
-            var fromPhone   = formParams.GetValueOrDefault("From", "");
-            var toPhone     = formParams.GetValueOrDefault("To", "");
-            var body        = formParams.GetValueOrDefault("Body", "");
-            var messageSid  = formParams.GetValueOrDefault("MessageSid") ?? formParams.GetValueOrDefault("SmsSid");
+            var fromPhone  = formParams.GetValueOrDefault("From", "");
+            var toPhone    = formParams.GetValueOrDefault("To", "");
+            var body       = formParams.GetValueOrDefault("Body", "");
+            var messageSid = formParams.GetValueOrDefault("MessageSid") ?? formParams.GetValueOrDefault("SmsSid");
 
-            _logger.LogInformation("Twilio inbound SMS from {From} to {To}: SID={Sid}", MaskPhone(fromPhone), MaskPhone(toPhone), messageSid);
+            _logger.LogInformation("Twilio inbound SMS from {From} to {To}: SID={Sid}",
+                MaskPhone(fromPhone), MaskPhone(toPhone), messageSid);
 
             var keyword = _smsPreferenceSvc.ClassifyKeyword(body);
+
+            // Resolve inbound `To` number to tenant/provider config.
+            // This must happen BEFORE any preference mutation to ensure correct tenant scoping.
+            InboundSmsResolutionResult resolution;
+            try
+            {
+                resolution = await _inboundSmsResolver.ResolveAsync(toPhone);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "InboundSmsResolver threw unexpectedly for To={To}", MaskPhone(toPhone));
+                resolution = InboundSmsResolutionResult.Unresolved(toPhone);
+            }
+
             if (keyword != null)
             {
-                // Tenant resolution: try to find tenantId from the To number (our Twilio number).
-                // Currently best-effort (null if not resolvable); a future enhancement can
-                // resolve via TenantProviderConfig lookup by FromNumber.
-                try
+                if (resolution.Resolved)
                 {
-                    await _smsPreferenceSvc.ProcessInboundKeywordAsync(
-                        tenantId:          null,
-                        fromPhone:         fromPhone,
-                        keyword:           keyword,
-                        rawKeyword:        body.Trim(),
-                        providerMessageId: messageSid);
+                    // Resolved tenant — process keyword with full provider context.
+                    try
+                    {
+                        await _smsPreferenceSvc.ProcessInboundKeywordWithContextAsync(new InboundSmsKeywordContext
+                        {
+                            TenantId          = resolution.TenantId,
+                            FromPhone         = fromPhone,
+                            ToPhone           = toPhone,
+                            Keyword           = keyword,
+                            RawKeyword        = body.Trim(),
+                            ProviderMessageId = messageSid,
+                            ProviderConfigId  = resolution.ProviderConfigId,
+                            Provider          = resolution.Provider ?? "twilio",
+                            TenantResolved    = true,
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to process inbound SMS keyword for TenantId={Tid}", resolution.TenantId);
+                    }
                 }
-                catch (Exception ex)
+                else
                 {
-                    _logger.LogError(ex, "Failed to process inbound SMS keyword from {Phone}", MaskPhone(fromPhone));
+                    // Unresolved — do NOT mutate any tenant-scoped preference state.
+                    // Emit unresolved audit event and structured log only.
+                    try
+                    {
+                        await _smsPreferenceSvc.AuditUnresolvedInboundAsync(fromPhone, toPhone, keyword, body.Trim(), messageSid);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to audit unresolved inbound SMS from {From}", MaskPhone(fromPhone));
+                    }
                 }
             }
             else

@@ -10,6 +10,7 @@ namespace Notifications.Infrastructure.Services;
 public class SmsPreferenceServiceImpl : ISmsPreferenceService
 {
     private readonly ISmsPreferenceRepository _repo;
+    private readonly ISmsPreferenceHistoryRepository _historyRepo;
     private readonly IAuditEventClient _auditClient;
     private readonly ILogger<SmsPreferenceServiceImpl> _logger;
 
@@ -23,13 +24,17 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
 
     public SmsPreferenceServiceImpl(
         ISmsPreferenceRepository repo,
+        ISmsPreferenceHistoryRepository historyRepo,
         IAuditEventClient auditClient,
         ILogger<SmsPreferenceServiceImpl> logger)
     {
         _repo        = repo;
+        _historyRepo = historyRepo;
         _auditClient = auditClient;
         _logger      = logger;
     }
+
+    // ── Keyword classification ────────────────────────────────────────────────
 
     public string? ClassifyKeyword(string? rawBody)
     {
@@ -41,6 +46,8 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
         return null;
     }
 
+    // ── Current preference state ──────────────────────────────────────────────
+
     public async Task<string> GetPreferenceStateAsync(Guid tenantId, string phone)
     {
         var normalized = NormalizePhone(phone);
@@ -48,12 +55,19 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
         return pref?.PreferenceState ?? "unknown";
     }
 
+    // ── Manual preference update (API-driven) ────────────────────────────────
+
     public async Task<SmsPreferenceDto> SetPreferenceAsync(Guid tenantId, string phone, string state, string? reason, string? actorUserId)
     {
         if (state is not ("opted_in" or "opted_out"))
             throw new ArgumentException($"Invalid preference state: {state}. Must be 'opted_in' or 'opted_out'.", nameof(state));
 
         var normalized = NormalizePhone(phone);
+
+        // Capture previous state before upsert for history record.
+        var existing = await _repo.FindAsync(tenantId, normalized);
+        var previousState = existing?.PreferenceState;
+
         var pref = await _repo.UpsertAsync(new SmsContactPreference
         {
             TenantId        = tenantId,
@@ -64,6 +78,24 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
             UpdatedBy       = actorUserId,
         });
 
+        // Append history record (best-effort).
+        try
+        {
+            await _historyRepo.AppendAsync(new SmsPreferenceHistory
+            {
+                TenantId      = tenantId,
+                Phone         = normalized,
+                PreviousState = previousState,
+                NewState      = state,
+                Source        = "manual_update",
+                Reason        = reason ?? $"Manually set to {state} by operator",
+                CreatedBy     = actorUserId,
+                MetadataJson  = JsonSerializer.Serialize(new { updated_by = actorUserId }),
+            });
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to append SMS preference history for manual update"); }
+
+        // Audit: manual_update event.
         try
         {
             await _auditClient.IngestAsync(new IngestAuditEventRequest
@@ -79,6 +111,7 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
                 {
                     phone            = MaskPhone(normalized),
                     preference_state = state,
+                    previous_state   = previousState,
                     source           = "manual_update",
                     updated_by       = actorUserId,
                     reason           = reason,
@@ -87,6 +120,7 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
         }
         catch (Exception ex) { _logger.LogError(ex, "Failed to audit SMS preference manual update"); }
 
+        // Audit: opted_in / opted_out state-change event.
         var auditEventType = state == "opted_in" ? "sms.preference.opted_in" : "sms.preference.opted_out";
         try
         {
@@ -103,6 +137,7 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
                 {
                     phone            = MaskPhone(normalized),
                     preference_state = state,
+                    previous_state   = previousState,
                     source           = "manual_update",
                 }),
             });
@@ -112,76 +147,110 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
         return MapToDto(pref);
     }
 
-    public async Task ProcessInboundKeywordAsync(Guid? tenantId, string fromPhone, string keyword, string rawKeyword, string? providerMessageId)
+    // ── LS-NOTIF-SMS-003: Context-rich inbound keyword processing ────────────
+
+    /// <summary>
+    /// Process an inbound keyword with full tenant/provider resolution context.
+    /// Used by WebhookIngestionService after successful tenant resolution.
+    /// Writes both current preference state and an immutable history record.
+    /// </summary>
+    public async Task ProcessInboundKeywordWithContextAsync(InboundSmsKeywordContext ctx)
     {
-        var normalized = NormalizePhone(fromPhone);
-        var maskedPhone = MaskPhone(normalized);
+        var normalized   = NormalizePhone(ctx.FromPhone);
+        var maskedFrom   = MaskPhone(normalized);
+        var maskedTo     = MaskPhone(NormalizePhone(ctx.ToPhone));
 
         string newState;
         string auditEventType;
         string source;
 
-        switch (keyword)
+        switch (ctx.Keyword)
         {
             case "opt_out":
-                newState      = "opted_out";
+                newState       = "opted_out";
                 auditEventType = "sms.preference.opted_out";
-                source        = "inbound_stop_keyword";
+                source         = "inbound_stop_keyword";
                 break;
+
             case "opt_in":
-                newState      = "opted_in";
+                newState       = "opted_in";
                 auditEventType = "sms.preference.opted_in";
-                source        = "inbound_start_keyword";
+                source         = "inbound_start_keyword";
                 break;
+
             case "help":
-                // HELP: audit only, no state change
-                _logger.LogInformation("SMS HELP keyword received from {Phone}", maskedPhone);
-                try
-                {
-                    await _auditClient.IngestAsync(new IngestAuditEventRequest
-                    {
-                        EventType    = "sms.preference.help_requested",
-                        Action       = "sms.preference.help_requested",
-                        SourceSystem = "notifications",
-                        Outcome      = "success",
-                        Description  = $"SMS HELP keyword received from {maskedPhone}",
-                        Scope        = new AuditEventScopeDto { TenantId = tenantId.HasValue ? tenantId.Value.ToString() : string.Empty },
-                        Metadata     = JsonSerializer.Serialize(new
-                        {
-                            phone               = maskedPhone,
-                            keyword             = rawKeyword,
-                            provider_message_id = providerMessageId,
-                        }),
-                    });
-                }
-                catch (Exception ex) { _logger.LogError(ex, "Failed to audit SMS HELP keyword"); }
+                // HELP: history + audit, but do NOT change current preference state.
+                _logger.LogInformation("SMS HELP keyword from {Phone} to {To}, TenantId={Tid}",
+                    maskedFrom, maskedTo, ctx.TenantId);
+                await AppendHelpHistoryAsync(ctx, normalized, maskedFrom, maskedTo);
+                await AuditHelpKeywordAsync(ctx, maskedFrom, maskedTo);
                 return;
+
             default:
-                _logger.LogWarning("ProcessInboundKeywordAsync called with unrecognized keyword category: {Keyword}", keyword);
+                _logger.LogWarning("ProcessInboundKeywordWithContextAsync: unrecognized keyword '{Keyword}'", ctx.Keyword);
                 return;
         }
 
+        // Load previous state before upsert.
+        string? previousState = null;
+        if (ctx.TenantId.HasValue)
+        {
+            try
+            {
+                var existing = await _repo.FindAsync(ctx.TenantId.Value, normalized);
+                previousState = existing?.PreferenceState;
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not load previous preference state for history"); }
+        }
+
+        // Persist current state.
         try
         {
             await _repo.UpsertAsync(new SmsContactPreference
             {
-                TenantId          = tenantId,
+                TenantId          = ctx.TenantId,
                 Phone             = normalized,
                 PreferenceState   = newState,
                 Source            = source,
-                Reason            = $"Inbound SMS keyword: {rawKeyword}",
-                KeywordReceived   = rawKeyword,
-                ProviderMessageId = providerMessageId,
+                Reason            = $"Inbound SMS keyword: {ctx.RawKeyword}",
+                KeywordReceived   = ctx.RawKeyword,
+                ProviderMessageId = ctx.ProviderMessageId,
             });
 
-            _logger.LogInformation("SMS preference set to {State} for {Phone} via inbound keyword {Keyword}",
-                newState, maskedPhone, rawKeyword);
+            _logger.LogInformation("SMS preference set to {State} for {Phone} via inbound keyword {Keyword} (TenantId={Tid})",
+                newState, maskedFrom, ctx.RawKeyword, ctx.TenantId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to persist SMS preference from inbound keyword for {Phone}", maskedPhone);
+            _logger.LogError(ex, "Failed to persist SMS preference from inbound keyword for {Phone}", maskedFrom);
         }
 
+        // Append history record (best-effort).
+        try
+        {
+            await _historyRepo.AppendAsync(new SmsPreferenceHistory
+            {
+                TenantId          = ctx.TenantId,
+                Phone             = normalized,
+                PreviousState     = previousState,
+                NewState          = newState,
+                Source            = source,
+                Reason            = $"Inbound SMS keyword: {ctx.RawKeyword}",
+                KeywordReceived   = ctx.RawKeyword,
+                Provider          = ctx.Provider,
+                ProviderMessageId = ctx.ProviderMessageId,
+                ProviderConfigId  = ctx.ProviderConfigId,
+                InboundToNumber   = maskedTo,
+                MetadataJson      = JsonSerializer.Serialize(new
+                {
+                    tenant_resolved    = ctx.TenantResolved,
+                    provider_config_id = ctx.ProviderConfigId?.ToString(),
+                }),
+            });
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to append SMS preference history for inbound keyword"); }
+
+        // Audit event with enriched provider context.
         try
         {
             await _auditClient.IngestAsync(new IngestAuditEventRequest
@@ -190,25 +259,153 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
                 Action       = auditEventType,
                 SourceSystem = "notifications",
                 Outcome      = "success",
-                Description  = $"SMS {newState.Replace('_', ' ')} via inbound keyword '{rawKeyword}' from {maskedPhone}",
-                Scope        = new AuditEventScopeDto { TenantId = tenantId.HasValue ? tenantId.Value.ToString() : string.Empty },
+                Description  = $"SMS {newState.Replace('_', ' ')} via inbound keyword '{ctx.RawKeyword}' from {maskedFrom}",
+                Scope        = new AuditEventScopeDto { TenantId = ctx.TenantId.HasValue ? ctx.TenantId.Value.ToString() : string.Empty },
                 Metadata     = JsonSerializer.Serialize(new
                 {
-                    phone               = maskedPhone,
-                    preference_state    = newState,
-                    keyword             = rawKeyword,
-                    source              = source,
-                    provider_message_id = providerMessageId,
+                    phone              = maskedFrom,
+                    inbound_to_number  = maskedTo,
+                    preference_state   = newState,
+                    previous_state     = previousState,
+                    keyword            = ctx.RawKeyword,
+                    source             = source,
+                    provider           = ctx.Provider,
+                    provider_message_id = ctx.ProviderMessageId,
+                    provider_config_id = ctx.ProviderConfigId?.ToString(),
                 }),
             });
         }
         catch (Exception ex) { _logger.LogError(ex, "Failed to audit SMS preference change from inbound keyword"); }
     }
 
+    // ── LS-NOTIF-SMS-002: Legacy inbound keyword processing (backward compat) ─
+
+    /// <summary>
+    /// Legacy inbound keyword processor — now delegates to ProcessInboundKeywordWithContextAsync
+    /// with minimal context. Kept for backward compatibility with any callers outside the
+    /// updated WebhookIngestionService path.
+    /// </summary>
+    public Task ProcessInboundKeywordAsync(Guid? tenantId, string fromPhone, string keyword, string rawKeyword, string? providerMessageId)
+        => ProcessInboundKeywordWithContextAsync(new InboundSmsKeywordContext
+        {
+            TenantId          = tenantId,
+            FromPhone         = fromPhone,
+            ToPhone           = string.Empty,
+            Keyword           = keyword,
+            RawKeyword        = rawKeyword,
+            ProviderMessageId = providerMessageId,
+            Provider          = "twilio",
+            TenantResolved    = tenantId.HasValue,
+        });
+
+    // ── LS-NOTIF-SMS-003: Unresolved inbound audit ───────────────────────────
+
+    public async Task AuditUnresolvedInboundAsync(string fromPhone, string toPhone, string? keyword, string? rawKeyword, string? providerMessageId)
+    {
+        var maskedFrom = MaskPhone(NormalizePhone(fromPhone));
+        var maskedTo   = MaskPhone(NormalizePhone(toPhone));
+
+        _logger.LogWarning(
+            "Inbound SMS to unresolved number {To} from {From}: keyword={Keyword}, SID={Sid}",
+            maskedTo, maskedFrom, keyword ?? "none", providerMessageId);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "sms.inbound.unresolved_tenant",
+                Action       = "sms.inbound.unresolved_tenant",
+                SourceSystem = "notifications",
+                Outcome      = "warning",
+                Description  = $"Inbound SMS to {maskedTo} could not be resolved to a tenant/provider config",
+                Metadata     = JsonSerializer.Serialize(new
+                {
+                    from_phone          = maskedFrom,
+                    to_phone            = maskedTo,
+                    keyword_category    = keyword,
+                    keyword             = rawKeyword,
+                    provider            = "twilio",
+                    provider_message_id = providerMessageId,
+                    reason              = "unresolved_inbound_sms_tenant",
+                }),
+            });
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to audit unresolved inbound SMS event"); }
+    }
+
+    // ── History query ─────────────────────────────────────────────────────────
+
+    public async Task<SmsPreferenceHistoryResult> GetHistoryAsync(Guid tenantId, string phone, int limit = 50, int offset = 0)
+    {
+        var normalized = NormalizePhone(phone);
+        var items  = await _historyRepo.GetByTenantAndPhoneAsync(tenantId, normalized, limit, offset);
+        var total  = await _historyRepo.CountByTenantAndPhoneAsync(tenantId, normalized);
+
+        return new SmsPreferenceHistoryResult
+        {
+            Items  = items.Select(MapHistoryToDto).ToList(),
+            Total  = total,
+            Limit  = limit,
+            Offset = offset,
+        };
+    }
+
+    // ── List current preferences ──────────────────────────────────────────────
+
     public async Task<List<SmsPreferenceDto>> ListAsync(Guid tenantId, int limit = 50, int offset = 0)
     {
         var items = await _repo.GetByTenantAsync(tenantId, limit, offset);
         return items.Select(MapToDto).ToList();
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private async Task AppendHelpHistoryAsync(InboundSmsKeywordContext ctx, string normalized, string maskedFrom, string maskedTo)
+    {
+        try
+        {
+            await _historyRepo.AppendAsync(new SmsPreferenceHistory
+            {
+                TenantId          = ctx.TenantId,
+                Phone             = normalized,
+                PreviousState     = null,
+                NewState          = "help_requested",
+                Source            = "inbound_help_keyword",
+                Reason            = "Inbound SMS HELP keyword received",
+                KeywordReceived   = ctx.RawKeyword,
+                Provider          = ctx.Provider,
+                ProviderMessageId = ctx.ProviderMessageId,
+                ProviderConfigId  = ctx.ProviderConfigId,
+                InboundToNumber   = maskedTo,
+            });
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to append HELP keyword history for {Phone}", maskedFrom); }
+    }
+
+    private async Task AuditHelpKeywordAsync(InboundSmsKeywordContext ctx, string maskedFrom, string maskedTo)
+    {
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "sms.preference.help_requested",
+                Action       = "sms.preference.help_requested",
+                SourceSystem = "notifications",
+                Outcome      = "success",
+                Description  = $"SMS HELP keyword received from {maskedFrom}",
+                Scope        = new AuditEventScopeDto { TenantId = ctx.TenantId.HasValue ? ctx.TenantId.Value.ToString() : string.Empty },
+                Metadata     = JsonSerializer.Serialize(new
+                {
+                    phone               = maskedFrom,
+                    inbound_to_number   = maskedTo,
+                    keyword             = ctx.RawKeyword,
+                    provider            = ctx.Provider,
+                    provider_message_id = ctx.ProviderMessageId,
+                    provider_config_id  = ctx.ProviderConfigId?.ToString(),
+                }),
+            });
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to audit SMS HELP keyword"); }
     }
 
     internal static string NormalizePhone(string phone)
@@ -229,5 +426,23 @@ public class SmsPreferenceServiceImpl : ISmsPreferenceService
         UpdatedBy       = p.UpdatedBy,
         CreatedAt       = p.CreatedAt,
         UpdatedAt       = p.UpdatedAt,
+    };
+
+    private static SmsPreferenceHistoryDto MapHistoryToDto(SmsPreferenceHistory h) => new()
+    {
+        Id                = h.Id,
+        TenantId          = h.TenantId,
+        Phone             = h.Phone,
+        PreviousState     = h.PreviousState,
+        NewState          = h.NewState,
+        Source            = h.Source,
+        Reason            = h.Reason,
+        KeywordReceived   = h.KeywordReceived,
+        Provider          = h.Provider,
+        ProviderMessageId = h.ProviderMessageId,
+        ProviderConfigId  = h.ProviderConfigId,
+        InboundToNumber   = h.InboundToNumber,
+        CreatedBy         = h.CreatedBy,
+        CreatedAt         = h.CreatedAt,
     };
 }

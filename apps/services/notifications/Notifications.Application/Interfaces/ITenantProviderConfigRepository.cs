@@ -12,4 +12,10 @@ public interface ITenantProviderConfigRepository
     Task<TenantProviderConfig> CreateAsync(TenantProviderConfig config);
     Task UpdateAsync(TenantProviderConfig config);
     Task DeleteAsync(Guid id);
+
+    /// <summary>
+    /// Returns all active provider configs for the given providerType across all tenants.
+    /// Used by InboundSmsResolverService to match inbound Twilio `To` numbers.
+    /// </summary>
+    Task<List<TenantProviderConfig>> GetActiveSmsProviderConfigsAsync(string providerType);
 }

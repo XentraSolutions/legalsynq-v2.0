@@ -31,7 +31,7 @@ public static class SmsPreferenceEndpoints
         }).RequireAuthorization();
 
         // PUT /v1/sms/preferences
-        // Manually set the SMS preference for a phone number. Audited.
+        // Manually set the SMS preference for a phone number. Audited. Writes history.
         group.MapPut("", async (HttpContext context, ISmsPreferenceService svc, SetSmsPreferenceDto request) =>
         {
             if (string.IsNullOrWhiteSpace(request.Phone))
@@ -40,7 +40,7 @@ public static class SmsPreferenceEndpoints
             if (request.PreferenceState is not ("opted_in" or "opted_out"))
                 return Results.BadRequest(new { error = "preferenceState must be 'opted_in' or 'opted_out'" });
 
-            var tenantId   = context.GetTenantId();
+            var tenantId    = context.GetTenantId();
             var actorUserId = context.User.FindFirst("sub")?.Value;
 
             try
@@ -52,6 +52,19 @@ public static class SmsPreferenceEndpoints
             {
                 return Results.BadRequest(new { error = ex.Message });
             }
+        }).RequireAuthorization();
+
+        // GET /v1/sms/preferences/history?phone=+15551234567&limit=50&offset=0
+        // Returns immutable preference change history for a phone number within the tenant.
+        // History is append-only — records are never updated or deleted.
+        group.MapGet("/history", async (HttpContext context, ISmsPreferenceService svc, string phone, int? limit, int? offset) =>
+        {
+            if (string.IsNullOrWhiteSpace(phone))
+                return Results.BadRequest(new { error = "phone query parameter is required" });
+
+            var tenantId = context.GetTenantId();
+            var result   = await svc.GetHistoryAsync(tenantId, phone, limit ?? 50, offset ?? 0);
+            return Results.Ok(result);
         }).RequireAuthorization();
     }
 }
