@@ -243,6 +243,7 @@ app.MapContactEndpoints();
 app.MapBrandingEndpoints();
 app.MapInternalEndpoints();
 app.MapSmsPreferenceEndpoints();
+app.MapSmsReconciliationEndpoints();
 
 app.Run();
 

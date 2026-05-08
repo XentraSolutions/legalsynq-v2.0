@@ -6,7 +6,7 @@ using Notifications.Application.Interfaces;
 
 namespace Notifications.Infrastructure.Providers.Adapters;
 
-public class TwilioAdapter : ISmsProviderAdapter
+public class TwilioAdapter : ISmsProviderAdapter, ISmsProviderStatusLookup
 {
     public string ProviderType => "twilio";
 
@@ -90,6 +90,131 @@ public class TwilioAdapter : ISmsProviderAdapter
         }
         catch { return new ProviderHealthResult { Status = "down", LatencyMs = (int)(DateTime.UtcNow - start).TotalMilliseconds }; }
     }
+
+    // ── ISmsProviderStatusLookup ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Query Twilio for the current delivery status of an outbound message by MessageSid.
+    /// URL: GET https://api.twilio.com/2010-04-01/Accounts/{accountSid}/Messages/{messageSid}.json
+    /// Never throws — returns failure result on any error.
+    /// Credentials are not logged.
+    /// </summary>
+    public async Task<SmsMessageStatusResult> GetMessageStatusAsync(
+        string providerMessageId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(providerMessageId))
+            return SmsMessageStatusResult.Failure("twilio", providerMessageId ?? "", "missing_provider_message_id", "No MessageSid provided", false);
+
+        if (string.IsNullOrEmpty(_accountSid) || string.IsNullOrEmpty(_authToken))
+            return SmsMessageStatusResult.Failure("twilio", providerMessageId, "auth_config_failure", "Twilio credentials not configured", false);
+
+        var url = $"https://api.twilio.com/2010-04-01/Accounts/{_accountSid}/Messages/{providerMessageId}.json";
+
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_accountSid}:{_authToken}"));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", auth);
+
+            var response  = await _http.SendAsync(request, cts.Token);
+            var statusCode = (int)response.StatusCode;
+            var body       = await response.Content.ReadAsStringAsync(cts.Token);
+
+            if (statusCode == 200)
+            {
+                return ParseTwilioMessageResponse(providerMessageId, body);
+            }
+
+            if (statusCode is 401 or 403)
+                return SmsMessageStatusResult.Failure("twilio", providerMessageId, "auth_config_failure", "Twilio auth rejected", false);
+
+            if (statusCode == 404)
+                return SmsMessageStatusResult.Failure("twilio", providerMessageId, "message_not_found", "MessageSid not found", false);
+
+            if (statusCode == 429)
+                return SmsMessageStatusResult.Failure("twilio", providerMessageId, "provider_rate_limited", "Twilio rate limit exceeded", true);
+
+            if (statusCode >= 500)
+                return SmsMessageStatusResult.Failure("twilio", providerMessageId, "provider_unavailable", $"Twilio server error {statusCode}", true);
+
+            return SmsMessageStatusResult.Failure("twilio", providerMessageId, "unexpected_provider_error", $"HTTP {statusCode}", true);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Twilio: GetMessageStatus timed out for SID={Sid}", providerMessageId);
+            return SmsMessageStatusResult.Failure("twilio", providerMessageId, "provider_unavailable", "Request timed out", true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Twilio: GetMessageStatus network error for SID={Sid}", providerMessageId);
+            return SmsMessageStatusResult.Failure("twilio", providerMessageId, "provider_unavailable", ex.Message, true);
+        }
+    }
+
+    private static SmsMessageStatusResult ParseTwilioMessageResponse(string sid, string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+
+            var rawStatus    = root.TryGetProperty("status",        out var s)  ? s.GetString()  : null;
+            var errorCode    = root.TryGetProperty("error_code",    out var ec) ? ec.GetString() : null;
+            var errorMessage = root.TryGetProperty("error_message", out var em) ? em.GetString() : null;
+
+            DateTimeOffset? sentAt    = null;
+            DateTimeOffset? updatedAt = null;
+
+            if (root.TryGetProperty("date_sent", out var ds) && ds.ValueKind != JsonValueKind.Null)
+            {
+                if (DateTimeOffset.TryParse(ds.GetString(), out var tmp1))
+                    sentAt = tmp1;
+            }
+            if (root.TryGetProperty("date_updated", out var du) && du.ValueKind != JsonValueKind.Null)
+            {
+                if (DateTimeOffset.TryParse(du.GetString(), out var tmp2))
+                    updatedAt = tmp2;
+            }
+
+            var normalized = NormalizeTwilioStatus(rawStatus);
+
+            return new SmsMessageStatusResult
+            {
+                Success           = true,
+                Provider          = "twilio",
+                ProviderMessageId = sid,
+                ProviderStatus    = rawStatus,
+                NormalizedStatus  = normalized,
+                ErrorCode         = errorCode,
+                ErrorMessage      = errorMessage,
+                SentAt            = sentAt,
+                UpdatedAt         = updatedAt,
+                Retryable         = false,
+            };
+        }
+        catch
+        {
+            return SmsMessageStatusResult.Failure("twilio", sid, "parse_error", "Failed to parse Twilio response", true);
+        }
+    }
+
+    /// <summary>
+    /// Maps Twilio message `status` field to internal normalized status.
+    /// Twilio statuses: queued | accepted | scheduled | sending | sent | delivered | undelivered | failed | canceled
+    /// </summary>
+    private static string? NormalizeTwilioStatus(string? twilioStatus) => twilioStatus?.ToLowerInvariant() switch
+    {
+        "queued" or "accepted" or "scheduled" => "queued",
+        "sending"                              => "processing",
+        "sent"                                 => "sent",
+        "delivered"                            => "delivered",
+        "undelivered" or "failed" or "canceled" => "failed",
+        _                                      => null,
+    };
 
     private static string ClassifyError(int statusCode, string body)
     {

@@ -46,4 +46,20 @@ public class NotificationAttemptRepository : INotificationAttemptRepository
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
     }
+
+    public async Task<List<NotificationAttempt>> GetStaleSmsAttemptsAsync(
+        int limit,
+        DateTime olderThan,
+        IReadOnlyCollection<string> statuses,
+        CancellationToken ct = default)
+        => await _db.NotificationAttempts
+            .Where(a =>
+                a.Channel == "sms" &&
+                a.ProviderMessageId != null &&
+                a.ProviderMessageId != "" &&
+                statuses.Contains(a.Status) &&
+                a.UpdatedAt < olderThan)
+            .OrderBy(a => a.UpdatedAt)
+            .Take(limit)
+            .ToListAsync(ct);
 }
