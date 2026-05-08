@@ -278,7 +278,8 @@ public class TenantContactPolicyRepository : ITenantContactPolicyRepository
             existing.BlockSuppressedContacts = policy.BlockSuppressedContacts; existing.BlockUnsubscribedContacts = policy.BlockUnsubscribedContacts;
             existing.BlockComplainedContacts = policy.BlockComplainedContacts; existing.BlockBouncedContacts = policy.BlockBouncedContacts;
             existing.BlockInvalidContacts = policy.BlockInvalidContacts; existing.BlockCarrierRejectedContacts = policy.BlockCarrierRejectedContacts;
-            existing.AllowManualOverride = policy.AllowManualOverride; existing.UpdatedAt = DateTime.UtcNow;
+            existing.AllowManualOverride = policy.AllowManualOverride; existing.BlockUnknownSmsPreference = policy.BlockUnknownSmsPreference;
+            existing.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(); return existing;
         }
         policy.Id = Guid.NewGuid(); policy.CreatedAt = DateTime.UtcNow; policy.UpdatedAt = DateTime.UtcNow;

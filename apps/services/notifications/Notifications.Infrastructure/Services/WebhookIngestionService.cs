@@ -18,24 +18,28 @@ public class WebhookIngestionServiceImpl : IWebhookIngestionService
     private readonly IRecipientContactHealthService _contactHealthSvc;
     private readonly IDeliveryIssueService _deliveryIssueSvc;
     private readonly IContactSuppressionRepository _suppressionRepo;
+    private readonly ISmsPreferenceService _smsPreferenceSvc;
     private readonly SendGridVerifier _sendGridVerifier;
     private readonly TwilioVerifier _twilioVerifier;
     private readonly IAuditEventClient _auditClient;
     private readonly ILogger<WebhookIngestionServiceImpl> _logger;
 
     private static readonly HashSet<string> DeliveryFinalEvents = new() { "delivered", "bounced", "failed", "undeliverable", "rejected", "complained", "unsubscribed" };
+    private static readonly HashSet<string> InboundDirections = new(StringComparer.OrdinalIgnoreCase) { "inbound", "inbound-api" };
     private static readonly Dictionary<string, string> SgSuppressionMap = new() { ["bounced"] = "bounce", ["complained"] = "complaint", ["unsubscribed"] = "unsubscribe" };
     private static readonly Dictionary<string, string> TwilioSuppressionMap = new() { ["bounced"] = "bounce", ["complained"] = "complaint", ["unsubscribed"] = "unsubscribe", ["carrier_rejected"] = "carrier_rejection" };
 
     public WebhookIngestionServiceImpl(
         IWebhookLogRepository webhookLogRepo, INotificationEventRepository eventRepo, INotificationAttemptRepository attemptRepo,
         IDeliveryStatusService deliveryStatusSvc, IRecipientContactHealthService contactHealthSvc, IDeliveryIssueService deliveryIssueSvc,
-        IContactSuppressionRepository suppressionRepo, SendGridVerifier sendGridVerifier, TwilioVerifier twilioVerifier,
+        IContactSuppressionRepository suppressionRepo, ISmsPreferenceService smsPreferenceSvc,
+        SendGridVerifier sendGridVerifier, TwilioVerifier twilioVerifier,
         IAuditEventClient auditClient, ILogger<WebhookIngestionServiceImpl> logger)
     {
         _webhookLogRepo = webhookLogRepo; _eventRepo = eventRepo; _attemptRepo = attemptRepo;
         _deliveryStatusSvc = deliveryStatusSvc; _contactHealthSvc = contactHealthSvc; _deliveryIssueSvc = deliveryIssueSvc;
-        _suppressionRepo = suppressionRepo; _sendGridVerifier = sendGridVerifier; _twilioVerifier = twilioVerifier;
+        _suppressionRepo = suppressionRepo; _smsPreferenceSvc = smsPreferenceSvc;
+        _sendGridVerifier = sendGridVerifier; _twilioVerifier = twilioVerifier;
         _auditClient = auditClient; _logger = logger;
     }
 
@@ -150,6 +154,49 @@ public class WebhookIngestionServiceImpl : IWebhookIngestionService
 
     private async Task ProcessTwilioEventAsync(Dictionary<string, string> formParams)
     {
+        // ── LS-NOTIF-SMS-002: Inbound SMS keyword processing ─────────────────────
+        // Twilio sends inbound messages to the same webhook URL with Direction=inbound or inbound-api.
+        // These are NOT outbound status callbacks — detect and handle separately.
+        var direction = formParams.GetValueOrDefault("Direction", "");
+        if (InboundDirections.Contains(direction))
+        {
+            var fromPhone   = formParams.GetValueOrDefault("From", "");
+            var toPhone     = formParams.GetValueOrDefault("To", "");
+            var body        = formParams.GetValueOrDefault("Body", "");
+            var messageSid  = formParams.GetValueOrDefault("MessageSid") ?? formParams.GetValueOrDefault("SmsSid");
+
+            _logger.LogInformation("Twilio inbound SMS from {From} to {To}: SID={Sid}", MaskPhone(fromPhone), MaskPhone(toPhone), messageSid);
+
+            var keyword = _smsPreferenceSvc.ClassifyKeyword(body);
+            if (keyword != null)
+            {
+                // Tenant resolution: try to find tenantId from the To number (our Twilio number).
+                // Currently best-effort (null if not resolvable); a future enhancement can
+                // resolve via TenantProviderConfig lookup by FromNumber.
+                try
+                {
+                    await _smsPreferenceSvc.ProcessInboundKeywordAsync(
+                        tenantId:          null,
+                        fromPhone:         fromPhone,
+                        keyword:           keyword,
+                        rawKeyword:        body.Trim(),
+                        providerMessageId: messageSid);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to process inbound SMS keyword from {Phone}", MaskPhone(fromPhone));
+                }
+            }
+            else
+            {
+                _logger.LogDebug("Twilio inbound SMS body is not a compliance keyword — ignoring. SID={Sid}", messageSid);
+            }
+
+            // Inbound messages are not outbound status events — return without further processing.
+            return;
+        }
+
+        // ── Outbound status callback (existing behavior) ──────────────────────────
         var normalized = TwilioNormalizer.Normalize(formParams);
         var dedupKey = normalized.ProviderMessageId != null ? $"twilio:{normalized.ProviderMessageId}:{normalized.RawEventType}" : null;
 
@@ -197,5 +244,12 @@ public class WebhookIngestionServiceImpl : IWebhookIngestionService
             }
             catch (Exception ex) { _logger.LogError(ex, "Failed to upsert suppression from Twilio event"); }
         }
+    }
+
+    private static string MaskPhone(string phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) return "***";
+        var digits = System.Text.RegularExpressions.Regex.Replace(phone.Trim(), @"[^\d+]", "");
+        return digits.Length > 3 ? digits[..3] + "***" : "***";
     }
 }

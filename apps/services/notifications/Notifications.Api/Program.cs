@@ -242,6 +242,7 @@ app.MapBillingEndpoints();
 app.MapContactEndpoints();
 app.MapBrandingEndpoints();
 app.MapInternalEndpoints();
+app.MapSmsPreferenceEndpoints();
 
 app.Run();
 
@@ -375,6 +376,60 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
                 await alterCmd2.ExecuteNonQueryAsync();
                 logger.LogInformation("Added missing column {Table}.{Column}", table, col);
             }
+        }
+
+        // ── LS-NOTIF-SMS-002: BlockUnknownSmsPreference on ntf_TenantContactPolicies ──
+        var contactPolicyColumnsToAdd = new[]
+        {
+            ("ntf_TenantContactPolicies", "BlockUnknownSmsPreference", "tinyint(1) NOT NULL DEFAULT 1"),
+        };
+
+        foreach (var (table, col, colDef) in contactPolicyColumnsToAdd)
+        {
+            using var checkCmd3 = conn.CreateCommand();
+            checkCmd3.CommandText =
+                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
+            var count3 = Convert.ToInt32(await checkCmd3.ExecuteScalarAsync());
+
+            if (count3 == 0)
+            {
+                using var alterCmd3 = conn.CreateCommand();
+                alterCmd3.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
+                await alterCmd3.ExecuteNonQueryAsync();
+                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
+            }
+        }
+
+        // ── LS-NOTIF-SMS-002: Ensure ntf_SmsContactPreferences table exists ──────
+        // Safety net: if the migration ran but DDL failed (or was pre-seeded), ensure the table exists.
+        using var tableCheckCmd = conn.CreateCommand();
+        tableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsContactPreferences'";
+        var tableExists = Convert.ToInt32(await tableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!tableExists)
+        {
+            using var createTableCmd = conn.CreateCommand();
+            createTableCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsContactPreferences` (
+                    `Id`                char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `TenantId`          char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `Phone`             varchar(50)     CHARACTER SET utf8mb4 NOT NULL,
+                    `PreferenceState`   varchar(20)     CHARACTER SET utf8mb4 NOT NULL DEFAULT 'unknown',
+                    `Source`            varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `Reason`            text            CHARACTER SET utf8mb4 NULL,
+                    `KeywordReceived`   varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `ProviderMessageId` varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `UpdatedBy`         varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `CreatedAt`         datetime(6)     NOT NULL,
+                    `UpdatedAt`         datetime(6)     NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    UNIQUE KEY `UX_SmsContactPreferences_TenantId_Phone` (`TenantId`, `Phone`)
+                ) CHARACTER SET=utf8mb4;";
+            await createTableCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsContactPreferences");
         }
 
         logger.LogInformation("EnsureNotificationsSchemaColumns complete");

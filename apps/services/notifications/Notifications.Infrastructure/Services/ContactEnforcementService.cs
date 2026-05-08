@@ -8,6 +8,7 @@ public class ContactEnforcementService : IContactEnforcementService
     private readonly IContactSuppressionRepository _suppressionRepo;
     private readonly ITenantContactPolicyRepository _policyRepo;
     private readonly IRecipientContactHealthRepository _healthRepo;
+    private readonly ISmsPreferenceRepository _smsPreferenceRepo;
     private readonly ILogger<ContactEnforcementService> _logger;
 
     private static readonly HashSet<string> NonOverrideable = new() { "unsubscribe", "complaint", "system_protection" };
@@ -38,12 +39,14 @@ public class ContactEnforcementService : IContactEnforcementService
         IContactSuppressionRepository suppressionRepo,
         ITenantContactPolicyRepository policyRepo,
         IRecipientContactHealthRepository healthRepo,
+        ISmsPreferenceRepository smsPreferenceRepo,
         ILogger<ContactEnforcementService> logger)
     {
-        _suppressionRepo = suppressionRepo;
-        _policyRepo = policyRepo;
-        _healthRepo = healthRepo;
-        _logger = logger;
+        _suppressionRepo    = suppressionRepo;
+        _policyRepo         = policyRepo;
+        _healthRepo         = healthRepo;
+        _smsPreferenceRepo  = smsPreferenceRepo;
+        _logger             = logger;
     }
 
     public async Task<ContactEnforcementResult> EvaluateAsync(ContactEnforcementInput input)
@@ -64,6 +67,47 @@ public class ContactEnforcementService : IContactEnforcementService
             var blockInvalid = dbPolicy?.BlockInvalidContacts ?? false;
             var blockCarrierRejected = dbPolicy?.BlockCarrierRejectedContacts ?? false;
             var allowOverride = dbPolicy?.AllowManualOverride ?? false;
+            var blockUnknownSms = dbPolicy?.BlockUnknownSmsPreference ?? true;
+
+            // ── SMS preference check (LS-NOTIF-SMS-002) ─────────────────────────
+            // Runs before generic suppression checks. Only applies to the SMS channel.
+            if (input.Channel == "sms")
+            {
+                try
+                {
+                    var smsPref = await _smsPreferenceRepo.FindAsync(input.TenantId, normalizedContact);
+                    var prefState = smsPref?.PreferenceState ?? "unknown";
+
+                    if (prefState == "opted_out")
+                    {
+                        _logger.LogDebug("SMS enforcement: opted_out for contact in tenant {TenantId}", input.TenantId);
+                        return new ContactEnforcementResult
+                        {
+                            Allowed        = false,
+                            ReasonCode     = "sms_opted_out",
+                            ReasonMessage  = "Recipient has opted out of SMS messages",
+                            OverrideAllowed = false,
+                        };
+                    }
+
+                    if (prefState == "unknown" && blockUnknownSms)
+                    {
+                        _logger.LogDebug("SMS enforcement: unknown preference blocked by policy for tenant {TenantId}", input.TenantId);
+                        return new ContactEnforcementResult
+                        {
+                            Allowed        = false,
+                            ReasonCode     = "sms_preference_unknown_blocked_by_policy",
+                            ReasonMessage  = "SMS preference is unknown and tenant policy blocks sends to contacts without explicit opt-in",
+                            OverrideAllowed = false,
+                        };
+                    }
+                    // opted_in (or unknown+policy-allows) → fall through to existing suppression checks
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "SMS preference check failed — falling through to suppression checks");
+                }
+            }
 
             var suppressions = await _suppressionRepo.FindActiveAsync(input.TenantId, input.Channel, normalizedContact);
             foreach (var suppression in suppressions)

@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantContactPolicyRepository, TenantContactPolicyRepository>();
         services.AddScoped<ITenantBrandingRepository, TenantBrandingRepository>();
         services.AddScoped<IUsageMeterEventRepository, UsageMeterEventRepository>();
+        services.AddScoped<ISmsPreferenceRepository, SmsPreferenceRepository>();
 
         services.AddScoped<INotificationService, NotificationServiceImpl>();
         services.AddScoped<ITemplateService, TemplateServiceImpl>();
@@ -62,6 +63,7 @@ public static class DependencyInjection
         services.AddScoped<IUsageMeteringService, UsageMeteringService>();
         services.AddScoped<IRecipientContactHealthService, RecipientContactHealthService>();
         services.AddScoped<IProviderRoutingService, ProviderRoutingService>();
+        services.AddScoped<ISmsPreferenceService, SmsPreferenceServiceImpl>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:
