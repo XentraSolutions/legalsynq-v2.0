@@ -92,6 +92,13 @@ public sealed class SmsReconciliationResult
     public const string OutcomeVendorLookupFailed          = "vendor_lookup_failed";
     public const string OutcomeAttemptNotFound             = "attempt_not_found";
     public const string OutcomeProviderMessageNotFound     = "provider_message_not_found";
+
+    // LS-NOTIF-SMS-005: provider runtime config resolution failures
+    public const string OutcomeMissingProviderConfigContext   = "missing_provider_config_context";
+    public const string OutcomeProviderConfigNotFound         = "provider_config_not_found";
+    public const string OutcomeProviderConfigInactive         = "provider_config_inactive";
+    public const string OutcomeProviderConfigInvalid          = "provider_config_invalid";
+    public const string OutcomeProviderRuntimeResolutionFailed = "provider_runtime_resolution_failed";
 }
 
 public sealed class SmsReconciliationBatchResult

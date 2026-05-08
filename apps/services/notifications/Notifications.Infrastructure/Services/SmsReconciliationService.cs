@@ -11,10 +11,13 @@ namespace Notifications.Infrastructure.Services;
 /// Reconciles outbound SMS delivery state by querying the SMS provider (Twilio) for
 /// the current message status. Acts as a backstop for missed or delayed webhook events.
 ///
+/// LS-NOTIF-SMS-005: Uses ISmsProviderRuntimeResolver to rehydrate the correct
+/// tenant-owned or platform adapter using the ProviderConfigId stored on the attempt.
+///
 /// Key invariants:
 ///   - Never sends or resends SMS.
 ///   - Reuses DeliveryStatusService for status updates (inherits terminal-state protection).
-///   - Supports only providers implementing ISmsProviderStatusLookup.
+///   - Resolves the adapter that was used for the original send (tenant or platform).
 ///   - All audit calls are best-effort (wrapped in try/catch).
 ///   - Provider credentials are never logged.
 /// </summary>
@@ -22,7 +25,7 @@ public class SmsReconciliationService : ISmsReconciliationService
 {
     private readonly INotificationAttemptRepository _attemptRepo;
     private readonly IDeliveryStatusService _deliveryStatusSvc;
-    private readonly ISmsProviderAdapter _smsAdapter;
+    private readonly ISmsProviderRuntimeResolver _runtimeResolver;
     private readonly IAuditEventClient _auditClient;
     private readonly ILogger<SmsReconciliationService> _logger;
 
@@ -31,7 +34,6 @@ public class SmsReconciliationService : ISmsReconciliationService
         new[] { "pending", "sending", "sent", "queued", "processing", "retrying" };
 
     // Maps normalized vendor status → normalized event type for DeliveryStatusService.
-    // DeliveryStatusService already maps normalized events → attempt/notification statuses.
     private static readonly Dictionary<string, string> NormalizedStatusToEvent = new()
     {
         ["queued"]     = "queued",
@@ -41,16 +43,26 @@ public class SmsReconciliationService : ISmsReconciliationService
         ["failed"]     = "failed",
     };
 
+    // Runtime resolution failure outcomes that map to "skipped" in batch counting.
+    private static readonly HashSet<string> ProviderConfigOutcomes = new()
+    {
+        SmsReconciliationResult.OutcomeMissingProviderConfigContext,
+        SmsReconciliationResult.OutcomeProviderConfigNotFound,
+        SmsReconciliationResult.OutcomeProviderConfigInactive,
+        SmsReconciliationResult.OutcomeProviderConfigInvalid,
+        SmsReconciliationResult.OutcomeProviderRuntimeResolutionFailed,
+    };
+
     public SmsReconciliationService(
         INotificationAttemptRepository attemptRepo,
         IDeliveryStatusService deliveryStatusSvc,
-        ISmsProviderAdapter smsAdapter,
+        ISmsProviderRuntimeResolver runtimeResolver,
         IAuditEventClient auditClient,
         ILogger<SmsReconciliationService> logger)
     {
         _attemptRepo       = attemptRepo;
         _deliveryStatusSvc = deliveryStatusSvc;
-        _smsAdapter        = smsAdapter;
+        _runtimeResolver   = runtimeResolver;
         _auditClient       = auditClient;
         _logger            = logger;
     }
@@ -84,7 +96,7 @@ public class SmsReconciliationService : ISmsReconciliationService
 
     public async Task<SmsReconciliationBatchResult> ReconcileStalePendingAsync(int limit, TimeSpan olderThan, CancellationToken ct = default)
     {
-        var sw      = Stopwatch.StartNew();
+        var sw        = Stopwatch.StartNew();
         var safeLimit = Math.Min(Math.Max(limit, 1), 200);
         var cutoff    = DateTime.UtcNow - olderThan;
 
@@ -106,10 +118,14 @@ public class SmsReconciliationService : ISmsReconciliationService
                 results.Add(result);
                 switch (result.Outcome)
                 {
-                    case SmsReconciliationResult.OutcomeUpdated:      updated++;  break;
-                    case SmsReconciliationResult.OutcomeNoChange:      noChange++; break;
-                    case SmsReconciliationResult.OutcomeVendorLookupFailed: failed++; break;
-                    default:                                           skipped++;  break;
+                    case SmsReconciliationResult.OutcomeUpdated:           updated++;  break;
+                    case SmsReconciliationResult.OutcomeNoChange:          noChange++; break;
+                    case SmsReconciliationResult.OutcomeVendorLookupFailed: failed++;  break;
+                    default:
+                        // provider config failures + skipped outcomes
+                        if (ProviderConfigOutcomes.Contains(result.Outcome)) skipped++;
+                        else skipped++;
+                        break;
                 }
             }
             catch (Exception ex)
@@ -121,7 +137,6 @@ public class SmsReconciliationService : ISmsReconciliationService
 
         sw.Stop();
 
-        // Batch audit event.
         try
         {
             await _auditClient.IngestAsync(new IngestAuditEventRequest
@@ -130,12 +145,12 @@ public class SmsReconciliationService : ISmsReconciliationService
                 Action       = "sms.reconciliation.batch_completed",
                 SourceSystem = "notifications",
                 Outcome      = "success",
-                Description  = $"SMS reconciliation batch completed: {updated} updated, {noChange} no-change, {skipped} skipped, {failed} failed",
+                Description  = $"SMS reconciliation batch: {updated} updated, {noChange} no-change, {skipped} skipped, {failed} failed",
                 Metadata     = JsonSerializer.Serialize(new
                 {
-                    total    = staleAttempts.Count,
+                    total        = staleAttempts.Count,
                     updated,
-                    no_change = noChange,
+                    no_change    = noChange,
                     skipped,
                     failed,
                     duration_ms  = (int)sw.Elapsed.TotalMilliseconds,
@@ -180,10 +195,61 @@ public class SmsReconciliationService : ISmsReconciliationService
             return Skipped(SmsReconciliationResult.OutcomeSkippedMissingProviderId, attempt.Id, attempt.NotificationId, null);
         }
 
-        // Guard: provider adapter must support status lookup.
-        if (_smsAdapter is not ISmsProviderStatusLookup statusLookup)
+        // LS-NOTIF-SMS-005: Resolve the correct adapter using the original attempt's provider config context.
+        SmsProviderRuntimeContext runtimeCtx;
+        try
         {
-            _logger.LogDebug("SMS reconciliation: provider {Provider} does not support status lookup", _smsAdapter.ProviderType);
+            runtimeCtx = await _runtimeResolver.ResolveForReconciliationAsync(
+                attempt.TenantId, attempt.Provider, attempt.ProviderConfigId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SMS reconciliation: runtime resolver threw for attempt {AttemptId}", attempt.Id);
+            await AuditAsync("sms.reconciliation.lookup_failed", attempt, null, null, attempt.Status,
+                SmsReconciliationResult.OutcomeProviderRuntimeResolutionFailed, ex.Message, false, source);
+            return new SmsReconciliationResult
+            {
+                Success           = false,
+                Outcome           = SmsReconciliationResult.OutcomeProviderRuntimeResolutionFailed,
+                AttemptId         = attempt.Id,
+                NotificationId    = attempt.NotificationId,
+                Provider          = attempt.Provider,
+                ProviderMessageId = attempt.ProviderMessageId,
+                PreviousStatus    = attempt.Status,
+                ErrorCode         = SmsReconciliationResult.OutcomeProviderRuntimeResolutionFailed,
+                ErrorMessage      = ex.Message,
+                Retryable         = false,
+            };
+        }
+
+        if (!runtimeCtx.Success)
+        {
+            _logger.LogWarning(
+                "SMS reconciliation: provider runtime resolution failed for attempt {AttemptId}: {Code}",
+                attempt.Id, runtimeCtx.ErrorCode);
+            await AuditAsync("sms.reconciliation.skipped", attempt, null, null, attempt.Status,
+                runtimeCtx.ErrorCode, runtimeCtx.ErrorMessage, runtimeCtx.Retryable, source);
+            return new SmsReconciliationResult
+            {
+                Success           = false,
+                Outcome           = runtimeCtx.ErrorCode ?? SmsReconciliationResult.OutcomeProviderRuntimeResolutionFailed,
+                AttemptId         = attempt.Id,
+                NotificationId    = attempt.NotificationId,
+                Provider          = attempt.Provider,
+                ProviderMessageId = attempt.ProviderMessageId,
+                PreviousStatus    = attempt.Status,
+                ErrorCode         = runtimeCtx.ErrorCode,
+                ErrorMessage      = runtimeCtx.ErrorMessage,
+                Retryable         = runtimeCtx.Retryable,
+            };
+        }
+
+        // Guard: resolved adapter must support status lookup.
+        if (runtimeCtx.Adapter is not ISmsProviderStatusLookup statusLookup)
+        {
+            _logger.LogDebug(
+                "SMS reconciliation: provider {Provider} does not support status lookup (config={ConfigId})",
+                runtimeCtx.ProviderType, runtimeCtx.ProviderConfigId);
             return Skipped(SmsReconciliationResult.OutcomeSkippedUnsupportedProvider, attempt.Id, attempt.NotificationId, attempt.ProviderMessageId);
         }
 
@@ -197,7 +263,8 @@ public class SmsReconciliationService : ISmsReconciliationService
         {
             _logger.LogError(ex, "SMS reconciliation: vendor lookup threw for SID={Sid}", attempt.ProviderMessageId);
             await AuditAsync("sms.reconciliation.lookup_failed", attempt, null, null, attempt.Status,
-                "unexpected_error", ex.Message, false, source);
+                "unexpected_error", ex.Message, false, source,
+                providerConfigId: runtimeCtx.ProviderConfigId, ownershipMode: runtimeCtx.OwnershipMode);
             return new SmsReconciliationResult
             {
                 Success           = false,
@@ -219,7 +286,8 @@ public class SmsReconciliationService : ISmsReconciliationService
             {
                 _logger.LogWarning("SMS reconciliation: SID={Sid} not found at provider", attempt.ProviderMessageId);
                 await AuditAsync("sms.reconciliation.skipped", attempt, null, vendorResult.ProviderStatus, attempt.Status,
-                    vendorResult.ErrorCode, vendorResult.ErrorMessage, false, source);
+                    vendorResult.ErrorCode, vendorResult.ErrorMessage, false, source,
+                    providerConfigId: runtimeCtx.ProviderConfigId, ownershipMode: runtimeCtx.OwnershipMode);
                 return new SmsReconciliationResult
                 {
                     Success           = false,
@@ -240,22 +308,23 @@ public class SmsReconciliationService : ISmsReconciliationService
                 attempt.ProviderMessageId, vendorResult.ErrorCode, vendorResult.Retryable);
 
             await AuditAsync("sms.reconciliation.lookup_failed", attempt, null, vendorResult.ProviderStatus, attempt.Status,
-                vendorResult.ErrorCode, vendorResult.ErrorMessage, vendorResult.Retryable, source);
+                vendorResult.ErrorCode, vendorResult.ErrorMessage, vendorResult.Retryable, source,
+                providerConfigId: runtimeCtx.ProviderConfigId, ownershipMode: runtimeCtx.OwnershipMode);
 
             return new SmsReconciliationResult
             {
-                Success           = false,
-                Outcome           = SmsReconciliationResult.OutcomeVendorLookupFailed,
-                AttemptId         = attempt.Id,
-                NotificationId    = attempt.NotificationId,
-                Provider          = attempt.Provider,
-                ProviderMessageId = attempt.ProviderMessageId,
-                PreviousStatus    = attempt.Status,
-                VendorStatus      = vendorResult.ProviderStatus,
+                Success                = false,
+                Outcome                = SmsReconciliationResult.OutcomeVendorLookupFailed,
+                AttemptId              = attempt.Id,
+                NotificationId         = attempt.NotificationId,
+                Provider               = attempt.Provider,
+                ProviderMessageId      = attempt.ProviderMessageId,
+                PreviousStatus         = attempt.Status,
+                VendorStatus           = vendorResult.ProviderStatus,
                 NormalizedVendorStatus = vendorResult.NormalizedStatus,
-                ErrorCode         = vendorResult.ErrorCode,
-                ErrorMessage      = vendorResult.ErrorMessage,
-                Retryable         = vendorResult.Retryable,
+                ErrorCode              = vendorResult.ErrorCode,
+                ErrorMessage           = vendorResult.ErrorMessage,
+                Retryable              = vendorResult.Retryable,
             };
         }
 
@@ -267,7 +336,8 @@ public class SmsReconciliationService : ISmsReconciliationService
                 "SMS reconciliation: unknown normalized status '{Status}' for SID={Sid} — skipping update",
                 normalizedStatus, attempt.ProviderMessageId);
             await AuditAsync("sms.reconciliation.skipped", attempt, normalizedStatus, vendorResult.ProviderStatus, attempt.Status,
-                "unknown_normalized_status", null, false, source);
+                "unknown_normalized_status", null, false, source,
+                providerConfigId: runtimeCtx.ProviderConfigId, ownershipMode: runtimeCtx.OwnershipMode);
             return Skipped(SmsReconciliationResult.OutcomeNoChange, attempt.Id, attempt.NotificationId, attempt.ProviderMessageId);
         }
 
@@ -286,20 +356,16 @@ public class SmsReconciliationService : ISmsReconciliationService
         var newStatus    = afterAttempt?.Status ?? previousStatus;
         var didUpdate    = !string.Equals(previousStatus, newStatus, StringComparison.OrdinalIgnoreCase);
 
-        var outcome = didUpdate
-            ? SmsReconciliationResult.OutcomeUpdated
-            : SmsReconciliationResult.OutcomeNoChange;
-
-        var auditEvent = didUpdate
-            ? "sms.reconciliation.updated"
-            : "sms.reconciliation.no_change";
+        var outcome    = didUpdate ? SmsReconciliationResult.OutcomeUpdated : SmsReconciliationResult.OutcomeNoChange;
+        var auditEvent = didUpdate ? "sms.reconciliation.updated"           : "sms.reconciliation.no_change";
 
         _logger.LogInformation(
-            "SMS reconciliation: SID={Sid} → outcome={Outcome}, prev={Prev}, vendor={Vendor}, new={New}",
-            attempt.ProviderMessageId, outcome, previousStatus, vendorResult.ProviderStatus, newStatus);
+            "SMS reconciliation: SID={Sid} → outcome={Outcome}, prev={Prev}, vendor={Vendor}, new={New}, config={ConfigId}",
+            attempt.ProviderMessageId, outcome, previousStatus, vendorResult.ProviderStatus, newStatus, runtimeCtx.ProviderConfigId);
 
         await AuditAsync(auditEvent, attempt, normalizedStatus, vendorResult.ProviderStatus, newStatus,
-            null, null, false, source, previousStatus);
+            null, null, false, source, previousStatus,
+            providerConfigId: runtimeCtx.ProviderConfigId, ownershipMode: runtimeCtx.OwnershipMode);
 
         return new SmsReconciliationResult
         {
@@ -329,7 +395,9 @@ public class SmsReconciliationService : ISmsReconciliationService
         string? errorMessage,
         bool retryable,
         string source,
-        string? previousStatus = null)
+        string? previousStatus = null,
+        Guid? providerConfigId = null,
+        string? ownershipMode = null)
     {
         try
         {
@@ -344,16 +412,18 @@ public class SmsReconciliationService : ISmsReconciliationService
                 Entity       = new AuditEventEntityDto { Type = "NOTIFICATION_ATTEMPT", Id = attempt.Id.ToString() },
                 Metadata     = JsonSerializer.Serialize(new
                 {
-                    provider             = attempt.Provider,
-                    provider_message_id  = attempt.ProviderMessageId,
-                    notification_id      = attempt.NotificationId,
-                    attempt_id           = attempt.Id,
-                    previous_status      = previousStatus ?? attempt.Status,
-                    vendor_status        = rawVendorStatus,
+                    provider                 = attempt.Provider,
+                    provider_config_id       = (providerConfigId ?? attempt.ProviderConfigId)?.ToString(),
+                    ownership_mode           = ownershipMode ?? attempt.ProviderOwnershipMode,
+                    provider_message_id      = attempt.ProviderMessageId,
+                    notification_id          = attempt.NotificationId,
+                    attempt_id               = attempt.Id,
+                    previous_status          = previousStatus ?? attempt.Status,
+                    vendor_status            = rawVendorStatus,
                     normalized_vendor_status = normalizedVendorStatus,
-                    new_status           = newStatus,
-                    error_code           = errorCode,
-                    error_message        = errorMessage,
+                    new_status               = newStatus,
+                    error_code               = errorCode,
+                    error_message            = errorMessage,
                     retryable,
                     source,
                 }),

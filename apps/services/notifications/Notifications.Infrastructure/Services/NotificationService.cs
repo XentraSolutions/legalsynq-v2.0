@@ -23,6 +23,7 @@ public class NotificationServiceImpl : INotificationService
     private readonly IBrandingResolutionService _brandingResolution;
     private readonly IEmailProviderAdapter _sendGridAdapter;
     private readonly ISmsProviderAdapter _twilioAdapter;
+    private readonly ISmsProviderRuntimeResolver _smsRuntimeResolver;
     private readonly IRecipientResolver _recipientResolver;
     private readonly IAuditEventClient _auditClient;
     private readonly ILogger<NotificationServiceImpl> _logger;
@@ -46,6 +47,7 @@ public class NotificationServiceImpl : INotificationService
         IBrandingResolutionService brandingResolution,
         IEmailProviderAdapter sendGridAdapter,
         ISmsProviderAdapter twilioAdapter,
+        ISmsProviderRuntimeResolver smsRuntimeResolver,
         IRecipientResolver recipientResolver,
         IAuditEventClient auditClient,
         ILogger<NotificationServiceImpl> logger)
@@ -61,9 +63,10 @@ public class NotificationServiceImpl : INotificationService
         _templateResolution  = templateResolution;
         _templateRendering   = templateRendering;
         _brandingResolution  = brandingResolution;
-        _sendGridAdapter     = sendGridAdapter;
-        _twilioAdapter       = twilioAdapter;
-        _recipientResolver   = recipientResolver;
+        _sendGridAdapter      = sendGridAdapter;
+        _twilioAdapter        = twilioAdapter;
+        _smsRuntimeResolver   = smsRuntimeResolver;
+        _recipientResolver    = recipientResolver;
         _auditClient         = auditClient;
         _logger              = logger;
     }
@@ -901,13 +904,34 @@ public class NotificationServiceImpl : INotificationService
             }
             else
             {
-                var result = await _twilioAdapter.SendAsync(new SmsSendPayload
+                // LS-NOTIF-SMS-005: Resolve the correct tenant or platform Twilio adapter
+                // using the config ID already set on this route by ProviderRoutingService.
+                var runtimeCtx = await _smsRuntimeResolver.ResolveForSendAsync(
+                    tenantId, route.ProviderType, route.TenantProviderConfigId);
+
+                if (!runtimeCtx.Success)
                 {
-                    To = contactValue ?? "", Body = body ?? ""
-                });
-                success = result.Success;
-                providerMessageId = result.ProviderMessageId;
-                failure = result.Failure;
+                    _logger.LogWarning(
+                        "SMS send: provider runtime resolution failed for route {Provider}/{ConfigId}: {Code}",
+                        route.ProviderType, route.TenantProviderConfigId, runtimeCtx.ErrorCode);
+                    success = false;
+                    failure = new ProviderFailure
+                    {
+                        Category  = runtimeCtx.ErrorCode ?? "provider_config_failure",
+                        Message   = runtimeCtx.ErrorMessage ?? "SMS provider configuration failed",
+                        Retryable = runtimeCtx.Retryable,
+                    };
+                }
+                else
+                {
+                    var result = await runtimeCtx.Adapter!.SendAsync(new SmsSendPayload
+                    {
+                        To = contactValue ?? "", Body = body ?? ""
+                    });
+                    success = result.Success;
+                    providerMessageId = result.ProviderMessageId;
+                    failure = result.Failure;
+                }
             }
 
             if (success)
