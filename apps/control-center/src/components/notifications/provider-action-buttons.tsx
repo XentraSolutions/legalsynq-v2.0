@@ -10,13 +10,14 @@ import {
 
 interface Props {
   configId:         string;
+  channel:          string;
   status:           'active' | 'inactive';
   validationStatus: 'not_validated' | 'valid' | 'invalid';
 }
 
 type BtnState = 'idle' | 'loading' | 'ok' | 'err';
 
-export function ProviderActionButtons({ configId, status, validationStatus }: Props) {
+export function ProviderActionButtons({ configId, channel, status, validationStatus }: Props) {
   const [isPending,  startTransition]  = useTransition();
   const [validateSt, setValidateSt]    = useState<BtnState>('idle');
   const [toggleSt,   setToggleSt]      = useState<BtnState>('idle');
@@ -25,11 +26,19 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
   const [errorMsg,   setErrorMsg]      = useState<string | null>(null);
 
   const [testOpen,    setTestOpen]    = useState(false);
+  const [testMsg,     setTestMsg]     = useState<string | null>(null);
+  const [testSt,      setTestSt]      = useState<BtnState>('idle');
+
+  // Email test fields
   const [testEmail,   setTestEmail]   = useState('');
   const [testSubject, setTestSubject] = useState('LegalSynq — Test Email');
   const [testBody,    setTestBody]    = useState('This is a test email from the LegalSynq Notifications platform.');
-  const [testSt,      setTestSt]      = useState<BtnState>('idle');
-  const [testMsg,     setTestMsg]     = useState<string | null>(null);
+
+  // SMS test fields
+  const [testPhone,   setTestPhone]   = useState('');
+  const [testSmsBody, setTestSmsBody] = useState('This is a test SMS from the LegalSynq Notifications platform.');
+
+  const isSms = channel.toLowerCase() === 'sms';
 
   function runAction(
     fn:    () => Promise<{ success: boolean; error?: string }>,
@@ -52,18 +61,16 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
 
   function handleSendTest(e: React.FormEvent) {
     e.preventDefault();
-    if (!testEmail.trim()) return;
     setTestMsg(null);
     setTestSt('loading');
     startTransition(async () => {
-      const res = await testProviderConfig(configId, {
-        toEmail: testEmail.trim(),
-        subject: testSubject.trim() || 'LegalSynq — Test Email',
-        body:    testBody.trim()    || 'This is a test email from the LegalSynq Notifications platform.',
-      });
+      const payload = isSms
+        ? { toPhone: testPhone.trim(), body: testSmsBody.trim() || 'Test SMS from LegalSynq.' }
+        : { toEmail: testEmail.trim(), subject: testSubject.trim() || 'LegalSynq — Test Email', body: testBody.trim() };
+      const res = await testProviderConfig(configId, payload);
       if (res.success) {
         setTestSt('ok');
-        setTestMsg(res.message ?? 'Test email sent successfully.');
+        setTestMsg(res.message ?? (isSms ? 'Test SMS sent successfully.' : 'Test email sent successfully.'));
       } else {
         setTestSt('err');
         setTestMsg(res.error ?? 'Test failed.');
@@ -73,11 +80,13 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
 
   function closeTestModal() {
     setTestOpen(false);
+    setTestMsg(null);
+    setTestSt('idle');
     setTestEmail('');
     setTestSubject('LegalSynq — Test Email');
     setTestBody('This is a test email from the LegalSynq Notifications platform.');
-    setTestSt('idle');
-    setTestMsg(null);
+    setTestPhone('');
+    setTestSmsBody('This is a test SMS from the LegalSynq Notifications platform.');
   }
 
   const btnBase = 'inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap';
@@ -180,15 +189,19 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
         )}
       </div>
 
-      {/* ── Test Email Modal ──────────────────────────────────────────────── */}
+      {/* ── Test Modal ──────────────────────────────────────────────────────── */}
       {testOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">Send Test Email</h2>
+                <h2 className="text-sm font-semibold text-gray-900">
+                  {isSms ? 'Send Test SMS' : 'Send Test Email'}
+                </h2>
                 <p className="text-[11px] text-gray-500 mt-0.5">
-                  A real email will be sent via this provider config.
+                  {isSms
+                    ? 'A real SMS will be sent via this Twilio config.'
+                    : 'A real email will be sent via this provider config.'}
                 </p>
               </div>
               <button onClick={closeTestModal} className="text-gray-400 hover:text-gray-600">
@@ -197,53 +210,90 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
             </div>
 
             <form onSubmit={handleSendTest} className="px-5 py-4 space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Recipient Email <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  value={testEmail}
-                  onChange={e => setTestEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  autoFocus
-                  className={inputCls}
-                />
-              </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Subject</label>
-                <input
-                  type="text"
-                  value={testSubject}
-                  onChange={e => setTestSubject(e.target.value)}
-                  placeholder="LegalSynq — Test Email"
-                  className={inputCls}
-                />
-              </div>
+              {isSms ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Recipient Phone Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={testPhone}
+                      onChange={e => setTestPhone(e.target.value)}
+                      placeholder="+15551234567"
+                      required
+                      autoFocus
+                      className={inputCls}
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Use E.164 format, e.g. +15551234567
+                    </p>
+                  </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Body</label>
-                <textarea
-                  value={testBody}
-                  onChange={e => setTestBody(e.target.value)}
-                  rows={4}
-                  placeholder="Test email body…"
-                  className={`${inputCls} resize-none`}
-                />
-              </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Message</label>
+                    <textarea
+                      value={testSmsBody}
+                      onChange={e => setTestSmsBody(e.target.value)}
+                      rows={3}
+                      placeholder="Test SMS message…"
+                      maxLength={160}
+                      className={`${inputCls} resize-none`}
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      {testSmsBody.length}/160 characters
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Recipient Email <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={testEmail}
+                      onChange={e => setTestEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      required
+                      autoFocus
+                      className={inputCls}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Subject</label>
+                    <input
+                      type="text"
+                      value={testSubject}
+                      onChange={e => setTestSubject(e.target.value)}
+                      placeholder="LegalSynq — Test Email"
+                      className={inputCls}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Body</label>
+                    <textarea
+                      value={testBody}
+                      onChange={e => setTestBody(e.target.value)}
+                      rows={4}
+                      placeholder="Test email body…"
+                      className={`${inputCls} resize-none`}
+                    />
+                  </div>
+                </>
+              )}
 
               {testMsg && (() => {
-                const isOk      = testSt === 'ok';
-                const hasCaveat = isOk && testMsg.includes('If the email does not arrive');
-                const cls = isOk
-                  ? hasCaveat
-                    ? 'text-amber-800 bg-amber-50 border-amber-200'
-                    : 'text-green-700 bg-green-50 border-green-200'
+                const isOk = testSt === 'ok';
+                const cls  = isOk
+                  ? 'text-green-700 bg-green-50 border-green-200'
                   : 'text-red-600 bg-red-50 border-red-200';
                 const icon = isOk
-                  ? hasCaveat ? 'ri-mail-send-line' : 'ri-check-line'
+                  ? (isSms ? 'ri-chat-check-line' : 'ri-check-line')
                   : 'ri-error-warning-line';
                 return (
                   <div className={`text-xs rounded px-3 py-2 border leading-relaxed ${cls}`}>
@@ -263,12 +313,12 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
                 </button>
                 <button
                   type="submit"
-                  disabled={isPending || testSt === 'loading'}
+                  disabled={isPending || testSt === 'loading' || (isSms ? !testPhone.trim() : !testEmail.trim())}
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
                   {testSt === 'loading'
                     ? <><i className="ri-loader-4-line animate-spin" /> Sending…</>
-                    : <><i className="ri-send-plane-line" /> Send Test</>
+                    : <><i className="ri-send-plane-line" /> {isSms ? 'Send SMS' : 'Send Test'}</>
                   }
                 </button>
               </div>
