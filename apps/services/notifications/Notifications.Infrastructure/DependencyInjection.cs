@@ -69,6 +69,8 @@ public static class DependencyInjection
         services.AddScoped<ISmsReconciliationService, SmsReconciliationService>();
         services.AddScoped<ITwilioAdapterFactory, TwilioAdapterFactory>();
         services.AddScoped<ISmsProviderRuntimeResolver, SmsProviderRuntimeResolver>();
+        services.AddScoped<ISmsActivityRepository, SmsActivityRepository>();
+        services.AddScoped<ISmsActivityService, SmsActivityService>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

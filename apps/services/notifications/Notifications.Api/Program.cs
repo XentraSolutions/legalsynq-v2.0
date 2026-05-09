@@ -244,6 +244,7 @@ app.MapBrandingEndpoints();
 app.MapInternalEndpoints();
 app.MapSmsPreferenceEndpoints();
 app.MapSmsReconciliationEndpoints();
+app.MapSmsActivityEndpoints();
 
 app.Run();
 
@@ -310,6 +311,24 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
                 "CREATE INDEX `IX_Notifications_Status_NextRetryAt` ON `ntf_Notifications` (`Status`, `NextRetryAt`)";
             await idxCmd.ExecuteNonQueryAsync();
             logger.LogInformation("Created missing index IX_Notifications_Status_NextRetryAt");
+        }
+
+        // ── LS-NOTIF-SMS-006: composite index for SMS activity queries ────────
+        // Covers: WHERE Channel='sms' AND TenantId=? ORDER BY CreatedAt DESC
+        using var smsIdxCheckCmd = conn.CreateCommand();
+        smsIdxCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_NotificationAttempts' " +
+            $"AND INDEX_NAME = 'IX_NotificationAttempts_Channel_TenantId_CreatedAt'";
+        var smsIdxCount = Convert.ToInt32(await smsIdxCheckCmd.ExecuteScalarAsync());
+        if (smsIdxCount == 0)
+        {
+            using var smsIdxCmd = conn.CreateCommand();
+            smsIdxCmd.CommandText =
+                "CREATE INDEX `IX_NotificationAttempts_Channel_TenantId_CreatedAt` " +
+                "ON `ntf_NotificationAttempts` (`Channel`, `TenantId`, `CreatedAt`)";
+            await smsIdxCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created index IX_NotificationAttempts_Channel_TenantId_CreatedAt");
         }
 
         // Ensure columns exist on ntf_Templates and ntf_TemplateVersions — may be absent on DBs
