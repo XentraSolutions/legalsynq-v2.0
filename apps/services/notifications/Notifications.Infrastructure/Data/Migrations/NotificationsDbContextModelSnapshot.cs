@@ -340,6 +340,24 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    // ── LS-NOTIF-SMS-013: SMS cost metadata ────────────────────────────────
+                    b.Property<decimal?>("EstimatedCostAmount")
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal?>("ActualCostAmount")
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<string>("CostCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("varchar(3)");
+
+                    b.Property<string>("CostSource")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime?>("CostRecordedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NotificationId")

@@ -66,6 +66,16 @@ public class NotificationAttemptConfiguration : IEntityTypeConfiguration<Notific
         builder.Property(e => e.LastReconciliationNormalizedStatus).HasMaxLength(100);
         builder.Property(e => e.ReconciliationAttemptCount).HasDefaultValue(0);
 
+        // ── LS-NOTIF-SMS-013: SMS cost metadata columns ────────────────────────
+        // All nullable — pre-existing rows remain valid.
+        // Decimal(18,8) supports sub-cent SMS rates (e.g. $0.0075).
+        // CostCurrency: ISO 4217, max 3 chars. CostSource: max 30 chars.
+        builder.Property(e => e.EstimatedCostAmount).HasColumnType("decimal(18,8)");
+        builder.Property(e => e.ActualCostAmount).HasColumnType("decimal(18,8)");
+        builder.Property(e => e.CostCurrency).HasMaxLength(3);
+        builder.Property(e => e.CostSource).HasMaxLength(30);
+        // CostRecordedAt: datetime(6) nullable — no special config needed
+
         // Existing indexes
         builder.HasIndex(e => e.NotificationId).HasDatabaseName("IX_NotificationAttempts_NotificationId");
         builder.HasIndex(e => e.ProviderMessageId).HasDatabaseName("IX_NotificationAttempts_ProviderMessageId");

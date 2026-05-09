@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Notifications.Application.DTOs;
 using Notifications.Application.Interfaces;
+using Notifications.Application.Options;
 using Notifications.Domain;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
@@ -26,6 +28,7 @@ public class NotificationServiceImpl : INotificationService
     private readonly ISmsProviderRuntimeResolver _smsRuntimeResolver;
     private readonly IRecipientResolver _recipientResolver;
     private readonly IAuditEventClient _auditClient;
+    private readonly SmsCostAnalyticsOptions _costOptions;
     private readonly ILogger<NotificationServiceImpl> _logger;
 
     private static readonly JsonSerializerOptions _camelCaseOptions = new()
@@ -50,6 +53,7 @@ public class NotificationServiceImpl : INotificationService
         ISmsProviderRuntimeResolver smsRuntimeResolver,
         IRecipientResolver recipientResolver,
         IAuditEventClient auditClient,
+        IOptions<SmsCostAnalyticsOptions> costOptions,
         ILogger<NotificationServiceImpl> logger)
     {
         _notificationRepo    = notificationRepo;
@@ -68,6 +72,7 @@ public class NotificationServiceImpl : INotificationService
         _smsRuntimeResolver   = smsRuntimeResolver;
         _recipientResolver    = recipientResolver;
         _auditClient         = auditClient;
+        _costOptions         = costOptions.Value;
         _logger              = logger;
     }
 
@@ -940,6 +945,30 @@ public class NotificationServiceImpl : INotificationService
                 attempt.ProviderMessageId = providerMessageId;
                 attempt.CompletedAt = DateTime.UtcNow;
                 await _attemptRepo.UpdateAsync(attempt);
+
+                // ── LS-NOTIF-SMS-013: record estimated SMS cost (best-effort, non-blocking) ──
+                if (notification.Channel == "sms" && _costOptions.Enabled)
+                {
+                    try
+                    {
+                        var estimatedCost = _costOptions.GetEstimatedCost(route.ProviderType);
+                        var costSource    = estimatedCost.HasValue ? "estimated" : "unavailable";
+                        await _attemptRepo.UpdateCostAsync(
+                            attempt.Id,
+                            estimatedCostAmount: estimatedCost,
+                            actualCostAmount:    null,
+                            costCurrency:        _costOptions.DefaultCurrency,
+                            costSource:          costSource,
+                            costRecordedAt:      DateTime.UtcNow);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex,
+                            "LS-NOTIF-SMS-013: Cost recording failed for attempt {AttemptId} (non-fatal)",
+                            attempt.Id);
+                    }
+                }
+                // ── end cost recording ────────────────────────────────────────────────────────
 
                 notification.Status              = "sent";
                 notification.ProviderUsed        = route.ProviderType;

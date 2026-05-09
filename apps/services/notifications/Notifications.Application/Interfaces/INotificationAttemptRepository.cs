@@ -43,4 +43,22 @@ public interface INotificationAttemptRepository
         string? normalizedStatus,
         DateTime reconciledAt,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// LS-NOTIF-SMS-013: Persist cost metadata on an SMS attempt.
+    ///
+    /// Best-effort — callers must wrap in try/catch so cost recording failures
+    /// never affect delivery semantics. Does NOT modify Status, CompletedAt,
+    /// or any reconciliation fields.
+    ///
+    /// No credentials, raw provider payloads, or phone numbers may be passed.
+    /// </summary>
+    Task UpdateCostAsync(
+        Guid attemptId,
+        decimal? estimatedCostAmount,
+        decimal? actualCostAmount,
+        string? costCurrency,
+        string costSource,
+        DateTime costRecordedAt,
+        CancellationToken ct = default);
 }

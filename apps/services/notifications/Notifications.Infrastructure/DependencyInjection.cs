@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Notifications.Application.Interfaces;
+using Notifications.Application.Options;
 using Notifications.Infrastructure.Data;
 using Notifications.Infrastructure.Providers.Adapters;
 using Notifications.Infrastructure.Repositories;
@@ -73,6 +74,10 @@ public static class DependencyInjection
         services.AddScoped<ISmsActivityService, SmsActivityService>();
         services.AddScoped<ISmsDashboardRepository, SmsDashboardRepository>();
         services.AddScoped<ISmsDashboardService, SmsDashboardService>();
+        services.AddScoped<ISmsCostAnalyticsRepository, SmsCostAnalyticsRepository>();
+        services.AddScoped<ISmsCostAnalyticsService, SmsCostAnalyticsService>();
+        services.AddOptions<SmsCostAnalyticsOptions>()
+                .Bind(configuration.GetSection(SmsCostAnalyticsOptions.SectionName));
         services.AddScoped<ISmsOperationalAlertRepository, SmsOperationalAlertRepository>();
         services.AddScoped<ISmsOperationalAlertEvaluator, SmsOperationalAlertEvaluator>();
         services.AddScoped<ISmsOperationalEscalationPolicyRepository, SmsEscalationPolicyRepository>();

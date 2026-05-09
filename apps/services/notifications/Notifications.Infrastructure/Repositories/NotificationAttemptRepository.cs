@@ -64,6 +64,29 @@ public class NotificationAttemptRepository : INotificationAttemptRepository
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task UpdateCostAsync(
+        Guid attemptId,
+        decimal? estimatedCostAmount,
+        decimal? actualCostAmount,
+        string? costCurrency,
+        string costSource,
+        DateTime costRecordedAt,
+        CancellationToken ct = default)
+    {
+        var a = await _db.NotificationAttempts.FindAsync(new object[] { attemptId }, ct);
+        if (a == null) return;
+
+        a.EstimatedCostAmount = estimatedCostAmount;
+        a.ActualCostAmount    = actualCostAmount;
+        a.CostCurrency        = costCurrency;
+        a.CostSource          = costSource;
+        a.CostRecordedAt      = costRecordedAt;
+        a.UpdatedAt           = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task UpdateReconciliationTrackingAsync(
         Guid attemptId,
         string outcome,

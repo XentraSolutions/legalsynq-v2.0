@@ -53,4 +53,26 @@ public class NotificationAttempt
     /// Defaults to 0 for all pre-existing attempts.
     /// </summary>
     public int ReconciliationAttemptCount { get; set; } = 0;
+
+    // ── LS-NOTIF-SMS-013: SMS cost metadata ──────────────────────────────────
+    // Nullable cost fields scoped to SMS attempts only. All values are
+    // in a single ISO 4217 currency (default USD). No credentials, raw provider
+    // billing payloads, or phone numbers are stored in any of these fields.
+    // CostSource values: "estimated" | "provider_reconciled" | "manual" | "unavailable"
+    // Actual provider cost (ActualCostAmount) requires future Twilio adapter extension.
+
+    /// <summary>Estimated cost in <see cref="CostCurrency"/>. Null when CostSource = "unavailable".</summary>
+    public decimal? EstimatedCostAmount { get; set; }
+
+    /// <summary>Actual cost from provider billing API. Currently always null (known gap — Twilio adapter not yet extended).</summary>
+    public decimal? ActualCostAmount { get; set; }
+
+    /// <summary>ISO 4217 currency code (e.g. "USD"). Null for pre-existing or uncosted attempts.</summary>
+    public string? CostCurrency { get; set; }
+
+    /// <summary>"estimated" | "provider_reconciled" | "manual" | "unavailable".</summary>
+    public string? CostSource { get; set; }
+
+    /// <summary>UTC timestamp when cost metadata was last written.</summary>
+    public DateTime? CostRecordedAt { get; set; }
 }

@@ -246,6 +246,7 @@ app.MapSmsPreferenceEndpoints();
 app.MapSmsReconciliationEndpoints();
 app.MapSmsActivityEndpoints();
 app.MapSmsDashboardEndpoints();
+app.MapSmsCostEndpoints();
 app.MapSmsAlertEndpoints();
 app.MapSmsEscalationEndpoints();
 
