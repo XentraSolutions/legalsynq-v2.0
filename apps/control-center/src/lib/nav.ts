@@ -82,6 +82,7 @@ export const CC_NAV: NavSection[] = [
     items: [
       { href: '/notifications',                        label: 'Overview',        icon: 'ri-notification-3-line'  },
       { href: '/notifications/log',                    label: 'Delivery Log',    icon: 'ri-mail-send-line'       },
+      { href: '/notifications/sms-dashboard',          label: 'SMS Dashboard',   icon: 'ri-message-line',        badge: 'LIVE' },
       { href: '/notifications/templates',              label: 'Templates',       icon: 'ri-file-text-line'       },
       { href: '/notifications/providers',              label: 'Providers',       icon: 'ri-plug-line'            },
       { href: '/notifications/billing',                label: 'Usage & Billing', icon: 'ri-bar-chart-2-line'     },
