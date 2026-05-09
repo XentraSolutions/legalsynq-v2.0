@@ -86,12 +86,7 @@ public class SmsProviderQualityService : ISmsProviderQualityService
             return;
         }
 
-        // Group by (Provider, ProviderConfigId, ProviderOwnershipMode, TenantId)
-        var groups = attempts
-            .GroupBy(a => (a.Provider, a.ProviderConfigId, a.ProviderOwnershipMode, TenantId: (Guid?)null))
-            .ToList();
-
-        // Also aggregate platform-level (TenantId = null) per provider
+        // Aggregate platform-level (TenantId = null) per provider
         var platformGroups = attempts
             .GroupBy(a => (a.Provider, a.ProviderConfigId, a.ProviderOwnershipMode))
             .ToList();
@@ -316,7 +311,7 @@ public class SmsProviderQualityService : ISmsProviderQualityService
         public string?   Provider              { get; set; }
         public Guid?     ProviderConfigId      { get; set; }
         public string?   ProviderOwnershipMode { get; set; }
-        public Guid      TenantId              { get; set; }
+        public Guid?     TenantId              { get; set; }
         public string?   Status                { get; set; }
         public int       AttemptNumber         { get; set; }
         public bool      IsFailover            { get; set; }
