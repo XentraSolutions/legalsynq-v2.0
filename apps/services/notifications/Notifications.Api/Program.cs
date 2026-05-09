@@ -246,6 +246,7 @@ app.MapSmsPreferenceEndpoints();
 app.MapSmsReconciliationEndpoints();
 app.MapSmsActivityEndpoints();
 app.MapSmsDashboardEndpoints();
+app.MapSmsAlertEndpoints();
 
 app.Run();
 
@@ -533,6 +534,49 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
             logger.LogInformation("Created missing table ntf_SmsPreferenceHistories");
         }
 
+        // ── LS-NOTIF-SMS-010: Ensure ntf_SmsOperationalAlerts table exists ────────
+        // Safety net: if the migration ran but DDL failed (or was pre-seeded), ensure the table exists.
+        using var alertTableCheckCmd = conn.CreateCommand();
+        alertTableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsOperationalAlerts'";
+        var alertTableExists = Convert.ToInt32(await alertTableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!alertTableExists)
+        {
+            using var createAlertTableCmd = conn.CreateCommand();
+            createAlertTableCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsOperationalAlerts` (
+                    `Id`                    char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `AlertType`             varchar(100)    CHARACTER SET utf8mb4 NOT NULL,
+                    `Severity`              varchar(20)     CHARACTER SET utf8mb4 NOT NULL DEFAULT 'warning',
+                    `TenantId`              char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `Provider`              varchar(100)    CHARACTER SET utf8mb4 NULL,
+                    `ProviderConfigId`      char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `MetricValue`           decimal(18,6)   NOT NULL,
+                    `ThresholdValue`        decimal(18,6)   NOT NULL,
+                    `Message`               text            CHARACTER SET utf8mb4 NOT NULL,
+                    `EvaluationWindowStart` datetime(6)     NOT NULL,
+                    `EvaluationWindowEnd`   datetime(6)     NOT NULL,
+                    `Status`                varchar(20)     CHARACTER SET utf8mb4 NOT NULL DEFAULT 'active',
+                    `OccurrenceCount`       int             NOT NULL DEFAULT 1,
+                    `FirstObservedAt`       datetime(6)     NOT NULL,
+                    `LastObservedAt`        datetime(6)     NOT NULL,
+                    `ResolvedAt`            datetime(6)     NULL,
+                    `ResolvedBy`            varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `ResolutionNote`        text            CHARACTER SET utf8mb4 NULL,
+                    `SuppressedUntil`       datetime(6)     NULL,
+                    `CreatedAt`             datetime(6)     NOT NULL,
+                    `UpdatedAt`             datetime(6)     NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_SmsOperationalAlerts_Status_LastObservedAt` (`Status`, `LastObservedAt`),
+                    KEY `IX_SmsOperationalAlerts_AlertType_Status_Scope` (`AlertType`, `Status`, `TenantId`, `Provider`, `ProviderConfigId`),
+                    KEY `IX_SmsOperationalAlerts_TenantId_Status_CreatedAt` (`TenantId`, `Status`, `CreatedAt`)
+                ) CHARACTER SET=utf8mb4;";
+            await createAlertTableCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsOperationalAlerts");
+        }
+
         logger.LogInformation("EnsureNotificationsSchemaColumns complete");
     }
     finally
@@ -553,6 +597,7 @@ static async Task SeedMigrationHistoryIfNeededAsync(NotificationsDbContext db, I
         ("20260508000001_AddSmsPreference",     "8.0.2"),
         ("20260508000002_AddSmsPreferenceHistory",      "8.0.2"),
         ("20260509000001_AddSmsReconciliationTracking", "8.0.2"),
+        ("20260510000001_AddSmsOperationalAlerts",      "8.0.2"),
     };
 
     try

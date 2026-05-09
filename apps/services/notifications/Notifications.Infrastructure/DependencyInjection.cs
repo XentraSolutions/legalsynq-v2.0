@@ -73,6 +73,8 @@ public static class DependencyInjection
         services.AddScoped<ISmsActivityService, SmsActivityService>();
         services.AddScoped<ISmsDashboardRepository, SmsDashboardRepository>();
         services.AddScoped<ISmsDashboardService, SmsDashboardService>();
+        services.AddScoped<ISmsOperationalAlertRepository, SmsOperationalAlertRepository>();
+        services.AddScoped<ISmsOperationalAlertEvaluator, SmsOperationalAlertEvaluator>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:
@@ -157,6 +159,7 @@ public static class DependencyInjection
         services.AddHostedService<ProviderHealthWorker>();
         services.AddHostedService<StatusSyncWorker>();
         services.AddHostedService<SmsReconciliationWorker>();
+        services.AddHostedService<SmsOperationalAlertWorker>();
 
         return services;
     }

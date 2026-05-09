@@ -1211,6 +1211,101 @@ namespace Notifications.Infrastructure.Data.Migrations
 
                     b.ToTable("ntf_UsageMeterEvents", (string)null);
                 });
+
+            modelBuilder.Entity("Notifications.Domain.SmsOperationalAlert", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AlertType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("EvaluationWindowEnd")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("EvaluationWindowStart")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("FirstObservedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("LastObservedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("MetricValue")
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<int>("OccurrenceCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid?>("ProviderConfigId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("warning");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("active");
+
+                    b.Property<DateTime?>("SuppressedUntil")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<decimal>("ThresholdValue")
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "LastObservedAt")
+                        .HasDatabaseName("IX_SmsOperationalAlerts_Status_LastObservedAt");
+
+                    b.HasIndex("AlertType", "Status", "TenantId", "Provider", "ProviderConfigId")
+                        .HasDatabaseName("IX_SmsOperationalAlerts_AlertType_Status_Scope");
+
+                    b.HasIndex("TenantId", "Status", "CreatedAt")
+                        .HasDatabaseName("IX_SmsOperationalAlerts_TenantId_Status_CreatedAt");
+
+                    b.ToTable("ntf_SmsOperationalAlerts", (string)null);
+                });
 #pragma warning restore 612, 618
         }
     }

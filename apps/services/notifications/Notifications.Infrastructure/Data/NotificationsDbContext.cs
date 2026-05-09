@@ -28,6 +28,7 @@ public class NotificationsDbContext : DbContext
     public DbSet<UsageMeterEvent> UsageMeterEvents => Set<UsageMeterEvent>();
     public DbSet<SmsContactPreference> SmsContactPreferences => Set<SmsContactPreference>();
     public DbSet<SmsPreferenceHistory> SmsPreferenceHistories => Set<SmsPreferenceHistory>();
+    public DbSet<SmsOperationalAlert> SmsOperationalAlerts => Set<SmsOperationalAlert>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,5 +54,6 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.UsageMeterEventConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsContactPreferenceConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsPreferenceHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsOperationalAlertConfiguration());
     }
 }
