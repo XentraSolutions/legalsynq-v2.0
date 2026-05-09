@@ -245,6 +245,7 @@ app.MapInternalEndpoints();
 app.MapSmsPreferenceEndpoints();
 app.MapSmsReconciliationEndpoints();
 app.MapSmsActivityEndpoints();
+app.MapSmsDashboardEndpoints();
 
 app.Run();
 

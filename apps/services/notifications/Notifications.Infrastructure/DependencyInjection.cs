@@ -71,6 +71,8 @@ public static class DependencyInjection
         services.AddScoped<ISmsProviderRuntimeResolver, SmsProviderRuntimeResolver>();
         services.AddScoped<ISmsActivityRepository, SmsActivityRepository>();
         services.AddScoped<ISmsActivityService, SmsActivityService>();
+        services.AddScoped<ISmsDashboardRepository, SmsDashboardRepository>();
+        services.AddScoped<ISmsDashboardService, SmsDashboardService>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:
