@@ -73,22 +73,29 @@ public static class ProviderEndpoints
 
         group.MapPost("/configs", async (HttpContext context, ITenantProviderConfigService service, CreateTenantProviderConfigDto request) =>
         {
-            var tenantId = context.GetTenantId();
-            var result = await service.CreateAsync(tenantId, request);
+            var tenantId = context.TryGetTenantId();
+            var result = tenantId.HasValue
+                ? await service.CreateAsync(tenantId.Value, request)
+                : await service.CreatePlatformAsync(request);
             return Results.Created($"/v1/providers/configs/{result.Id}", result);
         });
 
         group.MapPut("/configs/{id:guid}", async (HttpContext context, ITenantProviderConfigService service, Guid id, UpdateTenantProviderConfigDto request) =>
         {
-            var tenantId = context.GetTenantId();
-            var result = await service.UpdateAsync(tenantId, id, request);
+            var tenantId = context.TryGetTenantId();
+            var result = tenantId.HasValue
+                ? await service.UpdateAsync(tenantId.Value, id, request)
+                : await service.UpdatePlatformAsync(id, request);
             return Results.Ok(result);
         });
 
         group.MapDelete("/configs/{id:guid}", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
-            var tenantId = context.GetTenantId();
-            await service.DeleteAsync(tenantId, id);
+            var tenantId = context.TryGetTenantId();
+            if (tenantId.HasValue)
+                await service.DeleteAsync(tenantId.Value, id);
+            else
+                await service.DeletePlatformAsync(id);
             return Results.NoContent();
         });
 

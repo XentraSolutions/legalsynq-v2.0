@@ -115,6 +115,33 @@ public class TenantProviderConfigServiceImpl : ITenantProviderConfigService
         return MapToDto(config);
     }
 
+    public Task<TenantProviderConfigDto> CreatePlatformAsync(CreateTenantProviderConfigDto request)
+        => CreateAsync(PlatformProvider.PlatformTenantId, request);
+
+    public async Task<TenantProviderConfigDto> UpdatePlatformAsync(Guid id, UpdateTenantProviderConfigDto request)
+    {
+        var config = await _configRepo.GetByIdAsync(id);
+        if (config == null || config.TenantId != PlatformProvider.PlatformTenantId)
+            throw new KeyNotFoundException($"Platform provider config {id} not found");
+
+        if (request.DisplayName != null) config.DisplayName = request.DisplayName;
+        if (request.CredentialsJson != null) config.CredentialsJson = request.CredentialsJson;
+        if (request.SettingsJson != null) config.SettingsJson = request.SettingsJson;
+        if (request.Status != null) config.Status = request.Status;
+        if (request.Priority.HasValue) config.Priority = request.Priority.Value;
+
+        await _configRepo.UpdateAsync(config);
+        return MapToDto(config);
+    }
+
+    public async Task DeletePlatformAsync(Guid id)
+    {
+        var config = await _configRepo.GetByIdAsync(id);
+        if (config == null || config.TenantId != PlatformProvider.PlatformTenantId)
+            throw new KeyNotFoundException($"Platform provider config {id} not found");
+        await _configRepo.DeleteAsync(config.Id);
+    }
+
     private static TenantProviderConfigDto MapToDto(TenantProviderConfig c) => new()
     {
         Id = c.Id, TenantId = c.TenantId, Channel = c.Channel, ProviderType = c.ProviderType,
