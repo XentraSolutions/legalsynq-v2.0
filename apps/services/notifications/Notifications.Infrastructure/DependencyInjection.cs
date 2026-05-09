@@ -99,6 +99,14 @@ public static class DependencyInjection
         services.AddScoped<ISmsProviderAdapterRegistry, SmsProviderAdapterRegistry>();
         services.AddScoped<ISmsRoutingEngine, SmsRoutingEngine>();
         services.AddHttpClient("Vonage");
+
+        // LS-NOTIF-SMS-015: Regional Intelligence, Provider Quality, Adaptive Routing
+        services.AddSingleton<ISmsRegionalInferenceService, SmsRegionalInferenceService>();
+        services.AddScoped<ISmsProviderQualityRepository, SmsProviderQualityRepository>();
+        services.AddScoped<ISmsProviderQualityService, SmsProviderQualityService>();
+        services.AddOptions<SmsProviderQualityOptions>()
+                .Bind(configuration.GetSection(SmsProviderQualityOptions.SectionName));
+        services.AddHostedService<SmsProviderQualityWorker>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

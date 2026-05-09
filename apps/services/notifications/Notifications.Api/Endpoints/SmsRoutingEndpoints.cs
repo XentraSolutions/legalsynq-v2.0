@@ -31,7 +31,10 @@ public static class SmsRoutingEndpoints
 {
     private static readonly HashSet<string> ValidRoutingModes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "priority", "cost_optimized", "health_optimized", "hybrid", "regional"
+        // LS-NOTIF-SMS-014
+        "priority", "cost_optimized", "health_optimized", "hybrid", "regional",
+        // LS-NOTIF-SMS-015: Adaptive modes
+        "adaptive_quality", "adaptive_balanced", "adaptive_regional",
     };
 
     public static IEndpointRouteBuilder MapSmsRoutingEndpoints(this IEndpointRouteBuilder app)

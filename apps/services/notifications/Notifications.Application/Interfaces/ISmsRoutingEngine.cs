@@ -1,9 +1,9 @@
 namespace Notifications.Application.Interfaces;
 
 /// <summary>
-/// LS-NOTIF-SMS-014: Input to the SMS routing engine.
+/// LS-NOTIF-SMS-014/015: Input to the SMS routing engine.
 /// Built from ProviderRoutingService candidate routes + notification context.
-/// Does NOT include credentials or raw recipient data.
+/// Does NOT include credentials or raw recipient data — except the transient inference field below.
 /// </summary>
 public sealed class SmsRoutingRequest
 {
@@ -19,6 +19,14 @@ public sealed class SmsRoutingRequest
 
     /// <summary>Optional region hint (e.g., "us-east-1", "eu-west-1").</summary>
     public string? Region { get; set; }
+
+    /// <summary>
+    /// LS-NOTIF-SMS-015: Transient phone number for E.164 country-code inference ONLY.
+    /// NEVER persisted, NEVER logged, NEVER included in routing decisions or quality snapshots.
+    /// Used exclusively inside SmsRoutingEngine to infer InferredCountryCode before route selection.
+    /// Set to null immediately after inference.
+    /// </summary>
+    public string? RecipientPhoneForInferenceOnly { get; set; }
 }
 
 /// <summary>
@@ -57,6 +65,18 @@ public sealed class SmsRoutingDecisionResult
     /// <summary>Failure code when Success = false (no_route, no_healthy_provider).</summary>
     public string? FailureCode    { get; set; }
     public string? FailureMessage { get; set; }
+
+    // ── LS-NOTIF-SMS-015: Adaptive routing metadata ──────────────────────────
+    /// <summary>Country code inferred from RecipientPhoneForInferenceOnly (never a raw phone).</summary>
+    public string?  InferredCountryCode  { get; set; }
+    /// <summary>Region derived from InferredCountryCode.</summary>
+    public string?  InferredRegion       { get; set; }
+    /// <summary>Quality score (0-100) of the selected provider. Null for non-adaptive modes.</summary>
+    public decimal? ProviderQualityScore { get; set; }
+    /// <summary>Composite adaptive score. Null for non-adaptive modes.</summary>
+    public decimal? AdaptiveScore        { get; set; }
+    /// <summary>JSON inputs used by adaptive routing. Null for non-adaptive modes.</summary>
+    public string?  AdaptiveInputsJson   { get; set; }
 
     // Factory helpers
     public static SmsRoutingDecisionResult NoRoute(

@@ -46,5 +46,17 @@ public class SmsRoutingDecision
     public string?  Region      { get; set; }
     public string?  CountryCode { get; set; }
 
+    // ── LS-NOTIF-SMS-015: Adaptive routing metadata ──────────────────────────
+    /// <summary>Country code inferred from recipient phone via E.164 prefix. Never a raw phone number.</summary>
+    public string?  InferredCountryCode  { get; set; }
+    /// <summary>Region derived from InferredCountryCode (e.g., "NANP", "EU"). Never a raw phone number.</summary>
+    public string?  InferredRegion       { get; set; }
+    /// <summary>Quality score (0-100) of the selected provider at decision time. Null when not adaptive mode.</summary>
+    public decimal? ProviderQualityScore { get; set; }
+    /// <summary>Composite adaptive score used by adaptive_balanced mode. Null for non-adaptive modes.</summary>
+    public decimal? AdaptiveScore        { get; set; }
+    /// <summary>JSON object with adaptive routing inputs (quality/cost/latency inputs). Null for non-adaptive modes.</summary>
+    public string?  AdaptiveInputsJson   { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

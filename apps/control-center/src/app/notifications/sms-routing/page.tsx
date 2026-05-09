@@ -6,6 +6,8 @@ import {
   getSmsRoutingDecisions,
   getSmsRoutingDecisionSummary,
   getSmsProviderHealth,
+  getSmsProviderQuality,
+  getSmsOptimizationSummary,
 } from '@/lib/sms-routing-api';
 import { SmsRoutingPanel } from '@/components/sms-routing/routing-panel';
 
@@ -14,26 +16,32 @@ export const dynamic = 'force-dynamic';
 export default async function SmsRoutingPage() {
   await requirePlatformAdmin();
 
-  const [capsRes, policiesRes, decisionsRes, summaryRes, healthRes] = await Promise.allSettled([
-    getSmsProviderCapabilities(),
-    getSmsRoutingPolicies({ limit: 100 }),
-    getSmsRoutingDecisions({ limit: 50 }),
-    getSmsRoutingDecisionSummary(),
-    getSmsProviderHealth(),
-  ]);
+  const [capsRes, policiesRes, decisionsRes, summaryRes, healthRes, qualityRes, optimizationRes] =
+    await Promise.allSettled([
+      getSmsProviderCapabilities(),
+      getSmsRoutingPolicies({ limit: 100 }),
+      getSmsRoutingDecisions({ limit: 50 }),
+      getSmsRoutingDecisionSummary(),
+      getSmsProviderHealth(),
+      getSmsProviderQuality({ limit: 50 }),
+      getSmsOptimizationSummary(),
+    ]);
 
-  const capabilities = capsRes.status      === 'fulfilled' ? capsRes.value.items        : [];
-  const policies     = policiesRes.status   === 'fulfilled' ? policiesRes.value.items    : [];
-  const decisions    = decisionsRes.status  === 'fulfilled' ? decisionsRes.value.items   : [];
-  const summary      = summaryRes.status    === 'fulfilled' ? summaryRes.value           : null;
-  const health       = healthRes.status     === 'fulfilled' ? healthRes.value.items      : [];
+  const capabilities = capsRes.status         === 'fulfilled' ? capsRes.value.items         : [];
+  const policies     = policiesRes.status     === 'fulfilled' ? policiesRes.value.items     : [];
+  const decisions    = decisionsRes.status    === 'fulfilled' ? decisionsRes.value.items    : [];
+  const summary      = summaryRes.status      === 'fulfilled' ? summaryRes.value            : null;
+  const health       = healthRes.status       === 'fulfilled' ? healthRes.value.items       : [];
+  const quality      = qualityRes.status      === 'fulfilled' ? qualityRes.value.items      : [];
+  const optimization = optimizationRes.status === 'fulfilled' ? optimizationRes.value       : null;
 
   const errors: string[] = [];
-  if (capsRes.status      === 'rejected') errors.push('Provider capabilities unavailable');
-  if (policiesRes.status  === 'rejected') errors.push('Routing policies unavailable');
-  if (decisionsRes.status === 'rejected') errors.push('Routing decisions unavailable');
-  if (summaryRes.status   === 'rejected') errors.push('Decision summary unavailable');
-  if (healthRes.status    === 'rejected') errors.push('Provider health unavailable');
+  if (capsRes.status         === 'rejected') errors.push('Provider capabilities unavailable');
+  if (policiesRes.status     === 'rejected') errors.push('Routing policies unavailable');
+  if (decisionsRes.status    === 'rejected') errors.push('Routing decisions unavailable');
+  if (summaryRes.status      === 'rejected') errors.push('Decision summary unavailable');
+  if (healthRes.status       === 'rejected') errors.push('Provider health unavailable');
+  // Quality/optimization failures are non-critical — shown in the Optimization tab itself
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -45,9 +53,12 @@ export default async function SmsRoutingPage() {
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 uppercase tracking-wide">
               LS-NOTIF-SMS-014
             </span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 uppercase tracking-wide">
+              LS-NOTIF-SMS-015
+            </span>
           </div>
           <p className="text-slate-500 text-sm">
-            Multi-provider SMS routing policies, intelligent route selection, and routing decision audit log.
+            Multi-provider SMS routing policies, intelligent route selection, provider quality scoring, and adaptive routing optimization.
           </p>
         </div>
       </div>
@@ -76,6 +87,8 @@ export default async function SmsRoutingPage() {
             decisions={decisions}
             summary={summary}
             health={health}
+            quality={quality}
+            optimization={optimization}
           />
         </Suspense>
       </div>

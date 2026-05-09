@@ -8,7 +8,10 @@ import type {
   SmsRoutingDecisionSummary,
   SmsProviderHealth,
   CreateSmsRoutingPolicyRequest,
+  SmsProviderQualityDto,
+  SmsOptimizationResponse,
 } from '@/lib/sms-routing-api';
+import { OptimizationPanel } from './optimization-panel';
 import {
   createSmsRoutingPolicy,
   updateSmsRoutingPolicy,
@@ -452,7 +455,7 @@ function HealthTab({ health }: { health: SmsProviderHealth[] }) {
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
-type Tab = 'capabilities' | 'policies' | 'decisions' | 'health';
+type Tab = 'capabilities' | 'policies' | 'decisions' | 'health' | 'optimization';
 
 export interface SmsRoutingPanelProps {
   capabilities: SmsProviderCapability[];
@@ -460,9 +463,13 @@ export interface SmsRoutingPanelProps {
   decisions: SmsRoutingDecision[];
   summary: SmsRoutingDecisionSummary | null;
   health: SmsProviderHealth[];
+  quality: SmsProviderQualityDto[];
+  optimization: SmsOptimizationResponse | null;
 }
 
-export function SmsRoutingPanel({ capabilities, policies, decisions, summary, health }: SmsRoutingPanelProps) {
+export function SmsRoutingPanel({
+  capabilities, policies, decisions, summary, health, quality, optimization,
+}: SmsRoutingPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('capabilities');
   const [localPolicies, setLocalPolicies] = useState(policies);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -470,10 +477,11 @@ export function SmsRoutingPanel({ capabilities, policies, decisions, summary, he
   function handleRefresh() { setRefreshKey(k => k + 1); }
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: 'capabilities', label: 'Providers',  count: capabilities.length },
-    { id: 'policies',     label: 'Policies',   count: localPolicies.length },
-    { id: 'decisions',    label: 'Decisions',  count: decisions.length },
-    { id: 'health',       label: 'Health',     count: health.length },
+    { id: 'capabilities', label: 'Providers',    count: capabilities.length },
+    { id: 'policies',     label: 'Policies',     count: localPolicies.length },
+    { id: 'decisions',    label: 'Decisions',    count: decisions.length },
+    { id: 'health',       label: 'Health',       count: health.length },
+    { id: 'optimization', label: 'Optimization', count: quality.length > 0 ? quality.length : undefined },
   ];
 
   return (
@@ -510,6 +518,9 @@ export function SmsRoutingPanel({ capabilities, policies, decisions, summary, he
       )}
       {activeTab === 'decisions' && <DecisionsTab decisions={decisions} summary={summary} />}
       {activeTab === 'health' && <HealthTab health={health} />}
+      {activeTab === 'optimization' && (
+        <OptimizationPanel quality={quality} optimization={optimization} />
+      )}
     </div>
   );
 }

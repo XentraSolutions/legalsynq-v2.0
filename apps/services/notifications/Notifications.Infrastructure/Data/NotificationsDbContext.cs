@@ -36,6 +36,9 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsRoutingPolicy> SmsRoutingPolicies => Set<SmsRoutingPolicy>();
     public DbSet<SmsRoutingDecision> SmsRoutingDecisions => Set<SmsRoutingDecision>();
 
+    // LS-NOTIF-SMS-015: Provider Quality Snapshots
+    public DbSet<SmsProviderQualitySnapshot> SmsProviderQualitySnapshots => Set<SmsProviderQualitySnapshot>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -66,5 +69,7 @@ public class NotificationsDbContext : DbContext
         // LS-NOTIF-SMS-014
         modelBuilder.ApplyConfiguration(new Configurations.SmsRoutingPolicyConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsRoutingDecisionConfiguration());
+        // LS-NOTIF-SMS-015
+        modelBuilder.ApplyConfiguration(new Configurations.SmsProviderQualitySnapshotConfiguration());
     }
 }

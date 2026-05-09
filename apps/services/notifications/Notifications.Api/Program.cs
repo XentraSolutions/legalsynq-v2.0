@@ -250,6 +250,7 @@ app.MapSmsCostEndpoints();
 app.MapSmsAlertEndpoints();
 app.MapSmsEscalationEndpoints();
 app.MapSmsRoutingEndpoints();
+app.MapSmsOptimizationEndpoints(); // LS-NOTIF-SMS-015
 
 app.Run();
 

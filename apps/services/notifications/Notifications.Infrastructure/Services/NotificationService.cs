@@ -897,6 +897,12 @@ public class NotificationServiceImpl : INotificationService
                         CostCurrency             = engineResult.CostCurrency,
                         CountryCode              = engineResult.CountryCode,
                         Region                   = engineResult.Region,
+                        // LS-NOTIF-SMS-015: Adaptive routing metadata
+                        InferredCountryCode      = engineResult.InferredCountryCode,
+                        InferredRegion           = engineResult.InferredRegion,
+                        ProviderQualityScore     = engineResult.ProviderQualityScore,
+                        AdaptiveScore            = engineResult.AdaptiveScore,
+                        AdaptiveInputsJson       = engineResult.AdaptiveInputsJson,
                         CreatedAt                = DateTime.UtcNow,
                     };
                     var persisted = await _routingDecisionRepo.CreateAsync(decision);

@@ -28,6 +28,12 @@ public class SmsRoutingDecisionConfiguration : IEntityTypeConfiguration<SmsRouti
         b.Property(d => d.HealthSnapshotJson).HasColumnType("text");
         b.Property(d => d.Region).HasMaxLength(50);
         b.Property(d => d.CountryCode).HasMaxLength(10);
+        // LS-NOTIF-SMS-015: Adaptive routing metadata
+        b.Property(d => d.InferredCountryCode).HasMaxLength(10);
+        b.Property(d => d.InferredRegion).HasMaxLength(50);
+        b.Property(d => d.ProviderQualityScore).HasColumnType("decimal(5,2)");
+        b.Property(d => d.AdaptiveScore).HasColumnType("decimal(5,2)");
+        b.Property(d => d.AdaptiveInputsJson).HasColumnType("text");
         b.Property(d => d.CreatedAt).IsRequired();
 
         b.HasIndex(d => new { d.TenantId, d.CreatedAt })

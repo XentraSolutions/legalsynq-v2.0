@@ -202,3 +202,122 @@ export async function getSmsRoutingDecisionSummary(params?: {
 export async function getSmsProviderHealth(): Promise<{ items: SmsProviderHealth[]; total: number }> {
   return fetchAdmin('/notifications/v1/admin/sms/routing/providers/health');
 }
+
+// ── LS-NOTIF-SMS-015: Optimization / Quality types ───────────────────────────
+
+export interface SmsProviderQualityDto {
+  providerType: string;
+  providerOwnershipMode: string | null;
+  countryCode: string | null;
+  region: string | null;
+  qualityScore: number;
+  costEfficiencyScore: number | null;
+  deliverySuccessRate: number;
+  failureRate: number;
+  retryRate: number;
+  reconciliationFailureRate: number;
+  averageLatencyMs: number | null;
+  averageEffectiveCost: number | null;
+  costPerDeliveredMessage: number | null;
+  totalAttempts: number;
+  deliveredAttempts: number;
+  hasSufficientData: boolean;
+  windowStart: string;
+  windowEnd: string;
+  calculatedAt: string;
+}
+
+export interface SmsQualityListResponse {
+  items: SmsProviderQualityDto[];
+  total: number;
+}
+
+export interface SmsQualityTrendPoint {
+  providerType: string;
+  countryCode: string | null;
+  qualityScore: number;
+  calculatedAt: string;
+  totalAttempts: number;
+}
+
+export interface SmsQualityTrendResponse {
+  items: SmsQualityTrendPoint[];
+  total: number;
+}
+
+export interface SmsOptimizationInsight {
+  providerType: string;
+  qualityScore: number;
+  costEfficiencyScore: number | null;
+  deliverySuccessRate: number;
+  averageLatencyMs: number | null;
+  costPerDeliveredMessage: number | null;
+  totalAttempts: number;
+  hasSufficientData: boolean;
+  recommendation: string;
+}
+
+export interface SmsOptimizationResponse {
+  providers: SmsOptimizationInsight[];
+  topQualityProvider: string | null;
+  topCostEfficiencyProvider: string | null;
+  topBalancedProvider: string | null;
+  generatedAt: string;
+  dataSummary: string;
+}
+
+// ── LS-NOTIF-SMS-015: Optimization API functions ─────────────────────────────
+
+export async function getSmsProviderQuality(params?: {
+  provider?: string;
+  providerOwnershipMode?: string;
+  countryCode?: string;
+  region?: string;
+  tenantId?: string;
+  providerConfigId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<SmsQualityListResponse> {
+  const q = new URLSearchParams();
+  if (params?.provider)              q.set('provider',              params.provider);
+  if (params?.providerOwnershipMode) q.set('providerOwnershipMode', params.providerOwnershipMode);
+  if (params?.countryCode)           q.set('countryCode',           params.countryCode);
+  if (params?.region)                q.set('region',                params.region);
+  if (params?.tenantId)              q.set('tenantId',              params.tenantId);
+  if (params?.providerConfigId)      q.set('providerConfigId',      params.providerConfigId);
+  if (params?.from)                  q.set('from',                  params.from);
+  if (params?.to)                    q.set('to',                    params.to);
+  if (params?.limit != null)         q.set('limit',                 String(params.limit));
+  if (params?.offset != null)        q.set('offset',                String(params.offset));
+  return fetchAdmin(`/notifications/v1/admin/sms/routing/quality?${q}`);
+}
+
+export async function getSmsQualityTrends(params?: {
+  provider?: string;
+  countryCode?: string;
+  tenantId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}): Promise<SmsQualityTrendResponse> {
+  const q = new URLSearchParams();
+  if (params?.provider)    q.set('provider',    params.provider);
+  if (params?.countryCode) q.set('countryCode', params.countryCode);
+  if (params?.tenantId)    q.set('tenantId',    params.tenantId);
+  if (params?.from)        q.set('from',        params.from);
+  if (params?.to)          q.set('to',          params.to);
+  if (params?.limit)       q.set('limit',       String(params.limit));
+  return fetchAdmin(`/notifications/v1/admin/sms/routing/quality/trends?${q}`);
+}
+
+export async function getSmsOptimizationSummary(params?: {
+  tenantId?: string;
+  countryCode?: string;
+}): Promise<SmsOptimizationResponse> {
+  const q = new URLSearchParams();
+  if (params?.tenantId)    q.set('tenantId',    params.tenantId);
+  if (params?.countryCode) q.set('countryCode', params.countryCode);
+  return fetchAdmin(`/notifications/v1/admin/sms/routing/optimization?${q}`);
+}

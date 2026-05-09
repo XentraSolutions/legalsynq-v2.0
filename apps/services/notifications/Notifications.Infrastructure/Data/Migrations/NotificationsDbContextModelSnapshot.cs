@@ -1633,6 +1633,24 @@ namespace Notifications.Infrastructure.Data.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("varchar(10)");
 
+                    // LS-NOTIF-SMS-015: Adaptive routing metadata
+                    b.Property<string>("InferredCountryCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("InferredRegion")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<decimal?>("ProviderQualityScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("AdaptiveScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("AdaptiveInputsJson")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -1649,6 +1667,116 @@ namespace Notifications.Infrastructure.Data.Migrations
 
                     b.ToTable("ntf_SmsRoutingDecisions", (string)null);
                 });
+
+            // LS-NOTIF-SMS-015: SmsProviderQualitySnapshots
+            modelBuilder.Entity("Notifications.Domain.SmsProviderQualitySnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ProviderType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid?>("ProviderConfigId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ProviderOwnershipMode")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<DateTime>("WindowStart")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("WindowEnd")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("TotalAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveredAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FailedAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RetryAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeadLetterAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReconciledAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReconciliationFailures")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("AverageLatencyMs")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("DeliverySuccessRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal>("FailureRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal>("RetryRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal>("DeadLetterRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal>("ReconciliationFailureRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal?>("AverageEffectiveCost")
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal?>("CostPerDeliveredMessage")
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal>("QualityScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("CostEfficiencyScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("HealthPenalty")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<DateTime>("CalculatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderType", "CalculatedAt")
+                        .HasDatabaseName("IX_ntf_SmsQualitySnapshots_Provider_Calc");
+
+                    b.HasIndex("TenantId", "ProviderType", "CalculatedAt")
+                        .HasDatabaseName("IX_ntf_SmsQualitySnapshots_Tenant_Provider_Calc");
+
+                    b.HasIndex("CountryCode", "ProviderType", "CalculatedAt")
+                        .HasDatabaseName("IX_ntf_SmsQualitySnapshots_Country_Provider_Calc");
+
+                    b.HasIndex("ProviderConfigId", "CalculatedAt")
+                        .HasDatabaseName("IX_ntf_SmsQualitySnapshots_Config_Calc");
+
+                    b.ToTable("ntf_SmsProviderQualitySnapshots", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }
