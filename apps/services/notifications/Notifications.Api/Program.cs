@@ -247,6 +247,7 @@ app.MapSmsReconciliationEndpoints();
 app.MapSmsActivityEndpoints();
 app.MapSmsDashboardEndpoints();
 app.MapSmsAlertEndpoints();
+app.MapSmsEscalationEndpoints();
 
 app.Run();
 
@@ -577,6 +578,83 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
             logger.LogInformation("Created missing table ntf_SmsOperationalAlerts");
         }
 
+        // ── LS-NOTIF-SMS-011: Ensure ntf_SmsEscalationPolicies table exists ─────
+        using var polTableCheckCmd = conn.CreateCommand();
+        polTableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsEscalationPolicies'";
+        var polTableExists = Convert.ToInt32(await polTableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!polTableExists)
+        {
+            using var createPolCmd = conn.CreateCommand();
+            createPolCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsEscalationPolicies` (
+                    `Id`              char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `Name`            varchar(200)   CHARACTER SET utf8mb4 NOT NULL,
+                    `Enabled`         tinyint(1)     NOT NULL DEFAULT 1,
+                    `AlertType`       varchar(100)   CHARACTER SET utf8mb4 NULL,
+                    `Severity`        varchar(20)    CHARACTER SET utf8mb4 NULL,
+                    `TenantId`        char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `Provider`        varchar(100)   CHARACTER SET utf8mb4 NULL,
+                    `ProviderConfigId` char(36)      CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `ChannelType`     varchar(50)    CHARACTER SET utf8mb4 NOT NULL,
+                    `Target`          text           CHARACTER SET utf8mb4 NOT NULL,
+                    `TargetDisplay`   varchar(500)   CHARACTER SET utf8mb4 NULL,
+                    `CooldownMinutes` int            NOT NULL DEFAULT 60,
+                    `RetryEnabled`    tinyint(1)     NOT NULL DEFAULT 0,
+                    `MaxRetryCount`   int            NOT NULL DEFAULT 3,
+                    `CreatedAt`       datetime(6)    NOT NULL,
+                    `UpdatedAt`       datetime(6)    NOT NULL,
+                    `CreatedBy`       varchar(255)   CHARACTER SET utf8mb4 NULL,
+                    `UpdatedBy`       varchar(255)   CHARACTER SET utf8mb4 NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_SmsEscalationPolicies_Enabled_AlertType`   (`Enabled`, `AlertType`),
+                    KEY `IX_SmsEscalationPolicies_Enabled_ChannelType` (`Enabled`, `ChannelType`)
+                ) CHARACTER SET=utf8mb4;";
+            await createPolCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsEscalationPolicies");
+        }
+
+        // ── LS-NOTIF-SMS-011: Ensure ntf_SmsAlertEscalations table exists ──────
+        using var escTableCheckCmd = conn.CreateCommand();
+        escTableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsAlertEscalations'";
+        var escTableExists = Convert.ToInt32(await escTableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!escTableExists)
+        {
+            using var createEscCmd = conn.CreateCommand();
+            createEscCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsAlertEscalations` (
+                    `Id`              char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `AlertId`         char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `PolicyId`        char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `ChannelType`     varchar(50)    CHARACTER SET utf8mb4 NOT NULL,
+                    `TargetMasked`    varchar(500)   CHARACTER SET utf8mb4 NULL,
+                    `Severity`        varchar(20)    CHARACTER SET utf8mb4 NOT NULL DEFAULT 'warning',
+                    `Status`          varchar(30)    CHARACTER SET utf8mb4 NOT NULL DEFAULT 'pending',
+                    `AttemptCount`    int            NOT NULL DEFAULT 0,
+                    `LastAttemptAt`   datetime(6)    NULL,
+                    `SentAt`          datetime(6)    NULL,
+                    `FailureReason`   text           CHARACTER SET utf8mb4 NULL,
+                    `NextRetryAt`     datetime(6)    NULL,
+                    `SuppressedUntil` datetime(6)    NULL,
+                    `PayloadHash`     varchar(64)    CHARACTER SET utf8mb4 NULL,
+                    `MetadataJson`    text           CHARACTER SET utf8mb4 NULL,
+                    `CreatedAt`       datetime(6)    NOT NULL,
+                    `UpdatedAt`       datetime(6)    NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_SmsAlertEscalations_AlertId`                    (`AlertId`),
+                    KEY `IX_SmsAlertEscalations_Status_NextRetryAt`          (`Status`, `NextRetryAt`),
+                    KEY `IX_SmsAlertEscalations_AlertId_PolicyId_PayloadHash` (`AlertId`, `PolicyId`, `PayloadHash`),
+                    KEY `IX_SmsAlertEscalations_CreatedAt`                  (`CreatedAt`)
+                ) CHARACTER SET=utf8mb4;";
+            await createEscCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsAlertEscalations");
+        }
+
         logger.LogInformation("EnsureNotificationsSchemaColumns complete");
     }
     finally
@@ -598,6 +676,7 @@ static async Task SeedMigrationHistoryIfNeededAsync(NotificationsDbContext db, I
         ("20260508000002_AddSmsPreferenceHistory",      "8.0.2"),
         ("20260509000001_AddSmsReconciliationTracking", "8.0.2"),
         ("20260510000001_AddSmsOperationalAlerts",      "8.0.2"),
+        ("20260510000002_AddSmsEscalation",             "8.0.2"),
     };
 
     try

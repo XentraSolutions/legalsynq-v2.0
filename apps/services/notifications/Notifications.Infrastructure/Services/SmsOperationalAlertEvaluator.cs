@@ -30,6 +30,7 @@ public sealed class SmsOperationalAlertEvaluator : ISmsOperationalAlertEvaluator
 {
     private readonly NotificationsDbContext _db;
     private readonly ISmsOperationalAlertRepository _repo;
+    private readonly ISmsAlertEscalationService? _escalationService;
     private readonly ILogger<SmsOperationalAlertEvaluator> _logger;
 
     // ── Threshold configuration (read from IConfiguration at construction) ───
@@ -88,12 +89,14 @@ public sealed class SmsOperationalAlertEvaluator : ISmsOperationalAlertEvaluator
     public SmsOperationalAlertEvaluator(
         NotificationsDbContext db,
         ISmsOperationalAlertRepository repo,
+        ISmsAlertEscalationService escalationService,
         IConfiguration configuration,
         ILogger<SmsOperationalAlertEvaluator> logger)
     {
-        _db     = db;
-        _repo   = repo;
-        _logger = logger;
+        _db                 = db;
+        _repo               = repo;
+        _escalationService  = escalationService;
+        _logger             = logger;
 
         // R1
         _failureRateWarning    = configuration.GetValue("SMS_ALERT_FAILURE_RATE_WARNING",  0.10m);
@@ -143,6 +146,12 @@ public sealed class SmsOperationalAlertEvaluator : ISmsOperationalAlertEvaluator
         public int Created;
         public int Updated;
         public int Suppressed;
+
+        /// <summary>
+        /// Alerts created or moved to active in this cycle — used to trigger
+        /// best-effort escalation after all rules have been evaluated.
+        /// </summary>
+        public List<SmsOperationalAlert> CreatedOrUpdatedAlerts = new();
     }
 
     // ── Main evaluation entry point ───────────────────────────────────────────
@@ -193,6 +202,31 @@ public sealed class SmsOperationalAlertEvaluator : ISmsOperationalAlertEvaluator
             await EvaluateProviderConfigFailureSpikeAsync(rows, windowStart, windowEnd, counters, ct);
             await EvaluateTenantAnomalyAsync(rows, windowStart, windowEnd, counters, ct);
             await EvaluateReconciliationStaleAsync(rows, windowStart, windowEnd, counters, ct);
+        }
+
+        // ── LS-NOTIF-SMS-011: best-effort escalation ──────────────────────────
+        // After all rules are evaluated, trigger escalation for each alert that was
+        // created or updated this cycle. Failures here must not affect evaluation result.
+        if (_escalationService is not null && counters.CreatedOrUpdatedAlerts.Count > 0)
+        {
+            _logger.LogDebug(
+                "SmsOperationalAlertEvaluator: triggering escalation for {Count} alert(s)",
+                counters.CreatedOrUpdatedAlerts.Count);
+
+            foreach (var alert in counters.CreatedOrUpdatedAlerts)
+            {
+                try
+                {
+                    await _escalationService.EscalateAlertAsync(alert, ct);
+                }
+                catch (OperationCanceledException) { break; }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "SmsOperationalAlertEvaluator: escalation failed for alert {AlertId} — " +
+                        "evaluation result is unaffected", alert.Id);
+                }
+            }
         }
 
         sw.Stop();
@@ -492,6 +526,7 @@ public sealed class SmsOperationalAlertEvaluator : ISmsOperationalAlertEvaluator
 
             await _repo.UpdateAsync(active, ct);
             counters.Updated++;
+            counters.CreatedOrUpdatedAlerts.Add(active);
             return;
         }
 
@@ -530,6 +565,7 @@ public sealed class SmsOperationalAlertEvaluator : ISmsOperationalAlertEvaluator
 
         await _repo.CreateAsync(alert, ct);
         counters.Created++;
+        counters.CreatedOrUpdatedAlerts.Add(alert);
 
         _logger.LogInformation(
             "SmsOperationalAlertEvaluator: new alert {AlertType} {Severity} — {Message}",

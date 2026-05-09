@@ -1306,6 +1306,176 @@ namespace Notifications.Infrastructure.Data.Migrations
 
                     b.ToTable("ntf_SmsOperationalAlerts", (string)null);
                 });
+
+            modelBuilder.Entity("Notifications.Domain.SmsOperationalEscalationPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AlertType")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("ChannelType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<int>("CooldownMinutes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(60);
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("Enabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
+
+                    b.Property<int>("MaxRetryCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(3);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid?>("ProviderConfigId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("RetryEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Severity")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Target")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TargetDisplay")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Enabled", "AlertType")
+                        .HasDatabaseName("IX_SmsEscalationPolicies_Enabled_AlertType");
+
+                    b.HasIndex("Enabled", "ChannelType")
+                        .HasDatabaseName("IX_SmsEscalationPolicies_Enabled_ChannelType");
+
+                    b.ToTable("ntf_SmsEscalationPolicies", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsOperationalAlertEscalation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("AlertId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("AttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("ChannelType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("FailureReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PayloadHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid?>("PolicyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("warning");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasDefaultValue("pending");
+
+                    b.Property<DateTime?>("SuppressedUntil")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("TargetMasked")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AlertId")
+                        .HasDatabaseName("IX_SmsAlertEscalations_AlertId");
+
+                    b.HasIndex("Status", "NextRetryAt")
+                        .HasDatabaseName("IX_SmsAlertEscalations_Status_NextRetryAt");
+
+                    b.HasIndex("AlertId", "PolicyId", "PayloadHash")
+                        .HasDatabaseName("IX_SmsAlertEscalations_AlertId_PolicyId_PayloadHash");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_SmsAlertEscalations_CreatedAt");
+
+                    b.ToTable("ntf_SmsAlertEscalations", (string)null);
+                });
 #pragma warning restore 612, 618
         }
     }

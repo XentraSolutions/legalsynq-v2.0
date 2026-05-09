@@ -29,6 +29,8 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsContactPreference> SmsContactPreferences => Set<SmsContactPreference>();
     public DbSet<SmsPreferenceHistory> SmsPreferenceHistories => Set<SmsPreferenceHistory>();
     public DbSet<SmsOperationalAlert> SmsOperationalAlerts => Set<SmsOperationalAlert>();
+    public DbSet<SmsOperationalEscalationPolicy> SmsEscalationPolicies => Set<SmsOperationalEscalationPolicy>();
+    public DbSet<SmsOperationalAlertEscalation> SmsAlertEscalations => Set<SmsOperationalAlertEscalation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,5 +57,7 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.SmsContactPreferenceConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsPreferenceHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsOperationalAlertConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsEscalationPolicyConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsAlertEscalationConfiguration());
     }
 }

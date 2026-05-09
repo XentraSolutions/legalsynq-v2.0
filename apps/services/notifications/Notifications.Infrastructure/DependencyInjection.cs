@@ -75,6 +75,13 @@ public static class DependencyInjection
         services.AddScoped<ISmsDashboardService, SmsDashboardService>();
         services.AddScoped<ISmsOperationalAlertRepository, SmsOperationalAlertRepository>();
         services.AddScoped<ISmsOperationalAlertEvaluator, SmsOperationalAlertEvaluator>();
+        services.AddScoped<ISmsOperationalEscalationPolicyRepository, SmsEscalationPolicyRepository>();
+        services.AddScoped<ISmsOperationalAlertEscalationRepository, SmsAlertEscalationRepository>();
+        services.AddScoped<ISmsAlertEscalationMessageBuilder, SmsAlertEscalationMessageBuilder>();
+        services.AddScoped<ISmsAlertEscalationChannelAdapter, InternalEmailEscalationAdapter>();
+        services.AddScoped<ISmsAlertEscalationChannelAdapter, TeamsWebhookEscalationAdapter>();
+        services.AddScoped<ISmsAlertEscalationChannelAdapter, SlackWebhookEscalationAdapter>();
+        services.AddScoped<ISmsAlertEscalationService, SmsAlertEscalationService>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:
@@ -112,6 +119,7 @@ public static class DependencyInjection
 
         services.AddHttpClient("SendGrid");
         services.AddHttpClient("Twilio");
+        services.AddHttpClient("EscalationWebhook");
 
         var sgApiKey = configuration["SENDGRID_API_KEY"] ?? "";
         var sgFromEmail = configuration["SENDGRID_FROM_EMAIL"] ?? "noreply@legalsynq.com";
@@ -160,6 +168,7 @@ public static class DependencyInjection
         services.AddHostedService<StatusSyncWorker>();
         services.AddHostedService<SmsReconciliationWorker>();
         services.AddHostedService<SmsOperationalAlertWorker>();
+        services.AddHostedService<SmsAlertEscalationRetryWorker>();
 
         return services;
     }
