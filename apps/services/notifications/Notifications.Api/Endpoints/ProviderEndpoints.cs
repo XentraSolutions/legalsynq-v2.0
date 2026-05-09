@@ -102,25 +102,37 @@ public static class ProviderEndpoints
         group.MapPost("/configs/{id:guid}/validate", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
             var tenantId = context.TryGetTenantId();
-            if (tenantId == null)
+            var effectiveTenantId = tenantId ?? PlatformProvider.PlatformTenantId;
+
+            try
             {
-                var dto = await service.GetPlatformByIdAsync(id);
-                return dto != null ? Results.Ok(dto) : Results.NotFound();
+                await service.ValidateAsync(effectiveTenantId, id);
+                return Results.Ok(new { data = new { valid = true, errors = Array.Empty<string>() } });
             }
-            var result = await service.ValidateAsync(tenantId.Value, id);
-            return Results.Ok(result);
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (Exception ex)
+            {
+                return Results.Ok(new { data = new { valid = false, errors = new[] { ex.Message } } });
+            }
         });
 
         group.MapPost("/configs/{id:guid}/health-check", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
             var tenantId = context.TryGetTenantId();
-            if (tenantId == null)
+            var effectiveTenantId = tenantId ?? PlatformProvider.PlatformTenantId;
+
+            try
             {
-                var dto = await service.GetPlatformByIdAsync(id);
-                return dto != null ? Results.Ok(dto) : Results.NotFound();
+                var result = await service.HealthCheckAsync(effectiveTenantId, id);
+                return Results.Ok(result);
             }
-            var result = await service.HealthCheckAsync(tenantId.Value, id);
-            return Results.Ok(result);
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
         });
 
         // ── Provider test ──────────────────────────────────────────────────────────
