@@ -32,6 +32,10 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsOperationalEscalationPolicy> SmsEscalationPolicies => Set<SmsOperationalEscalationPolicy>();
     public DbSet<SmsOperationalAlertEscalation> SmsAlertEscalations => Set<SmsOperationalAlertEscalation>();
 
+    // LS-NOTIF-SMS-014: Multi-Provider SMS Routing
+    public DbSet<SmsRoutingPolicy> SmsRoutingPolicies => Set<SmsRoutingPolicy>();
+    public DbSet<SmsRoutingDecision> SmsRoutingDecisions => Set<SmsRoutingDecision>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -59,5 +63,8 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.SmsOperationalAlertConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsEscalationPolicyConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsAlertEscalationConfiguration());
+        // LS-NOTIF-SMS-014
+        modelBuilder.ApplyConfiguration(new Configurations.SmsRoutingPolicyConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsRoutingDecisionConfiguration());
     }
 }

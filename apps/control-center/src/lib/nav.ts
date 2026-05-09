@@ -88,6 +88,7 @@ export const CC_NAV: NavSection[] = [
       { href: '/notifications/sms-incidents/escalations', label: 'Escalations',   icon: 'ri-send-plane-2-line',      badge: 'LIVE' },
       { href: '/notifications/sms-incidents/policies', label: 'Escalation Policies', icon: 'ri-settings-4-line',     badge: 'LIVE' },
       { href: '/notifications/sms-costs',             label: 'SMS Costs',           icon: 'ri-money-dollar-circle-line', badge: 'LIVE' },
+      { href: '/notifications/sms-routing',           label: 'SMS Routing',         icon: 'ri-route-line',               badge: 'LIVE' },
       { href: '/notifications/templates',              label: 'Templates',          icon: 'ri-file-text-line'       },
       { href: '/notifications/providers',              label: 'Providers',       icon: 'ri-plug-line'            },
       { href: '/notifications/billing',                label: 'Usage & Billing', icon: 'ri-bar-chart-2-line'     },

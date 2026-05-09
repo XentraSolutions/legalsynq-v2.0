@@ -29,6 +29,9 @@ public class NotificationServiceImpl : INotificationService
     private readonly IRecipientResolver _recipientResolver;
     private readonly IAuditEventClient _auditClient;
     private readonly SmsCostAnalyticsOptions _costOptions;
+    // LS-NOTIF-SMS-014: intelligent routing engine + decision persistence
+    private readonly ISmsRoutingEngine _smsRoutingEngine;
+    private readonly ISmsRoutingDecisionRepository _routingDecisionRepo;
     private readonly ILogger<NotificationServiceImpl> _logger;
 
     private static readonly JsonSerializerOptions _camelCaseOptions = new()
@@ -54,6 +57,8 @@ public class NotificationServiceImpl : INotificationService
         IRecipientResolver recipientResolver,
         IAuditEventClient auditClient,
         IOptions<SmsCostAnalyticsOptions> costOptions,
+        ISmsRoutingEngine smsRoutingEngine,
+        ISmsRoutingDecisionRepository routingDecisionRepo,
         ILogger<NotificationServiceImpl> logger)
     {
         _notificationRepo    = notificationRepo;
@@ -73,6 +78,8 @@ public class NotificationServiceImpl : INotificationService
         _recipientResolver    = recipientResolver;
         _auditClient         = auditClient;
         _costOptions         = costOptions.Value;
+        _smsRoutingEngine    = smsRoutingEngine;
+        _routingDecisionRepo = routingDecisionRepo;
         _logger              = logger;
     }
 
@@ -836,6 +843,75 @@ public class NotificationServiceImpl : INotificationService
     {
         var contactValue = ExtractContactValue(notification.Channel, notification.RecipientJson);
         var routes = await _routingService.ResolveRoutesAsync(tenantId, notification.Channel);
+
+        // LS-NOTIF-SMS-014: Apply intelligent routing engine for SMS channel.
+        // The engine selects the best route from candidates and returns a decision.
+        // We move the selected route to the front so the existing failover loop
+        // still handles retries — no pipeline rewrite required.
+        // Email routing is unchanged: SendGrid only, no routing engine applied.
+        Guid? routingDecisionId = null;
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) && routes.Count > 0)
+        {
+            try
+            {
+                var engineResult = await _smsRoutingEngine.SelectRouteAsync(new SmsRoutingRequest
+                {
+                    TenantId       = tenantId,
+                    NotificationId = notification.Id,
+                    CandidateRoutes = routes.AsReadOnly(),
+                    // CountryCode and Region derivation not yet implemented (see LS-NOTIF-SMS-014 gap #3)
+                }, CancellationToken.None);
+
+                if (engineResult.Success && engineResult.SelectedRoute != null)
+                {
+                    // Reorder: move selected route to front so the send loop tries it first.
+                    var selected = routes.FirstOrDefault(r =>
+                        string.Equals(r.ProviderType, engineResult.SelectedProvider, StringComparison.OrdinalIgnoreCase) &&
+                        r.TenantProviderConfigId == engineResult.SelectedProviderConfigId);
+                    if (selected != null && routes.IndexOf(selected) != 0)
+                    {
+                        routes.Remove(selected);
+                        routes.Insert(0, selected);
+                    }
+                }
+
+                // Persist routing decision (best-effort — never blocks the send path)
+                try
+                {
+                    var decision = new Notifications.Domain.SmsRoutingDecision
+                    {
+                        Id                       = Guid.NewGuid(),
+                        TenantId                 = tenantId,
+                        NotificationId           = notification.Id,
+                        RoutingPolicyId          = engineResult.MatchedPolicyId,
+                        RoutingMode              = engineResult.RoutingMode,
+                        SelectedProvider         = engineResult.Success ? engineResult.SelectedProvider : "no_route",
+                        SelectedProviderConfigId = engineResult.SelectedProviderConfigId,
+                        ProviderOwnershipMode    = engineResult.ProviderOwnershipMode,
+                        CandidateProvidersJson   = engineResult.CandidateProviders.Count > 0
+                            ? System.Text.Json.JsonSerializer.Serialize(engineResult.CandidateProviders) : null,
+                        ExcludedProvidersJson    = engineResult.ExcludedProviders.Count > 0
+                            ? System.Text.Json.JsonSerializer.Serialize(engineResult.ExcludedProviders) : null,
+                        DecisionReason           = engineResult.DecisionReason,
+                        EstimatedCostAmount      = engineResult.EstimatedCostAmount,
+                        CostCurrency             = engineResult.CostCurrency,
+                        CountryCode              = engineResult.CountryCode,
+                        Region                   = engineResult.Region,
+                        CreatedAt                = DateTime.UtcNow,
+                    };
+                    var persisted = await _routingDecisionRepo.CreateAsync(decision);
+                    routingDecisionId = persisted.Id;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "SMS routing: failed to persist routing decision for notification {NotificationId} — send continues", notification.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "SMS routing engine threw for notification {NotificationId} — falling back to priority order", notification.Id);
+            }
+        }
 
         string? subject = notification.RenderedSubject;
         // RenderedBody holds the HTML template output; RenderedText is the plain-text

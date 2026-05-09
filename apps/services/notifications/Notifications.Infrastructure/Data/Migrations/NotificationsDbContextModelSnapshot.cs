@@ -1494,6 +1494,161 @@ namespace Notifications.Infrastructure.Data.Migrations
 
                     b.ToTable("ntf_SmsAlertEscalations", (string)null);
                 });
+
+            // LS-NOTIF-SMS-014: SmsRoutingPolicies
+            modelBuilder.Entity("Notifications.Domain.SmsRoutingPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<bool>("Enabled")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("RoutingMode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("PreferredProvidersJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExcludedProvidersJson")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("MaxEstimatedCostPerMessage")
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<bool>("RequireHealthyProvider")
+                        .HasDefaultValue(false)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("FallbackToPlatform")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("Priority")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Enabled", "Priority")
+                        .HasDatabaseName("IX_ntf_SmsRoutingPolicies_Tenant_Enabled_Priority");
+
+                    b.ToTable("ntf_SmsRoutingPolicies", (string)null);
+                });
+
+            // LS-NOTIF-SMS-014: SmsRoutingDecisions
+            modelBuilder.Entity("Notifications.Domain.SmsRoutingDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("NotificationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("AttemptId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("RoutingPolicyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("RoutingMode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("SelectedProvider")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid?>("SelectedProviderConfigId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ProviderOwnershipMode")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("CandidateProvidersJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExcludedProvidersJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DecisionReason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<decimal?>("EstimatedCostAmount")
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<string>("CostCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("varchar(3)");
+
+                    b.Property<string>("HealthSnapshotJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsRoutingDecisions_Tenant_CreatedAt");
+
+                    b.HasIndex("NotificationId")
+                        .HasDatabaseName("IX_ntf_SmsRoutingDecisions_NotificationId");
+
+                    b.HasIndex("RoutingPolicyId")
+                        .HasDatabaseName("IX_ntf_SmsRoutingDecisions_PolicyId");
+
+                    b.ToTable("ntf_SmsRoutingDecisions", (string)null);
+                });
 #pragma warning restore 612, 618
         }
     }

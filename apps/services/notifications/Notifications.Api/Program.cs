@@ -249,6 +249,7 @@ app.MapSmsDashboardEndpoints();
 app.MapSmsCostEndpoints();
 app.MapSmsAlertEndpoints();
 app.MapSmsEscalationEndpoints();
+app.MapSmsRoutingEndpoints();
 
 app.Run();
 

@@ -87,6 +87,18 @@ public static class DependencyInjection
         services.AddScoped<ISmsAlertEscalationChannelAdapter, TeamsWebhookEscalationAdapter>();
         services.AddScoped<ISmsAlertEscalationChannelAdapter, SlackWebhookEscalationAdapter>();
         services.AddScoped<ISmsAlertEscalationService, SmsAlertEscalationService>();
+
+        // LS-NOTIF-SMS-014: Multi-Provider SMS Routing
+        services.AddScoped<ISmsRoutingPolicyRepository, SmsRoutingPolicyRepository>();
+        services.AddScoped<ISmsRoutingDecisionRepository, SmsRoutingDecisionRepository>();
+        services.AddSingleton<ISmsProviderCapabilityService, SmsProviderCapabilityService>();
+        // ISmsProviderAdapterFactory registrations — injected as IEnumerable<ISmsProviderAdapterFactory>
+        // into SmsProviderAdapterRegistry. Order matters: first matching factory wins.
+        services.AddScoped<ISmsProviderAdapterFactory, TwilioAdapterFactoryWrapper>();
+        services.AddScoped<ISmsProviderAdapterFactory, VonageAdapterFactory>();
+        services.AddScoped<ISmsProviderAdapterRegistry, SmsProviderAdapterRegistry>();
+        services.AddScoped<ISmsRoutingEngine, SmsRoutingEngine>();
+        services.AddHttpClient("Vonage");
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

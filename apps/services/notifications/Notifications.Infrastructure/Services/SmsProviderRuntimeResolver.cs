@@ -6,31 +6,38 @@ namespace Notifications.Infrastructure.Services;
 /// <summary>
 /// Resolves the correct SMS provider adapter at runtime.
 ///
-/// Send-time: routes with TenantProviderConfigId → tenant adapter via TwilioAdapterFactory.
+/// Send-time: routes with TenantProviderConfigId → tenant adapter via ISmsProviderAdapterRegistry.
 ///            routes without TenantProviderConfigId → platform adapter.
 ///
 /// Reconciliation-time: uses attempt.ProviderConfigId to reload the exact config
 ///                      used for the original send. Falls back to platform adapter
 ///                      for platform-owned attempts (ProviderConfigId = null).
 ///
-/// Credentials are never exposed outside TwilioAdapterFactory.
+/// LS-NOTIF-SMS-014: BuildAdapter() now uses ISmsProviderAdapterRegistry instead of a
+/// hard-coded "twilio"-only switch. New providers (Vonage, Telnyx, etc.) are
+/// automatically supported when their ISmsProviderAdapterFactory is registered.
+///
+/// Credentials are never exposed outside adapter factories.
 /// Provider config failures return structured SmsProviderRuntimeContext — never throw.
 /// </summary>
 public class SmsProviderRuntimeResolver : ISmsProviderRuntimeResolver
 {
     private readonly ITenantProviderConfigRepository _configRepo;
     private readonly ITwilioAdapterFactory _twilioFactory;
+    private readonly ISmsProviderAdapterRegistry _adapterRegistry;
     private readonly ISmsProviderAdapter _platformAdapter;
     private readonly ILogger<SmsProviderRuntimeResolver> _logger;
 
     public SmsProviderRuntimeResolver(
         ITenantProviderConfigRepository configRepo,
         ITwilioAdapterFactory twilioFactory,
+        ISmsProviderAdapterRegistry adapterRegistry,
         ISmsProviderAdapter platformAdapter,
         ILogger<SmsProviderRuntimeResolver> logger)
     {
         _configRepo      = configRepo;
         _twilioFactory   = twilioFactory;
+        _adapterRegistry = adapterRegistry;
         _platformAdapter = platformAdapter;
         _logger          = logger;
     }
@@ -222,13 +229,11 @@ public class SmsProviderRuntimeResolver : ISmsProviderRuntimeResolver
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
+    /// <summary>
+    /// LS-NOTIF-SMS-014: Delegate to ISmsProviderAdapterRegistry instead of a
+    /// hard-coded switch. Supports Twilio, Vonage, and any future providers
+    /// registered via ISmsProviderAdapterFactory.
+    /// </summary>
     private ISmsProviderAdapter BuildAdapter(string providerType, Domain.TenantProviderConfig config)
-    {
-        return providerType.ToLowerInvariant() switch
-        {
-            "twilio" => _twilioFactory.CreateFromConfig(config),
-            _ => throw new NotSupportedException(
-                $"No adapter factory registered for SMS provider type '{providerType}'"),
-        };
-    }
+        => _adapterRegistry.BuildAdapter(providerType, config);
 }
