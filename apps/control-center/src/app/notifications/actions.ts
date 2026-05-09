@@ -284,7 +284,7 @@ export async function updateProviderConfig(
 ): Promise<ActionResult> {
   await requirePlatformAdmin();
   try {
-    await notifClient.patch(`/providers/configs/${id}`, input);
+    await notifClient.put(`/providers/configs/${id}`, input);
     revalidateTag(NOTIF_CACHE_TAGS.providers);
     return { success: true };
   } catch (err) {
