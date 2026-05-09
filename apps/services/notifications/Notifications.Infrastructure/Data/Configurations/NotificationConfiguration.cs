@@ -59,6 +59,14 @@ public class NotificationAttemptConfiguration : IEntityTypeConfiguration<Notific
         builder.Property(e => e.ErrorMessage).HasColumnType("text");
         builder.Property(e => e.IsFailover).HasDefaultValue(false);
 
+        // ── LS-NOTIF-SMS-007: Reconciliation tracking columns ──────────────────
+        builder.Property(e => e.LastReconciliationOutcome).HasMaxLength(100);
+        builder.Property(e => e.LastReconciliationErrorCode).HasMaxLength(100);
+        builder.Property(e => e.LastReconciliationProviderStatus).HasMaxLength(100);
+        builder.Property(e => e.LastReconciliationNormalizedStatus).HasMaxLength(100);
+        builder.Property(e => e.ReconciliationAttemptCount).HasDefaultValue(0);
+
+        // Existing indexes
         builder.HasIndex(e => e.NotificationId).HasDatabaseName("IX_NotificationAttempts_NotificationId");
         builder.HasIndex(e => e.ProviderMessageId).HasDatabaseName("IX_NotificationAttempts_ProviderMessageId");
     }

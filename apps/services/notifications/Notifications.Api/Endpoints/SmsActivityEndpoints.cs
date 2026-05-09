@@ -7,7 +7,7 @@ using Notifications.Application.Interfaces;
 namespace Notifications.Api.Endpoints;
 
 /// <summary>
-/// LS-NOTIF-SMS-006 — SMS activity log and summary APIs.
+/// LS-NOTIF-SMS-006/007 — SMS activity log and summary APIs.
 ///
 /// Tenant endpoints (/v1/sms/activity):
 ///   Scoped to the authenticated tenant's JWT tenant_id claim.
@@ -16,6 +16,10 @@ namespace Notifications.Api.Endpoints;
 /// Admin endpoints (/v1/admin/sms/activity):
 ///   PlatformAdmin role required. Supports optional cross-tenant tenantId filter
 ///   and includePlatformActivity flag — matching the existing admin notification pattern.
+///
+/// LS-NOTIF-SMS-007 adds reconciliation filter parameters to both endpoint groups:
+///   lastReconciliationOutcome, lastReconciliationErrorCode, reconciledFrom,
+///   reconciledTo, hasBeenReconciled.
 /// </summary>
 public static class SmsActivityEndpoints
 {
@@ -48,24 +52,35 @@ public static class SmsActivityEndpoints
             string? failureCategory,
             DateTime? from,
             DateTime? to,
+            // LS-NOTIF-SMS-007: reconciliation filters
+            string?   lastReconciliationOutcome,
+            string?   lastReconciliationErrorCode,
+            DateTime? reconciledFrom,
+            DateTime? reconciledTo,
+            bool?     hasBeenReconciled,
             int? limit,
             int? offset) =>
         {
             var tenantId = context.GetTenantId();
 
             var query = BuildQuery(
-                tenantId:               tenantId,
-                includePlatformActivity: false,    // tenant callers never see platform activity
-                provider:               provider,
-                providerConfigId:       providerConfigId,
-                providerOwnershipMode:  providerOwnershipMode,
-                providerMessageId:      providerMessageId,
-                status:                 status,
-                failureCategory:        failureCategory,
-                from:                   from,
-                to:                     to,
-                limit:                  limit,
-                offset:                 offset);
+                tenantId:                    tenantId,
+                includePlatformActivity:     false,    // tenant callers never see platform activity
+                provider:                    provider,
+                providerConfigId:            providerConfigId,
+                providerOwnershipMode:       providerOwnershipMode,
+                providerMessageId:           providerMessageId,
+                status:                      status,
+                failureCategory:             failureCategory,
+                from:                        from,
+                to:                          to,
+                lastReconciliationOutcome:   lastReconciliationOutcome,
+                lastReconciliationErrorCode: lastReconciliationErrorCode,
+                reconciledFrom:              reconciledFrom,
+                reconciledTo:                reconciledTo,
+                hasBeenReconciled:           hasBeenReconciled,
+                limit:                       limit,
+                offset:                      offset);
 
             var result = await svc.GetActivityAsync(query, ct);
             return Results.Ok(result);
@@ -84,21 +99,32 @@ public static class SmsActivityEndpoints
             string? status,
             string? failureCategory,
             DateTime? from,
-            DateTime? to) =>
+            DateTime? to,
+            // LS-NOTIF-SMS-007: reconciliation filters
+            string?   lastReconciliationOutcome,
+            string?   lastReconciliationErrorCode,
+            DateTime? reconciledFrom,
+            DateTime? reconciledTo,
+            bool?     hasBeenReconciled) =>
         {
             var tenantId = context.GetTenantId();
 
             var query = BuildQuery(
-                tenantId:               tenantId,
-                includePlatformActivity: false,
-                provider:               provider,
-                providerConfigId:       providerConfigId,
-                providerOwnershipMode:  providerOwnershipMode,
-                providerMessageId:      providerMessageId,
-                status:                 status,
-                failureCategory:        failureCategory,
-                from:                   from,
-                to:                     to);
+                tenantId:                    tenantId,
+                includePlatformActivity:     false,
+                provider:                    provider,
+                providerConfigId:            providerConfigId,
+                providerOwnershipMode:       providerOwnershipMode,
+                providerMessageId:           providerMessageId,
+                status:                      status,
+                failureCategory:             failureCategory,
+                from:                        from,
+                to:                          to,
+                lastReconciliationOutcome:   lastReconciliationOutcome,
+                lastReconciliationErrorCode: lastReconciliationErrorCode,
+                reconciledFrom:              reconciledFrom,
+                reconciledTo:                reconciledTo,
+                hasBeenReconciled:           hasBeenReconciled);
 
             var result = await svc.GetSummaryAsync(query, ct);
             return Results.Ok(result);
@@ -131,24 +157,35 @@ public static class SmsActivityEndpoints
             string? failureCategory,
             DateTime? from,
             DateTime? to,
+            // LS-NOTIF-SMS-007: reconciliation filters
+            string?   lastReconciliationOutcome,
+            string?   lastReconciliationErrorCode,
+            DateTime? reconciledFrom,
+            DateTime? reconciledTo,
+            bool?     hasBeenReconciled,
             int? limit,
             int? offset) =>
         {
             var tenantFilter = ParseOptionalTenantId(tenantId);
 
             var query = BuildQuery(
-                tenantId:               tenantFilter,
-                includePlatformActivity: includePlatformActivity ?? false,
-                provider:               provider,
-                providerConfigId:       providerConfigId,
-                providerOwnershipMode:  providerOwnershipMode,
-                providerMessageId:      providerMessageId,
-                status:                 status,
-                failureCategory:        failureCategory,
-                from:                   from,
-                to:                     to,
-                limit:                  limit,
-                offset:                 offset);
+                tenantId:                    tenantFilter,
+                includePlatformActivity:     includePlatformActivity ?? false,
+                provider:                    provider,
+                providerConfigId:            providerConfigId,
+                providerOwnershipMode:       providerOwnershipMode,
+                providerMessageId:           providerMessageId,
+                status:                      status,
+                failureCategory:             failureCategory,
+                from:                        from,
+                to:                          to,
+                lastReconciliationOutcome:   lastReconciliationOutcome,
+                lastReconciliationErrorCode: lastReconciliationErrorCode,
+                reconciledFrom:              reconciledFrom,
+                reconciledTo:                reconciledTo,
+                hasBeenReconciled:           hasBeenReconciled,
+                limit:                       limit,
+                offset:                      offset);
 
             var result = await svc.GetActivityAsync(query, ct);
             return Results.Ok(result);
@@ -169,21 +206,32 @@ public static class SmsActivityEndpoints
             string? status,
             string? failureCategory,
             DateTime? from,
-            DateTime? to) =>
+            DateTime? to,
+            // LS-NOTIF-SMS-007: reconciliation filters
+            string?   lastReconciliationOutcome,
+            string?   lastReconciliationErrorCode,
+            DateTime? reconciledFrom,
+            DateTime? reconciledTo,
+            bool?     hasBeenReconciled) =>
         {
             var tenantFilter = ParseOptionalTenantId(tenantId);
 
             var query = BuildQuery(
-                tenantId:               tenantFilter,
-                includePlatformActivity: includePlatformActivity ?? false,
-                provider:               provider,
-                providerConfigId:       providerConfigId,
-                providerOwnershipMode:  providerOwnershipMode,
-                providerMessageId:      providerMessageId,
-                status:                 status,
-                failureCategory:        failureCategory,
-                from:                   from,
-                to:                     to);
+                tenantId:                    tenantFilter,
+                includePlatformActivity:     includePlatformActivity ?? false,
+                provider:                    provider,
+                providerConfigId:            providerConfigId,
+                providerOwnershipMode:       providerOwnershipMode,
+                providerMessageId:           providerMessageId,
+                status:                      status,
+                failureCategory:             failureCategory,
+                from:                        from,
+                to:                          to,
+                lastReconciliationOutcome:   lastReconciliationOutcome,
+                lastReconciliationErrorCode: lastReconciliationErrorCode,
+                reconciledFrom:              reconciledFrom,
+                reconciledTo:                reconciledTo,
+                hasBeenReconciled:           hasBeenReconciled);
 
             var result = await svc.GetSummaryAsync(query, ct);
             return Results.Ok(result);
@@ -203,22 +251,33 @@ public static class SmsActivityEndpoints
         string? failureCategory,
         DateTime? from,
         DateTime? to,
-        int? limit = null,
-        int? offset = null)
+        string? lastReconciliationOutcome   = null,
+        string? lastReconciliationErrorCode = null,
+        DateTime? reconciledFrom            = null,
+        DateTime? reconciledTo              = null,
+        bool? hasBeenReconciled             = null,
+        int? limit                          = null,
+        int? offset                         = null)
         => new()
         {
-            TenantId                = tenantId,
-            IncludePlatformActivity = includePlatformActivity,
-            Provider                = provider,
-            ProviderConfigId        = providerConfigId,
-            ProviderOwnershipMode   = providerOwnershipMode,
-            ProviderMessageId       = providerMessageId,
-            Status                  = status,
-            FailureCategory         = failureCategory,
-            FromDate                = from,
-            ToDate                  = to,
-            Limit                   = Math.Min(limit ?? DefaultLimit, MaxLimit),
-            Offset                  = Math.Max(offset ?? 0, 0),
+            TenantId                    = tenantId,
+            IncludePlatformActivity     = includePlatformActivity,
+            Provider                    = provider,
+            ProviderConfigId            = providerConfigId,
+            ProviderOwnershipMode       = providerOwnershipMode,
+            ProviderMessageId           = providerMessageId,
+            Status                      = status,
+            FailureCategory             = failureCategory,
+            FromDate                    = from,
+            ToDate                      = to,
+            // LS-NOTIF-SMS-007
+            LastReconciliationOutcome   = lastReconciliationOutcome,
+            LastReconciliationErrorCode = lastReconciliationErrorCode,
+            ReconciledFrom              = reconciledFrom,
+            ReconciledTo                = reconciledTo,
+            HasBeenReconciled           = hasBeenReconciled,
+            Limit                       = Math.Min(limit ?? DefaultLimit, MaxLimit),
+            Offset                      = Math.Max(offset ?? 0, 0),
         };
 
     private static Guid? ParseOptionalTenantId(string? raw)

@@ -421,6 +421,51 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
             }
         }
 
+        // ── LS-NOTIF-SMS-007: Reconciliation tracking columns on ntf_NotificationAttempts ──
+        var reconciliationColumnsToAdd = new[]
+        {
+            ("ntf_NotificationAttempts", "LastReconciliationOutcome",          "varchar(100) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_NotificationAttempts", "LastReconciledAt",                   "datetime(6) NULL"),
+            ("ntf_NotificationAttempts", "LastReconciliationErrorCode",        "varchar(100) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_NotificationAttempts", "LastReconciliationProviderStatus",   "varchar(100) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_NotificationAttempts", "LastReconciliationNormalizedStatus", "varchar(100) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_NotificationAttempts", "ReconciliationAttemptCount",         "int NOT NULL DEFAULT 0"),
+        };
+
+        foreach (var (table, col, colDef) in reconciliationColumnsToAdd)
+        {
+            using var checkCmdR = conn.CreateCommand();
+            checkCmdR.CommandText =
+                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
+            var countR = Convert.ToInt32(await checkCmdR.ExecuteScalarAsync());
+
+            if (countR == 0)
+            {
+                using var alterCmdR = conn.CreateCommand();
+                alterCmdR.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
+                await alterCmdR.ExecuteNonQueryAsync();
+                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
+            }
+        }
+
+        // ── LS-NOTIF-SMS-007: composite index for reconciliation outcome queries ──
+        using var reconIdxCheckCmd = conn.CreateCommand();
+        reconIdxCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_NotificationAttempts' " +
+            $"AND INDEX_NAME = 'IX_NotificationAttempts_Channel_TenantId_LastReconciliationOutcome'";
+        var reconIdxCount = Convert.ToInt32(await reconIdxCheckCmd.ExecuteScalarAsync());
+        if (reconIdxCount == 0)
+        {
+            using var reconIdxCmd = conn.CreateCommand();
+            reconIdxCmd.CommandText =
+                "CREATE INDEX `IX_NotificationAttempts_Channel_TenantId_LastReconciliationOutcome` " +
+                "ON `ntf_NotificationAttempts` (`Channel`, `TenantId`, `LastReconciliationOutcome`)";
+            await reconIdxCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created index IX_NotificationAttempts_Channel_TenantId_LastReconciliationOutcome");
+        }
+
         // ── LS-NOTIF-SMS-002: Ensure ntf_SmsContactPreferences table exists ──────
         // Safety net: if the migration ran but DDL failed (or was pre-seeded), ensure the table exists.
         using var tableCheckCmd = conn.CreateCommand();
@@ -505,7 +550,8 @@ static async Task SeedMigrationHistoryIfNeededAsync(NotificationsDbContext db, I
         ("20260418043535_InitialCreate",        "8.0.2"),
         ("20260419000001_AddRetryFields",       "8.0.2"),
         ("20260508000001_AddSmsPreference",     "8.0.2"),
-        ("20260508000002_AddSmsPreferenceHistory", "8.0.2"),
+        ("20260508000002_AddSmsPreferenceHistory",      "8.0.2"),
+        ("20260509000001_AddSmsReconciliationTracking", "8.0.2"),
     };
 
     try

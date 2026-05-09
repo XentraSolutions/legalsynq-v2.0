@@ -6,13 +6,15 @@ using Notifications.Application.Interfaces;
 namespace Notifications.Infrastructure.Services;
 
 /// <summary>
-/// LS-NOTIF-SMS-006: Orchestrates SMS activity queries and applies phone masking.
+/// LS-NOTIF-SMS-006/007: Orchestrates SMS activity queries and applies phone masking.
 ///
 /// All output is safe for external API consumers:
 ///  - Phone numbers are masked to first 3 characters + "***".
 ///  - CredentialsJson, SettingsJson, authToken are never accessed.
 ///  - Attribution is derived exclusively from ProviderOwnershipMode;
 ///    if the field is null the attribution value "unknown" is returned explicitly.
+///  - Reconciliation fields (LS-NOTIF-SMS-007) are projected directly from the
+///    attempt record — no provider credentials or raw payloads are included.
 /// </summary>
 public sealed class SmsActivityService : ISmsActivityService
 {
@@ -60,24 +62,31 @@ public sealed class SmsActivityService : ISmsActivityService
     private static SmsActivityItemDto MapToDto(SmsActivityRawRecord raw)
         => new()
         {
-            AttemptId           = raw.AttemptId,
-            NotificationId      = raw.NotificationId,
-            TenantId            = raw.TenantId,
-            Channel             = "sms",
-            Provider            = raw.Provider,
-            ProviderConfigId    = raw.ProviderConfigId,
+            AttemptId             = raw.AttemptId,
+            NotificationId        = raw.NotificationId,
+            TenantId              = raw.TenantId,
+            Channel               = "sms",
+            Provider              = raw.Provider,
+            ProviderConfigId      = raw.ProviderConfigId,
             ProviderOwnershipMode = raw.ProviderOwnershipMode,
-            Attribution         = ResolveAttribution(raw.ProviderOwnershipMode),
-            ProviderMessageId   = raw.ProviderMessageId,
-            Status              = raw.Status,
-            FailureCategory     = raw.FailureCategory,
-            LastError           = raw.ErrorMessage,
-            MaskedRecipient     = ExtractAndMaskPhone(raw.RecipientJson),
-            IsFailover          = raw.IsFailover,
-            AttemptNumber       = raw.AttemptNumber,
-            CompletedAt         = raw.CompletedAt,
-            CreatedAt           = raw.CreatedAt,
-            UpdatedAt           = raw.UpdatedAt,
+            Attribution           = ResolveAttribution(raw.ProviderOwnershipMode),
+            ProviderMessageId     = raw.ProviderMessageId,
+            Status                = raw.Status,
+            FailureCategory       = raw.FailureCategory,
+            LastError             = raw.ErrorMessage,
+            MaskedRecipient       = ExtractAndMaskPhone(raw.RecipientJson),
+            IsFailover            = raw.IsFailover,
+            AttemptNumber         = raw.AttemptNumber,
+            CompletedAt           = raw.CompletedAt,
+            CreatedAt             = raw.CreatedAt,
+            UpdatedAt             = raw.UpdatedAt,
+            // ── LS-NOTIF-SMS-007: Reconciliation tracking fields ──────────────
+            LastReconciliationOutcome          = raw.LastReconciliationOutcome,
+            LastReconciledAt                   = raw.LastReconciledAt,
+            LastReconciliationErrorCode        = raw.LastReconciliationErrorCode,
+            LastReconciliationProviderStatus   = raw.LastReconciliationProviderStatus,
+            LastReconciliationNormalizedStatus = raw.LastReconciliationNormalizedStatus,
+            ReconciliationAttemptCount         = raw.ReconciliationAttemptCount,
         };
 
     /// <summary>

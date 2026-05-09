@@ -62,4 +62,28 @@ public class NotificationAttemptRepository : INotificationAttemptRepository
             .OrderBy(a => a.UpdatedAt)
             .Take(limit)
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task UpdateReconciliationTrackingAsync(
+        Guid attemptId,
+        string outcome,
+        string? errorCode,
+        string? providerStatus,
+        string? normalizedStatus,
+        DateTime reconciledAt,
+        CancellationToken ct = default)
+    {
+        var a = await _db.NotificationAttempts.FindAsync(new object[] { attemptId }, ct);
+        if (a == null) return;
+
+        a.LastReconciliationOutcome         = outcome;
+        a.LastReconciledAt                  = reconciledAt;
+        a.LastReconciliationErrorCode       = errorCode;
+        a.LastReconciliationProviderStatus  = providerStatus;
+        a.LastReconciliationNormalizedStatus = normalizedStatus;
+        a.ReconciliationAttemptCount++;
+        a.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+    }
 }

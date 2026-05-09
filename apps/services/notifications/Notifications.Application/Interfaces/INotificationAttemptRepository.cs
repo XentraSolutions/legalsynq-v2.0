@@ -22,4 +22,25 @@ public interface INotificationAttemptRepository
         DateTime olderThan,
         IReadOnlyCollection<string> statuses,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// LS-NOTIF-SMS-007: Persist reconciliation tracking fields after a pull-based
+    /// reconciliation attempt.
+    ///
+    /// Increments <c>ReconciliationAttemptCount</c> and updates all <c>LastReconciliation*</c>
+    /// fields. Does NOT modify <c>Status</c> or <c>CompletedAt</c> — those remain under
+    /// the exclusive control of <c>DeliveryStatusService</c>.
+    ///
+    /// If <paramref name="attemptId"/> is not found, the call is silently ignored.
+    /// All callers should wrap this in a try/catch so tracking failures never
+    /// surface as reconciliation failures.
+    /// </summary>
+    Task UpdateReconciliationTrackingAsync(
+        Guid attemptId,
+        string outcome,
+        string? errorCode,
+        string? providerStatus,
+        string? normalizedStatus,
+        DateTime reconciledAt,
+        CancellationToken ct = default);
 }

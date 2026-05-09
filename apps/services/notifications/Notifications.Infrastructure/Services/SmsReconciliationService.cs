@@ -77,7 +77,9 @@ public class SmsReconciliationService : ISmsReconciliationService
             _logger.LogWarning("SMS reconciliation: attempt not found {AttemptId}", attemptId);
             return Skipped(SmsReconciliationResult.OutcomeAttemptNotFound, null, null, null);
         }
-        return await ReconcileAttemptAsync(attempt, "manual", ct);
+        var result = await ReconcileAttemptAsync(attempt, "manual", ct);
+        await TryPersistTrackingAsync(attempt.Id, result, ct);
+        return result;
     }
 
     public async Task<SmsReconciliationResult> ReconcileByProviderMessageIdAsync(string providerMessageId, CancellationToken ct = default)
@@ -91,7 +93,9 @@ public class SmsReconciliationService : ISmsReconciliationService
             _logger.LogWarning("SMS reconciliation: no attempt found for SID={Sid}", providerMessageId);
             return Skipped(SmsReconciliationResult.OutcomeAttemptNotFound, null, null, providerMessageId);
         }
-        return await ReconcileAttemptAsync(attempt, "manual", ct);
+        var result = await ReconcileAttemptAsync(attempt, "manual", ct);
+        await TryPersistTrackingAsync(attempt.Id, result, ct);
+        return result;
     }
 
     public async Task<SmsReconciliationBatchResult> ReconcileStalePendingAsync(int limit, TimeSpan olderThan, CancellationToken ct = default)
@@ -115,6 +119,7 @@ public class SmsReconciliationService : ISmsReconciliationService
             try
             {
                 var result = await ReconcileAttemptAsync(attempt, "batch", ct);
+                await TryPersistTrackingAsync(attempt.Id, result, ct);
                 results.Add(result);
                 switch (result.Outcome)
                 {
@@ -430,6 +435,34 @@ public class SmsReconciliationService : ISmsReconciliationService
             });
         }
         catch (Exception ex) { _logger.LogError(ex, "Failed to audit SMS reconciliation event {EventType}", eventType); }
+    }
+
+    // ── LS-NOTIF-SMS-007: Reconciliation tracking persistence ─────────────────
+
+    /// <summary>
+    /// Best-effort persistence of reconciliation tracking fields after each
+    /// pull-based reconciliation. Errors are logged but never propagate so that
+    /// tracking failures cannot abort the reconciliation operation.
+    /// </summary>
+    private async Task TryPersistTrackingAsync(Guid attemptId, SmsReconciliationResult result, CancellationToken ct)
+    {
+        try
+        {
+            await _attemptRepo.UpdateReconciliationTrackingAsync(
+                attemptId,
+                result.Outcome,
+                result.ErrorCode,
+                result.VendorStatus,
+                result.NormalizedVendorStatus,
+                DateTime.UtcNow,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "SMS reconciliation: failed to persist tracking for attempt {AttemptId} (outcome={Outcome})",
+                attemptId, result.Outcome);
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
