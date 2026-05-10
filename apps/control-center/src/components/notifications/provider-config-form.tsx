@@ -151,7 +151,8 @@ export function ProviderConfigForm(props: Props) {
     }
     if (providerType === 'twilio') {
       if (!accountSid.trim()) return 'Account SID is required.';
-      if (!isEdit && !authToken) return 'Auth token is required.';
+      if (!authToken.trim()) return 'Auth token is required.';
+      if (!fromNumber.trim()) return 'From Number is required.';
     }
     return '';
   }
@@ -372,6 +373,11 @@ export function ProviderConfigForm(props: Props) {
               {/* ── Twilio ───────────────────────────────────────────────── */}
               {providerType === 'twilio' && (
                 <>
+                  {isEdit && (
+                    <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                      All Twilio credentials must be re-entered to save changes — they are stored but not displayed for security.
+                    </p>
+                  )}
                   <div>
                     <label className={labelCls}>Account SID <span className="text-red-500">*</span></label>
                     <input
@@ -384,11 +390,11 @@ export function ProviderConfigForm(props: Props) {
                   <SecretFieldInput
                     id="twilio-auth-token" label="Auth Token" name="authToken"
                     value={authToken} onChange={setAuthToken}
-                    required={!isEdit} isConfigured={isEdit}
+                    required isConfigured={false}
                     placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                   />
                   <div>
-                    <label className={labelCls}>From Number</label>
+                    <label className={labelCls}>From Number <span className="text-red-500">*</span></label>
                     <input
                       type="text" value={fromNumber}
                       onChange={e => setFromNumber(e.target.value)}
