@@ -260,7 +260,16 @@ export async function createProviderConfig(
 ): Promise<ActionResult<{ id: string }>> {
   await requirePlatformAdmin();
   try {
-    const data = await notifClient.post<{ id: string }>('/providers/configs', input);
+    // Backend DTO expects credentialsJson / settingsJson as JSON strings, not nested objects.
+    const settings = { ...(input.senderConfig ?? {}), ...(input.endpointConfig ?? {}) };
+    const body = {
+      channel:      input.channel,
+      providerType: input.providerType,
+      displayName:  input.displayName,
+      credentialsJson: JSON.stringify(input.credentials ?? {}),
+      ...(Object.keys(settings).length ? { settingsJson: JSON.stringify(settings) } : {}),
+    };
+    const data = await notifClient.post<{ id: string }>('/providers/configs', body);
     revalidateTag(NOTIF_CACHE_TAGS.providers);
     return { success: true, data };
   } catch (err) {
@@ -284,7 +293,14 @@ export async function updateProviderConfig(
 ): Promise<ActionResult> {
   await requirePlatformAdmin();
   try {
-    await notifClient.put(`/providers/configs/${id}`, input);
+    // Backend UpdateTenantProviderConfigDto expects credentialsJson / settingsJson as JSON strings.
+    const settings = { ...(input.senderConfig ?? {}), ...(input.endpointConfig ?? {}) };
+    const body: Record<string, unknown> = {};
+    if (input.displayName !== undefined) body.displayName   = input.displayName;
+    if (input.status      !== undefined) body.status        = input.status;
+    if (input.credentials !== undefined) body.credentialsJson = JSON.stringify(input.credentials);
+    if (Object.keys(settings).length)    body.settingsJson    = JSON.stringify(settings);
+    await notifClient.put(`/providers/configs/${id}`, body);
     revalidateTag(NOTIF_CACHE_TAGS.providers);
     return { success: true };
   } catch (err) {
