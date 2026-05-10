@@ -116,17 +116,15 @@ export function ProviderActionButtons({ configId, channel, status, validationSta
             Validate
           </button>
 
-          {/* Test — opens modal */}
-          <span title={!isValidated ? 'Validate the config first before testing' : undefined}>
-            <button
-              disabled={isPending || !isValidated}
-              onClick={() => setTestOpen(true)}
-              className={`${btnBase} bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-700`}
-            >
-              <i className="ri-send-plane-line" />
-              Test
-            </button>
-          </span>
+          {/* Test — opens modal; always available regardless of validation status */}
+          <button
+            disabled={isPending}
+            onClick={() => setTestOpen(true)}
+            className={`${btnBase} bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-700`}
+          >
+            <i className="ri-send-plane-line" />
+            Test
+          </button>
 
           {/* Logs */}
           <a
