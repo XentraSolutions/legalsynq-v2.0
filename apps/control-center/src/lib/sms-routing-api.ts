@@ -321,3 +321,183 @@ export async function getSmsOptimizationSummary(params?: {
   if (params?.countryCode) q.set('countryCode', params.countryCode);
   return fetchAdmin(`/notifications/v1/admin/sms/routing/optimization?${q}`);
 }
+
+// ── LS-NOTIF-SMS-016: Recipient Intelligence Types ────────────────────────────
+
+export interface SmsRecipientReputation {
+  id: string;
+  recipientHash: string;
+  tenantId: string | null;
+  providerType: string | null;
+  countryCode: string | null;
+  region: string | null;
+  totalAttempts: number;
+  deliveredAttempts: number;
+  failedAttempts: number;
+  retryAttempts: number;
+  deadLetterAttempts: number;
+  carrierRejectedAttempts: number;
+  invalidDestinationAttempts: number;
+  deliverySuccessRate: number;
+  failureRate: number;
+  retryRate: number;
+  deadLetterRate: number;
+  carrierFailureRate: number;
+  invalidNumberRisk: number;
+  retrySuppressionRisk: number;
+  qualityScore: number;
+  destinationRiskLevel: string;
+  lastAttemptAt: string | null;
+  calculatedAt: string;
+}
+
+export interface SmsRecipientReputationListResult {
+  items: SmsRecipientReputation[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface SmsSuppressionDecision {
+  id: string;
+  recipientHash: string;
+  tenantId: string | null;
+  notificationId: string | null;
+  attemptId: string | null;
+  decisionType: string;
+  reasonCode: string;
+  riskScore: number | null;
+  qualityScore: number | null;
+  retryCount: number;
+  providerType: string | null;
+  countryCode: string | null;
+  region: string | null;
+  createdAt: string;
+}
+
+export interface SmsSuppressionDecisionListResult {
+  items: SmsSuppressionDecision[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface SmsDestinationRiskSummary {
+  lowRiskCount: number;
+  mediumRiskCount: number;
+  highRiskCount: number;
+  suppressedCount: number;
+  totalRecipients: number;
+  generatedAt: string;
+}
+
+export interface SmsRecipientTrendPoint {
+  windowDate: string;
+  totalRecipients: number;
+  averageDeliveryRate: number;
+  averageFailureRate: number;
+  averageQualityScore: number;
+  suppressedCount: number;
+  highRiskCount: number;
+}
+
+export interface SmsRecipientTrendResult {
+  points: SmsRecipientTrendPoint[];
+  generatedAt: string;
+}
+
+// ── LS-NOTIF-SMS-016: Recipient Intelligence API ─────────────────────────────
+
+export async function getSmsRecipientQuality(params?: {
+  tenantId?: string;
+  provider?: string;
+  countryCode?: string;
+  region?: string;
+  riskLevel?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<SmsRecipientReputationListResult> {
+  const q = new URLSearchParams();
+  if (params?.tenantId)    q.set('tenantId',    params.tenantId);
+  if (params?.provider)    q.set('provider',    params.provider);
+  if (params?.countryCode) q.set('countryCode', params.countryCode);
+  if (params?.region)      q.set('region',      params.region);
+  if (params?.riskLevel)   q.set('riskLevel',   params.riskLevel);
+  if (params?.from)        q.set('from',        params.from);
+  if (params?.to)          q.set('to',          params.to);
+  if (params?.limit != null)  q.set('limit',  String(params.limit));
+  if (params?.offset != null) q.set('offset', String(params.offset));
+  return fetchAdmin(`/notifications/v1/admin/sms/recipients/quality?${q}`);
+}
+
+export async function getSmsRecipientFailures(params?: {
+  tenantId?: string;
+  provider?: string;
+  countryCode?: string;
+  riskLevel?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<SmsRecipientReputationListResult> {
+  const q = new URLSearchParams();
+  if (params?.tenantId)    q.set('tenantId',    params.tenantId);
+  if (params?.provider)    q.set('provider',    params.provider);
+  if (params?.countryCode) q.set('countryCode', params.countryCode);
+  if (params?.riskLevel)   q.set('riskLevel',   params.riskLevel);
+  if (params?.from)        q.set('from',        params.from);
+  if (params?.to)          q.set('to',          params.to);
+  if (params?.limit != null)  q.set('limit',  String(params.limit));
+  if (params?.offset != null) q.set('offset', String(params.offset));
+  return fetchAdmin(`/notifications/v1/admin/sms/recipients/failures?${q}`);
+}
+
+export async function getSmsSuppressionDecisions(params?: {
+  tenantId?: string;
+  decisionType?: string;
+  reasonCode?: string;
+  provider?: string;
+  countryCode?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<SmsSuppressionDecisionListResult> {
+  const q = new URLSearchParams();
+  if (params?.tenantId)     q.set('tenantId',     params.tenantId);
+  if (params?.decisionType) q.set('decisionType', params.decisionType);
+  if (params?.reasonCode)   q.set('reasonCode',   params.reasonCode);
+  if (params?.provider)     q.set('provider',     params.provider);
+  if (params?.countryCode)  q.set('countryCode',  params.countryCode);
+  if (params?.from)         q.set('from',         params.from);
+  if (params?.to)           q.set('to',           params.to);
+  if (params?.limit != null)  q.set('limit',  String(params.limit));
+  if (params?.offset != null) q.set('offset', String(params.offset));
+  return fetchAdmin(`/notifications/v1/admin/sms/recipients/suppressions?${q}`);
+}
+
+export async function getSmsRecipientRiskSummary(params?: {
+  tenantId?: string;
+  countryCode?: string;
+}): Promise<SmsDestinationRiskSummary> {
+  const q = new URLSearchParams();
+  if (params?.tenantId)    q.set('tenantId',    params.tenantId);
+  if (params?.countryCode) q.set('countryCode', params.countryCode);
+  return fetchAdmin(`/notifications/v1/admin/sms/recipients/risk?${q}`);
+}
+
+export async function getSmsRecipientTrends(params?: {
+  tenantId?: string;
+  countryCode?: string;
+  from?: string;
+  to?: string;
+}): Promise<SmsRecipientTrendResult> {
+  const q = new URLSearchParams();
+  if (params?.tenantId)    q.set('tenantId',    params.tenantId);
+  if (params?.countryCode) q.set('countryCode', params.countryCode);
+  if (params?.from)        q.set('from',        params.from);
+  if (params?.to)          q.set('to',          params.to);
+  return fetchAdmin(`/notifications/v1/admin/sms/recipients/trends?${q}`);
+}

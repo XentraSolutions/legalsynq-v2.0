@@ -8,6 +8,10 @@ import {
   getSmsProviderHealth,
   getSmsProviderQuality,
   getSmsOptimizationSummary,
+  getSmsRecipientQuality,
+  getSmsSuppressionDecisions,
+  getSmsRecipientRiskSummary,
+  getSmsRecipientTrends,
 } from '@/lib/sms-routing-api';
 import { SmsRoutingPanel } from '@/components/sms-routing/routing-panel';
 
@@ -16,16 +20,23 @@ export const dynamic = 'force-dynamic';
 export default async function SmsRoutingPage() {
   await requirePlatformAdmin();
 
-  const [capsRes, policiesRes, decisionsRes, summaryRes, healthRes, qualityRes, optimizationRes] =
-    await Promise.allSettled([
-      getSmsProviderCapabilities(),
-      getSmsRoutingPolicies({ limit: 100 }),
-      getSmsRoutingDecisions({ limit: 50 }),
-      getSmsRoutingDecisionSummary(),
-      getSmsProviderHealth(),
-      getSmsProviderQuality({ limit: 50 }),
-      getSmsOptimizationSummary(),
-    ]);
+  const [
+    capsRes, policiesRes, decisionsRes, summaryRes, healthRes, qualityRes, optimizationRes,
+    recipientQualityRes, suppressionsRes, riskSummaryRes, trendsRes,
+  ] = await Promise.allSettled([
+    getSmsProviderCapabilities(),
+    getSmsRoutingPolicies({ limit: 100 }),
+    getSmsRoutingDecisions({ limit: 50 }),
+    getSmsRoutingDecisionSummary(),
+    getSmsProviderHealth(),
+    getSmsProviderQuality({ limit: 50 }),
+    getSmsOptimizationSummary(),
+    // LS-NOTIF-SMS-016: recipient intelligence (non-critical — may be disabled)
+    getSmsRecipientQuality({ limit: 50, riskLevel: undefined }),
+    getSmsSuppressionDecisions({ limit: 50 }),
+    getSmsRecipientRiskSummary(),
+    getSmsRecipientTrends({ from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() }),
+  ]);
 
   const capabilities = capsRes.status         === 'fulfilled' ? capsRes.value.items         : [];
   const policies     = policiesRes.status     === 'fulfilled' ? policiesRes.value.items     : [];
@@ -35,13 +46,19 @@ export default async function SmsRoutingPage() {
   const quality      = qualityRes.status      === 'fulfilled' ? qualityRes.value.items      : [];
   const optimization = optimizationRes.status === 'fulfilled' ? optimizationRes.value       : null;
 
+  // LS-NOTIF-SMS-016 data (graceful degradation — may be null when feature is disabled)
+  const recipientReputation = recipientQualityRes.status === 'fulfilled' ? recipientQualityRes.value.items : [];
+  const suppressions        = suppressionsRes.status     === 'fulfilled' ? suppressionsRes.value.items     : [];
+  const riskSummary         = riskSummaryRes.status      === 'fulfilled' ? riskSummaryRes.value            : null;
+  const trends              = trendsRes.status            === 'fulfilled' ? trendsRes.value.points          : [];
+
   const errors: string[] = [];
   if (capsRes.status         === 'rejected') errors.push('Provider capabilities unavailable');
   if (policiesRes.status     === 'rejected') errors.push('Routing policies unavailable');
   if (decisionsRes.status    === 'rejected') errors.push('Routing decisions unavailable');
   if (summaryRes.status      === 'rejected') errors.push('Decision summary unavailable');
   if (healthRes.status       === 'rejected') errors.push('Provider health unavailable');
-  // Quality/optimization failures are non-critical — shown in the Optimization tab itself
+  // Quality/optimization/intelligence failures are non-critical — shown in the tab itself
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -56,9 +73,13 @@ export default async function SmsRoutingPage() {
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 uppercase tracking-wide">
               LS-NOTIF-SMS-015
             </span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase tracking-wide">
+              LS-NOTIF-SMS-016
+            </span>
           </div>
           <p className="text-slate-500 text-sm">
-            Multi-provider SMS routing policies, intelligent route selection, provider quality scoring, and adaptive routing optimization.
+            Multi-provider SMS routing policies, intelligent route selection, provider quality scoring,
+            adaptive routing optimization, and recipient intelligence.
           </p>
         </div>
       </div>
@@ -89,6 +110,12 @@ export default async function SmsRoutingPage() {
             health={health}
             quality={quality}
             optimization={optimization}
+            recipientIntelligence={{
+              reputation:   recipientReputation,
+              suppressions: suppressions,
+              riskSummary:  riskSummary,
+              trends:       trends,
+            }}
           />
         </Suspense>
       </div>

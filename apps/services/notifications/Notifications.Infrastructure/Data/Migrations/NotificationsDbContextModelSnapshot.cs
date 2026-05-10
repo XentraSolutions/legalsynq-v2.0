@@ -1777,6 +1777,188 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_SmsProviderQualitySnapshots", (string)null);
                 });
 
+            // LS-NOTIF-SMS-016: Recipient Intelligence
+            modelBuilder.Entity("Notifications.Domain.SmsRecipientReputationSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<string>("RecipientHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<string>("ProviderType")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<int>("TotalAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveredAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FailedAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RetryAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeadLetterAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CarrierRejectedAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InvalidDestinationAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("AverageLatencyMs")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal>("DeliverySuccessRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal>("FailureRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal>("RetryRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal>("DeadLetterRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal>("CarrierFailureRate")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<decimal>("InvalidNumberRisk")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("RetrySuppressionRisk")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("QualityScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("DestinationRiskLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("low");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CalculatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientHash")
+                        .HasDatabaseName("IX_ntf_SmsRecipientSnapshots_Hash");
+
+                    b.HasIndex("TenantId", "RecipientHash")
+                        .HasDatabaseName("IX_ntf_SmsRecipientSnapshots_Tenant_Hash");
+
+                    b.HasIndex("ProviderType", "RecipientHash")
+                        .HasDatabaseName("IX_ntf_SmsRecipientSnapshots_Provider_Hash");
+
+                    b.HasIndex("CountryCode", "CalculatedAt")
+                        .HasDatabaseName("IX_ntf_SmsRecipientSnapshots_Country_Calc");
+
+                    b.HasIndex("DestinationRiskLevel")
+                        .HasDatabaseName("IX_ntf_SmsRecipientSnapshots_RiskLevel");
+
+                    b.ToTable("ntf_SmsRecipientReputationSnapshots", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsSuppressionDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<string>("RecipientHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<Guid?>("NotificationId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<Guid?>("AttemptId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<string>("DecisionType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<decimal?>("RiskScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("QualityScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProviderType")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("DecisionMetadataJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientHash")
+                        .HasDatabaseName("IX_ntf_SmsSuppressionDecisions_Hash");
+
+                    b.HasIndex("TenantId", "RecipientHash")
+                        .HasDatabaseName("IX_ntf_SmsSuppressionDecisions_Tenant_Hash");
+
+                    b.HasIndex("TenantId", "DecisionType", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsSuppressionDecisions_Tenant_Type_Dt");
+
+                    b.ToTable("ntf_SmsSuppressionDecisions", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }

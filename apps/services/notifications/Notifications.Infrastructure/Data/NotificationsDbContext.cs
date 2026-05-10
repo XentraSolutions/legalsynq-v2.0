@@ -39,6 +39,10 @@ public class NotificationsDbContext : DbContext
     // LS-NOTIF-SMS-015: Provider Quality Snapshots
     public DbSet<SmsProviderQualitySnapshot> SmsProviderQualitySnapshots => Set<SmsProviderQualitySnapshot>();
 
+    // LS-NOTIF-SMS-016: Recipient Intelligence + Suppression
+    public DbSet<SmsRecipientReputationSnapshot> SmsRecipientReputationSnapshots => Set<SmsRecipientReputationSnapshot>();
+    public DbSet<SmsSuppressionDecision> SmsSuppressionDecisions => Set<SmsSuppressionDecision>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -71,5 +75,8 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.SmsRoutingDecisionConfiguration());
         // LS-NOTIF-SMS-015
         modelBuilder.ApplyConfiguration(new Configurations.SmsProviderQualitySnapshotConfiguration());
+        // LS-NOTIF-SMS-016
+        modelBuilder.ApplyConfiguration(new Configurations.SmsRecipientReputationSnapshotConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsSuppressionDecisionConfiguration());
     }
 }

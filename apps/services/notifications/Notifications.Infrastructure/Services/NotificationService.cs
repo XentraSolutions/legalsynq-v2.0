@@ -32,6 +32,8 @@ public class NotificationServiceImpl : INotificationService
     // LS-NOTIF-SMS-014: intelligent routing engine + decision persistence
     private readonly ISmsRoutingEngine _smsRoutingEngine;
     private readonly ISmsRoutingDecisionRepository _routingDecisionRepo;
+    // LS-NOTIF-SMS-016: retry suppression (optional — degrades to allow when null)
+    private readonly ISmsRetrySuppressionService? _retrySuppressionService;
     private readonly ILogger<NotificationServiceImpl> _logger;
 
     private static readonly JsonSerializerOptions _camelCaseOptions = new()
@@ -59,28 +61,30 @@ public class NotificationServiceImpl : INotificationService
         IOptions<SmsCostAnalyticsOptions> costOptions,
         ISmsRoutingEngine smsRoutingEngine,
         ISmsRoutingDecisionRepository routingDecisionRepo,
+        ISmsRetrySuppressionService retrySuppressionService,
         ILogger<NotificationServiceImpl> logger)
     {
-        _notificationRepo    = notificationRepo;
-        _attemptRepo         = attemptRepo;
-        _eventRepo           = eventRepo;
-        _deliveryIssueRepo   = deliveryIssueRepo;
-        _routingService      = routingService;
-        _contactEnforcement  = contactEnforcement;
-        _usageEvaluation     = usageEvaluation;
-        _metering            = metering;
-        _templateResolution  = templateResolution;
-        _templateRendering   = templateRendering;
-        _brandingResolution  = brandingResolution;
-        _sendGridAdapter      = sendGridAdapter;
-        _twilioAdapter        = twilioAdapter;
-        _smsRuntimeResolver   = smsRuntimeResolver;
-        _recipientResolver    = recipientResolver;
-        _auditClient         = auditClient;
-        _costOptions         = costOptions.Value;
-        _smsRoutingEngine    = smsRoutingEngine;
-        _routingDecisionRepo = routingDecisionRepo;
-        _logger              = logger;
+        _notificationRepo        = notificationRepo;
+        _attemptRepo             = attemptRepo;
+        _eventRepo               = eventRepo;
+        _deliveryIssueRepo       = deliveryIssueRepo;
+        _routingService          = routingService;
+        _contactEnforcement      = contactEnforcement;
+        _usageEvaluation         = usageEvaluation;
+        _metering                = metering;
+        _templateResolution      = templateResolution;
+        _templateRendering       = templateRendering;
+        _brandingResolution      = brandingResolution;
+        _sendGridAdapter         = sendGridAdapter;
+        _twilioAdapter           = twilioAdapter;
+        _smsRuntimeResolver      = smsRuntimeResolver;
+        _recipientResolver       = recipientResolver;
+        _auditClient             = auditClient;
+        _costOptions             = costOptions.Value;
+        _smsRoutingEngine        = smsRoutingEngine;
+        _routingDecisionRepo     = routingDecisionRepo;
+        _retrySuppressionService = retrySuppressionService;
+        _logger                  = logger;
     }
 
     // ─── Submit ──────────────────────────────────────────────────────────────
@@ -1324,6 +1328,65 @@ public class NotificationServiceImpl : INotificationService
         notification.Status = "processing";
         notification.NextRetryAt = null;
         await _notificationRepo.UpdateAsync(notification);
+
+        // LS-NOTIF-SMS-016: Recipient intelligence suppression check (SMS only).
+        // Safe-degrades to allow on any error — never blocks delivery pipeline.
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) &&
+            _retrySuppressionService != null)
+        {
+            try
+            {
+                var phone = ExtractContactValue("sms", notification.RecipientJson);
+                var suppressionResult = await _retrySuppressionService.EvaluateAsync(
+                    new SmsRetrySuppressionRequest
+                    {
+                        RecipientPhone  = phone,
+                        TenantId        = notification.TenantId,
+                        NotificationId  = notification.Id,
+                        ProviderType    = notification.ProviderUsed,
+                        RetryCount      = notification.RetryCount,
+                        FailureCategory = notification.FailureCategory,
+                    }, CancellationToken.None);
+
+                if (suppressionResult.ShouldBlock)
+                {
+                    notification.Status          = "dead-letter";
+                    notification.FailureCategory = $"suppressed_{suppressionResult.ReasonCode}";
+                    notification.LastErrorMessage = $"Retry suppressed by recipient intelligence: {suppressionResult.DecisionType} ({suppressionResult.ReasonCode})";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ProcessAutoRetryAsync: notification {Id} suppressed ({Decision}/{Reason}) — moved to dead-letter",
+                        notificationId, suppressionResult.DecisionType, suppressionResult.ReasonCode);
+                    return;
+                }
+                else if (suppressionResult.ShouldDefer)
+                {
+                    notification.Status       = "retrying";
+                    notification.NextRetryAt  = DateTime.UtcNow.AddMinutes(30);
+                    notification.LastErrorMessage = $"Retry deferred by recipient intelligence: {suppressionResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    _logger.LogInformation(
+                        "ProcessAutoRetryAsync: notification {Id} deferred by soft-suppress ({Reason})",
+                        notificationId, suppressionResult.ReasonCode);
+                    return;
+                }
+                // warn or allow — proceed normally
+                if (suppressionResult.DecisionType == "warn")
+                {
+                    _logger.LogWarning(
+                        "ProcessAutoRetryAsync: suppression warn for notification {Id} ({Reason}) — proceeding",
+                        notificationId, suppressionResult.ReasonCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never crash the delivery pipeline on suppression errors
+                _logger.LogWarning(ex,
+                    "ProcessAutoRetryAsync: suppression evaluation threw for {Id} — defaulting to allow",
+                    notificationId);
+            }
+        }
 
         _logger.LogInformation("ProcessAutoRetryAsync: executing retry #{RetryCount} for notification {Id}", notification.RetryCount, notificationId);
 

@@ -107,6 +107,14 @@ public static class DependencyInjection
         services.AddOptions<SmsProviderQualityOptions>()
                 .Bind(configuration.GetSection(SmsProviderQualityOptions.SectionName));
         services.AddHostedService<SmsProviderQualityWorker>();
+
+        // LS-NOTIF-SMS-016: Recipient Intelligence, Suppression, Delivery Reputation
+        services.AddOptions<SmsRecipientIntelligenceOptions>()
+                .Bind(configuration.GetSection(SmsRecipientIntelligenceOptions.SectionName));
+        services.AddSingleton<ISmsRecipientIdentityHasher, SmsRecipientIdentityHasher>();
+        services.AddScoped<ISmsRecipientIntelligenceService, SmsRecipientIntelligenceService>();
+        services.AddScoped<ISmsRetrySuppressionService, SmsRetrySuppressionService>();
+        services.AddHostedService<SmsRecipientIntelligenceWorker>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

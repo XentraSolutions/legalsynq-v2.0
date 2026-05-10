@@ -12,6 +12,7 @@ import type {
   SmsOptimizationResponse,
 } from '@/lib/sms-routing-api';
 import { OptimizationPanel } from './optimization-panel';
+import { RecipientIntelligencePanel, RecipientIntelligencePanelProps } from './recipient-intelligence-panel';
 import {
   createSmsRoutingPolicy,
   updateSmsRoutingPolicy,
@@ -461,7 +462,7 @@ function HealthTab({ health }: { health: SmsProviderHealth[] }) {
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
-type Tab = 'capabilities' | 'policies' | 'decisions' | 'health' | 'optimization';
+type Tab = 'capabilities' | 'policies' | 'decisions' | 'health' | 'optimization' | 'recipients';
 
 export interface SmsRoutingPanelProps {
   capabilities: SmsProviderCapability[];
@@ -471,10 +472,11 @@ export interface SmsRoutingPanelProps {
   health: SmsProviderHealth[];
   quality: SmsProviderQualityDto[];
   optimization: SmsOptimizationResponse | null;
+  recipientIntelligence: RecipientIntelligencePanelProps | null;
 }
 
 export function SmsRoutingPanel({
-  capabilities, policies, decisions, summary, health, quality, optimization,
+  capabilities, policies, decisions, summary, health, quality, optimization, recipientIntelligence,
 }: SmsRoutingPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('capabilities');
   const [localPolicies, setLocalPolicies] = useState(policies);
@@ -488,6 +490,7 @@ export function SmsRoutingPanel({
     { id: 'decisions',    label: 'Decisions',    count: decisions.length },
     { id: 'health',       label: 'Health',       count: health.length },
     { id: 'optimization', label: 'Optimization', count: quality.length > 0 ? quality.length : undefined },
+    { id: 'recipients',   label: 'Recipient Intelligence' },
   ];
 
   return (
@@ -526,6 +529,12 @@ export function SmsRoutingPanel({
       {activeTab === 'health' && <HealthTab health={health} />}
       {activeTab === 'optimization' && (
         <OptimizationPanel quality={quality} optimization={optimization} />
+      )}
+      {activeTab === 'recipients' && recipientIntelligence && (
+        <RecipientIntelligencePanel {...recipientIntelligence} />
+      )}
+      {activeTab === 'recipients' && !recipientIntelligence && (
+        <div className="py-12 text-center text-sm text-slate-500">Recipient intelligence data unavailable.</div>
       )}
     </div>
   );
