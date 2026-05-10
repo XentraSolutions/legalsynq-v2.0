@@ -47,6 +47,11 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsGovernancePolicy>   SmsGovernancePolicies  => Set<SmsGovernancePolicy>();
     public DbSet<SmsGovernanceDecision> SmsGovernanceDecisions => Set<SmsGovernanceDecision>();
 
+    // LS-NOTIF-SMS-018: Template Governance
+    public DbSet<SmsTemplate>                   SmsTemplates                     => Set<SmsTemplate>();
+    public DbSet<SmsTemplateVersion>             SmsTemplateVersions              => Set<SmsTemplateVersion>();
+    public DbSet<SmsTemplateGovernanceDecision>  SmsTemplateGovernanceDecisions   => Set<SmsTemplateGovernanceDecision>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -85,5 +90,9 @@ public class NotificationsDbContext : DbContext
         // LS-NOTIF-SMS-017
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernancePolicyConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceDecisionConfiguration());
+        // LS-NOTIF-SMS-018
+        modelBuilder.ApplyConfiguration(new Configurations.SmsTemplateConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsTemplateVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsTemplateGovernanceDecisionConfiguration());
     }
 }

@@ -2104,6 +2104,218 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_SmsGovernanceDecisions", (string)null);
                 });
 
+            // LS-NOTIF-SMS-018: SmsTemplate
+            modelBuilder.Entity("Notifications.Domain.SmsTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("TemplateKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string?>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string?>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasDefaultValue("draft")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<int>("CurrentVersion")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<int?>("LatestApprovedVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ContentClassification")
+                        .IsRequired()
+                        .HasDefaultValue("transactional")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<bool>("RequiresApproval")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("Enabled")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string?>("CreatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string?>("UpdatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "TemplateKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ntf_SmsTemplates_Tenant_Key");
+
+                    b.HasIndex("Status", "Enabled")
+                        .HasDatabaseName("IX_ntf_SmsTemplates_Status_Enabled");
+
+                    b.HasIndex("ContentClassification")
+                        .HasDatabaseName("IX_ntf_SmsTemplates_Classification");
+
+                    b.ToTable("ntf_SmsTemplates", (string)null);
+                });
+
+            // LS-NOTIF-SMS-018: SmsTemplateVersion
+            modelBuilder.Entity("Notifications.Domain.SmsTemplateVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TemplateId")
+                        .IsRequired()
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasDefaultValue(1)
+                        .HasColumnType("int");
+
+                    b.Property<string>("TemplateBody")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string?>("VariableSchemaJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentClassification")
+                        .IsRequired()
+                        .HasDefaultValue("transactional")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("ApprovalStatus")
+                        .IsRequired()
+                        .HasDefaultValue("draft")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string?>("ApprovedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string?>("RejectionReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string?>("CreatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TemplateId", "VersionNumber")
+                        .HasDatabaseName("IX_ntf_SmsTemplateVersions_Template_Version");
+
+                    b.HasIndex("ApprovalStatus")
+                        .HasDatabaseName("IX_ntf_SmsTemplateVersions_ApprovalStatus");
+
+                    b.HasIndex("ApprovedAt")
+                        .HasDatabaseName("IX_ntf_SmsTemplateVersions_ApprovedAt");
+
+                    b.ToTable("ntf_SmsTemplateVersions", (string)null);
+                });
+
+            // LS-NOTIF-SMS-018: SmsTemplateGovernanceDecision
+            modelBuilder.Entity("Notifications.Domain.SmsTemplateGovernanceDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("NotificationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("AttemptId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TemplateId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TemplateVersionId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("DecisionType")
+                        .IsRequired()
+                        .HasDefaultValue("allow")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string?>("ContentClassification")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<bool>("VariableValidationPassed")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string?>("DecisionMetadataJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsTemplateGovDecisions_Tenant_Dt");
+
+                    b.HasIndex("DecisionType", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsTemplateGovDecisions_DecisionType_Dt");
+
+                    b.HasIndex("ReasonCode", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsTemplateGovDecisions_ReasonCode_Dt");
+
+                    b.HasIndex("TemplateId")
+                        .HasDatabaseName("IX_ntf_SmsTemplateGovDecisions_TemplateId");
+
+                    b.ToTable("ntf_SmsTemplateGovernanceDecisions", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }

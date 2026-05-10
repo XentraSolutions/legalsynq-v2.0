@@ -36,6 +36,8 @@ public class NotificationServiceImpl : INotificationService
     private readonly ISmsRetrySuppressionService? _retrySuppressionService;
     // LS-NOTIF-SMS-017: governance policy evaluation (optional — degrades to allow when null)
     private readonly ISmsGovernancePolicyService? _governanceService;
+    // LS-NOTIF-SMS-018: template governance — content classification, variable validation, compliance
+    private readonly ISmsTemplateGovernanceService? _templateGovernanceService;
     private readonly ILogger<NotificationServiceImpl> _logger;
 
     private static readonly JsonSerializerOptions _camelCaseOptions = new()
@@ -65,6 +67,7 @@ public class NotificationServiceImpl : INotificationService
         ISmsRoutingDecisionRepository routingDecisionRepo,
         ISmsRetrySuppressionService retrySuppressionService,
         ISmsGovernancePolicyService governanceService,
+        ISmsTemplateGovernanceService templateGovernanceService,
         ILogger<NotificationServiceImpl> logger)
     {
         _notificationRepo        = notificationRepo;
@@ -87,8 +90,9 @@ public class NotificationServiceImpl : INotificationService
         _smsRoutingEngine        = smsRoutingEngine;
         _routingDecisionRepo     = routingDecisionRepo;
         _retrySuppressionService = retrySuppressionService;
-        _governanceService       = governanceService;
-        _logger                  = logger;
+        _governanceService         = governanceService;
+        _templateGovernanceService = templateGovernanceService;
+        _logger                    = logger;
     }
 
     // ─── Submit ──────────────────────────────────────────────────────────────
@@ -982,6 +986,56 @@ public class NotificationServiceImpl : INotificationService
             }
         }
 
+        // LS-NOTIF-SMS-018: Template governance pre-send evaluation (SMS only).
+        // Runs after LS-017 governance, before body extraction and provider execution.
+        // Covers: template approval status, content classification, variable validation,
+        //         prohibited-content enforcement, length limits.
+        // Safe-degrades to allow on any error — never blocks delivery pipeline.
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) &&
+            _templateGovernanceService != null)
+        {
+            try
+            {
+                var tplResult = await _templateGovernanceService.EvaluateAsync(
+                    new SmsTemplateGovernanceRequest
+                    {
+                        TenantId       = tenantId,
+                        NotificationId = notification.Id,
+                        TemplateKey    = notification.TemplateKey,
+                        RenderedBody   = notification.RenderedBody,
+                        IsRetry        = false,
+                        RetryCount     = notification.RetryCount,
+                        NowUtc         = DateTime.UtcNow,
+                    }, CancellationToken.None);
+
+                if (tplResult.ShouldBlock)
+                {
+                    notification.Status           = "dead-letter";
+                    notification.FailureCategory  = $"template_governance_{tplResult.ReasonCode}";
+                    notification.LastErrorMessage = $"SMS template governance blocked delivery: {tplResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ExecuteSendLoopAsync: notification {Id} blocked by template governance ({Decision}/{Reason})",
+                        notification.Id, tplResult.DecisionType, tplResult.ReasonCode);
+                    return;
+                }
+                else if (tplResult.DecisionType == "warn")
+                {
+                    _logger.LogWarning(
+                        "ExecuteSendLoopAsync: template governance warn for notification {Id} ({Reason}) — proceeding",
+                        notification.Id, tplResult.ReasonCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never crash the delivery pipeline on template governance errors
+                _logger.LogWarning(ex,
+                    "ExecuteSendLoopAsync: template governance evaluation threw for {Id} — defaulting to allow",
+                    notification.Id);
+            }
+        }
+
         string? subject = notification.RenderedSubject;
         // RenderedBody holds the HTML template output; RenderedText is the plain-text
         // alternative.  Swap from the old assignment so SendGrid receives the content
@@ -1498,6 +1552,45 @@ public class NotificationServiceImpl : INotificationService
                 // Never crash the delivery pipeline on governance errors
                 _logger.LogWarning(ex,
                     "ProcessAutoRetryAsync: governance retry evaluation threw for {Id} — defaulting to allow",
+                    notificationId);
+            }
+        }
+
+        // LS-NOTIF-SMS-018: Template governance retry evaluation (SMS only).
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) &&
+            _templateGovernanceService != null)
+        {
+            try
+            {
+                var tplRetryResult = await _templateGovernanceService.EvaluateAsync(
+                    new SmsTemplateGovernanceRequest
+                    {
+                        TenantId       = tenantId,
+                        NotificationId = notification.Id,
+                        TemplateKey    = notification.TemplateKey,
+                        RenderedBody   = notification.RenderedBody,
+                        IsRetry        = true,
+                        RetryCount     = notification.RetryCount,
+                        NowUtc         = DateTime.UtcNow,
+                    }, CancellationToken.None);
+
+                if (tplRetryResult.ShouldBlock)
+                {
+                    notification.Status           = "dead-letter";
+                    notification.FailureCategory  = $"template_governance_{tplRetryResult.ReasonCode}";
+                    notification.LastErrorMessage = $"SMS template governance blocked retry: {tplRetryResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ProcessAutoRetryAsync: notification {Id} blocked by template governance ({Decision}/{Reason}) — not retrying",
+                        notificationId, tplRetryResult.DecisionType, tplRetryResult.ReasonCode);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "ProcessAutoRetryAsync: template governance retry evaluation threw for {Id} — defaulting to allow",
                     notificationId);
             }
         }

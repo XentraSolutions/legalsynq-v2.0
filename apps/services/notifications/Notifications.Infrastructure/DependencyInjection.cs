@@ -120,6 +120,11 @@ public static class DependencyInjection
         services.AddOptions<SmsGovernanceOptions>()
                 .Bind(configuration.GetSection(SmsGovernanceOptions.SectionName));
         services.AddScoped<ISmsGovernancePolicyService, SmsGovernancePolicyService>();
+
+        // LS-NOTIF-SMS-018: SMS Template Governance, Content Classification, Delivery Compliance
+        services.AddOptions<SmsTemplateGovernanceOptions>()
+                .Bind(configuration.GetSection(SmsTemplateGovernanceOptions.SectionName));
+        services.AddScoped<ISmsTemplateGovernanceService, SmsTemplateGovernanceService>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:
