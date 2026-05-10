@@ -115,6 +115,11 @@ public static class DependencyInjection
         services.AddScoped<ISmsRecipientIntelligenceService, SmsRecipientIntelligenceService>();
         services.AddScoped<ISmsRetrySuppressionService, SmsRetrySuppressionService>();
         services.AddHostedService<SmsRecipientIntelligenceWorker>();
+
+        // LS-NOTIF-SMS-017: SMS Governance Policies + Compliance Controls
+        services.AddOptions<SmsGovernanceOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceOptions.SectionName));
+        services.AddScoped<ISmsGovernancePolicyService, SmsGovernancePolicyService>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

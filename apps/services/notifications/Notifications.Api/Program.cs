@@ -252,6 +252,7 @@ app.MapSmsEscalationEndpoints();
 app.MapSmsRoutingEndpoints();
 app.MapSmsOptimizationEndpoints(); // LS-NOTIF-SMS-015
 app.MapSmsRecipientIntelligenceEndpoints(); // LS-NOTIF-SMS-016
+app.MapSmsGovernanceEndpoints(); // LS-NOTIF-SMS-017
 
 app.Run();
 

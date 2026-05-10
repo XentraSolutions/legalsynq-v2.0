@@ -1959,6 +1959,151 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_SmsSuppressionDecisions", (string)null);
                 });
 
+            // LS-NOTIF-SMS-017: Governance Policies + Decisions
+            modelBuilder.Entity("Notifications.Domain.SmsGovernancePolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("PolicyType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<bool>("Enabled")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("Priority")
+                        .HasDefaultValue(100)
+                        .HasColumnType("int");
+
+                    b.Property<string>("PolicyJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("EmergencyOverrideAllowed")
+                        .HasDefaultValue(false)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "PolicyType", "Enabled")
+                        .HasDatabaseName("IX_ntf_SmsGovPolicies_Tenant_Type_Enabled");
+
+                    b.HasIndex("PolicyType", "Enabled", "Priority")
+                        .HasDatabaseName("IX_ntf_SmsGovPolicies_Type_Enabled_Priority");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovPolicies_UpdatedAt");
+
+                    b.ToTable("ntf_SmsGovernancePolicies", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<Guid?>("NotificationId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<Guid?>("AttemptId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<Guid?>("PolicyId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<Guid?>("ProviderConfigId")
+                        .HasColumnType("char(36)")
+                        .HasAnnotation("Relational:Collation", "ascii_general_ci");
+
+                    b.Property<string>("PolicyType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("DecisionType")
+                        .IsRequired()
+                        .HasDefaultValue("allow")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
+                    b.Property<string>("ProviderType")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime?>("EffectiveAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DecisionMetadataJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovDecisions_Tenant_Dt");
+
+                    b.HasIndex("DecisionType", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovDecisions_DecisionType_Dt");
+
+                    b.HasIndex("PolicyType", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovDecisions_PolicyType_Dt");
+
+                    b.HasIndex("NotificationId")
+                        .HasDatabaseName("IX_ntf_SmsGovDecisions_NotifId");
+
+                    b.ToTable("ntf_SmsGovernanceDecisions", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }

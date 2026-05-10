@@ -43,6 +43,10 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsRecipientReputationSnapshot> SmsRecipientReputationSnapshots => Set<SmsRecipientReputationSnapshot>();
     public DbSet<SmsSuppressionDecision> SmsSuppressionDecisions => Set<SmsSuppressionDecision>();
 
+    // LS-NOTIF-SMS-017: Governance Policies + Decisions
+    public DbSet<SmsGovernancePolicy>   SmsGovernancePolicies  => Set<SmsGovernancePolicy>();
+    public DbSet<SmsGovernanceDecision> SmsGovernanceDecisions => Set<SmsGovernanceDecision>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -78,5 +82,8 @@ public class NotificationsDbContext : DbContext
         // LS-NOTIF-SMS-016
         modelBuilder.ApplyConfiguration(new Configurations.SmsRecipientReputationSnapshotConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsSuppressionDecisionConfiguration());
+        // LS-NOTIF-SMS-017
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernancePolicyConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceDecisionConfiguration());
     }
 }
