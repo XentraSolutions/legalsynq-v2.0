@@ -133,17 +133,26 @@ export function TestMessageForm({ providers }: Props) {
       {/* Recipient */}
       <div>
         <label htmlFor="recipient" className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-          {channel === 'email' ? 'Recipient Email' : 'Recipient Phone'}
+          {channel === 'email' ? 'Recipient Email' : 'Recipient Phone (E.164 format)'}
         </label>
         <input
           id="recipient"
           type={channel === 'email' ? 'email' : 'tel'}
           value={recipient}
           onChange={e => { setRecipient(e.target.value); setResult(null); }}
-          placeholder={channel === 'email' ? 'admin@example.com' : '+1 555 000 0000'}
+          placeholder={channel === 'email' ? 'admin@example.com' : '+15550000000'}
           required
           className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none"
         />
+        {channel === 'sms' && (
+          <p className="mt-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mt-1.5">
+            <strong>Twilio trial accounts</strong> can only deliver to phone numbers verified in your{' '}
+            <a href="https://console.twilio.com" target="_blank" rel="noreferrer" className="underline">
+              Twilio console
+            </a>
+            . Use E.164 format: <code className="font-mono">+15550000000</code>
+          </p>
+        )}
       </div>
 
       {/* Subject (email only) */}

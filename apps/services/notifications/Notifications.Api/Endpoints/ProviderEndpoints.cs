@@ -217,9 +217,10 @@ public static class ProviderEndpoints
                 {
                     data = new
                     {
-                        success = result.Success,
-                        message = result.Success
-                            ? $"Test SMS sent to {toPhone}."
+                        success           = result.Success,
+                        providerMessageId = result.ProviderMessageId,
+                        message           = result.Success
+                            ? $"Test SMS accepted by Twilio (SID: {result.ProviderMessageId}). If not received, check your Twilio console for delivery status — trial accounts can only send to verified numbers."
                             : result.Failure?.Message ?? "Send failed.",
                     }
                 });
