@@ -198,7 +198,7 @@ public static class SmsOptimizationEndpoints
                 ProviderType            = s.ProviderType,
                 QualityScore            = s.QualityScore,
                 CostEfficiencyScore     = s.CostEfficiencyScore,
-                DeliverySuccessRate     = 0m, // scores don't include rate breakdown — from snapshot
+                DeliverySuccessRate     = s.DeliverySuccessRate,
                 AverageLatencyMs        = s.AverageLatencyMs,
                 CostPerDeliveredMessage = null,
                 TotalAttempts           = s.TotalAttempts,

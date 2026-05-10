@@ -298,6 +298,7 @@ public class SmsProviderQualityService : ISmsProviderQualityService
             QualityScore         = snap.QualityScore,
             CostEfficiencyScore  = snap.CostEfficiencyScore,
             AverageLatencyMs     = snap.AverageLatencyMs,
+            DeliverySuccessRate  = snap.DeliverySuccessRate,
             TotalAttempts        = snap.TotalAttempts,
             HasSufficientData    = snap.TotalAttempts >= _opts.MinimumAttemptCount,
             CalculatedAt         = snap.CalculatedAt,

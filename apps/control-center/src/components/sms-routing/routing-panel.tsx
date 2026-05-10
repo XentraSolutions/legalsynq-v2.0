@@ -20,15 +20,21 @@ import {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const ROUTING_MODES = ['priority', 'cost_optimized', 'health_optimized', 'hybrid', 'regional'] as const;
+const ROUTING_MODES = [
+  'priority', 'cost_optimized', 'health_optimized', 'hybrid', 'regional',
+  'adaptive_quality', 'adaptive_balanced', 'adaptive_regional',
+] as const;
 type RoutingMode = typeof ROUTING_MODES[number];
 
 const MODE_LABELS: Record<string, string> = {
-  priority:         'Priority',
-  cost_optimized:   'Cost Optimised',
-  health_optimized: 'Health Optimised',
-  hybrid:           'Hybrid',
-  regional:         'Regional',
+  priority:           'Priority',
+  cost_optimized:     'Cost Optimised',
+  health_optimized:   'Health Optimised',
+  hybrid:             'Hybrid',
+  regional:           'Regional',
+  adaptive_quality:   'Adaptive Quality',
+  adaptive_balanced:  'Adaptive Balanced',
+  adaptive_regional:  'Adaptive Regional',
 };
 
 const HEALTH_COLORS: Record<string, string> = {

@@ -11,6 +11,8 @@ public sealed class ProviderQualityScore
     public decimal QualityScore          { get; set; }
     public decimal? CostEfficiencyScore  { get; set; }
     public decimal? AverageLatencyMs     { get; set; }
+    /// <summary>Delivery success rate (0-1) from the underlying snapshot. Zero when no snapshot available.</summary>
+    public decimal DeliverySuccessRate   { get; set; }
     public int     TotalAttempts         { get; set; }
     public bool    HasSufficientData     { get; set; }
     public DateTime? CalculatedAt        { get; set; }
