@@ -138,11 +138,14 @@ public static class ProviderEndpoints
         // ── Provider test ──────────────────────────────────────────────────────────
         // Sends a real message through the specified provider config so platform
         // admins can verify end-to-end outbound delivery.
+        // For SMS: builds a fresh TwilioAdapter from the config's stored credentials
+        // (CredentialsJson / SettingsJson) so the test uses the actual saved keys,
+        // not whatever the globally-registered adapter was initialised with.
         group.MapPost("/configs/{id:guid}/test", async (
             HttpContext context,
             ITenantProviderConfigRepository repo,
             IEmailProviderAdapter emailAdapter,
-            ISmsProviderAdapter smsAdapter,
+            ITwilioAdapterFactory twilioAdapterFactory,
             Guid id,
             TestProviderRequest? request) =>
         {
@@ -152,7 +155,7 @@ public static class ProviderEndpoints
             if (config == null) return Results.NotFound(new { error = "Provider config not found." });
 
             // Allow access: must be the caller's own tenant config OR a platform config.
-            var isPlatform = config.TenantId == PlatformProvider.PlatformTenantId;
+            var isPlatform  = config.TenantId == PlatformProvider.PlatformTenantId;
             var isOwnTenant = tenantId.HasValue && config.TenantId == tenantId.Value;
             if (!isPlatform && !isOwnTenant)
                 return Results.Forbid();
@@ -188,6 +191,21 @@ public static class ProviderEndpoints
                 var toPhone = request?.ToPhone;
                 if (string.IsNullOrWhiteSpace(toPhone))
                     return Results.BadRequest(new { error = "toPhone is required for SMS provider test." });
+
+                // Build an adapter directly from the stored credentials so the test
+                // exercises the exact config the user saved — not the global default.
+                ISmsProviderAdapter smsAdapter;
+                try
+                {
+                    smsAdapter = twilioAdapterFactory.CreateFromConfig(config);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.Ok(new
+                    {
+                        data = new { success = false, message = $"Provider config error: {ex.Message}" }
+                    });
+                }
 
                 var result = await smsAdapter.SendAsync(new SmsSendPayload
                 {
