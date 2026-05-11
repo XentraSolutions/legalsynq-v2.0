@@ -52,6 +52,12 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsTemplateVersion>             SmsTemplateVersions              => Set<SmsTemplateVersion>();
     public DbSet<SmsTemplateGovernanceDecision>  SmsTemplateGovernanceDecisions   => Set<SmsTemplateGovernanceDecision>();
 
+    // LS-NOTIF-SMS-019: Dynamic Governance Rule Packs, Rules, Compliance Profiles
+    public DbSet<SmsGovernanceRulePack>                SmsGovernanceRulePacks             => Set<SmsGovernanceRulePack>();
+    public DbSet<SmsGovernanceRule>                    SmsGovernanceRules                 => Set<SmsGovernanceRule>();
+    public DbSet<SmsComplianceProfile>                 SmsComplianceProfiles              => Set<SmsComplianceProfile>();
+    public DbSet<SmsComplianceProfileAssignment>       SmsComplianceProfileAssignments    => Set<SmsComplianceProfileAssignment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -94,5 +100,10 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.SmsTemplateConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsTemplateVersionConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsTemplateGovernanceDecisionConfiguration());
+        // LS-NOTIF-SMS-019
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRulePackConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRuleConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsComplianceProfileConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsComplianceProfileAssignmentConfiguration());
     }
 }

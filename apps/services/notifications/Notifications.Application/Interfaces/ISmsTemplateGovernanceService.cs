@@ -43,6 +43,18 @@ public sealed class SmsTemplateGovernanceRequest
     public bool     IsRetry                    { get; set; }
     public int      RetryCount                 { get; set; }
     public DateTime NowUtc                     { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Original template body (with {{tokens}}), if available.
+    /// Used by LS-019 dynamic variable_rule evaluation.
+    /// </summary>
+    public string?  TemplateBody               { get; set; }
+
+    /// <summary>
+    /// When true, governance decisions are not persisted to the DB.
+    /// Used by simulation/dry-run requests only.
+    /// </summary>
+    public bool     IsDryRun                   { get; set; }
 }
 
 /// <summary>

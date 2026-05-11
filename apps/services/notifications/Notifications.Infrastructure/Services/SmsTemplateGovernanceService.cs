@@ -32,6 +32,9 @@ public sealed partial class SmsTemplateGovernanceService : ISmsTemplateGovernanc
     private readonly SmsTemplateGovernanceOptions       _options;
     private readonly ILogger<SmsTemplateGovernanceService> _logger;
 
+    /// <summary>LS-019: Optional dynamic rule engine — null when not registered.</summary>
+    private readonly ISmsGovernanceRuleEngine?          _ruleEngine;
+
     private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     // Regex: detect unresolved {{token}} patterns
@@ -98,11 +101,13 @@ public sealed partial class SmsTemplateGovernanceService : ISmsTemplateGovernanc
     public SmsTemplateGovernanceService(
         NotificationsDbContext                  db,
         IOptions<SmsTemplateGovernanceOptions>  options,
-        ILogger<SmsTemplateGovernanceService>   logger)
+        ILogger<SmsTemplateGovernanceService>   logger,
+        ISmsGovernanceRuleEngine?               ruleEngine = null)
     {
-        _db      = db;
-        _options = options.Value;
-        _logger  = logger;
+        _db         = db;
+        _options    = options.Value;
+        _logger     = logger;
+        _ruleEngine = ruleEngine;
     }
 
     // ─── Primary evaluation entry point ──────────────────────────────────────
@@ -255,6 +260,77 @@ public sealed partial class SmsTemplateGovernanceService : ISmsTemplateGovernanc
                     VariableValidationPassed = true,
                     RenderedBody = renderedBody,
                 };
+            }
+
+            // Step 7: LS-019 dynamic rule engine evaluation (augments LS-018; never replaces)
+            if (_ruleEngine != null)
+            {
+                try
+                {
+                    var dynReq = new SmsGovernanceRuleEvaluationRequest
+                    {
+                        TenantId             = request.TenantId == Guid.Empty ? null : request.TenantId,
+                        NotificationId       = request.NotificationId,
+                        TemplateId           = template?.Id,
+                        TemplateVersionId    = approvedVersion?.Id,
+                        RenderedBody         = renderedBody,
+                        TemplateBody         = request.TemplateBody,
+                        Variables            = request.VariablesUsed,
+                        ContentClassification = classification,
+                        Context              = "content",
+                        IsDryRun             = request.IsDryRun,
+                        NowUtc               = request.NowUtc,
+                    };
+
+                    var dynResult = await _ruleEngine.EvaluateContentAsync(dynReq, ct);
+
+                    // Update effective classification if dynamic engine overrode it
+                    if (!string.IsNullOrEmpty(dynResult.EffectiveClassification))
+                        classification = dynResult.EffectiveClassification;
+
+                    if (dynResult.ShouldBlock)
+                    {
+                        if (!request.IsDryRun)
+                        {
+                            await PersistDecision(request, dynResult.DecisionType, dynResult.ReasonCode,
+                                templateId: template?.Id, templateVersionId: approvedVersion?.Id,
+                                classification: classification, variableValidationPassed: true,
+                                metadata: new
+                                {
+                                    source            = "dynamic_rule_engine",
+                                    matchedRulesCount = dynResult.MatchedRules.Count,
+                                    enforcementMode   = dynResult.EnforcementMode,
+                                });
+                        }
+
+                        return new SmsTemplateGovernanceResult
+                        {
+                            DecisionType             = dynResult.DecisionType,
+                            ReasonCode               = dynResult.ReasonCode,
+                            ShouldProceed            = false,
+                            ShouldBlock              = true,
+                            TemplateId               = template?.Id,
+                            TemplateVersionId        = approvedVersion?.Id,
+                            Classification           = classification,
+                            VariableValidationPassed = true,
+                            RenderedBody             = renderedBody,
+                        };
+                    }
+
+                    if (dynResult.DecisionType == "warn" && dynResult.MatchedRules.Count > 0)
+                    {
+                        _logger.LogInformation(
+                            "SmsTemplateGovernance: dynamic rule warn for template '{Key}' — {Count} rule(s) matched, allowing",
+                            request.TemplateKey, dynResult.MatchedRules.Count);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "SmsTemplateGovernanceService: LS-019 dynamic rule engine threw for template '{Key}' — failing open",
+                        request.TemplateKey);
+                    // Fail open: dynamic rule errors never block delivery
+                }
             }
 
             // All checks passed — allow

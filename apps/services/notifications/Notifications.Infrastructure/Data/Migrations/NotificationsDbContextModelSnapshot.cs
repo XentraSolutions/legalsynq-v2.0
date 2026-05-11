@@ -2316,6 +2316,250 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_SmsTemplateGovernanceDecisions", (string)null);
                 });
 
+            // LS-NOTIF-SMS-019: SmsGovernanceRulePack
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceRulePack", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string?>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<int>("Version")
+                        .HasDefaultValue(1)
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasDefaultValue("draft")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<bool>("Enabled")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("InheritanceMode")
+                        .IsRequired()
+                        .HasDefaultValue("merge")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<int>("Priority")
+                        .HasDefaultValue(100)
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EffectiveFrom")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string?>("CreatedBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string?>("UpdatedBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Status", "Enabled")
+                        .HasDatabaseName("IX_ntf_SmsGovernanceRulePacks_Tenant_Status");
+
+                    b.HasIndex("Status", "Enabled", "Priority")
+                        .HasDatabaseName("IX_ntf_SmsGovernanceRulePacks_Status_Priority");
+
+                    b.ToTable("ntf_SmsGovernanceRulePacks", (string)null);
+                });
+
+            // LS-NOTIF-SMS-019: SmsGovernanceRule
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("RulePackId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string?>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("RuleType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string?>("Pattern")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasDefaultValue("block")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<bool>("Enabled")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("Priority")
+                        .HasDefaultValue(100)
+                        .HasColumnType("int");
+
+                    b.Property<string?>("MetadataJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string?>("CreatedBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string?>("UpdatedBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RulePackId", "Enabled", "Priority")
+                        .HasDatabaseName("IX_ntf_SmsGovernanceRules_Pack_Priority");
+
+                    b.HasIndex("RuleType", "Enabled")
+                        .HasDatabaseName("IX_ntf_SmsGovernanceRules_RuleType");
+
+                    b.HasIndex("Severity", "Enabled")
+                        .HasDatabaseName("IX_ntf_SmsGovernanceRules_Severity");
+
+                    b.ToTable("ntf_SmsGovernanceRules", (string)null);
+                });
+
+            // LS-NOTIF-SMS-019: SmsComplianceProfile
+            modelBuilder.Entity("Notifications.Domain.SmsComplianceProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string?>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<bool>("Enabled")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string?>("DefaultRulePackIdsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EnforcementMode")
+                        .IsRequired()
+                        .HasDefaultValue("standard")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string?>("CreatedBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string?>("UpdatedBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Enabled")
+                        .HasDatabaseName("IX_ntf_SmsComplianceProfiles_Tenant");
+
+                    b.HasIndex("Enabled", "EnforcementMode")
+                        .HasDatabaseName("IX_ntf_SmsComplianceProfiles_Mode");
+
+                    b.ToTable("ntf_SmsComplianceProfiles", (string)null);
+                });
+
+            // LS-NOTIF-SMS-019: SmsComplianceProfileAssignment
+            modelBuilder.Entity("Notifications.Domain.SmsComplianceProfileAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasDefaultValue("tenant")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<bool>("Enabled")
+                        .HasDefaultValue(true)
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Enabled")
+                        .HasDatabaseName("IX_ntf_SmsComplianceProfileAssignments_Tenant");
+
+                    b.HasIndex("ProfileId", "Enabled")
+                        .HasDatabaseName("IX_ntf_SmsComplianceProfileAssignments_Profile");
+
+                    b.HasIndex("TenantId", "ProfileId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ntf_SmsComplianceProfileAssignments_Uniq");
+
+                    b.ToTable("ntf_SmsComplianceProfileAssignments", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }

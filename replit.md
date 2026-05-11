@@ -5996,3 +5996,41 @@ Full audit pipeline is now active for all support operations on both tenant port
 - `Support.Api/appsettings.Development.json` — added `Support.Audit` section with `Mode=Http`, `Enabled=true`.
 - `Support.Api/Program.cs` — startup log emits audit mode, added `using Microsoft.Extensions.Options`.
 - `scripts/run-prod.sh` — `Support__Audit__Mode=Http` + `Support__Audit__Enabled=true` added to Support.Api launch.
+
+## LS-NOTIF-SMS-019 — Tenant Custom Governance Rules, Dynamic Policy Packs, and Compliance Rule Management (2026-05-11)
+
+Extends LS-017/018 with runtime-configurable governance. Dynamic rules are evaluated after LS-018 static checks; final decision = stricter of (static, dynamic). Zero dynamic rules → behavior identical to LS-018 only. Fail-open on all evaluation errors.
+
+### Domain (4 new entities)
+- `SmsGovernanceRulePack` — versioned tenant/global rule pack (status: draft/active/inactive/archived; inheritanceMode: merge/override/append_only; priority + effective date window)
+- `SmsGovernanceRule` — individual rule within a pack (7 types: prohibited_phrase, restricted_pattern, classification_override, variable_rule, link_rule, delivery_restriction, escalation_rule; 5 severities: allow/warn/override_allowed/review_required/block)
+- `SmsComplianceProfile` — enforcement profile (enforcementMode: permissive/standard/strict; alters block↔review_required thresholds)
+- `SmsComplianceProfileAssignment` — binds a profile to a tenant (scope: tenant/provider/template_category/escalation)
+
+### Application Interfaces
+- `ISmsGovernanceRuleResolver` — resolves active packs for a tenant with inheritance, returns `SmsGovernanceRuleResolution`
+- `ISmsGovernanceRuleEngine` — evaluates resolved rules against SMS content; request/result types carry `IsDryRun` flag
+- `ISmsGovernanceSimulationService` — dry-run simulation combining LS-018 static + LS-019 dynamic; never sends SMS, never persists live decisions
+
+### Infrastructure Services
+- `SmsGovernanceRuleResolver` — loads global + tenant packs, applies merge/override/append_only inheritance, resolves compliance profile enforcement mode
+- `SmsGovernanceRuleEngine` (`sealed partial` for `[GeneratedRegex]`) — 7 rule type evaluators; catastrophic-backtracking regex check; 200ms per-rule regex timeout; ReDoS-safe phrase matching via char scan; link domain allowlist/blocklist; delivery time-of-day restriction; enforcement mode adjustment (permissive: block→review_required, strict: review_required→block)
+- `SmsGovernanceSimulationService` — calls LS-018 `EvaluateAsync(IsDryRun=true)` + LS-019 rule engine; returns `SmsGovernanceSimulationResponse` with full decision trace
+- `SmsTemplateGovernanceService` — +Step 7: nullable `ISmsGovernanceRuleEngine?` constructor param; dynamic block persisted only if `!IsDryRun`; classification override side-effect propagated to final result
+
+### API Endpoints (14, all PlatformAdmin)
+`/v1/admin/sms/governance/`: GET/POST/PUT/disable rule-packs; GET/POST/PUT/disable rules; GET/POST/PUT profiles; POST profiles/{id}/assignments; POST simulate; GET rule-analytics
+
+### Migration
+`20260512000004_AddSmsGovernanceDynamicRules` — tables: `ntf_SmsGovernanceRulePacks`, `ntf_SmsGovernanceRules`, `ntf_SmsComplianceProfiles`, `ntf_SmsComplianceProfileAssignments`
+
+### Config
+`SmsGovernanceDynamic`: Enabled, FailOpenOnEvaluationError, MaxPatternLength(500), RegexTimeoutMs(200), MaxRulesPerEvaluation(200), PersistAllowDecisions, AllowRegexRules
+
+### Control Center
+- `apps/control-center/src/lib/sms-dynamic-rules-api.ts` — typed API client (rule packs, rules, profiles, simulate, analytics)
+- `apps/control-center/src/components/sms-dynamic-rules/dynamic-rules-panel.tsx` — tabbed panel (Rule Packs, Rules, Compliance Profiles, Simulation, Analytics)
+- `apps/control-center/src/app/notifications/sms-dynamic-rules/page.tsx` — server component page, graceful degradation
+
+### Analysis
+`analysis/LS-NOTIF-SMS-019-report.md`
