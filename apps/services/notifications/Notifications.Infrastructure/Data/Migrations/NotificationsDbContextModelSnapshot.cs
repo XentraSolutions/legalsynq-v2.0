@@ -2560,6 +2560,197 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_SmsComplianceProfileAssignments", (string)null);
                 });
 
+            // LS-NOTIF-SMS-020: SmsGovernanceRuleVersion
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceRuleVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("RuleId")
+                        .IsRequired()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("RulePackId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuleSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("mediumtext");
+
+                    b.Property<string>("ChangeType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("ChangeReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RuleId", "VersionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ntf_SmsGovRuleVersions_Rule_Version");
+
+                    b.HasIndex("RulePackId", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovRuleVersions_Pack_CreatedAt");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovRuleVersions_CreatedAt");
+
+                    b.ToTable("ntf_SmsGovernanceRuleVersions", (string)null);
+                });
+
+            // LS-NOTIF-SMS-020: SmsGovernanceRulePackVersion
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceRulePackVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("RulePackId")
+                        .IsRequired()
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PackSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("mediumtext");
+
+                    b.Property<string>("IncludedRulesSnapshotJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ChangeType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("ChangeReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RulePackId", "VersionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ntf_SmsGovPackVersions_Pack_Version");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovPackVersions_CreatedAt");
+
+                    b.ToTable("ntf_SmsGovernanceRulePackVersions", (string)null);
+                });
+
+            // LS-NOTIF-SMS-020: SmsGovernanceRuleMatchMetric
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceRuleMatchMetric", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("RuleId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("RulePackId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("RuleType")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("Severity")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("DecisionType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int>("MatchCount")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<int>("BlockCount")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<int>("WarnCount")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReviewCount")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<int>("AllowCount")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<int>("SimulationCount")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<int>("LiveCount")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("WindowStart")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("WindowEnd")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("LastMatchedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RuleId", "TenantId", "WindowStart")
+                        .HasDatabaseName("IX_ntf_SmsGovMatchMetrics_Rule_Tenant_Window");
+
+                    b.HasIndex("RulePackId", "WindowStart")
+                        .HasDatabaseName("IX_ntf_SmsGovMatchMetrics_Pack_Window");
+
+                    b.HasIndex("TenantId", "WindowStart")
+                        .HasDatabaseName("IX_ntf_SmsGovMatchMetrics_Tenant_Window");
+
+                    b.HasIndex("WindowStart")
+                        .HasDatabaseName("IX_ntf_SmsGovMatchMetrics_WindowStart");
+
+                    b.ToTable("ntf_SmsGovernanceRuleMatchMetrics", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }

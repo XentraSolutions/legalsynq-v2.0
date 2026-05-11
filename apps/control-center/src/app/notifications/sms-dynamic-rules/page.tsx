@@ -1,6 +1,7 @@
-import { cookies }             from 'next/headers';
-import { requirePlatformAdmin } from '@/lib/auth-guards';
-import { DynamicRulesPanel }    from '@/components/sms-dynamic-rules/dynamic-rules-panel';
+import { cookies }                  from 'next/headers';
+import { requirePlatformAdmin }     from '@/lib/auth-guards';
+import { DynamicRulesPanel }        from '@/components/sms-dynamic-rules/dynamic-rules-panel';
+import { GovernanceLifecyclePanel } from '@/components/sms-dynamic-rules/governance-lifecycle-panel';
 import type {
   GovernanceRulePack,
   GovernanceRule,
@@ -27,8 +28,17 @@ const EMPTY_PAGE = <T,>(): PaginatedResult<T> => ({
   total: 0, page: 1, pageSize: 50, items: [],
 });
 
-export default async function SmsDynamicRulesPage() {
+type PageTab = 'governance' | 'lifecycle';
+
+export default async function SmsDynamicRulesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string }>;
+}) {
   await requirePlatformAdmin();
+
+  const sp  = await (searchParams ?? Promise.resolve({}));
+  const tab = (sp.tab === 'lifecycle' ? 'lifecycle' : 'governance') as PageTab;
 
   const cookieStore = await cookies();
   const token       = cookieStore.get('platform_session')?.value ?? '';
@@ -61,12 +71,54 @@ export default async function SmsDynamicRulesPage() {
         </div>
       )}
 
-      <DynamicRulesPanel
-        packs={packs.status === 'fulfilled'     ? packs.value     : EMPTY_PAGE<GovernanceRulePack>()}
-        rules={rules.status === 'fulfilled'     ? rules.value     : EMPTY_PAGE<GovernanceRule>()}
-        profiles={profiles.status === 'fulfilled' ? profiles.value : EMPTY_PAGE<ComplianceProfile>()}
-        analytics={analytics.status === 'fulfilled' ? analytics.value : null}
-      />
+      {/* Page-level tab bar — Governance (LS-019) vs Lifecycle (LS-020) */}
+      <div className="border-b border-slate-200">
+        <nav className="flex gap-1">
+          {([
+            { id: 'governance', label: 'Rule Management',        badge: null },
+            { id: 'lifecycle',  label: 'Lifecycle & Analytics',  badge: 'NEW' },
+          ] as const).map(t => (
+            <a
+              key={t.id}
+              href={t.id === 'governance' ? '?' : '?tab=lifecycle'}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                tab === t.id
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.label}
+              {t.badge && (
+                <span className="text-xs bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5 font-semibold">
+                  {t.badge}
+                </span>
+              )}
+            </a>
+          ))}
+        </nav>
+      </div>
+
+      {tab === 'governance' && (
+        <DynamicRulesPanel
+          packs={packs.status === 'fulfilled'       ? packs.value       : EMPTY_PAGE<GovernanceRulePack>()}
+          rules={rules.status === 'fulfilled'       ? rules.value       : EMPTY_PAGE<GovernanceRule>()}
+          profiles={profiles.status === 'fulfilled' ? profiles.value    : EMPTY_PAGE<ComplianceProfile>()}
+          analytics={analytics.status === 'fulfilled' ? analytics.value : null}
+        />
+      )}
+
+      {tab === 'lifecycle' && (
+        <div className="space-y-4">
+          <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3">
+            <p className="text-sm text-indigo-800">
+              <strong>LS-NOTIF-SMS-020</strong> — Governance Versioning, Bulk Import, and Effectiveness Analytics.
+              Version history is immutable. Rollback creates a new snapshot and never deletes prior versions.
+              Analytics contain no message content or phone numbers — only aggregate match counts.
+            </p>
+          </div>
+          <GovernanceLifecyclePanel />
+        </div>
+      )}
     </div>
   );
 }

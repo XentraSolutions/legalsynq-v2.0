@@ -46,7 +46,7 @@ public sealed class SmsGovernanceSimulationService : ISmsGovernanceSimulationSer
         {
             var staticReq = new SmsTemplateGovernanceRequest
             {
-                TenantId       = request.TenantId,
+                TenantId       = request.TenantId ?? Guid.Empty,
                 TemplateKey    = request.TemplateKey,
                 RenderedBody   = request.RenderedBody,
                 InlineBody     = request.RenderedBody,

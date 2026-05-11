@@ -58,6 +58,11 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsComplianceProfile>                 SmsComplianceProfiles              => Set<SmsComplianceProfile>();
     public DbSet<SmsComplianceProfileAssignment>       SmsComplianceProfileAssignments    => Set<SmsComplianceProfileAssignment>();
 
+    // LS-NOTIF-SMS-020: Governance Versioning, Import, Analytics
+    public DbSet<SmsGovernanceRuleVersion>             SmsGovernanceRuleVersions          => Set<SmsGovernanceRuleVersion>();
+    public DbSet<SmsGovernanceRulePackVersion>         SmsGovernanceRulePackVersions      => Set<SmsGovernanceRulePackVersion>();
+    public DbSet<SmsGovernanceRuleMatchMetric>         SmsGovernanceRuleMatchMetrics      => Set<SmsGovernanceRuleMatchMetric>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -105,5 +110,9 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRuleConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsComplianceProfileConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsComplianceProfileAssignmentConfiguration());
+        // LS-NOTIF-SMS-020
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRuleVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRulePackVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRuleMatchMetricConfiguration());
     }
 }

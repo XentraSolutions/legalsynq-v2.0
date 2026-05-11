@@ -132,6 +132,21 @@ public static class DependencyInjection
         services.AddScoped<ISmsGovernanceRuleResolver, SmsGovernanceRuleResolver>();
         services.AddScoped<ISmsGovernanceRuleEngine, SmsGovernanceRuleEngine>();
         services.AddScoped<ISmsGovernanceSimulationService, SmsGovernanceSimulationService>();
+
+        // LS-NOTIF-SMS-020: Governance Versioning, Bulk Import, Analytics
+        services.AddOptions<SmsGovernanceVersioningOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceVersioningOptions.SectionName));
+        services.AddOptions<SmsGovernanceAnalyticsOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceAnalyticsOptions.SectionName));
+        services.AddScoped<ISmsGovernanceVersioningService, SmsGovernanceVersioningService>();
+        services.AddScoped<ISmsGovernanceImportService, SmsGovernanceImportService>();
+        // Analytics service implements both ISmsGovernanceAnalyticsService and ISmsGovernanceMatchRecorder;
+        // register as scoped and resolve both interfaces from the same instance per request.
+        services.AddScoped<SmsGovernanceAnalyticsService>();
+        services.AddScoped<ISmsGovernanceAnalyticsService>(sp =>
+            sp.GetRequiredService<SmsGovernanceAnalyticsService>());
+        services.AddScoped<ISmsGovernanceMatchRecorder>(sp =>
+            sp.GetRequiredService<SmsGovernanceAnalyticsService>());
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

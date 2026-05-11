@@ -6034,3 +6034,49 @@ Extends LS-017/018 with runtime-configurable governance. Dynamic rules are evalu
 
 ### Analysis
 `analysis/LS-NOTIF-SMS-019-report.md`
+
+## LS-NOTIF-SMS-020 — Governance Versioning, Bulk Rule Import, and Rule Effectiveness Analytics (2026-05-12)
+
+Extends LS-019 with immutable version snapshots, rollback, all-or-nothing bulk JSON import/export, rule match instrumentation, and effectiveness analytics. No delivery pipeline changes — analytics are fire-and-forget.
+
+### Domain (3 new entities)
+- `SmsGovernanceRuleVersion` — immutable snapshot per rule mutation (changeType: created/updated/disabled/rollback/imported; JSON snapshot + sequential versionNumber per rule)
+- `SmsGovernanceRulePackVersion` — immutable snapshot per rule pack mutation; optional embedded rule snapshots
+- `SmsGovernanceRuleMatchMetric` — daily bucket aggregate match metrics per rule (block/warn/review/allow counts, live vs simulation counts, per-window unique constraint)
+
+### Application Interfaces
+- `ISmsGovernanceVersioningService` — snapshot + rollback for rules and packs; GetVersions / RollbackRule / RollbackRulePack
+- `ISmsGovernanceImportService` — ValidateImport (dry-run, no writes) / Import (transactional) / Export
+- `ISmsGovernanceAnalyticsService` — GetRuleEffectiveness, GetMatchAnalytics, GetFalsePositiveCandidates, GetPackEffectiveness
+- `ISmsGovernanceMatchRecorder` — fire-and-forget match recorder (RecordMatches, nullable injection, exceptions swallowed)
+
+### Infrastructure Services
+- `SmsGovernanceVersioningService` — append-only snapshots; rollback restores safe fields only; next versionNumber = MAX+1
+- `SmsGovernanceImportService` — validates all bundles before any DB writes; single transaction; regex safety check on import; records "imported" version snapshots
+- `SmsGovernanceAnalyticsService` — implements both analytics + match recorder from same scoped instance; daily bucket upsert via `ON DUPLICATE KEY UPDATE`; 3-heuristic FP detection
+- `SmsGovernanceRuleEngine` — patched with nullable `ISmsGovernanceMatchRecorder?`; fire-and-forget recording after evaluation; no delivery-pipeline risk
+
+### API Endpoints (11 new, all PlatformAdmin)
+`/v1/admin/sms/governance/`: GET rules/{id}/versions; POST rules/{id}/rollback; GET rule-packs/{id}/versions; POST rule-packs/{id}/rollback; POST import/validate; POST import; GET export; GET effectiveness; GET match-analytics; GET false-positive-candidates; GET pack-effectiveness
+
+### LS-019 Mutation Patches
+All 6 LS-019 create/update/disable mutation endpoints patched to call `ISmsGovernanceVersioningService` after each save.
+
+### Migration
+`20260512000005_AddSmsGovernanceVersioningAndAnalytics` — tables: `ntf_SmsGovernanceRuleVersions`, `ntf_SmsGovernanceRulePackVersions`, `ntf_SmsGovernanceRuleMatchMetrics`
+
+### Config
+`SmsGovernanceVersioning`: Enabled, IncludeRulesInPackSnapshot, MaxSnapshotJsonBytes(65536)  
+`SmsGovernanceAnalytics`: Enabled, WindowDays(30), MaxResultRows(200), FalsePositiveWarnThreshold(10), FalsePositiveLiveToSimRatio(0.1)
+
+### Control Center
+- `apps/control-center/src/lib/sms-governance-lifecycle-api.ts` — TypeScript API client for all LS-020 endpoints
+- `apps/control-center/src/components/sms-dynamic-rules/governance-lifecycle-panel.tsx` — 3-sub-tab lifecycle panel (Version History + Rollback, Import/Export, Effectiveness Analytics)
+- `apps/control-center/src/app/notifications/sms-dynamic-rules/page.tsx` — page-level "Lifecycle & Analytics" tab (`?tab=lifecycle`) alongside existing Rule Management tab
+
+### Bug Fixes
+- `SmsGovernanceSimulationService.cs:49` — `Guid?` → `Guid` implicit cast fixed (`?? Guid.Empty`)
+- `SmsGovernanceEndpoints.cs` + `SmsTemplateGovernanceEndpoints.cs` — missing `using BuildingBlocks.Authorization` added (resolved pre-existing `Policies` build errors)
+
+### Analysis
+`analysis/LS-NOTIF-SMS-020-report.md`

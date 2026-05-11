@@ -108,7 +108,8 @@ public static class SmsGovernanceDynamicRuleEndpoints
 
         group.MapPost("/rule-packs", async (
             CreateRulePackRequest req,
-            NotificationsDbContext db) =>
+            NotificationsDbContext db,
+            ISmsGovernanceVersioningService vs) =>
         {
             if (string.IsNullOrWhiteSpace(req.Name))
                 return Results.BadRequest(new { error = "name is required" });
@@ -137,13 +138,16 @@ public static class SmsGovernanceDynamicRuleEndpoints
             };
             db.SmsGovernanceRulePacks.Add(pack);
             await db.SaveChangesAsync();
+            // LS-NOTIF-SMS-020: immutable version snapshot
+            await vs.SnapshotRulePackAsync(pack.Id, "created", null, req.RequestedBy, includeRules: false);
             return Results.Created($"/v1/admin/sms/governance/rule-packs/{pack.Id}", new { pack.Id });
         }).WithSummary("Create governance rule pack");
 
         group.MapPut("/rule-packs/{id:guid}", async (
             Guid id,
             UpdateRulePackRequest req,
-            NotificationsDbContext db) =>
+            NotificationsDbContext db,
+            ISmsGovernanceVersioningService vs) =>
         {
             var pack = await db.SmsGovernanceRulePacks.FindAsync(id);
             if (pack == null) return Results.NotFound();
@@ -166,11 +170,13 @@ public static class SmsGovernanceDynamicRuleEndpoints
             pack.UpdatedBy = req.RequestedBy;
 
             await db.SaveChangesAsync();
+            // LS-NOTIF-SMS-020: immutable version snapshot
+            await vs.SnapshotRulePackAsync(id, "updated", null, req.RequestedBy, includeRules: false);
             return Results.Ok(new { pack.Id, pack.Version, pack.UpdatedAt });
         }).WithSummary("Update governance rule pack");
 
         group.MapPost("/rule-packs/{id:guid}/disable", async (
-            Guid id, NotificationsDbContext db, string? requestedBy) =>
+            Guid id, NotificationsDbContext db, ISmsGovernanceVersioningService vs, string? requestedBy) =>
         {
             var pack = await db.SmsGovernanceRulePacks.FindAsync(id);
             if (pack == null) return Results.NotFound();
@@ -179,6 +185,8 @@ public static class SmsGovernanceDynamicRuleEndpoints
             pack.UpdatedAt = DateTime.UtcNow;
             pack.UpdatedBy = requestedBy;
             await db.SaveChangesAsync();
+            // LS-NOTIF-SMS-020: immutable version snapshot
+            await vs.SnapshotRulePackAsync(id, "disabled", null, requestedBy, includeRules: false);
             return Results.Ok(new { pack.Id, disabled = true });
         }).WithSummary("Disable governance rule pack");
 
@@ -218,6 +226,7 @@ public static class SmsGovernanceDynamicRuleEndpoints
         group.MapPost("/rules", async (
             CreateRuleRequest req,
             NotificationsDbContext db,
+            ISmsGovernanceVersioningService vs,
             Microsoft.Extensions.Options.IOptions<SmsGovernanceDynamicOptions> options) =>
         {
             var opts = options.Value;
@@ -278,6 +287,8 @@ public static class SmsGovernanceDynamicRuleEndpoints
             };
             db.SmsGovernanceRules.Add(rule);
             await db.SaveChangesAsync();
+            // LS-NOTIF-SMS-020: immutable version snapshot
+            await vs.SnapshotRuleAsync(rule.Id, "created", null, req.RequestedBy);
             return Results.Created($"/v1/admin/sms/governance/rules/{rule.Id}", new { rule.Id });
         }).WithSummary("Create governance rule");
 
@@ -285,6 +296,7 @@ public static class SmsGovernanceDynamicRuleEndpoints
             Guid id,
             UpdateRuleRequest req,
             NotificationsDbContext db,
+            ISmsGovernanceVersioningService vs,
             Microsoft.Extensions.Options.IOptions<SmsGovernanceDynamicOptions> options) =>
         {
             var opts = options.Value;
@@ -320,11 +332,13 @@ public static class SmsGovernanceDynamicRuleEndpoints
             rule.UpdatedBy = req.RequestedBy;
 
             await db.SaveChangesAsync();
+            // LS-NOTIF-SMS-020: immutable version snapshot
+            await vs.SnapshotRuleAsync(id, "updated", null, req.RequestedBy);
             return Results.Ok(new { rule.Id, rule.UpdatedAt });
         }).WithSummary("Update governance rule");
 
         group.MapPost("/rules/{id:guid}/disable", async (
-            Guid id, NotificationsDbContext db, string? requestedBy) =>
+            Guid id, NotificationsDbContext db, ISmsGovernanceVersioningService vs, string? requestedBy) =>
         {
             var rule = await db.SmsGovernanceRules.FindAsync(id);
             if (rule == null) return Results.NotFound();
@@ -332,6 +346,8 @@ public static class SmsGovernanceDynamicRuleEndpoints
             rule.UpdatedAt = DateTime.UtcNow;
             rule.UpdatedBy = requestedBy;
             await db.SaveChangesAsync();
+            // LS-NOTIF-SMS-020: immutable version snapshot
+            await vs.SnapshotRuleAsync(id, "disabled", null, requestedBy);
             return Results.Ok(new { rule.Id, disabled = true });
         }).WithSummary("Disable governance rule");
 

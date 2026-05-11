@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using BuildingBlocks.Authorization;
+using Notifications.Api.Authorization;
 using Notifications.Application.Interfaces;
 using Notifications.Domain;
 using Notifications.Infrastructure.Data;

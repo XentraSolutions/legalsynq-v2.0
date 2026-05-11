@@ -55,14 +55,19 @@ public sealed partial class SmsGovernanceRuleEngine : ISmsGovernanceRuleEngine
     private readonly SmsGovernanceDynamicOptions          _options;
     private readonly ILogger<SmsGovernanceRuleEngine>     _logger;
 
+    // LS-NOTIF-SMS-020: nullable match recorder — fire-and-forget, never blocks delivery
+    private readonly ISmsGovernanceMatchRecorder?         _recorder;
+
     public SmsGovernanceRuleEngine(
         ISmsGovernanceRuleResolver           resolver,
         IOptions<SmsGovernanceDynamicOptions> options,
-        ILogger<SmsGovernanceRuleEngine>      logger)
+        ILogger<SmsGovernanceRuleEngine>      logger,
+        ISmsGovernanceMatchRecorder?          recorder = null)
     {
         _resolver = resolver;
         _options  = options.Value;
         _logger   = logger;
+        _recorder = recorder;
     }
 
     public Task<SmsGovernanceRuleEvaluationResult> EvaluateContentAsync(
@@ -128,7 +133,7 @@ public sealed partial class SmsGovernanceRuleEngine : ISmsGovernanceRuleEngine
             // Apply enforcement mode
             var finalDecision = ApplyEnforcementMode(bestDecision, resolution.EnforcementMode);
 
-            return new SmsGovernanceRuleEvaluationResult
+            var evalResult = new SmsGovernanceRuleEvaluationResult
             {
                 DecisionType             = finalDecision,
                 ReasonCode               = bestReasonCode,
@@ -137,11 +142,17 @@ public sealed partial class SmsGovernanceRuleEngine : ISmsGovernanceRuleEngine
                 EnforcementMode          = resolution.EnforcementMode,
                 Metadata                 = new Dictionary<string, object>
                 {
-                    ["packsResolved"] = resolution.Packs.Count,
+                    ["packsResolved"]  = resolution.Packs.Count,
                     ["rulesEvaluated"] = resolution.Rules.Count,
-                    ["rulesMatched"] = matchedRules.Count,
+                    ["rulesMatched"]   = matchedRules.Count,
                 },
             };
+
+            // LS-NOTIF-SMS-020: fire-and-forget match recording for analytics
+            if (matchedRules.Count > 0)
+                _recorder?.RecordMatches(evalResult, request.TenantId, request.IsDryRun);
+
+            return evalResult;
         }
         catch (Exception ex)
         {
