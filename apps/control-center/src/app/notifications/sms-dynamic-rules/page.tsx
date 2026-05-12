@@ -30,14 +30,16 @@ const EMPTY_PAGE = <T,>(): PaginatedResult<T> => ({
 
 type PageTab = 'governance' | 'lifecycle';
 
+type SmsDynamicRulesSearchParams = Promise<{ tab?: string }>;
+
 export default async function SmsDynamicRulesPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ tab?: string }>;
+  searchParams?: SmsDynamicRulesSearchParams;
 }) {
   await requirePlatformAdmin();
 
-  const sp  = await (searchParams ?? Promise.resolve({}));
+  const sp  = searchParams ? await searchParams : { tab: undefined };
   const tab = (sp.tab === 'lifecycle' ? 'lifecycle' : 'governance') as PageTab;
 
   const cookieStore = await cookies();
