@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<IBillOfSaleDocumentQueryService, BillOfSaleDocumentQueryService>();
         services.AddScoped<ICaseService, CaseService>();
         services.AddScoped<IServicingItemService, ServicingItemService>();
+        services.AddScoped<ILookupValueService, LookupValueService>();
         services.AddScoped<IContactService, ContactService>();
         services.AddScoped<ILienTaskService, LienTaskService>();
         services.AddScoped<ILienWorkflowConfigService, LienWorkflowConfigService>();
