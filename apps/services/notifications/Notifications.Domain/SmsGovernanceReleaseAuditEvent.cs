@@ -41,4 +41,24 @@ public static class ReleaseAuditEventTypes
     public const string Superseded          = "superseded";
     public const string Archived            = "archived";
     public const string RollbackLinked      = "rollback_linked";
+
+    // ── LS-NOTIF-SMS-021-HARDENING ────────────────────────────────────────────
+
+    /// <summary>Approval actor's declared role did not match the stage's required ApproverRole.</summary>
+    public const string ApprovalRoleMismatch     = "approval_role_mismatch";
+
+    /// <summary>Activation concurrency lock successfully acquired.</summary>
+    public const string ActivationLockAcquired   = "activation_lock_acquired";
+
+    /// <summary>Activation concurrency lock released after success or failure.</summary>
+    public const string ActivationLockReleased   = "activation_lock_released";
+
+    /// <summary>Failed to acquire activation lock — concurrent activation already running.</summary>
+    public const string ActivationLockFailed     = "activation_lock_failed";
+
+    /// <summary>Activation failed but retry is scheduled within the backoff window.</summary>
+    public const string ActivationRetryScheduled = "activation_retry_scheduled";
+
+    /// <summary>Release integrity check detected a structural violation.</summary>
+    public const string IntegrityCheckFailed     = "integrity_check_failed";
 }

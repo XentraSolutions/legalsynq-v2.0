@@ -35,6 +35,46 @@ public class SmsGovernanceReleasePackage
     public DateTime  UpdatedAt   { get; set; }
     public string?   CreatedBy   { get; set; }
     public string?   UpdatedBy   { get; set; }
+
+    // ── LS-NOTIF-SMS-021-HARDENING: Activation concurrency locking ────────────
+
+    /// <summary>
+    /// Identifies the active activation lock. Null means unlocked.
+    /// Set atomically to prevent concurrent activations of the same release.
+    /// </summary>
+    public Guid?     ActivationLockId         { get; set; }
+
+    /// <summary>When the current activation lock was acquired.</summary>
+    public DateTime? ActivationLockAcquiredAt { get; set; }
+
+    /// <summary>
+    /// When the activation lock expires. Stale locks past this point
+    /// are forcibly expired by the next caller to prevent permanent deadlock.
+    /// </summary>
+    public DateTime? ActivationLockExpiresAt  { get; set; }
+
+    /// <summary>The actor (user or worker) that holds the lock.</summary>
+    public string?   ActivationLockedBy       { get; set; }
+
+    // ── LS-NOTIF-SMS-021-HARDENING: Retry tracking ────────────────────────────
+
+    /// <summary>Cumulative count of activation attempts (success resets this).</summary>
+    public int       ActivationAttemptCount      { get; set; }
+
+    /// <summary>Timestamp of the most recent activation attempt.</summary>
+    public DateTime? LastActivationAttemptAt     { get; set; }
+
+    /// <summary>
+    /// Backoff gate — the worker skips this release until now >= NextActivationRetryAt.
+    /// Null = no backoff, eligible immediately.
+    /// </summary>
+    public DateTime? NextActivationRetryAt       { get; set; }
+
+    /// <summary>
+    /// Truncated failure reason from the last failed activation attempt (max 500 chars).
+    /// Cleared on successful activation.
+    /// </summary>
+    public string?   LastActivationFailureReason { get; set; }
 }
 
 public static class ReleaseStates

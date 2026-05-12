@@ -10,6 +10,7 @@ namespace Notifications.Api.Endpoints;
 
 /// <summary>
 /// LS-NOTIF-SMS-021: Governance release package management endpoints.
+/// LS-NOTIF-SMS-021-HARDENING: Added /validation, /integrity, /locks endpoints.
 /// All endpoints require PlatformAdmin authorization.
 /// No raw phone numbers, message content, credentials, or provider payloads are returned.
 /// </summary>
@@ -273,6 +274,47 @@ public static class SmsGovernanceReleaseEndpoints
             var result = await approvalSvc.GetPendingApprovalsAsync(
                 new ApprovalQuery(approverRole, page, pageSize));
             return Results.Ok(result);
+        });
+
+        // ── LS-NOTIF-SMS-021-HARDENING: Read-only hardening endpoints ─────────
+
+        // GET /v1/admin/sms/governance/releases/{id}/validation
+        group.MapGet("/releases/{id:guid}/validation", async (
+            Guid id,
+            ISmsGovernanceReleaseIntegrityService integritySvc,
+            IOptions<SmsGovernanceReleaseManagementOptions> opts) =>
+        {
+            if (!opts.Value.Enabled)
+                return Results.StatusCode(503);
+
+            var report = await integritySvc.ValidateReleaseItemsAsync(id);
+            return Results.Ok(report);
+        });
+
+        // GET /v1/admin/sms/governance/releases/{id}/integrity
+        group.MapGet("/releases/{id:guid}/integrity", async (
+            Guid id,
+            ISmsGovernanceReleaseIntegrityService integritySvc,
+            IOptions<SmsGovernanceReleaseManagementOptions> opts) =>
+        {
+            if (!opts.Value.Enabled)
+                return Results.StatusCode(503);
+
+            var report = await integritySvc.ValidateReleaseIntegrityAsync(id);
+            return Results.Ok(report);
+        });
+
+        // GET /v1/admin/sms/governance/releases/{id}/locks
+        group.MapGet("/releases/{id:guid}/locks", async (
+            Guid id,
+            ISmsGovernanceReleaseIntegrityService integritySvc,
+            IOptions<SmsGovernanceReleaseManagementOptions> opts) =>
+        {
+            if (!opts.Value.Enabled)
+                return Results.StatusCode(503);
+
+            var status = await integritySvc.GetActivationLockStatusAsync(id);
+            return Results.Ok(status);
         });
 
         return app;

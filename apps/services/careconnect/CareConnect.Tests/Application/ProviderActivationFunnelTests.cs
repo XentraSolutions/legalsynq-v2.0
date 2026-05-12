@@ -445,6 +445,8 @@ public class ProviderActivationFunnelTests
         var relationshipResolver = new Mock<IOrganizationRelationshipResolver>().Object;
         var auditClient       = new Mock<IAuditEventClient>().Object;
 
+        var referralAttachments = new Mock<IReferralAttachmentRepository>().Object;
+
         return new ReferralService(
             referrals,
             providers,
@@ -455,6 +457,7 @@ public class ProviderActivationFunnelTests
             relationshipResolver,
             auditClient,
             NullLogger<ReferralService>.Instance,
-            new Mock<Microsoft.AspNetCore.Http.IHttpContextAccessor>().Object);
+            new Mock<Microsoft.AspNetCore.Http.IHttpContextAccessor>().Object,
+            referralAttachments);
     }
 }

@@ -154,6 +154,8 @@ public static class DependencyInjection
         // Approval workflow must be registered before release service (release service takes it as a dependency)
         services.AddScoped<ISmsGovernanceApprovalWorkflowService, SmsGovernanceApprovalWorkflowService>();
         services.AddScoped<ISmsGovernanceReleaseService, SmsGovernanceReleaseService>();
+        // LS-NOTIF-SMS-021-HARDENING: read-only integrity + lock status service
+        services.AddScoped<ISmsGovernanceReleaseIntegrityService, SmsGovernanceReleaseIntegrityService>();
         services.AddHostedService<SmsGovernanceReleaseActivationWorker>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in

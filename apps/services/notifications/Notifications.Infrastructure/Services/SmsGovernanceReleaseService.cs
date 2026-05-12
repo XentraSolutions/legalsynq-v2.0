@@ -15,6 +15,11 @@ namespace Notifications.Infrastructure.Services;
 /// Governs state transitions, item management, scheduling, activation, and archiving.
 /// Activation is transactional — failure leaves existing governance intact.
 /// No SMS is sent, no external APIs are called, no raw phones are stored.
+///
+/// LS-NOTIF-SMS-021-HARDENING:
+/// - Activation concurrency locking (ActivationLockId / ExpiresAt).
+/// - Retry/backoff tracking (ActivationAttemptCount / NextActivationRetryAt).
+/// - Duplicate item detection within AddReleaseItemAsync.
 /// </summary>
 public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
 {
@@ -179,10 +184,23 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
             throw new ArgumentException($"Invalid action type: {request.ActionType}");
 
         var existing = await _db.SmsGovernanceReleaseItems
-            .CountAsync(i => i.ReleasePackageId == releaseId, ct);
-        if (existing >= _opts.MaxReleaseItems)
+            .Where(i => i.ReleasePackageId == releaseId)
+            .ToListAsync(ct);
+
+        if (existing.Count >= _opts.MaxReleaseItems)
             throw new InvalidOperationException(
-                $"Release already has {existing} items (max {_opts.MaxReleaseItems}).");
+                $"Release already has {existing.Count} items (max {_opts.MaxReleaseItems}).");
+
+        // ── LS-NOTIF-SMS-021-HARDENING: Duplicate entity+action detection ─────
+        var duplicate = existing.FirstOrDefault(i =>
+            i.EntityId   == request.EntityId   &&
+            i.EntityType == request.EntityType &&
+            i.ActionType == request.ActionType);
+
+        if (duplicate is not null)
+            throw new InvalidOperationException(
+                $"Release already contains entity '{request.EntityType}' id '{request.EntityId}' " +
+                $"with action '{request.ActionType}'. Duplicate entries are not allowed.");
 
         var now  = DateTime.UtcNow;
         var item = new SmsGovernanceReleaseItem
@@ -307,6 +325,16 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
             pkg.ReleaseState != ReleaseStates.ActivationFailed)
             return Fail($"Release in state '{pkg.ReleaseState}' cannot be activated.");
 
+        // ── LS-NOTIF-SMS-021-HARDENING: Acquire activation lock ───────────────
+        var lockAcquired = await TryAcquireActivationLockAsync(pkg, requestedBy, ct);
+        if (!lockAcquired)
+        {
+            AddAuditEvent(releaseId, ReleaseAuditEventTypes.ActivationLockFailed,
+                null, null, requestedBy, "Another activation is already in progress.", null);
+            await _db.SaveChangesAsync(ct);
+            return Fail("Another activation is already in progress for this release.");
+        }
+
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         try
         {
@@ -322,9 +350,19 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
             pkg.UpdatedAt     = DateTime.UtcNow;
             pkg.UpdatedBy     = requestedBy;
 
+            // Clear retry/lock state on success
+            pkg.ActivationAttemptCount      = 0;
+            pkg.LastActivationAttemptAt     = DateTime.UtcNow;
+            pkg.NextActivationRetryAt       = null;
+            pkg.LastActivationFailureReason = null;
+            ReleaseActivationLock(pkg);
+
             AddAuditEvent(releaseId, ReleaseAuditEventTypes.Activated,
                 prev, ReleaseStates.Active, requestedBy, null,
                 JsonSerializer.Serialize(new { itemCount = items.Count }, _json));
+
+            AddAuditEvent(releaseId, ReleaseAuditEventTypes.ActivationLockReleased,
+                null, null, requestedBy, "Activation succeeded.", null);
 
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
@@ -337,22 +375,77 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
             _logger.LogError(ex, "Activation failed for release {ReleaseId}", releaseId);
             try { await tx.RollbackAsync(ct); } catch { /* ignore rollback errors */ }
 
-            // Mark activation_failed outside the rolled-back transaction
+            // ── LS-NOTIF-SMS-021-HARDENING: Record failure + schedule retry ───
             try
             {
-                var prev         = pkg.ReleaseState;
-                pkg.ReleaseState = ReleaseStates.ActivationFailed;
-                pkg.UpdatedAt    = DateTime.UtcNow;
-                pkg.UpdatedBy    = requestedBy;
-                AddAuditEvent(releaseId, ReleaseAuditEventTypes.ActivationFailed,
-                    prev, ReleaseStates.ActivationFailed, requestedBy,
-                    ex.Message.Length > 500 ? ex.Message[..500] : ex.Message, null);
+                var prev              = pkg.ReleaseState;
+                var attemptCount      = pkg.ActivationAttemptCount + 1;
+                var now               = DateTime.UtcNow;
+                var failReason        = ex.Message.Length > 500 ? ex.Message[..500] : ex.Message;
+
+                pkg.ActivationAttemptCount      = attemptCount;
+                pkg.LastActivationAttemptAt     = now;
+                pkg.LastActivationFailureReason = failReason;
+                ReleaseActivationLock(pkg);
+
+                if (attemptCount >= _opts.ActivationRetryLimit)
+                {
+                    // Terminal failure — no more retries
+                    pkg.ReleaseState      = ReleaseStates.ActivationFailed;
+                    pkg.NextActivationRetryAt = null;
+                    pkg.UpdatedAt         = now;
+                    pkg.UpdatedBy         = requestedBy;
+
+                    AddAuditEvent(releaseId, ReleaseAuditEventTypes.ActivationFailed,
+                        prev, ReleaseStates.ActivationFailed, requestedBy,
+                        $"Terminal failure after {attemptCount} attempt(s): {failReason}", null);
+
+                    AddAuditEvent(releaseId, ReleaseAuditEventTypes.ActivationLockReleased,
+                        null, null, requestedBy, "Terminal activation failure.", null);
+
+                    _logger.LogError(
+                        "Release {ReleaseId} permanently marked activation_failed after {Count} attempts",
+                        releaseId, attemptCount);
+                }
+                else
+                {
+                    // Schedule retry with linear backoff
+                    var backoffMinutes    = _opts.ActivationRetryBackoffMinutes * attemptCount;
+                    var retryAt           = now.AddMinutes(backoffMinutes);
+                    pkg.ReleaseState      = ReleaseStates.ActivationFailed;
+                    pkg.NextActivationRetryAt = retryAt;
+                    pkg.UpdatedAt         = now;
+                    pkg.UpdatedBy         = requestedBy;
+
+                    AddAuditEvent(releaseId, ReleaseAuditEventTypes.ActivationFailed,
+                        prev, ReleaseStates.ActivationFailed, requestedBy,
+                        $"Attempt {attemptCount}/{_opts.ActivationRetryLimit}: {failReason}", null);
+
+                    AddAuditEvent(releaseId, ReleaseAuditEventTypes.ActivationRetryScheduled,
+                        null, null, requestedBy, null,
+                        JsonSerializer.Serialize(new
+                        {
+                            attemptCount,
+                            retryLimit    = _opts.ActivationRetryLimit,
+                            retryAt       = retryAt.ToString("O"),
+                            backoffMinutes,
+                        }, _json));
+
+                    AddAuditEvent(releaseId, ReleaseAuditEventTypes.ActivationLockReleased,
+                        null, null, requestedBy, $"Retry scheduled at {retryAt:O}.", null);
+
+                    _logger.LogWarning(
+                        "Release {ReleaseId} activation failed (attempt {Count}/{Limit}), " +
+                        "retry scheduled at {RetryAt}",
+                        releaseId, attemptCount, _opts.ActivationRetryLimit, retryAt);
+                }
+
                 await _db.SaveChangesAsync(ct);
             }
             catch (Exception markEx)
             {
                 _logger.LogError(markEx,
-                    "Failed to mark release {ReleaseId} as activation_failed", releaseId);
+                    "Failed to record activation failure for release {ReleaseId}", releaseId);
             }
 
             return Fail($"Activation failed: {ex.Message}");
@@ -426,6 +519,51 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
         if (!ReleaseStates.IsEditable(pkg.ReleaseState))
             throw new InvalidOperationException(
                 $"Release in state '{pkg.ReleaseState}' cannot be edited.");
+    }
+
+    /// <summary>
+    /// LS-NOTIF-SMS-021-HARDENING: Attempt to acquire an exclusive activation lock.
+    /// Returns true when the lock was acquired, false when another non-expired lock is held.
+    /// Lock expiry is checked inline — stale locks are forcibly expired.
+    /// </summary>
+    private async Task<bool> TryAcquireActivationLockAsync(
+        SmsGovernanceReleasePackage pkg, string requestedBy, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+
+        // A lock is considered held when ActivationLockId is set AND not expired
+        if (pkg.ActivationLockId.HasValue
+            && pkg.ActivationLockExpiresAt.HasValue
+            && pkg.ActivationLockExpiresAt.Value > now)
+        {
+            _logger.LogWarning(
+                "Release {ReleaseId}: activation lock held by '{LockedBy}', expires {Expires:O}",
+                pkg.Id, pkg.ActivationLockedBy, pkg.ActivationLockExpiresAt);
+            return false;
+        }
+
+        // No lock or stale lock — acquire
+        var lockId          = Guid.NewGuid();
+        pkg.ActivationLockId         = lockId;
+        pkg.ActivationLockAcquiredAt = now;
+        pkg.ActivationLockExpiresAt  = now.AddMinutes(_opts.ActivationLockTimeoutMinutes);
+        pkg.ActivationLockedBy       = requestedBy;
+
+        AddAuditEvent(pkg.Id, ReleaseAuditEventTypes.ActivationLockAcquired,
+            null, null, requestedBy,
+            $"Lock {lockId} acquired, expires {pkg.ActivationLockExpiresAt:O}.", null);
+
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    /// <summary>Clears all activation lock fields.</summary>
+    private static void ReleaseActivationLock(SmsGovernanceReleasePackage pkg)
+    {
+        pkg.ActivationLockId         = null;
+        pkg.ActivationLockAcquiredAt = null;
+        pkg.ActivationLockExpiresAt  = null;
+        pkg.ActivationLockedBy       = null;
     }
 
     private void AddAuditEvent(
@@ -536,7 +674,6 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
         {
             profile.Enabled   = true;
             profile.UpdatedAt = DateTime.UtcNow;
-            // Profiles don't have a dedicated version snapshot — log instead
             _logger.LogInformation(
                 "Compliance profile {Id} enabled by release activation (actor={Actor})", item.EntityId, requestedBy);
         }

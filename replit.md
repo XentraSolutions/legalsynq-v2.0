@@ -6117,3 +6117,42 @@ Extends LS-020 with release packages, multi-stage approval workflows, scheduled 
 
 ### Analysis
 `analysis/LS-NOTIF-SMS-021-report.md`
+
+## LS-NOTIF-SMS-021-HARDENING — Governance Release Hardening, Approval Role Enforcement, and Test Suite Alignment (2026-05-12)
+
+Hardens the LS-021 release pipeline with production-grade concurrency control, approval role enforcement, retry/backoff, and audit integrity diagnostics. Simultaneously reconciles test stub failures in `Notifications.Tests` and `CareConnect.Tests` caused by constructor signature drift across prior SMS governance milestones.
+
+### Domain — `SmsGovernanceReleasePackage` (+8 fields)
+`ActivationLockId`, `ActivationLockAcquiredAt`, `ActivationLockExpiresAt`, `ActivationLockedBy` (concurrency lock); `ActivationAttemptCount`, `LastActivationAttemptAt`, `NextActivationRetryAt`, `LastActivationFailureReason` (retry/backoff tracking)
+
+### Domain — `ReleaseAuditEventTypes` (+6 constants)
+`approval_role_mismatch`, `activation_lock_acquired`, `activation_lock_released`, `activation_lock_failed`, `activation_retry_scheduled`, `integrity_check_failed`
+
+### New Options (`SmsGovernanceReleaseManagementOptions`)
+`EnforceApprovalRoles`(true), `AllowPlatformAdminApprovalFallback`(true), `ActivationRetryLimit`(3), `ActivationRetryBackoffMinutes`(10), `ActivationLockTimeoutMinutes`(10), `MaxScheduledReleasesPerCycle`(10)
+
+### New Interface + Service — `ISmsGovernanceReleaseIntegrityService`
+Three read-only diagnostics: `ValidateReleaseItemsAsync` (item cap/type/duplicate checks), `ValidateReleaseIntegrityAsync` (audit event completeness), `GetActivationLockStatusAsync` (lock state + `IsExpired` flag)
+
+### Service Hardening
+- **Approval workflow** (`SmsGovernanceApprovalWorkflowService`): role enforcement on Approve + Reject — `DecidedByRole` must match `ApproverRole`; PlatformAdmin fallback bypass configurable; mismatch always audited + persisted before early return
+- **Release service** (`SmsGovernanceReleaseService`): optimistic activation lock (predicate: lock null or expired); retry counter + `NextActivationRetryAt` backoff (`backoffMinutes × attemptCount`); terminal `activation_failed` after retry limit; duplicate entity+action check in `AddReleaseItemAsync`
+- **Worker** (`SmsGovernanceReleaseActivationWorker`): filters by `NextActivationRetryAt IS NULL OR <= now`; `MaxScheduledReleasesPerCycle` cap
+
+### New Endpoints (PlatformAdmin, all read-only)
+`GET /v1/admin/sms/governance/releases/{id}/validation` · `/integrity` · `/locks`
+
+### Migration
+`20260512000007_AddSmsGovernanceReleaseHardening` — +8 nullable columns on `ntf_SmsGovernanceReleasePackages`
+
+### Test Suite Fixes
+- `Notifications.Tests.csproj`: added `Microsoft.EntityFrameworkCore.InMemory` v8.0.2
+- `NotificationServiceFailureCategoryTests.cs`: 6 new stubs (`StubSmsProviderRuntimeResolver`, `StubSmsRoutingEngine`, `StubSmsRoutingDecisionRepository`, `StubSmsRetrySuppressionService`, `StubSmsGovernancePolicyService`, `StubSmsTemplateGovernanceService`) + 2 constructor call sites updated
+- `SmsGovernanceReleaseTests.cs`: `StubVersioningService` corrected (proper `IReadOnlyList<RuleVersionDto/RulePackVersionDto>` returns; `RollbackRuleAsync`/`RollbackRulePackAsync` added)
+- `CareConnect.Tests/ProviderReassignmentTests.cs` + `ProviderActivationFunnelTests.cs`: `IReferralAttachmentRepository` mock added to constructor
+
+### New Tests (`SmsGovernanceReleaseTests.cs`, 6 facts)
+Role enforcement blocks mismatch · PlatformAdmin fallback bypasses role gate · Duplicate item rejected · Concurrent activation lock returns fail · Integrity checker flags missing audit event · Lock status computes `IsExpired` correctly
+
+### Analysis
+`analysis/LS-NOTIF-SMS-021-HARDENING-report.md`

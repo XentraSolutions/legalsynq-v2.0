@@ -45,4 +45,40 @@ public sealed class SmsGovernanceReleaseManagementOptions
 
     /// <summary>Maximum number of items allowed in a single release package.</summary>
     public int MaxReleaseItems { get; set; } = 500;
+
+    // ── LS-NOTIF-SMS-021-HARDENING ────────────────────────────────────────────
+
+    /// <summary>
+    /// When true, the approver's declared role must match the stage's ApproverRole.
+    /// When false, any authenticated PlatformAdmin can approve any stage.
+    /// </summary>
+    public bool EnforceApprovalRoles { get; set; } = true;
+
+    /// <summary>
+    /// When EnforceApprovalRoles = true, a user declaring role "PlatformAdmin"
+    /// is always allowed regardless of the stage's ApproverRole.
+    /// Set to false to enforce exact role matching with no fallback.
+    /// </summary>
+    public bool AllowPlatformAdminApprovalFallback { get; set; } = true;
+
+    /// <summary>
+    /// Maximum number of activation attempts before the release is permanently
+    /// marked activation_failed with no further retries.
+    /// </summary>
+    public int ActivationRetryLimit { get; set; } = 3;
+
+    /// <summary>
+    /// Linear backoff per retry attempt (minutes). NextActivationRetryAt is set to
+    /// now + (ActivationRetryBackoffMinutes × attemptCount) after each failure.
+    /// </summary>
+    public int ActivationRetryBackoffMinutes { get; set; } = 10;
+
+    /// <summary>
+    /// How long an activation lock remains valid before it is considered stale
+    /// and may be forcibly expired by the next caller.
+    /// </summary>
+    public int ActivationLockTimeoutMinutes { get; set; } = 10;
+
+    /// <summary>Maximum number of scheduled releases the worker processes per cycle.</summary>
+    public int MaxScheduledReleasesPerCycle { get; set; } = 10;
 }

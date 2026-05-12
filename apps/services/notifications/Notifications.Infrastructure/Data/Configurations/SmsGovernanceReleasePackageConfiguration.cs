@@ -21,6 +21,18 @@ public class SmsGovernanceReleasePackageConfiguration : IEntityTypeConfiguration
         b.Property(p => p.CreatedBy).HasMaxLength(200);
         b.Property(p => p.UpdatedBy).HasMaxLength(200);
 
+        // ── LS-NOTIF-SMS-021-HARDENING: Activation lock ───────────────────────
+        b.Property(p => p.ActivationLockId).HasColumnType("char(36)");
+        b.Property(p => p.ActivationLockedBy).HasMaxLength(200);
+
+        // ── LS-NOTIF-SMS-021-HARDENING: Retry tracking ────────────────────────
+        b.Property(p => p.ActivationAttemptCount).HasDefaultValue(0);
+        b.Property(p => p.LastActivationFailureReason).HasMaxLength(500);
+
+        // Worker retry-window poll
+        b.HasIndex(p => new { p.ReleaseState, p.NextActivationRetryAt })
+            .HasDatabaseName("IX_ntf_SmsGovRelPkgs_State_RetryAt");
+
         // TenantId + state — common admin list query
         b.HasIndex(p => new { p.TenantId, p.ReleaseState, p.CreatedAt })
             .HasDatabaseName("IX_ntf_SmsGovRelPkgs_Tenant_State_Created");

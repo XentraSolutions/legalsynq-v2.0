@@ -15,6 +15,10 @@ namespace Notifications.Infrastructure.Services;
 /// Stages are ordered (1, 2, …). Stage N starts only when Stage N-1 is approved.
 /// Rejection at any stage rejects the release. Final-stage approval moves release to approved.
 /// All decisions are append-only — records are never deleted.
+///
+/// LS-NOTIF-SMS-021-HARDENING: Role enforcement.
+/// When EnforceApprovalRoles = true, the actor's declared role must match the stage's
+/// ApproverRole. PlatformAdmin bypass is allowed when AllowPlatformAdminApprovalFallback = true.
 /// </summary>
 public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprovalWorkflowService
 {
@@ -104,6 +108,11 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
 
         if (pendingRequest is null)
             return Fail("No pending approval request found for this release.");
+
+        // ── LS-NOTIF-SMS-021-HARDENING: Role enforcement ──────────────────────
+        var roleCheckResult = CheckApproverRole(releaseId, pendingRequest.ApproverRole, request.DecidedByRole, request.DecidedBy, ct);
+        if (roleCheckResult is not null)
+            return roleCheckResult;
 
         var now = DateTime.UtcNow;
 
@@ -218,6 +227,15 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
             .OrderBy(r => r.ApprovalStage)
             .FirstOrDefaultAsync(ct);
 
+        // ── LS-NOTIF-SMS-021-HARDENING: Role enforcement ──────────────────────
+        if (pendingRequest is not null)
+        {
+            var roleCheckResult = CheckApproverRole(
+                releaseId, pendingRequest.ApproverRole, request.DecidedByRole, request.DecidedBy, ct);
+            if (roleCheckResult is not null)
+                return roleCheckResult;
+        }
+
         var now = DateTime.UtcNow;
 
         if (pendingRequest is not null)
@@ -325,7 +343,60 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
             .ToList();
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// LS-NOTIF-SMS-021-HARDENING: Checks whether the actor's declared role is allowed
+    /// to act on the given stage. Returns a failure result if blocked, or null if allowed.
+    /// Records an audit event if blocked.
+    /// </summary>
+    private ReleaseOperationResult? CheckApproverRole(
+        Guid releaseId, string stageRole, string? actorRole, string? actor, CancellationToken ct)
+    {
+        if (!_opts.EnforceApprovalRoles)
+            return null;   // enforcement disabled — allow all
+
+        // PlatformAdmin fallback
+        if (_opts.AllowPlatformAdminApprovalFallback
+            && string.Equals(actorRole, "PlatformAdmin", StringComparison.OrdinalIgnoreCase))
+            return null;   // PlatformAdmin always allowed
+
+        // Exact role match
+        if (string.Equals(actorRole, stageRole, StringComparison.OrdinalIgnoreCase))
+            return null;   // roles match — allowed
+
+        // Role mismatch — record audit event synchronously (already in a service scope)
+        _logger.LogWarning(
+            "Release {ReleaseId}: approval role mismatch — stage requires '{Required}', " +
+            "actor '{Actor}' declared '{Actual}'",
+            releaseId, stageRole, actor, actorRole);
+
+        _db.SmsGovernanceReleaseAuditEvents.Add(new SmsGovernanceReleaseAuditEvent
+        {
+            Id               = Guid.NewGuid(),
+            ReleasePackageId = releaseId,
+            EventType        = ReleaseAuditEventTypes.ApprovalRoleMismatch,
+            Actor            = actor,
+            Reason           = $"Stage requires '{stageRole}', actor declared '{actorRole}'.",
+            MetadataJson     = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                stageRole,
+                actorRole,
+                actor,
+            }, _json),
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        // SaveChanges will be called by the caller's catch — we must save now since
+        // the caller returns early after this check.
+        _db.SaveChanges();
+
+        return Fail($"Approval role mismatch: stage requires '{stageRole}', " +
+                    $"actor declared '{actorRole ?? "none"}'. " +
+                    (_opts.AllowPlatformAdminApprovalFallback
+                        ? "PlatformAdmin role would bypass this check."
+                        : "No fallback role is configured."));
+    }
 
     private sealed record ApprovalStageConfig(int Stage, string ApproverRole, int RequiredApprovals);
 

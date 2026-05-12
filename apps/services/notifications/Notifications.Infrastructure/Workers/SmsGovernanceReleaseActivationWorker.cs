@@ -17,12 +17,16 @@ namespace Notifications.Infrastructure.Workers;
 /// When enabled, polls every ScheduledActivationPollMinutes and activates all scheduled releases
 /// whose ScheduledActivationAt is in the past.
 ///
+/// LS-NOTIF-SMS-021-HARDENING:
+/// - Respects NextActivationRetryAt backoff window — releases within a backoff window are skipped.
+/// - Uses MaxScheduledReleasesPerCycle instead of hard-coded 10.
+///
 /// Safety guarantees:
 /// - Does not block or slow the delivery pipeline.
 /// - Does not send SMS.
 /// - Does not call external APIs.
 /// - Individual activation failures are logged and swallowed — the cycle continues.
-/// - Batch-capped at 10 releases per cycle to bound execution time.
+/// - Batch-capped at MaxScheduledReleasesPerCycle releases per cycle to bound execution time.
 /// - Respects cancellation.
 /// </summary>
 public sealed class SmsGovernanceReleaseActivationWorker : BackgroundService
@@ -31,7 +35,6 @@ public sealed class SmsGovernanceReleaseActivationWorker : BackgroundService
     private readonly SmsGovernanceReleaseManagementOptions             _opts;
     private readonly ILogger<SmsGovernanceReleaseActivationWorker>     _logger;
 
-    private const int    MaxBatchSize   = 10;
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(60);
 
     public SmsGovernanceReleaseActivationWorker(
@@ -55,8 +58,9 @@ public sealed class SmsGovernanceReleaseActivationWorker : BackgroundService
         }
 
         _logger.LogInformation(
-            "SmsGovernanceReleaseActivationWorker: starting — poll every {PollMin} min",
-            _opts.ScheduledActivationPollMinutes);
+            "SmsGovernanceReleaseActivationWorker: starting — poll every {PollMin} min, " +
+            "batch cap {BatchCap}",
+            _opts.ScheduledActivationPollMinutes, _opts.MaxScheduledReleasesPerCycle);
 
         await Task.Delay(StartupDelay, stoppingToken);
 
@@ -78,13 +82,20 @@ public sealed class SmsGovernanceReleaseActivationWorker : BackgroundService
             var releaseService   = scope.ServiceProvider.GetRequiredService<ISmsGovernanceReleaseService>();
 
             var now  = DateTime.UtcNow;
+
+            // ── LS-NOTIF-SMS-021-HARDENING: filter by NextActivationRetryAt ───
+            // Include packages where:
+            //   - state is scheduled AND ScheduledActivationAt is due
+            //   - AND (NextActivationRetryAt is null OR NextActivationRetryAt <= now)
+            // This skips releases that are within their backoff window.
             var due  = await db.SmsGovernanceReleasePackages
                 .AsNoTracking()
                 .Where(p => p.ReleaseState          == ReleaseStates.Scheduled
                          && p.ScheduledActivationAt != null
-                         && p.ScheduledActivationAt <= now)
+                         && p.ScheduledActivationAt <= now
+                         && (p.NextActivationRetryAt == null || p.NextActivationRetryAt <= now))
                 .OrderBy(p => p.ScheduledActivationAt)
-                .Take(MaxBatchSize)
+                .Take(_opts.MaxScheduledReleasesPerCycle)
                 .Select(p => p.Id)
                 .ToListAsync(ct);
 

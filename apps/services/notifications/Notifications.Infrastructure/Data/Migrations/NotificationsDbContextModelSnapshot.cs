@@ -2762,6 +2762,23 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("ActivatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<int>("ActivationAttemptCount")
+                        .HasDefaultValue(0)
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ActivationLockAcquiredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ActivationLockExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ActivationLockId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ActivationLockedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
                     b.Property<DateTime?>("ArchivedAt")
                         .HasColumnType("datetime(6)");
 
@@ -2776,10 +2793,20 @@ namespace Notifications.Infrastructure.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
+                    b.Property<string>("LastActivationFailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("LastActivationAttemptAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime?>("NextActivationRetryAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime?>("RejectedAt")
                         .HasColumnType("datetime(6)");
@@ -2820,6 +2847,9 @@ namespace Notifications.Infrastructure.Data.Migrations
 
                     b.HasIndex("ReleaseState", "ScheduledActivationAt")
                         .HasDatabaseName("IX_ntf_SmsGovRelPkgs_State_Scheduled");
+
+                    b.HasIndex("ReleaseState", "NextActivationRetryAt")
+                        .HasDatabaseName("IX_ntf_SmsGovRelPkgs_State_RetryAt");
 
                     b.HasIndex("ReleaseType", "CreatedAt")
                         .HasDatabaseName("IX_ntf_SmsGovRelPkgs_Type_Created");
