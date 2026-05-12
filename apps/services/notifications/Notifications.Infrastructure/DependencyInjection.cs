@@ -147,6 +147,14 @@ public static class DependencyInjection
             sp.GetRequiredService<SmsGovernanceAnalyticsService>());
         services.AddScoped<ISmsGovernanceMatchRecorder>(sp =>
             sp.GetRequiredService<SmsGovernanceAnalyticsService>());
+
+        // LS-NOTIF-SMS-021: Governance Release Management, Approval Workflow, Scheduled Activation
+        services.AddOptions<SmsGovernanceReleaseManagementOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceReleaseManagementOptions.SectionName));
+        // Approval workflow must be registered before release service (release service takes it as a dependency)
+        services.AddScoped<ISmsGovernanceApprovalWorkflowService, SmsGovernanceApprovalWorkflowService>();
+        services.AddScoped<ISmsGovernanceReleaseService, SmsGovernanceReleaseService>();
+        services.AddHostedService<SmsGovernanceReleaseActivationWorker>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

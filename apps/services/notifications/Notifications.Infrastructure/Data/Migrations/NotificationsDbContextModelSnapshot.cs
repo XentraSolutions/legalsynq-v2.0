@@ -2751,6 +2751,269 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_SmsGovernanceRuleMatchMetrics", (string)null);
                 });
 
+            // LS-NOTIF-SMS-021: Governance Release Management, Approval Workflow
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceReleasePackage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("ActivatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ArchivedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime?>("RejectedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ReleaseState")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("ReleaseType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime?>("ScheduledActivationAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("SupersededByReleaseId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("SupersededAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ReleaseState", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovRelPkgs_Tenant_State_Created");
+
+                    b.HasIndex("ReleaseState", "ScheduledActivationAt")
+                        .HasDatabaseName("IX_ntf_SmsGovRelPkgs_State_Scheduled");
+
+                    b.HasIndex("ReleaseType", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovRelPkgs_Type_Created");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovRelPkgs_Created");
+
+                    b.ToTable("ntf_SmsGovernanceReleasePackages", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceReleaseItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("EntitySnapshotJson")
+                        .HasColumnType("mediumtext");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<int?>("EntityVersionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ReleasePackageId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReleasePackageId")
+                        .HasDatabaseName("IX_ntf_SmsGovRelItems_Package");
+
+                    b.HasIndex("EntityType", "EntityId")
+                        .HasDatabaseName("IX_ntf_SmsGovRelItems_Entity");
+
+                    b.ToTable("ntf_SmsGovernanceReleaseItems", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceApprovalRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("ApprovalStage")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ApproverRole")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("RequiredApprovals")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("ReleasePackageId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReleasePackageId", "ApprovalStage")
+                        .HasDatabaseName("IX_ntf_SmsGovApprReqs_Package_Stage");
+
+                    b.HasIndex("Status", "RequestedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovApprReqs_Status_Requested");
+
+                    b.ToTable("ntf_SmsGovernanceApprovalRequests", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceApprovalDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("ApprovalRequestId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("DecidedByRole")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("DecisionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<Guid>("ReleasePackageId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApprovalRequestId", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovApprDecs_Request_Created");
+
+                    b.HasIndex("ReleasePackageId", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovApprDecs_Package_Created");
+
+                    b.ToTable("ntf_SmsGovernanceApprovalDecisions", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceReleaseAuditEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Actor")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("mediumtext");
+
+                    b.Property<string>("NewState")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("PreviousState")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<Guid>("ReleasePackageId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReleasePackageId", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovRelAudit_Package_Created");
+
+                    b.HasIndex("EventType", "CreatedAt")
+                        .HasDatabaseName("IX_ntf_SmsGovRelAudit_EventType_Created");
+
+                    b.ToTable("ntf_SmsGovernanceReleaseAuditEvents", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }

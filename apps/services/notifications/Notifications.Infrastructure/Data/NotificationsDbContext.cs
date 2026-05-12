@@ -63,6 +63,13 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsGovernanceRulePackVersion>         SmsGovernanceRulePackVersions      => Set<SmsGovernanceRulePackVersion>();
     public DbSet<SmsGovernanceRuleMatchMetric>         SmsGovernanceRuleMatchMetrics      => Set<SmsGovernanceRuleMatchMetric>();
 
+    // LS-NOTIF-SMS-021: Governance Release Management, Approval Workflow
+    public DbSet<SmsGovernanceReleasePackage>    SmsGovernanceReleasePackages    => Set<SmsGovernanceReleasePackage>();
+    public DbSet<SmsGovernanceReleaseItem>       SmsGovernanceReleaseItems       => Set<SmsGovernanceReleaseItem>();
+    public DbSet<SmsGovernanceApprovalRequest>   SmsGovernanceApprovalRequests   => Set<SmsGovernanceApprovalRequest>();
+    public DbSet<SmsGovernanceApprovalDecision>  SmsGovernanceApprovalDecisions  => Set<SmsGovernanceApprovalDecision>();
+    public DbSet<SmsGovernanceReleaseAuditEvent> SmsGovernanceReleaseAuditEvents => Set<SmsGovernanceReleaseAuditEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -114,5 +121,11 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRuleVersionConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRulePackVersionConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRuleMatchMetricConfiguration());
+        // LS-NOTIF-SMS-021
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceReleasePackageConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceReleaseItemConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceApprovalRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceApprovalDecisionConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceReleaseAuditEventConfiguration());
     }
 }

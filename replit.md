@@ -6080,3 +6080,40 @@ All 6 LS-019 create/update/disable mutation endpoints patched to call `ISmsGover
 
 ### Analysis
 `analysis/LS-NOTIF-SMS-020-report.md`
+
+## LS-NOTIF-SMS-021 — Governance Approval Workflow, Multi-Stage Change Control, and Governance Release Management (2026-05-12)
+
+Extends LS-020 with release packages, multi-stage approval workflows, scheduled activation, and a dedicated Control Center release management page.
+
+### Domain (5 new entities)
+- `SmsGovernanceReleasePackage` — top-level release container; state machine: draft → pending_review → approved/rejected → scheduled/active → superseded/archived/activation_failed
+- `SmsGovernanceReleaseItem` — grouped governance change within a release (entityType: rule_pack/rule/compliance_profile; actionType: activate/deactivate/update_config; unique per entityType+entityId per release)
+- `SmsGovernanceApprovalRequest` — per-stage approval request (ordered stages 1-N; RequiredApprovals; RequiredApproverRole extension point)
+- `SmsGovernanceApprovalDecision` — append-only approval/rejection decision (ApprovedBy, Comments, DecidedAtUtc)
+- `SmsGovernanceReleaseAuditEvent` — append-only lifecycle audit trail (EventType, PerformedBy, MetadataJson)
+
+### Application Interfaces
+- `ISmsGovernanceReleaseService` — CRUD for releases and items; submit-review, schedule, activate (immediate), archive; get audit trail; get pending approvals
+- `ISmsGovernanceApprovalWorkflowService` — approve/reject current stage; opens next stage on approval; transitions release to approved/rejected; cancels pending requests on rejection
+
+### Infrastructure Services
+- `SmsGovernanceReleaseService` — state-machine enforcement; activation calls `ISmsGovernanceVersioningService.SnapshotRulePackAsync`/`SnapshotRuleAsync`; supersedes previously active release; all transitions emit `SmsGovernanceReleaseAuditEvent`
+- `SmsGovernanceApprovalWorkflowService` — multi-stage ordered approval; min-approvals-per-stage; rejection cancels all pending; final stage approval → release approved
+- `SmsGovernanceReleaseActivationWorker` — `BackgroundService`; disabled by default; polls every `ScheduledActivationPollMinutes` (default 5); max 10 scheduled releases/cycle; fault-tolerant per-release
+
+### API Endpoints (13, all PlatformAdmin)
+`/v1/admin/sms/governance/`: GET releases (paginated); GET releases/{id}; POST releases; POST releases/{id}/items; DELETE releases/{id}/items/{itemId}; POST releases/{id}/submit-review; POST releases/{id}/approve; POST releases/{id}/reject; POST releases/{id}/schedule; POST releases/{id}/activate; POST releases/{id}/archive; GET releases/{id}/audit; GET approvals/pending
+
+### Migration
+`20260512000006_AddSmsGovernanceReleaseManagement` — tables: `ntf_SmsGovernanceReleasePackages`, `ntf_SmsGovernanceReleaseItems`, `ntf_SmsGovernanceApprovalRequests`, `ntf_SmsGovernanceApprovalDecisions`, `ntf_SmsGovernanceReleaseAuditEvents`
+
+### Config
+`SmsGovernanceReleasesManagement`: RequiredApprovalStages(1), RequiredApprovalsPerStage(1), ScheduledActivationWorkerEnabled(false), ScheduledActivationPollMinutes(5), MaxScheduledReleasesPerCycle(10)
+
+### Control Center
+- `apps/control-center/src/lib/sms-governance-release-api.ts` — TypeScript API client for all 13 LS-021 endpoints
+- `apps/control-center/src/components/sms-governance/governance-release-panel.tsx` — 3-tab panel (Releases list, Release detail + approval actions, Pending approvals)
+- `apps/control-center/src/app/notifications/sms-governance/releases/page.tsx` — dedicated page at `/notifications/sms-governance/releases`
+
+### Analysis
+`analysis/LS-NOTIF-SMS-021-report.md`
