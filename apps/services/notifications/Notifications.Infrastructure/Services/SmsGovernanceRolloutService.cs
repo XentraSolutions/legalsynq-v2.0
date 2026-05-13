@@ -8,6 +8,14 @@ using Notifications.Infrastructure.Data;
 
 namespace Notifications.Infrastructure.Services;
 
+// LS-NOTIF-SMS-023 partial: rollout→tenant assignment integration notes
+// StartRolloutAsync: after activating first stage, creates SmsGovernanceTenantRulePackAssignment
+//   records for all cohorts associated with that stage (mode = rollout_canary or rollout_stage).
+// AdvanceStageAsync: after activating next stage, creates assignments for that stage's cohorts.
+// RollbackRolloutAsync: deactivates all rollout-created assignments (matching RolloutPlanId).
+// These assignments are additive — they do not modify any existing global assignments.
+// If release items reference global packs, the assignment maps those packs to cohort tenants.
+
 /// <summary>
 /// LS-NOTIF-SMS-022: Central rollout orchestration service.
 ///
@@ -20,21 +28,24 @@ namespace Notifications.Infrastructure.Services;
 /// </summary>
 public sealed class SmsGovernanceRolloutService : ISmsGovernanceRolloutService
 {
-    private readonly NotificationsDbContext             _db;
-    private readonly ISmsGovernanceReleaseService       _releaseService;
-    private readonly SmsGovernanceRolloutsOptions       _opts;
+    private readonly NotificationsDbContext              _db;
+    private readonly ISmsGovernanceReleaseService        _releaseService;
+    private readonly ISmsGovernanceTenantAssignmentService _tenantAssignments;
+    private readonly SmsGovernanceRolloutsOptions        _opts;
     private readonly ILogger<SmsGovernanceRolloutService> _logger;
 
     public SmsGovernanceRolloutService(
-        NotificationsDbContext                  db,
-        ISmsGovernanceReleaseService            releaseService,
-        IOptions<SmsGovernanceRolloutsOptions>  opts,
-        ILogger<SmsGovernanceRolloutService>    logger)
+        NotificationsDbContext                    db,
+        ISmsGovernanceReleaseService             releaseService,
+        ISmsGovernanceTenantAssignmentService    tenantAssignments,
+        IOptions<SmsGovernanceRolloutsOptions>   opts,
+        ILogger<SmsGovernanceRolloutService>     logger)
     {
-        _db             = db;
-        _releaseService = releaseService;
-        _opts           = opts.Value;
-        _logger         = logger;
+        _db                = db;
+        _releaseService    = releaseService;
+        _tenantAssignments = tenantAssignments;
+        _opts              = opts.Value;
+        _logger            = logger;
     }
 
     // ── Create ────────────────────────────────────────────────────────────────
@@ -247,6 +258,9 @@ public sealed class SmsGovernanceRolloutService : ISmsGovernanceRolloutService
 
             Audit(rolloutId, firstStage.Id, null, RolloutAuditEventTypes.StageStarted,
                   RolloutStageStates.Pending, RolloutStageStates.Active, requestedBy, "first stage started", now);
+
+            // LS-NOTIF-SMS-023: Create tenant rule-pack assignments for cohorts in this stage
+            await CreateStageAssignmentsAsync(rolloutId, firstStage.Id, plan, release, requestedBy, ct);
         }
 
         Audit(rolloutId, null, null, RolloutAuditEventTypes.RolloutStarted,
@@ -380,6 +394,10 @@ public sealed class SmsGovernanceRolloutService : ISmsGovernanceRolloutService
                   null, null, requestedBy, reason, now);
         }
 
+        // LS-NOTIF-SMS-023: Roll back all tenant assignments created by this rollout.
+        // Only assignments with a matching RolloutPlanId are affected — unrelated assignments preserved.
+        await RollbackRolloutAssignmentsAsync(rolloutId, requestedBy, reason, ct);
+
         Audit(rolloutId, null, null, RolloutAuditEventTypes.RolloutRolledBack,
               prev, RolloutStates.RolloutRolledBack, requestedBy, reason, now);
 
@@ -445,6 +463,13 @@ public sealed class SmsGovernanceRolloutService : ISmsGovernanceRolloutService
             plan.RolloutState  = RolloutStates.StagedRollout;
             plan.UpdatedAt     = now;
             plan.UpdatedBy     = requestedBy;
+
+            // LS-NOTIF-SMS-023: Create tenant assignments for cohorts in the newly activated stage
+            var release = await _db.SmsGovernanceReleasePackages
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Id == plan.ReleasePackageId, ct);
+            if (release is not null)
+                await CreateStageAssignmentsAsync(rolloutId, nextStage.Id, plan, release, requestedBy, ct);
         }
         else
         {
@@ -528,6 +553,125 @@ public sealed class SmsGovernanceRolloutService : ISmsGovernanceRolloutService
 
     private static RolloutOperationResult Ok()   => new(true);
     private static RolloutOperationResult Fail(string msg) => new(false, msg);
+
+    // ── LS-NOTIF-SMS-023: Tenant assignment helpers ───────────────────────────
+
+    /// <summary>
+    /// For each cohort in the given stage, load the release items (global packs) and
+    /// create a SmsGovernanceTenantRulePackAssignment per cohort tenant per pack.
+    /// Assignments start in Draft state; they are activated immediately unless the
+    /// stage is canary (mode = rollout_canary) vs staged (mode = rollout_stage).
+    /// Failures are non-fatal — the rollout proceeds; a warning is logged.
+    /// </summary>
+    private async Task CreateStageAssignmentsAsync(
+        Guid                         rolloutId,
+        Guid                         stageId,
+        SmsGovernanceRolloutPlan     plan,
+        SmsGovernanceReleasePackage  release,
+        string                       requestedBy,
+        CancellationToken            ct)
+    {
+        try
+        {
+            var cohorts = await _db.SmsGovernanceTenantCohorts
+                .AsNoTracking()
+                .Where(c => c.RolloutPlanId == rolloutId && c.StageId == stageId && c.Enabled)
+                .ToListAsync(ct);
+
+            if (cohorts.Count == 0) return;
+
+            var releaseItems = await _db.SmsGovernanceReleaseItems
+                .AsNoTracking()
+                .Where(i => i.ReleasePackageId == plan.ReleasePackageId)
+                .ToListAsync(ct);
+
+            if (releaseItems.Count == 0) return;
+
+            // Determine assignment mode by rollout strategy
+            var mode = plan.RolloutStrategy == RolloutStrategies.Canary
+                ? SmsGovernanceTenantRulePackAssignment.AssignmentModes.RolloutCanary
+                : SmsGovernanceTenantRulePackAssignment.AssignmentModes.RolloutStage;
+
+            // Only rule_pack release items map to tenant assignments
+            var packItems = releaseItems.Where(i => i.EntityType == ReleaseEntityTypes.RulePack).ToList();
+
+            foreach (var cohort in cohorts)
+            {
+                foreach (var item in packItems)
+                {
+                    var packId = item.EntityId;
+
+                    // Skip if an active assignment already exists for this tenant+pack from this rollout
+                    var alreadyExists = await _db.SmsGovernanceTenantRulePackAssignments
+                        .AnyAsync(a => a.TenantId     == cohort.TenantId &&
+                                       a.RulePackId   == packId &&
+                                       a.RolloutPlanId == rolloutId &&
+                                       a.AssignmentState != SmsGovernanceTenantRulePackAssignment.AssignmentStates.RolledBack, ct);
+                    if (alreadyExists) continue;
+
+                    var request = new AssignRulePackRequest(
+                        TenantId:        cohort.TenantId,
+                        RulePackId:      packId,
+                        AssignmentMode:  mode,
+                        Priority:        100,
+                        EffectiveFrom:   null,
+                        EffectiveTo:     null,
+                        RolloutPlanId:   rolloutId,
+                        RolloutStageId:  stageId,
+                        ReleasePackageId: plan.ReleasePackageId,
+                        AssignedBy:      requestedBy);
+
+                    var result = await _tenantAssignments.AssignRulePackAsync(request, ct);
+                    if (result.Success && result.AssignmentId.HasValue)
+                    {
+                        // Immediately activate the assignment for the rollout stage
+                        await _tenantAssignments.ActivateAssignmentAsync(
+                            result.AssignmentId.Value, requestedBy, ct);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "LS-023: Could not create assignment for tenant {TenantId} pack {PackId} in stage {StageId}: {Error}",
+                            cohort.TenantId, packId, stageId, result.ErrorMessage);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal — log and continue; rollout state is not affected
+            _logger.LogWarning(ex,
+                "LS-023: CreateStageAssignmentsAsync failed for rollout {Id} stage {StageId} — proceeding without tenant assignments",
+                rolloutId, stageId);
+        }
+    }
+
+    /// <summary>
+    /// Roll back all non-terminal tenant assignments created by this rollout.
+    /// Scoped to RolloutPlanId — does not touch any other assignments.
+    /// </summary>
+    private async Task RollbackRolloutAssignmentsAsync(
+        Guid rolloutId, string requestedBy, string? reason, CancellationToken ct)
+    {
+        try
+        {
+            var assignments = await _db.SmsGovernanceTenantRulePackAssignments
+                .Where(a => a.RolloutPlanId == rolloutId &&
+                            !SmsGovernanceTenantRulePackAssignment.AssignmentStates.Terminal.Contains(a.AssignmentState))
+                .ToListAsync(ct);
+
+            foreach (var assignment in assignments)
+                await _tenantAssignments.RollbackAssignmentAsync(assignment.Id, requestedBy, reason, ct);
+
+            _logger.LogInformation(
+                "LS-023: Rolled back {Count} tenant assignment(s) for rollout {Id}", assignments.Count, rolloutId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "LS-023: RollbackRolloutAssignmentsAsync failed for rollout {Id} — proceeding", rolloutId);
+        }
+    }
 
     // ── Mappers ───────────────────────────────────────────────────────────────
 

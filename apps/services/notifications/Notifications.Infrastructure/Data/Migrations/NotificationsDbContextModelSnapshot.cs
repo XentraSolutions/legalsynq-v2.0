@@ -3116,6 +3116,81 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_SmsGovernanceTenantCohorts", (string)null);
                 });
 
+            // LS-NOTIF-SMS-023: Per-tenant governance rule pack scoping
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceTenantRulePackAssignment", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)");
+                    b.Property<string>("RulePackId").IsRequired().HasColumnType("char(36)");
+                    b.Property<string>("AssignmentState").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("AssignmentMode").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<int>("Priority").HasColumnType("int").HasDefaultValue(100);
+                    b.Property<DateTime?>("EffectiveFrom").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("EffectiveTo").HasColumnType("datetime(6)");
+                    b.Property<string>("RolloutPlanId").HasColumnType("char(36)");
+                    b.Property<string>("RolloutStageId").HasColumnType("char(36)");
+                    b.Property<string>("ReleasePackageId").HasColumnType("char(36)");
+                    b.Property<string>("AssignedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("DeactivationReason").HasMaxLength(1000).HasColumnType("varchar(1000)");
+                    b.Property<DateTime?>("ActivatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("DeactivatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("SupersededAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("TenantId", "AssignmentState", "Priority").HasDatabaseName("IX_ntf_SmsGovTenantAssign_Tenant_State_Priority");
+                    b.HasIndex("TenantId", "RulePackId").HasDatabaseName("IX_ntf_SmsGovTenantAssign_Tenant_Pack");
+                    b.HasIndex("RulePackId", "AssignmentState").HasDatabaseName("IX_ntf_SmsGovTenantAssign_Pack_State");
+                    b.HasIndex("RolloutPlanId", "AssignmentState").HasDatabaseName("IX_ntf_SmsGovTenantAssign_Rollout_State");
+                    b.ToTable("ntf_SmsGovernanceTenantRulePackAssignments", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceTenantOverlay", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)");
+                    b.Property<string>("RulePackId").HasColumnType("char(36)");
+                    b.Property<string>("RuleId").HasColumnType("char(36)");
+                    b.Property<string>("OverlayType").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("OverlayState").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("OverrideJson").HasMaxLength(4000).HasColumnType("varchar(4000)");
+                    b.Property<int>("Priority").HasColumnType("int").HasDefaultValue(100);
+                    b.Property<bool>("Enabled").HasColumnType("tinyint(1)").HasDefaultValue(true);
+                    b.Property<DateTime?>("EffectiveFrom").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("EffectiveTo").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("datetime(6)");
+                    b.Property<string>("CreatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("UpdatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.HasKey("Id");
+                    b.HasIndex("TenantId", "Enabled", "Priority").HasDatabaseName("IX_ntf_SmsGovTenantOverlay_Tenant_Enabled_Priority");
+                    b.HasIndex("TenantId", "RulePackId").HasDatabaseName("IX_ntf_SmsGovTenantOverlay_Tenant_Pack");
+                    b.HasIndex("TenantId", "RuleId").HasDatabaseName("IX_ntf_SmsGovTenantOverlay_Tenant_Rule");
+                    b.HasIndex("OverlayType", "Enabled").HasDatabaseName("IX_ntf_SmsGovTenantOverlay_Type_Enabled");
+                    b.ToTable("ntf_SmsGovernanceTenantOverlays", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceTenantAssignmentAuditEvent", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)");
+                    b.Property<string>("AssignmentId").HasColumnType("char(36)");
+                    b.Property<string>("OverlayId").HasColumnType("char(36)");
+                    b.Property<string>("EventType").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("PreviousState").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("NewState").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("Actor").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("Reason").HasMaxLength(1000).HasColumnType("varchar(1000)");
+                    b.Property<string>("MetadataJson").HasMaxLength(4000).HasColumnType("varchar(4000)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("TenantId", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovTenantAudit_Tenant_Dt");
+                    b.HasIndex("AssignmentId", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovTenantAudit_Assignment_Dt");
+                    b.HasIndex("OverlayId", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovTenantAudit_Overlay_Dt");
+                    b.HasIndex("EventType", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovTenantAudit_EventType_Dt");
+                    b.ToTable("ntf_SmsGovernanceTenantAssignmentAuditEvents", (string)null);
+                });
+
             modelBuilder.Entity("Notifications.Domain.SmsGovernanceRolloutAuditEvent", b =>
                 {
                     b.Property<string>("Id").HasColumnType("char(36)");

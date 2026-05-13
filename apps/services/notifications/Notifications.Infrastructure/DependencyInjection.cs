@@ -161,10 +161,19 @@ public static class DependencyInjection
         // LS-NOTIF-SMS-022: Canary Governance Rollout
         services.AddOptions<SmsGovernanceRolloutsOptions>()
                 .Bind(configuration.GetSection(SmsGovernanceRolloutsOptions.SectionName));
-        services.AddScoped<ISmsGovernanceRolloutService, SmsGovernanceRolloutService>();
         services.AddScoped<ISmsGovernanceRolloutEvaluator, SmsGovernanceRolloutEvaluator>();
         services.AddScoped<ISmsGovernanceRolloutAnalyticsService, SmsGovernanceRolloutAnalyticsService>();
         services.AddHostedService<SmsGovernanceRolloutWorker>();
+
+        // LS-NOTIF-SMS-023: Per-tenant governance rule pack scoping
+        // Resolution service must be registered before the rule resolver (which depends on it).
+        services.AddOptions<SmsGovernanceTenantScopingOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceTenantScopingOptions.SectionName));
+        services.AddScoped<ISmsGovernanceTenantIsolationValidator, SmsGovernanceTenantIsolationValidator>();
+        services.AddScoped<ISmsGovernanceTenantAssignmentService, SmsGovernanceTenantAssignmentService>();
+        services.AddScoped<ISmsGovernanceTenantResolutionService, SmsGovernanceTenantResolutionService>();
+        // Rollout service registered after LS-023 deps it now depends on
+        services.AddScoped<ISmsGovernanceRolloutService, SmsGovernanceRolloutService>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

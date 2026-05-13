@@ -6199,3 +6199,53 @@ Canary/staged strategies record orchestration and visibility state only. Active 
 
 ### Analysis
 `analysis/LS-NOTIF-SMS-022-report.md`
+
+---
+
+## LS-NOTIF-SMS-023 — Per-Tenant Governance Rule Pack Scoping and True Tenant-Isolated Enforcement (2026-05-13)
+
+### What was built
+True per-tenant governance rule pack scoping extending the LS-019 global resolver. Tenants receive isolated enforcement via assigned rule packs and in-memory overlays without any mutation to global rules. Rollout stages (LS-022) auto-create tenant assignments as stages activate and roll them back on rollback.
+
+### Domain (3 new entities)
+- `SmsGovernanceTenantRulePackAssignment` — links tenant to rule pack with assignment state (draft/active/inactive/rolled_back/superseded), mode (inherited/isolated/rollout_canary/rollout_stage), priority, effective window, and rollout traceability fields
+- `SmsGovernanceTenantOverlay` — 6 overlay types (disable_rule, suppress_rule, override_severity, override_pattern, override_metadata, add_rule); purely in-memory application; no stored rule mutation
+- `SmsGovernanceTenantAssignmentAuditEvent` — immutable audit trail for all assignment and overlay lifecycle transitions
+
+### Application layer (3 interfaces + all types)
+- `ISmsGovernanceTenantResolutionService` — `ResolveEffectiveRulePacksAsync`, `ResolveEffectiveRulesAsync`, `GetEffectiveGovernanceGraphAsync`, `ExplainResolutionAsync` with full result/context record types
+- `ISmsGovernanceTenantAssignmentService` — CRUD for assignments + overlays + audit trail with all request/query/DTO types
+- `ISmsGovernanceTenantIsolationValidator` — 5-check assignment, overlay, and tenant-level isolation validators
+- `SmsGovernanceTenantScopingOptions` — `Enabled`, `ResolutionMode` (global_only/tenant_inherited/tenant_isolated), `EnableTenantOverlays`, `EnableRolloutAssignments`, `MaxAssignmentsPerTenant` (20), `MaxOverlaysPerTenant` (50), `FailOpenOnResolutionError`
+
+### Infrastructure
+- 3 EF configurations + 3 DB tables (`ntf_SmsGovernanceTenantRulePackAssignments`, `ntf_SmsGovernanceTenantOverlays`, `ntf_SmsGovernanceTenantAssignmentAuditEvents`) with 13 composite indexes
+- Migration `20260512000009_AddSmsGovernanceTenantScoping`
+- `SmsGovernanceTenantResolutionService` — resolves effective packs + rules + overlays per tenant; `tenant_inherited` and `tenant_isolated` modes; governance graph + explanation endpoints
+- `SmsGovernanceTenantAssignmentService` — full CRUD with all state transitions audited; fail-open; OverrideJson safety guard (≤4000 chars, keyword blocklist)
+- `SmsGovernanceTenantIsolationValidator` — validates assignments and overlays before creation
+
+### Resolver extension (LS-019 bridge)
+`SmsGovernanceRuleResolver` extended with `ISmsGovernanceTenantResolutionService` dependency. After LS-019 global resolution, if scoping enabled and tenant has assignments: `BuildFinalRuleSet()` merges scoped rules (inherited mode) or replaces global rules entirely (isolated mode). Global-only tenants with no assignments: zero behaviour change.
+
+### Rollout bridge (LS-022 integration)
+`SmsGovernanceRolloutService` extended with `ISmsGovernanceTenantAssignmentService`. `StartRolloutAsync`/`AdvanceStageAsync`: creates and activates tenant assignments for each cohort tenant × rule_pack release item when a stage activates. `RollbackRolloutAsync`: rolls back all assignments scoped to that `RolloutPlanId`. Failures non-fatal.
+
+### API (14 endpoints, AdminOnly)
+Base: `/notifications/v1/admin/sms/governance/tenant-scoping/`
+- `GET /tenant-assignments`, `POST /tenant-assignments`, `POST /{id}/activate|deactivate|rollback`
+- `GET /tenant-overlays`, `POST /tenant-overlays`, `POST /{id}/activate|disable`
+- `GET /tenant-resolution/{tenantId}`, `GET /tenant-resolution/{tenantId}/explain`
+- `GET /tenant-isolation/{tenantId}`
+- `GET /tenant-assignment-audit`
+
+### Control Center UI
+- `src/lib/sms-governance-tenant-scoping-api.ts` — all 14 API calls, DTOs, state constants, badge helpers
+- `src/app/notifications/sms-governance/tenant-scoping/page.tsx` — KPI bar, assignments table, overlays table, audit trail (Server Component, `force-dynamic`)
+- `sms-governance/page.tsx` — quick-nav links for Releases, Rollouts, and Tenant Scoping (LS-023)
+
+### Build
+`dotnet build Notifications.Api.csproj` — 0 errors, 29 pre-existing warnings (MailKit NU1902, snapshot CS8669 — unchanged from pre-LS-023 baseline)
+
+### Analysis
+`analysis/LS-NOTIF-SMS-023-report.md`

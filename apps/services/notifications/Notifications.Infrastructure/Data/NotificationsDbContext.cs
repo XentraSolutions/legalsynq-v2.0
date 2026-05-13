@@ -76,6 +76,11 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsGovernanceTenantCohort>      SmsGovernanceTenantCohorts      => Set<SmsGovernanceTenantCohort>();
     public DbSet<SmsGovernanceRolloutAuditEvent> SmsGovernanceRolloutAuditEvents => Set<SmsGovernanceRolloutAuditEvent>();
 
+    // LS-NOTIF-SMS-023: Per-tenant governance rule pack scoping
+    public DbSet<SmsGovernanceTenantRulePackAssignment>   SmsGovernanceTenantRulePackAssignments   => Set<SmsGovernanceTenantRulePackAssignment>();
+    public DbSet<SmsGovernanceTenantOverlay>              SmsGovernanceTenantOverlays              => Set<SmsGovernanceTenantOverlay>();
+    public DbSet<SmsGovernanceTenantAssignmentAuditEvent> SmsGovernanceTenantAssignmentAuditEvents => Set<SmsGovernanceTenantAssignmentAuditEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -138,5 +143,10 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRolloutStageConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceTenantCohortConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRolloutAuditEventConfiguration());
+
+        // LS-NOTIF-SMS-023
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceTenantRulePackAssignmentConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceTenantOverlayConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceTenantAssignmentAuditEventConfiguration());
     }
 }

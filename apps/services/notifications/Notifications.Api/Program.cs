@@ -257,7 +257,8 @@ app.MapSmsTemplateGovernanceEndpoints();     // LS-NOTIF-SMS-018
 app.MapSmsGovernanceDynamicRuleEndpoints();  // LS-NOTIF-SMS-019
 app.MapSmsGovernanceLifecycleEndpoints();   // LS-NOTIF-SMS-020
 app.MapSmsGovernanceReleaseEndpoints();     // LS-NOTIF-SMS-021
-app.MapSmsGovernanceRolloutEndpoints();    // LS-NOTIF-SMS-022
+app.MapSmsGovernanceRolloutEndpoints();       // LS-NOTIF-SMS-022
+app.MapSmsGovernanceTenantScopingEndpoints(); // LS-NOTIF-SMS-023
 
 app.Run();
 
