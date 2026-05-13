@@ -37,7 +37,7 @@
     "react-leaflet": "^4.2.1",
     "remixicon": "^4.9.1",
     "tailwindcss": "^4.2.2",
-    "typescript": "^6.0.2",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.5",
     "zustand": "^5.0.12"
   },
