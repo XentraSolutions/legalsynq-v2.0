@@ -174,6 +174,13 @@ public static class DependencyInjection
         services.AddScoped<ISmsGovernanceTenantResolutionService, SmsGovernanceTenantResolutionService>();
         // Rollout service registered after LS-023 deps it now depends on
         services.AddScoped<ISmsGovernanceRolloutService, SmsGovernanceRolloutService>();
+
+        // LS-NOTIF-SMS-024: Cross-channel governance federation
+        services.AddOptions<GovernanceFederationOptions>()
+                .Bind(configuration.GetSection("GovernanceFederation"));
+        services.AddScoped<IGovernanceFederationService, GovernanceFederationService>();
+        services.AddScoped<IGovernanceTopologyResolver, GovernanceTopologyResolver>();
+        services.AddScoped<IGovernanceFederationAnalyticsService, GovernanceFederationAnalyticsService>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

@@ -6249,3 +6249,58 @@ Base: `/notifications/v1/admin/sms/governance/tenant-scoping/`
 
 ### Analysis
 `analysis/LS-NOTIF-SMS-023-report.md`
+
+## LS-NOTIF-SMS-024 — Cross-Channel Governance Federation and Unified Communications Governance Topology (2026-05-13)
+
+### What was built
+Cross-channel governance federation layer extending LS-023 per-tenant scoping to cover all notification channels (SMS, Email, Push, Webhook, InApp, Voice). Introduces channel scope registration, federated rule pack mapping, non-destructive federation overlays, topology resolution, and a unified audit trail. SMS governance (LS-017 through LS-023) is fully backward compatible — zero changes to the existing resolution path.
+
+### Domain (4 new entities)
+- `GovernanceChannelScope` — channel participation registry. Scope modes: `isolated_channel`, `inherited_channel`, `federated_shared`, `tenant_federated`, `rollout_federated`
+- `GovernanceFederatedRulePack` — maps a rule pack to a channel. Supports federation groups, tenant scoping, effective windows, and priority ordering
+- `GovernanceFederationOverlay` — 9 overlay types (add_rule, disable_rule, suppress_rule, override_severity, override_pattern, override_metadata, override_classification, channel_override, tenant_channel_override). Applied in-memory only — no stored rule mutation. Overlay state machine: draft→active→inactive/expired/superseded. `HasSensitiveContent()` blocks password/token/secret/bearer/apikey in OverlayJson
+- `GovernanceFederationAuditEvent` — append-only audit trail. 15 event type constants
+
+### Application layer
+- `GovernanceFederationOptions` — `GovernanceFederation` config section (9 keys: Enabled, DefaultScopeMode, FailOpenOnFederationError, EnableCrossChannelOverlays, EnableFederatedRollouts, MaxFederatedPacksPerChannel, MaxFederationOverlaysPerChannel, CacheTopology, TopologyCacheSeconds)
+- `IGovernanceFederationService` — 9 methods + 22 request/result/query record types for channel scope CRUD, pack federation, overlay lifecycle
+- `IGovernanceTopologyResolver` — `ResolveTopologyAsync`, `ResolveEffectiveRulesAsync`, `ExplainTopologyAsync` + 12 record types: `GovernanceTopologyGraph`, `TopologyEffectiveRules`, `TopologyExplanation` with numbered steps
+- `IGovernanceFederationAnalyticsService` — 4 methods: topology analytics, channel governance analytics, federated pack analytics, cross-channel rollout analytics
+
+### Infrastructure
+- 4 EF configurations + 4 DB tables (`ntf_GovernanceChannelScopes`, `ntf_GovernanceFederatedRulePacks`, `ntf_GovernanceFederationOverlays`, `ntf_GovernanceFederationAuditEvents`) with 17 total composite indexes
+- Migration `20260513000000_AddGovernanceFederation`
+- `GovernanceFederationService` — channel scope/pack/overlay CRUD; writes audit events; validates duplicates, effective windows, sensitive overlay content
+- `GovernanceTopologyResolver` — 5-step resolution: global packs → channel-federated packs → LS-023 tenant resolution (SMS only) → tenant-federated packs → federation overlays (in-memory, non-destructive). Returns `GovernanceTopologyGraph` with per-layer summaries, rule counts, warnings. `ExplainTopologyAsync` returns numbered step-by-step explanation. Fixed: uses `SmsGovernanceRulePack.Status == "active" && Enabled` and `RolloutStates.ActiveStates.Contains(r.RolloutState)` (not `.IsActive` or `.Status`)
+- `GovernanceFederationAnalyticsService` — live DB aggregate counts for topology/channel/rollout dimensions
+
+### API (14 endpoints, AdminOnly)
+Base: `/notifications/v1/admin/governance/` (drops `sms/` — cross-channel)
+- `GET/POST /channel-scopes`, `PUT /channel-scopes/{id}`
+- `GET/POST /federated-rule-packs`, `POST /federated-rule-packs/{id}/disable`
+- `GET/POST /federation-overlays`, `POST /federation-overlays/{id}/activate|disable`
+- `GET /topology?channelType=`, `GET /topology/explain?channelType=`
+- `GET /federation/audit`, `GET /federation/analytics`
+
+### Topology resolution order
+1. Global governance packs (LS-019 path, unchanged)
+2. Channel-federated packs (`ntf_GovernanceFederatedRulePacks` where TenantId IS NULL)
+3. Tenant-scoped assignments from LS-023 (`ISmsGovernanceTenantResolutionService`, SMS only)
+4. Tenant-scoped federated packs (`ntf_GovernanceFederatedRulePacks` where TenantId matches)
+5. Federation overlays applied in-memory (non-destructive: disable, suppress, override_severity, add_rule)
+
+### Control Center UI
+- `src/lib/governance-federation-api.ts` — typed API client with `buildGovernanceFederationApi(token)` factory, 6 channel types, 5 scope modes, 9 overlay types, color badge helpers
+- `src/app/notifications/governance/federation/page.tsx` — Server Component: KPI bar, SMS topology graph, channel scopes table, federated packs table, federation overlays table, audit trail, architectural enforcement note. `Promise.allSettled` for graceful degradation
+
+### SMS backward compatibility guarantee
+All LS-017 through LS-023 paths unchanged. Federation topology resolver called only via API endpoints — not wired into SMS message-send path (zero latency impact). `GovernanceResolutionContext` record unchanged.
+
+### Enforcement note
+Email, Push, Webhook, InApp channels record topology intent only. Active rule enforcement for non-SMS channels requires per-channel rule engine implementations (future feature).
+
+### Build
+`dotnet build Notifications.Api.csproj` — 0 errors; warnings: NU1902/MailKit, CS7095, CS8669 snapshot (all pre-existing, unchanged from LS-023 baseline)
+
+### Analysis
+`analysis/LS-NOTIF-SMS-024-report.md`

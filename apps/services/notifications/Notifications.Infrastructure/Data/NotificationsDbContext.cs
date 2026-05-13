@@ -81,6 +81,12 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsGovernanceTenantOverlay>              SmsGovernanceTenantOverlays              => Set<SmsGovernanceTenantOverlay>();
     public DbSet<SmsGovernanceTenantAssignmentAuditEvent> SmsGovernanceTenantAssignmentAuditEvents => Set<SmsGovernanceTenantAssignmentAuditEvent>();
 
+    // LS-NOTIF-SMS-024: Cross-channel governance federation
+    public DbSet<GovernanceChannelScope>          GovernanceChannelScopes          => Set<GovernanceChannelScope>();
+    public DbSet<GovernanceFederatedRulePack>     GovernanceFederatedRulePacks     => Set<GovernanceFederatedRulePack>();
+    public DbSet<GovernanceFederationOverlay>     GovernanceFederationOverlays     => Set<GovernanceFederationOverlay>();
+    public DbSet<GovernanceFederationAuditEvent>  GovernanceFederationAuditEvents  => Set<GovernanceFederationAuditEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -148,5 +154,11 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceTenantRulePackAssignmentConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceTenantOverlayConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceTenantAssignmentAuditEventConfiguration());
+
+        // LS-NOTIF-SMS-024
+        modelBuilder.ApplyConfiguration(new Configurations.GovernanceChannelScopeConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.GovernanceFederatedRulePackConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.GovernanceFederationOverlayConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.GovernanceFederationAuditEventConfiguration());
     }
 }

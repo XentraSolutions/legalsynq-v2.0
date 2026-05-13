@@ -3211,6 +3211,100 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_SmsGovernanceRolloutAuditEvents", (string)null);
                 });
 
+            // LS-NOTIF-SMS-024: Cross-channel governance federation
+            modelBuilder.Entity("Notifications.Domain.GovernanceChannelScope", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("ChannelType").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("ScopeMode").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<bool>("Enabled").HasColumnType("tinyint(1)");
+                    b.Property<int>("Priority").HasColumnType("int");
+                    b.Property<string>("Description").HasMaxLength(500).HasColumnType("varchar(500)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("datetime(6)");
+                    b.Property<string>("CreatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("UpdatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.HasKey("Id");
+                    b.HasIndex("ChannelType", "Enabled").HasDatabaseName("IX_ntf_GovChannelScope_Channel_Enabled");
+                    b.HasIndex("ScopeMode", "Enabled").HasDatabaseName("IX_ntf_GovChannelScope_Mode_Enabled");
+                    b.HasIndex("Priority").HasDatabaseName("IX_ntf_GovChannelScope_Priority");
+                    b.ToTable("ntf_GovernanceChannelScopes", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.GovernanceFederatedRulePack", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("RulePackId").IsRequired().HasColumnType("char(36)");
+                    b.Property<string>("ChannelType").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("FederationGroup").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("TenantId").HasColumnType("char(36)");
+                    b.Property<bool>("Enabled").HasColumnType("tinyint(1)");
+                    b.Property<int>("Priority").HasColumnType("int");
+                    b.Property<DateTime?>("EffectiveFrom").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("EffectiveTo").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("datetime(6)");
+                    b.Property<string>("CreatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("UpdatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.HasKey("Id");
+                    b.HasIndex("ChannelType", "Enabled", "Priority").HasDatabaseName("IX_ntf_GovFedPack_Channel_Enabled_Priority");
+                    b.HasIndex("RulePackId", "ChannelType").HasDatabaseName("IX_ntf_GovFedPack_Pack_Channel");
+                    b.HasIndex("TenantId", "ChannelType", "Enabled").HasDatabaseName("IX_ntf_GovFedPack_Tenant_Channel_Enabled");
+                    b.HasIndex("FederationGroup", "Enabled").HasDatabaseName("IX_ntf_GovFedPack_FedGroup_Enabled");
+                    b.HasIndex("EffectiveFrom", "EffectiveTo").HasDatabaseName("IX_ntf_GovFedPack_EffectiveWindow");
+                    b.ToTable("ntf_GovernanceFederatedRulePacks", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.GovernanceFederationOverlay", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("ChannelType").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("RulePackId").HasColumnType("char(36)");
+                    b.Property<string>("RuleId").HasColumnType("char(36)");
+                    b.Property<string>("OverlayType").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("OverlayState").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("OverlayJson").HasMaxLength(4000).HasColumnType("varchar(4000)");
+                    b.Property<int>("Priority").HasColumnType("int");
+                    b.Property<bool>("Enabled").HasColumnType("tinyint(1)");
+                    b.Property<DateTime?>("EffectiveFrom").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("EffectiveTo").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("datetime(6)");
+                    b.Property<string>("CreatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("UpdatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.HasKey("Id");
+                    b.HasIndex("ChannelType", "Enabled", "Priority").HasDatabaseName("IX_ntf_GovFedOverlay_Channel_Enabled_Priority");
+                    b.HasIndex("TenantId", "ChannelType", "Enabled").HasDatabaseName("IX_ntf_GovFedOverlay_Tenant_Channel_Enabled");
+                    b.HasIndex("RulePackId", "ChannelType").HasDatabaseName("IX_ntf_GovFedOverlay_Pack_Channel");
+                    b.HasIndex("RuleId", "ChannelType").HasDatabaseName("IX_ntf_GovFedOverlay_Rule_Channel");
+                    b.HasIndex("OverlayType", "Enabled").HasDatabaseName("IX_ntf_GovFedOverlay_Type_Enabled");
+                    b.ToTable("ntf_GovernanceFederationOverlays", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.GovernanceFederationAuditEvent", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("ChannelType").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("FederationGroup").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("EntityType").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("EntityId").HasColumnType("char(36)");
+                    b.Property<string>("EventType").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("PreviousState").HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("NewState").HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("Actor").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("Reason").HasMaxLength(1000).HasColumnType("varchar(1000)");
+                    b.Property<string>("MetadataJson").HasMaxLength(4000).HasColumnType("varchar(4000)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("TenantId", "CreatedAt").HasDatabaseName("IX_ntf_GovFedAudit_Tenant_Date");
+                    b.HasIndex("ChannelType", "CreatedAt").HasDatabaseName("IX_ntf_GovFedAudit_Channel_Date");
+                    b.HasIndex("EventType", "CreatedAt").HasDatabaseName("IX_ntf_GovFedAudit_EventType_Date");
+                    b.HasIndex("EntityType", "EntityId").HasDatabaseName("IX_ntf_GovFedAudit_Entity");
+                    b.ToTable("ntf_GovernanceFederationAuditEvents", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }
