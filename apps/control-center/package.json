@@ -12,7 +12,7 @@
   "dependencies": {
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.4.1",
-    "next": "15.5.15",
+    "next": "15.5.16",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "remixicon": "^4.9.1"
