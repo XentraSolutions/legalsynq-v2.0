@@ -70,6 +70,12 @@ public class NotificationsDbContext : DbContext
     public DbSet<SmsGovernanceApprovalDecision>  SmsGovernanceApprovalDecisions  => Set<SmsGovernanceApprovalDecision>();
     public DbSet<SmsGovernanceReleaseAuditEvent> SmsGovernanceReleaseAuditEvents => Set<SmsGovernanceReleaseAuditEvent>();
 
+    // LS-NOTIF-SMS-022: Canary Governance Rollout
+    public DbSet<SmsGovernanceRolloutPlan>       SmsGovernanceRolloutPlans       => Set<SmsGovernanceRolloutPlan>();
+    public DbSet<SmsGovernanceRolloutStage>      SmsGovernanceRolloutStages      => Set<SmsGovernanceRolloutStage>();
+    public DbSet<SmsGovernanceTenantCohort>      SmsGovernanceTenantCohorts      => Set<SmsGovernanceTenantCohort>();
+    public DbSet<SmsGovernanceRolloutAuditEvent> SmsGovernanceRolloutAuditEvents => Set<SmsGovernanceRolloutAuditEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -127,5 +133,10 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceApprovalRequestConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceApprovalDecisionConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceReleaseAuditEventConfiguration());
+        // LS-NOTIF-SMS-022
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRolloutPlanConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRolloutStageConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceTenantCohortConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.SmsGovernanceRolloutAuditEventConfiguration());
     }
 }

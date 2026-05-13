@@ -157,6 +157,14 @@ public static class DependencyInjection
         // LS-NOTIF-SMS-021-HARDENING: read-only integrity + lock status service
         services.AddScoped<ISmsGovernanceReleaseIntegrityService, SmsGovernanceReleaseIntegrityService>();
         services.AddHostedService<SmsGovernanceReleaseActivationWorker>();
+
+        // LS-NOTIF-SMS-022: Canary Governance Rollout
+        services.AddOptions<SmsGovernanceRolloutsOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceRolloutsOptions.SectionName));
+        services.AddScoped<ISmsGovernanceRolloutService, SmsGovernanceRolloutService>();
+        services.AddScoped<ISmsGovernanceRolloutEvaluator, SmsGovernanceRolloutEvaluator>();
+        services.AddScoped<ISmsGovernanceRolloutAnalyticsService, SmsGovernanceRolloutAnalyticsService>();
+        services.AddHostedService<SmsGovernanceRolloutWorker>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:

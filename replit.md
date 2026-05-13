@@ -6156,3 +6156,46 @@ Role enforcement blocks mismatch · PlatformAdmin fallback bypasses role gate ·
 
 ### Analysis
 `analysis/LS-NOTIF-SMS-021-HARDENING-report.md`
+
+## LS-NOTIF-SMS-022 — Canary Governance Rollout, Tenant Segmentation, and Staged Governance Deployment (2026-05-13)
+
+Extends LS-021 release management with canary rollout orchestration, tenant segmentation, staged deployment, progressive stage advancement, threshold-based safeguards, pause/resume/rollback controls, and rollout analytics.
+
+### Domain (4 new entities)
+- `SmsGovernanceRolloutPlan` — top-level rollout container; state machine: draft → pending_rollout → canary_active | staged_rollout → rollout_completed; pause/rollback/fail branches. Strategies: canary / staged_percentage / staged_cohort / full_activation / manual_progression.
+- `SmsGovernanceRolloutStage` — ordered stage within a plan; StageNumber unique per plan; states: pending/active/completed/paused/failed/rolled_back; DurationMinutes = observation window.
+- `SmsGovernanceTenantCohort` — tenant targeting (opaque TenantId only — no phones/secrets); optional StageId scoping; enabled/disabled; ActivatedAt/RolledBackAt tracking.
+- `SmsGovernanceRolloutAuditEvent` — append-only rollout lifecycle audit (16 event types). Separate from SmsGovernanceReleaseAuditEvent.
+
+### Application Interfaces
+- `ISmsGovernanceRolloutService` — 12 methods: CRUD + AddStage + AddCohortTenant + Start/Pause/Resume/Rollback/AdvanceStage/Complete + GetAuditTrail
+- `ISmsGovernanceRolloutEvaluator` — EvaluateRolloutHealthAsync / EvaluateStageHealthAsync; JSON-configurable thresholds (maxBlockRate/warnRate/reviewRate/minimumSampleSize/action); fail-open on error
+- `ISmsGovernanceRolloutAnalyticsService` — GetRolloutAnalytics / GetRolloutStageAnalytics / GetRolloutCohortAnalytics; 7-day bounded metric window; safe aggregate data only
+
+### Infrastructure Services
+- `SmsGovernanceRolloutService` — full state machine implementation; `full_activation` strategy delegates to `ISmsGovernanceReleaseService.ActivateAsync` (respects LS-021-HARDENING locks); `canary`/`staged_*` strategies record orchestration state; all transitions audited
+- `SmsGovernanceRolloutEvaluator` — queries SmsGovernanceRuleMatchMetric by cohort TenantIds; 24h window; insufficient-data detection; fail-open configurable
+- `SmsGovernanceRolloutAnalyticsService` — stage/cohort/plan-level aggregation over 7-day metric window
+
+### Worker — `SmsGovernanceRolloutWorker`
+BackgroundService; disabled by default (`RolloutWorkerEnabled=false`); 90s startup delay; per-rollout fault tolerance; evaluates stage health → auto-pause / auto-rollback / advance on observation window elapsed
+
+### API Endpoints (12, all PlatformAdmin)
+`GET/POST /rollouts` · `GET /rollouts/{id}` · `POST /rollouts/{id}/stages` · `POST /rollouts/{id}/cohorts` · `POST /rollouts/{id}/start` · `/pause` · `/resume` · `/rollback` · `/advance` · `GET /rollouts/{id}/analytics` · `GET /rollouts/{id}/audit`
+
+### Config Section: `SmsGovernanceRollouts`
+Enabled(true), RolloutWorkerEnabled(false), RolloutPollMinutes(5), MaxRolloutsPerCycle(10), DefaultCanaryPercentage(5), DefaultStageDurationMinutes(60), AutoPauseOnThresholdBreach(true), AutoRollbackOnCriticalThresholdBreach(false), FailOpenOnRolloutEvaluationError(true)
+
+### Migration
+`20260512000008_AddSmsGovernanceRollout` — 4 new tables, 11 indexes: `ntf_SmsGovernanceRolloutPlans`, `ntf_SmsGovernanceRolloutStages`, `ntf_SmsGovernanceTenantCohorts`, `ntf_SmsGovernanceRolloutAuditEvents`
+
+### Control Center
+- `apps/control-center/src/lib/sms-governance-rollout-api.ts` — typed API client for all 12 endpoints + state/strategy label/color maps
+- `apps/control-center/src/components/sms-governance/governance-rollout-panel.tsx` — client panel: rollout list + detail view with 4 tabs (Stages / Cohorts / Analytics / Audit) + lifecycle action buttons (Start, Pause, Resume, Advance Stage, Rollback)
+- `apps/control-center/src/app/notifications/sms-governance/rollouts/page.tsx` — PlatformAdmin-gated page at `/notifications/sms-governance/rollouts`
+
+### Architectural Limitation (documented)
+Canary/staged strategies record orchestration and visibility state only. Active governance rules apply globally — per-tenant rule enforcement scoping requires LS-NOTIF-SMS-023. The Control Center UI surfaces this limitation explicitly.
+
+### Analysis
+`analysis/LS-NOTIF-SMS-022-report.md`

@@ -3044,6 +3044,98 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_SmsGovernanceReleaseAuditEvents", (string)null);
                 });
 
+            // ── LS-NOTIF-SMS-022: Canary Governance Rollout ───────────────────
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceRolloutPlan", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("ReleasePackageId").IsRequired().HasColumnType("char(36)");
+                    b.Property<string>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("Description").HasMaxLength(1000).HasColumnType("varchar(1000)");
+                    b.Property<string>("RolloutState").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("RolloutStrategy").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<int?>("CurrentStageNumber").HasColumnType("int");
+                    b.Property<string>("RollbackThresholdJson").HasMaxLength(2000).HasColumnType("varchar(2000)");
+                    b.Property<DateTime?>("StartedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("PausedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("ResumedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("CompletedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("RolledBackAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("FailedAt").HasColumnType("datetime(6)");
+                    b.Property<string>("FailureReason").HasMaxLength(1000).HasColumnType("varchar(1000)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("datetime(6)");
+                    b.Property<string>("CreatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("UpdatedBy").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.HasKey("Id");
+                    b.HasIndex("ReleasePackageId").HasDatabaseName("IX_ntf_SmsGovernanceRolloutPlans_ReleasePackageId");
+                    b.HasIndex("TenantId", "RolloutState", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovernanceRolloutPlans_Tenant_State_Dt");
+                    b.HasIndex("RolloutState", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovernanceRolloutPlans_State_Dt");
+                    b.HasIndex("RolloutStrategy", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovernanceRolloutPlans_Strategy_Dt");
+                    b.ToTable("ntf_SmsGovernanceRolloutPlans", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceRolloutStage", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("RolloutPlanId").IsRequired().HasColumnType("char(36)");
+                    b.Property<int>("StageNumber").HasColumnType("int");
+                    b.Property<string>("StageName").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("StageState").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<decimal?>("TenantPercentage").HasPrecision(5, 2).HasColumnType("decimal(5,2)");
+                    b.Property<int?>("DurationMinutes").HasColumnType("int");
+                    b.Property<DateTime?>("StartedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("CompletedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("FailedAt").HasColumnType("datetime(6)");
+                    b.Property<string>("FailureReason").HasMaxLength(500).HasColumnType("varchar(500)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("RolloutPlanId", "StageNumber").IsUnique().HasDatabaseName("IX_ntf_SmsGovernanceRolloutStages_PlanId_StageNum");
+                    b.HasIndex("RolloutPlanId", "StageState").HasDatabaseName("IX_ntf_SmsGovernanceRolloutStages_PlanId_State");
+                    b.ToTable("ntf_SmsGovernanceRolloutStages", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceTenantCohort", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("RolloutPlanId").IsRequired().HasColumnType("char(36)");
+                    b.Property<string>("StageId").HasColumnType("char(36)");
+                    b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)");
+                    b.Property<string>("CohortName").IsRequired().HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<bool>("Enabled").HasColumnType("tinyint(1)");
+                    b.Property<DateTime?>("ActivatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("RolledBackAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("RolloutPlanId", "TenantId").HasDatabaseName("IX_ntf_SmsGovernanceTenantCohorts_PlanId_TenantId");
+                    b.HasIndex("StageId", "TenantId").HasDatabaseName("IX_ntf_SmsGovernanceTenantCohorts_StageId_TenantId");
+                    b.HasIndex("CohortName").HasDatabaseName("IX_ntf_SmsGovernanceTenantCohorts_CohortName");
+                    b.ToTable("ntf_SmsGovernanceTenantCohorts", (string)null);
+                });
+
+            modelBuilder.Entity("Notifications.Domain.SmsGovernanceRolloutAuditEvent", b =>
+                {
+                    b.Property<string>("Id").HasColumnType("char(36)");
+                    b.Property<string>("RolloutPlanId").IsRequired().HasColumnType("char(36)");
+                    b.Property<string>("StageId").HasColumnType("char(36)");
+                    b.Property<string>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("EventType").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("PreviousState").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("NewState").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("Actor").HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("Reason").HasMaxLength(1000).HasColumnType("varchar(1000)");
+                    b.Property<string>("MetadataJson").HasMaxLength(4000).HasColumnType("varchar(4000)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("RolloutPlanId", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovernanceRolloutAuditEvents_PlanId_Dt");
+                    b.HasIndex("EventType", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovernanceRolloutAuditEvents_EventType_Dt");
+                    b.HasIndex("StageId", "CreatedAt").HasDatabaseName("IX_ntf_SmsGovernanceRolloutAuditEvents_StageId_Dt");
+                    b.ToTable("ntf_SmsGovernanceRolloutAuditEvents", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }
