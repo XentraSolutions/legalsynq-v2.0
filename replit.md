@@ -6304,3 +6304,50 @@ Email, Push, Webhook, InApp channels record topology intent only. Active rule en
 
 ### Analysis
 `analysis/LS-NOTIF-SMS-024-report.md`
+
+## LS-NOTIF-SMS-025 — Federated Cross-Channel Governance Enforcement Engines and Unified Policy Execution Runtime (2026-05-13)
+
+### What was built
+Unified policy execution runtime wiring the LS-024 federation topology resolver into channel-specific enforcement engines. Activates email governance enforcement in the live delivery pipeline (NotificationService). Push/Webhook engines are fully implemented but integration is deferred pending delivery pipeline availability. SMS uses a compatibility adapter for simulation/status only (LS-017–023 governance pipeline unchanged).
+
+### Domain
+- `GovernanceExecutionRecord` — cross-channel governance telemetry. Table: `ntf_GovernanceExecutionRecords`. NEVER stores raw payloads, phone numbers, email addresses, or credentials. Only IDs, decision metadata, and bounded safe metadata JSON.
+
+### Application layer
+- `GovernanceExecutionRuntimeOptions` — `GovernanceExecutionRuntime` config section (9 keys: Enabled, FailOpenOnRuntimeError, EnableEmailEnforcement, EnablePushEnforcement, EnableWebhookEnforcement, EnableSmsCompatibilityRuntime, PersistAllowDecisions, MaxEvaluationTextLength, RegexTimeoutMs)
+- `IGovernanceExecutionRuntime` — orchestrator + all models: `GovernanceExecutionContext` (PayloadTextForEvaluation transient only), `GovernanceExecutionResult`, `GovernanceSimulationRequest`, `GovernanceSimulationResult`, `GovernanceChannelRuntimeStatus`, `GovernanceDecisionTypes`, `GovernanceReasonCodes`
+- `IGovernanceChannelEnforcementEngine` — per-channel engine abstraction (EvaluateAsync + SimulateAsync)
+- `IGovernanceExecutionTelemetryService` — telemetry persistence + query + aggregate: `GovernanceExecutionQuery`, `GovernanceExecutionRecordDto`, `GovernanceExecutionPageResult`, `GovernanceRuntimeTelemetryQuery`, `GovernanceRuntimeTelemetryResult`, `GovernanceChannelTelemetry`
+
+### Infrastructure services (7)
+- `GovernanceRuleEvaluationHelper` — loads full `SmsGovernanceRule` records from DB using pack IDs from `GovernanceTopologyGraph` (GlobalPacks + ChannelPacks + TenantPacks + FederatedPacks → `ntf_SmsGovernanceRules WHERE RulePackId IN (...)`). Applies: prohibited_phrase (case-insensitive + optional whole-word), restricted_pattern (Regex with ReDoS protection + configurable timeout), link_rule, classification_override, variable_rule, delivery_restriction. Severity ranking: allow < warn < override_allowed < review_required < block.
+- `EmailGovernanceEnforcementEngine` — evaluates rendered subject + body against topology rules. Fails open with `insufficient_context` when both absent.
+- `PushGovernanceEnforcementEngine` — applies rule evaluation when payload available; fails open with `insufficient_context` (push pipeline reserved).
+- `WebhookGovernanceEnforcementEngine` — evaluates safe metadata only (template key, evaluation context); never raw webhook payload. Fails open when no safe context.
+- `SmsGovernanceCompatibilityEngine` — returns `allow/sms_enforced` for live evaluation (no duplicate persistence); supports simulation via GovernanceRuleEvaluationHelper. EnableSmsCompatibilityRuntime = false default.
+- `GovernanceExecutionTelemetryService` — persists safe aggregate records. Skips allow decisions when PersistAllowDecisions = false. Failure is non-fatal.
+- `GovernanceExecutionRuntime` — DI-composed from `IEnumerable<IGovernanceChannelEnforcementEngine>`. Steps: normalize channel → check enforcement flag → resolve topology → select engine → evaluate → persist telemetry. Fails open when FailOpenOnRuntimeError = true.
+
+### Email delivery integration (NotificationService.cs)
+`IGovernanceExecutionRuntime` injected as ctor parameter. Email governance evaluated at line ~1072 (before the provider failover loop), after content rendering and before `ProviderFailure? lastFailure = null;`. Block/review_required: sets `dead-letter` status, logs, calls `CreateDeadLetterIssueAsync`, returns. Warn: logs, continues. Any exception: logs, continues (fail-open). SMS/Push/Webhook: not evaluated by runtime in delivery path.
+
+### API (5 endpoints, AdminOnly)
+Base: `/notifications/v1/admin/governance/runtime/`
+- `GET /status` — overall runtime health + engine summary
+- `GET /channels` — per-channel enforcement status
+- `GET /executions` — paginated execution telemetry records (channelType, tenantId, decisionType, isSimulation, from, to)
+- `GET /telemetry` — aggregate decision counts by channel
+- `POST /simulate` — transient governance simulation (simulationPayloadText never persisted)
+
+### Control Center UI
+- `src/lib/governance-runtime-api.ts` — typed API client for all 5 endpoints
+- `src/app/notifications/governance/runtime/page.tsx` — Server Component: runtime enabled badge, config summary, live telemetry KPIs, channel engines table, decision breakdown by channel, architecture notes. `Promise.allSettled` for graceful degradation.
+
+### SMS backward compatibility guarantee
+LS-017 through LS-023 governance pipelines completely unchanged. `SmsGovernanceCompatibilityEngine` uses `return Task.FromResult(...)` — zero DB calls for live evaluation.
+
+### Build
+`dotnet build Notifications.Api.csproj --no-restore` — **0 errors**; 28 warnings (all pre-existing: NU1902/MailKit, CS7095, CS8669 snapshot, CS8600/CS8604 SmsGovernanceTenantResolutionService)
+
+### Analysis
+`analysis/LS-NOTIF-SMS-025-report.md`

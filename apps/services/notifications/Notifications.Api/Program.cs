@@ -260,6 +260,7 @@ app.MapSmsGovernanceReleaseEndpoints();     // LS-NOTIF-SMS-021
 app.MapSmsGovernanceRolloutEndpoints();       // LS-NOTIF-SMS-022
 app.MapSmsGovernanceTenantScopingEndpoints(); // LS-NOTIF-SMS-023
 app.MapGovernanceFederationEndpoints();       // LS-NOTIF-SMS-024
+app.MapGovernanceRuntimeEndpoints();          // LS-NOTIF-SMS-025
 
 app.Run();
 

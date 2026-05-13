@@ -87,6 +87,9 @@ public class NotificationsDbContext : DbContext
     public DbSet<GovernanceFederationOverlay>     GovernanceFederationOverlays     => Set<GovernanceFederationOverlay>();
     public DbSet<GovernanceFederationAuditEvent>  GovernanceFederationAuditEvents  => Set<GovernanceFederationAuditEvent>();
 
+    // LS-NOTIF-SMS-025: Governance execution runtime telemetry
+    public DbSet<GovernanceExecutionRecord>       GovernanceExecutionRecords       => Set<GovernanceExecutionRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -160,5 +163,8 @@ public class NotificationsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new Configurations.GovernanceFederatedRulePackConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.GovernanceFederationOverlayConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.GovernanceFederationAuditEventConfiguration());
+
+        // LS-NOTIF-SMS-025
+        modelBuilder.ApplyConfiguration(new Configurations.GovernanceExecutionRecordConfiguration());
     }
 }

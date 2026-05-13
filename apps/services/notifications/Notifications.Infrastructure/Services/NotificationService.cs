@@ -38,6 +38,8 @@ public class NotificationServiceImpl : INotificationService
     private readonly ISmsGovernancePolicyService? _governanceService;
     // LS-NOTIF-SMS-018: template governance — content classification, variable validation, compliance
     private readonly ISmsTemplateGovernanceService? _templateGovernanceService;
+    // LS-NOTIF-SMS-025: cross-channel governance execution runtime (optional — degrades to allow when null)
+    private readonly IGovernanceExecutionRuntime? _governanceRuntime;
     private readonly ILogger<NotificationServiceImpl> _logger;
 
     private static readonly JsonSerializerOptions _camelCaseOptions = new()
@@ -68,6 +70,7 @@ public class NotificationServiceImpl : INotificationService
         ISmsRetrySuppressionService retrySuppressionService,
         ISmsGovernancePolicyService governanceService,
         ISmsTemplateGovernanceService templateGovernanceService,
+        IGovernanceExecutionRuntime governanceRuntime,
         ILogger<NotificationServiceImpl> logger)
     {
         _notificationRepo        = notificationRepo;
@@ -92,6 +95,7 @@ public class NotificationServiceImpl : INotificationService
         _retrySuppressionService = retrySuppressionService;
         _governanceService         = governanceService;
         _templateGovernanceService = templateGovernanceService;
+        _governanceRuntime         = governanceRuntime;
         _logger                    = logger;
     }
 
@@ -1061,6 +1065,58 @@ public class NotificationServiceImpl : INotificationService
         // When the template only defines an HTML body, fall back to a minimal stub.
         if (string.IsNullOrWhiteSpace(body) && !string.IsNullOrWhiteSpace(html))
             body = "Please view this email in an HTML-capable mail client.";
+
+        // LS-NOTIF-SMS-025: Cross-channel governance enforcement for Email.
+        // SMS channel has its own governance pipeline (LS-017–023) and is not evaluated here.
+        // Evaluation runs once before the failover loop; PayloadTextForEvaluation is TRANSIENT.
+        if (string.Equals(notification.Channel, "email", StringComparison.OrdinalIgnoreCase) &&
+            _governanceRuntime != null)
+        {
+            try
+            {
+                var govCtx = new GovernanceExecutionContext
+                {
+                    NotificationId           = notification.Id,
+                    TenantId                 = tenantId == Guid.Empty ? (Guid?)null : tenantId,
+                    ChannelType              = notification.Channel,
+                    TemplateId               = notification.TemplateId,
+                    TemplateKey              = notification.TemplateKey,
+                    SubjectMetadata          = subject,   // rendered subject — safe content label
+                    PayloadTextForEvaluation = body,      // TRANSIENT — in-memory only, never persisted
+                    EvaluationContext        = "delivery",
+                    ExecutedAtUtc            = DateTime.UtcNow,
+                };
+
+                var govResult = await _governanceRuntime.EvaluateAsync(govCtx, CancellationToken.None);
+
+                if (govResult.ShouldBlock || govResult.RequiresReview)
+                {
+                    notification.Status           = "dead-letter";
+                    notification.FailureCategory  = $"governance_{govResult.ReasonCode}";
+                    notification.LastErrorMessage = $"Email governance blocked delivery: {govResult.DecisionType}/{govResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ExecuteSendLoopAsync: email notification {Id} {Decision} by LS-025 governance ({Reason}) — aborting send",
+                        notification.Id, govResult.DecisionType, govResult.ReasonCode);
+                    return;
+                }
+
+                if (govResult.ShouldWarn)
+                {
+                    _logger.LogInformation(
+                        "ExecuteSendLoopAsync: email notification {Id} governance warn ({Reason}) — proceeding with send",
+                        notification.Id, govResult.ReasonCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never crash the delivery pipeline on governance errors — fail open
+                _logger.LogWarning(ex,
+                    "ExecuteSendLoopAsync: LS-025 governance threw for email {Id} — defaulting to allow",
+                    notification.Id);
+            }
+        }
 
         ProviderFailure? lastFailure = null;
 

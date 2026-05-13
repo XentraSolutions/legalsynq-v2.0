@@ -3305,6 +3305,34 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_GovernanceFederationAuditEvents", (string)null);
                 });
 
+            // LS-NOTIF-SMS-025: GovernanceExecutionRecord
+            modelBuilder.Entity("Notifications.Domain.GovernanceExecutionRecord", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("char(36)");
+                    b.Property<Guid?>("NotificationId").HasColumnType("char(36)");
+                    b.Property<Guid?>("AttemptId").HasColumnType("char(36)");
+                    b.Property<Guid?>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("ChannelType").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("DecisionType").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("ReasonCode").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("MatchedRuleIdsJson").HasMaxLength(2000).HasColumnType("varchar(2000)");
+                    b.Property<string>("MatchedRulePackIdsJson").HasMaxLength(2000).HasColumnType("varchar(2000)");
+                    b.Property<string>("AppliedOverlayIdsJson").HasMaxLength(2000).HasColumnType("varchar(2000)");
+                    b.Property<string>("ContentClassification").HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("TopologyResolutionStatus").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("EngineStatus").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("SafeMetadataJson").HasMaxLength(2000).HasColumnType("varchar(2000)");
+                    b.Property<bool>("IsSimulation").HasColumnType("tinyint(1)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("ChannelType", "CreatedAt").HasDatabaseName("IX_ntf_GovExecRecords_Channel_CreatedAt");
+                    b.HasIndex("TenantId", "ChannelType", "CreatedAt").HasDatabaseName("IX_ntf_GovExecRecords_Tenant_Channel_CreatedAt");
+                    b.HasIndex("DecisionType", "CreatedAt").HasDatabaseName("IX_ntf_GovExecRecords_Decision_CreatedAt");
+                    b.HasIndex("NotificationId").HasDatabaseName("IX_ntf_GovExecRecords_NotificationId");
+                    b.HasIndex("IsSimulation", "CreatedAt").HasDatabaseName("IX_ntf_GovExecRecords_Simulation_CreatedAt");
+                    b.ToTable("ntf_GovernanceExecutionRecords", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }

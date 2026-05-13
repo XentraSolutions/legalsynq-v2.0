@@ -181,6 +181,18 @@ public static class DependencyInjection
         services.AddScoped<IGovernanceFederationService, GovernanceFederationService>();
         services.AddScoped<IGovernanceTopologyResolver, GovernanceTopologyResolver>();
         services.AddScoped<IGovernanceFederationAnalyticsService, GovernanceFederationAnalyticsService>();
+
+        // LS-NOTIF-SMS-025: Cross-channel governance execution runtime
+        services.AddOptions<GovernanceExecutionRuntimeOptions>()
+                .Bind(configuration.GetSection("GovernanceExecutionRuntime"));
+        services.AddScoped<GovernanceRuleEvaluationHelper>();
+        // Channel enforcement engines — all registered; runtime selects by channel type
+        services.AddScoped<IGovernanceChannelEnforcementEngine, EmailGovernanceEnforcementEngine>();
+        services.AddScoped<IGovernanceChannelEnforcementEngine, PushGovernanceEnforcementEngine>();
+        services.AddScoped<IGovernanceChannelEnforcementEngine, WebhookGovernanceEnforcementEngine>();
+        services.AddScoped<IGovernanceChannelEnforcementEngine, SmsGovernanceCompatibilityEngine>();
+        services.AddScoped<IGovernanceExecutionTelemetryService, GovernanceExecutionTelemetryService>();
+        services.AddScoped<IGovernanceExecutionRuntime, GovernanceExecutionRuntime>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:
