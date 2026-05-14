@@ -1,4 +1,4 @@
-import type { NavSection } from '@/types';
+import type { NavSection, NavSubGroup } from '@/types';
 
 /**
  * Control Center sidebar navigation — NavSection[] with status badges.
@@ -79,15 +79,38 @@ export const CC_NAV: NavSection[] = [
 
   {
     heading: 'NOTIFICATIONS',
-    items: [
-      { href: '/notifications',                        label: 'Overview',        icon: 'ri-notification-3-line'  },
-      { href: '/notifications/log',                    label: 'Delivery Log',    icon: 'ri-mail-send-line'       },
-      { href: '/notifications/templates',              label: 'Templates',       icon: 'ri-file-text-line'       },
-      { href: '/notifications/providers',              label: 'Providers',       icon: 'ri-plug-line'            },
-      { href: '/notifications/billing',                label: 'Usage & Billing', icon: 'ri-bar-chart-2-line'     },
-      { href: '/notifications/contacts/suppressions',  label: 'Suppressions',    icon: 'ri-user-forbid-line'     },
-      { href: '/notifications/delivery-issues',        label: 'Delivery Issues', icon: 'ri-error-warning-line'   },
-    ],
+    items: [],
+    subGroups: [
+      {
+        label: 'Email',
+        items: [
+          { href: '/notifications',     label: 'Overview',     icon: 'ri-notification-3-line' },
+          { href: '/notifications/log', label: 'Delivery Log', icon: 'ri-mail-send-line'      },
+        ],
+      },
+      {
+        label: 'SMS',
+        items: [
+          { href: '/notifications/sms-dashboard',              label: 'SMS Dashboard',       icon: 'ri-message-line',             badge: 'LIVE' },
+          { href: '/notifications/sms-incidents',              label: 'SMS Incidents',       icon: 'ri-alarm-warning-line',       badge: 'LIVE' },
+          { href: '/notifications/sms-incidents/alerts',       label: 'Alert List',          icon: 'ri-alert-line',               badge: 'LIVE' },
+          { href: '/notifications/sms-incidents/escalations',  label: 'Escalations',         icon: 'ri-send-plane-2-line',        badge: 'LIVE' },
+          { href: '/notifications/sms-incidents/policies',     label: 'Escalation Policies', icon: 'ri-settings-4-line',          badge: 'LIVE' },
+          { href: '/notifications/sms-costs',                  label: 'SMS Costs',           icon: 'ri-money-dollar-circle-line', badge: 'LIVE' },
+          { href: '/notifications/sms-routing',                label: 'SMS Routing',         icon: 'ri-route-line',               badge: 'LIVE' },
+        ],
+      },
+      {
+        label: 'General Settings',
+        items: [
+          { href: '/notifications/templates',             label: 'Templates',       icon: 'ri-file-text-line'    },
+          { href: '/notifications/providers',             label: 'Providers',       icon: 'ri-plug-line'         },
+          { href: '/notifications/billing',               label: 'Usage & Billing', icon: 'ri-bar-chart-2-line'  },
+          { href: '/notifications/contacts/suppressions', label: 'Suppressions',    icon: 'ri-user-forbid-line'  },
+          { href: '/notifications/delivery-issues',       label: 'Delivery Issues', icon: 'ri-error-warning-line'},
+        ],
+      },
+    ] satisfies NavSubGroup[],
   },
 
   {

@@ -161,6 +161,8 @@ app.MapCaseEndpoints();
 app.MapCaseNoteEndpoints();
 app.MapServicingEndpoints();
 app.MapContactEndpoints();
+// Lookup reference data (states, accident types, contact types, lien statuses, etc.)
+app.MapLookupEndpoints();
 // LS-FLOW-MERGE-P4 — product → Flow integration endpoints.
 app.MapWorkflowEndpoints();
 // LS-LIENS-FLOW-001 — My Tasks + Workflow Configuration.

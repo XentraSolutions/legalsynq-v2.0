@@ -1,7 +1,25 @@
 import { defineConfig, devices } from '@playwright/test';
 import { execSync } from 'child_process';
 
+// In the Replit/Nix environment, chromium is installed as a system package
+// (declared in replit.nix) and preferred over Playwright's bundled browser.
+//
+// In CI, we always use the Playwright-managed Chromium installed via
+// `playwright install chromium --with-deps` (or `pnpm playwright:install`).
+// Setting executablePath to undefined lets Playwright resolve the browser from
+// its own cache — by default ~/.cache/ms-playwright, or the directory set by
+// the PLAYWRIGHT_BROWSERS_PATH environment variable when a custom cache
+// location is needed (e.g. a shared CI cache volume).
+//
+// Keeping PLAYWRIGHT_BROWSERS_PATH unset in CI uses the default location,
+// which matches the path cached in .github/workflows/e2e.yml.
 function systemChromiumPath(): string | undefined {
+  if (process.env.CI) {
+    // Never use a system browser in CI: Ubuntu runners ship google-chrome but
+    // its version can change between runner image updates, causing snapshot
+    // drift. Always use the Playwright-managed Chromium in CI.
+    return undefined;
+  }
   try {
     return execSync('which chromium 2>/dev/null || which google-chrome 2>/dev/null', {
       encoding: 'utf8',
@@ -38,6 +56,9 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
+          // Replit/Nix: uses system chromium from replit.nix.
+          // CI: undefined — Playwright uses its managed browser (installed via
+          // `pnpm playwright:install` / `playwright install chromium --with-deps`).
           executablePath: chromiumExe,
           args: ['--no-sandbox', '--disable-dev-shm-usage'],
         },

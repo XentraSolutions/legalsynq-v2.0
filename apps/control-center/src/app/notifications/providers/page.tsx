@@ -133,7 +133,7 @@ export default async function NotificationsProvidersPage() {
                             initialChannel={c.channel}
                             initialDisplayName={c.displayName}
                           />
-                          <ProviderActionButtons configId={c.id} status={c.status} validationStatus={c.validationStatus} />
+                          <ProviderActionButtons configId={c.id} channel={c.channel} status={c.status} validationStatus={c.validationStatus} />
                         </div>
                       </td>
                     </tr>

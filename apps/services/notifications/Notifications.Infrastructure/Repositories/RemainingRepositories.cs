@@ -27,6 +27,12 @@ public class TenantProviderConfigRepository : ITenantProviderConfigRepository
     }
     public async Task UpdateAsync(TenantProviderConfig config) { config.UpdatedAt = DateTime.UtcNow; _db.TenantProviderConfigs.Update(config); await _db.SaveChangesAsync(); }
     public async Task DeleteAsync(Guid id) { var c = await _db.TenantProviderConfigs.FindAsync(id); if (c != null) { _db.TenantProviderConfigs.Remove(c); await _db.SaveChangesAsync(); } }
+
+    public async Task<List<TenantProviderConfig>> GetActiveSmsProviderConfigsAsync(string providerType)
+        => await _db.TenantProviderConfigs
+            .Where(c => c.Channel == "sms" && c.ProviderType == providerType && c.Status == "active")
+            .OrderBy(c => c.Priority)
+            .ToListAsync();
 }
 
 public class TenantChannelProviderSettingRepository : ITenantChannelProviderSettingRepository
@@ -278,7 +284,8 @@ public class TenantContactPolicyRepository : ITenantContactPolicyRepository
             existing.BlockSuppressedContacts = policy.BlockSuppressedContacts; existing.BlockUnsubscribedContacts = policy.BlockUnsubscribedContacts;
             existing.BlockComplainedContacts = policy.BlockComplainedContacts; existing.BlockBouncedContacts = policy.BlockBouncedContacts;
             existing.BlockInvalidContacts = policy.BlockInvalidContacts; existing.BlockCarrierRejectedContacts = policy.BlockCarrierRejectedContacts;
-            existing.AllowManualOverride = policy.AllowManualOverride; existing.UpdatedAt = DateTime.UtcNow;
+            existing.AllowManualOverride = policy.AllowManualOverride; existing.BlockUnknownSmsPreference = policy.BlockUnknownSmsPreference;
+            existing.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(); return existing;
         }
         policy.Id = Guid.NewGuid(); policy.CreatedAt = DateTime.UtcNow; policy.UpdatedAt = DateTime.UtcNow;

@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Notifications.Application.DTOs;
 using Notifications.Application.Interfaces;
+using Notifications.Application.Options;
 using Notifications.Domain;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
@@ -23,8 +25,21 @@ public class NotificationServiceImpl : INotificationService
     private readonly IBrandingResolutionService _brandingResolution;
     private readonly IEmailProviderAdapter _sendGridAdapter;
     private readonly ISmsProviderAdapter _twilioAdapter;
+    private readonly ISmsProviderRuntimeResolver _smsRuntimeResolver;
     private readonly IRecipientResolver _recipientResolver;
     private readonly IAuditEventClient _auditClient;
+    private readonly SmsCostAnalyticsOptions _costOptions;
+    // LS-NOTIF-SMS-014: intelligent routing engine + decision persistence
+    private readonly ISmsRoutingEngine _smsRoutingEngine;
+    private readonly ISmsRoutingDecisionRepository _routingDecisionRepo;
+    // LS-NOTIF-SMS-016: retry suppression (optional — degrades to allow when null)
+    private readonly ISmsRetrySuppressionService? _retrySuppressionService;
+    // LS-NOTIF-SMS-017: governance policy evaluation (optional — degrades to allow when null)
+    private readonly ISmsGovernancePolicyService? _governanceService;
+    // LS-NOTIF-SMS-018: template governance — content classification, variable validation, compliance
+    private readonly ISmsTemplateGovernanceService? _templateGovernanceService;
+    // LS-NOTIF-SMS-025: cross-channel governance execution runtime (optional — degrades to allow when null)
+    private readonly IGovernanceExecutionRuntime? _governanceRuntime;
     private readonly ILogger<NotificationServiceImpl> _logger;
 
     private static readonly JsonSerializerOptions _camelCaseOptions = new()
@@ -46,26 +61,42 @@ public class NotificationServiceImpl : INotificationService
         IBrandingResolutionService brandingResolution,
         IEmailProviderAdapter sendGridAdapter,
         ISmsProviderAdapter twilioAdapter,
+        ISmsProviderRuntimeResolver smsRuntimeResolver,
         IRecipientResolver recipientResolver,
         IAuditEventClient auditClient,
+        IOptions<SmsCostAnalyticsOptions> costOptions,
+        ISmsRoutingEngine smsRoutingEngine,
+        ISmsRoutingDecisionRepository routingDecisionRepo,
+        ISmsRetrySuppressionService retrySuppressionService,
+        ISmsGovernancePolicyService governanceService,
+        ISmsTemplateGovernanceService templateGovernanceService,
+        IGovernanceExecutionRuntime governanceRuntime,
         ILogger<NotificationServiceImpl> logger)
     {
-        _notificationRepo    = notificationRepo;
-        _attemptRepo         = attemptRepo;
-        _eventRepo           = eventRepo;
-        _deliveryIssueRepo   = deliveryIssueRepo;
-        _routingService      = routingService;
-        _contactEnforcement  = contactEnforcement;
-        _usageEvaluation     = usageEvaluation;
-        _metering            = metering;
-        _templateResolution  = templateResolution;
-        _templateRendering   = templateRendering;
-        _brandingResolution  = brandingResolution;
-        _sendGridAdapter     = sendGridAdapter;
-        _twilioAdapter       = twilioAdapter;
-        _recipientResolver   = recipientResolver;
-        _auditClient         = auditClient;
-        _logger              = logger;
+        _notificationRepo        = notificationRepo;
+        _attemptRepo             = attemptRepo;
+        _eventRepo               = eventRepo;
+        _deliveryIssueRepo       = deliveryIssueRepo;
+        _routingService          = routingService;
+        _contactEnforcement      = contactEnforcement;
+        _usageEvaluation         = usageEvaluation;
+        _metering                = metering;
+        _templateResolution      = templateResolution;
+        _templateRendering       = templateRendering;
+        _brandingResolution      = brandingResolution;
+        _sendGridAdapter         = sendGridAdapter;
+        _twilioAdapter           = twilioAdapter;
+        _smsRuntimeResolver      = smsRuntimeResolver;
+        _recipientResolver       = recipientResolver;
+        _auditClient             = auditClient;
+        _costOptions             = costOptions.Value;
+        _smsRoutingEngine        = smsRoutingEngine;
+        _routingDecisionRepo     = routingDecisionRepo;
+        _retrySuppressionService = retrySuppressionService;
+        _governanceService         = governanceService;
+        _templateGovernanceService = templateGovernanceService;
+        _governanceRuntime         = governanceRuntime;
+        _logger                    = logger;
     }
 
     // ─── Submit ──────────────────────────────────────────────────────────────
@@ -829,6 +860,186 @@ public class NotificationServiceImpl : INotificationService
         var contactValue = ExtractContactValue(notification.Channel, notification.RecipientJson);
         var routes = await _routingService.ResolveRoutesAsync(tenantId, notification.Channel);
 
+        // LS-NOTIF-SMS-014: Apply intelligent routing engine for SMS channel.
+        // The engine selects the best route from candidates and returns a decision.
+        // We move the selected route to the front so the existing failover loop
+        // still handles retries — no pipeline rewrite required.
+        // Email routing is unchanged: SendGrid only, no routing engine applied.
+        Guid? routingDecisionId = null;
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) && routes.Count > 0)
+        {
+            try
+            {
+                var engineResult = await _smsRoutingEngine.SelectRouteAsync(new SmsRoutingRequest
+                {
+                    TenantId       = tenantId,
+                    NotificationId = notification.Id,
+                    CandidateRoutes = routes.AsReadOnly(),
+                    // CountryCode and Region derivation not yet implemented (see LS-NOTIF-SMS-014 gap #3)
+                }, CancellationToken.None);
+
+                if (engineResult.Success && engineResult.SelectedRoute != null)
+                {
+                    // Reorder: move selected route to front so the send loop tries it first.
+                    var selected = routes.FirstOrDefault(r =>
+                        string.Equals(r.ProviderType, engineResult.SelectedProvider, StringComparison.OrdinalIgnoreCase) &&
+                        r.TenantProviderConfigId == engineResult.SelectedProviderConfigId);
+                    if (selected != null && routes.IndexOf(selected) != 0)
+                    {
+                        routes.Remove(selected);
+                        routes.Insert(0, selected);
+                    }
+                }
+
+                // Persist routing decision (best-effort — never blocks the send path)
+                try
+                {
+                    var decision = new Notifications.Domain.SmsRoutingDecision
+                    {
+                        Id                       = Guid.NewGuid(),
+                        TenantId                 = tenantId,
+                        NotificationId           = notification.Id,
+                        RoutingPolicyId          = engineResult.MatchedPolicyId,
+                        RoutingMode              = engineResult.RoutingMode,
+                        SelectedProvider         = engineResult.Success ? engineResult.SelectedProvider : "no_route",
+                        SelectedProviderConfigId = engineResult.SelectedProviderConfigId,
+                        ProviderOwnershipMode    = engineResult.ProviderOwnershipMode,
+                        CandidateProvidersJson   = engineResult.CandidateProviders.Count > 0
+                            ? System.Text.Json.JsonSerializer.Serialize(engineResult.CandidateProviders) : null,
+                        ExcludedProvidersJson    = engineResult.ExcludedProviders.Count > 0
+                            ? System.Text.Json.JsonSerializer.Serialize(engineResult.ExcludedProviders) : null,
+                        DecisionReason           = engineResult.DecisionReason,
+                        EstimatedCostAmount      = engineResult.EstimatedCostAmount,
+                        CostCurrency             = engineResult.CostCurrency,
+                        CountryCode              = engineResult.CountryCode,
+                        Region                   = engineResult.Region,
+                        // LS-NOTIF-SMS-015: Adaptive routing metadata
+                        InferredCountryCode      = engineResult.InferredCountryCode,
+                        InferredRegion           = engineResult.InferredRegion,
+                        ProviderQualityScore     = engineResult.ProviderQualityScore,
+                        AdaptiveScore            = engineResult.AdaptiveScore,
+                        AdaptiveInputsJson       = engineResult.AdaptiveInputsJson,
+                        CreatedAt                = DateTime.UtcNow,
+                    };
+                    var persisted = await _routingDecisionRepo.CreateAsync(decision);
+                    routingDecisionId = persisted.Id;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "SMS routing: failed to persist routing decision for notification {NotificationId} — send continues", notification.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "SMS routing engine threw for notification {NotificationId} — falling back to priority order", notification.Id);
+            }
+        }
+
+        // LS-NOTIF-SMS-017: Governance pre-send evaluation (SMS only).
+        // Runs after routing selection but before the send loop.
+        // Covers: quiet_hours, geographic_restriction, rate_limit, provider_governance.
+        // Safe-degrades to allow on any error — never blocks delivery pipeline.
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) &&
+            _governanceService != null)
+        {
+            try
+            {
+                var govResult = await _governanceService.EvaluatePreSendAsync(
+                    new SmsGovernanceEvaluationRequest
+                    {
+                        TenantId                = tenantId,
+                        NotificationId          = notification.Id,
+                        RecipientPhoneTransient = contactValue, // used transiently for country inference only
+                        ProviderType            = routes.Count > 0 ? routes[0].ProviderType : null,
+                        ProviderConfigId        = routes.Count > 0 ? routes[0].TenantProviderConfigId : null,
+                        RetryCount              = notification.RetryCount,
+                        IsRetry                 = false,
+                        NowUtc                  = DateTime.UtcNow,
+                    }, CancellationToken.None);
+
+                if (govResult.ShouldBlock)
+                {
+                    notification.Status           = "dead-letter";
+                    notification.FailureCategory  = $"governance_{govResult.ReasonCode}";
+                    notification.LastErrorMessage = $"SMS governance blocked delivery: {govResult.PolicyType}/{govResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ExecuteSendLoopAsync: notification {Id} blocked by governance ({PolicyType}/{Reason})",
+                        notification.Id, govResult.PolicyType, govResult.ReasonCode);
+                    return;
+                }
+                else if (govResult.ShouldDelay || govResult.ShouldThrottle)
+                {
+                    notification.Status           = "retrying";
+                    notification.NextRetryAt      = govResult.EffectiveAt ?? DateTime.UtcNow.AddMinutes(30);
+                    notification.LastErrorMessage = $"SMS governance deferred delivery: {govResult.PolicyType}/{govResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    _logger.LogInformation(
+                        "ExecuteSendLoopAsync: notification {Id} deferred by governance ({PolicyType}/{Reason}) until {Until}",
+                        notification.Id, govResult.PolicyType, govResult.ReasonCode, notification.NextRetryAt);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never crash the delivery pipeline on governance errors
+                _logger.LogWarning(ex,
+                    "ExecuteSendLoopAsync: governance pre-send evaluation threw for {Id} — defaulting to allow",
+                    notification.Id);
+            }
+        }
+
+        // LS-NOTIF-SMS-018: Template governance pre-send evaluation (SMS only).
+        // Runs after LS-017 governance, before body extraction and provider execution.
+        // Covers: template approval status, content classification, variable validation,
+        //         prohibited-content enforcement, length limits.
+        // Safe-degrades to allow on any error — never blocks delivery pipeline.
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) &&
+            _templateGovernanceService != null)
+        {
+            try
+            {
+                var tplResult = await _templateGovernanceService.EvaluateAsync(
+                    new SmsTemplateGovernanceRequest
+                    {
+                        TenantId       = tenantId,
+                        NotificationId = notification.Id,
+                        TemplateKey    = notification.TemplateKey,
+                        RenderedBody   = notification.RenderedBody,
+                        IsRetry        = false,
+                        RetryCount     = notification.RetryCount,
+                        NowUtc         = DateTime.UtcNow,
+                    }, CancellationToken.None);
+
+                if (tplResult.ShouldBlock)
+                {
+                    notification.Status           = "dead-letter";
+                    notification.FailureCategory  = $"template_governance_{tplResult.ReasonCode}";
+                    notification.LastErrorMessage = $"SMS template governance blocked delivery: {tplResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ExecuteSendLoopAsync: notification {Id} blocked by template governance ({Decision}/{Reason})",
+                        notification.Id, tplResult.DecisionType, tplResult.ReasonCode);
+                    return;
+                }
+                else if (tplResult.DecisionType == "warn")
+                {
+                    _logger.LogWarning(
+                        "ExecuteSendLoopAsync: template governance warn for notification {Id} ({Reason}) — proceeding",
+                        notification.Id, tplResult.ReasonCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never crash the delivery pipeline on template governance errors
+                _logger.LogWarning(ex,
+                    "ExecuteSendLoopAsync: template governance evaluation threw for {Id} — defaulting to allow",
+                    notification.Id);
+            }
+        }
+
         string? subject = notification.RenderedSubject;
         // RenderedBody holds the HTML template output; RenderedText is the plain-text
         // alternative.  Swap from the old assignment so SendGrid receives the content
@@ -854,6 +1065,58 @@ public class NotificationServiceImpl : INotificationService
         // When the template only defines an HTML body, fall back to a minimal stub.
         if (string.IsNullOrWhiteSpace(body) && !string.IsNullOrWhiteSpace(html))
             body = "Please view this email in an HTML-capable mail client.";
+
+        // LS-NOTIF-SMS-025: Cross-channel governance enforcement for Email.
+        // SMS channel has its own governance pipeline (LS-017–023) and is not evaluated here.
+        // Evaluation runs once before the failover loop; PayloadTextForEvaluation is TRANSIENT.
+        if (string.Equals(notification.Channel, "email", StringComparison.OrdinalIgnoreCase) &&
+            _governanceRuntime != null)
+        {
+            try
+            {
+                var govCtx = new GovernanceExecutionContext
+                {
+                    NotificationId           = notification.Id,
+                    TenantId                 = tenantId == Guid.Empty ? (Guid?)null : tenantId,
+                    ChannelType              = notification.Channel,
+                    TemplateId               = notification.TemplateId,
+                    TemplateKey              = notification.TemplateKey,
+                    SubjectMetadata          = subject,   // rendered subject — safe content label
+                    PayloadTextForEvaluation = body,      // TRANSIENT — in-memory only, never persisted
+                    EvaluationContext        = "delivery",
+                    ExecutedAtUtc            = DateTime.UtcNow,
+                };
+
+                var govResult = await _governanceRuntime.EvaluateAsync(govCtx, CancellationToken.None);
+
+                if (govResult.ShouldBlock || govResult.RequiresReview)
+                {
+                    notification.Status           = "dead-letter";
+                    notification.FailureCategory  = $"governance_{govResult.ReasonCode}";
+                    notification.LastErrorMessage = $"Email governance blocked delivery: {govResult.DecisionType}/{govResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ExecuteSendLoopAsync: email notification {Id} {Decision} by LS-025 governance ({Reason}) — aborting send",
+                        notification.Id, govResult.DecisionType, govResult.ReasonCode);
+                    return;
+                }
+
+                if (govResult.ShouldWarn)
+                {
+                    _logger.LogInformation(
+                        "ExecuteSendLoopAsync: email notification {Id} governance warn ({Reason}) — proceeding with send",
+                        notification.Id, govResult.ReasonCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never crash the delivery pipeline on governance errors — fail open
+                _logger.LogWarning(ex,
+                    "ExecuteSendLoopAsync: LS-025 governance threw for email {Id} — defaulting to allow",
+                    notification.Id);
+            }
+        }
 
         ProviderFailure? lastFailure = null;
 
@@ -901,13 +1164,34 @@ public class NotificationServiceImpl : INotificationService
             }
             else
             {
-                var result = await _twilioAdapter.SendAsync(new SmsSendPayload
+                // LS-NOTIF-SMS-005: Resolve the correct tenant or platform Twilio adapter
+                // using the config ID already set on this route by ProviderRoutingService.
+                var runtimeCtx = await _smsRuntimeResolver.ResolveForSendAsync(
+                    tenantId, route.ProviderType, route.TenantProviderConfigId);
+
+                if (!runtimeCtx.Success)
                 {
-                    To = contactValue ?? "", Body = body ?? ""
-                });
-                success = result.Success;
-                providerMessageId = result.ProviderMessageId;
-                failure = result.Failure;
+                    _logger.LogWarning(
+                        "SMS send: provider runtime resolution failed for route {Provider}/{ConfigId}: {Code}",
+                        route.ProviderType, route.TenantProviderConfigId, runtimeCtx.ErrorCode);
+                    success = false;
+                    failure = new ProviderFailure
+                    {
+                        Category  = runtimeCtx.ErrorCode ?? "provider_config_failure",
+                        Message   = runtimeCtx.ErrorMessage ?? "SMS provider configuration failed",
+                        Retryable = runtimeCtx.Retryable,
+                    };
+                }
+                else
+                {
+                    var result = await runtimeCtx.Adapter!.SendAsync(new SmsSendPayload
+                    {
+                        To = contactValue ?? "", Body = body ?? ""
+                    });
+                    success = result.Success;
+                    providerMessageId = result.ProviderMessageId;
+                    failure = result.Failure;
+                }
             }
 
             if (success)
@@ -916,6 +1200,30 @@ public class NotificationServiceImpl : INotificationService
                 attempt.ProviderMessageId = providerMessageId;
                 attempt.CompletedAt = DateTime.UtcNow;
                 await _attemptRepo.UpdateAsync(attempt);
+
+                // ── LS-NOTIF-SMS-013: record estimated SMS cost (best-effort, non-blocking) ──
+                if (notification.Channel == "sms" && _costOptions.Enabled)
+                {
+                    try
+                    {
+                        var estimatedCost = _costOptions.GetEstimatedCost(route.ProviderType);
+                        var costSource    = estimatedCost.HasValue ? "estimated" : "unavailable";
+                        await _attemptRepo.UpdateCostAsync(
+                            attempt.Id,
+                            estimatedCostAmount: estimatedCost,
+                            actualCostAmount:    null,
+                            costCurrency:        _costOptions.DefaultCurrency,
+                            costSource:          costSource,
+                            costRecordedAt:      DateTime.UtcNow);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex,
+                            "LS-NOTIF-SMS-013: Cost recording failed for attempt {AttemptId} (non-fatal)",
+                            attempt.Id);
+                    }
+                }
+                // ── end cost recording ────────────────────────────────────────────────────────
 
                 notification.Status              = "sent";
                 notification.ProviderUsed        = route.ProviderType;
@@ -1189,6 +1497,159 @@ public class NotificationServiceImpl : INotificationService
         notification.Status = "processing";
         notification.NextRetryAt = null;
         await _notificationRepo.UpdateAsync(notification);
+
+        // LS-NOTIF-SMS-016: Recipient intelligence suppression check (SMS only).
+        // Safe-degrades to allow on any error — never blocks delivery pipeline.
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) &&
+            _retrySuppressionService != null)
+        {
+            try
+            {
+                var phone = ExtractContactValue("sms", notification.RecipientJson);
+                var suppressionResult = await _retrySuppressionService.EvaluateAsync(
+                    new SmsRetrySuppressionRequest
+                    {
+                        RecipientPhone  = phone,
+                        TenantId        = notification.TenantId,
+                        NotificationId  = notification.Id,
+                        ProviderType    = notification.ProviderUsed,
+                        RetryCount      = notification.RetryCount,
+                        FailureCategory = notification.FailureCategory,
+                    }, CancellationToken.None);
+
+                if (suppressionResult.ShouldBlock)
+                {
+                    notification.Status          = "dead-letter";
+                    notification.FailureCategory = $"suppressed_{suppressionResult.ReasonCode}";
+                    notification.LastErrorMessage = $"Retry suppressed by recipient intelligence: {suppressionResult.DecisionType} ({suppressionResult.ReasonCode})";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ProcessAutoRetryAsync: notification {Id} suppressed ({Decision}/{Reason}) — moved to dead-letter",
+                        notificationId, suppressionResult.DecisionType, suppressionResult.ReasonCode);
+                    return;
+                }
+                else if (suppressionResult.ShouldDefer)
+                {
+                    notification.Status       = "retrying";
+                    notification.NextRetryAt  = DateTime.UtcNow.AddMinutes(30);
+                    notification.LastErrorMessage = $"Retry deferred by recipient intelligence: {suppressionResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    _logger.LogInformation(
+                        "ProcessAutoRetryAsync: notification {Id} deferred by soft-suppress ({Reason})",
+                        notificationId, suppressionResult.ReasonCode);
+                    return;
+                }
+                // warn or allow — proceed normally
+                if (suppressionResult.DecisionType == "warn")
+                {
+                    _logger.LogWarning(
+                        "ProcessAutoRetryAsync: suppression warn for notification {Id} ({Reason}) — proceeding",
+                        notificationId, suppressionResult.ReasonCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never crash the delivery pipeline on suppression errors
+                _logger.LogWarning(ex,
+                    "ProcessAutoRetryAsync: suppression evaluation threw for {Id} — defaulting to allow",
+                    notificationId);
+            }
+        }
+
+        // LS-NOTIF-SMS-017: Governance retry evaluation (SMS only).
+        // Runs after LS-016 recipient intelligence suppression, before ExecuteSendLoopAsync.
+        // Covers: quiet_hours, rate_limit, provider_governance, retry_governance.
+        // Safe-degrades to allow on any error — never blocks delivery pipeline.
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) &&
+            _governanceService != null)
+        {
+            try
+            {
+                var phone = ExtractContactValue("sms", notification.RecipientJson);
+                var govResult = await _governanceService.EvaluateRetryAsync(
+                    new SmsGovernanceEvaluationRequest
+                    {
+                        TenantId                = notification.TenantId,
+                        NotificationId          = notification.Id,
+                        RecipientPhoneTransient = phone, // used transiently for country inference only
+                        ProviderType            = notification.ProviderUsed,
+                        RetryCount              = notification.RetryCount,
+                        IsRetry                 = true,
+                        NowUtc                  = DateTime.UtcNow,
+                    }, CancellationToken.None);
+
+                if (govResult.ShouldBlock)
+                {
+                    notification.Status           = "dead-letter";
+                    notification.FailureCategory  = $"governance_{govResult.ReasonCode}";
+                    notification.LastErrorMessage = $"SMS retry blocked by governance: {govResult.PolicyType}/{govResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ProcessAutoRetryAsync: notification {Id} blocked by governance ({PolicyType}/{Reason}) — moved to dead-letter",
+                        notificationId, govResult.PolicyType, govResult.ReasonCode);
+                    return;
+                }
+                else if (govResult.ShouldDelay || govResult.ShouldThrottle)
+                {
+                    notification.Status           = "retrying";
+                    notification.NextRetryAt      = govResult.EffectiveAt ?? DateTime.UtcNow.AddMinutes(30);
+                    notification.LastErrorMessage = $"SMS retry deferred by governance: {govResult.PolicyType}/{govResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    _logger.LogInformation(
+                        "ProcessAutoRetryAsync: notification {Id} deferred by governance ({PolicyType}/{Reason}) until {Until}",
+                        notificationId, govResult.PolicyType, govResult.ReasonCode, notification.NextRetryAt);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never crash the delivery pipeline on governance errors
+                _logger.LogWarning(ex,
+                    "ProcessAutoRetryAsync: governance retry evaluation threw for {Id} — defaulting to allow",
+                    notificationId);
+            }
+        }
+
+        // LS-NOTIF-SMS-018: Template governance retry evaluation (SMS only).
+        if (string.Equals(notification.Channel, "sms", StringComparison.OrdinalIgnoreCase) &&
+            _templateGovernanceService != null)
+        {
+            try
+            {
+                var tplRetryResult = await _templateGovernanceService.EvaluateAsync(
+                    new SmsTemplateGovernanceRequest
+                    {
+                        TenantId       = tenantId,
+                        NotificationId = notification.Id,
+                        TemplateKey    = notification.TemplateKey,
+                        RenderedBody   = notification.RenderedBody,
+                        IsRetry        = true,
+                        RetryCount     = notification.RetryCount,
+                        NowUtc         = DateTime.UtcNow,
+                    }, CancellationToken.None);
+
+                if (tplRetryResult.ShouldBlock)
+                {
+                    notification.Status           = "dead-letter";
+                    notification.FailureCategory  = $"template_governance_{tplRetryResult.ReasonCode}";
+                    notification.LastErrorMessage = $"SMS template governance blocked retry: {tplRetryResult.ReasonCode}";
+                    await _notificationRepo.UpdateAsync(notification);
+                    await CreateDeadLetterIssueAsync(notification);
+                    _logger.LogInformation(
+                        "ProcessAutoRetryAsync: notification {Id} blocked by template governance ({Decision}/{Reason}) — not retrying",
+                        notificationId, tplRetryResult.DecisionType, tplRetryResult.ReasonCode);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "ProcessAutoRetryAsync: template governance retry evaluation threw for {Id} — defaulting to allow",
+                    notificationId);
+            }
+        }
 
         _logger.LogInformation("ProcessAutoRetryAsync: executing retry #{RetryCount} for notification {Id}", notification.RetryCount, notificationId);
 

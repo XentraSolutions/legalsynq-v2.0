@@ -58,6 +58,7 @@ public class TenantContactPolicyConfiguration : IEntityTypeConfiguration<TenantC
         builder.Property(e => e.BlockInvalidContacts).HasDefaultValue(false);
         builder.Property(e => e.BlockCarrierRejectedContacts).HasDefaultValue(false);
         builder.Property(e => e.AllowManualOverride).HasDefaultValue(false);
+        builder.Property(e => e.BlockUnknownSmsPreference).HasDefaultValue(true);
     }
 }
 

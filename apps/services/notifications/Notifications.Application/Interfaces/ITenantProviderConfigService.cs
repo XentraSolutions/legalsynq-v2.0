@@ -17,4 +17,10 @@ public interface ITenantProviderConfigService
     Task<List<TenantProviderConfigDto>> ListPlatformAsync(string? channel = null);
     /// <summary>Gets a platform-owned config by its ID, or null if it does not exist or belongs to a tenant.</summary>
     Task<TenantProviderConfigDto?> GetPlatformByIdAsync(Guid id);
+    /// <summary>Creates a platform-owned provider config (TenantId = PlatformTenantId sentinel).</summary>
+    Task<TenantProviderConfigDto> CreatePlatformAsync(CreateTenantProviderConfigDto request);
+    /// <summary>Updates a platform-owned provider config by ID.</summary>
+    Task<TenantProviderConfigDto> UpdatePlatformAsync(Guid id, UpdateTenantProviderConfigDto request);
+    /// <summary>Deletes a platform-owned provider config by ID.</summary>
+    Task DeletePlatformAsync(Guid id);
 }

@@ -73,57 +73,79 @@ public static class ProviderEndpoints
 
         group.MapPost("/configs", async (HttpContext context, ITenantProviderConfigService service, CreateTenantProviderConfigDto request) =>
         {
-            var tenantId = context.GetTenantId();
-            var result = await service.CreateAsync(tenantId, request);
+            var tenantId = context.TryGetTenantId();
+            var result = tenantId.HasValue
+                ? await service.CreateAsync(tenantId.Value, request)
+                : await service.CreatePlatformAsync(request);
             return Results.Created($"/v1/providers/configs/{result.Id}", result);
         });
 
         group.MapPut("/configs/{id:guid}", async (HttpContext context, ITenantProviderConfigService service, Guid id, UpdateTenantProviderConfigDto request) =>
         {
-            var tenantId = context.GetTenantId();
-            var result = await service.UpdateAsync(tenantId, id, request);
+            var tenantId = context.TryGetTenantId();
+            var result = tenantId.HasValue
+                ? await service.UpdateAsync(tenantId.Value, id, request)
+                : await service.UpdatePlatformAsync(id, request);
             return Results.Ok(result);
         });
 
         group.MapDelete("/configs/{id:guid}", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
-            var tenantId = context.GetTenantId();
-            await service.DeleteAsync(tenantId, id);
+            var tenantId = context.TryGetTenantId();
+            if (tenantId.HasValue)
+                await service.DeleteAsync(tenantId.Value, id);
+            else
+                await service.DeletePlatformAsync(id);
             return Results.NoContent();
         });
 
         group.MapPost("/configs/{id:guid}/validate", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
             var tenantId = context.TryGetTenantId();
-            if (tenantId == null)
+            var effectiveTenantId = tenantId ?? PlatformProvider.PlatformTenantId;
+
+            try
             {
-                var dto = await service.GetPlatformByIdAsync(id);
-                return dto != null ? Results.Ok(dto) : Results.NotFound();
+                await service.ValidateAsync(effectiveTenantId, id);
+                return Results.Ok(new { data = new { valid = true, errors = Array.Empty<string>() } });
             }
-            var result = await service.ValidateAsync(tenantId.Value, id);
-            return Results.Ok(result);
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (Exception ex)
+            {
+                return Results.Ok(new { data = new { valid = false, errors = new[] { ex.Message } } });
+            }
         });
 
         group.MapPost("/configs/{id:guid}/health-check", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
             var tenantId = context.TryGetTenantId();
-            if (tenantId == null)
+            var effectiveTenantId = tenantId ?? PlatformProvider.PlatformTenantId;
+
+            try
             {
-                var dto = await service.GetPlatformByIdAsync(id);
-                return dto != null ? Results.Ok(dto) : Results.NotFound();
+                var result = await service.HealthCheckAsync(effectiveTenantId, id);
+                return Results.Ok(result);
             }
-            var result = await service.HealthCheckAsync(tenantId.Value, id);
-            return Results.Ok(result);
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
         });
 
         // ── Provider test ──────────────────────────────────────────────────────────
         // Sends a real message through the specified provider config so platform
         // admins can verify end-to-end outbound delivery.
+        // For SMS: builds a fresh TwilioAdapter from the config's stored credentials
+        // (CredentialsJson / SettingsJson) so the test uses the actual saved keys,
+        // not whatever the globally-registered adapter was initialised with.
         group.MapPost("/configs/{id:guid}/test", async (
             HttpContext context,
             ITenantProviderConfigRepository repo,
             IEmailProviderAdapter emailAdapter,
-            ISmsProviderAdapter smsAdapter,
+            ITwilioAdapterFactory twilioAdapterFactory,
             Guid id,
             TestProviderRequest? request) =>
         {
@@ -133,7 +155,7 @@ public static class ProviderEndpoints
             if (config == null) return Results.NotFound(new { error = "Provider config not found." });
 
             // Allow access: must be the caller's own tenant config OR a platform config.
-            var isPlatform = config.TenantId == PlatformProvider.PlatformTenantId;
+            var isPlatform  = config.TenantId == PlatformProvider.PlatformTenantId;
             var isOwnTenant = tenantId.HasValue && config.TenantId == tenantId.Value;
             if (!isPlatform && !isOwnTenant)
                 return Results.Forbid();
@@ -170,6 +192,21 @@ public static class ProviderEndpoints
                 if (string.IsNullOrWhiteSpace(toPhone))
                     return Results.BadRequest(new { error = "toPhone is required for SMS provider test." });
 
+                // Build an adapter directly from the stored credentials so the test
+                // exercises the exact config the user saved — not the global default.
+                ISmsProviderAdapter smsAdapter;
+                try
+                {
+                    smsAdapter = twilioAdapterFactory.CreateFromConfig(config);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.Ok(new
+                    {
+                        data = new { success = false, message = $"Provider config error: {ex.Message}" }
+                    });
+                }
+
                 var result = await smsAdapter.SendAsync(new SmsSendPayload
                 {
                     To   = toPhone,
@@ -180,9 +217,10 @@ public static class ProviderEndpoints
                 {
                     data = new
                     {
-                        success = result.Success,
-                        message = result.Success
-                            ? $"Test SMS sent to {toPhone}."
+                        success           = result.Success,
+                        providerMessageId = result.ProviderMessageId,
+                        message           = result.Success
+                            ? $"Test SMS accepted by Twilio (SID: {result.ProviderMessageId}). If not received, check your Twilio console for delivery status — trial accounts can only send to verified numbers."
                             : result.Failure?.Message ?? "Send failed.",
                     }
                 });

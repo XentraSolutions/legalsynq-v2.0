@@ -64,9 +64,15 @@ export interface NavItem {
   badge?: 'LIVE' | 'MOCKUP' | 'IN PROGRESS' | 'NEW';
 }
 
+export interface NavSubGroup {
+  label: string;
+  items: NavItem[];
+}
+
 export interface NavSection {
   heading?: string;
   items: NavItem[];
+  subGroups?: NavSubGroup[];
 }
 
 /** @deprecated Use NavSection[] */

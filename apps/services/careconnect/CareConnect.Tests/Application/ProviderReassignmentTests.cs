@@ -137,6 +137,8 @@ public class ProviderReassignmentTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
+        var referralAttachments = new Mock<IReferralAttachmentRepository>();
+
         var svc = new ReferralService(
             referralRepo.Object,
             providerRepo.Object,
@@ -148,6 +150,7 @@ public class ProviderReassignmentTests
             auditClient.Object,
             NullLogger<ReferralService>.Instance,
             httpCtx.Object,
+            referralAttachments.Object,
             activationRequests: null);
 
         return (svc, referralRepo, providerRepo, emailSvc, auditClient);

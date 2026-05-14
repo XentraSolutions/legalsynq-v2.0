@@ -60,3 +60,7 @@ public interface ISmsProviderAdapter
     Task<SmsSendResult> SendAsync(SmsSendPayload payload);
     Task<ProviderHealthResult> HealthCheckAsync();
 }
+
+// NOTE: ISmsProviderStatusLookup is defined in ISmsReconciliationService.cs
+// alongside SmsMessageStatusResult and SmsReconciliationResult.
+// TwilioAdapter implements both ISmsProviderAdapter and ISmsProviderStatusLookup.

@@ -5996,3 +5996,358 @@ Full audit pipeline is now active for all support operations on both tenant port
 - `Support.Api/appsettings.Development.json` — added `Support.Audit` section with `Mode=Http`, `Enabled=true`.
 - `Support.Api/Program.cs` — startup log emits audit mode, added `using Microsoft.Extensions.Options`.
 - `scripts/run-prod.sh` — `Support__Audit__Mode=Http` + `Support__Audit__Enabled=true` added to Support.Api launch.
+
+## LS-NOTIF-SMS-019 — Tenant Custom Governance Rules, Dynamic Policy Packs, and Compliance Rule Management (2026-05-11)
+
+Extends LS-017/018 with runtime-configurable governance. Dynamic rules are evaluated after LS-018 static checks; final decision = stricter of (static, dynamic). Zero dynamic rules → behavior identical to LS-018 only. Fail-open on all evaluation errors.
+
+### Domain (4 new entities)
+- `SmsGovernanceRulePack` — versioned tenant/global rule pack (status: draft/active/inactive/archived; inheritanceMode: merge/override/append_only; priority + effective date window)
+- `SmsGovernanceRule` — individual rule within a pack (7 types: prohibited_phrase, restricted_pattern, classification_override, variable_rule, link_rule, delivery_restriction, escalation_rule; 5 severities: allow/warn/override_allowed/review_required/block)
+- `SmsComplianceProfile` — enforcement profile (enforcementMode: permissive/standard/strict; alters block↔review_required thresholds)
+- `SmsComplianceProfileAssignment` — binds a profile to a tenant (scope: tenant/provider/template_category/escalation)
+
+### Application Interfaces
+- `ISmsGovernanceRuleResolver` — resolves active packs for a tenant with inheritance, returns `SmsGovernanceRuleResolution`
+- `ISmsGovernanceRuleEngine` — evaluates resolved rules against SMS content; request/result types carry `IsDryRun` flag
+- `ISmsGovernanceSimulationService` — dry-run simulation combining LS-018 static + LS-019 dynamic; never sends SMS, never persists live decisions
+
+### Infrastructure Services
+- `SmsGovernanceRuleResolver` — loads global + tenant packs, applies merge/override/append_only inheritance, resolves compliance profile enforcement mode
+- `SmsGovernanceRuleEngine` (`sealed partial` for `[GeneratedRegex]`) — 7 rule type evaluators; catastrophic-backtracking regex check; 200ms per-rule regex timeout; ReDoS-safe phrase matching via char scan; link domain allowlist/blocklist; delivery time-of-day restriction; enforcement mode adjustment (permissive: block→review_required, strict: review_required→block)
+- `SmsGovernanceSimulationService` — calls LS-018 `EvaluateAsync(IsDryRun=true)` + LS-019 rule engine; returns `SmsGovernanceSimulationResponse` with full decision trace
+- `SmsTemplateGovernanceService` — +Step 7: nullable `ISmsGovernanceRuleEngine?` constructor param; dynamic block persisted only if `!IsDryRun`; classification override side-effect propagated to final result
+
+### API Endpoints (14, all PlatformAdmin)
+`/v1/admin/sms/governance/`: GET/POST/PUT/disable rule-packs; GET/POST/PUT/disable rules; GET/POST/PUT profiles; POST profiles/{id}/assignments; POST simulate; GET rule-analytics
+
+### Migration
+`20260512000004_AddSmsGovernanceDynamicRules` — tables: `ntf_SmsGovernanceRulePacks`, `ntf_SmsGovernanceRules`, `ntf_SmsComplianceProfiles`, `ntf_SmsComplianceProfileAssignments`
+
+### Config
+`SmsGovernanceDynamic`: Enabled, FailOpenOnEvaluationError, MaxPatternLength(500), RegexTimeoutMs(200), MaxRulesPerEvaluation(200), PersistAllowDecisions, AllowRegexRules
+
+### Control Center
+- `apps/control-center/src/lib/sms-dynamic-rules-api.ts` — typed API client (rule packs, rules, profiles, simulate, analytics)
+- `apps/control-center/src/components/sms-dynamic-rules/dynamic-rules-panel.tsx` — tabbed panel (Rule Packs, Rules, Compliance Profiles, Simulation, Analytics)
+- `apps/control-center/src/app/notifications/sms-dynamic-rules/page.tsx` — server component page, graceful degradation
+
+### Analysis
+`analysis/LS-NOTIF-SMS-019-report.md`
+
+## LS-NOTIF-SMS-020 — Governance Versioning, Bulk Rule Import, and Rule Effectiveness Analytics (2026-05-12)
+
+Extends LS-019 with immutable version snapshots, rollback, all-or-nothing bulk JSON import/export, rule match instrumentation, and effectiveness analytics. No delivery pipeline changes — analytics are fire-and-forget.
+
+### Domain (3 new entities)
+- `SmsGovernanceRuleVersion` — immutable snapshot per rule mutation (changeType: created/updated/disabled/rollback/imported; JSON snapshot + sequential versionNumber per rule)
+- `SmsGovernanceRulePackVersion` — immutable snapshot per rule pack mutation; optional embedded rule snapshots
+- `SmsGovernanceRuleMatchMetric` — daily bucket aggregate match metrics per rule (block/warn/review/allow counts, live vs simulation counts, per-window unique constraint)
+
+### Application Interfaces
+- `ISmsGovernanceVersioningService` — snapshot + rollback for rules and packs; GetVersions / RollbackRule / RollbackRulePack
+- `ISmsGovernanceImportService` — ValidateImport (dry-run, no writes) / Import (transactional) / Export
+- `ISmsGovernanceAnalyticsService` — GetRuleEffectiveness, GetMatchAnalytics, GetFalsePositiveCandidates, GetPackEffectiveness
+- `ISmsGovernanceMatchRecorder` — fire-and-forget match recorder (RecordMatches, nullable injection, exceptions swallowed)
+
+### Infrastructure Services
+- `SmsGovernanceVersioningService` — append-only snapshots; rollback restores safe fields only; next versionNumber = MAX+1
+- `SmsGovernanceImportService` — validates all bundles before any DB writes; single transaction; regex safety check on import; records "imported" version snapshots
+- `SmsGovernanceAnalyticsService` — implements both analytics + match recorder from same scoped instance; daily bucket upsert via `ON DUPLICATE KEY UPDATE`; 3-heuristic FP detection
+- `SmsGovernanceRuleEngine` — patched with nullable `ISmsGovernanceMatchRecorder?`; fire-and-forget recording after evaluation; no delivery-pipeline risk
+
+### API Endpoints (11 new, all PlatformAdmin)
+`/v1/admin/sms/governance/`: GET rules/{id}/versions; POST rules/{id}/rollback; GET rule-packs/{id}/versions; POST rule-packs/{id}/rollback; POST import/validate; POST import; GET export; GET effectiveness; GET match-analytics; GET false-positive-candidates; GET pack-effectiveness
+
+### LS-019 Mutation Patches
+All 6 LS-019 create/update/disable mutation endpoints patched to call `ISmsGovernanceVersioningService` after each save.
+
+### Migration
+`20260512000005_AddSmsGovernanceVersioningAndAnalytics` — tables: `ntf_SmsGovernanceRuleVersions`, `ntf_SmsGovernanceRulePackVersions`, `ntf_SmsGovernanceRuleMatchMetrics`
+
+### Config
+`SmsGovernanceVersioning`: Enabled, IncludeRulesInPackSnapshot, MaxSnapshotJsonBytes(65536)  
+`SmsGovernanceAnalytics`: Enabled, WindowDays(30), MaxResultRows(200), FalsePositiveWarnThreshold(10), FalsePositiveLiveToSimRatio(0.1)
+
+### Control Center
+- `apps/control-center/src/lib/sms-governance-lifecycle-api.ts` — TypeScript API client for all LS-020 endpoints
+- `apps/control-center/src/components/sms-dynamic-rules/governance-lifecycle-panel.tsx` — 3-sub-tab lifecycle panel (Version History + Rollback, Import/Export, Effectiveness Analytics)
+- `apps/control-center/src/app/notifications/sms-dynamic-rules/page.tsx` — page-level "Lifecycle & Analytics" tab (`?tab=lifecycle`) alongside existing Rule Management tab
+
+### Bug Fixes
+- `SmsGovernanceSimulationService.cs:49` — `Guid?` → `Guid` implicit cast fixed (`?? Guid.Empty`)
+- `SmsGovernanceEndpoints.cs` + `SmsTemplateGovernanceEndpoints.cs` — missing `using BuildingBlocks.Authorization` added (resolved pre-existing `Policies` build errors)
+
+### Analysis
+`analysis/LS-NOTIF-SMS-020-report.md`
+
+## LS-NOTIF-SMS-021 — Governance Approval Workflow, Multi-Stage Change Control, and Governance Release Management (2026-05-12)
+
+Extends LS-020 with release packages, multi-stage approval workflows, scheduled activation, and a dedicated Control Center release management page.
+
+### Domain (5 new entities)
+- `SmsGovernanceReleasePackage` — top-level release container; state machine: draft → pending_review → approved/rejected → scheduled/active → superseded/archived/activation_failed
+- `SmsGovernanceReleaseItem` — grouped governance change within a release (entityType: rule_pack/rule/compliance_profile; actionType: activate/deactivate/update_config; unique per entityType+entityId per release)
+- `SmsGovernanceApprovalRequest` — per-stage approval request (ordered stages 1-N; RequiredApprovals; RequiredApproverRole extension point)
+- `SmsGovernanceApprovalDecision` — append-only approval/rejection decision (ApprovedBy, Comments, DecidedAtUtc)
+- `SmsGovernanceReleaseAuditEvent` — append-only lifecycle audit trail (EventType, PerformedBy, MetadataJson)
+
+### Application Interfaces
+- `ISmsGovernanceReleaseService` — CRUD for releases and items; submit-review, schedule, activate (immediate), archive; get audit trail; get pending approvals
+- `ISmsGovernanceApprovalWorkflowService` — approve/reject current stage; opens next stage on approval; transitions release to approved/rejected; cancels pending requests on rejection
+
+### Infrastructure Services
+- `SmsGovernanceReleaseService` — state-machine enforcement; activation calls `ISmsGovernanceVersioningService.SnapshotRulePackAsync`/`SnapshotRuleAsync`; supersedes previously active release; all transitions emit `SmsGovernanceReleaseAuditEvent`
+- `SmsGovernanceApprovalWorkflowService` — multi-stage ordered approval; min-approvals-per-stage; rejection cancels all pending; final stage approval → release approved
+- `SmsGovernanceReleaseActivationWorker` — `BackgroundService`; disabled by default; polls every `ScheduledActivationPollMinutes` (default 5); max 10 scheduled releases/cycle; fault-tolerant per-release
+
+### API Endpoints (13, all PlatformAdmin)
+`/v1/admin/sms/governance/`: GET releases (paginated); GET releases/{id}; POST releases; POST releases/{id}/items; DELETE releases/{id}/items/{itemId}; POST releases/{id}/submit-review; POST releases/{id}/approve; POST releases/{id}/reject; POST releases/{id}/schedule; POST releases/{id}/activate; POST releases/{id}/archive; GET releases/{id}/audit; GET approvals/pending
+
+### Migration
+`20260512000006_AddSmsGovernanceReleaseManagement` — tables: `ntf_SmsGovernanceReleasePackages`, `ntf_SmsGovernanceReleaseItems`, `ntf_SmsGovernanceApprovalRequests`, `ntf_SmsGovernanceApprovalDecisions`, `ntf_SmsGovernanceReleaseAuditEvents`
+
+### Config
+`SmsGovernanceReleasesManagement`: RequiredApprovalStages(1), RequiredApprovalsPerStage(1), ScheduledActivationWorkerEnabled(false), ScheduledActivationPollMinutes(5), MaxScheduledReleasesPerCycle(10)
+
+### Control Center
+- `apps/control-center/src/lib/sms-governance-release-api.ts` — TypeScript API client for all 13 LS-021 endpoints
+- `apps/control-center/src/components/sms-governance/governance-release-panel.tsx` — 3-tab panel (Releases list, Release detail + approval actions, Pending approvals)
+- `apps/control-center/src/app/notifications/sms-governance/releases/page.tsx` — dedicated page at `/notifications/sms-governance/releases`
+
+### Analysis
+`analysis/LS-NOTIF-SMS-021-report.md`
+
+## LS-NOTIF-SMS-021-HARDENING — Governance Release Hardening, Approval Role Enforcement, and Test Suite Alignment (2026-05-12)
+
+Hardens the LS-021 release pipeline with production-grade concurrency control, approval role enforcement, retry/backoff, and audit integrity diagnostics. Simultaneously reconciles test stub failures in `Notifications.Tests` and `CareConnect.Tests` caused by constructor signature drift across prior SMS governance milestones.
+
+### Domain — `SmsGovernanceReleasePackage` (+8 fields)
+`ActivationLockId`, `ActivationLockAcquiredAt`, `ActivationLockExpiresAt`, `ActivationLockedBy` (concurrency lock); `ActivationAttemptCount`, `LastActivationAttemptAt`, `NextActivationRetryAt`, `LastActivationFailureReason` (retry/backoff tracking)
+
+### Domain — `ReleaseAuditEventTypes` (+6 constants)
+`approval_role_mismatch`, `activation_lock_acquired`, `activation_lock_released`, `activation_lock_failed`, `activation_retry_scheduled`, `integrity_check_failed`
+
+### New Options (`SmsGovernanceReleaseManagementOptions`)
+`EnforceApprovalRoles`(true), `AllowPlatformAdminApprovalFallback`(true), `ActivationRetryLimit`(3), `ActivationRetryBackoffMinutes`(10), `ActivationLockTimeoutMinutes`(10), `MaxScheduledReleasesPerCycle`(10)
+
+### New Interface + Service — `ISmsGovernanceReleaseIntegrityService`
+Three read-only diagnostics: `ValidateReleaseItemsAsync` (item cap/type/duplicate checks), `ValidateReleaseIntegrityAsync` (audit event completeness), `GetActivationLockStatusAsync` (lock state + `IsExpired` flag)
+
+### Service Hardening
+- **Approval workflow** (`SmsGovernanceApprovalWorkflowService`): role enforcement on Approve + Reject — `DecidedByRole` must match `ApproverRole`; PlatformAdmin fallback bypass configurable; mismatch always audited + persisted before early return
+- **Release service** (`SmsGovernanceReleaseService`): optimistic activation lock (predicate: lock null or expired); retry counter + `NextActivationRetryAt` backoff (`backoffMinutes × attemptCount`); terminal `activation_failed` after retry limit; duplicate entity+action check in `AddReleaseItemAsync`
+- **Worker** (`SmsGovernanceReleaseActivationWorker`): filters by `NextActivationRetryAt IS NULL OR <= now`; `MaxScheduledReleasesPerCycle` cap
+
+### New Endpoints (PlatformAdmin, all read-only)
+`GET /v1/admin/sms/governance/releases/{id}/validation` · `/integrity` · `/locks`
+
+### Migration
+`20260512000007_AddSmsGovernanceReleaseHardening` — +8 nullable columns on `ntf_SmsGovernanceReleasePackages`
+
+### Test Suite Fixes
+- `Notifications.Tests.csproj`: added `Microsoft.EntityFrameworkCore.InMemory` v8.0.2
+- `NotificationServiceFailureCategoryTests.cs`: 6 new stubs (`StubSmsProviderRuntimeResolver`, `StubSmsRoutingEngine`, `StubSmsRoutingDecisionRepository`, `StubSmsRetrySuppressionService`, `StubSmsGovernancePolicyService`, `StubSmsTemplateGovernanceService`) + 2 constructor call sites updated
+- `SmsGovernanceReleaseTests.cs`: `StubVersioningService` corrected (proper `IReadOnlyList<RuleVersionDto/RulePackVersionDto>` returns; `RollbackRuleAsync`/`RollbackRulePackAsync` added)
+- `CareConnect.Tests/ProviderReassignmentTests.cs` + `ProviderActivationFunnelTests.cs`: `IReferralAttachmentRepository` mock added to constructor
+
+### New Tests (`SmsGovernanceReleaseTests.cs`, 6 facts)
+Role enforcement blocks mismatch · PlatformAdmin fallback bypasses role gate · Duplicate item rejected · Concurrent activation lock returns fail · Integrity checker flags missing audit event · Lock status computes `IsExpired` correctly
+
+### Analysis
+`analysis/LS-NOTIF-SMS-021-HARDENING-report.md`
+
+## LS-NOTIF-SMS-022 — Canary Governance Rollout, Tenant Segmentation, and Staged Governance Deployment (2026-05-13)
+
+Extends LS-021 release management with canary rollout orchestration, tenant segmentation, staged deployment, progressive stage advancement, threshold-based safeguards, pause/resume/rollback controls, and rollout analytics.
+
+### Domain (4 new entities)
+- `SmsGovernanceRolloutPlan` — top-level rollout container; state machine: draft → pending_rollout → canary_active | staged_rollout → rollout_completed; pause/rollback/fail branches. Strategies: canary / staged_percentage / staged_cohort / full_activation / manual_progression.
+- `SmsGovernanceRolloutStage` — ordered stage within a plan; StageNumber unique per plan; states: pending/active/completed/paused/failed/rolled_back; DurationMinutes = observation window.
+- `SmsGovernanceTenantCohort` — tenant targeting (opaque TenantId only — no phones/secrets); optional StageId scoping; enabled/disabled; ActivatedAt/RolledBackAt tracking.
+- `SmsGovernanceRolloutAuditEvent` — append-only rollout lifecycle audit (16 event types). Separate from SmsGovernanceReleaseAuditEvent.
+
+### Application Interfaces
+- `ISmsGovernanceRolloutService` — 12 methods: CRUD + AddStage + AddCohortTenant + Start/Pause/Resume/Rollback/AdvanceStage/Complete + GetAuditTrail
+- `ISmsGovernanceRolloutEvaluator` — EvaluateRolloutHealthAsync / EvaluateStageHealthAsync; JSON-configurable thresholds (maxBlockRate/warnRate/reviewRate/minimumSampleSize/action); fail-open on error
+- `ISmsGovernanceRolloutAnalyticsService` — GetRolloutAnalytics / GetRolloutStageAnalytics / GetRolloutCohortAnalytics; 7-day bounded metric window; safe aggregate data only
+
+### Infrastructure Services
+- `SmsGovernanceRolloutService` — full state machine implementation; `full_activation` strategy delegates to `ISmsGovernanceReleaseService.ActivateAsync` (respects LS-021-HARDENING locks); `canary`/`staged_*` strategies record orchestration state; all transitions audited
+- `SmsGovernanceRolloutEvaluator` — queries SmsGovernanceRuleMatchMetric by cohort TenantIds; 24h window; insufficient-data detection; fail-open configurable
+- `SmsGovernanceRolloutAnalyticsService` — stage/cohort/plan-level aggregation over 7-day metric window
+
+### Worker — `SmsGovernanceRolloutWorker`
+BackgroundService; disabled by default (`RolloutWorkerEnabled=false`); 90s startup delay; per-rollout fault tolerance; evaluates stage health → auto-pause / auto-rollback / advance on observation window elapsed
+
+### API Endpoints (12, all PlatformAdmin)
+`GET/POST /rollouts` · `GET /rollouts/{id}` · `POST /rollouts/{id}/stages` · `POST /rollouts/{id}/cohorts` · `POST /rollouts/{id}/start` · `/pause` · `/resume` · `/rollback` · `/advance` · `GET /rollouts/{id}/analytics` · `GET /rollouts/{id}/audit`
+
+### Config Section: `SmsGovernanceRollouts`
+Enabled(true), RolloutWorkerEnabled(false), RolloutPollMinutes(5), MaxRolloutsPerCycle(10), DefaultCanaryPercentage(5), DefaultStageDurationMinutes(60), AutoPauseOnThresholdBreach(true), AutoRollbackOnCriticalThresholdBreach(false), FailOpenOnRolloutEvaluationError(true)
+
+### Migration
+`20260512000008_AddSmsGovernanceRollout` — 4 new tables, 11 indexes: `ntf_SmsGovernanceRolloutPlans`, `ntf_SmsGovernanceRolloutStages`, `ntf_SmsGovernanceTenantCohorts`, `ntf_SmsGovernanceRolloutAuditEvents`
+
+### Control Center
+- `apps/control-center/src/lib/sms-governance-rollout-api.ts` — typed API client for all 12 endpoints + state/strategy label/color maps
+- `apps/control-center/src/components/sms-governance/governance-rollout-panel.tsx` — client panel: rollout list + detail view with 4 tabs (Stages / Cohorts / Analytics / Audit) + lifecycle action buttons (Start, Pause, Resume, Advance Stage, Rollback)
+- `apps/control-center/src/app/notifications/sms-governance/rollouts/page.tsx` — PlatformAdmin-gated page at `/notifications/sms-governance/rollouts`
+
+### Architectural Limitation (documented)
+Canary/staged strategies record orchestration and visibility state only. Active governance rules apply globally — per-tenant rule enforcement scoping requires LS-NOTIF-SMS-023. The Control Center UI surfaces this limitation explicitly.
+
+### Analysis
+`analysis/LS-NOTIF-SMS-022-report.md`
+
+---
+
+## LS-NOTIF-SMS-023 — Per-Tenant Governance Rule Pack Scoping and True Tenant-Isolated Enforcement (2026-05-13)
+
+### What was built
+True per-tenant governance rule pack scoping extending the LS-019 global resolver. Tenants receive isolated enforcement via assigned rule packs and in-memory overlays without any mutation to global rules. Rollout stages (LS-022) auto-create tenant assignments as stages activate and roll them back on rollback.
+
+### Domain (3 new entities)
+- `SmsGovernanceTenantRulePackAssignment` — links tenant to rule pack with assignment state (draft/active/inactive/rolled_back/superseded), mode (inherited/isolated/rollout_canary/rollout_stage), priority, effective window, and rollout traceability fields
+- `SmsGovernanceTenantOverlay` — 6 overlay types (disable_rule, suppress_rule, override_severity, override_pattern, override_metadata, add_rule); purely in-memory application; no stored rule mutation
+- `SmsGovernanceTenantAssignmentAuditEvent` — immutable audit trail for all assignment and overlay lifecycle transitions
+
+### Application layer (3 interfaces + all types)
+- `ISmsGovernanceTenantResolutionService` — `ResolveEffectiveRulePacksAsync`, `ResolveEffectiveRulesAsync`, `GetEffectiveGovernanceGraphAsync`, `ExplainResolutionAsync` with full result/context record types
+- `ISmsGovernanceTenantAssignmentService` — CRUD for assignments + overlays + audit trail with all request/query/DTO types
+- `ISmsGovernanceTenantIsolationValidator` — 5-check assignment, overlay, and tenant-level isolation validators
+- `SmsGovernanceTenantScopingOptions` — `Enabled`, `ResolutionMode` (global_only/tenant_inherited/tenant_isolated), `EnableTenantOverlays`, `EnableRolloutAssignments`, `MaxAssignmentsPerTenant` (20), `MaxOverlaysPerTenant` (50), `FailOpenOnResolutionError`
+
+### Infrastructure
+- 3 EF configurations + 3 DB tables (`ntf_SmsGovernanceTenantRulePackAssignments`, `ntf_SmsGovernanceTenantOverlays`, `ntf_SmsGovernanceTenantAssignmentAuditEvents`) with 13 composite indexes
+- Migration `20260512000009_AddSmsGovernanceTenantScoping`
+- `SmsGovernanceTenantResolutionService` — resolves effective packs + rules + overlays per tenant; `tenant_inherited` and `tenant_isolated` modes; governance graph + explanation endpoints
+- `SmsGovernanceTenantAssignmentService` — full CRUD with all state transitions audited; fail-open; OverrideJson safety guard (≤4000 chars, keyword blocklist)
+- `SmsGovernanceTenantIsolationValidator` — validates assignments and overlays before creation
+
+### Resolver extension (LS-019 bridge)
+`SmsGovernanceRuleResolver` extended with `ISmsGovernanceTenantResolutionService` dependency. After LS-019 global resolution, if scoping enabled and tenant has assignments: `BuildFinalRuleSet()` merges scoped rules (inherited mode) or replaces global rules entirely (isolated mode). Global-only tenants with no assignments: zero behaviour change.
+
+### Rollout bridge (LS-022 integration)
+`SmsGovernanceRolloutService` extended with `ISmsGovernanceTenantAssignmentService`. `StartRolloutAsync`/`AdvanceStageAsync`: creates and activates tenant assignments for each cohort tenant × rule_pack release item when a stage activates. `RollbackRolloutAsync`: rolls back all assignments scoped to that `RolloutPlanId`. Failures non-fatal.
+
+### API (14 endpoints, AdminOnly)
+Base: `/notifications/v1/admin/sms/governance/tenant-scoping/`
+- `GET /tenant-assignments`, `POST /tenant-assignments`, `POST /{id}/activate|deactivate|rollback`
+- `GET /tenant-overlays`, `POST /tenant-overlays`, `POST /{id}/activate|disable`
+- `GET /tenant-resolution/{tenantId}`, `GET /tenant-resolution/{tenantId}/explain`
+- `GET /tenant-isolation/{tenantId}`
+- `GET /tenant-assignment-audit`
+
+### Control Center UI
+- `src/lib/sms-governance-tenant-scoping-api.ts` — all 14 API calls, DTOs, state constants, badge helpers
+- `src/app/notifications/sms-governance/tenant-scoping/page.tsx` — KPI bar, assignments table, overlays table, audit trail (Server Component, `force-dynamic`)
+- `sms-governance/page.tsx` — quick-nav links for Releases, Rollouts, and Tenant Scoping (LS-023)
+
+### Build
+`dotnet build Notifications.Api.csproj` — 0 errors, 29 pre-existing warnings (MailKit NU1902, snapshot CS8669 — unchanged from pre-LS-023 baseline)
+
+### Analysis
+`analysis/LS-NOTIF-SMS-023-report.md`
+
+## LS-NOTIF-SMS-024 — Cross-Channel Governance Federation and Unified Communications Governance Topology (2026-05-13)
+
+### What was built
+Cross-channel governance federation layer extending LS-023 per-tenant scoping to cover all notification channels (SMS, Email, Push, Webhook, InApp, Voice). Introduces channel scope registration, federated rule pack mapping, non-destructive federation overlays, topology resolution, and a unified audit trail. SMS governance (LS-017 through LS-023) is fully backward compatible — zero changes to the existing resolution path.
+
+### Domain (4 new entities)
+- `GovernanceChannelScope` — channel participation registry. Scope modes: `isolated_channel`, `inherited_channel`, `federated_shared`, `tenant_federated`, `rollout_federated`
+- `GovernanceFederatedRulePack` — maps a rule pack to a channel. Supports federation groups, tenant scoping, effective windows, and priority ordering
+- `GovernanceFederationOverlay` — 9 overlay types (add_rule, disable_rule, suppress_rule, override_severity, override_pattern, override_metadata, override_classification, channel_override, tenant_channel_override). Applied in-memory only — no stored rule mutation. Overlay state machine: draft→active→inactive/expired/superseded. `HasSensitiveContent()` blocks password/token/secret/bearer/apikey in OverlayJson
+- `GovernanceFederationAuditEvent` — append-only audit trail. 15 event type constants
+
+### Application layer
+- `GovernanceFederationOptions` — `GovernanceFederation` config section (9 keys: Enabled, DefaultScopeMode, FailOpenOnFederationError, EnableCrossChannelOverlays, EnableFederatedRollouts, MaxFederatedPacksPerChannel, MaxFederationOverlaysPerChannel, CacheTopology, TopologyCacheSeconds)
+- `IGovernanceFederationService` — 9 methods + 22 request/result/query record types for channel scope CRUD, pack federation, overlay lifecycle
+- `IGovernanceTopologyResolver` — `ResolveTopologyAsync`, `ResolveEffectiveRulesAsync`, `ExplainTopologyAsync` + 12 record types: `GovernanceTopologyGraph`, `TopologyEffectiveRules`, `TopologyExplanation` with numbered steps
+- `IGovernanceFederationAnalyticsService` — 4 methods: topology analytics, channel governance analytics, federated pack analytics, cross-channel rollout analytics
+
+### Infrastructure
+- 4 EF configurations + 4 DB tables (`ntf_GovernanceChannelScopes`, `ntf_GovernanceFederatedRulePacks`, `ntf_GovernanceFederationOverlays`, `ntf_GovernanceFederationAuditEvents`) with 17 total composite indexes
+- Migration `20260513000000_AddGovernanceFederation`
+- `GovernanceFederationService` — channel scope/pack/overlay CRUD; writes audit events; validates duplicates, effective windows, sensitive overlay content
+- `GovernanceTopologyResolver` — 5-step resolution: global packs → channel-federated packs → LS-023 tenant resolution (SMS only) → tenant-federated packs → federation overlays (in-memory, non-destructive). Returns `GovernanceTopologyGraph` with per-layer summaries, rule counts, warnings. `ExplainTopologyAsync` returns numbered step-by-step explanation. Fixed: uses `SmsGovernanceRulePack.Status == "active" && Enabled` and `RolloutStates.ActiveStates.Contains(r.RolloutState)` (not `.IsActive` or `.Status`)
+- `GovernanceFederationAnalyticsService` — live DB aggregate counts for topology/channel/rollout dimensions
+
+### API (14 endpoints, AdminOnly)
+Base: `/notifications/v1/admin/governance/` (drops `sms/` — cross-channel)
+- `GET/POST /channel-scopes`, `PUT /channel-scopes/{id}`
+- `GET/POST /federated-rule-packs`, `POST /federated-rule-packs/{id}/disable`
+- `GET/POST /federation-overlays`, `POST /federation-overlays/{id}/activate|disable`
+- `GET /topology?channelType=`, `GET /topology/explain?channelType=`
+- `GET /federation/audit`, `GET /federation/analytics`
+
+### Topology resolution order
+1. Global governance packs (LS-019 path, unchanged)
+2. Channel-federated packs (`ntf_GovernanceFederatedRulePacks` where TenantId IS NULL)
+3. Tenant-scoped assignments from LS-023 (`ISmsGovernanceTenantResolutionService`, SMS only)
+4. Tenant-scoped federated packs (`ntf_GovernanceFederatedRulePacks` where TenantId matches)
+5. Federation overlays applied in-memory (non-destructive: disable, suppress, override_severity, add_rule)
+
+### Control Center UI
+- `src/lib/governance-federation-api.ts` — typed API client with `buildGovernanceFederationApi(token)` factory, 6 channel types, 5 scope modes, 9 overlay types, color badge helpers
+- `src/app/notifications/governance/federation/page.tsx` — Server Component: KPI bar, SMS topology graph, channel scopes table, federated packs table, federation overlays table, audit trail, architectural enforcement note. `Promise.allSettled` for graceful degradation
+
+### SMS backward compatibility guarantee
+All LS-017 through LS-023 paths unchanged. Federation topology resolver called only via API endpoints — not wired into SMS message-send path (zero latency impact). `GovernanceResolutionContext` record unchanged.
+
+### Enforcement note
+Email, Push, Webhook, InApp channels record topology intent only. Active rule enforcement for non-SMS channels requires per-channel rule engine implementations (future feature).
+
+### Build
+`dotnet build Notifications.Api.csproj` — 0 errors; warnings: NU1902/MailKit, CS7095, CS8669 snapshot (all pre-existing, unchanged from LS-023 baseline)
+
+### Analysis
+`analysis/LS-NOTIF-SMS-024-report.md`
+
+## LS-NOTIF-SMS-025 — Federated Cross-Channel Governance Enforcement Engines and Unified Policy Execution Runtime (2026-05-13)
+
+### What was built
+Unified policy execution runtime wiring the LS-024 federation topology resolver into channel-specific enforcement engines. Activates email governance enforcement in the live delivery pipeline (NotificationService). Push/Webhook engines are fully implemented but integration is deferred pending delivery pipeline availability. SMS uses a compatibility adapter for simulation/status only (LS-017–023 governance pipeline unchanged).
+
+### Domain
+- `GovernanceExecutionRecord` — cross-channel governance telemetry. Table: `ntf_GovernanceExecutionRecords`. NEVER stores raw payloads, phone numbers, email addresses, or credentials. Only IDs, decision metadata, and bounded safe metadata JSON.
+
+### Application layer
+- `GovernanceExecutionRuntimeOptions` — `GovernanceExecutionRuntime` config section (9 keys: Enabled, FailOpenOnRuntimeError, EnableEmailEnforcement, EnablePushEnforcement, EnableWebhookEnforcement, EnableSmsCompatibilityRuntime, PersistAllowDecisions, MaxEvaluationTextLength, RegexTimeoutMs)
+- `IGovernanceExecutionRuntime` — orchestrator + all models: `GovernanceExecutionContext` (PayloadTextForEvaluation transient only), `GovernanceExecutionResult`, `GovernanceSimulationRequest`, `GovernanceSimulationResult`, `GovernanceChannelRuntimeStatus`, `GovernanceDecisionTypes`, `GovernanceReasonCodes`
+- `IGovernanceChannelEnforcementEngine` — per-channel engine abstraction (EvaluateAsync + SimulateAsync)
+- `IGovernanceExecutionTelemetryService` — telemetry persistence + query + aggregate: `GovernanceExecutionQuery`, `GovernanceExecutionRecordDto`, `GovernanceExecutionPageResult`, `GovernanceRuntimeTelemetryQuery`, `GovernanceRuntimeTelemetryResult`, `GovernanceChannelTelemetry`
+
+### Infrastructure services (7)
+- `GovernanceRuleEvaluationHelper` — loads full `SmsGovernanceRule` records from DB using pack IDs from `GovernanceTopologyGraph` (GlobalPacks + ChannelPacks + TenantPacks + FederatedPacks → `ntf_SmsGovernanceRules WHERE RulePackId IN (...)`). Applies: prohibited_phrase (case-insensitive + optional whole-word), restricted_pattern (Regex with ReDoS protection + configurable timeout), link_rule, classification_override, variable_rule, delivery_restriction. Severity ranking: allow < warn < override_allowed < review_required < block.
+- `EmailGovernanceEnforcementEngine` — evaluates rendered subject + body against topology rules. Fails open with `insufficient_context` when both absent.
+- `PushGovernanceEnforcementEngine` — applies rule evaluation when payload available; fails open with `insufficient_context` (push pipeline reserved).
+- `WebhookGovernanceEnforcementEngine` — evaluates safe metadata only (template key, evaluation context); never raw webhook payload. Fails open when no safe context.
+- `SmsGovernanceCompatibilityEngine` — returns `allow/sms_enforced` for live evaluation (no duplicate persistence); supports simulation via GovernanceRuleEvaluationHelper. EnableSmsCompatibilityRuntime = false default.
+- `GovernanceExecutionTelemetryService` — persists safe aggregate records. Skips allow decisions when PersistAllowDecisions = false. Failure is non-fatal.
+- `GovernanceExecutionRuntime` — DI-composed from `IEnumerable<IGovernanceChannelEnforcementEngine>`. Steps: normalize channel → check enforcement flag → resolve topology → select engine → evaluate → persist telemetry. Fails open when FailOpenOnRuntimeError = true.
+
+### Email delivery integration (NotificationService.cs)
+`IGovernanceExecutionRuntime` injected as ctor parameter. Email governance evaluated at line ~1072 (before the provider failover loop), after content rendering and before `ProviderFailure? lastFailure = null;`. Block/review_required: sets `dead-letter` status, logs, calls `CreateDeadLetterIssueAsync`, returns. Warn: logs, continues. Any exception: logs, continues (fail-open). SMS/Push/Webhook: not evaluated by runtime in delivery path.
+
+### API (5 endpoints, AdminOnly)
+Base: `/notifications/v1/admin/governance/runtime/`
+- `GET /status` — overall runtime health + engine summary
+- `GET /channels` — per-channel enforcement status
+- `GET /executions` — paginated execution telemetry records (channelType, tenantId, decisionType, isSimulation, from, to)
+- `GET /telemetry` — aggregate decision counts by channel
+- `POST /simulate` — transient governance simulation (simulationPayloadText never persisted)
+
+### Control Center UI
+- `src/lib/governance-runtime-api.ts` — typed API client for all 5 endpoints
+- `src/app/notifications/governance/runtime/page.tsx` — Server Component: runtime enabled badge, config summary, live telemetry KPIs, channel engines table, decision breakdown by channel, architecture notes. `Promise.allSettled` for graceful degradation.
+
+### SMS backward compatibility guarantee
+LS-017 through LS-023 governance pipelines completely unchanged. `SmsGovernanceCompatibilityEngine` uses `return Task.FromResult(...)` — zero DB calls for live evaluation.
+
+### Build
+`dotnet build Notifications.Api.csproj --no-restore` — **0 errors**; 28 warnings (all pre-existing: NU1902/MailKit, CS7095, CS8669 snapshot, CS8600/CS8604 SmsGovernanceTenantResolutionService)
+
+### Analysis
+`analysis/LS-NOTIF-SMS-025-report.md`

@@ -242,6 +242,25 @@ app.MapBillingEndpoints();
 app.MapContactEndpoints();
 app.MapBrandingEndpoints();
 app.MapInternalEndpoints();
+app.MapSmsPreferenceEndpoints();
+app.MapSmsReconciliationEndpoints();
+app.MapSmsActivityEndpoints();
+app.MapSmsDashboardEndpoints();
+app.MapSmsCostEndpoints();
+app.MapSmsAlertEndpoints();
+app.MapSmsEscalationEndpoints();
+app.MapSmsRoutingEndpoints();
+app.MapSmsOptimizationEndpoints(); // LS-NOTIF-SMS-015
+app.MapSmsRecipientIntelligenceEndpoints(); // LS-NOTIF-SMS-016
+app.MapSmsGovernanceEndpoints();             // LS-NOTIF-SMS-017
+app.MapSmsTemplateGovernanceEndpoints();     // LS-NOTIF-SMS-018
+app.MapSmsGovernanceDynamicRuleEndpoints();  // LS-NOTIF-SMS-019
+app.MapSmsGovernanceLifecycleEndpoints();   // LS-NOTIF-SMS-020
+app.MapSmsGovernanceReleaseEndpoints();     // LS-NOTIF-SMS-021
+app.MapSmsGovernanceRolloutEndpoints();       // LS-NOTIF-SMS-022
+app.MapSmsGovernanceTenantScopingEndpoints(); // LS-NOTIF-SMS-023
+app.MapGovernanceFederationEndpoints();       // LS-NOTIF-SMS-024
+app.MapGovernanceRuntimeEndpoints();          // LS-NOTIF-SMS-025
 
 app.Run();
 
@@ -308,6 +327,24 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
                 "CREATE INDEX `IX_Notifications_Status_NextRetryAt` ON `ntf_Notifications` (`Status`, `NextRetryAt`)";
             await idxCmd.ExecuteNonQueryAsync();
             logger.LogInformation("Created missing index IX_Notifications_Status_NextRetryAt");
+        }
+
+        // ── LS-NOTIF-SMS-006: composite index for SMS activity queries ────────
+        // Covers: WHERE Channel='sms' AND TenantId=? ORDER BY CreatedAt DESC
+        using var smsIdxCheckCmd = conn.CreateCommand();
+        smsIdxCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_NotificationAttempts' " +
+            $"AND INDEX_NAME = 'IX_NotificationAttempts_Channel_TenantId_CreatedAt'";
+        var smsIdxCount = Convert.ToInt32(await smsIdxCheckCmd.ExecuteScalarAsync());
+        if (smsIdxCount == 0)
+        {
+            using var smsIdxCmd = conn.CreateCommand();
+            smsIdxCmd.CommandText =
+                "CREATE INDEX `IX_NotificationAttempts_Channel_TenantId_CreatedAt` " +
+                "ON `ntf_NotificationAttempts` (`Channel`, `TenantId`, `CreatedAt`)";
+            await smsIdxCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created index IX_NotificationAttempts_Channel_TenantId_CreatedAt");
         }
 
         // Ensure columns exist on ntf_Templates and ntf_TemplateVersions — may be absent on DBs
@@ -377,6 +414,260 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
             }
         }
 
+        // ── LS-NOTIF-SMS-002: BlockUnknownSmsPreference on ntf_TenantContactPolicies ──
+        var contactPolicyColumnsToAdd = new[]
+        {
+            ("ntf_TenantContactPolicies", "BlockUnknownSmsPreference", "tinyint(1) NOT NULL DEFAULT 1"),
+        };
+
+        foreach (var (table, col, colDef) in contactPolicyColumnsToAdd)
+        {
+            using var checkCmd3 = conn.CreateCommand();
+            checkCmd3.CommandText =
+                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
+            var count3 = Convert.ToInt32(await checkCmd3.ExecuteScalarAsync());
+
+            if (count3 == 0)
+            {
+                using var alterCmd3 = conn.CreateCommand();
+                alterCmd3.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
+                await alterCmd3.ExecuteNonQueryAsync();
+                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
+            }
+        }
+
+        // ── LS-NOTIF-SMS-007: Reconciliation tracking columns on ntf_NotificationAttempts ──
+        var reconciliationColumnsToAdd = new[]
+        {
+            ("ntf_NotificationAttempts", "LastReconciliationOutcome",          "varchar(100) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_NotificationAttempts", "LastReconciledAt",                   "datetime(6) NULL"),
+            ("ntf_NotificationAttempts", "LastReconciliationErrorCode",        "varchar(100) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_NotificationAttempts", "LastReconciliationProviderStatus",   "varchar(100) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_NotificationAttempts", "LastReconciliationNormalizedStatus", "varchar(100) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_NotificationAttempts", "ReconciliationAttemptCount",         "int NOT NULL DEFAULT 0"),
+        };
+
+        foreach (var (table, col, colDef) in reconciliationColumnsToAdd)
+        {
+            using var checkCmdR = conn.CreateCommand();
+            checkCmdR.CommandText =
+                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
+            var countR = Convert.ToInt32(await checkCmdR.ExecuteScalarAsync());
+
+            if (countR == 0)
+            {
+                using var alterCmdR = conn.CreateCommand();
+                alterCmdR.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
+                await alterCmdR.ExecuteNonQueryAsync();
+                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
+            }
+        }
+
+        // ── LS-NOTIF-SMS-007: composite index for reconciliation outcome queries ──
+        using var reconIdxCheckCmd = conn.CreateCommand();
+        reconIdxCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_NotificationAttempts' " +
+            $"AND INDEX_NAME = 'IX_NotificationAttempts_Channel_TenantId_LastReconciliationOutcome'";
+        var reconIdxCount = Convert.ToInt32(await reconIdxCheckCmd.ExecuteScalarAsync());
+        if (reconIdxCount == 0)
+        {
+            using var reconIdxCmd = conn.CreateCommand();
+            reconIdxCmd.CommandText =
+                "CREATE INDEX `IX_NotificationAttempts_Channel_TenantId_LastReconciliationOutcome` " +
+                "ON `ntf_NotificationAttempts` (`Channel`, `TenantId`, `LastReconciliationOutcome`)";
+            await reconIdxCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created index IX_NotificationAttempts_Channel_TenantId_LastReconciliationOutcome");
+        }
+
+        // ── LS-NOTIF-SMS-002: Ensure ntf_SmsContactPreferences table exists ──────
+        // Safety net: if the migration ran but DDL failed (or was pre-seeded), ensure the table exists.
+        using var tableCheckCmd = conn.CreateCommand();
+        tableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsContactPreferences'";
+        var tableExists = Convert.ToInt32(await tableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!tableExists)
+        {
+            using var createTableCmd = conn.CreateCommand();
+            createTableCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsContactPreferences` (
+                    `Id`                char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `TenantId`          char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `Phone`             varchar(50)     CHARACTER SET utf8mb4 NOT NULL,
+                    `PreferenceState`   varchar(20)     CHARACTER SET utf8mb4 NOT NULL DEFAULT 'unknown',
+                    `Source`            varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `Reason`            text            CHARACTER SET utf8mb4 NULL,
+                    `KeywordReceived`   varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `ProviderMessageId` varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `UpdatedBy`         varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `CreatedAt`         datetime(6)     NOT NULL,
+                    `UpdatedAt`         datetime(6)     NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    UNIQUE KEY `UX_SmsContactPreferences_TenantId_Phone` (`TenantId`, `Phone`)
+                ) CHARACTER SET=utf8mb4;";
+            await createTableCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsContactPreferences");
+        }
+
+        // ── LS-NOTIF-SMS-003: Ensure ntf_SmsPreferenceHistories table exists ────
+        using var histTableCheckCmd = conn.CreateCommand();
+        histTableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsPreferenceHistories'";
+        var histTableExists = Convert.ToInt32(await histTableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!histTableExists)
+        {
+            using var createHistCmd = conn.CreateCommand();
+            createHistCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsPreferenceHistories` (
+                    `Id`                char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `TenantId`          char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `Phone`             varchar(50)     CHARACTER SET utf8mb4 NOT NULL,
+                    `PreviousState`     varchar(20)     CHARACTER SET utf8mb4 NULL,
+                    `NewState`          varchar(20)     CHARACTER SET utf8mb4 NOT NULL,
+                    `Source`            varchar(50)     CHARACTER SET utf8mb4 NOT NULL,
+                    `Reason`            text            CHARACTER SET utf8mb4 NULL,
+                    `KeywordReceived`   varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `Provider`          varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `ProviderMessageId` varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `ProviderConfigId`  char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `InboundToNumber`   varchar(50)     CHARACTER SET utf8mb4 NULL,
+                    `CreatedBy`         varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `MetadataJson`      text            CHARACTER SET utf8mb4 NULL,
+                    `CreatedAt`         datetime(6)     NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_SmsPreferenceHistories_TenantId_Phone` (`TenantId`, `Phone`),
+                    KEY `IX_SmsPreferenceHistories_Phone` (`Phone`)
+                ) CHARACTER SET=utf8mb4;";
+            await createHistCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsPreferenceHistories");
+        }
+
+        // ── LS-NOTIF-SMS-010: Ensure ntf_SmsOperationalAlerts table exists ────────
+        // Safety net: if the migration ran but DDL failed (or was pre-seeded), ensure the table exists.
+        using var alertTableCheckCmd = conn.CreateCommand();
+        alertTableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsOperationalAlerts'";
+        var alertTableExists = Convert.ToInt32(await alertTableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!alertTableExists)
+        {
+            using var createAlertTableCmd = conn.CreateCommand();
+            createAlertTableCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsOperationalAlerts` (
+                    `Id`                    char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `AlertType`             varchar(100)    CHARACTER SET utf8mb4 NOT NULL,
+                    `Severity`              varchar(20)     CHARACTER SET utf8mb4 NOT NULL DEFAULT 'warning',
+                    `TenantId`              char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `Provider`              varchar(100)    CHARACTER SET utf8mb4 NULL,
+                    `ProviderConfigId`      char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `MetricValue`           decimal(18,6)   NOT NULL,
+                    `ThresholdValue`        decimal(18,6)   NOT NULL,
+                    `Message`               text            CHARACTER SET utf8mb4 NOT NULL,
+                    `EvaluationWindowStart` datetime(6)     NOT NULL,
+                    `EvaluationWindowEnd`   datetime(6)     NOT NULL,
+                    `Status`                varchar(20)     CHARACTER SET utf8mb4 NOT NULL DEFAULT 'active',
+                    `OccurrenceCount`       int             NOT NULL DEFAULT 1,
+                    `FirstObservedAt`       datetime(6)     NOT NULL,
+                    `LastObservedAt`        datetime(6)     NOT NULL,
+                    `ResolvedAt`            datetime(6)     NULL,
+                    `ResolvedBy`            varchar(255)    CHARACTER SET utf8mb4 NULL,
+                    `ResolutionNote`        text            CHARACTER SET utf8mb4 NULL,
+                    `SuppressedUntil`       datetime(6)     NULL,
+                    `CreatedAt`             datetime(6)     NOT NULL,
+                    `UpdatedAt`             datetime(6)     NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_SmsOperationalAlerts_Status_LastObservedAt` (`Status`, `LastObservedAt`),
+                    KEY `IX_SmsOperationalAlerts_AlertType_Status_Scope` (`AlertType`, `Status`, `TenantId`, `Provider`, `ProviderConfigId`),
+                    KEY `IX_SmsOperationalAlerts_TenantId_Status_CreatedAt` (`TenantId`, `Status`, `CreatedAt`)
+                ) CHARACTER SET=utf8mb4;";
+            await createAlertTableCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsOperationalAlerts");
+        }
+
+        // ── LS-NOTIF-SMS-011: Ensure ntf_SmsEscalationPolicies table exists ─────
+        using var polTableCheckCmd = conn.CreateCommand();
+        polTableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsEscalationPolicies'";
+        var polTableExists = Convert.ToInt32(await polTableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!polTableExists)
+        {
+            using var createPolCmd = conn.CreateCommand();
+            createPolCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsEscalationPolicies` (
+                    `Id`              char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `Name`            varchar(200)   CHARACTER SET utf8mb4 NOT NULL,
+                    `Enabled`         tinyint(1)     NOT NULL DEFAULT 1,
+                    `AlertType`       varchar(100)   CHARACTER SET utf8mb4 NULL,
+                    `Severity`        varchar(20)    CHARACTER SET utf8mb4 NULL,
+                    `TenantId`        char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `Provider`        varchar(100)   CHARACTER SET utf8mb4 NULL,
+                    `ProviderConfigId` char(36)      CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `ChannelType`     varchar(50)    CHARACTER SET utf8mb4 NOT NULL,
+                    `Target`          text           CHARACTER SET utf8mb4 NOT NULL,
+                    `TargetDisplay`   varchar(500)   CHARACTER SET utf8mb4 NULL,
+                    `CooldownMinutes` int            NOT NULL DEFAULT 60,
+                    `RetryEnabled`    tinyint(1)     NOT NULL DEFAULT 0,
+                    `MaxRetryCount`   int            NOT NULL DEFAULT 3,
+                    `CreatedAt`       datetime(6)    NOT NULL,
+                    `UpdatedAt`       datetime(6)    NOT NULL,
+                    `CreatedBy`       varchar(255)   CHARACTER SET utf8mb4 NULL,
+                    `UpdatedBy`       varchar(255)   CHARACTER SET utf8mb4 NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_SmsEscalationPolicies_Enabled_AlertType`   (`Enabled`, `AlertType`),
+                    KEY `IX_SmsEscalationPolicies_Enabled_ChannelType` (`Enabled`, `ChannelType`)
+                ) CHARACTER SET=utf8mb4;";
+            await createPolCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsEscalationPolicies");
+        }
+
+        // ── LS-NOTIF-SMS-011: Ensure ntf_SmsAlertEscalations table exists ──────
+        using var escTableCheckCmd = conn.CreateCommand();
+        escTableCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsAlertEscalations'";
+        var escTableExists = Convert.ToInt32(await escTableCheckCmd.ExecuteScalarAsync()) > 0;
+
+        if (!escTableExists)
+        {
+            using var createEscCmd = conn.CreateCommand();
+            createEscCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS `ntf_SmsAlertEscalations` (
+                    `Id`              char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `AlertId`         char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `PolicyId`        char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `ChannelType`     varchar(50)    CHARACTER SET utf8mb4 NOT NULL,
+                    `TargetMasked`    varchar(500)   CHARACTER SET utf8mb4 NULL,
+                    `Severity`        varchar(20)    CHARACTER SET utf8mb4 NOT NULL DEFAULT 'warning',
+                    `Status`          varchar(30)    CHARACTER SET utf8mb4 NOT NULL DEFAULT 'pending',
+                    `AttemptCount`    int            NOT NULL DEFAULT 0,
+                    `LastAttemptAt`   datetime(6)    NULL,
+                    `SentAt`          datetime(6)    NULL,
+                    `FailureReason`   text           CHARACTER SET utf8mb4 NULL,
+                    `NextRetryAt`     datetime(6)    NULL,
+                    `SuppressedUntil` datetime(6)    NULL,
+                    `PayloadHash`     varchar(64)    CHARACTER SET utf8mb4 NULL,
+                    `MetadataJson`    text           CHARACTER SET utf8mb4 NULL,
+                    `CreatedAt`       datetime(6)    NOT NULL,
+                    `UpdatedAt`       datetime(6)    NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_SmsAlertEscalations_AlertId`                    (`AlertId`),
+                    KEY `IX_SmsAlertEscalations_Status_NextRetryAt`          (`Status`, `NextRetryAt`),
+                    KEY `IX_SmsAlertEscalations_AlertId_PolicyId_PayloadHash` (`AlertId`, `PolicyId`, `PayloadHash`),
+                    KEY `IX_SmsAlertEscalations_CreatedAt`                  (`CreatedAt`)
+                ) CHARACTER SET=utf8mb4;";
+            await createEscCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing table ntf_SmsAlertEscalations");
+        }
+
         logger.LogInformation("EnsureNotificationsSchemaColumns complete");
     }
     finally
@@ -392,8 +683,13 @@ static async Task SeedMigrationHistoryIfNeededAsync(NotificationsDbContext db, I
     // not contain them we insert them so MigrateAsync skips re-running them.
     var alreadyApplied = new[]
     {
-        ("20260418043535_InitialCreate",   "8.0.2"),
-        ("20260419000001_AddRetryFields",  "8.0.2"),
+        ("20260418043535_InitialCreate",        "8.0.2"),
+        ("20260419000001_AddRetryFields",       "8.0.2"),
+        ("20260508000001_AddSmsPreference",     "8.0.2"),
+        ("20260508000002_AddSmsPreferenceHistory",      "8.0.2"),
+        ("20260509000001_AddSmsReconciliationTracking", "8.0.2"),
+        ("20260510000001_AddSmsOperationalAlerts",      "8.0.2"),
+        ("20260510000002_AddSmsEscalation",             "8.0.2"),
     };
 
     try

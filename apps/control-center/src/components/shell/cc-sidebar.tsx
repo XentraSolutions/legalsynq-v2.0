@@ -116,18 +116,55 @@ function CCSidebarInner({ collapsed, mounted, toggle }: {
               <div className="mx-2 mb-2 border-t border-gray-100" />
             )}
 
-            <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
-              {contextSection.items.map(item => (
-                <SidebarItem
-                  key={item.href}
-                  item={item}
-                  pathname={pathname ?? ''}
-                  collapsed={collapsed}
-                  activeColor={nav.activeColor}
-                  activeBg={nav.activeBg}
-                />
-              ))}
-            </nav>
+            {/* Sub-grouped layout (e.g. Notifications: Email / SMS / General Settings) */}
+            {contextSection.subGroups && contextSection.subGroups.length > 0 ? (
+              <div className="space-y-1">
+                {contextSection.subGroups.map((group, gi) => (
+                  <div key={group.label}>
+                    {/* Sub-group label — expanded mode only; divider between groups */}
+                    {!collapsed && (
+                      <div className={clsx('px-5 flex items-center gap-2', gi > 0 ? 'pt-2 mt-1' : 'pt-0')}>
+                        {gi > 0 && <div className="flex-1 border-t border-gray-100" />}
+                        <span className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 select-none whitespace-nowrap">
+                          {group.label}
+                        </span>
+                        {gi === 0 && <div className="flex-1 border-t border-gray-100" />}
+                      </div>
+                    )}
+                    {/* Collapsed: thin rule between groups */}
+                    {collapsed && gi > 0 && (
+                      <div className="mx-2 my-1 border-t border-gray-100" />
+                    )}
+                    <nav className={clsx('space-y-0.5 mt-0.5', collapsed ? 'px-1.5' : 'px-3')}>
+                      {group.items.map(item => (
+                        <SidebarItem
+                          key={item.href}
+                          item={item}
+                          pathname={pathname ?? ''}
+                          collapsed={collapsed}
+                          activeColor={nav.activeColor}
+                          activeBg={nav.activeBg}
+                        />
+                      ))}
+                    </nav>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Flat layout (all other sections) */
+              <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
+                {contextSection.items.map(item => (
+                  <SidebarItem
+                    key={item.href}
+                    item={item}
+                    pathname={pathname ?? ''}
+                    collapsed={collapsed}
+                    activeColor={nav.activeColor}
+                    activeBg={nav.activeBg}
+                  />
+                ))}
+              </nav>
+            )}
           </div>
         )}
 

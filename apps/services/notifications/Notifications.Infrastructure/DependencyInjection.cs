@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Notifications.Application.Interfaces;
+using Notifications.Application.Options;
 using Notifications.Infrastructure.Data;
 using Notifications.Infrastructure.Providers.Adapters;
 using Notifications.Infrastructure.Repositories;
@@ -48,6 +49,8 @@ public static class DependencyInjection
         services.AddScoped<ITenantContactPolicyRepository, TenantContactPolicyRepository>();
         services.AddScoped<ITenantBrandingRepository, TenantBrandingRepository>();
         services.AddScoped<IUsageMeterEventRepository, UsageMeterEventRepository>();
+        services.AddScoped<ISmsPreferenceRepository, SmsPreferenceRepository>();
+        services.AddScoped<ISmsPreferenceHistoryRepository, SmsPreferenceHistoryRepository>();
 
         services.AddScoped<INotificationService, NotificationServiceImpl>();
         services.AddScoped<ITemplateService, TemplateServiceImpl>();
@@ -62,6 +65,134 @@ public static class DependencyInjection
         services.AddScoped<IUsageMeteringService, UsageMeteringService>();
         services.AddScoped<IRecipientContactHealthService, RecipientContactHealthService>();
         services.AddScoped<IProviderRoutingService, ProviderRoutingService>();
+        services.AddScoped<ISmsPreferenceService, SmsPreferenceServiceImpl>();
+        services.AddScoped<IInboundSmsResolverService, InboundSmsResolverService>();
+        services.AddScoped<ISmsReconciliationService, SmsReconciliationService>();
+        services.AddScoped<ITwilioAdapterFactory, TwilioAdapterFactory>();
+        services.AddScoped<ISmsProviderRuntimeResolver, SmsProviderRuntimeResolver>();
+        services.AddScoped<ISmsActivityRepository, SmsActivityRepository>();
+        services.AddScoped<ISmsActivityService, SmsActivityService>();
+        services.AddScoped<ISmsDashboardRepository, SmsDashboardRepository>();
+        services.AddScoped<ISmsDashboardService, SmsDashboardService>();
+        services.AddScoped<ISmsCostAnalyticsRepository, SmsCostAnalyticsRepository>();
+        services.AddScoped<ISmsCostAnalyticsService, SmsCostAnalyticsService>();
+        services.AddOptions<SmsCostAnalyticsOptions>()
+                .Bind(configuration.GetSection(SmsCostAnalyticsOptions.SectionName));
+        services.AddScoped<ISmsOperationalAlertRepository, SmsOperationalAlertRepository>();
+        services.AddScoped<ISmsOperationalAlertEvaluator, SmsOperationalAlertEvaluator>();
+        services.AddScoped<ISmsOperationalEscalationPolicyRepository, SmsEscalationPolicyRepository>();
+        services.AddScoped<ISmsOperationalAlertEscalationRepository, SmsAlertEscalationRepository>();
+        services.AddScoped<ISmsAlertEscalationMessageBuilder, SmsAlertEscalationMessageBuilder>();
+        services.AddScoped<ISmsAlertEscalationChannelAdapter, InternalEmailEscalationAdapter>();
+        services.AddScoped<ISmsAlertEscalationChannelAdapter, TeamsWebhookEscalationAdapter>();
+        services.AddScoped<ISmsAlertEscalationChannelAdapter, SlackWebhookEscalationAdapter>();
+        services.AddScoped<ISmsAlertEscalationService, SmsAlertEscalationService>();
+
+        // LS-NOTIF-SMS-014: Multi-Provider SMS Routing
+        services.AddScoped<ISmsRoutingPolicyRepository, SmsRoutingPolicyRepository>();
+        services.AddScoped<ISmsRoutingDecisionRepository, SmsRoutingDecisionRepository>();
+        services.AddSingleton<ISmsProviderCapabilityService, SmsProviderCapabilityService>();
+        // ISmsProviderAdapterFactory registrations — injected as IEnumerable<ISmsProviderAdapterFactory>
+        // into SmsProviderAdapterRegistry. Order matters: first matching factory wins.
+        services.AddScoped<ISmsProviderAdapterFactory, TwilioAdapterFactoryWrapper>();
+        services.AddScoped<ISmsProviderAdapterFactory, VonageAdapterFactory>();
+        services.AddScoped<ISmsProviderAdapterRegistry, SmsProviderAdapterRegistry>();
+        services.AddScoped<ISmsRoutingEngine, SmsRoutingEngine>();
+        services.AddHttpClient("Vonage");
+
+        // LS-NOTIF-SMS-015: Regional Intelligence, Provider Quality, Adaptive Routing
+        services.AddSingleton<ISmsRegionalInferenceService, SmsRegionalInferenceService>();
+        services.AddScoped<ISmsProviderQualityRepository, SmsProviderQualityRepository>();
+        services.AddScoped<ISmsProviderQualityService, SmsProviderQualityService>();
+        services.AddOptions<SmsProviderQualityOptions>()
+                .Bind(configuration.GetSection(SmsProviderQualityOptions.SectionName));
+        services.AddHostedService<SmsProviderQualityWorker>();
+
+        // LS-NOTIF-SMS-016: Recipient Intelligence, Suppression, Delivery Reputation
+        services.AddOptions<SmsRecipientIntelligenceOptions>()
+                .Bind(configuration.GetSection(SmsRecipientIntelligenceOptions.SectionName));
+        services.AddSingleton<ISmsRecipientIdentityHasher, SmsRecipientIdentityHasher>();
+        services.AddScoped<ISmsRecipientIntelligenceService, SmsRecipientIntelligenceService>();
+        services.AddScoped<ISmsRetrySuppressionService, SmsRetrySuppressionService>();
+        services.AddHostedService<SmsRecipientIntelligenceWorker>();
+
+        // LS-NOTIF-SMS-017: SMS Governance Policies + Compliance Controls
+        services.AddOptions<SmsGovernanceOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceOptions.SectionName));
+        services.AddScoped<ISmsGovernancePolicyService, SmsGovernancePolicyService>();
+
+        // LS-NOTIF-SMS-018: SMS Template Governance, Content Classification, Delivery Compliance
+        services.AddOptions<SmsTemplateGovernanceOptions>()
+                .Bind(configuration.GetSection(SmsTemplateGovernanceOptions.SectionName));
+        services.AddScoped<ISmsTemplateGovernanceService, SmsTemplateGovernanceService>();
+
+        // LS-NOTIF-SMS-019: Dynamic Governance Rule Packs, Rule Engine, Compliance Profiles, Simulation
+        services.AddOptions<SmsGovernanceDynamicOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceDynamicOptions.SectionName));
+        services.AddScoped<ISmsGovernanceRuleResolver, SmsGovernanceRuleResolver>();
+        services.AddScoped<ISmsGovernanceRuleEngine, SmsGovernanceRuleEngine>();
+        services.AddScoped<ISmsGovernanceSimulationService, SmsGovernanceSimulationService>();
+
+        // LS-NOTIF-SMS-020: Governance Versioning, Bulk Import, Analytics
+        services.AddOptions<SmsGovernanceVersioningOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceVersioningOptions.SectionName));
+        services.AddOptions<SmsGovernanceAnalyticsOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceAnalyticsOptions.SectionName));
+        services.AddScoped<ISmsGovernanceVersioningService, SmsGovernanceVersioningService>();
+        services.AddScoped<ISmsGovernanceImportService, SmsGovernanceImportService>();
+        // Analytics service implements both ISmsGovernanceAnalyticsService and ISmsGovernanceMatchRecorder;
+        // register as scoped and resolve both interfaces from the same instance per request.
+        services.AddScoped<SmsGovernanceAnalyticsService>();
+        services.AddScoped<ISmsGovernanceAnalyticsService>(sp =>
+            sp.GetRequiredService<SmsGovernanceAnalyticsService>());
+        services.AddScoped<ISmsGovernanceMatchRecorder>(sp =>
+            sp.GetRequiredService<SmsGovernanceAnalyticsService>());
+
+        // LS-NOTIF-SMS-021: Governance Release Management, Approval Workflow, Scheduled Activation
+        services.AddOptions<SmsGovernanceReleaseManagementOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceReleaseManagementOptions.SectionName));
+        // Approval workflow must be registered before release service (release service takes it as a dependency)
+        services.AddScoped<ISmsGovernanceApprovalWorkflowService, SmsGovernanceApprovalWorkflowService>();
+        services.AddScoped<ISmsGovernanceReleaseService, SmsGovernanceReleaseService>();
+        // LS-NOTIF-SMS-021-HARDENING: read-only integrity + lock status service
+        services.AddScoped<ISmsGovernanceReleaseIntegrityService, SmsGovernanceReleaseIntegrityService>();
+        services.AddHostedService<SmsGovernanceReleaseActivationWorker>();
+
+        // LS-NOTIF-SMS-022: Canary Governance Rollout
+        services.AddOptions<SmsGovernanceRolloutsOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceRolloutsOptions.SectionName));
+        services.AddScoped<ISmsGovernanceRolloutEvaluator, SmsGovernanceRolloutEvaluator>();
+        services.AddScoped<ISmsGovernanceRolloutAnalyticsService, SmsGovernanceRolloutAnalyticsService>();
+        services.AddHostedService<SmsGovernanceRolloutWorker>();
+
+        // LS-NOTIF-SMS-023: Per-tenant governance rule pack scoping
+        // Resolution service must be registered before the rule resolver (which depends on it).
+        services.AddOptions<SmsGovernanceTenantScopingOptions>()
+                .Bind(configuration.GetSection(SmsGovernanceTenantScopingOptions.SectionName));
+        services.AddScoped<ISmsGovernanceTenantIsolationValidator, SmsGovernanceTenantIsolationValidator>();
+        services.AddScoped<ISmsGovernanceTenantAssignmentService, SmsGovernanceTenantAssignmentService>();
+        services.AddScoped<ISmsGovernanceTenantResolutionService, SmsGovernanceTenantResolutionService>();
+        // Rollout service registered after LS-023 deps it now depends on
+        services.AddScoped<ISmsGovernanceRolloutService, SmsGovernanceRolloutService>();
+
+        // LS-NOTIF-SMS-024: Cross-channel governance federation
+        services.AddOptions<GovernanceFederationOptions>()
+                .Bind(configuration.GetSection("GovernanceFederation"));
+        services.AddScoped<IGovernanceFederationService, GovernanceFederationService>();
+        services.AddScoped<IGovernanceTopologyResolver, GovernanceTopologyResolver>();
+        services.AddScoped<IGovernanceFederationAnalyticsService, GovernanceFederationAnalyticsService>();
+
+        // LS-NOTIF-SMS-025: Cross-channel governance execution runtime
+        services.AddOptions<GovernanceExecutionRuntimeOptions>()
+                .Bind(configuration.GetSection("GovernanceExecutionRuntime"));
+        services.AddScoped<GovernanceRuleEvaluationHelper>();
+        // Channel enforcement engines — all registered; runtime selects by channel type
+        services.AddScoped<IGovernanceChannelEnforcementEngine, EmailGovernanceEnforcementEngine>();
+        services.AddScoped<IGovernanceChannelEnforcementEngine, PushGovernanceEnforcementEngine>();
+        services.AddScoped<IGovernanceChannelEnforcementEngine, WebhookGovernanceEnforcementEngine>();
+        services.AddScoped<IGovernanceChannelEnforcementEngine, SmsGovernanceCompatibilityEngine>();
+        services.AddScoped<IGovernanceExecutionTelemetryService, GovernanceExecutionTelemetryService>();
+        services.AddScoped<IGovernanceExecutionRuntime, GovernanceExecutionRuntime>();
         // Role/org membership lookup. The in-memory provider stays registered so
         // tests and dev seeders can hydrate it directly; the live provider in
         // front of it depends on whether IdentityService:BaseUrl is configured:
@@ -99,6 +230,7 @@ public static class DependencyInjection
 
         services.AddHttpClient("SendGrid");
         services.AddHttpClient("Twilio");
+        services.AddHttpClient("EscalationWebhook");
 
         var sgApiKey = configuration["SENDGRID_API_KEY"] ?? "";
         var sgFromEmail = configuration["SENDGRID_FROM_EMAIL"] ?? "noreply@legalsynq.com";
@@ -145,6 +277,9 @@ public static class DependencyInjection
         services.AddHostedService<NotificationWorker>();
         services.AddHostedService<ProviderHealthWorker>();
         services.AddHostedService<StatusSyncWorker>();
+        services.AddHostedService<SmsReconciliationWorker>();
+        services.AddHostedService<SmsOperationalAlertWorker>();
+        services.AddHostedService<SmsAlertEscalationRetryWorker>();
 
         return services;
     }

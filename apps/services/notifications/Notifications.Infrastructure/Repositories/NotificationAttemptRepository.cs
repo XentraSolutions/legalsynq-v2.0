@@ -46,4 +46,67 @@ public class NotificationAttemptRepository : INotificationAttemptRepository
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
     }
+
+    public async Task<List<NotificationAttempt>> GetStaleSmsAttemptsAsync(
+        int limit,
+        DateTime olderThan,
+        IReadOnlyCollection<string> statuses,
+        CancellationToken ct = default)
+        => await _db.NotificationAttempts
+            .Where(a =>
+                a.Channel == "sms" &&
+                a.ProviderMessageId != null &&
+                a.ProviderMessageId != "" &&
+                statuses.Contains(a.Status) &&
+                a.UpdatedAt < olderThan)
+            .OrderBy(a => a.UpdatedAt)
+            .Take(limit)
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task UpdateCostAsync(
+        Guid attemptId,
+        decimal? estimatedCostAmount,
+        decimal? actualCostAmount,
+        string? costCurrency,
+        string costSource,
+        DateTime costRecordedAt,
+        CancellationToken ct = default)
+    {
+        var a = await _db.NotificationAttempts.FindAsync(new object[] { attemptId }, ct);
+        if (a == null) return;
+
+        a.EstimatedCostAmount = estimatedCostAmount;
+        a.ActualCostAmount    = actualCostAmount;
+        a.CostCurrency        = costCurrency;
+        a.CostSource          = costSource;
+        a.CostRecordedAt      = costRecordedAt;
+        a.UpdatedAt           = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateReconciliationTrackingAsync(
+        Guid attemptId,
+        string outcome,
+        string? errorCode,
+        string? providerStatus,
+        string? normalizedStatus,
+        DateTime reconciledAt,
+        CancellationToken ct = default)
+    {
+        var a = await _db.NotificationAttempts.FindAsync(new object[] { attemptId }, ct);
+        if (a == null) return;
+
+        a.LastReconciliationOutcome         = outcome;
+        a.LastReconciledAt                  = reconciledAt;
+        a.LastReconciliationErrorCode       = errorCode;
+        a.LastReconciliationProviderStatus  = providerStatus;
+        a.LastReconciliationNormalizedStatus = normalizedStatus;
+        a.ReconciliationAttemptCount++;
+        a.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+    }
 }

@@ -54,12 +54,13 @@ public class RecipientResolver : IRecipientResolver
         var mode    = ReadMode(recipient);
         var userId  = ReadString(recipient, "userId");
         var email   = ReadString(recipient, "email");
+        var phone   = ReadString(recipient, "phone");
         var roleKey = ReadString(recipient, "roleKey");
         var orgId   = ReadString(recipient, "orgId");
 
         // Mode is informational; fall back to whichever identifier is populated.
         if (string.Equals(mode, "Role", StringComparison.OrdinalIgnoreCase) ||
-            (string.IsNullOrEmpty(mode) && !string.IsNullOrEmpty(roleKey) && string.IsNullOrEmpty(userId) && string.IsNullOrEmpty(email)))
+            (string.IsNullOrEmpty(mode) && !string.IsNullOrEmpty(roleKey) && string.IsNullOrEmpty(userId) && string.IsNullOrEmpty(email) && string.IsNullOrEmpty(phone)))
         {
             if (string.IsNullOrEmpty(roleKey))
             {
@@ -71,7 +72,7 @@ public class RecipientResolver : IRecipientResolver
         }
 
         if (string.Equals(mode, "Org", StringComparison.OrdinalIgnoreCase) ||
-            (string.IsNullOrEmpty(mode) && !string.IsNullOrEmpty(orgId) && string.IsNullOrEmpty(userId) && string.IsNullOrEmpty(email) && string.IsNullOrEmpty(roleKey)))
+            (string.IsNullOrEmpty(mode) && !string.IsNullOrEmpty(orgId) && string.IsNullOrEmpty(userId) && string.IsNullOrEmpty(email) && string.IsNullOrEmpty(phone) && string.IsNullOrEmpty(roleKey)))
         {
             if (string.IsNullOrEmpty(orgId))
             {
@@ -82,12 +83,12 @@ public class RecipientResolver : IRecipientResolver
             return Dedupe(members);
         }
 
-        // Direct addressing: UserId or Email.
-        if (!string.IsNullOrEmpty(userId) || !string.IsNullOrEmpty(email))
+        // Direct addressing: UserId, Email, or Phone (SMS).
+        if (!string.IsNullOrEmpty(userId) || !string.IsNullOrEmpty(email) || !string.IsNullOrEmpty(phone))
         {
             return new[]
             {
-                new ResolvedRecipient { UserId = userId, Email = email, OrgId = orgId }
+                new ResolvedRecipient { UserId = userId, Email = email, Phone = phone, OrgId = orgId }
             };
         }
 

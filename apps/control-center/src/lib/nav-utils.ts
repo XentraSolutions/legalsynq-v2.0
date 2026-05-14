@@ -1,6 +1,14 @@
 import { CC_NAV } from '@/lib/nav';
 import type { NavItem, NavSection } from '@/types';
 
+/** Flatten all items in a section, including those nested inside subGroups. */
+function allItems(s: NavSection): NavItem[] {
+  if (s.subGroups && s.subGroups.length > 0) {
+    return s.subGroups.flatMap(g => g.items);
+  }
+  return s.items;
+}
+
 /** Convert a section heading to a URL slug. e.g. "PRODUCT RULES" → "product-rules" */
 export function slugify(heading: string): string {
   return heading.toLowerCase().replace(/[\s_]+/g, '-');
@@ -21,7 +29,7 @@ export function getSectionForPathname(pathname: string): NavSection | undefined 
     s =>
       s.heading &&
       s.heading !== 'OVERVIEW' &&
-      s.items.some(
+      allItems(s).some(
         item =>
           item.href !== '/' &&
           (pathname === item.href || pathname.startsWith(item.href + '/')),
@@ -62,12 +70,15 @@ const GROUP_ICON_MAP: Record<string, string> = {
 export function getNavGroupModels(): NavGroupModel[] {
   return CC_NAV
     .filter(s => s.heading && s.heading !== 'OVERVIEW')
-    .map(s => ({
-      slug:      slugify(s.heading!),
-      heading:   s.heading!,
-      icon:      GROUP_ICON_MAP[s.heading!] ?? s.items[0]?.icon ?? 'ri-folder-line',
-      itemCount: s.items.length,
-      liveCount: s.items.filter(i => i.badge === 'LIVE').length,
-      items:     s.items,
-    }));
+    .map(s => {
+      const flat = allItems(s);
+      return {
+        slug:      slugify(s.heading!),
+        heading:   s.heading!,
+        icon:      GROUP_ICON_MAP[s.heading!] ?? flat[0]?.icon ?? 'ri-folder-line',
+        itemCount: flat.length,
+        liveCount: flat.filter(i => i.badge === 'LIVE').length,
+        items:     flat,
+      };
+    });
 }

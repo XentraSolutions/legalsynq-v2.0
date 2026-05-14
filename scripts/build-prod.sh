@@ -82,6 +82,7 @@ echo "====== Building web app ======"
 # Fix: force apps/web/node_modules/next → the same physical directory as root.
 ROOT_NEXT_REAL="$(readlink -f "$ROOT/node_modules/next")"
 WEB_NM="$ROOT/apps/web/node_modules"
+mkdir -p "$WEB_NM"
 if [ -n "$ROOT_NEXT_REAL" ] && [ -d "$ROOT_NEXT_REAL" ]; then
   WEB_NEXT_REAL="$(readlink -f "$WEB_NM/next" 2>/dev/null || true)"
   if [ "$WEB_NEXT_REAL" != "$ROOT_NEXT_REAL" ]; then
@@ -125,6 +126,7 @@ echo "====== Building control center ======"
 PNPM_REACT="$ROOT/node_modules/.pnpm/react@18.3.1/node_modules/react"
 PNPM_REACT_DOM="$ROOT/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom"
 CC_NM="$ROOT/apps/control-center/node_modules"
+mkdir -p "$CC_NM"
 if [ -d "$PNPM_REACT" ] && [ ! -L "$CC_NM/react" ]; then
   rm -rf "$CC_NM/react"
   ln -s "$PNPM_REACT" "$CC_NM/react"

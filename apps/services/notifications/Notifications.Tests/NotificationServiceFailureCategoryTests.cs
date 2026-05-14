@@ -1,8 +1,10 @@
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Notifications.Application.DTOs;
 using Notifications.Application.Interfaces;
+using Notifications.Application.Options;
 using Notifications.Domain;
 using Notifications.Infrastructure.Services;
 using System.Text.Json;
@@ -38,17 +40,27 @@ public class NotificationServiceFailureCategoryTests
         var templateRes  = new StubTemplateResolutionService();
         var templateRend = new StubTemplateRenderingService();
         var branding     = new StubBrandingResolutionService();
-        var smsAdapter   = new StubSmsProviderAdapter();
-        var recipient    = new StubRecipientResolver();
-        var audit        = new StubAuditEventClient();
-        var logger       = NullLogger<NotificationServiceImpl>.Instance;
+        var smsAdapter        = new StubSmsProviderAdapter();
+        var smsRuntime        = new StubSmsProviderRuntimeResolver();
+        var recipient         = new StubRecipientResolver();
+        var audit             = new StubAuditEventClient();
+        var costOptions       = Options.Create(new SmsCostAnalyticsOptions());
+        var smsRouting        = new StubSmsRoutingEngine();
+        var routingDecisions  = new StubSmsRoutingDecisionRepository();
+        var retrySuppression  = new StubSmsRetrySuppressionService();
+        var governance        = new StubSmsGovernancePolicyService();
+        var templateGov       = new StubSmsTemplateGovernanceService();
+        var logger            = NullLogger<NotificationServiceImpl>.Instance;
 
         return new NotificationServiceImpl(
             notifRepo, attemptRepo, eventRepo, issueRepo,
             routing, contact, usage, metering,
             templateRes, templateRend, branding,
             emailAdapter, smsAdapter,
-            recipient, audit, logger);
+            smsRuntime, recipient, audit,
+            costOptions, smsRouting, routingDecisions,
+            retrySuppression, governance, templateGov,
+            logger);
     }
 
     private static SubmitNotificationDto EmailRequest(string toEmail = "to@example.com") => new()
@@ -151,8 +163,15 @@ public class NotificationServiceFailureCategoryTests
             new StubBrandingResolutionService(),
             adapter,
             new StubSmsProviderAdapter(),
+            new StubSmsProviderRuntimeResolver(),
             new StubRecipientResolver(),
             new StubAuditEventClient(),
+            Options.Create(new SmsCostAnalyticsOptions()),
+            new StubSmsRoutingEngine(),
+            new StubSmsRoutingDecisionRepository(),
+            new StubSmsRetrySuppressionService(),
+            new StubSmsGovernancePolicyService(),
+            new StubSmsTemplateGovernanceService(),
             NullLogger<NotificationServiceImpl>.Instance);
 
         var result = await noRouteSvc.SubmitAsync(TenantId, EmailRequest());
@@ -248,6 +267,20 @@ public class NotificationServiceFailureCategoryTests
         public Task UpdateAsync(NotificationAttempt attempt) => Task.CompletedTask;
 
         public Task UpdateStatusAsync(Guid id, string status, DateTime? completedAt = null)
+            => Task.CompletedTask;
+
+        public Task<List<NotificationAttempt>> GetStaleSmsAttemptsAsync(
+            int limit, DateTime olderThan, IReadOnlyCollection<string> statuses, CancellationToken ct = default)
+            => Task.FromResult(new List<NotificationAttempt>());
+
+        public Task UpdateReconciliationTrackingAsync(
+            Guid attemptId, string outcome, string? errorCode, string? providerStatus,
+            string? normalizedStatus, DateTime reconciledAt, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task UpdateCostAsync(
+            Guid attemptId, decimal? estimatedCostAmount, decimal? actualCostAmount,
+            string? costCurrency, string costSource, DateTime costRecordedAt, CancellationToken ct = default)
             => Task.CompletedTask;
     }
 
@@ -356,5 +389,114 @@ public class NotificationServiceFailureCategoryTests
 
         public Task<BatchIngestResult> IngestBatchAsync(BatchIngestRequest request, CancellationToken ct = default)
             => Task.FromResult(new BatchIngestResult(0, 0, 0, Array.Empty<IngestResult>()));
+    }
+
+    private sealed class StubSmsProviderRuntimeResolver : ISmsProviderRuntimeResolver
+    {
+        public Task<SmsProviderRuntimeContext> ResolveForSendAsync(
+            Guid tenantId, string providerType, Guid? providerConfigId,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new SmsProviderRuntimeContext { Success = true, ProviderType = providerType });
+
+        public Task<SmsProviderRuntimeContext> ResolveForReconciliationAsync(
+            Guid? tenantId, string providerType, Guid? providerConfigId,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new SmsProviderRuntimeContext { Success = true, ProviderType = providerType });
+    }
+
+    private sealed class StubSmsRoutingEngine : ISmsRoutingEngine
+    {
+        public Task<SmsRoutingDecisionResult> SelectRouteAsync(
+            SmsRoutingRequest request, CancellationToken ct = default)
+            => Task.FromResult(new SmsRoutingDecisionResult { Success = false, FailureCode = "no_route" });
+    }
+
+    private sealed class StubSmsRoutingDecisionRepository : ISmsRoutingDecisionRepository
+    {
+        public Task<SmsRoutingDecision> CreateAsync(SmsRoutingDecision decision, CancellationToken ct = default)
+            => Task.FromResult(decision);
+
+        public Task UpdateAttemptIdAsync(Guid decisionId, Guid attemptId, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task<(IReadOnlyList<SmsRoutingDecision> Items, int Total)> ListAsync(
+            SmsRoutingDecisionQuery query, CancellationToken ct = default)
+            => Task.FromResult<(IReadOnlyList<SmsRoutingDecision>, int)>((Array.Empty<SmsRoutingDecision>(), 0));
+
+        public Task<SmsRoutingDecisionSummaryDto> GetSummaryAsync(
+            SmsRoutingDecisionQuery query, CancellationToken ct = default)
+            => Task.FromResult(new SmsRoutingDecisionSummaryDto());
+    }
+
+    private sealed class StubSmsRetrySuppressionService : ISmsRetrySuppressionService
+    {
+        public Task<SmsRetrySuppressionResult> EvaluateAsync(
+            SmsRetrySuppressionRequest request, CancellationToken ct)
+            => Task.FromResult(new SmsRetrySuppressionResult { DecisionType = "allow" });
+    }
+
+    private sealed class StubSmsGovernancePolicyService : ISmsGovernancePolicyService
+    {
+        public Task<SmsGovernanceEvaluationResult> EvaluatePreSendAsync(
+            SmsGovernanceEvaluationRequest request, CancellationToken ct = default)
+            => Task.FromResult(new SmsGovernanceEvaluationResult { DecisionType = "allow" });
+
+        public Task<SmsGovernanceEvaluationResult> EvaluateRetryAsync(
+            SmsGovernanceEvaluationRequest request, CancellationToken ct = default)
+            => Task.FromResult(new SmsGovernanceEvaluationResult { DecisionType = "allow" });
+
+        public Task<SmsGovernanceEvaluationResult> EvaluateEscalationAsync(
+            SmsGovernanceEvaluationRequest request, CancellationToken ct = default)
+            => Task.FromResult(new SmsGovernanceEvaluationResult { DecisionType = "allow" });
+    }
+
+    private sealed class StubSmsTemplateGovernanceService : ISmsTemplateGovernanceService
+    {
+        public Task<SmsTemplateGovernanceResult> EvaluateAsync(
+            SmsTemplateGovernanceRequest request, CancellationToken ct = default)
+            => Task.FromResult(new SmsTemplateGovernanceResult { ShouldProceed = true });
+
+        public Task<(bool Passed, List<string> Errors)> ValidateVariablesAsync(
+            ValidateTemplateVariablesRequest request, CancellationToken ct = default)
+            => Task.FromResult((true, new List<string>()));
+
+        public string ClassifyContent(ClassifyTemplateRequest request) => "transactional";
+
+        public Task<Guid> CreateTemplateAsync(
+            CreateSmsTemplateRequest request, CancellationToken ct = default)
+            => Task.FromResult(Guid.NewGuid());
+
+        public Task<bool> UpdateTemplateAsync(
+            UpdateSmsTemplateRequest request, CancellationToken ct = default)
+            => Task.FromResult(true);
+
+        public Task<bool> ArchiveTemplateAsync(
+            Guid templateId, string? requestedBy, CancellationToken ct = default)
+            => Task.FromResult(true);
+
+        public Task<Guid> CreateVersionAsync(
+            CreateSmsTemplateVersionRequest request, CancellationToken ct = default)
+            => Task.FromResult(Guid.NewGuid());
+
+        public Task<bool> SubmitForReviewAsync(
+            Guid templateId, string? requestedBy, CancellationToken ct = default)
+            => Task.FromResult(true);
+
+        public Task<bool> ApproveVersionAsync(
+            Guid templateId, string approvedBy, CancellationToken ct = default)
+            => Task.FromResult(true);
+
+        public Task<bool> RejectVersionAsync(
+            Guid templateId, string rejectedBy, string reason, CancellationToken ct = default)
+            => Task.FromResult(true);
+
+        public Task<(int Total, IReadOnlyList<SmsTemplate> Items)> GetTemplatesAsync(
+            TemplateGovernancePolicyQuery query, CancellationToken ct = default)
+            => Task.FromResult<(int, IReadOnlyList<SmsTemplate>)>((0, Array.Empty<SmsTemplate>()));
+
+        public Task<(int Total, IReadOnlyList<SmsTemplateGovernanceDecision> Items)> GetDecisionsAsync(
+            TemplateGovernanceDecisionQuery query, CancellationToken ct = default)
+            => Task.FromResult<(int, IReadOnlyList<SmsTemplateGovernanceDecision>)>(
+                (0, Array.Empty<SmsTemplateGovernanceDecision>()));
     }
 }

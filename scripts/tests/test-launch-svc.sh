@@ -54,7 +54,7 @@ fi
 
 # ── Test 3: error message contains the expected DLL path ─────────────────────
 echo "Test 3: error message contains the DLL path"
-EXPECTED_DLL="$TMP_DIR/bin/Release/net8.0/MyService.dll"
+EXPECTED_DLL="$TMP_DIR/bin/Release/net10.0/MyService.dll"
 if echo "$OUTPUT" | grep -qF "$EXPECTED_DLL"; then
   pass "error message contains DLL path '$EXPECTED_DLL'"
 else
@@ -63,8 +63,8 @@ fi
 
 # ── Test 4: exits zero and prints no ERROR when the DLL is present ────────────
 echo "Test 4: exits zero and prints no error when the DLL is present"
-mkdir -p "$TMP_DIR/bin/Release/net8.0"
-touch "$TMP_DIR/bin/Release/net8.0/MyService.dll"
+mkdir -p "$TMP_DIR/bin/Release/net10.0"
+touch "$TMP_DIR/bin/Release/net10.0/MyService.dll"
 # Pass 'true' as the command prefix so the background process does not try
 # to invoke the real 'dotnet' binary (which may not be present on the runner).
 run_launch_svc "MyService" "$FAKE_CSPROJ" true
