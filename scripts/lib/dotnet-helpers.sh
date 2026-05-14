@@ -20,7 +20,7 @@ launch_svc() {
   local name="$1" project="$2"
   shift 2
   local dll_dir dll_name
-  dll_dir="$(dirname "$project")/bin/Release/net8.0"
+  dll_dir="$(dirname "$project")/bin/Release/net10.0"
   dll_name="$(basename "$project" .csproj).dll"
   if [ ! -f "$dll_dir/$dll_name" ]; then
     echo "[dotnet] ERROR: $name binary not found at $dll_dir/$dll_name — aborting"
