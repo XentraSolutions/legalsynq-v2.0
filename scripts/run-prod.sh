@@ -115,7 +115,7 @@ if command -v dotnet &>/dev/null; then
     # Uses the same convention as the launch_svc helper above.
     dll_for_csproj() {
       local csproj="$1"
-      echo "$(dirname "$csproj")/bin/Release/net8.0/$(basename "$csproj" .csproj).dll"
+      echo "$(dirname "$csproj")/bin/Release/net10.0/$(basename "$csproj" .csproj).dll"
     }
 
     need_build=0
