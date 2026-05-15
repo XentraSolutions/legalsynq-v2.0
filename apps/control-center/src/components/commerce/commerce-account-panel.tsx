@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import type { CommerceAccountSummary, CommerceAccountItem, EntitlementPublishResult } from '@/types/control-center';
-import { CommerceSubscriptionsPanel } from './commerce-subscriptions-panel';
+import { CommerceSubscriptionsPanel }        from './commerce-subscriptions-panel';
+import { BillingAccountAuditPanel }          from './billing-account-audit-panel';
+import { EntitlementReconciliationPanel }    from './entitlement-reconciliation-panel';
 
 interface Props {
   summary: CommerceAccountSummary | null;
@@ -110,11 +112,44 @@ function PublishButton({ accountId, accountName }: { accountId: string; accountN
   );
 }
 
+type ExpandPane = 'subs' | 'audit' | 'reconcile' | null;
+
+interface PaneToggleProps {
+  pane:     ExpandPane;
+  icon:     string;
+  label:    string;
+  openPane: ExpandPane;
+  onToggle: (pane: ExpandPane) => void;
+}
+
+function PaneToggle({ pane, icon, label, openPane, onToggle }: PaneToggleProps) {
+  const active = openPane === pane;
+  return (
+    <button
+      onClick={() => onToggle(pane)}
+      className={`shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded border transition-colors ${
+        active
+          ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+          : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+      }`}
+      title={label}
+    >
+      <i className={icon} />
+      {label}
+    </button>
+  );
+}
+
 function AccountRow({ account }: { account: CommerceAccountItem }) {
-  const [showSubs, setShowSubs] = useState(false);
+  const [openPane, setOpenPane] = useState<ExpandPane>(null);
+
+  function togglePane(pane: ExpandPane) {
+    setOpenPane(v => v === pane ? null : pane);
+  }
+
   return (
     <div className="py-3 border-b border-slate-100 last:border-0">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-slate-800 truncate">{account.displayName}</div>
           <div className="text-xs text-slate-400 font-mono mt-0.5">{account.accountNumber}</div>
@@ -124,26 +159,31 @@ function AccountRow({ account }: { account: CommerceAccountItem }) {
           <Pill value={account.standing} colorClass={standingColor(account.standing)} />
         </div>
         {account.standingReason && (
-          <div className="text-xs text-slate-500 max-w-[180px] truncate hidden xl:block" title={account.standingReason}>
+          <div className="text-xs text-slate-500 max-w-[160px] truncate hidden xl:block" title={account.standingReason}>
             {account.standingReason}
           </div>
         )}
-        <button
-          onClick={() => setShowSubs(v => !v)}
-          className="shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
-          title="View subscriptions"
-        >
-          <i className={`ri-arrow-${showSubs ? 'up' : 'down'}-s-line`} />
-          Subs
-        </button>
-        <PublishButton accountId={account.id} accountName={account.displayName} />
+        <div className="flex items-center gap-1.5 shrink-0">
+          <PaneToggle pane="subs"      icon={`ri-arrow-${openPane === 'subs'      ? 'up' : 'down'}-s-line`} label="Subs"      openPane={openPane} onToggle={togglePane} />
+          <PaneToggle pane="audit"     icon="ri-file-list-3-line"                                           label="Audit"     openPane={openPane} onToggle={togglePane} />
+          <PaneToggle pane="reconcile" icon="ri-git-merge-line"                                             label="Reconcile" openPane={openPane} onToggle={togglePane} />
+          <PublishButton accountId={account.id} accountName={account.displayName} />
+        </div>
       </div>
-      {showSubs && (
+
+      {openPane === 'subs' && (
         <div className="mt-3">
-          <CommerceSubscriptionsPanel
-            billingAccountId={account.id}
-            accountName={account.displayName}
-          />
+          <CommerceSubscriptionsPanel billingAccountId={account.id} accountName={account.displayName} />
+        </div>
+      )}
+      {openPane === 'audit' && (
+        <div className="mt-3">
+          <BillingAccountAuditPanel billingAccountId={account.id} accountName={account.displayName} />
+        </div>
+      )}
+      {openPane === 'reconcile' && (
+        <div className="mt-3">
+          <EntitlementReconciliationPanel billingAccountId={account.id} accountName={account.displayName} />
         </div>
       )}
     </div>

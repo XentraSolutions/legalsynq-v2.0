@@ -10,6 +10,7 @@ import { TenantOrganizationsPanel }      from '@/components/tenants/tenant-organ
 import { TenantBillingPanel }            from '@/components/billing/tenant-billing-panel';
 import { BillingEntitlementPanel }       from '@/components/billing/billing-entitlement-panel';
 import { BillingProfileActionsPanel }    from '@/components/billing/billing-profile-actions-panel';
+import { BillingProfileLifecyclePanel }  from '@/components/billing/billing-profile-lifecycle-panel';
 import type { TenantBillingSummary, BillingEntitlementSnapshot } from '@/types/control-center';
 
 export const dynamic = 'force-dynamic';
@@ -122,6 +123,12 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
           profileId={tenantBillingSummary.profile.id}
           currentStatus={tenantBillingSummary.profile.status}
           tenantId={id}
+        />
+      )}
+
+      {tenantBillingSummary?.profileFound && tenantBillingSummary.profile && (
+        <BillingProfileLifecyclePanel
+          profileId={tenantBillingSummary.profile.id}
         />
       )}
     </div>

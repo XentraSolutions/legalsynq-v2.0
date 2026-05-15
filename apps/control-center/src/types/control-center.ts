@@ -1844,3 +1844,119 @@ export interface EntitlementPublishResult {
   executedAtUtc:    string;
   error?:           string;
 }
+
+// ── LS-COMMERCE-OPS-01: Operational Audit & Reconciliation Types ──────────────
+
+export interface CommerceAuditEvent {
+  id:           string;
+  billingAccountId: string;
+  eventType:    string;
+  description:  string;
+  actorType:    string;
+  actorId:      string | null;
+  metadataJson: string | null;
+  createdAtUtc: string;
+}
+
+export interface CommerceAuditEventList {
+  events:          CommerceAuditEvent[];
+  totalCount:      number;
+  billingAccountId: string;
+  lastCheckedAtUtc: string;
+  error:           string | null;
+}
+
+export interface CommerceEntitlementSnapshotDetail {
+  billingAccountId:                   string;
+  accountNumber:                      string;
+  displayName:                        string;
+  hostPlatformKey:                    string | null;
+  externalTenantId:                   string | null;
+  accountStandingStatus:              string;
+  accountStandingReason:              string | null;
+  accountStandingGracePeriodEndsAtUtc: string | null;
+  accessRecommendation:               string;
+  productCount:                       number;
+  planCount:                          number;
+  subscriptionCount:                  number;
+  activeSubscriptionCount:            number;
+  featureLimitCount:                  number;
+  products:                           Array<{ productKey: string; productName: string }>;
+  plans:                              Array<{ planKey: string; planName: string }>;
+  generatedAtUtc:                     string;
+  lastCheckedAtUtc:                   string;
+  error:                              string | null;
+}
+
+export interface BillingProfileLifecycleEvent {
+  event:       string;
+  status:      string;
+  occurredAtUtc: string;
+  notes:       string | null;
+}
+
+export interface BillingProfileLifecycle {
+  profileId:        string;
+  tenantId:         string;
+  billingAccountId: string;
+  currentStatus:    string;
+  mode:             string;
+  events:           BillingProfileLifecycleEvent[];
+  updatedAtUtc:     string;
+  lastCheckedAtUtc: string;
+  error:            string | null;
+}
+
+export type ReconciliationStatus = 'aligned' | 'stale' | 'mismatch' | 'unknown' | 'error';
+
+export interface ReconciliationDiagnostics {
+  billingAccountId:              string;
+  tenantId:                      string | null;
+
+  commerceAccessRecommendation:  string | null;
+  commerceAccountStanding:       string | null;
+  commerceSnapshotGeneratedAt:   string | null;
+  commerceSubscriptionCount:     number | null;
+  commerceActiveSubscriptions:   number | null;
+
+  billingEntitlementStatus:      string | null;
+  billingAccessRecommendation:   string | null;
+  billingLastSyncedAt:           string | null;
+  billingEffectiveFrom:          string | null;
+
+  reconciliationStatus:          ReconciliationStatus;
+  mismatchDetails:               string | null;
+  staleDeltaSeconds:             number | null;
+  staleThresholdSeconds:         number;
+
+  lastCheckedAtUtc:              string;
+  error:                         string | null;
+  commerceError:                 string | null;
+  billingError:                  string | null;
+}
+
+export interface RemediationItem {
+  id:              string;
+  category:        'stale-snapshot' | 'failed-publish' | 'missing-profile' | 'access-mismatch' | 'bridge-disabled' | 'pending-publish';
+  severity:        'warning' | 'info';
+  billingAccountId?: string;
+  tenantId?:         string;
+  title:           string;
+  detail:          string;
+  detectedAtUtc:   string;
+}
+
+export interface RemediationSummary {
+  items:           RemediationItem[];
+  warningCount:    number;
+  infoCount:       number;
+  lastCheckedAtUtc: string;
+}
+
+export interface OperationalExportResult {
+  format:          'json';
+  filename:        string;
+  generatedAtUtc:  string;
+  sectionCount:    number;
+  error:           string | null;
+}

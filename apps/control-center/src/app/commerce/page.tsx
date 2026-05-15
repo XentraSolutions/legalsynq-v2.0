@@ -4,6 +4,8 @@ import { CCShell }                           from '@/components/shell/cc-shell';
 import { CommerceServiceCard, CommerceReadinessPanel } from '@/components/commerce/commerce-service-card';
 import { CommerceBridgeDiagnosticsPanel }    from '@/components/commerce/commerce-bridge-diagnostics-panel';
 import { CommerceAccountPanel }              from '@/components/commerce/commerce-account-panel';
+import { RemediationVisibilityPanel }        from '@/components/commerce/remediation-visibility-panel';
+import { OperationalExportPanel }            from '@/components/commerce/operational-export-panel';
 import type {
   CommerceSummary,
   CommerceBridgeDiagnostics,
@@ -91,10 +93,14 @@ export default async function CommercePage() {
                 error={diagnostics?.error ?? (diagnosticsResult.status === 'rejected' ? 'Bridge diagnostics unavailable.' : null)}
               />
 
+              <RemediationVisibilityPanel diagnostics={diagnostics} />
+
               <CommerceAccountPanel
                 summary={accounts}
                 error={accountsResult.status === 'rejected' ? 'Billing account data unavailable.' : null}
               />
+
+              <OperationalExportPanel />
 
               <div className="bg-white rounded-xl border border-gray-200 px-6 py-5">
                 <h2 className="text-sm font-semibold text-gray-700 mb-3">Service Information</h2>
