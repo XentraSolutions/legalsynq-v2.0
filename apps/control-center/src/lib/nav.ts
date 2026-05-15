@@ -152,6 +152,14 @@ export const CC_NAV: NavSection[] = [
   },
 
   {
+    heading: 'COMMERCE & BILLING',
+    items: [
+      { href: '/commerce', label: 'Commerce',       icon: 'ri-store-3-line',              badge: 'IN PROGRESS' },
+      { href: '/billing',  label: 'Tenant Billing', icon: 'ri-money-dollar-circle-line',  badge: 'IN PROGRESS' },
+    ],
+  },
+
+  {
     heading: 'CATALOG',
     items: [
       { href: '/products', label: 'Products', icon: 'ri-apps-line', badge: 'IN PROGRESS' },

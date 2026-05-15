@@ -1687,3 +1687,50 @@ export interface PlatformAnalyticsSummary {
   asOf:                        string;
   windowLabel:                 string;
 }
+
+// ── LS-COMMERCE-INT-02: Commerce Operational Types ────────────────────────────
+
+export type CommerceServiceStatus = 'online' | 'degraded' | 'offline';
+
+export interface CommerceReadinessCheck {
+  name:   string;
+  status: 'ok' | 'degraded' | 'error';
+}
+
+export interface CommerceSummary {
+  serviceStatus:    CommerceServiceStatus;
+  serviceLatencyMs: number | undefined;
+  lastCheckedAtUtc: string;
+  readinessChecks:  CommerceReadinessCheck[];
+}
+
+// ── LS-COMMERCE-INT-02: Tenant Billing Operational Types ─────────────────────
+
+export type BillingServiceStatus = 'online' | 'degraded' | 'offline';
+
+export interface BillingSummary {
+  serviceStatus:    BillingServiceStatus;
+  serviceLatencyMs: number | undefined;
+  lastCheckedAtUtc: string;
+}
+
+export interface TenantBillingProfile {
+  id:               string;
+  tenantId:         string;
+  billingAccountId: string;
+  hostPlatformKey:  string | null;
+  externalTenantId: string | null;
+  status:           string;
+  mode:             string;
+  createdAtUtc:     string;
+  updatedAtUtc:     string;
+  activatedAtUtc:   string | null;
+  closedAtUtc:      string | null;
+}
+
+export interface TenantBillingSummary {
+  profileFound:    boolean;
+  profile:         TenantBillingProfile | null;
+  lastCheckedAtUtc: string;
+  error:           string | null;
+}
