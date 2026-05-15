@@ -1,4 +1,5 @@
 using BuildingBlocks.Authentication.ServiceTokens;
+using BuildingBlocks.Commerce;
 using BuildingBlocks.Context;
 using BuildingBlocks.Notifications;
 using LegalSynq.AuditClient;
@@ -125,6 +126,22 @@ public static class DependencyInjection
             client.Timeout     = TimeSpan.FromSeconds(30);
         })
         .AddHttpMessageHandler<TaskServiceAuthDelegatingHandler>();
+
+        // LS-COMMERCE-FINAL-01 — Commerce ecosystem integration.
+        // Enabled=false (default): noop entitlement client + noop lifecycle notifier; no Commerce dependency.
+        // Enabled=true: HTTP entitlement client + HTTP lifecycle notifier targeting CommerceIntegration:BaseUrl.
+        services.AddCommerceIntegration(configuration);
+        services.AddCommerceServiceMetadata(
+            configuration:       configuration,
+            serviceName:         "Synq Liens",
+            productKey:          "SYNQLIEN",
+            primaryFeatureKey:   "synqlien.access",
+            subscriptionRequired: true,
+            monetizationEnabled: false);
+
+        // LS-COMMERCE-FINAL-01 — Lien entitlement policy helper.
+        // Registered as scoped (per-request) because it reads ICurrentRequestContext.
+        services.AddScoped<Liens.Application.Commerce.LienEntitlementPolicy>();
 
         return services;
     }

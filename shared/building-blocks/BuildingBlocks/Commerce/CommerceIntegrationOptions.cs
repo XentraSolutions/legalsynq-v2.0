@@ -59,6 +59,24 @@ public sealed class CommerceIntegrationOptions
     public int StaleThresholdSeconds { get; set; } = 3600;
 
     /// <summary>
+    /// When <c>true</c>, entitlement check results are actively enforced:
+    /// services will deny or degrade access when Commerce returns a <c>Block</c>
+    /// access recommendation.
+    ///
+    /// <para>
+    /// When <c>false</c> (default), entitlement data is fetched and logged but
+    /// never used to block operations — permissive fallback applies regardless
+    /// of the recommendation.
+    /// </para>
+    ///
+    /// <para>
+    /// This flag is independent of <c>Enabled</c>. Enforcement requires
+    /// both <c>Enabled = true</c> and <c>EnforcementEnabled = true</c>.
+    /// </para>
+    /// </summary>
+    public bool EnforcementEnabled { get; set; } = false;
+
+    /// <summary>
     /// Optional bearer token for internal service-to-service Commerce calls.
     /// When set, the HTTP client attaches this as an <c>Authorization: Bearer</c>
     /// header. Leave null to skip the header (Commerce's integration endpoints

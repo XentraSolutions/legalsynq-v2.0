@@ -61,16 +61,32 @@ public static class CommerceIntegrationServiceCollectionExtensions
                                 "Bearer", opts.InternalServiceToken);
                     }
                 });
+
+            // LS-COMMERCE-FINAL-01 — wire real HTTP lifecycle notifier when
+            // Commerce integration is enabled, so host lifecycle events
+            // (tenant created/activated/suspended, product enabled/disabled)
+            // are delivered to POST /api/commerce/integration/lifecycle-events.
+            services.AddHttpClient<ICommerceLifecycleNotifier, HttpCommerceLifecycleNotifier>(
+                client =>
+                {
+                    var baseUrl = opts.BaseUrl.TrimEnd('/');
+                    client.BaseAddress = new Uri(baseUrl + "/");
+                    client.Timeout     = TimeSpan.FromSeconds(opts.TimeoutSeconds);
+
+                    if (!string.IsNullOrWhiteSpace(opts.InternalServiceToken))
+                    {
+                        client.DefaultRequestHeaders.Authorization =
+                            new System.Net.Http.Headers.AuthenticationHeaderValue(
+                                "Bearer", opts.InternalServiceToken);
+                    }
+                });
         }
         else
         {
             services.AddSingleton<ICommerceEntitlementClient, NoopCommerceEntitlementClient>();
+            // Noop lifecycle notifier — no HTTP calls, returns Task.CompletedTask.
+            services.AddSingleton<ICommerceLifecycleNotifier, NoopCommerceLifecycleNotifier>();
         }
-
-        // Lifecycle notifier: always noop at this phase.
-        // Replace with a real outbound adapter when the Commerce lifecycle
-        // ingest endpoint is defined (future phase).
-        services.AddSingleton<ICommerceLifecycleNotifier, NoopCommerceLifecycleNotifier>();
 
         return services;
     }
