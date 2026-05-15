@@ -150,6 +150,27 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development \
     Authentication__Jwt__SymmetricKey="${Jwt__SigningKey:-dev-only-signing-key-minimum-32-chars-long!}" \
     dotnet run --no-build --project "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" &
+  # Commerce service — port 5030 (LS-INT-01).
+  # COMMERCE_LEGALSYNQ_SIGNING_KEY must match Jwt__SigningKey when LegalSynq:Identity:Enabled=true.
+  # Defaults to Enabled=false (standalone InMemory mode) so the service starts
+  # without a DB connection string.
+  dotnet restore "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj" --verbosity quiet
+  dotnet build   "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
+    || echo "[commerce] Build error — continuing with cached binary"
+  ASPNETCORE_ENVIRONMENT=Development \
+    ASPNETCORE_URLS=http://0.0.0.0:5030 \
+    COMMERCE_LEGALSYNQ_SIGNING_KEY="${Jwt__SigningKey:-}" \
+    dotnet run --no-build --project "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj" &
+  # Tenant Billing service — port 5031 (LS-INT-01).
+  # BILLING_LEGALSYNQ_SIGNING_KEY must match Jwt__SigningKey when LegalSynq:Identity:Enabled=true.
+  # Defaults to Enabled=false (standalone InMemory mode).
+  dotnet restore "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" --verbosity quiet
+  dotnet build   "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
+    || echo "[billing] Build error — continuing with cached binary"
+  ASPNETCORE_ENVIRONMENT=Development \
+    ASPNETCORE_URLS=http://0.0.0.0:5031 \
+    BILLING_LEGALSYNQ_SIGNING_KEY="${Jwt__SigningKey:-}" \
+    dotnet run --no-build --project "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
   wait
 ) &
