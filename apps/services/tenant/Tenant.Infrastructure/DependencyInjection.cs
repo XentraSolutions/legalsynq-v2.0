@@ -1,3 +1,4 @@
+using BuildingBlocks.Commerce;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -86,6 +87,11 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IDocumentsAdapter, HttpDocumentsAdapter>();
+
+        // ── LS-COMMERCE-ECO-02: Commerce lifecycle notifier ───────────────────
+        // Noop by default (CommerceIntegration:Enabled=false).
+        // Set Enabled=true + BaseUrl to activate outbound HTTP notifications.
+        services.AddCommerceIntegration(configuration);
 
         return services;
     }

@@ -1,4 +1,7 @@
+using BuildingBlocks.Commerce;
 using BuildingBlocks.Exceptions;
+using Contracts.Commerce;
+using Microsoft.Extensions.Logging;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Domain;
@@ -16,17 +19,25 @@ namespace Tenant.Application.Services;
 ///      IIdentityProvisioningAdapter to handle downstream auth/provisioning work.
 ///      ToggleEntitlementAsync: upserts TenantProductEntitlement, then best-effort
 ///      syncs to Identity via IIdentityCompatAdapter/sync path.
+///
+/// LS-COMMERCE-ECO-02: Commerce lifecycle notifications wired for tenant created
+///      and status transitions (activated/suspended).  Notifications are noop-first
+///      and never block the primary tenant lifecycle operation.
 /// </summary>
 public class TenantAdminService : ITenantAdminService
 {
-    private readonly ITenantRepository         _tenantRepo;
-    private readonly IBrandingRepository       _brandingRepo;
-    private readonly IEntitlementRepository    _entitlementRepo;
-    private readonly IDomainRepository         _domainRepo;
-    private readonly ICapabilityRepository     _capabilityRepo;
-    private readonly ISettingRepository        _settingRepo;
-    private readonly IIdentityCompatAdapter    _identityCompat;
+    private readonly ITenantRepository            _tenantRepo;
+    private readonly IBrandingRepository          _brandingRepo;
+    private readonly IEntitlementRepository       _entitlementRepo;
+    private readonly IDomainRepository            _domainRepo;
+    private readonly ICapabilityRepository        _capabilityRepo;
+    private readonly ISettingRepository           _settingRepo;
+    private readonly IIdentityCompatAdapter       _identityCompat;
     private readonly IIdentityProvisioningAdapter _identityProvisioning;
+    private readonly ICommerceLifecycleNotifier   _commerceNotifier;
+    private readonly ILogger<TenantAdminService>  _logger;
+
+    private const string HostPlatformKey = "legalsynq";
 
     public TenantAdminService(
         ITenantRepository            tenantRepo,
@@ -36,7 +47,9 @@ public class TenantAdminService : ITenantAdminService
         ICapabilityRepository        capabilityRepo,
         ISettingRepository           settingRepo,
         IIdentityCompatAdapter       identityCompat,
-        IIdentityProvisioningAdapter identityProvisioning)
+        IIdentityProvisioningAdapter identityProvisioning,
+        ICommerceLifecycleNotifier   commerceNotifier,
+        ILogger<TenantAdminService>  logger)
     {
         _tenantRepo           = tenantRepo;
         _brandingRepo         = brandingRepo;
@@ -46,6 +59,8 @@ public class TenantAdminService : ITenantAdminService
         _settingRepo          = settingRepo;
         _identityCompat       = identityCompat;
         _identityProvisioning = identityProvisioning;
+        _commerceNotifier     = commerceNotifier;
+        _logger               = logger;
     }
 
     // ── B11: List ─────────────────────────────────────────────────────────────
@@ -162,6 +177,26 @@ public class TenantAdminService : ITenantAdminService
 
         tenant.SetStatus(parsed);
         await _tenantRepo.UpdateAsync(tenant, ct);
+
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of the status transition ─────────
+        var eventType = parsed switch
+        {
+            TenantStatus.Active    => CommerceEventTypes.TenantActivated,
+            TenantStatus.Suspended => CommerceEventTypes.TenantSuspended,
+            _                      => CommerceEventTypes.TenantSuspended   // Inactive treated as suspended; no Closed status in domain
+        };
+
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        eventType,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"]  = tenant.Code,
+                ["newStatus"]   = parsed.ToString()
+            }), ct);
+
         return ToSummary(tenant);
     }
 
@@ -245,6 +280,18 @@ public class TenantAdminService : ITenantAdminService
 
         await _tenantRepo.UpdateAsync(tenant, ct);
 
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of new tenant creation ────────
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        CommerceEventTypes.TenantCreated,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"]         = tenant.Code,
+                ["identityProvisioned"] = provResult.Success.ToString().ToLowerInvariant()
+            }), ct);
+
         // ── Step 3: Build response ─────────────────────────────────────────────
         var nextAction = provResult.Success
             ? "None"
@@ -318,6 +365,31 @@ public class TenantAdminService : ITenantAdminService
             Status:        enabled ? "Active" : "Disabled",
             EnabledAtUtc:  enabledAtUtc?.ToString("o"),
             IdentitySynced: false);
+    }
+
+    // ── LS-COMMERCE-ECO-02: Safe Commerce notification helper ─────────────────
+
+    /// <summary>
+    /// Sends a Commerce lifecycle event without blocking or throwing into the
+    /// caller.  The <see cref="ICommerceLifecycleNotifier"/> contract already
+    /// requires implementations to swallow delivery errors; this wrapper adds a
+    /// second safety net at the call-site level.
+    /// </summary>
+    private async Task TryNotifyCommerceAsync(CommerceLifecycleEvent ev, CancellationToken ct)
+    {
+        try
+        {
+            await _commerceNotifier.NotifyAsync(ev, ct);
+            _logger.LogDebug(
+                "Commerce lifecycle notification dispatched: EventType={EventType}, TenantId={TenantId}",
+                ev.EventType, ev.ExternalTenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Commerce lifecycle notification failed (non-blocking): EventType={EventType}, TenantId={TenantId}",
+                ev.EventType, ev.ExternalTenantId);
+        }
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────

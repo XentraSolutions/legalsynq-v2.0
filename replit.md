@@ -6399,3 +6399,50 @@ Inject `ICommerceEntitlementClient` — always apply permissive fallback when `!
 
 ### Analysis
 `analysis/LS-COMMERCE-ECO-01-report.md`
+
+---
+
+## Commerce Tenant Lifecycle ↔ Commerce Synchronization (LS-COMMERCE-ECO-02)
+
+Wires `ICommerceLifecycleNotifier` into tenant and product lifecycle flows. Purely additive — no DB changes, no domain merges, no billing logic.
+
+### Lifecycle signals now emitted
+
+| Event | Source method | Trigger |
+|---|---|---|
+| `commerce.tenant.created` | `TenantAdminService.CreateTenantAsync` | Admin-portal canonical tenant creation |
+| `commerce.tenant.created` | `TenantService.CreateAsync` | Direct tenant creation |
+| `commerce.tenant.created` | `TenantService.ProvisionAsync` | Internal minimal-provision endpoint |
+| `commerce.tenant.activated` | `TenantAdminService.UpdateStatusAsync` | Status set to `Active` |
+| `commerce.tenant.suspended` | `TenantAdminService.UpdateStatusAsync` | Status set to `Inactive` or `Suspended` |
+| `commerce.tenant.suspended` | `TenantService.DeactivateAsync` | Deactivation endpoint |
+| `commerce.product.enabled` | `ProductProvisioningService.ProvisionAsync` | Product enabled for tenant |
+| `commerce.product.disabled` | `ProductProvisioningService.ProvisionAsync` | Product disabled for tenant |
+
+### Safety pattern applied in all three services
+
+All notification call sites use a private `TryNotifyCommerceAsync` wrapper:
+- Fires **after** the primary DB persist — lifecycle operation always succeeds first
+- `await`s the notifier, which is noop by default (`Task.CompletedTask`)
+- Double-guards: notifier contract requires no-throw, wrapper catches `Exception` and logs `Warning`
+
+### DI registrations added
+- `Tenant.Infrastructure.DependencyInjection` — `services.AddCommerceIntegration(configuration)`
+- `Identity.Infrastructure.DependencyInjection` — `services.AddCommerceIntegration(configuration)`
+
+### Config sections added (both services)
+```json
+"CommerceIntegration": { "Enabled": false, "BaseUrl": "http://127.0.0.1:5030", "HostPlatformKey": "legalsynq", "TimeoutSeconds": 5 }
+```
+
+### Deferred items
+- `commerce.tenant.closed` — domain `TenantStatus` has no `Closed`/`Archived` value; `Inactive` maps to `TenantSuspended` until the domain is extended
+- `CorrelationId` in events is `null` — no service-layer correlation context available yet
+- Commerce audit events via `CommerceAuditEventTypes` — deferred (no `IAuditPublisher` in Tenant service)
+- `TenantService.UpdateAsync` inline status-change path — does not emit; minor gap, deferred clean-up
+
+### Build
+`shared/contracts`, `shared/building-blocks`, `shared/audit-client` — **0 errors, 0 warnings**. Service projects fail with pre-existing `NETSDK1045` (net10.0 targeting, unrelated to ECO-02).
+
+### Analysis
+`analysis/LS-COMMERCE-ECO-02-report.md`
