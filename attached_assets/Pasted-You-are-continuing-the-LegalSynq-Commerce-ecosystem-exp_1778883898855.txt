@@ -1,0 +1,544 @@
+You are continuing the LegalSynq Commerce ecosystem expansion initiative.
+
+FIRST ACTION:
+Create the report file FIRST before performing any additional work:
+
+/analysis/LS-COMMERCE-ECO-01-report.md
+
+Update this report incrementally as each major implementation step is completed.
+
+DO NOT wait until the end to write the report.
+
+====================================================
+TICKET ID: LS-COMMERCE-ECO-01
+TITLE: Cross-Service Commerce Integration Foundation
+====================================================
+
+# Objective
+
+Establish Commerce as a reusable platform-wide monetization and entitlement foundation across LegalSynq without collapsing service boundaries.
+
+Integrate Commerce into the broader LegalSynq ecosystem so platform services can become:
+
+- commerce-aware
+- entitlement-aware
+- subscription-aware
+- operationally monetizable
+
+without embedding Commerce logic directly into other services.
+
+This ticket creates the foundational integration layer for:
+
+- subscription-aware product enablement
+- entitlement-aware provisioning
+- billing-aware operational workflows
+- cross-platform monetization
+
+This is an additive ecosystem integration ticket.
+
+This is NOT:
+
+- a billing rewrite
+- a domain merge
+- a new billing monolith
+- a payment workflow rewrite
+- a Control Center redesign
+- a new auth framework
+
+====================================================
+GIT / GITHUB REQUIREMENTS
+====================================================
+
+Use the ticket ID in all Git operations.
+
+Required conventions:
+
+Branch:
+- ls-commerce-eco-01-cross-service-commerce-foundation
+
+Commit message format:
+- LS-COMMERCE-ECO-01 <summary>
+
+Examples:
+- LS-COMMERCE-ECO-01 add commerce integration abstraction
+- LS-COMMERCE-ECO-01 add entitlement resolution contract
+- LS-COMMERCE-ECO-01 add tenant lifecycle commerce hooks
+
+If creating a PR:
+- PR title must include LS-COMMERCE-ECO-01
+
+Do not use generic commit messages.
+
+====================================================
+ARCHITECTURE RULES
+====================================================
+
+Maintain strict separation between:
+
+Platform / SaaS Billing:
+Commerce
+Platform → Tenant
+
+Tenant Billing:
+Tenant → Customer / Client
+
+These domains must remain isolated.
+
+STRICTLY PROHIBITED:
+
+- database merges
+- shared DbContexts
+- direct EF cross-access
+- collapsing Commerce into other services
+- embedding billing logic into unrelated services
+- bypassing gateway/BFF conventions
+- exposing internal tokens
+- removing standalone runtime support
+- rewriting Identity
+- rewriting Tenant Management
+- rewriting Monitoring
+- redesigning Control Center
+- introducing a new auth framework
+
+====================================================
+PRIMARY SCOPE
+====================================================
+
+Implement foundational ecosystem integration for:
+
+1. Shared Commerce integration abstractions
+2. Entitlement resolution integration patterns
+3. Tenant lifecycle ↔ Commerce integration hooks
+4. Cross-service Commerce event conventions
+5. Commerce-aware service registration
+6. Monitoring and audit integration hooks
+7. Cross-service operational integration validation
+8. Implementation report
+
+====================================================
+FILES / AREAS TO INSPECT
+====================================================
+
+Inspect existing implementations before modifying anything.
+
+Review:
+
+- LS-COMMERCE-INT-01 through OPS-01 implementation areas
+- existing Xen Base shared abstractions/utilities
+- Identity tenant provisioning flows
+- Tenant Management lifecycle flows
+- Monitoring registration flows
+- Audit integration/event flows
+- Notification integration/event flows
+- existing service registration models
+- gateway/BFF conventions
+- existing event publishing patterns
+- shared contract libraries
+- internal service auth/token forwarding patterns
+- operational telemetry patterns
+
+Likely areas include:
+
+- apps/services/commerce/
+- apps/services/tenant-billing/
+- apps/services/identity/
+- apps/services/tenant/
+- apps/services/monitoring/
+- apps/services/audit/
+- apps/services/notifications/
+- apps/gateway/
+- shared/
+- xen-base/
+- contracts/
+- building-blocks/
+
+Do not assume paths.
+Validate actual repository structure first.
+
+====================================================
+IMPLEMENTATION TASKS
+====================================================
+
+# 1. Add Shared Commerce Integration Abstractions
+
+Introduce reusable platform-safe Commerce integration abstractions.
+
+Goal:
+- other services can safely consume Commerce functionality without tight coupling.
+
+Possible abstractions:
+
+- ICommerceIntegrationClient
+- IEntitlementResolver
+- CommerceServiceRegistration
+- CommerceTenantLifecycleHook
+- CommerceTelemetryContract
+
+Requirements:
+
+- additive only
+- preserve standalone Commerce runtime
+- no direct DB access from other services
+- no service-specific Commerce logic leakage
+- reusable across LegalSynq services
+
+Prefer:
+- shared contracts/interfaces
+- gateway-safe integration clients
+- server-side integration patterns
+
+Do not create a new monolithic shared billing SDK.
+
+# 2. Establish Entitlement Resolution Integration Pattern
+
+Create a canonical entitlement lookup/access pattern.
+
+Goal:
+- platform services can determine whether a tenant/product entitlement exists.
+
+Requirements:
+
+- server-side only
+- JWT + tenant context compatible
+- safe fallback behavior
+- reusable across services
+- preserve Commerce authority over entitlement state
+
+Potential patterns:
+
+- BFF entitlement resolver
+- service integration client
+- gateway-forwarded entitlement check
+- cached read-only entitlement snapshot access if existing architecture supports it
+
+Do NOT:
+- duplicate entitlement persistence
+- replicate billing logic into services
+- bypass Commerce APIs
+
+# 3. Add Tenant Lifecycle ↔ Commerce Integration Hooks
+
+Add additive Commerce awareness into tenant lifecycle flows.
+
+Potential lifecycle events:
+
+- tenant created
+- tenant activated
+- tenant suspended
+- tenant closed
+- product enabled
+- subscription attached
+
+Requirements:
+
+- event-driven or hook-driven
+- additive only
+- no direct runtime dependency collapse
+- no orchestration monolith
+- preserve standalone deployment support
+
+If lifecycle hooks already exist:
+- integrate Commerce safely into the existing pattern.
+
+# 4. Establish Cross-Service Commerce Event Conventions
+
+Define canonical Commerce ecosystem event conventions.
+
+Potential events:
+
+- entitlement granted
+- entitlement revoked
+- subscription activated
+- subscription suspended
+- billing standing changed
+- lifecycle transition occurred
+
+Requirements:
+
+- additive contracts only
+- no full event-bus rewrite
+- no mandatory distributed orchestration
+- no destructive workflow automation
+
+Prefer:
+- shared contracts/interfaces
+- correlation-id compatibility
+- audit compatibility
+- monitoring compatibility
+
+# 5. Add Commerce-Aware Service Registration
+
+Introduce monetization-aware service registration metadata.
+
+Goal:
+- services can declare monetizable/entitlement-aware capabilities.
+
+Potential metadata:
+
+- product key
+- entitlement key
+- monetization enabled
+- subscription required
+- operational criticality
+- billing dependency flag
+
+Requirements:
+
+- additive registration model
+- no service rewrites
+- no forced adoption
+- preserve existing monitoring/service registration behavior
+
+# 6. Add Monitoring / Audit / Notification Integration Hooks
+
+Add additive Commerce integration hooks into:
+
+- Monitoring
+- Audit
+- Notifications
+
+Examples:
+
+Monitoring:
+- entitlement telemetry
+- subscription health telemetry
+- monetized capability visibility
+
+Audit:
+- entitlement transition audit events
+- lifecycle integration audit events
+
+Notifications:
+- subscription operational notifications
+- entitlement transition notifications
+
+Requirements:
+
+- hooks/contracts only where appropriate
+- no broad notification rewrite
+- no monitoring redesign
+- preserve bounded contexts
+
+# 7. Add Cross-Service Operational Validation
+
+Validate that ecosystem integration remains safe.
+
+Confirm:
+
+- standalone runtimes still work
+- services do not require Commerce to boot unless explicitly intended
+- no shared DbContexts introduced
+- no direct EF cross-access introduced
+- gateway/BFF patterns preserved
+- internal tokens remain server-side only
+- service boundaries remain intact
+
+# 8. Add Tests / Validation
+
+Add tests where practical.
+
+Recommended areas:
+
+- entitlement resolver behavior
+- tenant lifecycle hook invocation
+- event contract serialization
+- service registration metadata handling
+- monitoring hook integration
+- audit hook integration
+- notification hook integration
+- fallback behavior when Commerce unavailable
+
+If automated tests are unavailable:
+- document manual validation steps.
+
+====================================================
+FILES / AREAS TO MODIFY
+====================================================
+
+Modify only additive ecosystem integration areas.
+
+Expected possible modification areas:
+
+- shared Commerce integration abstractions
+- entitlement resolution contracts/helpers
+- tenant lifecycle integration hooks
+- service registration metadata
+- monitoring integration contracts
+- audit integration contracts
+- notification integration contracts
+- gateway-safe Commerce integration clients
+- shared contracts/interfaces
+- tests
+- /analysis/LS-COMMERCE-ECO-01-report.md
+
+Do NOT modify:
+
+- invoice/payment workflows
+- customer billing flows
+- payment provider integrations
+- DbContexts to merge domains
+- core Identity auth architecture
+- core Tenant Billing enforcement logic
+- standalone runtime behavior
+- existing INT/OPS operational tooling
+- existing monitoring architecture beyond additive hooks/contracts
+
+====================================================
+VALIDATION COMMANDS
+====================================================
+
+Run relevant validation commands based on actual repository structure.
+
+Likely commands may include:
+
+# Frontend
+
+- npm run build
+- npm run lint
+- npm test
+- npx tsc --noEmit
+- pnpm build
+- pnpm lint
+- pnpm test
+
+# Commerce
+
+- dotnet build apps/services/commerce/Commerce.sln
+
+# Tenant Billing
+
+- dotnet build apps/services/tenant-billing/Billing.sln
+
+# Identity
+
+- dotnet build apps/services/identity/
+
+# Tenant
+
+- dotnet build apps/services/tenant/
+
+# Monitoring
+
+- dotnet build apps/services/monitoring/
+
+# Shared Contracts
+
+- dotnet build shared/
+
+# Platform
+
+Run any additional discovered validation commands.
+
+If commands fail:
+
+- document exact command
+- document exact failure
+- document whether issue appears pre-existing or caused by this ticket
+- do not fabricate success
+
+If commands are skipped:
+- document why
+
+====================================================
+ACCEPTANCE CRITERIA
+====================================================
+
+LS-COMMERCE-ECO-01 is complete ONLY IF:
+
+- /analysis/LS-COMMERCE-ECO-01-report.md was created first
+- report updated incrementally throughout implementation
+- shared Commerce integration abstractions introduced or explicitly deferred with reason
+- entitlement resolution integration pattern established
+- tenant lifecycle ↔ Commerce integration hooks added or documented
+- Commerce ecosystem event conventions established
+- Commerce-aware service registration model added
+- monitoring/audit/notification hooks integrated or documented
+- standalone service boundaries preserved
+- no shared DbContexts introduced
+- no direct EF cross-access introduced
+- gateway/BFF discipline preserved
+- internal tokens remain server-side only
+- tests/manual validations documented
+- risks/deferred items documented
+- recommended next ecosystem integration scope included
+
+====================================================
+REQUIRED REPORT STRUCTURE
+====================================================
+
+Update incrementally:
+
+/analysis/LS-COMMERCE-ECO-01-report.md
+
+Required sections:
+
+1. Executive Summary
+2. Prior Commerce Operational Baseline
+3. Shared Commerce Integration Abstractions
+4. Entitlement Resolution Integration Pattern
+5. Tenant Lifecycle ↔ Commerce Hooks
+6. Commerce Ecosystem Event Conventions
+7. Commerce-Aware Service Registration
+8. Monitoring / Audit / Notification Hooks
+9. Cross-Service Operational Validation
+10. RBAC / Auth Validation
+11. Files Changed
+12. Build/Test Validation
+13. Risks / Deferred Items
+14. Confirmation of Non-Merge Boundaries
+15. Ecosystem Integration Readiness Assessment
+16. Recommended Next Step
+
+====================================================
+KNOWN RESTRICTIONS
+====================================================
+
+- Do not fabricate validation success.
+- Do not claim tests passed unless actually run.
+- Do not hide failures.
+- Do not redesign Control Center.
+- Do not redesign Monitoring.
+- Do not expose secrets or internal tokens.
+- Do not directly query billing databases from unrelated services.
+- Do not collapse Commerce and Tenant Billing into one service.
+- Do not introduce distributed orchestration complexity.
+- Do not add forced runtime coupling between services.
+- Do not introduce a new auth framework.
+- Do not create a shared billing monolith.
+
+====================================================
+EXPECTED OUTPUT
+====================================================
+
+At completion:
+
+- Commerce becomes a reusable ecosystem monetization foundation.
+- Platform services can safely become entitlement-aware.
+- Tenant lifecycle flows can integrate with Commerce safely.
+- Shared Commerce integration patterns exist.
+- Cross-service Commerce event conventions exist.
+- Monitoring/Audit/Notifications can participate in Commerce operational awareness.
+- Bounded contexts remain intact.
+- Standalone service deployments remain preserved.
+
+====================================================
+FINAL INSTRUCTION
+====================================================
+
+Preserve bounded contexts.
+
+Integrate through:
+
+- shared contracts/interfaces
+- gateway/BFF-safe integration
+- additive lifecycle hooks
+- additive telemetry/audit hooks
+- additive service registration metadata
+
+Do not merge billing domains.
+
+Do not redesign billing.
+
+Create and maintain the report first.
+
+Do not fabricate success.

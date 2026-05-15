@@ -31,4 +31,15 @@
     <ProjectReference Include="..\..\audit-client\LegalSynq.AuditClient\LegalSynq.AuditClient.csproj" />
   </ItemGroup>
 
+  <!-- LS-COMMERCE-ECO-01 — Commerce Ecosystem Integration Foundation:
+       BuildingBlocks hosts ICommerceEntitlementClient, ICommerceLifecycleNotifier,
+       and their noop/HTTP implementations, which depend on Commerce event contracts
+       from shared/contracts. The dependency direction is sound: Contracts has no
+       dependencies; BuildingBlocks depends on Contracts (as it already depends on
+       AuditClient). Services that reference BuildingBlocks automatically gain access
+       to both layers via transitive resolution. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\contracts\Contracts\Contracts.csproj" />
+  </ItemGroup>
+
 </Project>

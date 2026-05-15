@@ -39,4 +39,30 @@ public static class NotificationTemplateKeys
     public const string TaskReassigned = "task.reassigned";
     public const string TaskCompleted  = "task.completed";
     public const string TaskCancelled  = "task.cancelled";
+
+    // ---------- Commerce: billing standing alerts (LS-COMMERCE-ECO-01) ------
+    /// <summary>Tenant billing account has entered a grace period due to a payment issue.</summary>
+    public const string CommerceBillingGracePeriodStarted = "commerce.billing.gracePeriod.started";
+    /// <summary>Grace period expired; access may be downgraded.</summary>
+    public const string CommerceBillingGracePeriodExpired = "commerce.billing.gracePeriod.expired";
+    /// <summary>Billing account suspended (e.g. post-grace).</summary>
+    public const string CommerceBillingAccountSuspended   = "commerce.billing.account.suspended";
+
+    // ---------- Commerce: subscription lifecycle ----------------------------
+    /// <summary>A subscription was activated (new or reactivated).</summary>
+    public const string CommerceSubscriptionActivated   = "commerce.subscription.activated";
+    /// <summary>A subscription was renewed for a new billing period.</summary>
+    public const string CommerceSubscriptionRenewed     = "commerce.subscription.renewed";
+    /// <summary>A subscription was cancelled.</summary>
+    public const string CommerceSubscriptionCancelled   = "commerce.subscription.cancelled";
+    /// <summary>A trial subscription will expire within the configured warning window.</summary>
+    public const string CommerceSubscriptionTrialExpiring = "commerce.subscription.trial.expiring";
+
+    // ---------- Commerce: entitlement changes --------------------------------
+    /// <summary>A new entitlement (product/feature) was granted to the tenant.</summary>
+    public const string CommerceEntitlementGranted  = "commerce.entitlement.granted";
+    /// <summary>An entitlement was revoked from the tenant.</summary>
+    public const string CommerceEntitlementRevoked  = "commerce.entitlement.revoked";
+    /// <summary>Commerce's access recommendation for the tenant changed (e.g. Allow → ReadOnly).</summary>
+    public const string CommerceAccessDowngraded    = "commerce.access.downgraded";
 }

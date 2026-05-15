@@ -6351,3 +6351,51 @@ LS-017 through LS-023 governance pipelines completely unchanged. `SmsGovernanceC
 
 ### Analysis
 `analysis/LS-NOTIF-SMS-025-report.md`
+
+---
+
+## Commerce Ecosystem Integration Foundation (LS-COMMERCE-ECO-01)
+
+Establishes Commerce as a reusable platform-wide monetization/entitlement foundation. Purely additive — no existing service logic changed, no DB merges, all services remain standalone.
+
+### Shared Contracts (`shared/contracts/Contracts/Commerce/`)
+- `CommerceEventTypes.cs` — 34 canonical event type string constants (`commerce.tenant.*`, `commerce.subscription.*`, `commerce.entitlement.*`, `commerce.billing.*`, `commerce.access.*`, `commerce.provisioning.*`, `commerce.integration.*`)
+- `CommerceLifecycleEvent.cs` — self-contained event envelope record + `CommerceAccessRecommendations` string constants
+- `CommerceTelemetryContract.cs` — per-service Commerce integration health telemetry record + `CommerceEntitlementStatusValues` constants
+- `NotificationTemplateKeys.cs` extended — 11 new Commerce template key constants (billing alerts, subscription lifecycle, entitlement changes)
+- `NotificationTemplateRegistry.cs` extended — 11 disabled platform-default Commerce notification templates added to `PlatformDefaults()`
+
+### Commerce Integration Abstractions (`shared/building-blocks/BuildingBlocks/Commerce/`)
+- `ICommerceEntitlementClient` — platform entitlement resolution contract; two endpoints: `GetByHostTenantAsync` and `GetByBillingAccountAsync`
+- `HttpCommerceEntitlementClient` — HTTP implementation calling `GET /api/commerce/integration/host-tenants/{key}/{id}/entitlement-snapshot`; private mirror DTOs; never throws
+- `NoopCommerceEntitlementClient` — returns `Unavailable` for all calls (default when `CommerceIntegration:Enabled=false`)
+- `ICommerceLifecycleNotifier` — Host → Commerce lifecycle notification contract
+- `NoopCommerceLifecycleNotifier` — no-op default; real outbound adapter deferred
+- `CommerceEntitlementResult` — self-contained result record: `IsAvailable`, `AccessRecommendation`, `ProductKeys`, `HasProduct()`, `IsAccessAllowed`; `CommerceAccessRecommendationValues` string constants
+- `CommerceServiceMetadata` — declarative per-service monetization metadata (product key, subscription required, enforcement active)
+- `ICommerceAwareService` — optional marker interface for self-describing services
+- `CommerceIntegrationOptions` — config model for `CommerceIntegration` section (Enabled, BaseUrl, HostPlatformKey, TimeoutSeconds, StaleThresholdSeconds, InternalServiceToken)
+- `CommerceIntegrationServiceCollectionExtensions` — `AddCommerceIntegration(configuration)` and `AddCommerceServiceMetadata(...)` DI helpers
+- `BuildingBlocks.csproj` — added `ProjectReference` to `shared/contracts` (safe: Contracts has zero deps)
+
+### Commerce Audit Event Types (`shared/audit-client/LegalSynq.AuditClient/Enums/CommerceAuditEventTypes.cs`)
+19 canonical audit event type strings: billing account lifecycle, subscription lifecycle, entitlement changes, billing standing, access recommendation, provisioning hooks, integration health checks. Use with `EventCategory.Business`, `EventCategory.Administrative`, `EventCategory.Integration`.
+
+### Adoption pattern for a product service
+```csharp
+// Program.cs
+services.AddCommerceIntegration(configuration);
+services.AddCommerceServiceMetadata(configuration, "Synq Liens", "SYNQLIEN",
+    primaryFeatureKey: null, subscriptionRequired: true, monetizationEnabled: false);
+```
+```json
+// appsettings.json
+{ "CommerceIntegration": { "Enabled": false, "BaseUrl": "http://127.0.0.1:5030", "HostPlatformKey": "legalsynq" } }
+```
+Inject `ICommerceEntitlementClient` — always apply permissive fallback when `!result.IsAvailable`. Set `Enabled=true` per environment to activate HTTP calls.
+
+### Build
+`shared/contracts`, `shared/building-blocks`, `shared/audit-client` — **0 errors, 0 warnings**
+
+### Analysis
+`analysis/LS-COMMERCE-ECO-01-report.md`
