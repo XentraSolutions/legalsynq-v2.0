@@ -9,6 +9,7 @@ import { TenantLogoUpload }              from '@/components/tenants/TenantLogoUp
 import { TenantOrganizationsPanel }      from '@/components/tenants/tenant-organizations-panel';
 import { TenantBillingPanel }            from '@/components/billing/tenant-billing-panel';
 import { BillingEntitlementPanel }       from '@/components/billing/billing-entitlement-panel';
+import { BillingProfileActionsPanel }    from '@/components/billing/billing-profile-actions-panel';
 import type { TenantBillingSummary, BillingEntitlementSnapshot } from '@/types/control-center';
 
 export const dynamic = 'force-dynamic';
@@ -115,6 +116,14 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
         error={billingEntitlementError ?? billingEntitlement?.error ?? null}
         tenantId={id}
       />
+
+      {tenantBillingSummary?.profileFound && tenantBillingSummary.profile && (
+        <BillingProfileActionsPanel
+          profileId={tenantBillingSummary.profile.id}
+          currentStatus={tenantBillingSummary.profile.status}
+          tenantId={id}
+        />
+      )}
     </div>
   );
 }

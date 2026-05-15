@@ -175,6 +175,35 @@ export const CC_NAV: NavSection[] = [
   },
 ];
 
+/**
+ * Returns a role-filtered copy of CC_NAV for sidebar rendering.
+ *
+ * - PlatformAdmin: full nav (no filtering)
+ * - TenantAdmin:   COMMERCE & BILLING shows only "Billing Status"
+ * - Neither:       COMMERCE & BILLING section hidden entirely
+ *
+ * Page guards remain the authoritative security layer.
+ * This is UX hardening only.
+ */
+export function filterNavForRole(
+  isPlatformAdmin: boolean,
+  isTenantAdmin:   boolean,
+): NavSection[] {
+  if (isPlatformAdmin) return CC_NAV;
+
+  if (isTenantAdmin) {
+    return CC_NAV.map(section => {
+      if (section.heading !== 'COMMERCE & BILLING') return section;
+      const allowed = section.items.filter(item => item.href === '/billing-status');
+      return { ...section, items: allowed };
+    }).filter(section =>
+      section.heading !== 'COMMERCE & BILLING' || section.items.length > 0,
+    );
+  }
+
+  return CC_NAV.filter(s => s.heading !== 'COMMERCE & BILLING');
+}
+
 /** @deprecated — kept for any existing callers; remove once all are migrated. */
 export function buildCCNav() {
   return CC_NAV;

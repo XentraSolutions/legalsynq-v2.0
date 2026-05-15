@@ -1800,3 +1800,47 @@ export interface TenantBillingSummary {
   lastCheckedAtUtc: string;
   error:           string | null;
 }
+
+export interface BillingProfileActionResult {
+  success:          boolean;
+  action:           string;
+  profileId:        string;
+  newStatus?:       string;
+  error?:           string;
+  executedAtUtc:    string;
+}
+
+export interface CommerceSubscriptionItem {
+  id:                     string;
+  billingAccountId:       string;
+  subscriptionNumber:     string;
+  status:                 string;
+  startDateUtc:           string;
+  currentPeriodStartUtc:  string;
+  currentPeriodEndUtc:    string;
+  cancelAtPeriodEnd:      boolean;
+  cancelledAtUtc:         string | null;
+  cancellationReason:     string | null;
+  createdAtUtc:           string;
+  updatedAtUtc:           string;
+  itemCount:              number;
+}
+
+export interface CommerceSubscriptionSummary {
+  subscriptions:      CommerceSubscriptionItem[];
+  totalCount:         number;
+  billingAccountId:   string | null;
+  lastCheckedAtUtc:   string;
+  error:              string | null;
+}
+
+export interface EntitlementPublishResult {
+  outcome:          string;
+  billingAccountId: string;
+  tenantId:         string | null;
+  httpStatus:       number | null;
+  reason:           string;
+  attempts:         number;
+  executedAtUtc:    string;
+  error?:           string;
+}
