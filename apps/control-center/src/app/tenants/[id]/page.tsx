@@ -8,7 +8,8 @@ import { TenantSessionSettingsPanel }     from '@/components/tenants/tenant-sess
 import { TenantLogoUpload }              from '@/components/tenants/TenantLogoUpload';
 import { TenantOrganizationsPanel }      from '@/components/tenants/tenant-organizations-panel';
 import { TenantBillingPanel }            from '@/components/billing/tenant-billing-panel';
-import type { TenantBillingSummary }     from '@/types/control-center';
+import { BillingEntitlementPanel }       from '@/components/billing/billing-entitlement-panel';
+import type { TenantBillingSummary, BillingEntitlementSnapshot } from '@/types/control-center';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,15 +17,10 @@ interface TenantDetailPageProps {
   params: Promise<{ id: string }>;
 }
 
-async function fetchTenantBillingSummary(tenantId: string): Promise<TenantBillingSummary> {
+async function bffFetch<T>(path: string, cookieHeader: string): Promise<T> {
   const base = process.env.CONTROL_CENTER_SELF_URL ?? 'http://127.0.0.1:5004';
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
-  const res = await fetch(`${base}/api/billing/tenant-summary/${tenantId}`, {
-    cache: 'no-store',
-    headers: { cookie: cookieHeader },
-  });
-  if (!res.ok) throw new Error(`Tenant billing summary failed: ${res.status}`);
+  const res  = await fetch(`${base}${path}`, { cache: 'no-store', headers: { cookie: cookieHeader } });
+  if (!res.ok) throw new Error(`BFF ${path} failed: ${res.status}`);
   return res.json();
 }
 
@@ -53,12 +49,18 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
   if (!tenant) return null;
 
   let organizations: Awaited<ReturnType<typeof controlCenterServerApi.organizations.listByTenant>> = [];
-  let tenantBillingSummary: TenantBillingSummary | null = null;
-  let tenantBillingError:   string | null              = null;
+  let tenantBillingSummary:    TenantBillingSummary      | null = null;
+  let tenantBillingError:      string | null                    = null;
+  let billingEntitlement:      BillingEntitlementSnapshot | null = null;
+  let billingEntitlementError: string | null                    = null;
 
-  const [orgsResult, billingResult] = await Promise.allSettled([
+  const cookieStore  = await cookies();
+  const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
+
+  const [orgsResult, billingResult, entitlementResult] = await Promise.allSettled([
     controlCenterServerApi.organizations.listByTenant(id),
-    fetchTenantBillingSummary(id),
+    bffFetch<TenantBillingSummary>(`/api/billing/tenant-summary/${id}`, cookieHeader),
+    bffFetch<BillingEntitlementSnapshot>(`/api/billing/entitlements/${id}`, cookieHeader),
   ]);
 
   if (orgsResult.status === 'fulfilled') {
@@ -71,6 +73,14 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
     tenantBillingError = billingResult.reason instanceof Error
       ? billingResult.reason.message
       : 'Failed to load tenant billing data.';
+  }
+
+  if (entitlementResult.status === 'fulfilled') {
+    billingEntitlement = entitlementResult.value;
+  } else {
+    billingEntitlementError = entitlementResult.reason instanceof Error
+      ? entitlementResult.reason.message
+      : 'Failed to load entitlement data.';
   }
 
   return (
@@ -98,6 +108,12 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
       <TenantBillingPanel
         summary={tenantBillingSummary}
         error={tenantBillingError}
+      />
+
+      <BillingEntitlementPanel
+        snapshot={billingEntitlement}
+        error={billingEntitlementError ?? billingEntitlement?.error ?? null}
+        tenantId={id}
       />
     </div>
   );

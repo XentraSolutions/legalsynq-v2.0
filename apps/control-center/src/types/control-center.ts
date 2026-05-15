@@ -1704,6 +1704,72 @@ export interface CommerceSummary {
   readinessChecks:  CommerceReadinessCheck[];
 }
 
+// ── LS-COMMERCE-INT-03: Commerce Account & Bridge Types ──────────────────────
+
+export interface CommerceAccountItem {
+  id:                          string;
+  accountNumber:               string;
+  displayName:                 string;
+  status:                      string;
+  standing:                    string;
+  standingReason:              string | null;
+  standingLastEvaluatedAtUtc:  string | null;
+}
+
+export interface CommerceAccountSummary {
+  accountCount:      number;
+  accounts:          CommerceAccountItem[];
+  lastCheckedAtUtc:  string;
+  error:             string | null;
+}
+
+export interface CommerceBridgeDiagnostics {
+  enabled:                    boolean;
+  baseUrlConfigured:          boolean;
+  internalTokenConfigured:    boolean;
+  timeoutSeconds:             number;
+  retryAttempts:              number;
+  circuitBreakerEnabled:      boolean;
+  circuitBreakerState:        string;
+  targetRoute:                string;
+  mode:                       string;
+  autoPublishEnabled:         boolean;
+  autoPublishQueueDepth:      number;
+  outboxEnabled:              boolean;
+  outboxPendingCount:         number;
+  outboxFailedCount:          number;
+  outboxPublishedCount:       number;
+  lastCheckedAtUtc:           string;
+  error:                      string | null;
+}
+
+// ── LS-COMMERCE-INT-03: Tenant Billing Entitlement Types ─────────────────────
+
+export interface BillingEntitlementSnapshot {
+  profileId:           string | null;
+  billingAccountId:    string | null;
+  entitlementStatus:   string;
+  accessRecommendation: string;
+  isEnabled:           boolean;
+  writeAccessAllowed:  boolean;
+  sourcePlanKey:       string | null;
+  sourceProductKey:    string | null;
+  effectiveFromUtc:    string | null;
+  effectiveToUtc:      string | null;
+  lastSyncedAtUtc:     string | null;
+  lastCheckedAtUtc:    string;
+  error:               string | null;
+}
+
+export interface TenantAdminBillingStatus {
+  tenantId:       string;
+  profileFound:   boolean;
+  profile:        TenantBillingProfile | null;
+  entitlement:    BillingEntitlementSnapshot | null;
+  lastCheckedAtUtc: string;
+  error:          string | null;
+}
+
 // ── LS-COMMERCE-INT-02: Tenant Billing Operational Types ─────────────────────
 
 export type BillingServiceStatus = 'online' | 'degraded' | 'offline';
