@@ -245,7 +245,44 @@ All error messages are user-safe: no internal exception details, no token values
 
 ---
 
-## 11. Build / Test Validation
+## 11. Files Changed
+
+### New Files
+
+| File | Type | Purpose |
+|---|---|---|
+| `apps/control-center/src/app/api/commerce/summary/route.ts` | BFF API route | Probes Commerce `/health` + `/ready`; returns `CommerceSummary` |
+| `apps/control-center/src/app/api/billing/summary/route.ts` | BFF API route | Probes Billing `/health` + `/healthz`; returns `BillingSummary` |
+| `apps/control-center/src/app/api/billing/tenant-summary/[tenantId]/route.ts` | BFF API route | Fetches per-tenant billing profile with `X-Internal-Token` forwarding |
+| `apps/control-center/src/app/commerce/page.tsx` | Page (Server Component) | Commerce operational status page |
+| `apps/control-center/src/app/billing/page.tsx` | Page (Server Component) | Tenant Billing operational status page |
+| `apps/control-center/src/components/commerce/commerce-service-card.tsx` | UI component | Commerce service card + readiness panel |
+| `apps/control-center/src/components/billing/billing-service-card.tsx` | UI component | Tenant Billing service card |
+| `apps/control-center/src/components/billing/tenant-billing-panel.tsx` | UI component | Per-tenant billing profile panel (used in tenant detail page) |
+
+### Modified Files
+
+| File | Change |
+|---|---|
+| `apps/control-center/src/lib/nav.ts` | Added `COMMERCE & BILLING` nav group with Commerce + Tenant Billing entries |
+| `apps/control-center/src/lib/nav-utils.ts` | Added `'COMMERCE & BILLING'` → `ri-store-3-line` to `GROUP_ICON_MAP` |
+| `apps/control-center/src/lib/system-health-store.ts` | Added Commerce (`:5030/health`) and Tenant Billing (`:5031/health`) to `DEFAULT_SERVICES` |
+| `apps/control-center/src/lib/env.ts` | Added `COMMERCE_SERVICE_URL`, `BILLING_SERVICE_URL`, `BILLING_INTERNAL_TOKEN` constants |
+| `apps/control-center/src/types/control-center.ts` | Added `CommerceSummary`, `BillingSummary`, `TenantBillingProfile`, `TenantBillingSummary` types |
+| `apps/control-center/src/app/tenants/[id]/page.tsx` | Added `TenantBillingPanel` via `Promise.allSettled`; added `fetchTenantBillingSummary` helper |
+| `apps/control-center/.env.local` | Added `COMMERCE_SERVICE_URL`, `BILLING_SERVICE_URL`, `BILLING_INTERNAL_TOKEN` with documentation comments |
+
+### Files Not Modified (validated only)
+
+| File | Validation Result |
+|---|---|
+| `apps/gateway/Gateway.Api/appsettings.json` | All 6 YARP routes confirmed correct from LS-INT-01; no changes required |
+| `apps/services/commerce/**` | Unchanged; 0 build errors confirmed |
+| `apps/services/tenant-billing/**` | Unchanged; 0 build errors confirmed |
+
+---
+
+## 12. Build / Test Validation
 
 | Target | Result | Notes |
 |---|---|---|
@@ -268,7 +305,7 @@ All error messages are user-safe: no internal exception details, no token values
 
 ---
 
-## 12. Architecture Boundary Validation
+## 13. Architecture Boundary Validation (Confirmation of Non-Merge Boundaries)
 
 | Rule | Status |
 |---|---|
@@ -284,7 +321,7 @@ All error messages are user-safe: no internal exception details, no token values
 
 ---
 
-## 13. Risks / Deferred Items
+## 14. Risks / Deferred Items
 
 | Item | Risk | Deferral Reason |
 |---|---|---|
@@ -297,7 +334,7 @@ All error messages are user-safe: no internal exception details, no token values
 
 ---
 
-## 14. Recommended LS-COMMERCE-INT-03 Scope
+## 15. Recommended LS-COMMERCE-INT-03 Scope
 
 Based on what was implemented and what was consciously deferred:
 
