@@ -1,11 +1,11 @@
-# LegalSynq — .NET 8 Microservices + Next.js Monorepo
+# LegalSynq — .NET 10 Microservices + Next.js Monorepo
 
 ## Overview
-Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router frontend, plus a standalone TypeScript Docs Service. Clean layered architecture (Api / Application / Domain / Infrastructure) per bounded context. Gateway validates JWT; downstream services also validate independently.
+Bash-based monorepo for a .NET 10 microservices platform + Next.js 14 App Router frontend, plus a standalone TypeScript Docs Service. Clean layered architecture (Api / Application / Domain / Infrastructure) per bounded context. Gateway validates JWT; downstream services also validate independently.
 
 ## Environment
-- **Runtime:** .NET SDK 8.0.412 (via Nix `dotnet-sdk_8`) + Node.js 22 (via Nix module)
-- **System packages:** `dotnet-sdk_8`, `git`, `nodejs-22` (replit.nix)
+- **Runtime:** .NET SDK 10.0 + Node.js 22 (via Nix module)
+- **System packages:** `dotnet-sdk_10`, `git`, `nodejs-22` (replit.nix)
 - **Nix channel:** stable-25_05
 - **Backend entry point:** `bash scripts/run-dev.sh`
 - **Frontend entry point:** `cd apps/web && node /home/runner/workspace/node_modules/.bin/next dev -p 3000`
@@ -440,7 +440,7 @@ apps/
         Middleware/InternalServiceTokenMiddleware.cs ← path-scoped internal service token auth for /api/comms/internal/* (BLK-005)
       Comms.Tests/                     ← xUnit test project (181 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests, 14 E2E integration tests, 15 operational workflow tests — BLK-001, 11 SLA notification tests — BLK-002, 18 timeline tests — BLK-003, 18 mention tests — BLK-004, 18 operational view tests — LS-COMMS-04-BLK-001)
     flow/                                 ← LS-FLOW-MERGE-P2: Generic workflow/task orchestration service (detachable, API-first, owns flow_db). Phase 2 hardened: JWT auth + BuildingBlocks policies, ClaimsTenantProvider (strict tenant_id claim — no "default" fallback), TenantValidationMiddleware, env-driven CORS, IAuditAdapter/INotificationAdapter seams (logging baseline + optional HTTP impls), IFlowEventDispatcher in-process events. Listens on :5012; gateway routes /flow/health, /flow/info, /flow/api/v1/status (anon) + /flow/{**catch-all} (protected). Started by scripts/run-dev.sh. See analysis/LS-FLOW-MERGE-P2-report.md and apps/services/flow/docs/merge-phase-2-notes.md.
-      backend/                            ← .NET 8 Web API; own Flow.sln (NOT in LegalSynq.sln per Phase 1 boundary preservation)
+      backend/                            ← .NET 10 Web API; own Flow.sln (NOT in LegalSynq.sln per Phase 1 boundary preservation)
         Flow.sln
         src/
           Flow.Api/                       → ASP.NET Core Web API (Controllers/, Middleware/, Services/, appsettings.json with FlowDb conn string)
@@ -1077,7 +1077,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 ## .NET Documents Service (apps/services/documents)
 
 **Port**: 5006  
-**Framework**: .NET 8 Minimal APIs + EF Core 8 + Npgsql (PostgreSQL)  
+**Framework**: .NET 10 Minimal APIs + EF Core 10 + Npgsql (PostgreSQL)  
 **Architecture**: 4-project layered monorepo (Domain → Application → Infrastructure → Api)  
 **Status**: Fully implemented, builds cleanly (0 errors, 0 warnings)
 **EF Core alignment**: `Microsoft.EntityFrameworkCore.Design` downgraded from `9.0.0` → `8.0.4` to eliminate NU1605 package downgrade error (Design 9.0 pulled EF 9.0 transitive dep, conflicting with EF 8.0.4 direct ref).
@@ -1092,7 +1092,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 | `Documents.Api` | Minimal API endpoints, middleware, Program.cs, appsettings. |
 
 ### Key Characteristics
-- **PostgreSQL** — uses Npgsql/EF Core 8 (NOT MySQL, unlike other .NET services; matches TypeScript Docs service schema)
+- **PostgreSQL** — uses Npgsql/EF Core 10 (NOT MySQL, unlike other .NET services; matches TypeScript Docs service schema)
 - **Full API parity**: 13/13 TypeScript endpoints implemented
 - **Three-layer tenant isolation**: L1 pre-query guard + L2 LINQ WHERE predicate + L3 ABAC in DocumentService
 - **RBAC**: 5 roles (DocReader/DocUploader/DocManager/TenantAdmin/PlatformAdmin)
@@ -2887,13 +2887,13 @@ Admin-only dashboard showing provider activation funnel metrics derived entirely
 - 19/19 LSCC-011 tests pass
 - Total suite: 360 pass (pre-existing 5 ProviderAvailability failures unchanged)
 
-## Step 38 — Notifications Service (ARCHIVED Node.js → replaced by .NET 8)
+## Step 38 — Notifications Service (ARCHIVED Node.js → replaced by .NET 10)
 
-Original Node.js notifications service was at `apps/services/notifications-nodejs/` — now archived to `_archived/notifications-nodejs/`. Replaced by `apps/services/notifications/` (.NET 8, 4-layer architecture: Api/Application/Domain/Infrastructure). The .NET version runs on the same port (5008) with identical gateway routing.
+Original Node.js notifications service was at `apps/services/notifications-nodejs/` — now archived to `_archived/notifications-nodejs/`. Replaced by `apps/services/notifications/` (.NET 10, 4-layer architecture: Api/Application/Domain/Infrastructure). The .NET version runs on the same port (5008) with identical gateway routing.
 
 ### Service Overview (.NET)
 - **Port**: 5008
-- **Stack**: ASP.NET Core 8 Minimal API + EF Core (Pomelo MySQL) + 3 BackgroundService workers
+- **Stack**: ASP.NET Core 10 Minimal API + EF Core (Pomelo MySQL) + 3 BackgroundService workers
 - **DB**: EF Core with MySQL (notifications_db); env vars `NOTIF_DB_*`
 - **Auth**: Tenant context via `X-Tenant-Id` header; internal routes gated by `X-Internal-Service-Token`
 
@@ -4327,7 +4327,7 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 - **Story**: LS-REPORTS-01-001-01 — Persistence Model Alignment (`ReportDefinition` → `ReportTemplate`)
 - **Story**: LS-REPORTS-01-002 — Template Management API (CRUD + versioning + publish)
 - **Story**: LS-REPORTS-01-003 — Persistence Finalization & Integration Readiness (migration applied to AWS RDS MySQL, 37/37 API assertions pass against live DB, concurrency validated)
-- **Framework**: .NET 8 ASP.NET Core Web API, clean layered architecture
+- **Framework**: .NET 10 ASP.NET Core Web API, clean layered architecture
 - **Structure**: `Reports.sln` with 7 source projects (Api, Application, Domain, Infrastructure, Worker, Contracts, Shared) + 3 test projects
 - **Design**: Standalone, platform-agnostic microservice. No LegalSynq-specific logic. Adapter-based integration pattern.
 - **Context Models**: `RequestContext` (correlation/request ID), `UserContext`, `TenantContext`, `ProductContext` in `Reports.Contracts/Context/`

@@ -1,6 +1,6 @@
 # LegalSynq
 
-A multi-tenant legal and healthcare platform built with .NET 8 microservices and Next.js 15.
+A multi-tenant legal and healthcare platform built with .NET 10 microservices and Next.js 15.
 
 ## What It Does
 
@@ -88,8 +88,8 @@ Service.Infrastructure/   → DbContext, repositories, external integrations
 | Frontend | Next.js 15.2.9, React 18, TypeScript, Tailwind CSS |
 | Flow Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS (standalone app) |
 | Gateway | ASP.NET Core + YARP reverse proxy |
-| Services | ASP.NET Core 8.0 Minimal APIs |
-| ORM | Entity Framework Core 8.0 (Pomelo MySQL) |
+| Services | ASP.NET Core 10.0 Minimal APIs |
+| ORM | Entity Framework Core 10.0 (Pomelo MySQL) |
 | Database | MySQL 8.0 |
 | Auth | JWT Bearer tokens, BFF session cookies |
 | Email | SendGrid, SMTP (MailKit) |
@@ -110,7 +110,7 @@ Every request carries tenant context through JWT claims. Entities are scoped by 
 
 ### Prerequisites
 
-- .NET SDK 8.0
+- .NET SDK 10.0
 - Node.js 22
 - MySQL 8.0
 
