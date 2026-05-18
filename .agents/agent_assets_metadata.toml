@@ -324,3 +324,9 @@ id = "HC2z7rePfUPOCmQL2c3Mw"
 uri = "file://analysis/BLK-TS-01-report.md"
 type = "text"
 title = "BLK-TS-01 Report — Tenant Core Foundation"
+
+[[outputs]]
+id = "SbpHefFAAJIug2QWDG6G3"
+uri = "file://legalsynq-source-20260516.tar.gz"
+type = "unspecified"
+title = "LegalSynq Source Code — 2026-05-16"
