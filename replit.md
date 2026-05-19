@@ -4,7 +4,7 @@ This file is the agent's persistent memory. It contains architecture, convention
 
 ## Runtime Environment
 
-- **.NET SDK:** 8.0.412 (Nix `dotnet-sdk_8`)
+- **.NET SDK:** 10.0 (Nix `dotnet-sdk_10`)
 - **Node.js:** 22 (Nix `nodejs-22`)
 - **Nix channel:** stable-25_05
 - **Start command:** `bash scripts/run-dev.sh`

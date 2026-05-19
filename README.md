@@ -1,6 +1,6 @@
 # LegalSynq Platform
 
-Multi-tenant SaaS platform for legal, healthcare, and funding operations. Built on .NET 8 microservices behind a YARP gateway with two Next.js 15 frontends.
+Multi-tenant SaaS platform for legal, healthcare, and funding operations. Built on .NET 10 microservices behind a YARP gateway with two Next.js 15 frontends.
 
 ## Products
 
@@ -78,8 +78,8 @@ analysis/              Per-ticket implementation reports
 |---|---|
 | Frontend | Next.js 15.2.9, React 18, TypeScript, Tailwind CSS |
 | Gateway | ASP.NET Core + YARP |
-| Services | ASP.NET Core 8 Minimal APIs |
-| ORM | Entity Framework Core 8 (Pomelo MySQL) |
+| Services | ASP.NET Core 10 Minimal APIs |
+| ORM | Entity Framework Core 10 (Pomelo MySQL) |
 | Database | MySQL 8 (AWS RDS) |
 | Auth | JWT Bearer tokens + HttpOnly session cookies |
 | Email | SendGrid, SMTP (MailKit) |
