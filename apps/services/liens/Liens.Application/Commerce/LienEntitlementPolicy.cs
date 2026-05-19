@@ -124,18 +124,18 @@ public sealed class LienEntitlementPolicy
         // Enforcing path — evaluate access recommendation
         return result.AccessRecommendation switch
         {
-            CommerceEntitlementResult.Allow =>
+            CommerceAccessRecommendationValues.Allow =>
                 LienEntitlementDecision.Permit($"Commerce allows access. Standing={result.AccountStandingStatus}"),
 
-            CommerceEntitlementResult.GraceLimited =>
+            CommerceAccessRecommendationValues.GraceLimited =>
                 LienEntitlementDecision.Permit(
                     $"Commerce grace-limited access permitted. Standing={result.AccountStandingStatus}"),
 
-            CommerceEntitlementResult.ReadOnly =>
+            CommerceAccessRecommendationValues.ReadOnly =>
                 LienEntitlementDecision.Permit(
                     $"Commerce read-only recommendation — full access permitted in current configuration. Standing={result.AccountStandingStatus}"),
 
-            CommerceEntitlementResult.Block =>
+            CommerceAccessRecommendationValues.Block =>
                 LienEntitlementDecision.Deny(
                     $"Commerce denies access. Standing={result.AccountStandingStatus} Reason={result.AccountStandingReason}"),
 
