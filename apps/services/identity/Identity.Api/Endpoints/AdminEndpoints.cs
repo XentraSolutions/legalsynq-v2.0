@@ -3579,6 +3579,74 @@ public static class AdminEndpoints
                         });
                     }
                 }
+
+                // LS-COR-AUT-010: Product roles must be stored as UserRoleAssignment, not
+                // ScopedRoleAssignment.  EffectiveAccessService reads UserRoleAssignments when
+                // computing the JWT product_roles claim at login time.  Roles stored only in
+                // ScopedRoleAssignments are invisible to EffectiveAccessService and will not appear
+                // in the user's session — which causes the CareConnect receiver-access blocked page
+                // to be shown even after the admin has assigned the role.
+                // Bumping AccessVersion invalidates any existing JWT so the user is forced to
+                // re-login and receives a fresh token that contains the new product role.
+                var productCode = productRole.Product.Code;
+
+                var alreadyHasProductRole = await db.UserRoleAssignments
+                    .AnyAsync(a =>
+                        a.TenantId         == user.TenantId &&
+                        a.UserId           == id &&
+                        a.ProductCode      == productCode &&
+                        a.RoleCode         == productRole.Code &&
+                        a.AssignmentStatus == AssignmentStatus.Active);
+                if (alreadyHasProductRole)
+                    return Results.Conflict(new { error = "An identical product role assignment already exists for this user." });
+
+                var productRoleAssignment = UserRoleAssignment.Create(
+                    tenantId:        user.TenantId,
+                    userId:          id,
+                    roleCode:        productRole.Code,
+                    productCode:     productCode,
+                    createdByUserId: body.AssignedByUserId);
+                db.UserRoleAssignments.Add(productRoleAssignment);
+                user.IncrementAccessVersion();
+                await db.SaveChangesAsync();
+
+                var prAuditNow = DateTimeOffset.UtcNow;
+                _ = auditClient.IngestAsync(new IngestAuditEventRequest
+                {
+                    EventType     = "identity.role.assigned",
+                    EventCategory = EventCategory.Administrative,
+                    SourceSystem  = "identity-service",
+                    SourceService = "admin-api",
+                    Visibility    = VisibilityScope.Tenant,
+                    Severity      = SeverityLevel.Info,
+                    OccurredAtUtc = prAuditNow,
+                    Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+                    Actor  = new AuditEventActorDto { Id = body.AssignedByUserId?.ToString(), Type = ActorType.User },
+                    Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
+                    Action      = "ProductRoleAssigned",
+                    Description = $"Product role '{productRole.Code}' ({productCode}) assigned to user {id}.",
+                    After       = JsonSerializer.Serialize(new { roleCode = productRole.Code, productCode, userId = id }),
+                    IdempotencyKey = IdempotencyKey.For("identity-service", "identity.role.assigned", productRoleAssignment.Id.ToString()),
+                    Tags = ["role-management", "access-control"],
+                });
+
+                notificationsCache.InvalidateTenant(
+                    user.TenantId,
+                    eventType: "identity.role.assigned",
+                    reason:    $"product role {productRole.Code} assigned to user {id}");
+
+                return Results.Created(
+                    $"/api/admin/users/{id}/roles/{role.Id}",
+                    new
+                    {
+                        assignmentId  = productRoleAssignment.Id,
+                        userId        = id,
+                        roleId        = role.Id,
+                        roleName      = role.Name,
+                        roleCode      = productRole.Code,
+                        productCode,
+                        assignedAtUtc = prAuditNow,
+                    });
             }
         }
 
@@ -3712,7 +3780,7 @@ public static class AdminEndpoints
             .ThenBy(r => r.Name)
             .ToListAsync();
 
-        // Currently assigned role IDs
+        // Currently assigned role IDs (system/tenant roles via ScopedRoleAssignment)
         var assignedRoleIds = await db.ScopedRoleAssignments
             .Where(s => s.UserId == id && s.IsActive
                      && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
@@ -3720,11 +3788,22 @@ public static class AdminEndpoints
             .ToListAsync();
         var assignedSet = new HashSet<Guid>(assignedRoleIds);
 
+        // LS-COR-AUT-010: Product roles are stored in UserRoleAssignment (not ScopedRoleAssignment).
+        // Build a set of assigned product role codes so product roles show as assigned in the UI.
+        var assignedProductRoleCodes = await db.UserRoleAssignments
+            .Where(a => a.TenantId == user.TenantId && a.UserId == id && a.AssignmentStatus == AssignmentStatus.Active)
+            .Select(a => a.RoleCode)
+            .ToListAsync();
+        var assignedProductRoleCodeSet = new HashSet<string>(assignedProductRoleCodes, StringComparer.OrdinalIgnoreCase);
+
         var result = allRoles.Select(r =>
         {
-            var isAssigned = assignedSet.Contains(r.Id);
             productRoleLookup.TryGetValue(r.Name, out var pr);
             var isProductRole = !r.IsSystemRole && pr is not null;
+            // LS-COR-AUT-010: Product roles live in UserRoleAssignment; system/tenant roles in ScopedRoleAssignment.
+            var isAssigned = isProductRole
+                ? assignedProductRoleCodeSet.Contains(r.Name)
+                : assignedSet.Contains(r.Id);
 
             string? productCode = null;
             string? productName = null;
@@ -3854,6 +3933,8 @@ public static class AdminEndpoints
         IAuditEventClient         auditClient,
         INotificationsCacheClient notificationsCache)
     {
+        var callerId = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
+
         var user = await db.Users.FindAsync(id);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
@@ -3865,8 +3946,66 @@ public static class AdminEndpoints
             .Include(s => s.Role)
             .FirstOrDefaultAsync(s => s.UserId == id && s.RoleId == roleId
                                    && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global && s.IsActive);
+
+        // LS-COR-AUT-010: Product roles are stored as UserRoleAssignment (not ScopedRoleAssignment).
+        // If the GLOBAL ScopedRoleAssignment doesn't exist, check whether this is a product role
+        // and fall back to the UserRoleAssignment table.
         if (sra is null)
+        {
+            var roleForRevoke = await db.Roles.FindAsync(roleId);
+            if (roleForRevoke is not null && !roleForRevoke.IsSystemRole)
+            {
+                var productRoleForRevoke = await db.ProductRoles
+                    .Include(pr => pr.Product)
+                    .FirstOrDefaultAsync(pr => pr.Code == roleForRevoke.Name && pr.IsActive);
+
+                if (productRoleForRevoke is not null)
+                {
+                    var ura = await db.UserRoleAssignments
+                        .FirstOrDefaultAsync(a =>
+                            a.TenantId         == user.TenantId &&
+                            a.UserId           == id &&
+                            a.ProductCode      == productRoleForRevoke.Product.Code &&
+                            a.RoleCode         == productRoleForRevoke.Code &&
+                            a.AssignmentStatus == AssignmentStatus.Active);
+                    if (ura is null)
+                        return Results.NotFound(new { error = $"Role '{roleId}' is not assigned to user '{id}'." });
+
+                    ura.Remove();
+                    user.IncrementAccessVersion();
+                    await db.SaveChangesAsync();
+
+                    var urAuditNow = DateTimeOffset.UtcNow;
+                    _ = auditClient.IngestAsync(new IngestAuditEventRequest
+                    {
+                        EventType     = "identity.role.removed",
+                        EventCategory = EventCategory.Administrative,
+                        SourceSystem  = "identity-service",
+                        SourceService = "admin-api",
+                        Visibility    = VisibilityScope.Tenant,
+                        Severity      = SeverityLevel.Warn,
+                        OccurredAtUtc = urAuditNow,
+                        Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+                        Actor  = new AuditEventActorDto { Id = callerId, Type = ActorType.User },
+                        Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
+                        Action      = "ProductRoleRemoved",
+                        Description = $"Product role '{productRoleForRevoke.Code}' ({productRoleForRevoke.Product.Code}) removed from user {id}.",
+                        Before      = JsonSerializer.Serialize(new { roleCode = productRoleForRevoke.Code, productCode = productRoleForRevoke.Product.Code }),
+                        IdempotencyKey = IdempotencyKey.For("identity-service", "identity.role.removed", id.ToString(), roleId.ToString()),
+                        Tags = ["role-management", "access-control"],
+                    });
+
+                    notificationsCache.InvalidateTenant(
+                        user.TenantId,
+                        eventType: "identity.role.removed",
+                        reason:    $"product role {productRoleForRevoke.Code} removed from user {id}");
+
+                    return Results.NoContent();
+                }
+            }
+
             return Results.NotFound(new { error = $"Role '{roleId}' is not assigned to user '{id}'." });
+        }
 
         var roleName = sra.Role?.Name ?? roleId.ToString();
 
@@ -3901,7 +4040,7 @@ public static class AdminEndpoints
             Severity      = SeverityLevel.Warn,
             OccurredAtUtc = auditNow,
             Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
-            Actor = new AuditEventActorDto { Type = ActorType.User },
+            Actor = new AuditEventActorDto { Id = callerId, Type = ActorType.User },
             Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
             Action      = "RoleRemoved",
             Description = $"Role '{roleName}' removed from user {id}.",
