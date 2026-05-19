@@ -15,7 +15,7 @@ Flow is a **detachable, standalone platform service**:
 
 ```
 apps/services/flow/
-  backend/      .NET 8 Web API (Flow.Api / Flow.Application / Flow.Domain / Flow.Infrastructure)
+  backend/      .NET 10 Web API (Flow.Api / Flow.Application / Flow.Domain / Flow.Infrastructure)
   frontend/    Next.js 16 / React 19 / Tailwind v4 admin UI
   docs/        architecture + merge notes
 ```
