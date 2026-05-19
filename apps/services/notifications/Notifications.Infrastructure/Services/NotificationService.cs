@@ -896,7 +896,7 @@ public class NotificationServiceImpl : INotificationService
                 {
                     var decision = new Notifications.Domain.SmsRoutingDecision
                     {
-                        Id                       = Guid.NewGuid(),
+                        Id                       = Guid.CreateVersion7(),
                         TenantId                 = tenantId,
                         NotificationId           = notification.Id,
                         RoutingPolicyId          = engineResult.MatchedPolicyId,

@@ -360,7 +360,7 @@ public sealed class DocumentService
 
         var version = new DocumentVersion
         {
-            Id            = Guid.NewGuid(),
+            Id            = Guid.CreateVersion7(),
             DocumentId    = documentId,
             TenantId      = doc.TenantId,
             VersionNumber = doc.VersionCount + 1,

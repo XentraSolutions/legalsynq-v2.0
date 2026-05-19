@@ -14,7 +14,7 @@ public class SubscriptionReconciliationServiceTests
         ProviderSubscriptionStatus? providerStatus = null)
         => new(
             PaymentProviderType.Stripe,
-            "evt_" + Guid.NewGuid().ToString("N")[..8],
+            "evt_" + Guid.CreateVersion7().ToString("N")[..8],
             "evt." + kind,
             kind,
             null, null, null, null, null, null, null, null,
@@ -75,7 +75,7 @@ public class SubscriptionReconciliationServiceTests
     public async Task Reconcile_unknown_subscription_returns_false()
     {
         using var host = new InvoicingTestHost();
-        var ev = MakeEvent(Guid.NewGuid(), NormalizedProviderEventKind.SubscriptionDeleted);
+        var ev = MakeEvent(Guid.CreateVersion7(), NormalizedProviderEventKind.SubscriptionDeleted);
         var changed = await host.Reconciliation.ReconcileFromEventAsync(ev, default);
         changed.Should().BeFalse();
     }

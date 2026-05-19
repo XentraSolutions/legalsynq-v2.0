@@ -56,7 +56,7 @@ public class Application : AuditableEntity
         var now = DateTime.UtcNow;
         return new Application
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             TenantId          = tenantId,
             ApplicationNumber = applicationNumber,
             ApplicantFirstName = applicantFirstName.Trim(),

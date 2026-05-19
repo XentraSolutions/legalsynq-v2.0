@@ -12,7 +12,7 @@ public class DbContextTests
     public void CommerceDbContext_can_be_constructed_with_inmemory_options()
     {
         var options = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"commerce-test-{Guid.NewGuid():N}")
+            .UseInMemoryDatabase($"commerce-test-{Guid.CreateVersion7():N}")
             .Options;
 
         using var ctx = new CommerceDbContext(options);
@@ -25,7 +25,7 @@ public class DbContextTests
     public void CommerceDbContext_model_includes_schema_marker_entity()
     {
         var options = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"commerce-test-{Guid.NewGuid():N}")
+            .UseInMemoryDatabase($"commerce-test-{Guid.CreateVersion7():N}")
             .Options;
 
         using var ctx = new CommerceDbContext(options);

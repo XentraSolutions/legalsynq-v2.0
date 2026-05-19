@@ -187,7 +187,7 @@ public class Tenant
         var now = DateTime.UtcNow;
         return new Tenant
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             Code            = code.Trim().ToLowerInvariant(),
             DisplayName     = displayName.Trim(),
             LegalName       = legalName?.Trim(),

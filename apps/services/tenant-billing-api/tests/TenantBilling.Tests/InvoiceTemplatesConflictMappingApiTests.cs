@@ -60,7 +60,7 @@ public class InvoiceTemplatesConflictMappingApiTests : IDisposable
     {
         var client = _factory.CreateClient();
         var resp = await client.PutAsJsonAsync(
-            $"/api/invoice-templates/platform/{Guid.NewGuid()}", UpdateBody());
+            $"/api/invoice-templates/platform/{Guid.CreateVersion7()}", UpdateBody());
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
     }
 
@@ -69,7 +69,7 @@ public class InvoiceTemplatesConflictMappingApiTests : IDisposable
     {
         var client = _factory.CreateClient();
         var resp = await client.PostAsync(
-            $"/api/invoice-templates/platform/{Guid.NewGuid()}/make-default",
+            $"/api/invoice-templates/platform/{Guid.CreateVersion7()}/make-default",
             content: null);
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
     }
@@ -88,7 +88,7 @@ public class InvoiceTemplatesConflictMappingApiTests : IDisposable
     {
         var client = _factory.CreateClientForTenant(TenantId);
         var resp = await client.PutAsJsonAsync(
-            $"/api/invoice-templates/tenant/{Guid.NewGuid()}", UpdateBody());
+            $"/api/invoice-templates/tenant/{Guid.CreateVersion7()}", UpdateBody());
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
     }
 
@@ -97,7 +97,7 @@ public class InvoiceTemplatesConflictMappingApiTests : IDisposable
     {
         var client = _factory.CreateClientForTenant(TenantId);
         var resp = await client.PostAsync(
-            $"/api/invoice-templates/tenant/{Guid.NewGuid()}/make-default",
+            $"/api/invoice-templates/tenant/{Guid.CreateVersion7()}/make-default",
             content: null);
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
     }
@@ -112,7 +112,7 @@ public class InvoiceTemplatesConflictMappingApiTests : IDisposable
     /// </summary>
     private sealed class ConflictThrowingFactory : WebApplicationFactory<Program>
     {
-        private readonly string _databaseName = $"tenant-billing-conflict-{Guid.NewGuid():N}";
+        private readonly string _databaseName = $"tenant-billing-conflict-{Guid.CreateVersion7():N}";
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {

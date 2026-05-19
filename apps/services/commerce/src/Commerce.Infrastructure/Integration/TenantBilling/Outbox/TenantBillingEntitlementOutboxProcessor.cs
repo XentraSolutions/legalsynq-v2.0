@@ -160,7 +160,7 @@ internal sealed class TenantBillingEntitlementOutboxProcessor
             return OneOutcome.Lost;
         }
 
-        var lockId = Guid.NewGuid();
+        var lockId = Guid.CreateVersion7();
         row.MarkProcessing(lockId, nowUtc);
         try
         {

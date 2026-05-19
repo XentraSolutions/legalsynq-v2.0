@@ -24,7 +24,7 @@ public sealed class BundleItem : Entity<Guid>
 
         return new BundleItem
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BundleId = bundleId,
             ProductId = productId,
             PlanId = planId,

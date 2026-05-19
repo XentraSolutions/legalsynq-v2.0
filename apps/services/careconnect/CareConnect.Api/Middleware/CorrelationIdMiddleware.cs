@@ -32,7 +32,7 @@ public class CorrelationIdMiddleware
             && incoming.Length <= MaxLength
             && SafePattern.IsMatch(incoming)
                 ? incoming
-                : Guid.NewGuid().ToString();
+                : Guid.CreateVersion7().ToString();
 
         context.Items["CorrelationId"] = correlationId;
         context.Response.OnStarting(() =>

@@ -72,7 +72,7 @@ public class InviteDeliveryErrorTests
                     .ToList();
                 foreach (var d in dbDescriptors) services.Remove(d);
 
-                var dbName = "identity-test-" + Guid.NewGuid();
+                var dbName = "identity-test-" + Guid.CreateVersion7();
                 services.AddDbContext<IdentityDbContext>(opts =>
                     opts.UseInMemoryDatabase(dbName));
 

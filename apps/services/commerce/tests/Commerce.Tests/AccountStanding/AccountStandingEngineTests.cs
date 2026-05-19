@@ -20,11 +20,11 @@ public class AccountStandingEngineTests
         // Subscription.Create starts in Active (no trial dates) or Trialing (trial dates).
         if (desired == SubscriptionStatus.Trialing)
         {
-            return Subscription.Create(Guid.NewGuid(), "S-" + Guid.NewGuid().ToString("N")[..6],
+            return Subscription.Create(Guid.CreateVersion7(), "S-" + Guid.CreateVersion7().ToString("N")[..6],
                 Now, Now, Now.AddMonths(1), Now, Now.AddDays(7), Now);
         }
 
-        var s = Subscription.Create(Guid.NewGuid(), "S-" + Guid.NewGuid().ToString("N")[..6],
+        var s = Subscription.Create(Guid.CreateVersion7(), "S-" + Guid.CreateVersion7().ToString("N")[..6],
             Now, Now, Now.AddMonths(1), null, null, Now);
         switch (desired)
         {
@@ -38,7 +38,7 @@ public class AccountStandingEngineTests
 
     private static Invoice MakeOpenInvoice(long amount, DateTime? dueDateUtc)
     {
-        var inv = Invoice.Create(Guid.NewGuid(), null, "INV-" + Guid.NewGuid().ToString("N")[..6],
+        var inv = Invoice.Create(Guid.CreateVersion7(), null, "INV-" + Guid.CreateVersion7().ToString("N")[..6],
             "USD", Now.AddDays(-30), dueDateUtc, InvoiceStatus.Open, Now.AddDays(-30));
         var line = InvoiceLine.Create(inv.Id, null, "Line", 1, amount, "USD", null, null, Now.AddDays(-30));
         inv.Recalculate(new[] { line }, Now.AddDays(-30));
@@ -130,7 +130,7 @@ public class AccountStandingEngineTests
     [Fact]
     public void Open_invoice_with_zero_due_does_not_cause_past_due()
     {
-        var inv = Invoice.Create(Guid.NewGuid(), null, "INV-2", "USD", Now.AddDays(-30),
+        var inv = Invoice.Create(Guid.CreateVersion7(), null, "INV-2", "USD", Now.AddDays(-30),
             Now.AddDays(-10), InvoiceStatus.Open, Now.AddDays(-30));
         // Zero-amount line keeps AmountDueMinor at 0.
         var line = InvoiceLine.Create(inv.Id, null, "free", 1, 0, "USD", null, null, Now.AddDays(-30));

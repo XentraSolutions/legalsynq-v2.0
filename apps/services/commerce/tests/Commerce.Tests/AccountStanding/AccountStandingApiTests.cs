@@ -15,7 +15,7 @@ public class AccountStandingApiTests : IClassFixture<CommerceWebApplicationFacto
 
     private async Task<Guid> CreateActiveAccountAsync(HttpClient client)
     {
-        var name = "Acme " + Guid.NewGuid().ToString("N")[..6];
+        var name = "Acme " + Guid.CreateVersion7().ToString("N")[..6];
         var resp = await client.PostAsJsonAsync("/api/commerce/billing-accounts",
             new CreateBillingAccountRequest(name, null, "USD"));
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -47,7 +47,7 @@ public class AccountStandingApiTests : IClassFixture<CommerceWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var resp = await client.GetAsync(
-            $"/api/commerce/billing-accounts/{Guid.NewGuid()}/account-standing");
+            $"/api/commerce/billing-accounts/{Guid.CreateVersion7()}/account-standing");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -56,7 +56,7 @@ public class AccountStandingApiTests : IClassFixture<CommerceWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var resp = await client.PostAsync(
-            $"/api/commerce/billing-accounts/{Guid.NewGuid()}/account-standing/evaluate", null);
+            $"/api/commerce/billing-accounts/{Guid.CreateVersion7()}/account-standing/evaluate", null);
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }

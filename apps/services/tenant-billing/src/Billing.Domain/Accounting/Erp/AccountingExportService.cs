@@ -100,10 +100,10 @@ public sealed class AccountingExportService : IAccountingExportService
         // as the existing slot owner) or blocks on the gap lock
         // until the first writer commits.
         var nowUtc = _time.GetUtcNow().UtcDateTime;
-        var correlationId = Guid.NewGuid().ToString("N");
+        var correlationId = Guid.CreateVersion7().ToString("N");
         var export = new AccountingExport
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Provider = providerName,
             ExportType = exportType,

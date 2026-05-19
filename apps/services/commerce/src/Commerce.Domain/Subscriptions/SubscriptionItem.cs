@@ -41,7 +41,7 @@ public sealed class SubscriptionItem : Entity<Guid>
 
         return new SubscriptionItem
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             SubscriptionId = subscriptionId,
             PlanId = planId,
             PriceId = priceId,

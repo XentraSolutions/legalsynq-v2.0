@@ -55,7 +55,7 @@ public sealed class PaymentWebhookService : IPaymentWebhookService
         {
             // Record the bad payload; return Failed.
             var malformed = PaymentProviderEventLog.Receive(
-                provider, $"unparsable-{Guid.NewGuid():N}", "unknown", rawBody, _clock.UtcNow);
+                provider, $"unparsable-{Guid.CreateVersion7():N}", "unknown", rawBody, _clock.UtcNow);
             malformed.MarkFailed("Failed to parse webhook payload: " + ex.GetType().Name, _clock.UtcNow);
             _db.PaymentProviderEventLogs.Add(malformed);
             await _db.SaveChangesAsync(ct);
@@ -66,7 +66,7 @@ public sealed class PaymentWebhookService : IPaymentWebhookService
         if (string.IsNullOrWhiteSpace(normalized.ProviderEventId))
         {
             var bad = PaymentProviderEventLog.Receive(
-                provider, $"missing-id-{Guid.NewGuid():N}", normalized.EventType, rawBody, _clock.UtcNow);
+                provider, $"missing-id-{Guid.CreateVersion7():N}", normalized.EventType, rawBody, _clock.UtcNow);
             bad.MarkFailed("Webhook payload is missing 'id'.", _clock.UtcNow);
             _db.PaymentProviderEventLogs.Add(bad);
             await _db.SaveChangesAsync(ct);

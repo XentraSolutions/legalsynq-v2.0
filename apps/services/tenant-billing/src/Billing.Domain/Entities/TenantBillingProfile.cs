@@ -86,7 +86,7 @@ public sealed class TenantBillingProfile
 
         return new TenantBillingProfile
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             TenantId         = tenantId,
             BillingAccountId = billingAccountId,
             HostPlatformKey  = NormalizeOptional(hostPlatformKey, 100),

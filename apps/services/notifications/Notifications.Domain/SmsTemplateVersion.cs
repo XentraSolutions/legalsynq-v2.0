@@ -12,7 +12,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsTemplateVersion
 {
-    public Guid     Id                   { get; set; } = Guid.NewGuid();
+    public Guid     Id                   { get; set; } = Guid.CreateVersion7();
     public Guid     TemplateId           { get; set; }
     public int      VersionNumber        { get; set; } = 1;
     public string   TemplateBody         { get; set; } = string.Empty;

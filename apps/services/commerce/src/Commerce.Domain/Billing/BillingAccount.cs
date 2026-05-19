@@ -24,7 +24,7 @@ public sealed class BillingAccount : Entity<Guid>
     {
         return new BillingAccount
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             AccountNumber = accountNumber.Trim(),
             DisplayName = displayName.Trim(),
             LegalName = string.IsNullOrWhiteSpace(legalName) ? null : legalName.Trim(),

@@ -50,7 +50,7 @@ public class PaymentNotesUpdateTests
     public async Task Update_notes_sets_value_on_Recorded_payment_and_preserves_all_other_fields()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 100m,
@@ -81,7 +81,7 @@ public class PaymentNotesUpdateTests
     public async Task Update_notes_trims_whitespace_around_value()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 50m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 50m);
@@ -98,7 +98,7 @@ public class PaymentNotesUpdateTests
     public async Task Update_notes_clears_value_for_null_empty_or_whitespace_input(string? input)
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 50m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 50m, notes: "existing");
@@ -112,7 +112,7 @@ public class PaymentNotesUpdateTests
     public async Task Update_notes_at_max_length_succeeds()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 50m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 50m);
@@ -128,7 +128,7 @@ public class PaymentNotesUpdateTests
     public async Task Update_notes_editable_on_Voided_payment()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 100m, notes: "original");
@@ -151,7 +151,7 @@ public class PaymentNotesUpdateTests
     public async Task Update_notes_oversize_throws_InvalidPaymentNotesException()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 50m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 50m);
@@ -168,7 +168,7 @@ public class PaymentNotesUpdateTests
     {
         var (svc, _, _, _) = Build();
         await Assert.ThrowsAsync<ArgumentException>(
-            () => svc.UpdateNotesAsync(Guid.Empty, Guid.NewGuid(), "x"));
+            () => svc.UpdateNotesAsync(Guid.Empty, Guid.CreateVersion7(), "x"));
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public class PaymentNotesUpdateTests
     {
         var (svc, _, _, _) = Build();
         await Assert.ThrowsAsync<ArgumentException>(
-            () => svc.UpdateNotesAsync(Guid.NewGuid(), Guid.Empty, "x"));
+            () => svc.UpdateNotesAsync(Guid.CreateVersion7(), Guid.Empty, "x"));
     }
 
     // ---- 404: not found / tenant isolation -------------------------
@@ -186,15 +186,15 @@ public class PaymentNotesUpdateTests
     {
         var (svc, _, _, _) = Build();
         await Assert.ThrowsAsync<PaymentNotFoundException>(
-            () => svc.UpdateNotesAsync(Guid.NewGuid(), Guid.NewGuid(), "x"));
+            () => svc.UpdateNotesAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), "x"));
     }
 
     [Fact]
     public async Task Update_notes_cross_tenant_probe_surfaces_as_PaymentNotFoundException()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var customerA = TestData.SeedCustomer(customers, tenantA);
         var inv = TestData.SeedInvoice(invoices, tenantA, customerA.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenantA, inv.Id, 100m, notes: "tenant-A note");
@@ -215,7 +215,7 @@ public class PaymentNotesUpdateTests
     public async Task Update_notes_does_not_change_invoice_paidSum_or_status()
     {
         var (svc, invoices, payments, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 60m);

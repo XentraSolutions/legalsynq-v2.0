@@ -67,7 +67,7 @@ public class Case : AuditableEntity
         var now = DateTime.UtcNow;
         return new Case
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             TenantId          = tenantId,
             OrgId             = orgId,
             CaseNumber        = caseNumber.Trim(),

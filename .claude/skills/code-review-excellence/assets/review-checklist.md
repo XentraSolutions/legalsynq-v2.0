@@ -58,6 +58,7 @@ Quick reference checklist for code reviews.
 - [ ] Functions do one thing
 - [ ] Complex code commented
 - [ ] No magic numbers
+- [ ] `Guid.CreateVersion7()` used instead of `Guid.NewGuid()` for all entity IDs and PKs
 
 ## Documentation (2 min)
 

@@ -26,7 +26,7 @@ public class InvoiceCreationDefaultDueDaysApiTests : IClassFixture<BillingWebApp
         var customers = scope.ServiceProvider.GetRequiredService<ICustomerRepository>();
         var c = new Customer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = "Acme",
             Email = "billing@acme.test",
@@ -54,7 +54,7 @@ public class InvoiceCreationDefaultDueDaysApiTests : IClassFixture<BillingWebApp
     [Fact]
     public async Task Create_OmittedDueDate_NoTemplate_400()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customerId = await SeedCustomerAsync(tenantId);
 
@@ -67,7 +67,7 @@ public class InvoiceCreationDefaultDueDaysApiTests : IClassFixture<BillingWebApp
     [Fact]
     public async Task Create_OmittedDueDate_AppliesTemplateDefault()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customerId = await SeedCustomerAsync(tenantId);
 
@@ -96,7 +96,7 @@ public class InvoiceCreationDefaultDueDaysApiTests : IClassFixture<BillingWebApp
     [Fact]
     public async Task Create_ProvidedDueDate_OverridesTemplateDefault()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customerId = await SeedCustomerAsync(tenantId);
 
@@ -122,8 +122,8 @@ public class InvoiceCreationDefaultDueDaysApiTests : IClassFixture<BillingWebApp
     [Fact]
     public async Task Create_TenantA_DoesNotApply_TenantBsDefault()
     {
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var clientA = _factory.CreateClientForTenant(tenantA);
         var clientB = _factory.CreateClientForTenant(tenantB);
         var customerB = await SeedCustomerAsync(tenantB);

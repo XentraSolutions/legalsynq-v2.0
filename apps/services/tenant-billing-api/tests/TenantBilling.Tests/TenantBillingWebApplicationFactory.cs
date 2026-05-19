@@ -14,7 +14,7 @@ namespace TenantBilling.Tests;
 /// </summary>
 public sealed class TenantBillingWebApplicationFactory : WebApplicationFactory<Program>
 {
-    private readonly string _databaseName = $"tenant-billing-tests-{Guid.NewGuid():N}";
+    private readonly string _databaseName = $"tenant-billing-tests-{Guid.CreateVersion7():N}";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

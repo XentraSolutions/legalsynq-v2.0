@@ -30,7 +30,7 @@ public sealed class Plan : Entity<Guid>
     {
         return new Plan
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProductId = productId,
             Key = CatalogKey.Normalize(key),
             Name = name.Trim(),

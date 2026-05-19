@@ -33,7 +33,7 @@ public class SubscriptionServiceAutoPublishTriggerTests
         public TriggerHost(RecordingPublishQueue? queue = null)
         {
             var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-                .UseInMemoryDatabase($"sub-trigger-{Guid.NewGuid()}")
+                .UseInMemoryDatabase($"sub-trigger-{Guid.CreateVersion7()}")
                 .Options;
             Db = new CommerceDbContext(opts);
 

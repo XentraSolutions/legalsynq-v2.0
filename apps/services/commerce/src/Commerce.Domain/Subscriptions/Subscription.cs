@@ -42,7 +42,7 @@ public sealed class Subscription : Entity<Guid>
 
         return new Subscription
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             SubscriptionNumber = subscriptionNumber.Trim(),
             Status = status,

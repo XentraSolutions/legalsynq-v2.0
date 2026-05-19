@@ -20,7 +20,7 @@ public class ParticipantAccessTests
         var conversation = TestHelpers.CreateTestConversation();
         await conversationRepo.AddAsync(conversation);
 
-        var nonParticipantUserId = Guid.NewGuid();
+        var nonParticipantUserId = Guid.CreateVersion7();
 
         var attachmentRepo = TestHelpers.CreateAttachmentRepo(db);
         var service = new ConversationService(

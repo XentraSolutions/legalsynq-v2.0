@@ -58,7 +58,7 @@ public class LienTaskTemplate : AuditableEntity
         var now = DateTime.UtcNow;
         return new LienTaskTemplate
         {
-            Id                        = Guid.NewGuid(),
+            Id                        = Guid.CreateVersion7(),
             TenantId                  = tenantId,
             ProductCode               = "SYNQ_LIENS",
             Name                      = name.Trim(),

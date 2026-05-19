@@ -58,7 +58,7 @@ public sealed class TenantBillingEntitlementPublishOutboxRow
 
         return new TenantBillingEntitlementPublishOutboxRow
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             TriggerSource = triggerSource,
             Status = TenantBillingEntitlementPublishOutboxStatus.Pending,

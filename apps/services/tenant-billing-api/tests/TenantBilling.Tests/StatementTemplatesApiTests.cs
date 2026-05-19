@@ -39,7 +39,7 @@ public class StatementTemplatesApiTests : IClassFixture<TenantBillingWebApplicat
     [Fact]
     public async Task Create_AssignsTenantOwnership_AndAutoDefaultsFirstActive()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenant);
 
         var resp = await client.PostAsJsonAsync("/api/statement-templates",
@@ -56,7 +56,7 @@ public class StatementTemplatesApiTests : IClassFixture<TenantBillingWebApplicat
     [Fact]
     public async Task TenantA_CannotSeeOrMutateTenantBsTemplates()
     {
-        var a = Guid.NewGuid(); var b = Guid.NewGuid();
+        var a = Guid.CreateVersion7(); var b = Guid.CreateVersion7();
         var ca = _factory.CreateClientForTenant(a);
         var cb = _factory.CreateClientForTenant(b);
 
@@ -84,7 +84,7 @@ public class StatementTemplatesApiTests : IClassFixture<TenantBillingWebApplicat
     [Fact]
     public async Task MakeDefault_Succeeds_AndDemotesPrior()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenant);
 
         var a = await (await client.PostAsJsonAsync("/api/statement-templates",
@@ -111,7 +111,7 @@ public class StatementTemplatesApiTests : IClassFixture<TenantBillingWebApplicat
     [Fact]
     public async Task Update_PartialPatch_OnlyChangesSuppliedFields()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var created = await (await client.PostAsJsonAsync("/api/statement-templates",
             Sample(status: StatementTemplateStatus.Draft))).Content
             .ReadFromJsonAsync<StatementTemplateResponse>();
@@ -130,7 +130,7 @@ public class StatementTemplatesApiTests : IClassFixture<TenantBillingWebApplicat
     [Fact]
     public async Task Update_Retired_400()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var created = await (await client.PostAsJsonAsync("/api/statement-templates",
             Sample(status: StatementTemplateStatus.Active))).Content
             .ReadFromJsonAsync<StatementTemplateResponse>();
@@ -148,7 +148,7 @@ public class StatementTemplatesApiTests : IClassFixture<TenantBillingWebApplicat
         // RetiredStatementTemplateCannotBeDefaultException derives
         // from InvalidOperationException (not the conflict subtype),
         // so the controller maps it to 400.
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var created = await (await client.PostAsJsonAsync("/api/statement-templates",
             Sample(status: StatementTemplateStatus.Active))).Content
             .ReadFromJsonAsync<StatementTemplateResponse>();
@@ -162,7 +162,7 @@ public class StatementTemplatesApiTests : IClassFixture<TenantBillingWebApplicat
     [Fact]
     public async Task Create_BadAccentColor_400()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var bad = Sample();
         bad.AccentColor = "not-a-color";
         var resp = await client.PostAsJsonAsync("/api/statement-templates", bad);

@@ -28,10 +28,10 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
 
         var customer = new Customer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = "Acme Co",
-            Email = $"billing+{Guid.NewGuid():N}@acme.test",
+            Email = $"billing+{Guid.CreateVersion7():N}@acme.test",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -39,7 +39,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
 
         var invoice = new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             CustomerId = customer.Id,
             InvoiceNumber = "INV-RND-1",
@@ -56,7 +56,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
         };
         invoice.LineItems.Add(new InvoiceLineItem
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             InvoiceId = invoice.Id,
             Description = "Consulting",
             Quantity = 2,
@@ -71,7 +71,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     [Fact]
     public async Task GetRender_ReturnsJsonDocument()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (_, invoiceId) = await SeedSimpleInvoiceAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -95,7 +95,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     [Fact]
     public async Task GetRenderHtml_ReturnsTextHtml()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (_, invoiceId) = await SeedSimpleInvoiceAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -119,10 +119,10 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
 
         var customer = new Customer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = "Acme Co",
-            Email = $"billing+{Guid.NewGuid():N}@acme.test",
+            Email = $"billing+{Guid.CreateVersion7():N}@acme.test",
             BillingAddressLine1 = "100 Main St",
             BillingAddressLine2 = "Suite 4",
             BillingCity = "Springfield",
@@ -136,7 +136,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
 
         var invoice = new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             CustomerId = customer.Id,
             InvoiceNumber = "INV-RND-2",
@@ -169,7 +169,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
         };
         invoice.LineItems.Add(new InvoiceLineItem
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             InvoiceId = invoice.Id,
             Description = "Consulting",
             Quantity = 2,
@@ -184,7 +184,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     [Fact]
     public async Task GetRender_JsonIncludesCustomerAddressAndIssuer()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var invoiceId = await SeedInvoiceWithAddressAndIssuerAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -208,7 +208,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     [Fact]
     public async Task GetRenderHtml_IncludesFromAndBillToAddressBlocks()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var invoiceId = await SeedInvoiceWithAddressAndIssuerAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -227,10 +227,10 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     [Fact]
     public async Task GetRender_MissingInvoice_404()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
 
-        var resp = await client.GetAsync($"/api/invoices/{Guid.NewGuid()}/render");
+        var resp = await client.GetAsync($"/api/invoices/{Guid.CreateVersion7()}/render");
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
@@ -238,10 +238,10 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     [Fact]
     public async Task GetRenderHtml_MissingInvoice_404()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
 
-        var resp = await client.GetAsync($"/api/invoices/{Guid.NewGuid()}/render/html");
+        var resp = await client.GetAsync($"/api/invoices/{Guid.CreateVersion7()}/render/html");
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
@@ -249,8 +249,8 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     [Fact]
     public async Task GetRender_CrossTenant_404()
     {
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var (_, invoiceId) = await SeedSimpleInvoiceAsync(tenantA);
         var clientB = _factory.CreateClientForTenant(tenantB);
 
@@ -263,7 +263,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     public async Task GetRender_MissingTenantHeader_400()
     {
         var rawClient = _factory.CreateClient();
-        var resp = await rawClient.GetAsync($"/api/invoices/{Guid.NewGuid()}/render");
+        var resp = await rawClient.GetAsync($"/api/invoices/{Guid.CreateVersion7()}/render");
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -272,7 +272,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     public async Task GetRenderHtml_MissingTenantHeader_400()
     {
         var rawClient = _factory.CreateClient();
-        var resp = await rawClient.GetAsync($"/api/invoices/{Guid.NewGuid()}/render/html");
+        var resp = await rawClient.GetAsync($"/api/invoices/{Guid.CreateVersion7()}/render/html");
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -280,7 +280,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     [Fact]
     public async Task GetRender_EmptyGuid_400()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var resp = await client.GetAsync($"/api/invoices/{Guid.Empty}/render");
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
@@ -289,7 +289,7 @@ public class InvoiceRenderApiTests : IClassFixture<BillingWebApplicationFactory>
     [Fact]
     public async Task GetRenderHtml_EmptyGuid_400()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var resp = await client.GetAsync($"/api/invoices/{Guid.Empty}/render/html");
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);

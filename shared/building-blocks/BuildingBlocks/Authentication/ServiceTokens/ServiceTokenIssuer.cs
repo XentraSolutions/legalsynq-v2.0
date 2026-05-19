@@ -37,7 +37,7 @@ public sealed class ServiceTokenIssuer : IServiceTokenIssuer
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub,  $"service:{_options.ServiceName}"),
-            new(JwtRegisteredClaimNames.Jti,  Guid.NewGuid().ToString("N")),
+            new(JwtRegisteredClaimNames.Jti,  Guid.CreateVersion7().ToString("N")),
             new(ServiceTokenAuthenticationDefaults.TenantClaim, tenantId),
             // Emit the platform-standard "tenant_id" claim too so existing
             // tenant resolvers (CurrentRequestContext, ClaimsTenantProvider,

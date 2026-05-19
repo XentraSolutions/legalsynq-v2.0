@@ -23,8 +23,8 @@ namespace CareConnect.Tests.Application;
 
 public class ReferralPerformanceCalculatorTests
 {
-    private static readonly Guid ProviderId1 = Guid.NewGuid();
-    private static readonly Guid ProviderId2 = Guid.NewGuid();
+    private static readonly Guid ProviderId1 = Guid.CreateVersion7();
+    private static readonly Guid ProviderId2 = Guid.CreateVersion7();
     private static readonly DateTime Base = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ public class ReferralPerformanceCalculatorTests
             : null;
 
         return new RawReferralRecord(
-            Id:           Guid.NewGuid(),
+            Id:           Guid.CreateVersion7(),
             CreatedAtUtc: created,
             Status:       status,
             ProviderId:   providerId,
@@ -144,7 +144,7 @@ public class ReferralPerformanceCalculatorTests
 
         // Corrupt: AcceptedAt is before CreatedAt → TTA < 0
         var corruptRecord = new RawReferralRecord(
-            Id:           Guid.NewGuid(),
+            Id:           Guid.CreateVersion7(),
             CreatedAtUtc: Base.AddHours(-10),
             Status:       "Accepted",
             ProviderId:   ProviderId1,
@@ -167,10 +167,10 @@ public class ReferralPerformanceCalculatorTests
 
         var newReferrals = new List<(Guid, DateTime)>
         {
-            (Guid.NewGuid(), nowUtc.AddMinutes(-30)),   // < 1h  → lt1h
-            (Guid.NewGuid(), nowUtc.AddHours(-12)),     // 12h   → h1to24
-            (Guid.NewGuid(), nowUtc.AddHours(-36)),     // 36h   → d1to3
-            (Guid.NewGuid(), nowUtc.AddHours(-100)),    // 100h  → gt3d
+            (Guid.CreateVersion7(), nowUtc.AddMinutes(-30)),   // < 1h  → lt1h
+            (Guid.CreateVersion7(), nowUtc.AddHours(-12)),     // 12h   → h1to24
+            (Guid.CreateVersion7(), nowUtc.AddHours(-36)),     // 36h   → d1to3
+            (Guid.CreateVersion7(), nowUtc.AddHours(-100)),    // 100h  → gt3d
         };
 
         var aging = ReferralPerformanceCalculator.ComputeAging(newReferrals, nowUtc);

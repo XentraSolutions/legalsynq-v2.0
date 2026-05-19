@@ -88,7 +88,7 @@ public sealed class MonitoringEntityBootstrap : IHostedService
         foreach (var seed in toAdd)
         {
             var entity = new MonitoredEntity(
-                id:            Guid.NewGuid(),
+                id:            Guid.CreateVersion7(),
                 name:          seed.Name,
                 entityType:    seed.EntityType,
                 monitoringType: seed.MonitoringType,

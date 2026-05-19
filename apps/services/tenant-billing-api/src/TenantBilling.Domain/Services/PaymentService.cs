@@ -140,7 +140,7 @@ public sealed class PaymentService : IPaymentService
         var now = DateTime.UtcNow;
         var payment = new Payment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             InvoiceId = invoiceId,
             Amount = roundedAmount,

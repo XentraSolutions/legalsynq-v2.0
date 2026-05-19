@@ -24,7 +24,7 @@ public sealed class MockTemplateAssignmentRepository : ITemplateAssignmentReposi
 
     public Task<ReportTemplateAssignment> CreateAsync(ReportTemplateAssignment assignment, CancellationToken ct)
     {
-        if (assignment.Id == Guid.Empty) assignment.Id = Guid.NewGuid();
+        if (assignment.Id == Guid.Empty) assignment.Id = Guid.CreateVersion7();
         _assignments.Add(assignment);
         return Task.FromResult(assignment);
     }

@@ -45,7 +45,7 @@ public sealed class SmsGovernanceTenantAssignmentService : ISmsGovernanceTenantA
             var now = DateTime.UtcNow;
             var assignment = new SmsGovernanceTenantRulePackAssignment
             {
-                Id              = Guid.NewGuid(),
+                Id              = Guid.CreateVersion7(),
                 TenantId        = request.TenantId,
                 RulePackId      = request.RulePackId,
                 AssignmentState = SmsGovernanceTenantRulePackAssignment.AssignmentStates.Draft,
@@ -221,7 +221,7 @@ public sealed class SmsGovernanceTenantAssignmentService : ISmsGovernanceTenantA
             var now = DateTime.UtcNow;
             var overlay = new SmsGovernanceTenantOverlay
             {
-                Id           = Guid.NewGuid(),
+                Id           = Guid.CreateVersion7(),
                 TenantId     = request.TenantId,
                 RulePackId   = request.RulePackId,
                 RuleId       = request.RuleId,
@@ -367,7 +367,7 @@ public sealed class SmsGovernanceTenantAssignmentService : ISmsGovernanceTenantA
     {
         _db.SmsGovernanceTenantAssignmentAuditEvents.Add(new SmsGovernanceTenantAssignmentAuditEvent
         {
-            Id            = Guid.NewGuid(),
+            Id            = Guid.CreateVersion7(),
             TenantId      = tenantId,
             AssignmentId  = assignmentId,
             OverlayId     = overlayId,

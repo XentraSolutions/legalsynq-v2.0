@@ -83,7 +83,7 @@ Documents, and Reports services.
 **Assignment rule:**
 1. If the incoming request carries a non-empty `X-Correlation-Id`, use it (sanitised: max 100
    characters, regex `^[a-zA-Z0-9\-_]+$`; fall through to new GUID on invalid input).
-2. Otherwise assign a new `Guid.NewGuid()`.
+2. Otherwise assign a new `Guid.CreateVersion7()`.
 3. Store in `HttpContext.Items["CorrelationId"]`.
 4. Echo the resolved value in the `X-Correlation-Id` response header.
 

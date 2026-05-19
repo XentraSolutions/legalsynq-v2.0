@@ -90,7 +90,7 @@ public class Organization
         var now = DateTime.UtcNow;
         return new Organization
         {
-            Id                 = Guid.NewGuid(),
+            Id                 = Guid.CreateVersion7(),
             TenantId           = tenantId,
             Name               = name.Trim(),
             DisplayName        = displayName?.Trim(),

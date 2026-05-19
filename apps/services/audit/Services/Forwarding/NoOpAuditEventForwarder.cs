@@ -138,7 +138,7 @@ public sealed class NoOpAuditEventForwarder : IAuditEventForwarder
 
         var envelope = new IntegrationEvent<AuditRecordIntegrationEvent>
         {
-            EventId        = Guid.NewGuid().ToString(),
+            EventId        = Guid.CreateVersion7().ToString(),
             EventType      = eventType,
             SchemaVersion  = "1",
             Payload        = payload,

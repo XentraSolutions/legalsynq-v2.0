@@ -39,7 +39,7 @@ public class TenantBillingOutboxAdditionalCoverageTests
     private sealed class ThrowingOutbox : ITenantBillingEntitlementOutbox
     {
         public Task<Guid> EnqueueAsync(Guid billingAccountId, string triggerSource, string? correlationId, CancellationToken ct)
-            => Task.FromResult(Guid.NewGuid());
+            => Task.FromResult(Guid.CreateVersion7());
         public Task<TenantBillingEntitlementOutboxCounts> GetCountsAsync(CancellationToken ct)
             => throw new InvalidOperationException("boom");
     }
@@ -59,12 +59,12 @@ public class TenantBillingOutboxAdditionalCoverageTests
         var monitor = Options.Create(raw);
         var clock = new StubClock();
         var db = new CommerceDbContext(new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"outbox-cap-{Guid.NewGuid()}").Options);
+            .UseInMemoryDatabase($"outbox-cap-{Guid.CreateVersion7()}").Options);
         var metrics = new TenantBillingPublisherMetrics();
         var publisher = new StubFailingPublisher();
 
         var row = TenantBillingEntitlementPublishOutboxRow.Create(
-            Guid.NewGuid(), "subscription-created", null, 50, clock.UtcNow);
+            Guid.CreateVersion7(), "subscription-created", null, 50, clock.UtcNow);
         // Burn 11 attempts so the next failure schedules with min(12, 10) → 10×.
         for (int i = 0; i < 11; i++)
         {
@@ -99,18 +99,18 @@ public class TenantBillingOutboxAdditionalCoverageTests
         var breaker = new TenantBillingPublisherCircuitBreaker(monitor, () => DateTimeOffset.UtcNow);
         var clock = new StubClock();
         var db = new CommerceDbContext(new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"diag-{Guid.NewGuid()}").Options);
+            .UseInMemoryDatabase($"diag-{Guid.CreateVersion7()}").Options);
         var metrics = new TenantBillingPublisherMetrics();
         var outbox = new EfTenantBillingEntitlementOutbox(
             db, clock, Options.Create(raw), metrics,
             NullLogger<EfTenantBillingEntitlementOutbox>.Instance);
 
         // Seed 3 pending and 1 abandoned to assert grouped counts.
-        await outbox.EnqueueAsync(Guid.NewGuid(), "t1", null, CancellationToken.None);
-        await outbox.EnqueueAsync(Guid.NewGuid(), "t2", null, CancellationToken.None);
-        await outbox.EnqueueAsync(Guid.NewGuid(), "t3", null, CancellationToken.None);
+        await outbox.EnqueueAsync(Guid.CreateVersion7(), "t1", null, CancellationToken.None);
+        await outbox.EnqueueAsync(Guid.CreateVersion7(), "t2", null, CancellationToken.None);
+        await outbox.EnqueueAsync(Guid.CreateVersion7(), "t3", null, CancellationToken.None);
         var abandoned = TenantBillingEntitlementPublishOutboxRow.Create(
-            Guid.NewGuid(), "t4", null, 1, clock.UtcNow);
+            Guid.CreateVersion7(), "t4", null, 1, clock.UtcNow);
         abandoned.MarkAbandoned("failed", "transport-error", 502, null, clock.UtcNow);
         db.Add(abandoned);
         await db.SaveChangesAsync();

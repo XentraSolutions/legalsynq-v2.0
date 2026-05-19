@@ -43,7 +43,7 @@ public sealed class InvoiceTransitionTests
     [Fact]
     public async Task Draft_to_Issued_dispatches_to_IssueAsync_and_returns_previous_status()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var invoice = TestData.SeedInvoice(invoices, tenantId, customer.Id, totalAmount: 100m);
@@ -58,7 +58,7 @@ public sealed class InvoiceTransitionTests
     [Fact]
     public async Task Issued_to_Voided_dispatches_to_VoidAsync()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var invoice = TestData.SeedInvoice(invoices, tenantId, customer.Id, 100m, status: InvoiceStatus.Issued);
@@ -73,7 +73,7 @@ public sealed class InvoiceTransitionTests
     [Fact]
     public async Task Issued_to_Overdue_when_due_date_passed()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var pastDue = DateTime.UtcNow.AddDays(-10);
@@ -91,14 +91,14 @@ public sealed class InvoiceTransitionTests
     [Fact]
     public async Task Target_Paid_succeeds_when_payments_cover_total()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var invoice = TestData.SeedInvoice(invoices, tenantId, customer.Id, 100m, status: InvoiceStatus.Issued);
         // Seed a covering payment directly so ReevaluateAsync lands on Paid.
         invoice.Payments.Add(new Payment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             InvoiceId = invoice.Id,
             Amount = 100m,
@@ -122,7 +122,7 @@ public sealed class InvoiceTransitionTests
     [Fact]
     public async Task Paid_to_Issued_rejected_by_lifecycle_engine()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var invoice = TestData.SeedInvoice(invoices, tenantId, customer.Id, 100m, status: InvoiceStatus.Paid);
@@ -138,7 +138,7 @@ public sealed class InvoiceTransitionTests
     [Fact]
     public async Task Voided_to_anything_rejected_by_lifecycle_engine()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var invoice = TestData.SeedInvoice(invoices, tenantId, customer.Id, 100m, status: InvoiceStatus.Voided);
@@ -151,7 +151,7 @@ public sealed class InvoiceTransitionTests
     [Fact]
     public async Task Target_Paid_with_balance_above_zero_throws_without_mutating()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var invoice = TestData.SeedInvoice(invoices, tenantId, customer.Id, 100m, status: InvoiceStatus.Issued);
@@ -172,7 +172,7 @@ public sealed class InvoiceTransitionTests
         // Refunded / PartiallyRefunded are NOT exposed via this endpoint;
         // either the engine refuses the edge from the source state, or the
         // dispatcher's default branch refuses with InvalidInvoiceTransitionException.
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var invoice = TestData.SeedInvoice(invoices, tenantId, customer.Id, 100m, status: InvoiceStatus.Issued);
@@ -188,7 +188,7 @@ public sealed class InvoiceTransitionTests
     public async Task Empty_tenant_id_throws_ArgumentException()
     {
         var svc = NewService(out _, out _);
-        var act = async () => await svc.TransitionAsync(Guid.Empty, Guid.NewGuid(), InvoiceStatus.Issued, "x");
+        var act = async () => await svc.TransitionAsync(Guid.Empty, Guid.CreateVersion7(), InvoiceStatus.Issued, "x");
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
@@ -196,7 +196,7 @@ public sealed class InvoiceTransitionTests
     public async Task Empty_invoice_id_throws_ArgumentException()
     {
         var svc = NewService(out _, out _);
-        var act = async () => await svc.TransitionAsync(Guid.NewGuid(), Guid.Empty, InvoiceStatus.Issued, "x");
+        var act = async () => await svc.TransitionAsync(Guid.CreateVersion7(), Guid.Empty, InvoiceStatus.Issued, "x");
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
@@ -207,7 +207,7 @@ public sealed class InvoiceTransitionTests
     public async Task Blank_target_throws_ArgumentException(string? target)
     {
         var svc = NewService(out _, out _);
-        var act = async () => await svc.TransitionAsync(Guid.NewGuid(), Guid.NewGuid(), target!, "reason");
+        var act = async () => await svc.TransitionAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), target!, "reason");
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
@@ -217,7 +217,7 @@ public sealed class InvoiceTransitionTests
     [InlineData("   ")]
     public async Task Blank_reason_throws_ArgumentException(string? reason)
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var invoice = TestData.SeedInvoice(invoices, tenantId, customer.Id, 100m);
@@ -229,7 +229,7 @@ public sealed class InvoiceTransitionTests
     [Fact]
     public async Task Reason_over_1000_chars_throws_ArgumentException()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantId);
         var invoice = TestData.SeedInvoice(invoices, tenantId, customer.Id, 100m);
@@ -244,8 +244,8 @@ public sealed class InvoiceTransitionTests
     [Fact]
     public async Task Cross_tenant_probe_returns_null()
     {
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var svc = NewService(out var invoices, out var customers);
         var customer = TestData.SeedCustomer(customers, tenantA);
         var invoice = TestData.SeedInvoice(invoices, tenantA, customer.Id, 100m);
@@ -259,7 +259,7 @@ public sealed class InvoiceTransitionTests
     public async Task Missing_invoice_returns_null()
     {
         var svc = NewService(out _, out _);
-        var result = await svc.TransitionAsync(Guid.NewGuid(), Guid.NewGuid(), InvoiceStatus.Issued, "ghost");
+        var result = await svc.TransitionAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), InvoiceStatus.Issued, "ghost");
         result.Should().BeNull();
     }
 }

@@ -41,7 +41,7 @@ public class AccessGroup
         var now = DateTime.UtcNow;
         return new AccessGroup
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = name.Trim(),
             Description = description?.Trim(),

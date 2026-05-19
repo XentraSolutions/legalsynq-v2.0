@@ -57,7 +57,7 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
 
         var request = new SmsGovernanceApprovalRequest
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             ReleasePackageId = releaseId,
             ApprovalStage    = firstStage.Stage,
             ApproverRole     = firstStage.ApproverRole,
@@ -71,7 +71,7 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
 
         _db.SmsGovernanceReleaseAuditEvents.Add(new SmsGovernanceReleaseAuditEvent
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             ReleasePackageId = releaseId,
             EventType        = ReleaseAuditEventTypes.ApprovalRequested,
             Actor            = "system",
@@ -119,7 +119,7 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
         // Record the approval decision
         _db.SmsGovernanceApprovalDecisions.Add(new SmsGovernanceApprovalDecision
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             ApprovalRequestId = pendingRequest.Id,
             ReleasePackageId  = releaseId,
             Decision          = ApprovalDecisions.Approve,
@@ -158,7 +158,7 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
             // Create next-stage request
             _db.SmsGovernanceApprovalRequests.Add(new SmsGovernanceApprovalRequest
             {
-                Id               = Guid.NewGuid(),
+                Id               = Guid.CreateVersion7(),
                 ReleasePackageId = releaseId,
                 ApprovalStage    = nextStage.Stage,
                 ApproverRole     = nextStage.ApproverRole,
@@ -171,7 +171,7 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
 
             _db.SmsGovernanceReleaseAuditEvents.Add(new SmsGovernanceReleaseAuditEvent
             {
-                Id               = Guid.NewGuid(),
+                Id               = Guid.CreateVersion7(),
                 ReleasePackageId = releaseId,
                 EventType        = ReleaseAuditEventTypes.ApprovalRequested,
                 Actor            = "system",
@@ -194,7 +194,7 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
 
             _db.SmsGovernanceReleaseAuditEvents.Add(new SmsGovernanceReleaseAuditEvent
             {
-                Id               = Guid.NewGuid(),
+                Id               = Guid.CreateVersion7(),
                 ReleasePackageId = releaseId,
                 EventType        = ReleaseAuditEventTypes.Approved,
                 PreviousState    = prev,
@@ -242,7 +242,7 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
         {
             _db.SmsGovernanceApprovalDecisions.Add(new SmsGovernanceApprovalDecision
             {
-                Id                = Guid.NewGuid(),
+                Id                = Guid.CreateVersion7(),
                 ApprovalRequestId = pendingRequest.Id,
                 ReleasePackageId  = releaseId,
                 Decision          = ApprovalDecisions.Reject,
@@ -276,7 +276,7 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
 
         _db.SmsGovernanceReleaseAuditEvents.Add(new SmsGovernanceReleaseAuditEvent
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             ReleasePackageId = releaseId,
             EventType        = ReleaseAuditEventTypes.Rejected,
             PreviousState    = prev,
@@ -373,7 +373,7 @@ public sealed class SmsGovernanceApprovalWorkflowService : ISmsGovernanceApprova
 
         _db.SmsGovernanceReleaseAuditEvents.Add(new SmsGovernanceReleaseAuditEvent
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             ReleasePackageId = releaseId,
             EventType        = ReleaseAuditEventTypes.ApprovalRoleMismatch,
             Actor            = actor,

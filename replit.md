@@ -37,6 +37,7 @@ This file is the agent's persistent memory. It contains architecture, convention
 - **BFF pattern**: both Next.js apps are BFFs. Server route handlers read `platform_session` cookie, exchange it for a Bearer token, proxy to gateway. Client code uses relative `/api/` URLs.
 - **Tenant context**: `X-Tenant-Code` header resolved by gateway from subdomain or explicit header. Services read `CurrentTenantId` via `BuildingBlocks.Context.ICurrentRequestContext`.
 - **No shared databases or EF contexts** between services.
+- **GUID generation:** Always use `Guid.CreateVersion7()` (not `Guid.NewGuid()`) for all primary keys and new IDs. UUIDv7 is time-ordered, prevents B-tree index fragmentation, and allows sorting by ID as a chronological proxy. `Guid.CreateVersion7()` requires .NET 9+; this repo targets net10.0.
 - **All server-side localhost fallbacks use `127.0.0.1`** — Node.js resolves `localhost` to `::1` (IPv6) first, but .NET services bind to `0.0.0.0` (IPv4 only).
 - **`node_modules`** installed at monorepo root. Both `apps/web` and `apps/control-center` inherit via Node resolution traversal. Control Center must NOT have a local `node_modules` — duplicate React causes `useReducer` null errors.
 

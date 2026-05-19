@@ -569,6 +569,32 @@ dotnet list package --vulnerable
 
 ---
 
+## GUID / Primary Key Generation
+
+### Use `Guid.CreateVersion7()` — not `Guid.NewGuid()`
+
+`Guid.NewGuid()` generates a random v4 UUID. When used as a clustered primary key, each insert lands at a random position in the B-tree, causing page splits and index fragmentation at scale.
+
+`Guid.CreateVersion7()` (available since .NET 9) encodes a millisecond timestamp in the high bits, so new rows always append near the end of the index.
+
+```csharp
+// ❌ Bad: random v4 — causes index fragmentation on clustered PKs
+Id = Guid.NewGuid()
+
+// ✅ Good: time-ordered v7 — sequential inserts, still globally unique
+Id = Guid.CreateVersion7()
+```
+
+**When v7 applies:**
+- Domain entity factory methods (`User.Create`, `Tenant.Create`, etc.)
+- Any `= Guid.NewGuid()` property initializer on entities
+- Service-generated correlation/idempotency IDs
+
+**When v4 is acceptable:**
+- You explicitly need a non-predictable random ID (e.g., a one-time secret token) — though `RandomNumberGenerator` is more appropriate in that case.
+
+---
+
 ## Review Checklist
 
 ### Resource Management

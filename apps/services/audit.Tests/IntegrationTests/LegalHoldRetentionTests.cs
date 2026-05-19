@@ -92,7 +92,7 @@ public class LegalHoldRetentionTests : IClassFixture<AuditServiceFactory>
     public async Task CreateHold_NonExistentAuditId_Returns404()
     {
         using var client = _factory.CreateClient();
-        var missing      = Guid.NewGuid();
+        var missing      = Guid.CreateVersion7();
 
         var holdReq  = new CreateLegalHoldRequest { LegalAuthority = "FRCP 34" };
         var response = await client.PostServiceJsonAsync(
@@ -214,7 +214,7 @@ public class LegalHoldRetentionTests : IClassFixture<AuditServiceFactory>
     public async Task ReleaseHold_NonExistentHoldId_Returns404()
     {
         using var client = _factory.CreateClient();
-        var missing      = Guid.NewGuid();
+        var missing      = Guid.CreateVersion7();
 
         var response = await client.PostServiceJsonAsync(
             $"{LegalHoldBase}/{missing}/release",

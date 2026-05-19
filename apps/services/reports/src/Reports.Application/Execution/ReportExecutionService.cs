@@ -112,7 +112,7 @@ public sealed class ReportExecutionService : IReportExecutionService
 
         var execution = new ReportExecution
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             UserId = actorId,
             ReportTemplateId = templateId,

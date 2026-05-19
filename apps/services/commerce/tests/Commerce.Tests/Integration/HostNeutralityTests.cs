@@ -100,7 +100,7 @@ public class HostNeutralityTests
             Microsoft.Extensions.Logging.Abstractions.NullLogger<NoopProvisioningHookPublisher>.Instance);
         var result = await pub.PublishAsync(new ProvisioningHookRequest(
             HostTenantRef: new HostTenantRef("local", "tnt-x"),
-            BillingAccountId: Guid.NewGuid(),
+            BillingAccountId: Guid.CreateVersion7(),
             SubscriptionId: null,
             ProductKey: "k-prod",
             PlanKey: "k-plan",

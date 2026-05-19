@@ -72,7 +72,7 @@ public class ReferralHardeningTests
     public void GenerateValidate_RoundTrip_VersionIsPreserved(int version)
     {
         var svc        = BuildEmailService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
 
         var token  = svc.GenerateViewToken(referralId, tokenVersion: version);
         var result = svc.ValidateViewToken(token);
@@ -87,7 +87,7 @@ public class ReferralHardeningTests
     {
         // Version is in the HMAC payload so it is cryptographically bound.
         var svc = BuildEmailService();
-        var id  = Guid.NewGuid();
+        var id  = Guid.CreateVersion7();
 
         var t1 = svc.GenerateViewToken(id, tokenVersion: 1);
         var t2 = svc.GenerateViewToken(id, tokenVersion: 2);
@@ -104,7 +104,7 @@ public class ReferralHardeningTests
         // The CALLER is responsible for the version comparison — this test verifies
         // that ValidateViewToken faithfully returns the embedded version without truncating it.
         var svc        = BuildEmailService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
 
         var oldToken = svc.GenerateViewToken(referralId, tokenVersion: 1);
         var result   = svc.ValidateViewToken(oldToken);
@@ -120,7 +120,7 @@ public class ReferralHardeningTests
     public void GenerateViewToken_DecodedHasFourColonSeparatedParts()
     {
         var svc   = BuildEmailService();
-        var token = svc.GenerateViewToken(Guid.NewGuid(), tokenVersion: 1);
+        var token = svc.GenerateViewToken(Guid.CreateVersion7(), tokenVersion: 1);
 
         var padded = token.Replace('-', '+').Replace('_', '/');
         var mod    = padded.Length % 4;
@@ -141,7 +141,7 @@ public class ReferralHardeningTests
     public void ValidateViewToken_TwoPartToken_ReturnsNull()
     {
         // Tokens with fewer than 4 parts (e.g. old 2-field format or partial data) must be rejected.
-        var referralId  = Guid.NewGuid();
+        var referralId  = Guid.CreateVersion7();
         var raw         = $"{referralId}:somehex";
         var token       = Convert.ToBase64String(Encoding.UTF8.GetBytes(raw))
                               .TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -154,7 +154,7 @@ public class ReferralHardeningTests
     public void ValidateViewToken_FivePartToken_ReturnsNull()
     {
         // Extra colons (e.g. from injection or malformed input) must be rejected.
-        var referralId  = Guid.NewGuid();
+        var referralId  = Guid.CreateVersion7();
         var raw         = $"{referralId}:1:9999999999:aabbcc:extra";
         var token       = Convert.ToBase64String(Encoding.UTF8.GetBytes(raw))
                               .TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -297,10 +297,10 @@ public class ReferralHardeningTests
 
     private static Referral CreateMinimalReferral()
         => Referral.Create(
-            tenantId:                  Guid.NewGuid(),
+            tenantId:                  Guid.CreateVersion7(),
             referringOrganizationId:   null,
             receivingOrganizationId:   null,
-            providerId:                Guid.NewGuid(),
+            providerId:                Guid.CreateVersion7(),
             subjectPartyId:            null,
             subjectNameSnapshot:       null,
             subjectDobSnapshot:        null,
@@ -320,10 +320,10 @@ public class ReferralHardeningTests
 
     private static CareConnectNotification CreateMinimalNotification()
         => CareConnectNotification.Create(
-            tenantId:          Guid.NewGuid(),
+            tenantId:          Guid.CreateVersion7(),
             notificationType:  NotificationType.ReferralCreated,
             relatedEntityType: NotificationRelatedEntityType.Referral,
-            relatedEntityId:   Guid.NewGuid(),
+            relatedEntityId:   Guid.CreateVersion7(),
             recipientType:     NotificationRecipientType.Provider,
             recipientAddress:  "provider@example.com",
             subject:           "New referral",

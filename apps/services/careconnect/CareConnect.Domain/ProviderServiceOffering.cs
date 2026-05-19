@@ -22,7 +22,7 @@ public class ProviderServiceOffering
     {
         return new ProviderServiceOffering
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProviderId = providerId,
             ServiceOfferingId = serviceOfferingId,
             FacilityId = facilityId,

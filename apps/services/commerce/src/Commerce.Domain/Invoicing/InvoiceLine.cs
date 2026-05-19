@@ -44,7 +44,7 @@ public sealed class InvoiceLine : Entity<Guid>
 
         return new InvoiceLine
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             InvoiceId = invoiceId,
             SubscriptionItemId = subscriptionItemId,
             Description = description.Trim(),

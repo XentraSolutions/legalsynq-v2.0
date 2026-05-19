@@ -32,7 +32,7 @@ public class SmsPreferenceRepository : ISmsPreferenceRepository
             return existing;
         }
 
-        preference.Id        = Guid.NewGuid();
+        preference.Id        = Guid.CreateVersion7();
         preference.CreatedAt = DateTime.UtcNow;
         preference.UpdatedAt = DateTime.UtcNow;
         _db.SmsContactPreferences.Add(preference);

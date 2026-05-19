@@ -13,7 +13,7 @@ public sealed class EfReportScheduleRepository : IReportScheduleRepository
     public async Task<ReportSchedule> SaveAsync(ReportSchedule schedule, CancellationToken ct)
     {
         if (schedule.Id == Guid.Empty)
-            schedule.Id = Guid.NewGuid();
+            schedule.Id = Guid.CreateVersion7();
 
         _db.ReportSchedules.Add(schedule);
         await _db.SaveChangesAsync(ct);
@@ -64,7 +64,7 @@ public sealed class EfReportScheduleRepository : IReportScheduleRepository
     public async Task<ReportScheduleRun> SaveRunAsync(ReportScheduleRun run, CancellationToken ct)
     {
         if (run.Id == Guid.Empty)
-            run.Id = Guid.NewGuid();
+            run.Id = Guid.CreateVersion7();
 
         _db.ReportScheduleRuns.Add(run);
         await _db.SaveChangesAsync(ct);

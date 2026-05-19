@@ -55,7 +55,7 @@ public class InvoiceRenderServiceTests
         DomainTestHost host, string customerName = "Acme Co",
         string customerEmail = "billing@acme.test")
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(
             tenantId, customerName, customerEmail,
             phone: null, billingAddress: null, externalReference: null, notes: null);
@@ -179,7 +179,7 @@ public class InvoiceRenderServiceTests
             issueDate: IssueDate, dueDate: DueDate,
             currency: "USD", notes: null,
             lines: Lines(), taxAmount: 0m);
-        var tenantB = Guid.NewGuid();
+        var tenantB = Guid.CreateVersion7();
         var svc = BuildService(host);
 
         var doc = await svc.BuildRenderDocumentAsync(tenantB, inv.Id);
@@ -193,7 +193,7 @@ public class InvoiceRenderServiceTests
         using var host = new DomainTestHost();
         var svc = BuildService(host);
 
-        var doc = await svc.BuildRenderDocumentAsync(Guid.NewGuid(), Guid.NewGuid());
+        var doc = await svc.BuildRenderDocumentAsync(Guid.CreateVersion7(), Guid.CreateVersion7());
 
         Assert.Null(doc);
     }
@@ -205,9 +205,9 @@ public class InvoiceRenderServiceTests
         var svc = BuildService(host);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.BuildRenderDocumentAsync(Guid.Empty, Guid.NewGuid()));
+            svc.BuildRenderDocumentAsync(Guid.Empty, Guid.CreateVersion7()));
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.BuildRenderDocumentAsync(Guid.NewGuid(), Guid.Empty));
+            svc.BuildRenderDocumentAsync(Guid.CreateVersion7(), Guid.Empty));
     }
 
     [Fact]
@@ -238,9 +238,9 @@ public class InvoiceRenderServiceTests
     public async Task BuildRenderDocument_CustomerStructuredAddress_PopulatesCustomerAddressBlock()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(
-            tenantId, "Acme Co", $"billing+{Guid.NewGuid():N}@acme.test",
+            tenantId, "Acme Co", $"billing+{Guid.CreateVersion7():N}@acme.test",
             phone: null, billingAddress: null, externalReference: null, notes: null,
             billingAddressDetails: new CustomerBillingAddress(
                 Line1: "100 Main St",
@@ -275,9 +275,9 @@ public class InvoiceRenderServiceTests
         // the bag-of-text into Line1 so the renderer still has
         // something to print.
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(
-            tenantId, "Legacy Co", $"billing+{Guid.NewGuid():N}@legacy.test",
+            tenantId, "Legacy Co", $"billing+{Guid.CreateVersion7():N}@legacy.test",
             phone: null,
             billingAddress: "5 Old Way, Suite Z, Old Town, OT 00000, USA",
             externalReference: null, notes: null);
@@ -452,7 +452,7 @@ public class InvoiceRenderServiceTests
         using var host = new DomainTestHost();
         var svc = BuildService(host);
 
-        var html = await svc.RenderHtmlAsync(Guid.NewGuid(), Guid.NewGuid());
+        var html = await svc.RenderHtmlAsync(Guid.CreateVersion7(), Guid.CreateVersion7());
 
         Assert.Null(html);
     }

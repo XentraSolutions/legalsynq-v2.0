@@ -22,14 +22,14 @@ public class InvoicesMarkOverdueApiTests : IClassFixture<BillingWebApplicationFa
     private async Task<(Guid tenantId, Guid customerId, Guid invoiceId)> SeedAsync(
         string status, DateTime dueDate)
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         using var scope = _factory.Services.CreateScope();
         var customers = scope.ServiceProvider.GetRequiredService<ICustomerRepository>();
         var invoices = scope.ServiceProvider.GetRequiredService<IInvoiceRepository>();
 
         var customer = new Customer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = "Acme",
             Email = "billing@acme.test",
@@ -40,7 +40,7 @@ public class InvoicesMarkOverdueApiTests : IClassFixture<BillingWebApplicationFa
 
         var inv = new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             CustomerId = customer.Id,
             InvoiceNumber = $"INV-2026-{Random.Shared.Next(100000, 999999)}",
@@ -102,7 +102,7 @@ public class InvoicesMarkOverdueApiTests : IClassFixture<BillingWebApplicationFa
     {
         var (ownerTenant, _, invoiceId) = await SeedAsync(InvoiceStatus.Issued, DateTime.UtcNow.AddDays(-3));
         // Different tenant making the request — must appear as not found.
-        var otherTenant = Guid.NewGuid();
+        var otherTenant = Guid.CreateVersion7();
         Assert.NotEqual(ownerTenant, otherTenant);
         var client = _factory.CreateClientForTenant(otherTenant);
 
@@ -114,10 +114,10 @@ public class InvoicesMarkOverdueApiTests : IClassFixture<BillingWebApplicationFa
     [Fact]
     public async Task POST_mark_overdue_returns_404_when_invoice_missing()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
 
-        var resp = await client.PostAsync($"/api/invoices/{Guid.NewGuid()}/mark-overdue", content: null);
+        var resp = await client.PostAsync($"/api/invoices/{Guid.CreateVersion7()}/mark-overdue", content: null);
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
@@ -132,7 +132,7 @@ public class InvoicesMarkOverdueApiTests : IClassFixture<BillingWebApplicationFa
             var invoices = scope.ServiceProvider.GetRequiredService<IInvoiceRepository>();
             await invoices.AddAsync(new Invoice
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 TenantId = tenantId,
                 CustomerId = customerId,
                 InvoiceNumber = $"INV-2026-{Random.Shared.Next(100000, 999999)}",
@@ -145,7 +145,7 @@ public class InvoicesMarkOverdueApiTests : IClassFixture<BillingWebApplicationFa
             });
             await invoices.AddAsync(new Invoice
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 TenantId = tenantId,
                 CustomerId = customerId,
                 InvoiceNumber = $"INV-2026-{Random.Shared.Next(100000, 999999)}",

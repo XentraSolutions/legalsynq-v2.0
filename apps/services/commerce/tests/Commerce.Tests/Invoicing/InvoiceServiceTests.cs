@@ -40,7 +40,7 @@ public class InvoiceServiceTests
     {
         using var host = new InvoicingTestHost();
         var req = new CreateInvoiceRequest(
-            Guid.NewGuid(), "USD",
+            Guid.CreateVersion7(), "USD",
             new[] { new CreateInvoiceLineRequest("X", 1, 100) });
         Func<Task> a = () => host.Invoices.CreateAsync(req, default);
         await a.Should().ThrowAsync<NotFoundException>();
@@ -72,7 +72,7 @@ public class InvoiceServiceTests
         var req = new CreateInvoiceRequest(
             a.Id, "USD",
             new[] {
-                new CreateInvoiceLineRequest("X", 1, 100, SubscriptionItemId: Guid.NewGuid())
+                new CreateInvoiceLineRequest("X", 1, 100, SubscriptionItemId: Guid.CreateVersion7())
             });
 
         Func<Task> act = () => host.Invoices.CreateAsync(req, default);

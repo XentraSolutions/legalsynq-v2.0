@@ -54,8 +54,8 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task Apply_returns_200_and_creates_snapshot_for_active_profile()
     {
-        var t = Guid.NewGuid();
-        var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7();
+        var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         var prof = await CreateProfileAsync(c, a);
         await ActivateAsync(c, prof.Id);
@@ -70,8 +70,8 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task Apply_updates_in_place_on_second_call()
     {
-        var t = Guid.NewGuid();
-        var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7();
+        var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         var prof = await CreateProfileAsync(c, a);
         await ActivateAsync(c, prof.Id);
@@ -88,16 +88,16 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task Apply_returns_404_when_no_profile_exists()
     {
-        var c = _factory.CreateClientForTenant(Guid.NewGuid());
-        var resp = await c.PostAsJsonAsync("/api/tenant-billing/entitlements/apply", Req(Guid.NewGuid()));
+        var c = _factory.CreateClientForTenant(Guid.CreateVersion7());
+        var resp = await c.PostAsJsonAsync("/api/tenant-billing/entitlements/apply", Req(Guid.CreateVersion7()));
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
     public async Task Apply_returns_409_when_profile_is_closed()
     {
-        var t = Guid.NewGuid();
-        var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7();
+        var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         var prof = await CreateProfileAsync(c, a);
         var close = await c.PostAsync($"/api/tenant-billing/profiles/{prof.Id}/close", null);
@@ -110,22 +110,22 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task Apply_returns_409_when_billing_account_does_not_match_active_profile()
     {
-        var t = Guid.NewGuid();
-        var realAccount = Guid.NewGuid();
+        var t = Guid.CreateVersion7();
+        var realAccount = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         var prof = await CreateProfileAsync(c, realAccount);
         await ActivateAsync(c, prof.Id);
 
         var resp = await c.PostAsJsonAsync("/api/tenant-billing/entitlements/apply",
-            Req(Guid.NewGuid()));
+            Req(Guid.CreateVersion7()));
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
     [Fact]
     public async Task Apply_returns_400_for_bad_enum()
     {
-        var t = Guid.NewGuid();
-        var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7();
+        var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         var prof = await CreateProfileAsync(c, a);
         await ActivateAsync(c, prof.Id);
@@ -139,8 +139,8 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task Apply_returns_400_for_invalid_raw_json()
     {
-        var t = Guid.NewGuid();
-        var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7();
+        var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         var prof = await CreateProfileAsync(c, a);
         await ActivateAsync(c, prof.Id);
@@ -154,8 +154,8 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task GetCurrent_returns_snapshot_after_apply()
     {
-        var t = Guid.NewGuid();
-        var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7();
+        var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         var prof = await CreateProfileAsync(c, a);
         await ActivateAsync(c, prof.Id);
@@ -168,7 +168,7 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task GetCurrent_returns_404_when_no_snapshot_yet()
     {
-        var c = _factory.CreateClientForTenant(Guid.NewGuid());
+        var c = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var resp = await c.GetAsync("/api/tenant-billing/entitlements/current");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -176,8 +176,8 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task GetAccess_reports_enabled_for_Active_Enabled_Allow()
     {
-        var t = Guid.NewGuid();
-        var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7();
+        var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         var prof = await CreateProfileAsync(c, a);
         await ActivateAsync(c, prof.Id);
@@ -193,7 +193,7 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task GetAccess_reports_NotEnabled_when_no_profile()
     {
-        var c = _factory.CreateClientForTenant(Guid.NewGuid());
+        var c = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var resp = await c.GetAsync("/api/tenant-billing/entitlements/access");
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var d = (await resp.Content.ReadFromJsonAsync<TenantBillingAccessDecisionResponse>())!;
@@ -203,8 +203,8 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     [Fact]
     public async Task GetByProfile_returns_snapshot_for_owner_404_for_stranger()
     {
-        var ownerT = Guid.NewGuid();
-        var a = Guid.NewGuid();
+        var ownerT = Guid.CreateVersion7();
+        var a = Guid.CreateVersion7();
         var owner = _factory.CreateClientForTenant(ownerT);
         var prof = await CreateProfileAsync(owner, a);
         await ActivateAsync(owner, prof.Id);
@@ -213,7 +213,7 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
         var ownerResp = await owner.GetAsync($"/api/tenant-billing/profiles/{prof.Id}/entitlement");
         ownerResp.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var stranger = _factory.CreateClientForTenant(Guid.NewGuid());
+        var stranger = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var strangerResp = await stranger.GetAsync($"/api/tenant-billing/profiles/{prof.Id}/entitlement");
         strangerResp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -223,7 +223,7 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
     {
         var c = _factory.CreateClient(); // no tenant header
         var resp = await c.PostAsJsonAsync("/api/tenant-billing/entitlements/apply",
-            Req(Guid.NewGuid()));
+            Req(Guid.CreateVersion7()));
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -234,9 +234,9 @@ public class TenantBillingEntitlementsApiTests : IClassFixture<BillingWebApplica
         c.DefaultRequestHeaders.Remove(
             Billing.Api.Security.RequireInternalTokenMiddleware.HeaderName);
         c.DefaultRequestHeaders.Add(
-            Billing.Api.Tenancy.TenantResolutionMiddleware.HeaderName, Guid.NewGuid().ToString());
+            Billing.Api.Tenancy.TenantResolutionMiddleware.HeaderName, Guid.CreateVersion7().ToString());
         var resp = await c.PostAsJsonAsync("/api/tenant-billing/entitlements/apply",
-            Req(Guid.NewGuid()));
+            Req(Guid.CreateVersion7()));
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }

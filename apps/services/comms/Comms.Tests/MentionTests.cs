@@ -13,8 +13,8 @@ public class MentionTests
     [Fact]
     public void MentionParser_ExtractsValidGuids()
     {
-        var id1 = Guid.NewGuid();
-        var id2 = Guid.NewGuid();
+        var id1 = Guid.CreateVersion7();
+        var id2 = Guid.CreateVersion7();
         var body = $"Hey @{{{id1}}} and @{{{id2}}}, check this out";
 
         var result = MentionParser.ExtractMentionedUserIds(body);
@@ -42,7 +42,7 @@ public class MentionTests
     [Fact]
     public void MentionParser_DeduplicatesSameUser()
     {
-        var id = Guid.NewGuid();
+        var id = Guid.CreateVersion7();
         var body = $"@{{{id}}} and @{{{id}}} again";
 
         var result = MentionParser.ExtractMentionedUserIds(body);
@@ -54,7 +54,7 @@ public class MentionTests
     [Fact]
     public void MentionParser_CapsAtMaxMentions()
     {
-        var ids = Enumerable.Range(0, 15).Select(_ => Guid.NewGuid()).ToList();
+        var ids = Enumerable.Range(0, 15).Select(_ => Guid.CreateVersion7()).ToList();
         var body = string.Join(" ", ids.Select(id => $"@{{{id}}}"));
 
         var result = MentionParser.ExtractMentionedUserIds(body);
@@ -85,7 +85,7 @@ public class MentionTests
         var conversation = TestHelpers.CreateTestConversation();
         await TestHelpers.CreateConversationRepo(db).AddAsync(conversation);
 
-        var mentionedUserId = Guid.NewGuid();
+        var mentionedUserId = Guid.CreateVersion7();
         var participant = TestHelpers.CreateTestParticipant(conversation.Id, mentionedUserId);
         await participantRepo.AddAsync(participant);
 
@@ -96,7 +96,7 @@ public class MentionTests
             mentionRepo, participantRepo, timeline, notif,
             TestHelpers.CreateLogger<MentionService>());
 
-        var messageId = Guid.NewGuid();
+        var messageId = Guid.CreateVersion7();
         var body = $"Hey @{{{mentionedUserId}}}, check this case";
 
         await service.ProcessMentionsAsync(
@@ -129,7 +129,7 @@ public class MentionTests
             mentionRepo, participantRepo, timeline, notif,
             TestHelpers.CreateLogger<MentionService>());
 
-        var messageId = Guid.NewGuid();
+        var messageId = Guid.CreateVersion7();
         var body = $"@{{{TestHelpers.UserId1}}} self-mention";
 
         await service.ProcessMentionsAsync(
@@ -155,13 +155,13 @@ public class MentionTests
         var senderParticipant = TestHelpers.CreateTestParticipant(conversation.Id, TestHelpers.UserId1);
         await participantRepo.AddAsync(senderParticipant);
 
-        var nonParticipantUserId = Guid.NewGuid();
+        var nonParticipantUserId = Guid.CreateVersion7();
 
         var service = new MentionService(
             mentionRepo, participantRepo, timeline, notif,
             TestHelpers.CreateLogger<MentionService>());
 
-        var messageId = Guid.NewGuid();
+        var messageId = Guid.CreateVersion7();
         var body = $"@{{{nonParticipantUserId}}} heads up";
 
         await service.ProcessMentionsAsync(
@@ -188,7 +188,7 @@ public class MentionTests
         var conversation = TestHelpers.CreateTestConversation();
         await TestHelpers.CreateConversationRepo(db).AddAsync(conversation);
 
-        var mentionedUserId = Guid.NewGuid();
+        var mentionedUserId = Guid.CreateVersion7();
         var participant = TestHelpers.CreateTestParticipant(conversation.Id, mentionedUserId);
         await participantRepo.AddAsync(participant);
 
@@ -199,7 +199,7 @@ public class MentionTests
             mentionRepo, participantRepo, timeline, notif,
             TestHelpers.CreateLogger<MentionService>());
 
-        var messageId = Guid.NewGuid();
+        var messageId = Guid.CreateVersion7();
         var body = $"@{{{mentionedUserId}}} please review";
 
         await service.ProcessMentionsAsync(
@@ -225,7 +225,7 @@ public class MentionTests
         var conversation = TestHelpers.CreateTestConversation();
         await TestHelpers.CreateConversationRepo(db).AddAsync(conversation);
 
-        var mentionedUserId = Guid.NewGuid();
+        var mentionedUserId = Guid.CreateVersion7();
         var participant = TestHelpers.CreateTestParticipant(conversation.Id, mentionedUserId);
         await participantRepo.AddAsync(participant);
 
@@ -236,7 +236,7 @@ public class MentionTests
             mentionRepo, participantRepo, timeline, notif,
             TestHelpers.CreateLogger<MentionService>());
 
-        var messageId = Guid.NewGuid();
+        var messageId = Guid.CreateVersion7();
         var body = $"@{{{mentionedUserId}}} take a look";
 
         await service.ProcessMentionsAsync(
@@ -260,9 +260,9 @@ public class MentionTests
             mentionRepo, participantRepo, timeline, notif,
             TestHelpers.CreateLogger<MentionService>());
 
-        var messageId = Guid.NewGuid();
+        var messageId = Guid.CreateVersion7();
         await service.ProcessMentionsAsync(
-            TestHelpers.TenantId, Guid.NewGuid(), messageId,
+            TestHelpers.TenantId, Guid.CreateVersion7(), messageId,
             TestHelpers.UserId1, "No mentions here");
 
         Assert.Empty(timeline.Entries);
@@ -281,7 +281,7 @@ public class MentionTests
         var conversation = TestHelpers.CreateTestConversation();
         await TestHelpers.CreateConversationRepo(db).AddAsync(conversation);
 
-        var mentionedUserId = Guid.NewGuid();
+        var mentionedUserId = Guid.CreateVersion7();
         var participant = TestHelpers.CreateTestParticipant(conversation.Id, mentionedUserId);
         await participantRepo.AddAsync(participant);
 
@@ -292,7 +292,7 @@ public class MentionTests
             mentionRepo, participantRepo, timeline, notif,
             TestHelpers.CreateLogger<MentionService>());
 
-        var messageId = Guid.NewGuid();
+        var messageId = Guid.CreateVersion7();
         var body = $"@{{{mentionedUserId}}} check this";
 
         await service.ProcessMentionsAsync(
@@ -318,8 +318,8 @@ public class MentionTests
         var conversation = TestHelpers.CreateTestConversation();
         await TestHelpers.CreateConversationRepo(db).AddAsync(conversation);
 
-        var user2 = Guid.NewGuid();
-        var user3 = Guid.NewGuid();
+        var user2 = Guid.CreateVersion7();
+        var user3 = Guid.CreateVersion7();
         await participantRepo.AddAsync(TestHelpers.CreateTestParticipant(conversation.Id, TestHelpers.UserId1));
         await participantRepo.AddAsync(TestHelpers.CreateTestParticipant(conversation.Id, user2));
         await participantRepo.AddAsync(TestHelpers.CreateTestParticipant(conversation.Id, user3));
@@ -328,7 +328,7 @@ public class MentionTests
             mentionRepo, participantRepo, timeline, notif,
             TestHelpers.CreateLogger<MentionService>());
 
-        var messageId = Guid.NewGuid();
+        var messageId = Guid.CreateVersion7();
         var body = $"@{{{user2}}} and @{{{user3}}} please advise";
 
         await service.ProcessMentionsAsync(
@@ -362,7 +362,7 @@ public class MentionTests
             messageRepo, conversationRepo, participantRepo,
             timeline, mentionService, audit, TestHelpers.CreateLogger<MessageService>());
 
-        var mentionedId = Guid.NewGuid();
+        var mentionedId = Guid.CreateVersion7();
         var request = new AddMessageRequest(
             $"Hey @{{{mentionedId}}} check this",
             Channel.InApp, Direction.Internal, VisibilityType.InternalOnly);
@@ -429,7 +429,7 @@ public class MentionTests
             messageRepo, conversationRepo, participantRepo,
             timeline, mentionService, audit, TestHelpers.CreateLogger<MessageService>());
 
-        var mentionedId = Guid.NewGuid();
+        var mentionedId = Guid.CreateVersion7();
         var request = new AddMessageRequest(
             $"Hey @{{{mentionedId}}} check this",
             Channel.InApp, Direction.Internal, VisibilityType.InternalOnly);

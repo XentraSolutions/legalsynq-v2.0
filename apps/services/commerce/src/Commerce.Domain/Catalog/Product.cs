@@ -19,7 +19,7 @@ public sealed class Product : Entity<Guid>
     {
         return new Product
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             Key = CatalogKey.Normalize(key),
             Name = name.Trim(),
             Description = description?.Trim(),

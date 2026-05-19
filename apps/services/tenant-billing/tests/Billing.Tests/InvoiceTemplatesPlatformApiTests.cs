@@ -95,7 +95,7 @@ public class InvoiceTemplatesPlatformApiTests : IDisposable
     public async Task GetMissing_404()
     {
         var client = _factory.CreateClient();
-        var resp = await client.GetAsync($"/api/invoice-templates/platform/{Guid.NewGuid()}");
+        var resp = await client.GetAsync($"/api/invoice-templates/platform/{Guid.CreateVersion7()}");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 

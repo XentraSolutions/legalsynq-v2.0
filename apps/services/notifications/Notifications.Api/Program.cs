@@ -749,7 +749,7 @@ static async Task SeedPlatformSendGridProviderAsync(
 
     var config = new Notifications.Domain.TenantProviderConfig
     {
-        Id              = Guid.NewGuid(),
+        Id              = Guid.CreateVersion7(),
         TenantId        = platformId,
         Channel         = "email",
         ProviderType    = "sendgrid",
@@ -904,7 +904,7 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
         {
             var template = await templateRepo.CreateAsync(new Notifications.Domain.Template
             {
-                Id          = Guid.NewGuid(),
+                Id          = Guid.CreateVersion7(),
                 TenantId    = null,
                 TemplateKey = seed.Key,
                 Channel     = "email",
@@ -919,7 +919,7 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
 
         await versionRepo.CreateAsync(new Notifications.Domain.TemplateVersion
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             TemplateId      = templateId,
             VersionNumber   = 1,
             SubjectTemplate = seed.Subject,

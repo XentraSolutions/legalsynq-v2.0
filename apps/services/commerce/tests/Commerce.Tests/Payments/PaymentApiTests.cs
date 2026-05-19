@@ -18,7 +18,7 @@ public class PaymentApiTests : IClassFixture<CommerceWebApplicationFactory>
         var client = _factory.CreateClient();
 
         var resp = await client.PostAsJsonAsync("/api/commerce/payments/checkout-sessions",
-            new CreateCheckoutSessionRequest(Guid.NewGuid(), Guid.NewGuid(),
+            new CreateCheckoutSessionRequest(Guid.CreateVersion7(), Guid.CreateVersion7(),
                 new[] { new CheckoutLineItem("price_test", 1) }));
 
         // Validation runs first if input is invalid; we send valid Guids to reach the disabled check.
@@ -40,7 +40,7 @@ public class PaymentApiTests : IClassFixture<CommerceWebApplicationFactory>
     public async Task EventLogs_get_unknown_returns_404()
     {
         var client = _factory.CreateClient();
-        var resp = await client.GetAsync($"/api/commerce/payments/event-logs/{Guid.NewGuid()}");
+        var resp = await client.GetAsync($"/api/commerce/payments/event-logs/{Guid.CreateVersion7()}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -48,7 +48,7 @@ public class PaymentApiTests : IClassFixture<CommerceWebApplicationFactory>
     public async Task PaymentMethods_list_for_unknown_account_returns_empty_ok()
     {
         var client = _factory.CreateClient();
-        var resp = await client.GetAsync($"/api/commerce/billing-accounts/{Guid.NewGuid()}/payment-methods");
+        var resp = await client.GetAsync($"/api/commerce/billing-accounts/{Guid.CreateVersion7()}/payment-methods");
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 

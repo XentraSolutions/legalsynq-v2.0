@@ -52,7 +52,7 @@ public class TaskGovernanceSettings : AuditableEntity
         var now = DateTime.UtcNow;
         return new TaskGovernanceSettings
         {
-            Id                        = Guid.NewGuid(),
+            Id                        = Guid.CreateVersion7(),
             TenantId                  = tenantId,
             SourceProductCode         = sourceProductCode?.Trim().ToUpperInvariant(),
             RequireAssignee           = false,

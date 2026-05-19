@@ -72,7 +72,7 @@ public class EntitlementSnapshotServiceTests
     public async Task Returns_null_for_missing_billing_account()
     {
         using var host = new IntegrationTestHost();
-        var snap = await host.Snapshot.GetByBillingAccountAsync(Guid.NewGuid(), false, default);
+        var snap = await host.Snapshot.GetByBillingAccountAsync(Guid.CreateVersion7(), false, default);
         snap.Should().BeNull();
     }
 

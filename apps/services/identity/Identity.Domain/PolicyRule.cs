@@ -45,7 +45,7 @@ public class PolicyRule
 
         return new PolicyRule
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PolicyId = policyId,
             ConditionType = conditionType,
             Field = normalizedField,

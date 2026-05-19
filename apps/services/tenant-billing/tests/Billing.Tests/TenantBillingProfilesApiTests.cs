@@ -23,7 +23,7 @@ public class TenantBillingProfilesApiTests : IClassFixture<BillingWebApplication
         var resp = await client.PostAsJsonAsync("/api/tenant-billing/profiles",
             new CreateTenantBillingProfileRequest
             {
-                BillingAccountId = billingAccount ?? Guid.NewGuid(),
+                BillingAccountId = billingAccount ?? Guid.CreateVersion7(),
                 Mode = mode ?? TenantBillingMode.InternalOnly,
             });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -33,9 +33,9 @@ public class TenantBillingProfilesApiTests : IClassFixture<BillingWebApplication
     [Fact]
     public async Task Create_returns_201_with_draft_profile()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenant);
-        var account = Guid.NewGuid();
+        var account = Guid.CreateVersion7();
 
         var dto = await CreateAsync(client, account);
         dto.TenantId.Should().Be(tenant);
@@ -46,7 +46,7 @@ public class TenantBillingProfilesApiTests : IClassFixture<BillingWebApplication
     [Fact]
     public async Task Lifecycle_round_trip_draft_active_suspended_active_closed()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenant);
         var dto = await CreateAsync(client);
 
@@ -76,14 +76,14 @@ public class TenantBillingProfilesApiTests : IClassFixture<BillingWebApplication
     [Fact]
     public async Task Create_returns_409_when_tenant_already_has_open_profile()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenant);
         await CreateAsync(client);
 
         var second = await client.PostAsJsonAsync("/api/tenant-billing/profiles",
             new CreateTenantBillingProfileRequest
             {
-                BillingAccountId = Guid.NewGuid(),
+                BillingAccountId = Guid.CreateVersion7(),
                 Mode = TenantBillingMode.InternalOnly,
             });
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
@@ -92,9 +92,9 @@ public class TenantBillingProfilesApiTests : IClassFixture<BillingWebApplication
     [Fact]
     public async Task Create_returns_409_when_billing_account_already_claimed_by_other_tenant()
     {
-        var account = Guid.NewGuid();
-        var clientA = _factory.CreateClientForTenant(Guid.NewGuid());
-        var clientB = _factory.CreateClientForTenant(Guid.NewGuid());
+        var account = Guid.CreateVersion7();
+        var clientA = _factory.CreateClientForTenant(Guid.CreateVersion7());
+        var clientB = _factory.CreateClientForTenant(Guid.CreateVersion7());
 
         await CreateAsync(clientA, account);
 
@@ -110,10 +110,10 @@ public class TenantBillingProfilesApiTests : IClassFixture<BillingWebApplication
     [Fact]
     public async Task GetById_is_tenant_scoped_returns_404_for_stranger()
     {
-        var owner = _factory.CreateClientForTenant(Guid.NewGuid());
+        var owner = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var dto = await CreateAsync(owner);
 
-        var stranger = _factory.CreateClientForTenant(Guid.NewGuid());
+        var stranger = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var resp = await stranger.GetAsync($"/api/tenant-billing/profiles/{dto.Id}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -121,9 +121,9 @@ public class TenantBillingProfilesApiTests : IClassFixture<BillingWebApplication
     [Fact]
     public async Task GetByBillingAccount_returns_active_profile()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenant);
-        var account = Guid.NewGuid();
+        var account = Guid.CreateVersion7();
         var dto = await CreateAsync(client, account);
         await client.PostAsync($"/api/tenant-billing/profiles/{dto.Id}/activate", null);
 
@@ -135,15 +135,15 @@ public class TenantBillingProfilesApiTests : IClassFixture<BillingWebApplication
     [Fact]
     public async Task GetByBillingAccount_returns_404_when_unknown()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
-        var resp = await client.GetAsync($"/api/tenant-billing/profiles/by-billing-account/{Guid.NewGuid()}");
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
+        var resp = await client.GetAsync($"/api/tenant-billing/profiles/by-billing-account/{Guid.CreateVersion7()}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
     public async Task Suspend_on_draft_returns_409()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var dto = await CreateAsync(client);
 
         var resp = await client.PostAsync($"/api/tenant-billing/profiles/{dto.Id}/suspend", null);
@@ -153,16 +153,16 @@ public class TenantBillingProfilesApiTests : IClassFixture<BillingWebApplication
     [Fact]
     public async Task Activate_on_unknown_id_returns_404()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
-        var resp = await client.PostAsync($"/api/tenant-billing/profiles/{Guid.NewGuid()}/activate", null);
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
+        var resp = await client.PostAsync($"/api/tenant-billing/profiles/{Guid.CreateVersion7()}/activate", null);
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
     public async Task List_returns_only_current_tenant_profiles()
     {
-        var t1 = _factory.CreateClientForTenant(Guid.NewGuid());
-        var t2 = _factory.CreateClientForTenant(Guid.NewGuid());
+        var t1 = _factory.CreateClientForTenant(Guid.CreateVersion7());
+        var t2 = _factory.CreateClientForTenant(Guid.CreateVersion7());
         await CreateAsync(t1);
         await CreateAsync(t2);
 

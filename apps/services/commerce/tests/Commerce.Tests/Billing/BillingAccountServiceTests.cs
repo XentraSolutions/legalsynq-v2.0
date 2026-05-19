@@ -66,7 +66,7 @@ public sealed class BillingAccountServiceTests
     {
         using var host = new BillingTestHost();
         await Assert.ThrowsAsync<NotFoundException>(() =>
-            host.AccountService.GetAsync(Guid.NewGuid(), default));
+            host.AccountService.GetAsync(Guid.CreateVersion7(), default));
     }
 
     [Fact]

@@ -61,7 +61,7 @@ public class LegalSynqTenantContextResolverTests
     [Fact]
     public async Task ResolveAsync_JwtClaim_ReturnsJwtSource()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var ctx = BuildContext(jwtTenantId: tenantId, isAuthenticated: true);
         var resolver = BuildResolver();
 
@@ -75,8 +75,8 @@ public class LegalSynqTenantContextResolverTests
     [Fact]
     public async Task ResolveAsync_JwtClaim_PreferJwtFalse_SkipsClaimFallsToHeader()
     {
-        var jwtTenant = Guid.NewGuid();
-        var headerTenant = Guid.NewGuid();
+        var jwtTenant = Guid.CreateVersion7();
+        var headerTenant = Guid.CreateVersion7();
         var ctx = BuildContext(
             jwtTenantId: jwtTenant,
             headerTenantId: headerTenant.ToString(),
@@ -106,7 +106,7 @@ public class LegalSynqTenantContextResolverTests
     [Fact]
     public async Task ResolveAsync_InternalServiceRole_UsesHeader()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var ctx = BuildContext(
             role: LegalSynqBillingRoles.InternalService,
             headerTenantId: tenantId.ToString(),
@@ -125,7 +125,7 @@ public class LegalSynqTenantContextResolverTests
     [Fact]
     public async Task ResolveAsync_InternalServiceRole_AllowInternalFalse_FallsThrough()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var ctx = BuildContext(
             role: LegalSynqBillingRoles.InternalService,
             headerTenantId: tenantId.ToString(),
@@ -145,7 +145,7 @@ public class LegalSynqTenantContextResolverTests
     [Fact]
     public async Task ResolveAsync_NoJwt_HeaderFallback_Resolves()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var ctx = BuildContext(headerTenantId: tenantId.ToString());
         var resolver = BuildResolver();
 
@@ -159,7 +159,7 @@ public class LegalSynqTenantContextResolverTests
     [Fact]
     public async Task ResolveAsync_NoJwt_HeaderFallbackDisabled_Fails()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var ctx = BuildContext(headerTenantId: tenantId.ToString());
         var resolver = BuildResolver(allowHeader: false);
 
@@ -208,7 +208,7 @@ public class LegalSynqTenantContextResolverTests
     [Fact]
     public void TenantResolutionResult_Resolved_SetsFields()
     {
-        var id = Guid.NewGuid();
+        var id = Guid.CreateVersion7();
         var result = TenantResolutionResult.Resolved(id, TenantResolutionSource.JwtClaim);
 
         Assert.True(result.IsResolved);

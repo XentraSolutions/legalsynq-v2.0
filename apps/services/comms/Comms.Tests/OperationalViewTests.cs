@@ -11,22 +11,22 @@ namespace Comms.Tests;
 
 public class OperationalViewTests
 {
-    private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid OtherTenantId = Guid.NewGuid();
-    private static readonly Guid OrgId = Guid.NewGuid();
-    private static readonly Guid User1 = Guid.NewGuid();
-    private static readonly Guid User2 = Guid.NewGuid();
-    private static readonly Guid User3 = Guid.NewGuid();
+    private static readonly Guid TenantId = Guid.CreateVersion7();
+    private static readonly Guid OtherTenantId = Guid.CreateVersion7();
+    private static readonly Guid OrgId = Guid.CreateVersion7();
+    private static readonly Guid User1 = Guid.CreateVersion7();
+    private static readonly Guid User2 = Guid.CreateVersion7();
+    private static readonly Guid User3 = Guid.CreateVersion7();
 
     private static CommsDbContext CreateDb(string? name = null) =>
-        TestHelpers.CreateDbContext(name ?? Guid.NewGuid().ToString());
+        TestHelpers.CreateDbContext(name ?? Guid.CreateVersion7().ToString());
 
     private static async Task<Conversation> SeedConversation(
         CommsDbContext db, string subject, string status = "Open", Guid? tenantId = null)
     {
         var conv = Conversation.Create(
             tenantId ?? TenantId, OrgId, "SYNQ_COMMS",
-            ContextType.Case, $"case-{Guid.NewGuid():N}",
+            ContextType.Case, $"case-{Guid.CreateVersion7():N}",
             subject, VisibilityType.InternalOnly, User1);
 
         if (status != "New")
@@ -79,7 +79,7 @@ public class OperationalViewTests
     {
         var mention = MessageMention.Create(
             TenantId, conversationId,
-            messageId ?? Guid.NewGuid(),
+            messageId ?? Guid.CreateVersion7(),
             mentionedUserId, User1, true);
         db.MessageMentions.Add(mention);
         await db.SaveChangesAsync();
@@ -89,13 +89,13 @@ public class OperationalViewTests
         CommsDbContext db, Guid conversationId, Guid userId, bool isRead = true)
     {
         var readState = ConversationReadState.Create(
-            TenantId, conversationId, userId, Guid.NewGuid(), userId);
+            TenantId, conversationId, userId, Guid.CreateVersion7(), userId);
         db.ConversationReadStates.Add(readState);
         await db.SaveChangesAsync();
 
         if (isRead)
         {
-            readState.MarkRead(Guid.NewGuid(), userId);
+            readState.MarkRead(Guid.CreateVersion7(), userId);
             await db.SaveChangesAsync();
         }
     }
@@ -346,7 +346,7 @@ public class OperationalViewTests
         var db = CreateDb();
         var conv = await SeedConversation(db, "Mentioned");
         await SeedMention(db, conv.Id, User1);
-        await SeedMention(db, conv.Id, User1, Guid.NewGuid());
+        await SeedMention(db, conv.Id, User1, Guid.CreateVersion7());
         await SeedMention(db, conv.Id, User2);
 
         var repo = new OperationalConversationQueryRepository(db);

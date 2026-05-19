@@ -19,8 +19,8 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
     {
         var req = new CreateCustomerRequest
         {
-            Name = "Acme " + Guid.NewGuid().ToString("N")[..6],
-            Email = $"acme+{Guid.NewGuid():N}@example.com",
+            Name = "Acme " + Guid.CreateVersion7().ToString("N")[..6],
+            Email = $"acme+{Guid.CreateVersion7():N}@example.com",
         };
         var resp = await client.PostAsJsonAsync("/api/customers", req);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -49,7 +49,7 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
     [Fact]
     public async Task Customer_invoice_payment_happy_path()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
 
         // 1. Create customer
@@ -57,7 +57,7 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
         customer.TenantId.Should().Be(tenantId);
 
         // 2. Create invoice for that customer
-        var invoiceNumber = "INV-HAPPY-" + Guid.NewGuid().ToString("N")[..6];
+        var invoiceNumber = "INV-HAPPY-" + Guid.CreateVersion7().ToString("N")[..6];
         var invReq = BuildInvoiceRequest(customer.Id, invoiceNumber, unitPrice: 25m, quantity: 4, taxAmount: 5m);
         var invResp = await client.PostAsJsonAsync("/api/invoices", invReq);
         invResp.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -136,14 +136,14 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
     [Fact]
     public async Task Create_invoice_with_no_lines_returns_400_from_model_validation()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customer = await CreateCustomerAsync(client);
 
         var invReq = new CreateInvoiceRequest
         {
             CustomerId = customer.Id,
-            InvoiceNumber = "INV-NOLINES-" + Guid.NewGuid().ToString("N")[..6],
+            InvoiceNumber = "INV-NOLINES-" + Guid.CreateVersion7().ToString("N")[..6],
             IssueDate = IssueDate,
             DueDate = DueDate,
             Currency = "USD",
@@ -157,15 +157,15 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
     [Fact]
     public async Task Create_invoice_for_customer_in_other_tenant_returns_400()
     {
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var clientA = _factory.CreateClientForTenant(tenantA);
         var clientB = _factory.CreateClientForTenant(tenantB);
 
         // Customer belongs to tenantA, request goes through tenantB's client.
         var customer = await CreateCustomerAsync(clientA);
         var invReq = BuildInvoiceRequest(customer.Id,
-            "INV-CROSS-" + Guid.NewGuid().ToString("N")[..6]);
+            "INV-CROSS-" + Guid.CreateVersion7().ToString("N")[..6]);
 
         var resp = await clientB.PostAsJsonAsync("/api/invoices", invReq);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -174,12 +174,12 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
     [Fact]
     public async Task Create_invoice_with_due_date_before_issue_date_returns_400()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customer = await CreateCustomerAsync(client);
 
         var invReq = BuildInvoiceRequest(customer.Id,
-            "INV-DATES-" + Guid.NewGuid().ToString("N")[..6]);
+            "INV-DATES-" + Guid.CreateVersion7().ToString("N")[..6]);
         invReq.DueDate = invReq.IssueDate.AddDays(-1);
 
         var resp = await client.PostAsJsonAsync("/api/invoices", invReq);
@@ -189,11 +189,11 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
     [Fact]
     public async Task Create_duplicate_invoice_number_for_same_tenant_returns_409()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customer = await CreateCustomerAsync(client);
 
-        var number = "INV-DUP-" + Guid.NewGuid().ToString("N")[..6];
+        var number = "INV-DUP-" + Guid.CreateVersion7().ToString("N")[..6];
         var first = await client.PostAsJsonAsync("/api/invoices",
             BuildInvoiceRequest(customer.Id, number));
         first.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -206,15 +206,15 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
     [Fact]
     public async Task Create_payment_for_invoice_in_other_tenant_returns_400()
     {
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var clientA = _factory.CreateClientForTenant(tenantA);
         var clientB = _factory.CreateClientForTenant(tenantB);
 
         var customer = await CreateCustomerAsync(clientA);
         var invResp = await clientA.PostAsJsonAsync("/api/invoices",
             BuildInvoiceRequest(customer.Id,
-                "INV-PAYCROSS-" + Guid.NewGuid().ToString("N")[..6]));
+                "INV-PAYCROSS-" + Guid.CreateVersion7().ToString("N")[..6]));
         invResp.StatusCode.Should().Be(HttpStatusCode.Created);
         var invoice = (await invResp.Content.ReadFromJsonAsync<InvoiceResponse>())!;
 
@@ -234,12 +234,12 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
     [Fact]
     public async Task Create_payment_with_zero_amount_returns_400_from_model_validation()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customer = await CreateCustomerAsync(client);
         var invResp = await client.PostAsJsonAsync("/api/invoices",
             BuildInvoiceRequest(customer.Id,
-                "INV-ZEROPAY-" + Guid.NewGuid().ToString("N")[..6]));
+                "INV-ZEROPAY-" + Guid.CreateVersion7().ToString("N")[..6]));
         var invoice = (await invResp.Content.ReadFromJsonAsync<InvoiceResponse>())!;
 
         var payReq = new CreatePaymentRequest
@@ -256,16 +256,16 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
     [Fact]
     public async Task Get_unknown_invoice_returns_404()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
-        var resp = await client.GetAsync($"/api/invoices/{Guid.NewGuid()}");
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
+        var resp = await client.GetAsync($"/api/invoices/{Guid.CreateVersion7()}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
     public async Task Get_unknown_payment_returns_404()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
-        var resp = await client.GetAsync($"/api/payments/{Guid.NewGuid()}");
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
+        var resp = await client.GetAsync($"/api/payments/{Guid.CreateVersion7()}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -284,15 +284,15 @@ public class BillingApiTests : IClassFixture<TenantBillingWebApplicationFactory>
         // look exactly like a missing invoice (404). It must not surface 403,
         // an empty 200, or any indicator that the invoice exists for another
         // tenant — that would be a cross-tenant existence leak.
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var clientA = _factory.CreateClientForTenant(tenantA);
         var clientB = _factory.CreateClientForTenant(tenantB);
 
         var customer = await CreateCustomerAsync(clientA);
         var invResp = await clientA.PostAsJsonAsync("/api/invoices",
             BuildInvoiceRequest(customer.Id,
-                "INV-XPAYS-" + Guid.NewGuid().ToString("N")[..6]));
+                "INV-XPAYS-" + Guid.CreateVersion7().ToString("N")[..6]));
         var invoice = (await invResp.Content.ReadFromJsonAsync<InvoiceResponse>())!;
 
         var crossPayments = await clientB.GetAsync($"/api/invoices/{invoice.Id}/payments");

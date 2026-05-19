@@ -75,7 +75,7 @@ public sealed class SmsGovernanceVersioningService : ISmsGovernanceVersioningSer
 
         _db.SmsGovernanceRuleVersions.Add(new SmsGovernanceRuleVersion
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             RuleId           = ruleId,
             RulePackId       = rule.RulePackId,
             VersionNumber    = nextVersion + 1,
@@ -148,7 +148,7 @@ public sealed class SmsGovernanceVersioningService : ISmsGovernanceVersioningSer
 
         _db.SmsGovernanceRulePackVersions.Add(new SmsGovernanceRulePackVersion
         {
-            Id                        = Guid.NewGuid(),
+            Id                        = Guid.CreateVersion7(),
             RulePackId                = rulePackId,
             VersionNumber             = nextVersion + 1,
             PackSnapshotJson          = packJson,

@@ -383,7 +383,7 @@ public class AuditTests : IClassFixture<AuditApiFactory>
             ActorEmail: null,
             ActorRoles: Array.Empty<string>(),
             ResourceType: SupportAuditResourceTypes.SupportTicket,
-            ResourceId: Guid.NewGuid().ToString(),
+            ResourceId: Guid.CreateVersion7().ToString(),
             ResourceNumber: "SUP-X-1",
             Action: SupportAuditActions.Create,
             Outcome: SupportAuditOutcomes.Success,

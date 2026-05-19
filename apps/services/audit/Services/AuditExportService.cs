@@ -105,7 +105,7 @@ public sealed class AuditExportService : IAuditExportService
         var filterJson = JsonSerializer.Serialize(queryFilter, _filterSerializerOpts);
         var job = await _jobRepository.CreateAsync(new AuditExportJob
         {
-            ExportId     = Guid.NewGuid(),
+            ExportId     = Guid.CreateVersion7(),
             RequestedBy  = requestedBy,
             ScopeType    = request.ScopeType,
             ScopeId      = request.ScopeId,

@@ -24,7 +24,7 @@ public sealed class BillingAccountExternalRef : Entity<Guid>
     {
         return new BillingAccountExternalRef
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             HostPlatformKey = Billing.HostPlatformKey.Normalize(hostPlatformKey),
             ExternalTenantId = externalTenantId.Trim(),

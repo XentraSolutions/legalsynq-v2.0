@@ -18,7 +18,7 @@ public sealed class Bundle : Entity<Guid>
     {
         return new Bundle
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             Key = CatalogKey.Normalize(key),
             Name = name.Trim(),
             Description = description?.Trim(),

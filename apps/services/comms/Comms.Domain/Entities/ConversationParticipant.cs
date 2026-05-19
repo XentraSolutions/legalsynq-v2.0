@@ -54,7 +54,7 @@ public class ConversationParticipant : AuditableEntity
         var now = DateTime.UtcNow;
         return new ConversationParticipant
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ConversationId = conversationId,
             TenantId = tenantId,
             OrgId = orgId,

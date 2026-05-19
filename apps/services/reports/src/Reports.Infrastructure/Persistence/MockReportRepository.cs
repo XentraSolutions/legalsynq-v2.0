@@ -13,7 +13,7 @@ public sealed class MockReportRepository : IReportRepository
     public Task<ReportExecution> SaveAsync(ReportExecution execution, CancellationToken ct)
     {
         if (execution.Id == Guid.Empty)
-            execution.Id = Guid.NewGuid();
+            execution.Id = Guid.CreateVersion7();
         _log.LogDebug("MockReportRepository: Saved execution {Id}", execution.Id);
         return Task.FromResult(execution);
     }

@@ -224,7 +224,7 @@ $"{sourceSystem}:{eventType}:{entityId}:{occurredAtUtc:yyyyMMddHHmmss}"
 $"identity-service:session-started:{sessionId}"
 
 // Avoid: random GUIDs per request (defeats the purpose)
-Guid.NewGuid().ToString()
+Guid.CreateVersion7().ToString()
 ```
 
 ### Key length

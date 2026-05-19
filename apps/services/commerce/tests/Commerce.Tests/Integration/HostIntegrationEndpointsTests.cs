@@ -40,7 +40,7 @@ public class HostIntegrationEndpointsTests : IClassFixture<CommerceWebApplicatio
     {
         var client = _factory.CreateClient();
         var resp = await client.GetAsync(
-            $"/api/commerce/integration/billing-accounts/{Guid.NewGuid()}/entitlement-snapshot");
+            $"/api/commerce/integration/billing-accounts/{Guid.CreateVersion7()}/entitlement-snapshot");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -49,7 +49,7 @@ public class HostIntegrationEndpointsTests : IClassFixture<CommerceWebApplicatio
     {
         var client = _factory.CreateClient();
         var resp = await client.GetAsync(
-            $"/api/commerce/integration/host-tenants/never-registered/abc-{Guid.NewGuid():N}/entitlement-snapshot");
+            $"/api/commerce/integration/host-tenants/never-registered/abc-{Guid.CreateVersion7():N}/entitlement-snapshot");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -58,7 +58,7 @@ public class HostIntegrationEndpointsTests : IClassFixture<CommerceWebApplicatio
     {
         var client = _factory.CreateClient();
         var resp = await client.GetAsync(
-            $"/api/commerce/integration/billing-accounts/{Guid.NewGuid()}/access-recommendation");
+            $"/api/commerce/integration/billing-accounts/{Guid.CreateVersion7()}/access-recommendation");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -69,8 +69,8 @@ public class HostIntegrationEndpointsTests : IClassFixture<CommerceWebApplicatio
 
         // Create account + external ref through the public Billing API
         // so we exercise the same path a host integrator would.
-        var hostKey = $"host-{Guid.NewGuid():N}".Substring(0, 16);
-        var tenantId = $"tnt-{Guid.NewGuid():N}".Substring(0, 16);
+        var hostKey = $"host-{Guid.CreateVersion7():N}".Substring(0, 16);
+        var tenantId = $"tnt-{Guid.CreateVersion7():N}".Substring(0, 16);
 
         var createAcct = await client.PostAsJsonAsync("/api/commerce/billing-accounts", new
         {

@@ -137,7 +137,7 @@ public sealed class InvoiceAdjustmentService : IInvoiceAdjustmentService
         var now = DateTime.UtcNow;
         var adjustment = new InvoiceAdjustment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             InvoiceId = invoice.Id,
             CustomerId = invoice.CustomerId,

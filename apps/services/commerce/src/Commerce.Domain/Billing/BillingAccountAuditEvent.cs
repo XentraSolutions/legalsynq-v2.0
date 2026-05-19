@@ -26,7 +26,7 @@ public sealed class BillingAccountAuditEvent : Entity<Guid>
     {
         return new BillingAccountAuditEvent
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             EventType = eventType.Trim(),
             Description = description.Trim(),

@@ -47,7 +47,7 @@ public class PaymentReversalTests
     public async Task Reverse_full_payment_flips_status_and_demotes_invoice_to_Issued()
     {
         var (svc, invoices, payments, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -87,7 +87,7 @@ public class PaymentReversalTests
     public async Task Reverse_one_of_two_partial_payments_demotes_Paid_to_PartiallyPaid()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -111,7 +111,7 @@ public class PaymentReversalTests
     public async Task Reverse_twice_throws_PaymentAlreadyReversedException_409_mapping()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 100m);
@@ -129,10 +129,10 @@ public class PaymentReversalTests
     public async Task Reverse_unknown_payment_id_throws_PaymentNotFoundException()
     {
         var (svc, _, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
 
         var ex = await Assert.ThrowsAsync<PaymentNotFoundException>(() =>
-            svc.ReverseAsync(tenant, Guid.NewGuid(), "anything"));
+            svc.ReverseAsync(tenant, Guid.CreateVersion7(), "anything"));
         Assert.Equal(tenant, ex.TenantId);
     }
 
@@ -140,8 +140,8 @@ public class PaymentReversalTests
     public async Task Reverse_payment_belonging_to_other_tenant_throws_PaymentNotFoundException()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var custA = TestData.SeedCustomer(customers, tenantA);
         var inv = TestData.SeedInvoice(invoices, tenantA, custA.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenantA, inv.Id, 100m);
@@ -166,7 +166,7 @@ public class PaymentReversalTests
     public async Task Reverse_with_blank_reason_throws_InvalidReversalReasonException(string? reason)
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 100m);
@@ -179,7 +179,7 @@ public class PaymentReversalTests
     public async Task Reverse_with_oversize_reason_throws_InvalidReversalReasonException()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 100m);
@@ -195,7 +195,7 @@ public class PaymentReversalTests
     public async Task Reverse_with_exact_max_length_reason_succeeds()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 100m);
@@ -211,7 +211,7 @@ public class PaymentReversalTests
     public async Task Reverse_trims_whitespace_around_reason()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 100m);
@@ -227,7 +227,7 @@ public class PaymentReversalTests
     {
         var (svc, _, _, _) = Build();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.ReverseAsync(Guid.Empty, Guid.NewGuid(), "x"));
+            svc.ReverseAsync(Guid.Empty, Guid.CreateVersion7(), "x"));
     }
 
     [Fact]
@@ -235,7 +235,7 @@ public class PaymentReversalTests
     {
         var (svc, _, _, _) = Build();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.ReverseAsync(Guid.NewGuid(), Guid.Empty, "x"));
+            svc.ReverseAsync(Guid.CreateVersion7(), Guid.Empty, "x"));
     }
 
     // ---- concurrency: post-lock re-check rejects races -------------
@@ -255,7 +255,7 @@ public class PaymentReversalTests
     public async Task Reverse_two_concurrent_callers_one_succeeds_one_409()
     {
         var (svc, invoices, payments, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         var paid = await Record(svc, tenant, inv.Id, 100m);

@@ -40,7 +40,7 @@ public class JwtTokenService : IJwtTokenService
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
             new(JwtRegisteredClaimNames.Name, $"{user.FirstName} {user.LastName}".Trim()),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.CreateVersion7().ToString()),
             new("tenant_id", tenant.Id.ToString()),
             new("tenant_code", tenant.Code),
             // UIX-003-03: session invalidation — embed version at login time.

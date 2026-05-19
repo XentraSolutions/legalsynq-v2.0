@@ -25,7 +25,7 @@ public class TenantBillingPublisherEndpointTests
     {
         var client = _factory.CreateClient();
         var resp = await client.PostAsync(
-            $"/api/commerce/integration/tenant-billing/billing-accounts/{Guid.NewGuid()}/publish-entitlement",
+            $"/api/commerce/integration/tenant-billing/billing-accounts/{Guid.CreateVersion7()}/publish-entitlement",
             content: null);
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -81,7 +81,7 @@ public class TenantBillingPublisherEndpointTests
     {
         var client = _factory.CreateClient();
         var resp = await client.PostAsync(
-            $"/api/commerce/integration/tenant-billing/billing-accounts/{Guid.NewGuid()}/preview-entitlement",
+            $"/api/commerce/integration/tenant-billing/billing-accounts/{Guid.CreateVersion7()}/preview-entitlement",
             content: null);
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

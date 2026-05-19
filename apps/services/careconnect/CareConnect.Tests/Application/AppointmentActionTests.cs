@@ -16,11 +16,11 @@ namespace CareConnect.Tests.Application;
 /// </summary>
 public class AppointmentActionTests
 {
-    private static readonly Guid TenantId   = Guid.NewGuid();
-    private static readonly Guid ProviderId = Guid.NewGuid();
-    private static readonly Guid FacilityId = Guid.NewGuid();
-    private static readonly Guid ReferralId = Guid.NewGuid();
-    private static readonly Guid UserId     = Guid.NewGuid();
+    private static readonly Guid TenantId   = Guid.CreateVersion7();
+    private static readonly Guid ProviderId = Guid.CreateVersion7();
+    private static readonly Guid FacilityId = Guid.CreateVersion7();
+    private static readonly Guid ReferralId = Guid.CreateVersion7();
+    private static readonly Guid UserId     = Guid.CreateVersion7();
 
     private static Appointment MakeScheduledAppointment() =>
         Appointment.Create(
@@ -107,7 +107,7 @@ public class AppointmentActionTests
     [Fact]
     public void RescheduleAppointmentRequest_RequiredField_NewSlotId_IsSet()
     {
-        var slotId = Guid.NewGuid();
+        var slotId = Guid.CreateVersion7();
         var req = new RescheduleAppointmentRequest
         {
             NewAppointmentSlotId = slotId,
@@ -122,7 +122,7 @@ public class AppointmentActionTests
     {
         var req = new RescheduleAppointmentRequest
         {
-            NewAppointmentSlotId = Guid.NewGuid(),
+            NewAppointmentSlotId = Guid.CreateVersion7(),
             Notes = "Client requested afternoon slot",
         };
 
@@ -133,9 +133,9 @@ public class AppointmentActionTests
     public void Appointment_Reschedule_UpdatesSlotAndProvider()
     {
         var appt       = MakeScheduledAppointment();
-        var newSlotId  = Guid.NewGuid();
-        var newFacId   = Guid.NewGuid();
-        var newProvId  = Guid.NewGuid();
+        var newSlotId  = Guid.CreateVersion7();
+        var newFacId   = Guid.CreateVersion7();
+        var newProvId  = Guid.CreateVersion7();
         var newStart   = DateTime.UtcNow.AddDays(3);
         var newEnd     = newStart.AddHours(1);
 

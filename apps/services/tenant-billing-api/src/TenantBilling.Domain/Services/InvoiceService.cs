@@ -85,11 +85,11 @@ public sealed class InvoiceService : IInvoiceService
         var resolvedInvoiceNumber = await ResolveInvoiceNumberAsync(tenantId, invoiceNumber, issueDate, ct);
 
         var now = DateTime.UtcNow;
-        var invoiceId = Guid.NewGuid();
+        var invoiceId = Guid.CreateVersion7();
 
         var lineItems = lines.Select(l => new InvoiceLineItem
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             InvoiceId = invoiceId,
             Description = l.Description.Trim(),
             Quantity = l.Quantity,
@@ -490,7 +490,7 @@ public sealed class InvoiceService : IInvoiceService
         var now = DateTime.UtcNow;
         var refund = new Refund
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             InvoiceId = invoiceId,
             Amount = roundedAmount,

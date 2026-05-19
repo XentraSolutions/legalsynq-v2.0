@@ -42,7 +42,7 @@ public class EmailIntakeTests
     {
         return new InboundEmailIntakeRequest(
             Provider: "test",
-            InternetMessageId: internetMessageId ?? $"<{Guid.NewGuid()}@example.com>",
+            InternetMessageId: internetMessageId ?? $"<{Guid.CreateVersion7()}@example.com>",
             ProviderMessageId: null,
             ProviderThreadId: providerThreadId,
             InReplyToMessageId: inReplyTo,
@@ -193,8 +193,8 @@ public class EmailIntakeTests
     {
         var db = TestHelpers.CreateDbContext();
         var docClient = new MockDocumentServiceClient();
-        var docId = Guid.NewGuid();
-        var invalidDocId = Guid.NewGuid();
+        var docId = Guid.CreateVersion7();
+        var invalidDocId = Guid.CreateVersion7();
         docClient.SetResult(docId, new Comms.Application.Interfaces.DocumentValidationResult(true, TestHelpers.TenantId));
         docClient.SetResult(invalidDocId, new Comms.Application.Interfaces.DocumentValidationResult(false, null));
 
@@ -303,7 +303,7 @@ public class EmailIntakeTests
             conversation.Id, TestHelpers.UserId1, ParticipantType.InternalUser);
         await participantRepo.AddAsync(internalParticipant);
 
-        var externalUserId = Guid.NewGuid();
+        var externalUserId = Guid.CreateVersion7();
         var externalParticipant = TestHelpers.CreateTestParticipant(
             conversation.Id, externalUserId, ParticipantType.ExternalContact,
             externalName: "External", externalEmail: "ext@test.com");

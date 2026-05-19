@@ -73,7 +73,7 @@ app.Use(async (ctx, next) =>
         && incoming.Length <= maxLen
         && System.Text.RegularExpressions.Regex.IsMatch(incoming, @"^[a-zA-Z0-9\-_]+$")
             ? incoming
-            : Guid.NewGuid().ToString();
+            : Guid.CreateVersion7().ToString();
     ctx.Items["CorrelationId"] = correlationId;
     ctx.Response.OnStarting(() =>
     {

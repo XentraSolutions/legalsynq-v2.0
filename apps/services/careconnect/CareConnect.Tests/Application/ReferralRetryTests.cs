@@ -64,10 +64,10 @@ public class ReferralRetryTests
         bool    hasRetryTime  = false)
     {
         var n = CareConnectNotification.Create(
-            tenantId:          Guid.NewGuid(),
+            tenantId:          Guid.CreateVersion7(),
             notificationType:  type,
             relatedEntityType: "Referral",
-            relatedEntityId:   Guid.NewGuid(),
+            relatedEntityId:   Guid.CreateVersion7(),
             recipientType:     NotificationRecipientType.Provider,
             recipientAddress:  "provider@example.com",
             subject:           "Test",
@@ -240,8 +240,8 @@ public class ReferralRetryTests
     public void GetDerivedStatus_PendingNotification_ReturnsPending()
     {
         var n = CareConnectNotification.Create(
-            tenantId: Guid.NewGuid(), notificationType: NotificationType.ReferralCreated,
-            relatedEntityType: "Referral", relatedEntityId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(), notificationType: NotificationType.ReferralCreated,
+            relatedEntityType: "Referral", relatedEntityId: Guid.CreateVersion7(),
             recipientType: NotificationRecipientType.Provider, recipientAddress: "p@x.com",
             subject: "s", message: "m", scheduledForUtc: null, createdByUserId: null,
             triggerSource: NotificationSource.Initial);
@@ -286,8 +286,8 @@ public class ReferralRetryTests
         // Already has one MarkFailed from MakeNotification with attemptCount=0
         // so let's create fresh:
         var fresh = CareConnectNotification.Create(
-            tenantId: Guid.NewGuid(), notificationType: NotificationType.ReferralCreated,
-            relatedEntityType: "Referral", relatedEntityId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(), notificationType: NotificationType.ReferralCreated,
+            relatedEntityType: "Referral", relatedEntityId: Guid.CreateVersion7(),
             recipientType: NotificationRecipientType.Provider, recipientAddress: "p@x.com",
             subject: "s", message: "m", scheduledForUtc: null, createdByUserId: null,
             triggerSource: NotificationSource.Initial);
@@ -303,8 +303,8 @@ public class ReferralRetryTests
     public void MarkFailed_WithoutNextRetryAfterUtc_LeavesScheduleNull()
     {
         var n = CareConnectNotification.Create(
-            tenantId: Guid.NewGuid(), notificationType: NotificationType.ReferralCreated,
-            relatedEntityType: "Referral", relatedEntityId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(), notificationType: NotificationType.ReferralCreated,
+            relatedEntityType: "Referral", relatedEntityId: Guid.CreateVersion7(),
             recipientType: NotificationRecipientType.Provider, recipientAddress: "p@x.com",
             subject: "s", message: "m", scheduledForUtc: null, createdByUserId: null,
             triggerSource: NotificationSource.Initial);
@@ -318,8 +318,8 @@ public class ReferralRetryTests
     public void MarkSent_ClearsNextRetryAfterUtc()
     {
         var n = CareConnectNotification.Create(
-            tenantId: Guid.NewGuid(), notificationType: NotificationType.ReferralCreated,
-            relatedEntityType: "Referral", relatedEntityId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(), notificationType: NotificationType.ReferralCreated,
+            relatedEntityType: "Referral", relatedEntityId: Guid.CreateVersion7(),
             recipientType: NotificationRecipientType.Provider, recipientAddress: "p@x.com",
             subject: "s", message: "m", scheduledForUtc: null, createdByUserId: null,
             triggerSource: NotificationSource.Initial);
@@ -336,8 +336,8 @@ public class ReferralRetryTests
     public void ClearRetrySchedule_SetsNextRetryAfterUtcToNull()
     {
         var n = CareConnectNotification.Create(
-            tenantId: Guid.NewGuid(), notificationType: NotificationType.ReferralCreated,
-            relatedEntityType: "Referral", relatedEntityId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(), notificationType: NotificationType.ReferralCreated,
+            relatedEntityType: "Referral", relatedEntityId: Guid.CreateVersion7(),
             recipientType: NotificationRecipientType.Provider, recipientAddress: "p@x.com",
             subject: "s", message: "m", scheduledForUtc: null, createdByUserId: null,
             triggerSource: NotificationSource.Initial);
@@ -352,8 +352,8 @@ public class ReferralRetryTests
     public void ClearRetrySchedule_DoesNotChangeStatusOrAttemptCount()
     {
         var n = CareConnectNotification.Create(
-            tenantId: Guid.NewGuid(), notificationType: NotificationType.ReferralCreated,
-            relatedEntityType: "Referral", relatedEntityId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(), notificationType: NotificationType.ReferralCreated,
+            relatedEntityType: "Referral", relatedEntityId: Guid.CreateVersion7(),
             recipientType: NotificationRecipientType.Provider, recipientAddress: "p@x.com",
             subject: "s", message: "m", scheduledForUtc: null, createdByUserId: null,
             triggerSource: NotificationSource.Initial);
@@ -399,8 +399,8 @@ public class ReferralRetryTests
     public void TriggerSource_DefaultsToInitial()
     {
         var n = CareConnectNotification.Create(
-            tenantId: Guid.NewGuid(), notificationType: NotificationType.ReferralCreated,
-            relatedEntityType: "Referral", relatedEntityId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(), notificationType: NotificationType.ReferralCreated,
+            relatedEntityType: "Referral", relatedEntityId: Guid.CreateVersion7(),
             recipientType: NotificationRecipientType.Provider, recipientAddress: "p@x.com",
             subject: "s", message: "m", scheduledForUtc: null, createdByUserId: null,
             triggerSource: NotificationSource.Initial);
@@ -434,8 +434,8 @@ public class ReferralRetryTests
     public void AttemptCount_IncrementsByOnePerMarkFailed()
     {
         var n = CareConnectNotification.Create(
-            tenantId: Guid.NewGuid(), notificationType: NotificationType.ReferralCreated,
-            relatedEntityType: "Referral", relatedEntityId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(), notificationType: NotificationType.ReferralCreated,
+            relatedEntityType: "Referral", relatedEntityId: Guid.CreateVersion7(),
             recipientType: NotificationRecipientType.Provider, recipientAddress: "p@x.com",
             subject: "s", message: "m", scheduledForUtc: null, createdByUserId: null,
             triggerSource: NotificationSource.Initial);

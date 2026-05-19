@@ -26,7 +26,7 @@ public class ExternalParticipantIdentity : AuditableEntity
         var now = DateTime.UtcNow;
         return new ExternalParticipantIdentity
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             NormalizedEmail = EmailMessageReference.NormalizeEmail(email),
             DisplayName = displayName?.Trim(),

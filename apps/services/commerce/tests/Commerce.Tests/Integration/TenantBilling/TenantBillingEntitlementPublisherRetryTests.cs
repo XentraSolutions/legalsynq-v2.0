@@ -22,8 +22,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 2);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -40,8 +40,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 2);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -60,8 +60,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 2);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -78,8 +78,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 2);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -95,8 +95,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 2);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -113,8 +113,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 5);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -130,8 +130,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var handler = new FakeHttpMessageHandler(HttpStatusCode.Unauthorized);
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 5);
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -146,8 +146,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var handler = new FakeHttpMessageHandler(HttpStatusCode.Forbidden);
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 5);
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -162,8 +162,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var handler = new FakeHttpMessageHandler(HttpStatusCode.NotFound);
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 5);
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -178,8 +178,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var handler = new FakeHttpMessageHandler(HttpStatusCode.Conflict);
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 5);
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -195,8 +195,8 @@ public class TenantBillingEntitlementPublisherRetryTests
         var (pub, http, snaps, _, _, _) =
             PublisherTestHelpers.Build(handler: handler, retryAttempts: 0);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 

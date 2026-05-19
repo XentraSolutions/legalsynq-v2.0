@@ -21,7 +21,7 @@ namespace Support.Tests;
 
 public class RateLimitTestFactory : WebApplicationFactory<Program>
 {
-    public string DbName { get; } = $"support-tests-ratelimit-{Guid.NewGuid()}";
+    public string DbName { get; } = $"support-tests-ratelimit-{Guid.CreateVersion7()}";
 
     static RateLimitTestFactory()
     {
@@ -108,8 +108,8 @@ public class HardeningTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerList_PageZero_Returns400()
     {
-        var tenant     = $"hard-page0-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
+        var tenant     = $"hard-page0-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var resp = await customer.GetAsync("/support/api/customer/tickets?page=0");
@@ -121,8 +121,8 @@ public class HardeningTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerList_NegativePage_Returns400()
     {
-        var tenant     = $"hard-pageneg-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
+        var tenant     = $"hard-pageneg-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var resp = await customer.GetAsync("/support/api/customer/tickets?page=-5");
@@ -134,8 +134,8 @@ public class HardeningTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerList_PageSizeZero_Returns400()
     {
-        var tenant     = $"hard-ps0-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
+        var tenant     = $"hard-ps0-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var resp = await customer.GetAsync("/support/api/customer/tickets?page_size=0");
@@ -147,8 +147,8 @@ public class HardeningTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerList_PageSizeTooLarge_Returns400()
     {
-        var tenant     = $"hard-pslarge-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
+        var tenant     = $"hard-pslarge-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var resp = await customer.GetAsync("/support/api/customer/tickets?page_size=101");
@@ -160,8 +160,8 @@ public class HardeningTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerList_MaxPageSize_PassesValidation()
     {
-        var tenant     = $"hard-psmax-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
+        var tenant     = $"hard-psmax-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
 
         await EnableCustomerSupportAsync(tenant);
 
@@ -178,9 +178,9 @@ public class HardeningTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerComment_EmptyBody_Returns400()
     {
-        var tenant     = $"hard-cempty-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
-        var ticketId   = Guid.NewGuid();
+        var tenant     = $"hard-cempty-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
+        var ticketId   = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var resp = await customer.PostAsJsonAsync(
@@ -194,9 +194,9 @@ public class HardeningTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerComment_WhitespaceOnlyBody_Returns400()
     {
-        var tenant     = $"hard-cws-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
-        var ticketId   = Guid.NewGuid();
+        var tenant     = $"hard-cws-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
+        var ticketId   = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var resp = await customer.PostAsJsonAsync(
@@ -210,9 +210,9 @@ public class HardeningTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerComment_BodyExceedsMaxLength_Returns400()
     {
-        var tenant     = $"hard-clong-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
-        var ticketId   = Guid.NewGuid();
+        var tenant     = $"hard-clong-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
+        var ticketId   = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var tooLong = new string('x', 8_001);
@@ -230,9 +230,9 @@ public class HardeningTests : IClassFixture<SupportApiProdFactory>
         // Validation passes (body is 8000 chars) but the mode gate will return 403
         // (mode not enabled for this tenant). We only care that the response is NOT
         // 400 — confirming the length is accepted.
-        var tenant     = $"hard-cmaxlen-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
-        var ticketId   = Guid.NewGuid();
+        var tenant     = $"hard-cmaxlen-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
+        var ticketId   = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var maxBody = new string('a', 8_000);
@@ -303,8 +303,8 @@ public class RateLimitTests : IClassFixture<RateLimitTestFactory>
         // The RateLimitTestFactory configures permit limit = 3 per 60 seconds.
         // The rate limiter runs before the authorization / mode gate, so we can
         // use any customer_id key — no mode setup needed.
-        var tenant     = $"rl-test-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
+        var tenant     = $"rl-test-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         // First 3 requests should NOT be 429 (may be 403 due to mode=InternalOnly,
@@ -325,8 +325,8 @@ public class RateLimitTests : IClassFixture<RateLimitTestFactory>
     [Fact]
     public async Task CustomerEndpoint_429Response_HasRetryAfterHeader()
     {
-        var tenant     = $"rl-header-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
+        var tenant     = $"rl-header-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         // Exhaust the limit (3 requests) then check the 4th response headers.
@@ -344,9 +344,9 @@ public class RateLimitTests : IClassFixture<RateLimitTestFactory>
     {
         // Customer A exhausts the limit; Customer B (different customer_id) should
         // still be able to make requests — rate limits are per external_customer_id.
-        var tenant     = $"rl-iso-{Guid.NewGuid():N}";
-        var customerA  = Guid.NewGuid();
-        var customerB  = Guid.NewGuid();
+        var tenant     = $"rl-iso-{Guid.CreateVersion7():N}";
+        var customerA  = Guid.CreateVersion7();
+        var customerB  = Guid.CreateVersion7();
         var clientA    = CustomerClient(tenant, customerA);
         var clientB    = CustomerClient(tenant, customerB);
 

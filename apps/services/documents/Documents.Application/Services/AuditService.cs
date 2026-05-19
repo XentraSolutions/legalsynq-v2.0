@@ -28,7 +28,7 @@ public sealed class AuditService
         {
             var audit = new DocumentAudit
             {
-                Id            = Guid.NewGuid(),
+                Id            = Guid.CreateVersion7(),
                 TenantId      = ctx.Principal.TenantId,
                 DocumentId    = documentId,
                 Event         = eventName,

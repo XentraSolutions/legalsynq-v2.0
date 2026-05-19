@@ -22,7 +22,7 @@ public sealed class BillingProfile : Entity<Guid>
     {
         return new BillingProfile
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             TaxExempt = false,
             CreatedAtUtc = nowUtc,

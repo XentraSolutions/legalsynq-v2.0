@@ -86,7 +86,7 @@ public sealed class TenantBillingEntitlementSnapshot
 
         var snap = new TenantBillingEntitlementSnapshot
         {
-            Id                     = Guid.NewGuid(),
+            Id                     = Guid.CreateVersion7(),
             TenantBillingProfileId = profile.Id,
             TenantId               = profile.TenantId,
             BillingAccountId       = profile.BillingAccountId,

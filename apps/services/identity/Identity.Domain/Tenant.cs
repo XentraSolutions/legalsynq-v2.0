@@ -80,7 +80,7 @@ public class Tenant
         var now = DateTime.UtcNow;
         return new Tenant
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             Name = name.Trim(),
             Code = slug,
             IsActive = true,

@@ -32,7 +32,7 @@ public class LienWorkflowStage : AuditableEntity
         var now = DateTime.UtcNow;
         return new LienWorkflowStage
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             WorkflowConfigId = workflowConfigId,
             StageName        = stageName.Trim(),
             StageOrder       = order,

@@ -34,7 +34,7 @@ public sealed class PaymentAttempt : Entity<Guid>
             throw new InvalidOperationException("BillingAccountId is required.");
         return new PaymentAttempt
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PaymentId = paymentId,
             BillingAccountId = billingAccountId,
             SubscriptionId = subscriptionId,

@@ -55,7 +55,7 @@ internal sealed class FakePaymentProvider : IPaymentProvider
         => Translator is not null
             ? Translator(rawBody)
             : new NormalizedProviderEvent(PaymentProviderType.Stripe,
-                Guid.NewGuid().ToString("N"), "noop",
+                Guid.CreateVersion7().ToString("N"), "noop",
                 NormalizedProviderEventKind.Unsupported,
                 null, null, null, null, null, null, null, null, null, null);
 }
@@ -85,7 +85,7 @@ internal sealed class PaymentTestHost : IDisposable
     public PaymentTestHost()
     {
         var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"pay-tests-{Guid.NewGuid()}")
+            .UseInMemoryDatabase($"pay-tests-{Guid.CreateVersion7()}")
             .Options;
         Db = new CommerceDbContext(opts);
 
@@ -103,7 +103,7 @@ internal sealed class PaymentTestHost : IDisposable
 
     public BillingAccount AddActiveAccount(string number = "COM-ACC-PAY01")
     {
-        var account = BillingAccount.Create(number, "Acme " + Guid.NewGuid().ToString("N")[..6], null, "USD", Clock.UtcNow);
+        var account = BillingAccount.Create(number, "Acme " + Guid.CreateVersion7().ToString("N")[..6], null, "USD", Clock.UtcNow);
         account.Activate(Clock.UtcNow);
         Db.BillingAccounts.Add(account);
         Db.SaveChanges();
@@ -112,7 +112,7 @@ internal sealed class PaymentTestHost : IDisposable
 
     public Subscription AddActiveSubscription(BillingAccount acct)
     {
-        var plan = Plan.Create(null, "k-" + Guid.NewGuid().ToString("N")[..8], "Plan", null, BillingInterval.Monthly, null, 0, Clock.UtcNow);
+        var plan = Plan.Create(null, "k-" + Guid.CreateVersion7().ToString("N")[..8], "Plan", null, BillingInterval.Monthly, null, 0, Clock.UtcNow);
         plan.Activate(Clock.UtcNow);
         Db.Plans.Add(plan);
         var price = Price.Create(plan.Id, null, null, "USD", 1999, BillingInterval.Monthly, Clock.UtcNow.AddMinutes(-5), null, Clock.UtcNow);
@@ -122,7 +122,7 @@ internal sealed class PaymentTestHost : IDisposable
 
         var sub = Subscription.Create(
             acct.Id,
-            "COM-SUB-PAY-" + Guid.NewGuid().ToString("N")[..8],
+            "COM-SUB-PAY-" + Guid.CreateVersion7().ToString("N")[..8],
             Clock.UtcNow,
             Clock.UtcNow,
             Clock.UtcNow.AddMonths(1),

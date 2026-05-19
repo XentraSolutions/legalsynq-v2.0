@@ -26,10 +26,10 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
 
         var customer = new Customer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenant,
             Name = customerName,
-            Email = $"x+{Guid.NewGuid():N}@acme.test",
+            Email = $"x+{Guid.CreateVersion7():N}@acme.test",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -37,10 +37,10 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
 
         await invoices.AddAsync(new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenant,
             CustomerId = customer.Id,
-            InvoiceNumber = $"INV-{Guid.NewGuid().ToString("N")[..8]}",
+            InvoiceNumber = $"INV-{Guid.CreateVersion7().ToString("N")[..8]}",
             Status = InvoiceStatus.Issued,
             Currency = "USD",
             IssueDate = new DateTime(2026, 4, 10),
@@ -56,7 +56,7 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
     [Fact]
     public async Task GenerateMonthly_201_PersistsAndAssignsNumber()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var cid = await SeedCustomerWithInvoiceAsync(tenant);
         var client = _factory.CreateClientForTenant(tenant);
 
@@ -81,7 +81,7 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
     [Fact]
     public async Task Generate_WithRenderHtml_ProducesHtmlSnapshot()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var cid = await SeedCustomerWithInvoiceAsync(tenant, "Globex Industries");
         var client = _factory.CreateClientForTenant(tenant);
 
@@ -105,7 +105,7 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
     [Fact]
     public async Task Generate_DraftTemplate_400()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var cid = await SeedCustomerWithInvoiceAsync(tenant);
         var client = _factory.CreateClientForTenant(tenant);
 
@@ -123,11 +123,11 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
     [Fact]
     public async Task Generate_UnknownCustomer_404()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenant);
 
         var resp = await client.PostAsJsonAsync(
-            $"/api/statements/customers/{Guid.NewGuid()}/monthly/generate",
+            $"/api/statements/customers/{Guid.CreateVersion7()}/monthly/generate",
             new GenerateMonthlyStatementRequest { Year = 2026, Month = 4 });
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
@@ -136,8 +136,8 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
     [Fact]
     public async Task Generate_CrossTenantCustomer_404()
     {
-        var owner = Guid.NewGuid();
-        var other = Guid.NewGuid();
+        var owner = Guid.CreateVersion7();
+        var other = Guid.CreateVersion7();
         var cid = await SeedCustomerWithInvoiceAsync(owner);
         var client = _factory.CreateClientForTenant(other);
 
@@ -151,8 +151,8 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
     [Fact]
     public async Task History_ListsOnlyOwnedSnapshots()
     {
-        var owner = Guid.NewGuid();
-        var other = Guid.NewGuid();
+        var owner = Guid.CreateVersion7();
+        var other = Guid.CreateVersion7();
         var cid = await SeedCustomerWithInvoiceAsync(owner);
         var ownerClient = _factory.CreateClientForTenant(owner);
         var otherClient = _factory.CreateClientForTenant(other);
@@ -183,7 +183,7 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
     [Fact]
     public async Task RenderHistoryHtml_LazyRehydrates_WhenNoCachedHtml()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var cid = await SeedCustomerWithInvoiceAsync(tenant, "Lazy Co");
         var client = _factory.CreateClientForTenant(tenant);
 
@@ -202,8 +202,8 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
     [Fact]
     public async Task Void_IsIdempotent_AndCrossTenantIsolated()
     {
-        var owner = Guid.NewGuid();
-        var other = Guid.NewGuid();
+        var owner = Guid.CreateVersion7();
+        var other = Guid.CreateVersion7();
         var cid = await SeedCustomerWithInvoiceAsync(owner);
         var ownerClient = _factory.CreateClientForTenant(owner);
         var otherClient = _factory.CreateClientForTenant(other);
@@ -239,7 +239,7 @@ public class StatementsPersistenceApiTests : IClassFixture<TenantBillingWebAppli
     [Fact]
     public async Task Generate_StampsDefaultTemplate()
     {
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var cid = await SeedCustomerWithInvoiceAsync(tenant);
         var client = _factory.CreateClientForTenant(tenant);
 

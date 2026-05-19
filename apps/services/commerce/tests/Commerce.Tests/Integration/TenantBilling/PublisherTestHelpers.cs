@@ -60,7 +60,7 @@ internal static class PublisherTestHelpers
         string standing = "Good",
         AccessRecommendation rec = AccessRecommendation.Allow)
         => new(
-            BillingAccountId: ba ?? Guid.NewGuid(),
+            BillingAccountId: ba ?? Guid.CreateVersion7(),
             AccountNumber: "ACC",
             DisplayName: "x",
             HostPlatformKey: "host",

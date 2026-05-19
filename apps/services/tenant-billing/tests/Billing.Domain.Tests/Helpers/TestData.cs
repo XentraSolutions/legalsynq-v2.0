@@ -9,7 +9,7 @@ internal static class TestData
     {
         var customer = new Customer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = "Acme Corp",
             Email = "billing@acme.test",
@@ -33,10 +33,10 @@ internal static class TestData
         var due = dueDate ?? now.AddDays(30);
         var invoice = new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             CustomerId = customerId,
-            InvoiceNumber = $"INV-{Guid.NewGuid():N}".Substring(0, 12),
+            InvoiceNumber = $"INV-{Guid.CreateVersion7():N}".Substring(0, 12),
             IssueDate = now,
             DueDate = due,
             Status = status,

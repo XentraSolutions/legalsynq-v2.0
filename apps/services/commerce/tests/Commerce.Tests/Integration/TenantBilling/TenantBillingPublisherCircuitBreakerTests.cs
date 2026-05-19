@@ -20,8 +20,8 @@ public class TenantBillingPublisherCircuitBreakerTests
             circuitBreakerEnabled: false,
             circuitBreakerFailures: 1);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         for (var i = 0; i < 5; i++)
         {
@@ -43,8 +43,8 @@ public class TenantBillingPublisherCircuitBreakerTests
             circuitBreakerFailures: 2,
             circuitBreakerDurationSeconds: 60);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         // First failure: still closed.
         var r1 = await pub.PublishForBillingAccountAsync(ba, default);
@@ -81,8 +81,8 @@ public class TenantBillingPublisherCircuitBreakerTests
             circuitBreakerDurationSeconds: 30,
             clock: () => now);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         // Trip → Open after a single failure.
         await pub.PublishForBillingAccountAsync(ba, default);
@@ -118,8 +118,8 @@ public class TenantBillingPublisherCircuitBreakerTests
             circuitBreakerDurationSeconds: 30,
             clock: () => now);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         await pub.PublishForBillingAccountAsync(ba, default);
         breaker.State.Should().Be("Open");
@@ -151,8 +151,8 @@ public class TenantBillingPublisherCircuitBreakerTests
             circuitBreakerDurationSeconds: 30,
             clock: () => now);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         await pub.PublishForBillingAccountAsync(ba, default);
         breaker.State.Should().Be("Open");
@@ -179,8 +179,8 @@ public class TenantBillingPublisherCircuitBreakerTests
             circuitBreakerEnabled: true,
             circuitBreakerFailures: 1);
 
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         await pub.PublishForBillingAccountAsync(ba, default);
         await pub.PublishForBillingAccountAsync(ba, default);

@@ -13,9 +13,9 @@ public class InvoiceTemplateStampingTests
 {
     private static InvoiceTemplate FullyPopulatedTemplate(string name = "Brand A") => new()
     {
-        Id = Guid.NewGuid(),
+        Id = Guid.CreateVersion7(),
         OwnerType = InvoiceTemplateOwnerType.Tenant,
-        BillingAccountId = Guid.NewGuid(),
+        BillingAccountId = Guid.CreateVersion7(),
         Name = name,
         Status = InvoiceTemplateStatus.Active,
         IsDefault = true,
@@ -34,9 +34,9 @@ public class InvoiceTemplateStampingTests
 
     private static Invoice BlankInvoice() => new()
     {
-        Id = Guid.NewGuid(),
-        TenantId = Guid.NewGuid(),
-        CustomerId = Guid.NewGuid(),
+        Id = Guid.CreateVersion7(),
+        TenantId = Guid.CreateVersion7(),
+        CustomerId = Guid.CreateVersion7(),
         InvoiceNumber = "INV-2026-000001",
         Currency = "USD",
         Status = InvoiceStatus.Draft,
@@ -78,9 +78,9 @@ public class InvoiceTemplateStampingTests
         var sut = new InvoiceTemplateStampingService();
         var tpl = new InvoiceTemplate
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             OwnerType = InvoiceTemplateOwnerType.Tenant,
-            BillingAccountId = Guid.NewGuid(),
+            BillingAccountId = Guid.CreateVersion7(),
             Name = "Minimal",
             Status = InvoiceTemplateStatus.Active,
             DisplayBillingAddress = false,

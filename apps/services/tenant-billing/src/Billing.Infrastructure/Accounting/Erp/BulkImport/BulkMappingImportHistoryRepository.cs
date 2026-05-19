@@ -21,7 +21,7 @@ public sealed class BulkMappingImportHistoryRepository : IBulkMappingImportHisto
     public async Task AppendAsync(BulkMappingImportHistory row, CancellationToken ct = default)
     {
         if (row is null) throw new ArgumentNullException(nameof(row));
-        if (row.Id == Guid.Empty) row.Id = Guid.NewGuid();
+        if (row.Id == Guid.Empty) row.Id = Guid.CreateVersion7();
         await _db.BulkMappingImportHistory.AddAsync(row, ct).ConfigureAwait(false);
         try
         {

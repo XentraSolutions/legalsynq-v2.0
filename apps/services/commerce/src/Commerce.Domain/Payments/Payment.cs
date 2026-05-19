@@ -84,7 +84,7 @@ public sealed class Payment : Entity<Guid>
 
         return new Payment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             InvoiceId = invoiceId,
             SubscriptionId = subscriptionId,
@@ -135,7 +135,7 @@ public sealed class Payment : Entity<Guid>
 
         return new Payment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             InvoiceId = invoiceId,
             SubscriptionId = subscriptionId,

@@ -55,7 +55,7 @@ public sealed class QuickBooksCustomerMappingService : IQuickBooksCustomerMappin
         var now = _clock.GetUtcNow().UtcDateTime;
         var entity = new QuickBooksCustomerMapping
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             BillingCustomerId = command.BillingCustomerId,
             QuickBooksCustomerId = qboId,

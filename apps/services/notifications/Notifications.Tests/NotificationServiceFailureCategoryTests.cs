@@ -23,7 +23,7 @@ namespace Notifications.Tests;
 /// </summary>
 public class NotificationServiceFailureCategoryTests
 {
-    private static readonly Guid TenantId = Guid.NewGuid();
+    private static readonly Guid TenantId = Guid.CreateVersion7();
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -217,7 +217,7 @@ public class NotificationServiceFailureCategoryTests
         public Task<Notification> CreateAsync(Notification notification)
         {
             if (notification.Id == Guid.Empty)
-                notification.Id = Guid.NewGuid();
+                notification.Id = Guid.CreateVersion7();
             return Task.FromResult(notification);
         }
 
@@ -260,7 +260,7 @@ public class NotificationServiceFailureCategoryTests
         public Task<NotificationAttempt> CreateAsync(NotificationAttempt attempt)
         {
             if (attempt.Id == Guid.Empty)
-                attempt.Id = Guid.NewGuid();
+                attempt.Id = Guid.CreateVersion7();
             return Task.FromResult(attempt);
         }
 
@@ -291,7 +291,7 @@ public class NotificationServiceFailureCategoryTests
 
         public Task<NotificationEvent> CreateAsync(NotificationEvent evt)
         {
-            if (evt.Id == Guid.Empty) evt.Id = Guid.NewGuid();
+            if (evt.Id == Guid.Empty) evt.Id = Guid.CreateVersion7();
             return Task.FromResult(evt);
         }
 
@@ -385,7 +385,7 @@ public class NotificationServiceFailureCategoryTests
     private sealed class StubAuditEventClient : IAuditEventClient
     {
         public Task<IngestResult> IngestAsync(IngestAuditEventRequest request, CancellationToken ct = default)
-            => Task.FromResult(new IngestResult(true, Guid.NewGuid().ToString(), null, 202));
+            => Task.FromResult(new IngestResult(true, Guid.CreateVersion7().ToString(), null, 202));
 
         public Task<BatchIngestResult> IngestBatchAsync(BatchIngestRequest request, CancellationToken ct = default)
             => Task.FromResult(new BatchIngestResult(0, 0, 0, Array.Empty<IngestResult>()));
@@ -464,7 +464,7 @@ public class NotificationServiceFailureCategoryTests
 
         public Task<Guid> CreateTemplateAsync(
             CreateSmsTemplateRequest request, CancellationToken ct = default)
-            => Task.FromResult(Guid.NewGuid());
+            => Task.FromResult(Guid.CreateVersion7());
 
         public Task<bool> UpdateTemplateAsync(
             UpdateSmsTemplateRequest request, CancellationToken ct = default)
@@ -476,7 +476,7 @@ public class NotificationServiceFailureCategoryTests
 
         public Task<Guid> CreateVersionAsync(
             CreateSmsTemplateVersionRequest request, CancellationToken ct = default)
-            => Task.FromResult(Guid.NewGuid());
+            => Task.FromResult(Guid.CreateVersion7());
 
         public Task<bool> SubmitForReviewAsync(
             Guid templateId, string? requestedBy, CancellationToken ct = default)

@@ -34,7 +34,7 @@ public sealed class SubscriptionChange : Entity<Guid>
     {
         return new SubscriptionChange
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             SubscriptionId = subscriptionId,
             ChangeType = changeType,
             FromPlanId = fromPlanId,

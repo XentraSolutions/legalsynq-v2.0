@@ -25,7 +25,7 @@ internal sealed class BillingTestHost : IDisposable
     public BillingTestHost()
     {
         var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"billing-tests-{Guid.NewGuid()}")
+            .UseInMemoryDatabase($"billing-tests-{Guid.CreateVersion7()}")
             .Options;
         Db = new CommerceDbContext(opts);
 

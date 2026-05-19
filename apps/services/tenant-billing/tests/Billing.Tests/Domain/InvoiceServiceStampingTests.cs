@@ -13,9 +13,9 @@ public class InvoiceServiceStampingTests
 {
     private static async Task<(Guid TenantId, Guid CustomerId)> SeedAsync(DomainTestHost host)
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(
-            tenantId, "Acme", $"billing+{Guid.NewGuid():N}@acme.test",
+            tenantId, "Acme", $"billing+{Guid.CreateVersion7():N}@acme.test",
             phone: null, billingAddress: null, externalReference: null, notes: null);
         return (tenantId, customer.Id);
     }

@@ -35,7 +35,7 @@ public sealed class PaymentProviderCustomer : Entity<Guid>
 
         return new PaymentProviderCustomer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             Provider = provider,
             ProviderCustomerId = providerCustomerId.Trim(),

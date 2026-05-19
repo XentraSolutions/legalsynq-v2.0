@@ -75,7 +75,7 @@ public class AccessRecommendationServiceTests
     public async Task End_to_end_returns_null_for_missing_account()
     {
         using var host = new IntegrationTestHost();
-        var rec = await host.Recommendation.GetForBillingAccountAsync(Guid.NewGuid(), default);
+        var rec = await host.Recommendation.GetForBillingAccountAsync(Guid.CreateVersion7(), default);
         rec.Should().BeNull();
     }
 }

@@ -75,7 +75,7 @@ public sealed class BulkMappingImportService : IBulkMappingImportService
 
         var parsed = await _parser.ParseAsync(csv, ct).ConfigureAwait(false);
         var rows = await ClassifyAsync(tenantId, parsed.Rows, ct).ConfigureAwait(false);
-        var token = Guid.NewGuid();
+        var token = Guid.CreateVersion7();
         var valid = rows.Count(r => r.Classification == BulkImportRowClassification.Valid);
         var warning = rows.Count(r => r.Classification == BulkImportRowClassification.Warning);
         var rejected = rows.Count(r => r.Classification == BulkImportRowClassification.Rejected);
@@ -128,7 +128,7 @@ public sealed class BulkMappingImportService : IBulkMappingImportService
 
         var startedAt = _clock.GetUtcNow().UtcDateTime;
         var actor = string.IsNullOrWhiteSpace(operatorDisplayName) ? "tenant-admin" : operatorDisplayName.Trim();
-        var historyId = Guid.NewGuid();
+        var historyId = Guid.CreateVersion7();
 
         // Reserve the audit row BEFORE any mapping writes. Two
         // concurrent commits with the same idempotency key race
@@ -223,7 +223,7 @@ public sealed class BulkMappingImportService : IBulkMappingImportService
 
                 var mapping = new QuickBooksCustomerMapping
                 {
-                    Id = Guid.NewGuid(),
+                    Id = Guid.CreateVersion7(),
                     TenantId = tenantId,
                     BillingCustomerId = validated.BillingCustomerId.Value,
                     QuickBooksCustomerId = validated.QuickBooksCustomerId!,

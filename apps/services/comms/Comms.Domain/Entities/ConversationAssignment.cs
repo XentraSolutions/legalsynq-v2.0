@@ -35,7 +35,7 @@ public class ConversationAssignment : AuditableEntity
 
         return new ConversationAssignment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             QueueId = queueId,

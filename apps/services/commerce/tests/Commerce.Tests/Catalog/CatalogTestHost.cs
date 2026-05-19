@@ -31,7 +31,7 @@ internal sealed class CatalogTestHost : IDisposable
     public CatalogTestHost()
     {
         var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"catalog-tests-{Guid.NewGuid()}")
+            .UseInMemoryDatabase($"catalog-tests-{Guid.CreateVersion7()}")
             .Options;
         Db = new CommerceDbContext(opts);
 

@@ -22,7 +22,7 @@ public class SubscriptionApiTests : IClassFixture<CommerceWebApplicationFactory>
 
         // 1. Create + activate billing account
         var acctResp = await client.PostAsJsonAsync("/api/commerce/billing-accounts",
-            new CreateBillingAccountRequest("Acme " + Guid.NewGuid().ToString("N")[..6], null, "USD"));
+            new CreateBillingAccountRequest("Acme " + Guid.CreateVersion7().ToString("N")[..6], null, "USD"));
         acctResp.StatusCode.Should().Be(HttpStatusCode.Created);
         var account = (await acctResp.Content.ReadFromJsonAsync<BillingAccountResponse>())!;
         (await client.PostAsync($"/api/commerce/billing-accounts/{account.Id}/activate", null))
@@ -30,7 +30,7 @@ public class SubscriptionApiTests : IClassFixture<CommerceWebApplicationFactory>
 
         // 2. Create + activate plan
         var planResp = await client.PostAsJsonAsync("/api/commerce/catalog/plans",
-            new CreatePlanRequest(null, "api-plan-" + Guid.NewGuid().ToString("N")[..8], "Api Plan",
+            new CreatePlanRequest(null, "api-plan-" + Guid.CreateVersion7().ToString("N")[..8], "Api Plan",
                 null, BillingInterval.Monthly, null, 0));
         planResp.StatusCode.Should().Be(HttpStatusCode.Created);
         var plan = (await planResp.Content.ReadFromJsonAsync<PlanResponse>())!;
@@ -78,7 +78,7 @@ public class SubscriptionApiTests : IClassFixture<CommerceWebApplicationFactory>
     public async Task Get_unknown_subscription_returns_404()
     {
         var client = _factory.CreateClient();
-        var resp = await client.GetAsync($"/api/commerce/subscriptions/{Guid.NewGuid()}");
+        var resp = await client.GetAsync($"/api/commerce/subscriptions/{Guid.CreateVersion7()}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 

@@ -14,7 +14,7 @@ public class TenantBillingPublisherPreviewAndDiagnosticsTests
     public async Task Preview_returns_null_when_billing_account_unknown()
     {
         var (pub, http, _, _, _, _) = PublisherTestHelpers.Build();
-        var r = await pub.PreviewForBillingAccountAsync(Guid.NewGuid(), default);
+        var r = await pub.PreviewForBillingAccountAsync(Guid.CreateVersion7(), default);
         r.Should().BeNull();
         http.Requests.Should().BeEmpty();
     }
@@ -23,8 +23,8 @@ public class TenantBillingPublisherPreviewAndDiagnosticsTests
     public async Task Preview_returns_payload_and_tenant_id_when_resolvable()
     {
         var (pub, http, snaps, _, _, _) = PublisherTestHelpers.Build();
-        var ba = Guid.NewGuid();
-        var tenant = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
+        var tenant = Guid.CreateVersion7();
         snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, tenant.ToString());
 
         var r = await pub.PreviewForBillingAccountAsync(ba, default);
@@ -46,7 +46,7 @@ public class TenantBillingPublisherPreviewAndDiagnosticsTests
     public async Task Preview_returns_skip_reason_when_external_tenant_id_missing()
     {
         var (pub, _, snaps, _, _, _) = PublisherTestHelpers.Build();
-        var ba = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
         snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, externalTenantId: null);
 
         var r = await pub.PreviewForBillingAccountAsync(ba, default);
@@ -62,7 +62,7 @@ public class TenantBillingPublisherPreviewAndDiagnosticsTests
     public async Task Preview_returns_skip_reason_when_external_tenant_id_not_a_guid()
     {
         var (pub, _, snaps, _, _, _) = PublisherTestHelpers.Build();
-        var ba = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
         snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, externalTenantId: "not-a-guid");
 
         var r = await pub.PreviewForBillingAccountAsync(ba, default);
@@ -76,8 +76,8 @@ public class TenantBillingPublisherPreviewAndDiagnosticsTests
     public async Task Preview_when_publisher_disabled_still_returns_payload_with_skip_reason()
     {
         var (pub, http, snaps, _, _, _) = PublisherTestHelpers.Build(enabled: false);
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PreviewForBillingAccountAsync(ba, default);
 

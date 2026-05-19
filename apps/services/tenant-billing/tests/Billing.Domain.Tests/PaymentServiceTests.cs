@@ -25,7 +25,7 @@ public class PaymentServiceTests
     public async Task Partial_payment_marks_invoice_PartiallyPaid()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -39,7 +39,7 @@ public class PaymentServiceTests
     public async Task Full_payment_marks_invoice_Paid()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -53,7 +53,7 @@ public class PaymentServiceTests
     public async Task Sequential_payments_progress_PartiallyPaid_then_Paid()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -70,7 +70,7 @@ public class PaymentServiceTests
     public async Task Payment_against_voided_invoice_is_rejected()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Voided);
 
@@ -81,7 +81,7 @@ public class PaymentServiceTests
     public async Task Payment_against_draft_invoice_is_rejected()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Draft);
 
@@ -92,7 +92,7 @@ public class PaymentServiceTests
     public async Task Payment_against_paid_invoice_is_rejected()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Paid);
 
@@ -103,7 +103,7 @@ public class PaymentServiceTests
     public async Task Overpayment_is_rejected_and_invoice_status_unchanged()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -120,7 +120,7 @@ public class PaymentServiceTests
     public async Task Currency_mismatch_is_rejected()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued, currency: "USD");
 
@@ -131,8 +131,8 @@ public class PaymentServiceTests
     public async Task Cross_tenant_payment_is_rejected()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
-        var otherTenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var otherTenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -146,7 +146,7 @@ public class PaymentServiceTests
         // so an overdue invoice must remain Overdue after a partial
         // payment instead of silently rolling back to PartiallyPaid.
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(
             invoices, tenant, customer.Id, 100m,
@@ -163,7 +163,7 @@ public class PaymentServiceTests
     public async Task Full_payment_to_overdue_invoice_marks_Paid()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(
             invoices, tenant, customer.Id, 100m,
@@ -187,7 +187,7 @@ public class PaymentServiceTests
         // serialize the attempts so the running paid sum is observed
         // correctly and only the first three succeed (3 * $30 = $90 ≤ $100).
         var (svc, invoices, payments, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -238,7 +238,7 @@ public class PaymentServiceTests
         // (same Stripe charge id) must be rejected so the invoice's paid
         // total and status are unchanged and only one Payment row exists.
         var (svc, invoices, payments, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
         const string chargeId = "ch_stripe_123";
@@ -265,7 +265,7 @@ public class PaymentServiceTests
         // dedupe check must apply to the trimmed value too — otherwise a
         // retried webhook with stray whitespace would slip through.
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -285,8 +285,8 @@ public class PaymentServiceTests
         // unlikely in practice but possible across providers/sandboxes)
         // must not collide.
         var (svc, invoices, _, customers) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var custA = TestData.SeedCustomer(customers, tenantA);
         var custB = TestData.SeedCustomer(customers, tenantB);
         var invA = TestData.SeedInvoice(invoices, tenantA, custA.Id, 100m, status: InvoiceStatus.Issued);
@@ -308,7 +308,7 @@ public class PaymentServiceTests
         // common case for manually recorded payments and they are not
         // idempotent on a provider id.
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 

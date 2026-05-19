@@ -40,11 +40,11 @@ public class ManualPaymentRecordingTests
         public TestHarness(string currency = "USD", long lineAmountMinor = 5000, int qty = 2)
         {
             var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-                .UseInMemoryDatabase($"manualpay-{Guid.NewGuid()}")
+                .UseInMemoryDatabase($"manualpay-{Guid.CreateVersion7()}")
                 .Options;
             Db = new CommerceDbContext(opts);
 
-            Account = BillingAccount.Create("COM-ACC-MAN-" + Guid.NewGuid().ToString("N")[..6],
+            Account = BillingAccount.Create("COM-ACC-MAN-" + Guid.CreateVersion7().ToString("N")[..6],
                 "ManualCo", null, currency, Clock.UtcNow);
             Account.Activate(Clock.UtcNow);
             Db.BillingAccounts.Add(Account);
@@ -206,7 +206,7 @@ public class ManualPaymentRecordingTests
     public async Task Unknown_invoice_returns_not_found()
     {
         using var h = new TestHarness();
-        var act = () => h.Service.RecordAsync(Guid.NewGuid(),
+        var act = () => h.Service.RecordAsync(Guid.CreateVersion7(),
             new RecordManualPaymentRequest(100, h.Clock.UtcNow, "cash"),
             CancellationToken.None);
         await act.Should().ThrowAsync<NotFoundException>();

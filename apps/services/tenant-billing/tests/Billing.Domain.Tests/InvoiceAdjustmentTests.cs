@@ -40,7 +40,7 @@ public class InvoiceAdjustmentTests
     {
         var pay = new Payment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = inv.TenantId,
             InvoiceId = inv.Id,
             Amount = amount,
@@ -60,7 +60,7 @@ public class InvoiceAdjustmentTests
     public async Task Credit_within_remaining_balance_appends_and_returns_effective_totals()
     {
         var (svc, invoices, customers, payments, repo) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 200m);
         SeedPayment(payments, invoices, inv, 50m); // partial: 150 outstanding
@@ -90,7 +90,7 @@ public class InvoiceAdjustmentTests
     public async Task Debit_on_Issued_invoice_increases_effective_total()
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
 
@@ -109,7 +109,7 @@ public class InvoiceAdjustmentTests
     public async Task Multiple_adjustments_accumulate_across_calls()
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
 
@@ -131,7 +131,7 @@ public class InvoiceAdjustmentTests
     public async Task Type_is_case_insensitive_and_trimmed(string type)
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
 
@@ -146,7 +146,7 @@ public class InvoiceAdjustmentTests
     public async Task Credit_that_exceeds_effective_owed_throws_OverCredit_and_does_not_persist()
     {
         var (svc, invoices, customers, payments, repo) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
         SeedPayment(payments, invoices, inv, 60m); // 40 outstanding
@@ -164,7 +164,7 @@ public class InvoiceAdjustmentTests
     public async Task Credit_exactly_equal_to_outstanding_is_allowed()
     {
         var (svc, invoices, customers, payments, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
         SeedPayment(payments, invoices, inv, 30m); // 70 outstanding
@@ -184,7 +184,7 @@ public class InvoiceAdjustmentTests
     public async Task Adjustment_blocked_on_terminal_or_refund_status(string status)
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: status);
 
@@ -200,8 +200,8 @@ public class InvoiceAdjustmentTests
     public async Task Cross_tenant_probe_returns_null_with_no_existence_leak()
     {
         var (svc, invoices, customers, _, _) = Build();
-        var ownerTenant = Guid.NewGuid();
-        var probeTenant = Guid.NewGuid();
+        var ownerTenant = Guid.CreateVersion7();
+        var probeTenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, ownerTenant);
         var inv = SeedIssued(invoices, ownerTenant, customer.Id, 100m);
 
@@ -213,8 +213,8 @@ public class InvoiceAdjustmentTests
     public async Task Missing_invoice_id_returns_null()
     {
         var (svc, _, _, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var result = await svc.CreateAsync(tenant, Guid.NewGuid(), "Credit", 1m, "x", null, null);
+        var tenant = Guid.CreateVersion7();
+        var result = await svc.CreateAsync(tenant, Guid.CreateVersion7(), "Credit", 1m, "x", null, null);
         Assert.Null(result);
     }
 
@@ -225,7 +225,7 @@ public class InvoiceAdjustmentTests
     {
         var (svc, _, _, _, _) = Build();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.CreateAsync(Guid.Empty, Guid.NewGuid(), "Credit", 1m, "x", null, null));
+            svc.CreateAsync(Guid.Empty, Guid.CreateVersion7(), "Credit", 1m, "x", null, null));
     }
 
     [Fact]
@@ -233,7 +233,7 @@ public class InvoiceAdjustmentTests
     {
         var (svc, _, _, _, _) = Build();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.CreateAsync(Guid.NewGuid(), Guid.Empty, "Credit", 1m, "x", null, null));
+            svc.CreateAsync(Guid.CreateVersion7(), Guid.Empty, "Credit", 1m, "x", null, null));
     }
 
     [Theory]
@@ -244,7 +244,7 @@ public class InvoiceAdjustmentTests
     public async Task Blank_or_unknown_type_throws_InvalidAdjustmentType(string type)
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
 
@@ -258,7 +258,7 @@ public class InvoiceAdjustmentTests
     public async Task Non_positive_amount_throws(decimal amount)
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
 
@@ -270,7 +270,7 @@ public class InvoiceAdjustmentTests
     public async Task Amount_above_decimal_18_2_cap_throws()
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
 
@@ -284,7 +284,7 @@ public class InvoiceAdjustmentTests
     public async Task Blank_reason_throws(string reason)
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
 
@@ -296,7 +296,7 @@ public class InvoiceAdjustmentTests
     public async Task Oversize_reason_throws()
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
         var huge = new string('r', InvoiceAdjustmentService.ReasonMaxLength + 1);
@@ -309,7 +309,7 @@ public class InvoiceAdjustmentTests
     public async Task Oversize_reference_number_throws()
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedIssued(invoices, tenant, customer.Id, 100m);
         var huge = new string('x', InvoiceAdjustmentService.ReferenceNumberMaxLength + 1);
@@ -322,7 +322,7 @@ public class InvoiceAdjustmentTests
     public async Task Currency_is_inherited_from_parent_invoice()
     {
         var (svc, invoices, customers, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Issued, currency: "EUR");

@@ -18,7 +18,7 @@ public class InvoiceTemplateSelectionTests
     {
         var (svc, _) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        Assert.Null(await sel.GetDefaultForTenantAsync(Guid.NewGuid()));
+        Assert.Null(await sel.GetDefaultForTenantAsync(Guid.CreateVersion7()));
     }
 
     [Fact]
@@ -26,14 +26,14 @@ public class InvoiceTemplateSelectionTests
     {
         var (svc, repo) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
 
         // Bypass the service to construct an "impossible" Draft+IsDefault
         // row directly so we can prove the selection service filters
         // out non-Active defaults defensively.
         await repo.AddAsync(new InvoiceTemplate
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             OwnerType = InvoiceTemplateOwnerType.Tenant,
             BillingAccountId = tenantId,
             Name = "Draft default",
@@ -51,7 +51,7 @@ public class InvoiceTemplateSelectionTests
     {
         var (svc, _) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
 
         var created = await svc.CreateAsync(tenantId, new NewInvoiceTemplate(
             "Default", null, InvoiceTemplateStatus.Active, true,
@@ -71,8 +71,8 @@ public class InvoiceTemplateSelectionTests
     {
         var (svc, _) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var t1 = Guid.NewGuid();
-        var t2 = Guid.NewGuid();
+        var t1 = Guid.CreateVersion7();
+        var t2 = Guid.CreateVersion7();
 
         await svc.CreateAsync(t1, new NewInvoiceTemplate(
             "T1 default", null, InvoiceTemplateStatus.Active, true,
@@ -86,7 +86,7 @@ public class InvoiceTemplateSelectionTests
     {
         var (svc, _) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
 
         await svc.CreateAsync(tenantId, new NewInvoiceTemplate(
             "Tenant default", null, InvoiceTemplateStatus.Active, true,

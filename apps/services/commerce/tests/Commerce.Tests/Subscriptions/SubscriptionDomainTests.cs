@@ -12,7 +12,7 @@ public class SubscriptionDomainTests
 
     private static Subscription New(DateTime? trialStart = null, DateTime? trialEnd = null)
         => Subscription.Create(
-            Guid.NewGuid(), "COM-SUB-000001", Now, Now, Now.AddMonths(1),
+            Guid.CreateVersion7(), "COM-SUB-000001", Now, Now, Now.AddMonths(1),
             trialStart, trialEnd, Now);
 
     [Fact]
@@ -34,14 +34,14 @@ public class SubscriptionDomainTests
     [Fact]
     public void Create_rejects_inverted_period()
     {
-        var act = () => Subscription.Create(Guid.NewGuid(), "n", Now, Now.AddDays(2), Now, null, null, Now);
+        var act = () => Subscription.Create(Guid.CreateVersion7(), "n", Now, Now.AddDays(2), Now, null, null, Now);
         act.Should().Throw<InvalidOperationException>();
     }
 
     [Fact]
     public void Create_rejects_one_sided_trial()
     {
-        var act = () => Subscription.Create(Guid.NewGuid(), "n", Now, Now, Now.AddMonths(1), Now, null, Now);
+        var act = () => Subscription.Create(Guid.CreateVersion7(), "n", Now, Now, Now.AddMonths(1), Now, null, Now);
         act.Should().Throw<InvalidOperationException>();
     }
 
@@ -119,7 +119,7 @@ public class SubscriptionDomainTests
     [Fact]
     public void SubscriptionItem_create_rejects_zero_quantity()
     {
-        var act = () => SubscriptionItem.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+        var act = () => SubscriptionItem.Create(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
             0, 100, "USD", BillingInterval.Monthly, Now, Now);
         act.Should().Throw<InvalidOperationException>();
     }
@@ -127,7 +127,7 @@ public class SubscriptionDomainTests
     [Fact]
     public void SubscriptionItem_close_must_be_after_effective_from()
     {
-        var item = SubscriptionItem.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+        var item = SubscriptionItem.Create(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
             1, 100, "USD", BillingInterval.Monthly, Now, Now);
         var act = () => item.Close(Now, Now);
         act.Should().Throw<InvalidOperationException>();

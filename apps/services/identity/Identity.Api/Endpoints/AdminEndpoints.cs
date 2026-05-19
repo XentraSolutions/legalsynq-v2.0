@@ -2980,7 +2980,7 @@ public static class AdminEndpoints
     private static IResult CreateSupport(CreateSupportRequest body) =>
         Results.Created("/api/admin/support/stub", new
         {
-            id          = Guid.NewGuid(),
+            id          = Guid.CreateVersion7(),
             title       = body.Title,
             status      = "Open",
             priority    = body.Priority ?? "Medium",
@@ -2992,7 +2992,7 @@ public static class AdminEndpoints
     private static IResult AddSupportNote(string id, SupportNoteRequest body) =>
         Results.Ok(new
         {
-            id           = Guid.NewGuid(),
+            id           = Guid.CreateVersion7(),
             caseId       = id,
             message      = body.Message,
             createdBy    = "admin",
@@ -4295,7 +4295,7 @@ public static class AdminEndpoints
             return Results.Conflict(new { error = $"User with email '{emailLower}' already exists in this tenant." });
 
         // Create user as inactive (not yet accepted invite).
-        var tempPasswordHash = passwordHasher.Hash(Guid.NewGuid().ToString());
+        var tempPasswordHash = passwordHasher.Hash(Guid.CreateVersion7().ToString());
         var user = User.Create(body.TenantId, emailLower, tempPasswordHash, body.FirstName.Trim(), body.LastName.Trim());
         user.Deactivate();
         db.Users.Add(user);
@@ -4312,7 +4312,7 @@ public static class AdminEndpoints
         }
 
         // Create invitation token (raw token logged; hash stored).
-        var rawToken   = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var rawToken   = Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N");
         var tokenHash  = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rawToken)));
         var invitation = UserInvitation.Create(user.Id, body.TenantId, tokenHash, UserInvitation.PortalOrigins.TenantPortal, body.InvitedByUserId);
         db.UserInvitations.Add(invitation);
@@ -4440,7 +4440,7 @@ public static class AdminEndpoints
             return Results.Conflict(new { error = $"A user with email '{emailLower}' already exists." });
 
         // Create user as PlatformInternal + inactive (pending invite acceptance).
-        var tempPasswordHash = passwordHasher.Hash(Guid.NewGuid().ToString());
+        var tempPasswordHash = passwordHasher.Hash(Guid.CreateVersion7().ToString());
         var user = User.Create(
             platformTenantId,
             emailLower,
@@ -4467,7 +4467,7 @@ public static class AdminEndpoints
         }
 
         // Create invitation token.
-        var rawToken   = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var rawToken   = Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N");
         var tokenHash  = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(rawToken)));
@@ -4557,7 +4557,7 @@ public static class AdminEndpoints
 
         foreach (var inv in pending) inv.Revoke();
 
-        var rawToken  = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var rawToken  = Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N");
         var tokenHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rawToken)));
         var newInvite = UserInvitation.Create(id, user.TenantId, tokenHash, UserInvitation.PortalOrigins.TenantPortal);
         db.UserInvitations.Add(newInvite);
@@ -7245,7 +7245,7 @@ public static class AdminEndpoints
 
         // Create external user with an unusable password hash
         // (ExternalCustomers do not authenticate via the internal login flow)
-        var unusableHash = passwordHasher.Hash(Guid.NewGuid().ToString());
+        var unusableHash = passwordHasher.Hash(Guid.CreateVersion7().ToString());
         var user = User.Create(
             tenantId:     body.TenantId,
             email:        emailNorm,
@@ -7658,13 +7658,13 @@ public static partial class AdminEndpointsLscc010
 
         // Create inactive user
         var lastName = string.IsNullOrWhiteSpace(body.LastName) ? "User" : body.LastName.Trim();
-        var tempHash = passwordHasher.Hash(Guid.NewGuid().ToString());
+        var tempHash = passwordHasher.Hash(Guid.CreateVersion7().ToString());
         var user     = User.Create(org.TenantId, emailLower, tempHash, body.FirstName.Trim(), lastName);
         user.Deactivate();
         db.Users.Add(user);
 
         // Create invitation
-        var rawToken   = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var rawToken   = Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N");
         var tokenHash  = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(rawToken)));

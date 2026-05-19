@@ -56,7 +56,7 @@ public class TenantBillingAccessPolicyTests
     {
         var (_, _, r) = Build();
         var policy = NewPolicy(r, new EntitlementEnforcementOptions { Enabled = false });
-        var d = await policy.AuthorizeAsync(Guid.NewGuid(), category);
+        var d = await policy.AuthorizeAsync(Guid.CreateVersion7(), category);
         d.IsAllowed.Should().BeTrue();
         d.Reason.Should().Be("enforcement disabled");
     }
@@ -72,7 +72,7 @@ public class TenantBillingAccessPolicyTests
     {
         var (_, _, r) = Build();
         var policy = NewPolicy(r, new EntitlementEnforcementOptions { Enabled = true });
-        var d = await policy.AuthorizeAsync(Guid.NewGuid(), category);
+        var d = await policy.AuthorizeAsync(Guid.CreateVersion7(), category);
         d.IsAllowed.Should().BeTrue();
     }
 
@@ -89,7 +89,7 @@ public class TenantBillingAccessPolicyTests
         TenantBillingOperationCategory category)
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,
@@ -113,7 +113,7 @@ public class TenantBillingAccessPolicyTests
     public async Task Block_snapshot_blocks_every_write_category(TenantBillingOperationCategory category)
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,
@@ -139,7 +139,7 @@ public class TenantBillingAccessPolicyTests
         TenantBillingOperationCategory category, bool expectAllowed)
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,
@@ -154,7 +154,7 @@ public class TenantBillingAccessPolicyTests
     public async Task ReadOnly_payments_can_be_disabled_via_AllowPaymentsInReadOnly_false()
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,
@@ -173,7 +173,7 @@ public class TenantBillingAccessPolicyTests
     public async Task ReadOnly_exports_can_be_enabled_via_AllowExportsInReadOnly_true()
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,
@@ -201,7 +201,7 @@ public class TenantBillingAccessPolicyTests
         TenantBillingOperationCategory category, bool expectAllowed)
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,
@@ -216,7 +216,7 @@ public class TenantBillingAccessPolicyTests
     public async Task GraceLimitedMode_Block_blocks_everything_including_payments()
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,
@@ -239,11 +239,11 @@ public class TenantBillingAccessPolicyTests
         var (_, _, r) = Build();
         var policy = NewPolicy(r, new EntitlementEnforcementOptions { Enabled = true });
 
-        var pay = await policy.AuthorizeAsync(Guid.NewGuid(),
+        var pay = await policy.AuthorizeAsync(Guid.CreateVersion7(),
             TenantBillingOperationCategory.PaymentWrite);
         pay.IsAllowed.Should().BeTrue();
 
-        var inv = await policy.AuthorizeAsync(Guid.NewGuid(),
+        var inv = await policy.AuthorizeAsync(Guid.CreateVersion7(),
             TenantBillingOperationCategory.InvoiceWrite);
         inv.IsAllowed.Should().BeFalse();
     }
@@ -257,7 +257,7 @@ public class TenantBillingAccessPolicyTests
             Enabled = true,
             UnknownMode = "Block",
         });
-        var d = await policy.AuthorizeAsync(Guid.NewGuid(),
+        var d = await policy.AuthorizeAsync(Guid.CreateVersion7(),
             TenantBillingOperationCategory.PaymentWrite);
         d.IsAllowed.Should().BeFalse();
     }
@@ -277,7 +277,7 @@ public class TenantBillingAccessPolicyTests
     public async Task Suspended_profile_does_not_short_circuit_to_Allow_even_with_Allow_snapshot()
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         var pid = await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,

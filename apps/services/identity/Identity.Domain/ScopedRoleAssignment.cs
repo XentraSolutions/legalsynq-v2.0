@@ -57,7 +57,7 @@ public class ScopedRoleAssignment
         var now = DateTime.UtcNow;
         return new ScopedRoleAssignment
         {
-            Id                        = Guid.NewGuid(),
+            Id                        = Guid.CreateVersion7(),
             UserId                    = userId,
             RoleId                    = roleId,
             ScopeType                 = ScopeTypes.Global,

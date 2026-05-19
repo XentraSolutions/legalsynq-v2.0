@@ -554,7 +554,7 @@ public sealed class AuditEventQueryController : ControllerBase
                 traceId        = traceId ?? "(none)",
             }),
             CorrelationId  = traceId,
-            IdempotencyKey = $"audit-access:{traceId ?? Guid.NewGuid().ToString("N")}:{action}",
+            IdempotencyKey = $"audit-access:{traceId ?? Guid.CreateVersion7().ToString("N")}:{action}",
             Tags           = ["audit-of-audit", "access"],
         });
     }

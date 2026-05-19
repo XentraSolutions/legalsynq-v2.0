@@ -25,7 +25,7 @@ public class AppointmentStatusHistory
     {
         return new AppointmentStatusHistory
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             AppointmentId = appointmentId,
             TenantId = tenantId,
             OldStatus = oldStatus,

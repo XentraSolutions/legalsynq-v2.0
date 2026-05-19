@@ -44,7 +44,7 @@ public class AdminResetPasswordTests
     private static IdentityDbContext CreateDb()
     {
         var opts = new DbContextOptionsBuilder<IdentityDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString())
             .Options;
         return new IdentityDbContext(opts);
     }
@@ -52,10 +52,10 @@ public class AdminResetPasswordTests
     private static (IdentityDbContext db, Guid userId) CreateDbWithUser()
     {
         var db = CreateDb();
-        var tenant = Tenant.Create("Test Tenant", $"testtenant-{Guid.NewGuid():N}");
+        var tenant = Tenant.Create("Test Tenant", $"testtenant-{Guid.CreateVersion7():N}");
         db.Tenants.Add(tenant);
 
-        var user = User.Create(tenant.Id, $"user-{Guid.NewGuid():N}@example.com", "hash", "Alice", "Admin");
+        var user = User.Create(tenant.Id, $"user-{Guid.CreateVersion7():N}@example.com", "hash", "Alice", "Admin");
         db.Users.Add(user);
         db.SaveChanges();
 
@@ -119,7 +119,7 @@ public class AdminResetPasswordTests
     public async Task Returns503_WhenPortalBaseUrl_IsMissing_InProduction(string? portalBaseUrl)
     {
         var (db, userId) = CreateDbWithUser();
-        var caller = PlatformAdminCaller(Guid.NewGuid());
+        var caller = PlatformAdminCaller(Guid.CreateVersion7());
 
         var result = await InvokeHandler(
             userId,
@@ -144,7 +144,7 @@ public class AdminResetPasswordTests
     public async Task Returns503_WhenBaseUrl_IsMissing_InProduction()
     {
         var (db, userId) = CreateDbWithUser();
-        var caller = PlatformAdminCaller(Guid.NewGuid());
+        var caller = PlatformAdminCaller(Guid.CreateVersion7());
 
         var emailClient = new StubEmailClient(emailConfigured: false, delivered: false, error: "BaseUrl not set");
 
@@ -173,7 +173,7 @@ public class AdminResetPasswordTests
     public async Task Returns200WithResetToken_WhenConfigMissing_InNonProduction()
     {
         var (db, userId) = CreateDbWithUser();
-        var caller = PlatformAdminCaller(Guid.NewGuid());
+        var caller = PlatformAdminCaller(Guid.CreateVersion7());
 
         var result = await InvokeHandler(
             userId,
@@ -219,7 +219,7 @@ file sealed class NoOpAuditEventClient : IAuditEventClient
     public Task<IngestResult> IngestAsync(IngestAuditEventRequest request, CancellationToken ct = default) =>
         Task.FromResult(new IngestResult(
             Accepted:        true,
-            AuditId:         Guid.NewGuid().ToString(),
+            AuditId:         Guid.CreateVersion7().ToString(),
             RejectionReason: null,
             StatusCode:      202));
 

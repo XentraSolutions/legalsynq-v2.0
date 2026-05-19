@@ -26,7 +26,7 @@ public class InvoiceOverdueBatchTests
     public async Task MarkEligibleOverdueAsync_picks_only_eligible_invoices()
     {
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         // Three eligible: Issued past-due, PartiallyPaid past-due, Issued
@@ -68,7 +68,7 @@ public class InvoiceOverdueBatchTests
     public async Task MarkEligibleOverdueAsync_respects_take_cap_oldest_first()
     {
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         // Five eligible with descending due dates (oldest = -10d).
@@ -97,8 +97,8 @@ public class InvoiceOverdueBatchTests
     public async Task MarkEligibleOverdueAsync_scopes_to_tenant_when_supplied()
     {
         var (svc, invoices, customers) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var custA = TestData.SeedCustomer(customers, tenantA);
         var custB = TestData.SeedCustomer(customers, tenantB);
 
@@ -140,7 +140,7 @@ public class InvoiceOverdueBatchTests
         // a time-of-day comparison and would incorrectly pick up
         // invoices "due earlier today".
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         var nowUtc = new DateTime(2026, 4, 24, 16, 0, 0, DateTimeKind.Utc);
@@ -179,7 +179,7 @@ public class InvoiceOverdueBatchTests
         // the race.
         var invoices = new InMemoryInvoiceRepository();
         var customers = new InMemoryCustomerRepository();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Issued, dueDate: DateTime.UtcNow.AddDays(-3));
@@ -209,7 +209,7 @@ public class InvoiceOverdueBatchTests
         // batch loop can move on.
         var invoices = new InMemoryInvoiceRepository();
         var customers = new InMemoryCustomerRepository();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         foreach (var status in new[]

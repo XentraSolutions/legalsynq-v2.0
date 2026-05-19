@@ -31,7 +31,7 @@ public sealed class BillingWebApplicationFactory : WebApplicationFactory<Program
 {
     public const string TestInternalToken = "test-internal-token";
 
-    private readonly string _databaseName = $"billing-tests-{Guid.NewGuid():N}";
+    private readonly string _databaseName = $"billing-tests-{Guid.CreateVersion7():N}";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

@@ -33,7 +33,7 @@ internal sealed class AdminDashboardTestHost : IDisposable
     public AdminDashboardTestHost()
     {
         var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"admin-tests-{Guid.NewGuid()}")
+            .UseInMemoryDatabase($"admin-tests-{Guid.CreateVersion7()}")
             .Options;
         Db = new CommerceDbContext(opts);
         Service = new AdminDashboardService(Db, Clock);
@@ -110,7 +110,7 @@ internal sealed class AdminDashboardTestHost : IDisposable
         var inv = Invoice.Create(
             accountId,
             null,
-            $"COM-INV-{Guid.NewGuid().ToString("N")[..8]}",
+            $"COM-INV-{Guid.CreateVersion7().ToString("N")[..8]}",
             currency,
             Clock.UtcNow,
             Clock.UtcNow.AddDays(7),

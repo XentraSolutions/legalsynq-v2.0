@@ -125,7 +125,7 @@ public sealed class InvoiceTemplateService : IInvoiceTemplateService, IInvoiceTe
 
         var template = new InvoiceTemplate
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             OwnerType = ownerType,
             BillingAccountId = tenantId,
             TenantBillingProfileId = null,

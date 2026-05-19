@@ -141,7 +141,7 @@ public class SubscriptionServiceTests
         using var h = new SubscriptionTestHost();
         var p = h.AddActivePlan();
         var pr = h.AddActivePrice(p);
-        var act = async () => await h.Service.CreateAsync(CreateReq(Guid.NewGuid(), p.Id, pr.Id), default);
+        var act = async () => await h.Service.CreateAsync(CreateReq(Guid.CreateVersion7(), p.Id, pr.Id), default);
         await act.Should().ThrowAsync<NotFoundException>();
     }
 
@@ -307,7 +307,7 @@ public class SubscriptionServiceTests
     public async Task Get_unknown_throws_NotFound()
     {
         using var h = new SubscriptionTestHost();
-        var act = async () => await h.Service.GetAsync(Guid.NewGuid(), default);
+        var act = async () => await h.Service.GetAsync(Guid.CreateVersion7(), default);
         await act.Should().ThrowAsync<NotFoundException>();
     }
 

@@ -30,7 +30,7 @@ public class UserProductAccess
         var now = DateTime.UtcNow;
         return new UserProductAccess
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             UserId = userId,
             ProductCode = productCode.ToUpperInvariant().Trim(),

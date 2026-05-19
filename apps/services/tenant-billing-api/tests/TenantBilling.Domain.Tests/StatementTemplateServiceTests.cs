@@ -35,7 +35,7 @@ public class StatementTemplateServiceTests
     public async Task CreateAsync_DefaultsToDraft_AndNotDefault()
     {
         var (svc, _) = CreateService();
-        var t = await svc.CreateAsync(Guid.NewGuid(), Sample());
+        var t = await svc.CreateAsync(Guid.CreateVersion7(), Sample());
         Assert.Equal(StatementTemplateStatus.Draft, t.Status);
         Assert.False(t.IsDefault);
         Assert.Equal("#1F4FFF", t.AccentColor); // normalized to upper
@@ -46,7 +46,7 @@ public class StatementTemplateServiceTests
     public async Task CreateAsync_FirstActiveIsAutoDefaulted()
     {
         var (svc, _) = CreateService();
-        var t = await svc.CreateAsync(Guid.NewGuid(), Sample(status: StatementTemplateStatus.Active));
+        var t = await svc.CreateAsync(Guid.CreateVersion7(), Sample(status: StatementTemplateStatus.Active));
         Assert.True(t.IsDefault);
     }
 
@@ -54,7 +54,7 @@ public class StatementTemplateServiceTests
     public async Task CreateAsync_SecondActiveIsNotAutoDefaulted()
     {
         var (svc, _) = CreateService();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var first = await svc.CreateAsync(tenant, Sample(name: "A", status: StatementTemplateStatus.Active));
         var second = await svc.CreateAsync(tenant, Sample(name: "B", status: StatementTemplateStatus.Active));
         Assert.True(first.IsDefault);
@@ -66,7 +66,7 @@ public class StatementTemplateServiceTests
     {
         var (svc, _) = CreateService();
         await Assert.ThrowsAsync<InvalidStatementTemplateStatusTransitionException>(() =>
-            svc.CreateAsync(Guid.NewGuid(),
+            svc.CreateAsync(Guid.CreateVersion7(),
                 Sample(status: StatementTemplateStatus.Draft, isDefault: true)));
     }
 
@@ -76,14 +76,14 @@ public class StatementTemplateServiceTests
         var (svc, _) = CreateService();
         var bad = Sample() with { AccentColor = "not-a-color" };
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.CreateAsync(Guid.NewGuid(), bad));
+            svc.CreateAsync(Guid.CreateVersion7(), bad));
     }
 
     [Fact]
     public async Task CreateAsync_TenantsAreIsolated()
     {
         var (svc, repo) = CreateService();
-        var t1 = Guid.NewGuid(); var t2 = Guid.NewGuid();
+        var t1 = Guid.CreateVersion7(); var t2 = Guid.CreateVersion7();
         await svc.CreateAsync(t1, Sample(name: "A", status: StatementTemplateStatus.Active));
         await svc.CreateAsync(t2, Sample(name: "B", status: StatementTemplateStatus.Active));
         var l1 = await repo.ListInScopeAsync(t1); var l2 = await repo.ListInScopeAsync(t2);
@@ -94,7 +94,7 @@ public class StatementTemplateServiceTests
     public async Task MakeDefaultAsync_PromotesAndDemotesPeers()
     {
         var (svc, _) = CreateService();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var a = await svc.CreateAsync(tenant, Sample(name: "A", status: StatementTemplateStatus.Active));
         var b = await svc.CreateAsync(tenant, Sample(name: "B", status: StatementTemplateStatus.Active));
         Assert.True(a.IsDefault);
@@ -113,7 +113,7 @@ public class StatementTemplateServiceTests
     public async Task MakeDefaultAsync_RejectsRetired()
     {
         var (svc, _) = CreateService();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenant, Sample(status: StatementTemplateStatus.Active));
         await svc.RetireAsync(tenant, t.Id);
         await Assert.ThrowsAsync<RetiredStatementTemplateCannotBeDefaultException>(() =>
@@ -124,7 +124,7 @@ public class StatementTemplateServiceTests
     public async Task RetireAsync_ClearsDefaultFlag()
     {
         var (svc, _) = CreateService();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenant, Sample(status: StatementTemplateStatus.Active));
         Assert.True(t.IsDefault);
         var retired = await svc.RetireAsync(tenant, t.Id);
@@ -137,7 +137,7 @@ public class StatementTemplateServiceTests
     public async Task UpdateAsync_RejectsRetired()
     {
         var (svc, _) = CreateService();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenant, Sample(status: StatementTemplateStatus.Active));
         await svc.RetireAsync(tenant, t.Id);
         await Assert.ThrowsAsync<InvalidStatementTemplateStatusTransitionException>(() =>
@@ -148,7 +148,7 @@ public class StatementTemplateServiceTests
     public async Task SelectForStatementAsync_FallsBackToDefaultThenNull()
     {
         var (svc, _) = CreateService();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
 
         // No templates -> null.
         Assert.Null(await svc.SelectForStatementAsync(tenant, null));
@@ -164,7 +164,7 @@ public class StatementTemplateServiceTests
     public async Task SelectForStatementAsync_ExplicitDraft_Throws()
     {
         var (svc, _) = CreateService();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenant, Sample()); // Draft
         await Assert.ThrowsAsync<StatementTemplateNotSelectableException>(() =>
             svc.SelectForStatementAsync(tenant, t.Id));
@@ -175,17 +175,17 @@ public class StatementTemplateServiceTests
     {
         var (svc, _) = CreateService();
         await Assert.ThrowsAsync<StatementTemplateNotFoundInScopeException>(() =>
-            svc.SelectForStatementAsync(Guid.NewGuid(), Guid.NewGuid()));
+            svc.SelectForStatementAsync(Guid.CreateVersion7(), Guid.CreateVersion7()));
     }
 
     [Fact]
     public async Task SelectForStatementAsync_CrossTenantId_Throws()
     {
         var (svc, _) = CreateService();
-        var t1 = Guid.NewGuid();
+        var t1 = Guid.CreateVersion7();
         var template = await svc.CreateAsync(t1, Sample(status: StatementTemplateStatus.Active));
 
-        var t2 = Guid.NewGuid();
+        var t2 = Guid.CreateVersion7();
         await Assert.ThrowsAsync<StatementTemplateNotFoundInScopeException>(() =>
             svc.SelectForStatementAsync(t2, template.Id));
     }

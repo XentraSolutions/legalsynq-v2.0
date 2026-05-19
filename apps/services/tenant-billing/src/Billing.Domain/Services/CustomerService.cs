@@ -54,7 +54,7 @@ public sealed class CustomerService : ICustomerService
         var now = DateTime.UtcNow;
         var customer = new Customer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = normalizedName,
             Email = normalizedEmail,

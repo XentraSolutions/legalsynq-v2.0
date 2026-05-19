@@ -33,7 +33,7 @@ internal sealed class DomainTestHost : IDisposable
     public DomainTestHost()
     {
         var opts = new DbContextOptionsBuilder<BillingDbContext>()
-            .UseInMemoryDatabase($"tenant-billing-domain-tests-{Guid.NewGuid():N}")
+            .UseInMemoryDatabase($"tenant-billing-domain-tests-{Guid.CreateVersion7():N}")
             .Options;
         Db = new BillingDbContext(opts);
 

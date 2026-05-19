@@ -32,7 +32,7 @@ public class EntitlementEnforcementApiTests
     public sealed class EnforcementFactory : WebApplicationFactory<Program>
     {
         public const string TestInternalToken = "test-internal-token";
-        private readonly string _databaseName = $"billing-enf-tests-{Guid.NewGuid():N}";
+        private readonly string _databaseName = $"billing-enf-tests-{Guid.CreateVersion7():N}";
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -107,15 +107,15 @@ public class EntitlementEnforcementApiTests
         {
             Content = JsonContent.Create(new CreateCustomerRequest
             {
-                Name  = "Acme " + Guid.NewGuid().ToString("N")[..6],
-                Email = $"acme+{Guid.NewGuid():N}@example.com",
+                Name  = "Acme " + Guid.CreateVersion7().ToString("N")[..6],
+                Email = $"acme+{Guid.CreateVersion7():N}@example.com",
             }),
         };
 
     [Fact]
     public async Task CustomerWrite_blocked_when_no_profile_exists_and_enforcement_on()
     {
-        var c = _factory.CreateClientForTenant(Guid.NewGuid());
+        var c = _factory.CreateClientForTenant(Guid.CreateVersion7());
 
         // No profile → UnknownMode default = ReadOnly → CustomerWrite blocked.
         var resp = await c.SendAsync(CreateCustomerReq());
@@ -132,7 +132,7 @@ public class EntitlementEnforcementApiTests
     [Fact]
     public async Task Read_endpoint_passes_even_when_profile_missing()
     {
-        var c = _factory.CreateClientForTenant(Guid.NewGuid());
+        var c = _factory.CreateClientForTenant(Guid.CreateVersion7());
 
         // Customer LIST has no [RequireTenantBillingAccess] attribute, so
         // it must pass regardless of the tenant's entitlement state.
@@ -143,7 +143,7 @@ public class EntitlementEnforcementApiTests
     [Fact]
     public async Task Allow_snapshot_lets_CustomerWrite_through()
     {
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         await SeedAsync(c, a,
             TenantBillingEntitlementStatus.Enabled,
@@ -156,7 +156,7 @@ public class EntitlementEnforcementApiTests
     [Fact]
     public async Task Block_snapshot_blocks_CustomerWrite_with_403_problem_details()
     {
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         await SeedAsync(c, a,
             TenantBillingEntitlementStatus.Enabled,
@@ -174,7 +174,7 @@ public class EntitlementEnforcementApiTests
     [Fact]
     public async Task ReadOnly_snapshot_blocks_CustomerWrite_but_allows_Read()
     {
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         await SeedAsync(c, a,
             TenantBillingEntitlementStatus.Enabled,
@@ -190,7 +190,7 @@ public class EntitlementEnforcementApiTests
     [Fact]
     public async Task ProfileAdmin_endpoint_remains_reachable_even_when_blocked()
     {
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         var c = _factory.CreateClientForTenant(t);
         await SeedAsync(c, a,
             TenantBillingEntitlementStatus.Disabled,

@@ -41,7 +41,7 @@ public class TenantBillingEnablementResolverTests
     public async Task Missing_profile_yields_NotEnabled_Unknown()
     {
         var (_, _, r) = Build();
-        var d = await r.GetTenantBillingAccessAsync(Guid.NewGuid());
+        var d = await r.GetTenantBillingAccessAsync(Guid.CreateVersion7());
         d.IsEnabled.Should().BeFalse();
         d.EntitlementStatus.Should().Be(TenantBillingEntitlementStatus.Unknown);
         d.AccessRecommendation.Should().Be(TenantBillingAccessRecommendation.Unknown);
@@ -51,7 +51,7 @@ public class TenantBillingEnablementResolverTests
     public async Task Active_profile_without_snapshot_is_NotEnabled_Unknown()
     {
         var (p, _, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         var d = await r.GetTenantBillingAccessAsync(t);
         d.IsEnabled.Should().BeFalse();
@@ -62,7 +62,7 @@ public class TenantBillingEnablementResolverTests
     public async Task Active_profile_Enabled_Allow_is_Enabled()
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,
@@ -86,7 +86,7 @@ public class TenantBillingEnablementResolverTests
     public async Task Active_profile_with_non_allow_combinations_are_NotEnabled(string status, string rec)
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a, status, rec));
 
@@ -97,7 +97,7 @@ public class TenantBillingEnablementResolverTests
     public async Task Suspended_profile_is_never_enabled_even_with_allow_snapshot()
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         var pid = await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,
@@ -111,7 +111,7 @@ public class TenantBillingEnablementResolverTests
     public async Task Closed_profile_is_never_enabled()
     {
         var (p, e, r) = Build();
-        var t = Guid.NewGuid(); var a = Guid.NewGuid();
+        var t = Guid.CreateVersion7(); var a = Guid.CreateVersion7();
         var pid = await SeedActiveAsync(p, t, a);
         await e.ApplySnapshotAsync(t, Req(a,
             TenantBillingEntitlementStatus.Enabled,

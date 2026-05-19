@@ -29,7 +29,7 @@ public class AuditLog
 
         return new AuditLog
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             ActorName    = actorName.Trim(),
             ActorType    = actorType.Trim(),
             Action       = action.Trim(),

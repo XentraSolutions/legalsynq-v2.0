@@ -124,7 +124,7 @@ public sealed class CustomerStatementPersistenceService : ICustomerStatementPers
             var number = await _numbers.NextAsync(tenantId, year, ct);
             var entity = new CustomerStatement
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 TenantId = tenantId,
                 CustomerId = customerId,
                 StatementNumber = number,

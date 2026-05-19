@@ -37,7 +37,7 @@ public class PaymentRecordingTests
     public async Task Default_status_is_Recorded_when_status_omitted()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -53,7 +53,7 @@ public class PaymentRecordingTests
     public async Task Negative_amount_throws_InvalidPaymentAmountException()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -66,7 +66,7 @@ public class PaymentRecordingTests
     public async Task Zero_amount_throws_InvalidPaymentAmountException()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -78,10 +78,10 @@ public class PaymentRecordingTests
     public async Task Unknown_invoice_throws_InvoiceNotFoundException_404_mapping()
     {
         var (svc, _, _, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
 
         var ex = await Assert.ThrowsAsync<InvoiceNotFoundException>(() =>
-            Record(svc, tenant, Guid.NewGuid(), 10m));
+            Record(svc, tenant, Guid.CreateVersion7(), 10m));
         Assert.Equal(tenant, ex.TenantId);
         // Sanity: typed exception still derives from InvalidOperationException
         // for back-compat with older test patterns.
@@ -92,8 +92,8 @@ public class PaymentRecordingTests
     public async Task Cross_tenant_invoice_throws_InvoiceNotFoundException()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var custA = TestData.SeedCustomer(customers, tenantA);
         var inv = TestData.SeedInvoice(invoices, tenantA, custA.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -105,7 +105,7 @@ public class PaymentRecordingTests
     public async Task Currency_mismatch_throws_typed_CurrencyMismatchException()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued, currency: "USD");
 
@@ -119,7 +119,7 @@ public class PaymentRecordingTests
     public async Task Currency_normalized_to_uppercase_before_comparison()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued, currency: "USD");
 
@@ -131,7 +131,7 @@ public class PaymentRecordingTests
     public async Task Overpayment_throws_typed_OverpaymentException_with_remaining()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -146,7 +146,7 @@ public class PaymentRecordingTests
     public async Task Voided_invoice_throws_typed_InvalidInvoicePaymentStateException()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Voided);
 
@@ -159,7 +159,7 @@ public class PaymentRecordingTests
     public async Task Amount_rounded_to_two_decimals_away_from_zero()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -172,7 +172,7 @@ public class PaymentRecordingTests
     public async Task Notes_trimmed_and_blank_normalized_to_null()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -191,7 +191,7 @@ public class PaymentRecordingTests
         // payment lands. Previously it would silently roll back to
         // PartiallyPaid, hiding collection risk.
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Overdue,
@@ -209,7 +209,7 @@ public class PaymentRecordingTests
         // Companion to the regression above — full settlement always
         // wins, regardless of due date.
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Overdue,
@@ -225,7 +225,7 @@ public class PaymentRecordingTests
     public async Task GetInvoicePaymentSummary_reflects_recorded_payments_and_balance()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -245,7 +245,7 @@ public class PaymentRecordingTests
     public async Task GetInvoicePaymentSummary_for_unknown_invoice_returns_null()
     {
         var (svc, _, _, _) = Build();
-        var summary = await svc.GetInvoicePaymentSummaryAsync(Guid.NewGuid(), Guid.NewGuid());
+        var summary = await svc.GetInvoicePaymentSummaryAsync(Guid.CreateVersion7(), Guid.CreateVersion7());
         Assert.Null(summary);
     }
 
@@ -253,8 +253,8 @@ public class PaymentRecordingTests
     public async Task GetInvoicePaymentSummary_for_cross_tenant_invoice_returns_null()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var custA = TestData.SeedCustomer(customers, tenantA);
         var inv = TestData.SeedInvoice(invoices, tenantA, custA.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -266,7 +266,7 @@ public class PaymentRecordingTests
     public async Task GetByInvoice_returns_null_for_unknown_invoice()
     {
         var (svc, _, _, _) = Build();
-        var result = await svc.GetByInvoiceAsync(Guid.NewGuid(), Guid.NewGuid());
+        var result = await svc.GetByInvoiceAsync(Guid.CreateVersion7(), Guid.CreateVersion7());
         Assert.Null(result);
     }
 
@@ -274,7 +274,7 @@ public class PaymentRecordingTests
     public async Task GetByInvoice_returns_payments_ordered_newest_first()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -294,7 +294,7 @@ public class PaymentRecordingTests
     public async Task ListPaged_clamps_pageSize_and_returns_correct_totals()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 1000m, status: InvoiceStatus.Issued);
 
@@ -324,7 +324,7 @@ public class PaymentRecordingTests
     public async Task ListPaged_filters_by_invoiceId_method_and_paid_date_range()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var invA = TestData.SeedInvoice(invoices, tenant, customer.Id, 500m, status: InvoiceStatus.Issued);
         var invB = TestData.SeedInvoice(invoices, tenant, customer.Id, 500m, status: InvoiceStatus.Issued);
@@ -349,8 +349,8 @@ public class PaymentRecordingTests
     public async Task ListPaged_is_tenant_scoped()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var custA = TestData.SeedCustomer(customers, tenantA);
         var custB = TestData.SeedCustomer(customers, tenantB);
         var invA = TestData.SeedInvoice(invoices, tenantA, custA.Id, 100m, status: InvoiceStatus.Issued);
@@ -373,7 +373,7 @@ public class PaymentRecordingTests
         // column-width boundary with an opaque DbUpdateException. The
         // service-level guard must reject it cleanly.
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -389,7 +389,7 @@ public class PaymentRecordingTests
     public async Task Notes_at_exact_max_length_is_accepted()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: InvoiceStatus.Issued);
 
@@ -408,8 +408,8 @@ public class PaymentRecordingTests
         // missing invoice id when queried by tenant B (the controller turns
         // null into 404).
         var (svc, invoices, _, customers) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var custA = TestData.SeedCustomer(customers, tenantA);
         var invA = TestData.SeedInvoice(invoices, tenantA, custA.Id, 100m, status: InvoiceStatus.Issued);
         await Record(svc, tenantA, invA.Id, 25m);
@@ -427,8 +427,8 @@ public class PaymentRecordingTests
     public async Task GetInvoicePaymentSummaryAsync_returns_null_for_other_tenants_invoice()
     {
         var (svc, invoices, _, customers) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var custA = TestData.SeedCustomer(customers, tenantA);
         var invA = TestData.SeedInvoice(invoices, tenantA, custA.Id, 100m, status: InvoiceStatus.Issued);
         await Record(svc, tenantA, invA.Id, 25m);

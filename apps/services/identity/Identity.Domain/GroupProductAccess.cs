@@ -27,7 +27,7 @@ public class GroupProductAccess
         var now = DateTime.UtcNow;
         return new GroupProductAccess
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             GroupId = groupId,
             ProductCode = productCode.ToUpperInvariant().Trim(),

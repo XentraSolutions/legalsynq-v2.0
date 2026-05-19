@@ -66,7 +66,7 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
 
         // Stable idempotency key for this delivery attempt — prevents duplicate
         // sends when the client-side retry loop fires after a server-side transient error.
-        var idempotencyKey = Guid.NewGuid().ToString("N");
+        var idempotencyKey = Guid.CreateVersion7().ToString("N");
         int attempt = 0;
         int maxAttempts = Math.Max(1, _settings.MaxRetries + 1);
         Exception? lastException = null;

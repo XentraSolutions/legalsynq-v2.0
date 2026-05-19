@@ -33,7 +33,7 @@ public class AppointmentAttachment : AuditableEntity
     {
         return new AppointmentAttachment
         {
-            Id                       = Guid.NewGuid(),
+            Id                       = Guid.CreateVersion7(),
             TenantId                 = tenantId,
             AppointmentId            = appointmentId,
             FileName                 = fileName.Trim(),

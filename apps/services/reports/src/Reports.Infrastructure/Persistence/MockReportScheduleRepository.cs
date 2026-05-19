@@ -14,7 +14,7 @@ public sealed class MockReportScheduleRepository : IReportScheduleRepository
         lock (_lock)
         {
             if (schedule.Id == Guid.Empty)
-                schedule.Id = Guid.NewGuid();
+                schedule.Id = Guid.CreateVersion7();
             _schedules.Add(schedule);
         }
         return Task.FromResult(schedule);
@@ -72,7 +72,7 @@ public sealed class MockReportScheduleRepository : IReportScheduleRepository
         lock (_lock)
         {
             if (run.Id == Guid.Empty)
-                run.Id = Guid.NewGuid();
+                run.Id = Guid.CreateVersion7();
             _runs.Add(run);
         }
         return Task.FromResult(run);

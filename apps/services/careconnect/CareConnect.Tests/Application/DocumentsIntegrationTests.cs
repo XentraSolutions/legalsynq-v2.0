@@ -96,7 +96,7 @@ public class DocumentsIntegrationTests
             new Mock<ITenantServiceClient>().Object,
             NullLogger<ReferralEmailService>.Instance);
 
-        var id    = Guid.NewGuid();
+        var id    = Guid.CreateVersion7();
         var token = svc.GenerateViewToken(id, 1);
         var res   = svc.ValidateViewToken(token);
 
@@ -122,7 +122,7 @@ public class DocumentsIntegrationTests
         var svc   = new ReferralEmailService(notifications.Object, producer.Object, config,
             new Mock<ITenantServiceClient>().Object,
             NullLogger<ReferralEmailService>.Instance);
-        var id    = Guid.NewGuid();
+        var id    = Guid.CreateVersion7();
         var token = svc.GenerateViewToken(id, 1);
         var res   = svc.ValidateViewToken(token);
 
@@ -135,9 +135,9 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task ReferralAttachmentService_Upload_SuccessfulUpload_PersistsDocumentId()
     {
-        var tenantId   = Guid.NewGuid();
-        var userId     = Guid.NewGuid();
-        var documentId = Guid.NewGuid().ToString();
+        var tenantId   = Guid.CreateVersion7();
+        var userId     = Guid.CreateVersion7();
+        var documentId = Guid.CreateVersion7().ToString();
         var referral   = CreateMinimalReferral(tenantId);
 
         var referralRepo   = new Mock<IReferralRepository>();
@@ -178,7 +178,7 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task ReferralAttachmentService_Upload_DocumentServiceFailure_Throws()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var referral = CreateMinimalReferral(tenantId);
 
         var referralRepo   = new Mock<IReferralRepository>();
@@ -209,8 +209,8 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task GetSignedUrlAsync_AdminCaller_BypassesScopeCheck()
     {
-        var tenantId     = Guid.NewGuid();
-        var attachmentId = Guid.NewGuid();
+        var tenantId     = Guid.CreateVersion7();
+        var attachmentId = Guid.CreateVersion7();
         var documentId   = "doc-123";
 
         var referral   = CreateMinimalReferral(tenantId);
@@ -223,7 +223,7 @@ public class DocumentsIntegrationTests
 
         var result = await svc.GetSignedUrlAsync(
             tenantId, referral.Id, attachmentId,
-            callerOrgId:   Guid.NewGuid(),
+            callerOrgId:   Guid.CreateVersion7(),
             callerOrgType: "REFERRER",
             isAdmin:       true,
             isDownload:    false);
@@ -235,10 +235,10 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task GetSignedUrlAsync_SharedDoc_Participant_Succeeds()
     {
-        var tenantId     = Guid.NewGuid();
-        var attachmentId = Guid.NewGuid();
+        var tenantId     = Guid.CreateVersion7();
+        var attachmentId = Guid.CreateVersion7();
         var documentId   = "doc-456";
-        var orgId        = Guid.NewGuid();
+        var orgId        = Guid.CreateVersion7();
 
         var referral   = CreateMinimalReferral(tenantId, referringOrgId: orgId);
         var attachment = CreateAttachment(attachmentId, tenantId, referral.Id, documentId, AttachmentScope.Shared);
@@ -261,10 +261,10 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task GetSignedUrlAsync_SharedDoc_NonParticipant_ThrowsUnauthorized()
     {
-        var tenantId     = Guid.NewGuid();
-        var attachmentId = Guid.NewGuid();
+        var tenantId     = Guid.CreateVersion7();
+        var attachmentId = Guid.CreateVersion7();
 
-        var referral   = CreateMinimalReferral(tenantId, referringOrgId: Guid.NewGuid());
+        var referral   = CreateMinimalReferral(tenantId, referringOrgId: Guid.CreateVersion7());
         var attachment = CreateAttachment(attachmentId, tenantId, referral.Id, "doc-789", AttachmentScope.Shared);
 
         var (svc, _) = BuildAttachmentService(referral, [attachment]);
@@ -272,7 +272,7 @@ public class DocumentsIntegrationTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             svc.GetSignedUrlAsync(
                 tenantId, referral.Id, attachmentId,
-                callerOrgId:   Guid.NewGuid(),
+                callerOrgId:   Guid.CreateVersion7(),
                 callerOrgType: "REFERRER",
                 isAdmin:       false,
                 isDownload:    false));
@@ -281,10 +281,10 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task GetSignedUrlAsync_ProviderSpecificDoc_ReceivingOrg_Succeeds()
     {
-        var tenantId      = Guid.NewGuid();
-        var attachmentId  = Guid.NewGuid();
+        var tenantId      = Guid.CreateVersion7();
+        var attachmentId  = Guid.CreateVersion7();
         var documentId    = "doc-prov";
-        var providerOrgId = Guid.NewGuid();
+        var providerOrgId = Guid.CreateVersion7();
 
         var referral   = CreateMinimalReferral(tenantId, receivingOrgId: providerOrgId);
         var attachment = CreateAttachment(attachmentId, tenantId, referral.Id, documentId, AttachmentScope.ProviderSpecific);
@@ -307,11 +307,11 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task GetSignedUrlAsync_ProviderSpecificDoc_ReferringOrg_ThrowsUnauthorized()
     {
-        var tenantId       = Guid.NewGuid();
-        var attachmentId   = Guid.NewGuid();
-        var referringOrgId = Guid.NewGuid();
+        var tenantId       = Guid.CreateVersion7();
+        var attachmentId   = Guid.CreateVersion7();
+        var referringOrgId = Guid.CreateVersion7();
 
-        var referral   = CreateMinimalReferral(tenantId, referringOrgId: referringOrgId, receivingOrgId: Guid.NewGuid());
+        var referral   = CreateMinimalReferral(tenantId, referringOrgId: referringOrgId, receivingOrgId: Guid.CreateVersion7());
         var attachment = CreateAttachment(attachmentId, tenantId, referral.Id, "doc-prov-2", AttachmentScope.ProviderSpecific);
 
         var (svc, _) = BuildAttachmentService(referral, [attachment]);
@@ -330,7 +330,7 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task SendProviderAssignedNotificationAsync_WithEmail_SubmitsToProducer()
     {
-        var referral  = CreateTestReferral(Guid.NewGuid(), Guid.NewGuid());
+        var referral  = CreateTestReferral(Guid.CreateVersion7(), Guid.CreateVersion7());
         var provider  = CreateTestProvider("provider@example.com");
         var producer  = new Mock<INotificationsProducer>();
         var notifRepo = new Mock<INotificationRepository>();
@@ -360,7 +360,7 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task SendProviderAssignedNotificationAsync_NoEmail_SkipsAndDoesNotThrow()
     {
-        var referral  = CreateTestReferral(Guid.NewGuid(), Guid.NewGuid());
+        var referral  = CreateTestReferral(Guid.CreateVersion7(), Guid.CreateVersion7());
         var provider  = CreateTestProvider(null);
         var producer  = new Mock<INotificationsProducer>();
         var notifRepo = new Mock<INotificationRepository>();
@@ -378,7 +378,7 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task SendProviderAssignedNotificationAsync_Duplicate_SkipsSubmission()
     {
-        var referral  = CreateTestReferral(Guid.NewGuid(), Guid.NewGuid());
+        var referral  = CreateTestReferral(Guid.CreateVersion7(), Guid.CreateVersion7());
         var provider  = CreateTestProvider("provider@example.com");
         var producer  = new Mock<INotificationsProducer>();
         var notifRepo = new Mock<INotificationRepository>();
@@ -401,7 +401,7 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task SendProviderAssignedNotificationAsync_WithReassignSuffix_SubmitsToProducer()
     {
-        var referral  = CreateTestReferral(Guid.NewGuid(), Guid.NewGuid());
+        var referral  = CreateTestReferral(Guid.CreateVersion7(), Guid.CreateVersion7());
         var provider  = CreateTestProvider("provider@example.com");
         var producer  = new Mock<INotificationsProducer>();
         var notifRepo = new Mock<INotificationRepository>();
@@ -435,7 +435,7 @@ public class DocumentsIntegrationTests
     {
         // Two successive reassignments to the same provider use different tick-based suffixes,
         // so TryAddWithDedupeAsync is called with two different keys — both succeed.
-        var referral  = CreateTestReferral(Guid.NewGuid(), Guid.NewGuid());
+        var referral  = CreateTestReferral(Guid.CreateVersion7(), Guid.CreateVersion7());
         var provider  = CreateTestProvider("provider@example.com");
         var producer  = new Mock<INotificationsProducer>();
         var notifRepo = new Mock<INotificationRepository>();
@@ -464,11 +464,11 @@ public class DocumentsIntegrationTests
     [Fact]
     public void Referral_ReassignProvider_UpdatesProviderIdAndIncrementsTokenVersion()
     {
-        var originalProviderId  = Guid.NewGuid();
-        var newProviderId       = Guid.NewGuid();
-        var newReceivingOrgId   = Guid.NewGuid();
-        var actingUserId        = Guid.NewGuid();
-        var referral = CreateTestReferral(Guid.NewGuid(), originalProviderId);
+        var originalProviderId  = Guid.CreateVersion7();
+        var newProviderId       = Guid.CreateVersion7();
+        var newReceivingOrgId   = Guid.CreateVersion7();
+        var actingUserId        = Guid.CreateVersion7();
+        var referral = CreateTestReferral(Guid.CreateVersion7(), originalProviderId);
         var originalTokenVersion = referral.TokenVersion;
 
         referral.ReassignProvider(newProviderId, newReceivingOrgId, actingUserId);
@@ -481,9 +481,9 @@ public class DocumentsIntegrationTests
     [Fact]
     public void Referral_ReassignProvider_NullReceivingOrg_SetsOrgToNull()
     {
-        var referral = CreateTestReferral(Guid.NewGuid(), Guid.NewGuid());
+        var referral = CreateTestReferral(Guid.CreateVersion7(), Guid.CreateVersion7());
 
-        referral.ReassignProvider(Guid.NewGuid(), newReceivingOrganizationId: null, updatedByUserId: null);
+        referral.ReassignProvider(Guid.CreateVersion7(), newReceivingOrganizationId: null, updatedByUserId: null);
 
         Assert.Null(referral.ReceivingOrganizationId);
     }
@@ -531,7 +531,7 @@ public class DocumentsIntegrationTests
             tenantId:                  tenantId,
             referringOrganizationId:   referringOrgId,
             receivingOrganizationId:   receivingOrgId,
-            providerId:                Guid.NewGuid(),
+            providerId:                Guid.CreateVersion7(),
             subjectPartyId:            null,
             subjectNameSnapshot:       null,
             subjectDobSnapshot:        null,
@@ -574,7 +574,7 @@ public class DocumentsIntegrationTests
 
     private static Provider CreateTestProvider(string? email)
         => Provider.Create(
-            tenantId:          Guid.NewGuid(),
+            tenantId:          Guid.CreateVersion7(),
             name:              "Test Provider",
             organizationName:  "Test Org",
             email:             email ?? string.Empty,
@@ -690,10 +690,10 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task AppointmentGetSignedUrl_SharedDoc_Participant_Succeeds()
     {
-        var tenantId     = Guid.NewGuid();
-        var attachmentId = Guid.NewGuid();
+        var tenantId     = Guid.CreateVersion7();
+        var attachmentId = Guid.CreateVersion7();
         var documentId   = "appt-doc-shared";
-        var orgId        = Guid.NewGuid();
+        var orgId        = Guid.CreateVersion7();
 
         var appointment = CreateMinimalAppointment(tenantId, referringOrgId: orgId);
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, documentId, AttachmentScope.Shared);
@@ -716,10 +716,10 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task AppointmentGetSignedUrl_SharedDoc_NonParticipant_ThrowsUnauthorized()
     {
-        var tenantId     = Guid.NewGuid();
-        var attachmentId = Guid.NewGuid();
+        var tenantId     = Guid.CreateVersion7();
+        var attachmentId = Guid.CreateVersion7();
 
-        var appointment = CreateMinimalAppointment(tenantId, referringOrgId: Guid.NewGuid());
+        var appointment = CreateMinimalAppointment(tenantId, referringOrgId: Guid.CreateVersion7());
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, "appt-doc-x", AttachmentScope.Shared);
 
         var (svc, _) = BuildAppointmentAttachmentService(appointment, [attachment]);
@@ -727,7 +727,7 @@ public class DocumentsIntegrationTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             svc.GetSignedUrlAsync(
                 tenantId, appointment.Id, attachmentId,
-                callerOrgId:   Guid.NewGuid(),
+                callerOrgId:   Guid.CreateVersion7(),
                 callerOrgType: "REFERRER",
                 isAdmin:       false,
                 isDownload:    false));
@@ -736,10 +736,10 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task AppointmentGetSignedUrl_ProviderSpecific_ReceivingProviderOrg_Succeeds()
     {
-        var tenantId      = Guid.NewGuid();
-        var attachmentId  = Guid.NewGuid();
+        var tenantId      = Guid.CreateVersion7();
+        var attachmentId  = Guid.CreateVersion7();
         var documentId    = "appt-prov-doc";
-        var providerOrgId = Guid.NewGuid();
+        var providerOrgId = Guid.CreateVersion7();
 
         var appointment = CreateMinimalAppointment(tenantId, receivingOrgId: providerOrgId);
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, documentId, AttachmentScope.ProviderSpecific);
@@ -761,11 +761,11 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task AppointmentGetSignedUrl_ProviderSpecific_ReferringOrg_ThrowsUnauthorized()
     {
-        var tenantId       = Guid.NewGuid();
-        var attachmentId   = Guid.NewGuid();
-        var referringOrgId = Guid.NewGuid();
+        var tenantId       = Guid.CreateVersion7();
+        var attachmentId   = Guid.CreateVersion7();
+        var referringOrgId = Guid.CreateVersion7();
 
-        var appointment = CreateMinimalAppointment(tenantId, referringOrgId: referringOrgId, receivingOrgId: Guid.NewGuid());
+        var appointment = CreateMinimalAppointment(tenantId, referringOrgId: referringOrgId, receivingOrgId: Guid.CreateVersion7());
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, "appt-prov-2", AttachmentScope.ProviderSpecific);
 
         var (svc, _) = BuildAppointmentAttachmentService(appointment, [attachment]);
@@ -782,10 +782,10 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task AppointmentGetSignedUrl_ProviderSpecific_LawFirmReceivingOrg_Succeeds()
     {
-        var tenantId    = Guid.NewGuid();
-        var attachmentId = Guid.NewGuid();
+        var tenantId    = Guid.CreateVersion7();
+        var attachmentId = Guid.CreateVersion7();
         var documentId  = "appt-lawfirm-doc";
-        var lawFirmOrgId = Guid.NewGuid();
+        var lawFirmOrgId = Guid.CreateVersion7();
 
         var appointment = CreateMinimalAppointment(tenantId, receivingOrgId: lawFirmOrgId);
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, documentId, AttachmentScope.ProviderSpecific);
@@ -807,10 +807,10 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task ReferralGetSignedUrl_ProviderSpecific_LawFirmReceivingOrg_Succeeds()
     {
-        var tenantId      = Guid.NewGuid();
-        var attachmentId  = Guid.NewGuid();
+        var tenantId      = Guid.CreateVersion7();
+        var attachmentId  = Guid.CreateVersion7();
         var documentId    = "ref-lawfirm-doc";
-        var lawFirmOrgId  = Guid.NewGuid();
+        var lawFirmOrgId  = Guid.CreateVersion7();
 
         var referral   = CreateMinimalReferral(tenantId, receivingOrgId: lawFirmOrgId);
         var attachment = CreateAttachment(attachmentId, tenantId, referral.Id, documentId, AttachmentScope.ProviderSpecific);
@@ -852,9 +852,9 @@ public class DocumentsIntegrationTests
         Guid? receivingOrgId = null)
         => Appointment.Create(
             tenantId:                   tenantId,
-            referralId:                 Guid.NewGuid(),
-            providerId:                 Guid.NewGuid(),
-            facilityId:                 Guid.NewGuid(),
+            referralId:                 Guid.CreateVersion7(),
+            providerId:                 Guid.CreateVersion7(),
+            facilityId:                 Guid.CreateVersion7(),
             serviceOfferingId:          null,
             appointmentSlotId:          null,
             scheduledStartAtUtc:        DateTime.UtcNow.AddDays(1),

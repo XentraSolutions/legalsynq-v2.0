@@ -147,7 +147,7 @@ public class IngestEndpointTests(AuditServiceFactory factory)
     [Fact]
     public async Task IngestSingle_SameIdempotencyKey_SecondSubmissionReturns409()
     {
-        var key     = $"idem-{Guid.NewGuid():N}";
+        var key     = $"idem-{Guid.CreateVersion7():N}";
         var request = AuditRequestBuilder.MinimalValid(idempotencyKey: key);
 
         var first  = await _client.PostServiceJsonAsync(IngestUrl, request);
@@ -160,7 +160,7 @@ public class IngestEndpointTests(AuditServiceFactory factory)
     [Fact]
     public async Task IngestSingle_SameIdempotencyKey_ConflictBodyIsApiResponseEnvelope()
     {
-        var key     = $"idem-{Guid.NewGuid():N}";
+        var key     = $"idem-{Guid.CreateVersion7():N}";
         var request = AuditRequestBuilder.MinimalValid(idempotencyKey: key);
 
         await _client.PostServiceJsonAsync(IngestUrl, request);

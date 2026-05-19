@@ -32,7 +32,7 @@ public class ProviderAvailabilityException : AuditableEntity
     {
         return new ProviderAvailabilityException
         {
-            Id            = Guid.NewGuid(),
+            Id            = Guid.CreateVersion7(),
             TenantId      = tenantId,
             ProviderId    = providerId,
             FacilityId    = facilityId,

@@ -55,7 +55,7 @@ public sealed class Invoice : Entity<Guid>
 
         return new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             SubscriptionId = subscriptionId,
             InvoiceNumber = invoiceNumber.Trim(),

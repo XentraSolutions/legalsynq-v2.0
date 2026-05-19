@@ -76,7 +76,7 @@ public sealed class StatementDeliveryService : IStatementDeliveryService
         var snapshot = await _persistence.GetHistoryAsync(tenantId, statementId, ct);
         if (snapshot is null) return null;
 
-        var correlationId = Guid.NewGuid().ToString("N");
+        var correlationId = Guid.CreateVersion7().ToString("N");
 
         // MS-BILL-INT-003 — Governance short-circuit. Evaluate
         // retryability against the persisted last-attempt state

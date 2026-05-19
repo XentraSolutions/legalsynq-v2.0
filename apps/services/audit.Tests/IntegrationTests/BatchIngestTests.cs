@@ -94,7 +94,7 @@ public class BatchIngestTests(AuditServiceFactory factory)
     [Fact]
     public async Task IngestBatch_OneItemMissingEventType_Returns400()
     {
-        var valid   = AuditRequestBuilder.MinimalValid(idempotencyKey: Guid.NewGuid().ToString());
+        var valid   = AuditRequestBuilder.MinimalValid(idempotencyKey: Guid.CreateVersion7().ToString());
         var invalid = AuditRequestBuilder.MinimalValid();
         invalid.EventType = string.Empty;
 
@@ -110,7 +110,7 @@ public class BatchIngestTests(AuditServiceFactory factory)
     [Fact]
     public async Task IngestBatch_OneDuplicate_Returns207()
     {
-        var dupKey = $"dup-{Guid.NewGuid():N}";
+        var dupKey = $"dup-{Guid.CreateVersion7():N}";
 
         // First: ingest the key individually so it exists in the store.
         var single = AuditRequestBuilder.MinimalValid(idempotencyKey: dupKey);
@@ -121,9 +121,9 @@ public class BatchIngestTests(AuditServiceFactory factory)
         {
             Events =
             [
-                AuditRequestBuilder.MinimalValid(idempotencyKey: $"fresh-{Guid.NewGuid():N}"),
+                AuditRequestBuilder.MinimalValid(idempotencyKey: $"fresh-{Guid.CreateVersion7():N}"),
                 AuditRequestBuilder.MinimalValid(idempotencyKey: dupKey),
-                AuditRequestBuilder.MinimalValid(idempotencyKey: $"fresh-{Guid.NewGuid():N}"),
+                AuditRequestBuilder.MinimalValid(idempotencyKey: $"fresh-{Guid.CreateVersion7():N}"),
             ],
         };
 
@@ -135,7 +135,7 @@ public class BatchIngestTests(AuditServiceFactory factory)
     [Fact]
     public async Task IngestBatch_OneDuplicate_ResultsShowMixedOutcome()
     {
-        var dupKey = $"dup-{Guid.NewGuid():N}";
+        var dupKey = $"dup-{Guid.CreateVersion7():N}";
         var single = AuditRequestBuilder.MinimalValid(idempotencyKey: dupKey);
         await _client.PostServiceJsonAsync(IngestUrl, single);
 
@@ -143,9 +143,9 @@ public class BatchIngestTests(AuditServiceFactory factory)
         {
             Events =
             [
-                AuditRequestBuilder.MinimalValid(idempotencyKey: $"f1-{Guid.NewGuid():N}"),
+                AuditRequestBuilder.MinimalValid(idempotencyKey: $"f1-{Guid.CreateVersion7():N}"),
                 AuditRequestBuilder.MinimalValid(idempotencyKey: dupKey),
-                AuditRequestBuilder.MinimalValid(idempotencyKey: $"f2-{Guid.NewGuid():N}"),
+                AuditRequestBuilder.MinimalValid(idempotencyKey: $"f2-{Guid.CreateVersion7():N}"),
             ],
         };
 
@@ -165,8 +165,8 @@ public class BatchIngestTests(AuditServiceFactory factory)
     [Fact]
     public async Task IngestBatch_AllDuplicates_Returns422()
     {
-        var key1 = $"dup-{Guid.NewGuid():N}";
-        var key2 = $"dup-{Guid.NewGuid():N}";
+        var key1 = $"dup-{Guid.CreateVersion7():N}";
+        var key2 = $"dup-{Guid.CreateVersion7():N}";
 
         // Pre-ingest both keys.
         await _client.PostServiceJsonAsync(IngestUrl, AuditRequestBuilder.MinimalValid(idempotencyKey: key1));
@@ -191,7 +191,7 @@ public class BatchIngestTests(AuditServiceFactory factory)
     [Fact]
     public async Task IngestBatch_StopOnFirstError_LaterItemsAreSkipped()
     {
-        var dupKey = $"dup-{Guid.NewGuid():N}";
+        var dupKey = $"dup-{Guid.CreateVersion7():N}";
         await _client.PostServiceJsonAsync(IngestUrl, AuditRequestBuilder.MinimalValid(idempotencyKey: dupKey));
 
         var batch = new BatchIngestRequest
@@ -200,7 +200,7 @@ public class BatchIngestTests(AuditServiceFactory factory)
             Events =
             [
                 AuditRequestBuilder.MinimalValid(idempotencyKey: dupKey),     // rejected → stops here
-                AuditRequestBuilder.MinimalValid(idempotencyKey: $"skip-{Guid.NewGuid():N}"), // skipped
+                AuditRequestBuilder.MinimalValid(idempotencyKey: $"skip-{Guid.CreateVersion7():N}"), // skipped
             ],
         };
 

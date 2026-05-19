@@ -46,7 +46,7 @@ public sealed class Price : Entity<Guid>
 
         return new Price
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PlanId = planId,
             AddonId = addonId,
             BundleId = bundleId,

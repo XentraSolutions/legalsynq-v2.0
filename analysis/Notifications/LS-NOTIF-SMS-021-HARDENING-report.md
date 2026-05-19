@@ -79,7 +79,7 @@ Same logic applies symmetrically to `RejectAsync`.
 
 **Activation lock (optimistic concurrency):**
 - Before activation, attempts to acquire lock via DB update with predicate: `ActivationLockId IS NULL OR ActivationLockExpiresAt < now`.
-- On success: sets `ActivationLockId = Guid.NewGuid()`, `ActivationLockAcquiredAt`, `ActivationLockExpiresAt = now + LockTimeoutMinutes`, `ActivationLockedBy = requestedBy`; records `activation_lock_acquired` audit event.
+- On success: sets `ActivationLockId = Guid.CreateVersion7()`, `ActivationLockAcquiredAt`, `ActivationLockExpiresAt = now + LockTimeoutMinutes`, `ActivationLockedBy = requestedBy`; records `activation_lock_acquired` audit event.
 - On failure to acquire: returns `Fail("Another activation is in progress.")` + records `activation_lock_failed` audit event.
 - After success or failure: releases lock (sets all lock fields to null); records `activation_lock_released` audit event.
 

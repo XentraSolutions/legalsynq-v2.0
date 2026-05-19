@@ -28,7 +28,7 @@ public class TenantBillingDiagnosticsAutoPublishTests
         var breaker = new TenantBillingPublisherCircuitBreaker(monitor, () => DateTimeOffset.UtcNow);
         var queue = new BoundedTenantBillingEntitlementPublishQueue(Options.Create(raw));
         queue.Enqueue(new TenantBillingEntitlementPublishWorkItem(
-            Guid.NewGuid(), "subscription-created", DateTime.UtcNow, null));
+            Guid.CreateVersion7(), "subscription-created", DateTime.UtcNow, null));
 
         var pub = new TenantBillingEntitlementPublisher(
             new HttpClient(new FakeHttpMessageHandler(System.Net.HttpStatusCode.OK, "{}")),

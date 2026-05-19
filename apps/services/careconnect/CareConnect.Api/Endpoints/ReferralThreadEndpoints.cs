@@ -127,7 +127,7 @@ public static class ReferralThreadEndpoints
 
             var comment = new ReferralComment
             {
-                Id         = Guid.NewGuid(),
+                Id         = Guid.CreateVersion7(),
                 TenantId   = referral.TenantId,
                 ReferralId = referral.Id,
                 SenderType = req.SenderType,

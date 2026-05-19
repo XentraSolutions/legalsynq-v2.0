@@ -26,8 +26,8 @@ public class CustomersLookupApiTests : IClassFixture<BillingWebApplicationFactor
     {
         var req = new CreateCustomerRequest
         {
-            Name = "Acme " + Guid.NewGuid().ToString("N")[..6],
-            Email = $"acme+{Guid.NewGuid():N}@example.com",
+            Name = "Acme " + Guid.CreateVersion7().ToString("N")[..6],
+            Email = $"acme+{Guid.CreateVersion7():N}@example.com",
             ExternalReference = externalReference,
         };
         var resp = await client.PostAsJsonAsync("/api/customers", req);
@@ -38,9 +38,9 @@ public class CustomersLookupApiTests : IClassFixture<BillingWebApplicationFactor
     [Fact]
     public async Task Lookup_returns_200_with_matching_customer_when_unique()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
-        var externalRef = Guid.NewGuid().ToString();
+        var externalRef = Guid.CreateVersion7().ToString();
 
         var created = await CreateCustomerAsync(client, externalRef);
 
@@ -58,9 +58,9 @@ public class CustomersLookupApiTests : IClassFixture<BillingWebApplicationFactor
     [Fact]
     public async Task Lookup_is_case_insensitive()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
-        var externalRef = "Org-" + Guid.NewGuid().ToString("N");
+        var externalRef = "Org-" + Guid.CreateVersion7().ToString("N");
 
         var created = await CreateCustomerAsync(client, externalRef);
 
@@ -75,10 +75,10 @@ public class CustomersLookupApiTests : IClassFixture<BillingWebApplicationFactor
     [Fact]
     public async Task Lookup_returns_404_when_no_match()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
 
         var resp = await client.GetAsync(
-            $"/api/customers/by-external-reference?value={Guid.NewGuid()}");
+            $"/api/customers/by-external-reference?value={Guid.CreateVersion7()}");
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -86,7 +86,7 @@ public class CustomersLookupApiTests : IClassFixture<BillingWebApplicationFactor
     [Fact]
     public async Task Lookup_returns_400_when_value_missing()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
 
         var missing = await client.GetAsync("/api/customers/by-external-reference");
         missing.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -102,11 +102,11 @@ public class CustomersLookupApiTests : IClassFixture<BillingWebApplicationFactor
     [Fact]
     public async Task Lookup_is_tenant_scoped()
     {
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var clientA = _factory.CreateClientForTenant(tenantA);
         var clientB = _factory.CreateClientForTenant(tenantB);
-        var externalRef = Guid.NewGuid().ToString();
+        var externalRef = Guid.CreateVersion7().ToString();
 
         await CreateCustomerAsync(clientA, externalRef);
 
@@ -126,9 +126,9 @@ public class CustomersLookupApiTests : IClassFixture<BillingWebApplicationFactor
     [Fact]
     public async Task Lookup_returns_409_when_two_active_customers_share_external_reference()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
-        var externalRef = Guid.NewGuid().ToString();
+        var externalRef = Guid.CreateVersion7().ToString();
 
         await CreateCustomerAsync(client, externalRef);
         await CreateCustomerAsync(client, externalRef);
@@ -141,9 +141,9 @@ public class CustomersLookupApiTests : IClassFixture<BillingWebApplicationFactor
     [Fact]
     public async Task Lookup_excludes_soft_deleted_customers()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
-        var externalRef = Guid.NewGuid().ToString();
+        var externalRef = Guid.CreateVersion7().ToString();
 
         var created = await CreateCustomerAsync(client, externalRef);
 
@@ -163,7 +163,7 @@ public class CustomersLookupApiTests : IClassFixture<BillingWebApplicationFactor
         // GUID and routed to GetById — that would return 400 ("id is
         // required") instead of 404. Use a tenant with no customers
         // and an unmatchable value to force the lookup branch.
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
 
         var resp = await client.GetAsync(
             "/api/customers/by-external-reference?value=does-not-exist");

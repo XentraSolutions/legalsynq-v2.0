@@ -34,7 +34,7 @@ public sealed class PaymentProviderSubscription : Entity<Guid>
 
         return new PaymentProviderSubscription
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             SubscriptionId = subscriptionId,
             Provider = provider,
             ProviderCustomerId = providerCustomerId,

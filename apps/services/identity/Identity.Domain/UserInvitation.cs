@@ -50,7 +50,7 @@ public class UserInvitation
         var now = DateTime.UtcNow;
         return new UserInvitation
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             UserId          = userId,
             TenantId        = tenantId,
             InvitedByUserId = invitedByUserId,

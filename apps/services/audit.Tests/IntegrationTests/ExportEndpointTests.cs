@@ -63,7 +63,7 @@ public class ExportEndpointTests(AuditServiceFactory factory)
     [Fact]
     public async Task GetExportStatus_WhenProviderIsNone_Returns503()
     {
-        var exportId = Guid.NewGuid();
+        var exportId = Guid.CreateVersion7();
 
         var response = await _client.GetAsync($"{ExportUrl}/{exportId}");
 
@@ -73,7 +73,7 @@ public class ExportEndpointTests(AuditServiceFactory factory)
     [Fact]
     public async Task GetExportStatus_WhenProviderIsNone_BodyIsApiResponseEnvelope()
     {
-        var exportId = Guid.NewGuid();
+        var exportId = Guid.CreateVersion7();
 
         var response = await _client.GetAsync($"{ExportUrl}/{exportId}");
         var body     = await response.ReadApiResponseAsync<object>();

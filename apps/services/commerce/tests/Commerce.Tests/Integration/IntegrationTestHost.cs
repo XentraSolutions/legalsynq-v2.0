@@ -39,7 +39,7 @@ internal sealed class IntegrationTestHost : IDisposable
     public IntegrationTestHost()
     {
         var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"integration-tests-{Guid.NewGuid()}")
+            .UseInMemoryDatabase($"integration-tests-{Guid.CreateVersion7()}")
             .Options;
         Db = new CommerceDbContext(opts);
         TenantResolver = new NoopHostTenantResolver(Db);

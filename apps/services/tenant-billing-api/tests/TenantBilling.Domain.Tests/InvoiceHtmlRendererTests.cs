@@ -16,10 +16,10 @@ public class InvoiceHtmlRendererTests
         string? notes = null,
         IReadOnlyList<InvoiceRenderLine>? lines = null)
         => new(
-            InvoiceId: Guid.NewGuid(),
+            InvoiceId: Guid.CreateVersion7(),
             InvoiceNumber: "INV-0001",
-            TenantId: Guid.NewGuid(),
-            CustomerId: Guid.NewGuid(),
+            TenantId: Guid.CreateVersion7(),
+            CustomerId: Guid.CreateVersion7(),
             CustomerName: customerName,
             CustomerEmail: "billing@acme.test",
             IssueDate: new DateTime(2026, 4, 1),
@@ -74,7 +74,7 @@ public class InvoiceHtmlRendererTests
     public void Render_WithSnapshot_EmitsLogoHeaderFooter()
     {
         var snap = new InvoiceRenderTemplateSnapshot(
-            TemplateId: Guid.NewGuid(), OwnerType: "Tenant",
+            TemplateId: Guid.CreateVersion7(), OwnerType: "Tenant",
             Name: "Brand A", LogoUrl: "https://cdn.example/logo.png",
             AccentColor: "#10B981",
             HeaderText: "Thanks for your business",
@@ -103,7 +103,7 @@ public class InvoiceHtmlRendererTests
     public void Render_DisplayFlagsFalse_OmitOptionalSections()
     {
         var snap = new InvoiceRenderTemplateSnapshot(
-            TemplateId: Guid.NewGuid(), OwnerType: "Tenant",
+            TemplateId: Guid.CreateVersion7(), OwnerType: "Tenant",
             Name: "Brand A", LogoUrl: null, AccentColor: null,
             HeaderText: null, FooterText: null,
             PaymentInstructions: "Wire here",
@@ -143,7 +143,7 @@ public class InvoiceHtmlRendererTests
     {
         var malicious = "<script>alert('xss')</script>";
         var snap = new InvoiceRenderTemplateSnapshot(
-            TemplateId: Guid.NewGuid(), OwnerType: "Tenant",
+            TemplateId: Guid.CreateVersion7(), OwnerType: "Tenant",
             Name: malicious, LogoUrl: null, AccentColor: null,
             HeaderText: malicious, FooterText: malicious,
             PaymentInstructions: malicious, TermsText: malicious,
@@ -163,7 +163,7 @@ public class InvoiceHtmlRendererTests
     public void Render_EscapesAccentColor_PreventsCssBreakOut()
     {
         var snap = new InvoiceRenderTemplateSnapshot(
-            TemplateId: Guid.NewGuid(), OwnerType: "Tenant",
+            TemplateId: Guid.CreateVersion7(), OwnerType: "Tenant",
             Name: "X", LogoUrl: null,
             AccentColor: "red;}</style><script>alert(1)</script><style>",
             HeaderText: null, FooterText: null,
@@ -230,10 +230,10 @@ public class InvoiceHtmlRendererTests
         InvoiceRenderCustomerAddress? customerAddress = null,
         InvoiceRenderIssuer? issuer = null)
         => new(
-            InvoiceId: Guid.NewGuid(),
+            InvoiceId: Guid.CreateVersion7(),
             InvoiceNumber: "INV-0001",
-            TenantId: Guid.NewGuid(),
-            CustomerId: Guid.NewGuid(),
+            TenantId: Guid.CreateVersion7(),
+            CustomerId: Guid.CreateVersion7(),
             CustomerName: "Acme",
             CustomerEmail: "billing@acme.test",
             IssueDate: new DateTime(2026, 4, 1),
@@ -299,7 +299,7 @@ public class InvoiceHtmlRendererTests
     public void Render_BillTo_IncludesAddressWhenSnapshotEnablesFlag()
     {
         var snap = new InvoiceRenderTemplateSnapshot(
-            TemplateId: Guid.NewGuid(), OwnerType: "Tenant",
+            TemplateId: Guid.CreateVersion7(), OwnerType: "Tenant",
             Name: "Brand", LogoUrl: null, AccentColor: null,
             HeaderText: null, FooterText: null,
             PaymentInstructions: null, TermsText: null, MemoPlaceholder: null,
@@ -318,7 +318,7 @@ public class InvoiceHtmlRendererTests
     public void Render_BillTo_OmitsAddressWhenSnapshotDisablesFlag()
     {
         var snap = new InvoiceRenderTemplateSnapshot(
-            TemplateId: Guid.NewGuid(), OwnerType: "Tenant",
+            TemplateId: Guid.CreateVersion7(), OwnerType: "Tenant",
             Name: "Brand", LogoUrl: null, AccentColor: null,
             HeaderText: null, FooterText: null,
             PaymentInstructions: null, TermsText: null, MemoPlaceholder: null,
@@ -376,7 +376,7 @@ public class InvoiceHtmlRendererTests
         // the only inline content.
         var malicious = "</style><script src=\"http://evil/x.js\"></script>";
         var snap = new InvoiceRenderTemplateSnapshot(
-            TemplateId: Guid.NewGuid(), OwnerType: "Tenant",
+            TemplateId: Guid.CreateVersion7(), OwnerType: "Tenant",
             Name: malicious, LogoUrl: malicious, AccentColor: malicious,
             HeaderText: malicious, FooterText: malicious,
             PaymentInstructions: malicious, TermsText: malicious,

@@ -28,7 +28,7 @@ public class AccountStandingServiceAutoPublishTriggerTests
         Build(RecordingPublishQueue? queue = null)
     {
         var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"as-trigger-{Guid.NewGuid()}")
+            .UseInMemoryDatabase($"as-trigger-{Guid.CreateVersion7()}")
             .Options;
         var db = new CommerceDbContext(opts);
         var clock = new StandingClock();

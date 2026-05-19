@@ -134,7 +134,7 @@ public class Referral : AuditableEntity
         var now = DateTime.UtcNow;
         return new Referral
         {
-            Id                         = Guid.NewGuid(),
+            Id                         = Guid.CreateVersion7(),
             TenantId                   = tenantId,
             ReferringOrganizationId    = referringOrganizationId,
             ReceivingOrganizationId    = receivingOrganizationId,

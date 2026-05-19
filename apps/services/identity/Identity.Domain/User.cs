@@ -242,7 +242,7 @@ public class User
         var now = DateTime.UtcNow;
         return new User
         {
-            Id             = Guid.NewGuid(),
+            Id             = Guid.CreateVersion7(),
             TenantId       = tenantId,
             Email          = email.ToLowerInvariant().Trim(),
             PasswordHash   = passwordHash,

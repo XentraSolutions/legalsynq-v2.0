@@ -24,7 +24,7 @@ public class CatalogApiTests : IClassFixture<CommerceWebApplicationFactory>
     public async Task Product_create_get_list_roundtrip()
     {
         var client = _factory.CreateClient();
-        var key = "api-prod-" + Guid.NewGuid().ToString("N")[..8];
+        var key = "api-prod-" + Guid.CreateVersion7().ToString("N")[..8];
 
         var create = await client.PostAsJsonAsync("/api/commerce/catalog/products",
             new CreateProductRequest(key, "Api Prod", "via api"));
@@ -44,7 +44,7 @@ public class CatalogApiTests : IClassFixture<CommerceWebApplicationFactory>
     public async Task Duplicate_product_key_returns_409()
     {
         var client = _factory.CreateClient();
-        var key = "dup-" + Guid.NewGuid().ToString("N")[..8];
+        var key = "dup-" + Guid.CreateVersion7().ToString("N")[..8];
         await client.PostAsJsonAsync("/api/commerce/catalog/products", new CreateProductRequest(key, "A", null));
         var second = await client.PostAsJsonAsync("/api/commerce/catalog/products", new CreateProductRequest(key, "B", null));
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
@@ -54,7 +54,7 @@ public class CatalogApiTests : IClassFixture<CommerceWebApplicationFactory>
     public async Task Get_unknown_product_returns_404()
     {
         var client = _factory.CreateClient();
-        var resp = await client.GetAsync($"/api/commerce/catalog/products/{Guid.NewGuid()}");
+        var resp = await client.GetAsync($"/api/commerce/catalog/products/{Guid.CreateVersion7()}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 

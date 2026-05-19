@@ -90,7 +90,7 @@ public sealed class StatementTemplateService :
         var now = _time.GetUtcNow().UtcDateTime;
         var template = new StatementTemplate
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = StatementTemplateValidation.NormalizeName(input.Name),
             Description = StatementTemplateValidation.NormalizeOptionalText(

@@ -49,8 +49,8 @@ public class TenantBillingEntitlementServiceTests
     public async Task Apply_creates_first_snapshot_for_active_profile()
     {
         var (p, e, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var account = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var account = Guid.CreateVersion7();
         await SeedActiveProfileAsync(p, tenant, account);
 
         var snap = await e.ApplySnapshotAsync(tenant, Req(account));
@@ -66,8 +66,8 @@ public class TenantBillingEntitlementServiceTests
     public async Task Apply_updates_existing_snapshot_in_place()
     {
         var (p, e, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var account = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var account = Guid.CreateVersion7();
         await SeedActiveProfileAsync(p, tenant, account);
 
         var first  = await e.ApplySnapshotAsync(tenant, Req(account));
@@ -84,8 +84,8 @@ public class TenantBillingEntitlementServiceTests
     public async Task Apply_throws_NotFound_when_no_open_profile()
     {
         var (_, e, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var account = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var account = Guid.CreateVersion7();
 
         await Assert.ThrowsAsync<TenantBillingProfileNotFoundException>(
             () => e.ApplySnapshotAsync(tenant, Req(account)));
@@ -95,9 +95,9 @@ public class TenantBillingEntitlementServiceTests
     public async Task Apply_throws_Mismatch_when_BillingAccount_does_not_match_active_profile()
     {
         var (p, e, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var realAccount = Guid.NewGuid();
-        var bogusAccount = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var realAccount = Guid.CreateVersion7();
+        var bogusAccount = Guid.CreateVersion7();
         await SeedActiveProfileAsync(p, tenant, realAccount);
 
         await Assert.ThrowsAsync<TenantBillingEntitlementProfileMismatchException>(
@@ -108,8 +108,8 @@ public class TenantBillingEntitlementServiceTests
     public async Task Apply_throws_ClosedProfile_when_profile_is_closed()
     {
         var (p, e, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var account = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var account = Guid.CreateVersion7();
         var draft = await p.CreateAsync(tenant, account, null, null,
             TenantBillingMode.InternalOnly, null);
         await p.CloseAsync(tenant, draft.Id);
@@ -122,8 +122,8 @@ public class TenantBillingEntitlementServiceTests
     public async Task Apply_throws_for_invalid_status_enum()
     {
         var (p, e, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var account = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var account = Guid.CreateVersion7();
         await SeedActiveProfileAsync(p, tenant, account);
 
         await Assert.ThrowsAsync<ArgumentException>(
@@ -134,8 +134,8 @@ public class TenantBillingEntitlementServiceTests
     public async Task Apply_throws_InvalidJson_for_malformed_raw_snapshot()
     {
         var (p, e, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var account = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var account = Guid.CreateVersion7();
         await SeedActiveProfileAsync(p, tenant, account);
 
         await Assert.ThrowsAsync<TenantBillingEntitlementInvalidJsonException>(
@@ -146,8 +146,8 @@ public class TenantBillingEntitlementServiceTests
     public async Task Apply_accepts_well_formed_raw_snapshot_json()
     {
         var (p, e, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var account = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var account = Guid.CreateVersion7();
         await SeedActiveProfileAsync(p, tenant, account);
 
         var snap = await e.ApplySnapshotAsync(tenant,
@@ -159,7 +159,7 @@ public class TenantBillingEntitlementServiceTests
     public async Task GetCurrent_returns_null_when_no_active_profile()
     {
         var (_, e, _, _) = Build();
-        var snap = await e.GetCurrentSnapshotAsync(Guid.NewGuid());
+        var snap = await e.GetCurrentSnapshotAsync(Guid.CreateVersion7());
         snap.Should().BeNull();
     }
 
@@ -167,8 +167,8 @@ public class TenantBillingEntitlementServiceTests
     public async Task GetCurrent_returns_snapshot_for_active_profile()
     {
         var (p, e, _, _) = Build();
-        var tenant = Guid.NewGuid();
-        var account = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var account = Guid.CreateVersion7();
         await SeedActiveProfileAsync(p, tenant, account);
         await e.ApplySnapshotAsync(tenant, Req(account));
 
@@ -181,9 +181,9 @@ public class TenantBillingEntitlementServiceTests
     public async Task GetByProfileId_is_tenant_scoped()
     {
         var (p, e, _, _) = Build();
-        var ownerTenant = Guid.NewGuid();
-        var strangerTenant = Guid.NewGuid();
-        var account = Guid.NewGuid();
+        var ownerTenant = Guid.CreateVersion7();
+        var strangerTenant = Guid.CreateVersion7();
+        var account = Guid.CreateVersion7();
         var profile = await SeedActiveProfileAsync(p, ownerTenant, account);
         await e.ApplySnapshotAsync(ownerTenant, Req(account));
 

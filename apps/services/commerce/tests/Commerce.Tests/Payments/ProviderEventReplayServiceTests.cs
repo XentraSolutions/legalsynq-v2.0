@@ -48,7 +48,7 @@ public class ProviderEventReplayServiceTests
     {
         var (host, svc) = NewHost();
         using var _ = host;
-        Func<Task> a = () => svc.ReprocessAsync(Guid.NewGuid(), default);
+        Func<Task> a = () => svc.ReprocessAsync(Guid.CreateVersion7(), default);
         await a.Should().ThrowAsync<NotFoundException>();
     }
 

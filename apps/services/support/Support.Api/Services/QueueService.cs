@@ -147,7 +147,7 @@ public class QueueService : IQueueService
         var now = DateTime.UtcNow;
         var queue = new SupportQueue
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = name,
             Description = req.Description,
@@ -251,7 +251,7 @@ public class QueueService : IQueueService
         var now = DateTime.UtcNow;
         var member = new SupportQueueMember
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             QueueId = queueId,
             TenantId = tenantId,
             UserId = userId,

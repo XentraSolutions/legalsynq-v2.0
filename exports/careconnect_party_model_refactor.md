@@ -324,7 +324,7 @@ public class Party
         var now = DateTime.UtcNow;
         return new Party
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             OwnerOrganizationId = ownerOrganizationId,
             PartyType = "INDIVIDUAL",
@@ -363,7 +363,7 @@ public class PartyContact
         Guid partyId, string contactType, string value, bool isPrimary)
         => new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PartyId = partyId,
             ContactType = contactType.ToUpperInvariant(),
             Value = value.Trim(),

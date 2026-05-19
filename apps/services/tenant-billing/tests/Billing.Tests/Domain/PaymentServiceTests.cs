@@ -11,7 +11,7 @@ public class PaymentServiceTests
 
     private static async Task<(Guid TenantId, Guid InvoiceId)> SeedInvoiceAsync(DomainTestHost host)
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
         var invoice = await host.Invoices.CreateAsync(
             tenantId, customer.Id, "INV-PAY", IssueDate, DueDate, "USD", null,
@@ -48,7 +48,7 @@ public class PaymentServiceTests
     {
         using var host = new DomainTestHost();
         var (tenantA, invoiceId) = await SeedInvoiceAsync(host);
-        var tenantB = Guid.NewGuid();
+        var tenantB = Guid.CreateVersion7();
         tenantB.Should().NotBe(tenantA);
 
         Func<Task> act = () => host.Payments.CreateAsync(
@@ -66,8 +66,8 @@ public class PaymentServiceTests
     public async Task Create_rejects_unknown_invoice()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
-        var unknownInvoiceId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
+        var unknownInvoiceId = Guid.CreateVersion7();
 
         Func<Task> act = () => host.Payments.CreateAsync(
             tenantId, unknownInvoiceId, amount: 10m, currency: "USD", method: "card",

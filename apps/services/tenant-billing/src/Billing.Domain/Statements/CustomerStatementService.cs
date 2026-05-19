@@ -240,7 +240,7 @@ public sealed class CustomerStatementService : ICustomerStatementService
         var outstandingBalance = outstanding.Sum(o => o.AmountDue);
 
         return new CustomerStatementDocument(
-            StatementId: Guid.NewGuid(),
+            StatementId: Guid.CreateVersion7(),
             TenantId: tenantId,
             CustomerId: customerId,
             CustomerName: customer.Name ?? string.Empty,

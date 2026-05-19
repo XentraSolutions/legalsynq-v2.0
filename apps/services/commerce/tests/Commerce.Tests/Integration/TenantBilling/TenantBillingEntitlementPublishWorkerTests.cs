@@ -54,7 +54,7 @@ public class TenantBillingEntitlementPublishWorkerTests
             Result = outcome switch
             {
                 PublishEntitlementOutcome.Published => PublishEntitlementResult.Published(
-                    Guid.Empty, Guid.NewGuid(), 200, 1),
+                    Guid.Empty, Guid.CreateVersion7(), 200, 1),
                 PublishEntitlementOutcome.Skipped => PublishEntitlementResult.Skipped(
                     Guid.Empty, "publisher-disabled"),
                 _ => PublishEntitlementResult.Failed(Guid.Empty, "transport-error", null, 502, null, 2),
@@ -98,8 +98,8 @@ public class TenantBillingEntitlementPublishWorkerTests
     public async Task Worker_processes_each_enqueued_item_in_order()
     {
         var (worker, queue, publisher, metrics) = Build();
-        var ba1 = Guid.NewGuid();
-        var ba2 = Guid.NewGuid();
+        var ba1 = Guid.CreateVersion7();
+        var ba2 = Guid.CreateVersion7();
         queue.Enqueue(new(ba1, "subscription-created", DateTime.UtcNow, null));
         queue.Enqueue(new(ba2, "account-standing-recalculated", DateTime.UtcNow, null));
 
@@ -112,8 +112,8 @@ public class TenantBillingEntitlementPublishWorkerTests
     public async Task Worker_swallows_publisher_exception_and_keeps_going()
     {
         var (worker, queue, publisher, _) = Build(throwOnPublish: new InvalidOperationException("boom"));
-        queue.Enqueue(new(Guid.NewGuid(), "subscription-activated", DateTime.UtcNow, null));
-        queue.Enqueue(new(Guid.NewGuid(), "subscription-cancelled", DateTime.UtcNow, null));
+        queue.Enqueue(new(Guid.CreateVersion7(), "subscription-activated", DateTime.UtcNow, null));
+        queue.Enqueue(new(Guid.CreateVersion7(), "subscription-cancelled", DateTime.UtcNow, null));
 
         await RunWorkerUntilDrainedAsync(worker, queue, () => publisher.Calls.Count == 2);
 
@@ -125,7 +125,7 @@ public class TenantBillingEntitlementPublishWorkerTests
     public async Task Worker_handles_skipped_outcome_without_failing()
     {
         var (worker, queue, publisher, _) = Build(outcome: PublishEntitlementOutcome.Skipped);
-        queue.Enqueue(new(Guid.NewGuid(), "subscription-suspended", DateTime.UtcNow, null));
+        queue.Enqueue(new(Guid.CreateVersion7(), "subscription-suspended", DateTime.UtcNow, null));
         await RunWorkerUntilDrainedAsync(worker, queue, () => publisher.Calls.Count == 1);
         publisher.Calls.Should().HaveCount(1);
     }

@@ -15,13 +15,13 @@ public class PaymentDomainTests
         Assert.Throws<InvalidOperationException>(() =>
             PaymentProviderCustomer.Create(Guid.Empty, PaymentProviderType.Stripe, "cus_x", null, null, Now));
         Assert.Throws<InvalidOperationException>(() =>
-            PaymentProviderCustomer.Create(Guid.NewGuid(), PaymentProviderType.Stripe, "  ", null, null, Now));
+            PaymentProviderCustomer.Create(Guid.CreateVersion7(), PaymentProviderType.Stripe, "  ", null, null, Now));
     }
 
     [Fact]
     public void PaymentProviderSubscription_starts_pending_and_transitions()
     {
-        var sub = PaymentProviderSubscription.Create(Guid.NewGuid(), PaymentProviderType.Stripe, "cus_1", "cs_1", Now);
+        var sub = PaymentProviderSubscription.Create(Guid.CreateVersion7(), PaymentProviderType.Stripe, "cus_1", "cs_1", Now);
         sub.Status.Should().Be(ProviderSubscriptionStatus.Pending);
 
         sub.MarkActive("sub_1", Now.AddMinutes(1));
@@ -39,13 +39,13 @@ public class PaymentDomainTests
     public void PaymentMethodReference_validates_safe_fields()
     {
         Assert.Throws<InvalidOperationException>(() =>
-            PaymentMethodReference.Create(Guid.NewGuid(), PaymentProviderType.Stripe, "pm_1", null, "visa", "12345", 5, 2030, Now));
+            PaymentMethodReference.Create(Guid.CreateVersion7(), PaymentProviderType.Stripe, "pm_1", null, "visa", "12345", 5, 2030, Now));
         Assert.Throws<InvalidOperationException>(() =>
-            PaymentMethodReference.Create(Guid.NewGuid(), PaymentProviderType.Stripe, "pm_1", null, "visa", "1234", 13, 2030, Now));
+            PaymentMethodReference.Create(Guid.CreateVersion7(), PaymentProviderType.Stripe, "pm_1", null, "visa", "1234", 13, 2030, Now));
         Assert.Throws<InvalidOperationException>(() =>
-            PaymentMethodReference.Create(Guid.NewGuid(), PaymentProviderType.Stripe, "pm_1", null, "visa", "1234", 5, 1900, Now));
+            PaymentMethodReference.Create(Guid.CreateVersion7(), PaymentProviderType.Stripe, "pm_1", null, "visa", "1234", 5, 1900, Now));
 
-        var pm = PaymentMethodReference.Create(Guid.NewGuid(), PaymentProviderType.Stripe, "pm_1", "cus_1", "visa", "4242", 5, 2030, Now);
+        var pm = PaymentMethodReference.Create(Guid.CreateVersion7(), PaymentProviderType.Stripe, "pm_1", "cus_1", "visa", "4242", 5, 2030, Now);
         pm.IsDefault.Should().BeFalse();
         pm.MakeDefault(Now.AddMinutes(1));
         pm.IsDefault.Should().BeTrue();
@@ -82,8 +82,8 @@ public class PaymentManualFactoryTests
     {
         var paidAt = Now.AddHours(-3);
         var p = Payment.CreateManual(
-            billingAccountId: Guid.NewGuid(),
-            invoiceId: Guid.NewGuid(),
+            billingAccountId: Guid.CreateVersion7(),
+            invoiceId: Guid.CreateVersion7(),
             subscriptionId: null,
             amountMinor: 12345,
             currency: "usd",
@@ -116,18 +116,18 @@ public class PaymentManualFactoryTests
     public void CreateManual_rejects_zero_or_negative_amount()
     {
         Assert.Throws<InvalidOperationException>(() => Payment.CreateManual(
-            Guid.NewGuid(), null, null, 0, "USD", Now, null, null, null, null, Now));
+            Guid.CreateVersion7(), null, null, 0, "USD", Now, null, null, null, null, Now));
         Assert.Throws<InvalidOperationException>(() => Payment.CreateManual(
-            Guid.NewGuid(), null, null, -50, "USD", Now, null, null, null, null, Now));
+            Guid.CreateVersion7(), null, null, -50, "USD", Now, null, null, null, null, Now));
     }
 
     [Fact]
     public void CreateManual_rejects_invalid_currency_and_default_paidAt()
     {
         Assert.Throws<InvalidOperationException>(() => Payment.CreateManual(
-            Guid.NewGuid(), null, null, 100, "XX", Now, null, null, null, null, Now));
+            Guid.CreateVersion7(), null, null, 100, "XX", Now, null, null, null, null, Now));
         Assert.Throws<InvalidOperationException>(() => Payment.CreateManual(
-            Guid.NewGuid(), null, null, 100, "USD", default, null, null, null, null, Now));
+            Guid.CreateVersion7(), null, null, 100, "USD", default, null, null, null, null, Now));
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class PaymentManualFactoryTests
         var longLabel = new string('y', 500);
         var longRef = new string('r', 200);
         var p = Payment.CreateManual(
-            Guid.NewGuid(), null, null, 100, "USD", Now,
+            Guid.CreateVersion7(), null, null, 100, "USD", Now,
             method: "wire", transactionReference: longRef,
             recordedByLabel: longLabel, notes: longNotes, nowUtc: Now);
 

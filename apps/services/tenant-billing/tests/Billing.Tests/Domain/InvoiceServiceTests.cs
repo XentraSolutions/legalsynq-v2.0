@@ -16,7 +16,7 @@ public class InvoiceServiceTests
     public async Task Create_persists_invoice_for_customer_in_same_tenant()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         var invoice = await host.Invoices.CreateAsync(
@@ -34,8 +34,8 @@ public class InvoiceServiceTests
     public async Task Create_rejects_customer_owned_by_other_tenant()
     {
         using var host = new DomainTestHost();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantA, "Acme", "acme@example.com", null, null, null, null);
 
         Func<Task> act = () => host.Invoices.CreateAsync(
@@ -50,8 +50,8 @@ public class InvoiceServiceTests
     public async Task Create_rejects_unknown_customer()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
-        var unknownCustomerId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
+        var unknownCustomerId = Guid.CreateVersion7();
 
         Func<Task> act = () => host.Invoices.CreateAsync(
             tenantId, unknownCustomerId, "INV-001", IssueDate, DueDate, "USD", null,
@@ -67,7 +67,7 @@ public class InvoiceServiceTests
     public async Task Create_throws_DuplicateInvoiceNumberException_for_same_tenant_and_number()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         await host.Invoices.CreateAsync(
@@ -87,8 +87,8 @@ public class InvoiceServiceTests
     public async Task Create_allows_same_InvoiceNumber_across_different_tenants()
     {
         using var host = new DomainTestHost();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var customerA = await host.Customers.CreateAsync(tenantA, "A", "a@example.com", null, null, null, null);
         var customerB = await host.Customers.CreateAsync(tenantB, "B", "b@example.com", null, null, null, null);
 
@@ -108,7 +108,7 @@ public class InvoiceServiceTests
     public async Task Create_trims_invoice_number_when_checking_for_duplicates()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         await host.Invoices.CreateAsync(
@@ -126,7 +126,7 @@ public class InvoiceServiceTests
     public async Task Create_rounds_unit_price_line_total_subtotal_tax_and_total_to_two_decimal_places()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         // UnitPrice 1.235 * Qty 3 = 3.705 -> rounded line total 3.71 (away-from-zero)
@@ -148,7 +148,7 @@ public class InvoiceServiceTests
     public async Task Create_rejects_DueDate_before_IssueDate()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         Func<Task> act = () => host.Invoices.CreateAsync(
@@ -163,7 +163,7 @@ public class InvoiceServiceTests
     public async Task Create_allows_DueDate_equal_to_IssueDate()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         var invoice = await host.Invoices.CreateAsync(
@@ -177,7 +177,7 @@ public class InvoiceServiceTests
     public async Task Create_rejects_negative_TaxAmount()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         Func<Task> act = () => host.Invoices.CreateAsync(
@@ -192,7 +192,7 @@ public class InvoiceServiceTests
     public async Task Create_rejects_empty_lines()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         Func<Task> act = () => host.Invoices.CreateAsync(
@@ -209,7 +209,7 @@ public class InvoiceServiceTests
     public async Task Create_rejects_line_with_non_positive_quantity(int quantity)
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         Func<Task> act = () => host.Invoices.CreateAsync(
@@ -224,7 +224,7 @@ public class InvoiceServiceTests
     public async Task Create_rejects_line_with_negative_unit_price()
     {
         using var host = new DomainTestHost();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var customer = await host.Customers.CreateAsync(tenantId, "Acme", "acme@example.com", null, null, null, null);
 
         Func<Task> act = () => host.Invoices.CreateAsync(

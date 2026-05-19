@@ -286,7 +286,7 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
 
         var notif = new SupportNotification(
             SupportNotificationEventTypes.TicketCreated,
-            "tenant-N10", Guid.NewGuid(), "SUP-X-1",
+            "tenant-N10", Guid.CreateVersion7(), "SUP-X-1",
             new List<NotificationRecipient>(),
             new Dictionary<string, object?>(),
             DateTime.UtcNow);

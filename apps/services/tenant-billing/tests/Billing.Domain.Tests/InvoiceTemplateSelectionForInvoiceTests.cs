@@ -20,7 +20,7 @@ public class InvoiceTemplateSelectionForInvoiceTests
 
     private static InvoiceTemplate Tenant(Guid tenantId, string status, bool isDefault = false, string name = "T") => new()
     {
-        Id = Guid.NewGuid(),
+        Id = Guid.CreateVersion7(),
         OwnerType = InvoiceTemplateOwnerType.Tenant,
         BillingAccountId = tenantId,
         Name = name,
@@ -33,7 +33,7 @@ public class InvoiceTemplateSelectionForInvoiceTests
     {
         var (svc, _) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        Assert.Null(await sel.SelectForTenantInvoiceAsync(Guid.NewGuid(), explicitTemplateId: null));
+        Assert.Null(await sel.SelectForTenantInvoiceAsync(Guid.CreateVersion7(), explicitTemplateId: null));
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class InvoiceTemplateSelectionForInvoiceTests
     {
         var (svc, repo) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var d = Tenant(tenantId, InvoiceTemplateStatus.Active, isDefault: true, name: "Default");
         await repo.AddAsync(d);
 
@@ -56,7 +56,7 @@ public class InvoiceTemplateSelectionForInvoiceTests
     {
         var (svc, repo) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = Tenant(tenantId, InvoiceTemplateStatus.Active);
         await repo.AddAsync(t);
 
@@ -71,7 +71,7 @@ public class InvoiceTemplateSelectionForInvoiceTests
     {
         var (svc, repo) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = Tenant(tenantId, InvoiceTemplateStatus.Draft);
         await repo.AddAsync(t);
 
@@ -84,7 +84,7 @@ public class InvoiceTemplateSelectionForInvoiceTests
     {
         var (svc, repo) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = Tenant(tenantId, InvoiceTemplateStatus.Retired);
         await repo.AddAsync(t);
 
@@ -97,8 +97,8 @@ public class InvoiceTemplateSelectionForInvoiceTests
     {
         var (svc, repo) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var aTpl = Tenant(tenantA, InvoiceTemplateStatus.Active);
         await repo.AddAsync(aTpl);
 
@@ -113,10 +113,10 @@ public class InvoiceTemplateSelectionForInvoiceTests
     {
         var (svc, repo) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var platform = new InvoiceTemplate
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             OwnerType = InvoiceTemplateOwnerType.Platform,
             BillingAccountId = null,
             Name = "Platform tpl",
@@ -135,7 +135,7 @@ public class InvoiceTemplateSelectionForInvoiceTests
     {
         var (svc, repo) = Build();
         IInvoiceTemplateSelectionService sel = svc;
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = Tenant(tenantId, InvoiceTemplateStatus.Active);
         await repo.AddAsync(t);
 

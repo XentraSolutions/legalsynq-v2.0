@@ -40,7 +40,7 @@ public class InvoiceTemplatesTenantApiTests : IClassFixture<BillingWebApplicatio
     [Fact]
     public async Task Create_AssignsTenantOwnership()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
 
         var resp = await client.PostAsJsonAsync("/api/invoice-templates/tenant",
@@ -57,8 +57,8 @@ public class InvoiceTemplatesTenantApiTests : IClassFixture<BillingWebApplicatio
     [Fact]
     public async Task TenantA_CannotSeeTenantBsTemplates()
     {
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var clientA = _factory.CreateClientForTenant(tenantA);
         var clientB = _factory.CreateClientForTenant(tenantB);
 
@@ -84,7 +84,7 @@ public class InvoiceTemplatesTenantApiTests : IClassFixture<BillingWebApplicatio
     [Fact]
     public async Task Update_PartialPatch_OnlyChangesSuppliedFields()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var created = await (await client.PostAsJsonAsync("/api/invoice-templates/tenant",
             SampleRequest(status: InvoiceTemplateStatus.Draft))).Content.ReadFromJsonAsync<InvoiceTemplateResponse>();
 
@@ -102,7 +102,7 @@ public class InvoiceTemplatesTenantApiTests : IClassFixture<BillingWebApplicatio
     [Fact]
     public async Task Update_Retired_400()
     {
-        var client = _factory.CreateClientForTenant(Guid.NewGuid());
+        var client = _factory.CreateClientForTenant(Guid.CreateVersion7());
         var created = await (await client.PostAsJsonAsync("/api/invoice-templates/tenant",
             SampleRequest(status: InvoiceTemplateStatus.Active))).Content.ReadFromJsonAsync<InvoiceTemplateResponse>();
         await client.PostAsync($"/api/invoice-templates/tenant/{created!.Id}/retire", content: null);

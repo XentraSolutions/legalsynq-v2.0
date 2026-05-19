@@ -12,7 +12,7 @@ namespace Notifications.Domain;
 /// </summary>
 public class SmsRecipientReputationSnapshot
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid Id { get; set; } = Guid.CreateVersion7();
 
     /// <summary>HMAC-SHA256 of normalized phone. Never a raw phone number.</summary>
     public string RecipientHash { get; set; } = string.Empty;

@@ -32,7 +32,7 @@ public class UserRoleAssignment
         var now = DateTime.UtcNow;
         return new UserRoleAssignment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             UserId = userId,
             RoleCode = roleCode.Trim(),

@@ -25,10 +25,10 @@ public class InvoicesTemplateStampingApiTests : IClassFixture<BillingWebApplicat
         var customers = scope.ServiceProvider.GetRequiredService<ICustomerRepository>();
         var c = new Customer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = "Acme",
-            Email = $"billing+{Guid.NewGuid():N}@acme.test",
+            Email = $"billing+{Guid.CreateVersion7():N}@acme.test",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -76,7 +76,7 @@ public class InvoicesTemplateStampingApiTests : IClassFixture<BillingWebApplicat
     [Fact]
     public async Task Create_WithExplicitTemplateId_ResponseCarriesSnapshot()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customerId = await SeedCustomerAsync(tenantId);
         var tpl = await CreateTemplateAsync(client, "Brand A");
@@ -98,7 +98,7 @@ public class InvoicesTemplateStampingApiTests : IClassFixture<BillingWebApplicat
     [Fact]
     public async Task Create_NoExplicitId_FallsBackToTenantDefault()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customerId = await SeedCustomerAsync(tenantId);
         var tpl = await CreateTemplateAsync(client, "Default", isDefault: true);
@@ -116,7 +116,7 @@ public class InvoicesTemplateStampingApiTests : IClassFixture<BillingWebApplicat
     [Fact]
     public async Task Create_NoExplicitId_NoDefault_StillSucceedsUnstamped()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customerId = await SeedCustomerAsync(tenantId);
 
@@ -134,8 +134,8 @@ public class InvoicesTemplateStampingApiTests : IClassFixture<BillingWebApplicat
     [Fact]
     public async Task Create_ExplicitId_OtherTenant_400()
     {
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var clientA = _factory.CreateClientForTenant(tenantA);
         var clientB = _factory.CreateClientForTenant(tenantB);
         var customerB = await SeedCustomerAsync(tenantB);
@@ -152,7 +152,7 @@ public class InvoicesTemplateStampingApiTests : IClassFixture<BillingWebApplicat
     [Fact]
     public async Task Create_ExplicitId_Retired_400()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customerId = await SeedCustomerAsync(tenantId);
         var tpl = await CreateTemplateAsync(client, "ToRetire");
@@ -172,7 +172,7 @@ public class InvoicesTemplateStampingApiTests : IClassFixture<BillingWebApplicat
     [Fact]
     public async Task Snapshot_SurvivesSubsequentTemplateEdit()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
         var customerId = await SeedCustomerAsync(tenantId);
         var tpl = await CreateTemplateAsync(client, "Original");

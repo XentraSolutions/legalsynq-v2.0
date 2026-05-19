@@ -24,7 +24,7 @@ public sealed class PlanFeature : Entity<Guid>
     {
         return new PlanFeature
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PlanId = planId,
             FeatureId = featureId,
             IsEnabled = isEnabled,

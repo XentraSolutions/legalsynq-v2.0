@@ -35,12 +35,12 @@ public class TenantBillingEntitlementOutboxTests
         {
             Calls.Add(ba);
             if (Throw is not null) throw Throw;
-            var r = ResultFor?.Invoke(ba) ?? PublishEntitlementResult.Published(ba, Guid.NewGuid(), 200, 1);
+            var r = ResultFor?.Invoke(ba) ?? PublishEntitlementResult.Published(ba, Guid.CreateVersion7(), 200, 1);
             return Task.FromResult(r with { BillingAccountId = ba });
         }
 
         public Task<PublishEntitlementResult> PublishSnapshotAsync(CommerceEntitlementSnapshot s, Guid t, CancellationToken ct)
-            => Task.FromResult(PublishEntitlementResult.Published(Guid.Empty, Guid.NewGuid(), 200, 1));
+            => Task.FromResult(PublishEntitlementResult.Published(Guid.Empty, Guid.CreateVersion7(), 200, 1));
 
         public Task<PreviewEntitlementResult> PreviewForBillingAccountAsync(Guid ba, CancellationToken ct)
             => throw new NotSupportedException();
@@ -52,7 +52,7 @@ public class TenantBillingEntitlementOutboxTests
     private static CommerceDbContext NewDb()
     {
         var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"outbox-{Guid.NewGuid()}")
+            .UseInMemoryDatabase($"outbox-{Guid.CreateVersion7()}")
             .Options;
         return new CommerceDbContext(opts);
     }
@@ -92,7 +92,7 @@ public class TenantBillingEntitlementOutboxTests
     public async Task Enqueue_persists_pending_row_and_counts()
     {
         var (_, repo, db, _, _, _, _) = Build();
-        var ba = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
         var id = await repo.EnqueueAsync(ba, "subscription-created", correlationId: "c1", CancellationToken.None);
         id.Should().NotBe(Guid.Empty);
 
@@ -116,7 +116,7 @@ public class TenantBillingEntitlementOutboxTests
         var (_, repo, db, _, _, _, _) = Build();
 
         var id1 = await repo.EnqueueAsync(Guid.Empty, "subscription-created", null, CancellationToken.None);
-        var id2 = await repo.EnqueueAsync(Guid.NewGuid(), "  ", null, CancellationToken.None);
+        var id2 = await repo.EnqueueAsync(Guid.CreateVersion7(), "  ", null, CancellationToken.None);
 
         id1.Should().Be(Guid.Empty);
         id2.Should().Be(Guid.Empty);
@@ -127,7 +127,7 @@ public class TenantBillingEntitlementOutboxTests
     public async Task ProcessDue_publishes_pending_row_and_marks_published()
     {
         var (proc, repo, db, _, publisher, _, _) = Build();
-        var ba = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
         await repo.EnqueueAsync(ba, "subscription-created", null, CancellationToken.None);
 
         var batch = await proc.ProcessDueAsync(10, CancellationToken.None);
@@ -150,7 +150,7 @@ public class TenantBillingEntitlementOutboxTests
     {
         var (proc, repo, db, clock, publisher, _, opts) = Build();
         publisher.ResultFor = ba => PublishEntitlementResult.Failed(ba, "transport-error", null, 502, null, 1);
-        await repo.EnqueueAsync(Guid.NewGuid(), "subscription-created", null, CancellationToken.None);
+        await repo.EnqueueAsync(Guid.CreateVersion7(), "subscription-created", null, CancellationToken.None);
 
         var batch = await proc.ProcessDueAsync(10, CancellationToken.None);
 
@@ -173,7 +173,7 @@ public class TenantBillingEntitlementOutboxTests
             o.OutboxMaxAttempts = 2; // first failure → retry, second failure → abandoned
         });
         publisher.ResultFor = ba => PublishEntitlementResult.Failed(ba, "transport-error", null, 502, null, 1);
-        await repo.EnqueueAsync(Guid.NewGuid(), "subscription-created", null, CancellationToken.None);
+        await repo.EnqueueAsync(Guid.CreateVersion7(), "subscription-created", null, CancellationToken.None);
 
         await proc.ProcessDueAsync(10, CancellationToken.None);
         // Move clock past the scheduled retry time so the row is due again.
@@ -192,7 +192,7 @@ public class TenantBillingEntitlementOutboxTests
     {
         var (proc, repo, db, _, publisher, _, _) = Build();
         publisher.ResultFor = ba => PublishEntitlementResult.Skipped(ba, "no-external-tenant-id");
-        await repo.EnqueueAsync(Guid.NewGuid(), "subscription-created", null, CancellationToken.None);
+        await repo.EnqueueAsync(Guid.CreateVersion7(), "subscription-created", null, CancellationToken.None);
 
         var batch = await proc.ProcessDueAsync(10, CancellationToken.None);
 
@@ -209,7 +209,7 @@ public class TenantBillingEntitlementOutboxTests
     {
         var (proc, repo, db, clock, publisher, _, opts) = Build();
         publisher.ResultFor = ba => PublishEntitlementResult.Skipped(ba, "publisher-disabled");
-        await repo.EnqueueAsync(Guid.NewGuid(), "subscription-created", null, CancellationToken.None);
+        await repo.EnqueueAsync(Guid.CreateVersion7(), "subscription-created", null, CancellationToken.None);
 
         var batch = await proc.ProcessDueAsync(10, CancellationToken.None);
 
@@ -227,7 +227,7 @@ public class TenantBillingEntitlementOutboxTests
     {
         var (proc, repo, db, _, publisher, _, _) = Build();
         publisher.Throw = new InvalidOperationException("boom");
-        await repo.EnqueueAsync(Guid.NewGuid(), "subscription-created", null, CancellationToken.None);
+        await repo.EnqueueAsync(Guid.CreateVersion7(), "subscription-created", null, CancellationToken.None);
 
         var batch = await proc.ProcessDueAsync(10, CancellationToken.None);
 
@@ -244,7 +244,7 @@ public class TenantBillingEntitlementOutboxTests
     public async Task ProcessDue_skips_rows_not_yet_due()
     {
         var (proc, repo, db, clock, publisher, _, _) = Build();
-        await repo.EnqueueAsync(Guid.NewGuid(), "subscription-created", null, CancellationToken.None);
+        await repo.EnqueueAsync(Guid.CreateVersion7(), "subscription-created", null, CancellationToken.None);
         // Push the row into the future.
         var row = await db.Set<TenantBillingEntitlementPublishOutboxRow>().SingleAsync();
         typeof(TenantBillingEntitlementPublishOutboxRow)
@@ -262,12 +262,12 @@ public class TenantBillingEntitlementOutboxTests
     public async Task ProcessDue_recovers_stale_processing_rows()
     {
         var (proc, repo, db, clock, _, _, opts) = Build();
-        await repo.EnqueueAsync(Guid.NewGuid(), "subscription-created", null, CancellationToken.None);
+        await repo.EnqueueAsync(Guid.CreateVersion7(), "subscription-created", null, CancellationToken.None);
 
         // Manually flip the row to Processing with an old lock so the
         // stale-recovery path on the next poll picks it up.
         var row = await db.Set<TenantBillingEntitlementPublishOutboxRow>().SingleAsync();
-        row.MarkProcessing(Guid.NewGuid(), clock.UtcNow);
+        row.MarkProcessing(Guid.CreateVersion7(), clock.UtcNow);
         await db.SaveChangesAsync();
         // Move clock past the stale threshold (max(poll*3, 60s)).
         var staleSeconds = Math.Max(opts.OutboxPollSeconds * 3, 60);
@@ -288,9 +288,9 @@ public class TenantBillingEntitlementOutboxTests
     public async Task ProcessDue_orders_by_NextAttemptAtUtc_and_respects_batch_size()
     {
         var (proc, repo, db, clock, publisher, _, _) = Build();
-        var ba1 = Guid.NewGuid();
-        var ba2 = Guid.NewGuid();
-        var ba3 = Guid.NewGuid();
+        var ba1 = Guid.CreateVersion7();
+        var ba2 = Guid.CreateVersion7();
+        var ba3 = Guid.CreateVersion7();
         await repo.EnqueueAsync(ba1, "t1", null, CancellationToken.None);
         clock.UtcNow = clock.UtcNow.AddSeconds(1);
         await repo.EnqueueAsync(ba2, "t2", null, CancellationToken.None);

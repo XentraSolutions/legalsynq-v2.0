@@ -206,7 +206,7 @@ TASK-FLOW-03 will retire the evaluator entirely; Task service will own SLA compu
 | `WorkflowTasksController.Timeline` no longer queries `WorkflowTasks` for TenantId | PASS | Replaced with `WorkflowInstances` lookup |
 | SLA evaluator still writes to shadow + pushes to Task service | PASS | Best-effort push; non-fatal on HTTP error |
 | No interface regressions (`IMyTasksService` unchanged) | PASS | Controllers unmodified |
-| `ExternalId` alignment: `PlatformTask.Id == WorkflowTask.Id` | PASS | Factory passes `task.Id` as `externalId` on creation; Task service uses `Id = externalId ?? Guid.NewGuid()` |
+| `ExternalId` alignment: `PlatformTask.Id == WorkflowTask.Id` | PASS | Factory passes `task.Id` as `externalId` on creation; Task service uses `Id = externalId ?? Guid.CreateVersion7()` |
 | All assignment modes delegated via internal service token | PASS | `SetQueueAssignmentAsync` replaces Phase 1 `AssignUserAsync`-only path |
 
 ---

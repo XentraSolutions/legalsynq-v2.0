@@ -18,7 +18,7 @@ public sealed class CorrelationIdMiddleware
         var correlationId = context.Request.Headers.TryGetValue(HeaderName, out var existing)
             && !string.IsNullOrWhiteSpace(existing)
                 ? existing.ToString()
-                : Guid.NewGuid().ToString("N");
+                : Guid.CreateVersion7().ToString("N");
 
         context.Response.Headers[HeaderName] = correlationId;
         context.Items[HeaderName] = correlationId;

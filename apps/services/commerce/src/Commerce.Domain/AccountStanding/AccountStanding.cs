@@ -27,7 +27,7 @@ public sealed class AccountStanding : Entity<Guid>
             throw new InvalidOperationException("BillingAccountId is required.");
         return new AccountStanding
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             Status = AccountStandingStatus.Good,
             LastEvaluatedAtUtc = nowUtc,

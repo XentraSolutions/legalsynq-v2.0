@@ -19,8 +19,8 @@ public class CustomerStatementPersistenceServiceTests
 
     private sealed class Fixture
     {
-        public Guid Tenant { get; init; } = Guid.NewGuid();
-        public Guid CustomerId { get; init; } = Guid.NewGuid();
+        public Guid Tenant { get; init; } = Guid.CreateVersion7();
+        public Guid CustomerId { get; init; } = Guid.CreateVersion7();
         public InMemoryCustomerRepository Customers { get; init; } = new();
         public InMemoryInvoiceRepository Invoices { get; init; } = new();
         public InMemoryPaymentRepository Payments { get; init; } = new();
@@ -52,7 +52,7 @@ public class CustomerStatementPersistenceServiceTests
         });
         await fx.Invoices.AddAsync(new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = fx.Tenant,
             CustomerId = fx.CustomerId,
             InvoiceNumber = "INV-1",
@@ -155,7 +155,7 @@ public class CustomerStatementPersistenceServiceTests
         var fx = new Fixture();
         await SeedAsync(fx);
         var svc = fx.Build(out _);
-        var s = await svc.GenerateMonthlyAsync(Guid.NewGuid(), fx.CustomerId, 2026, 4, null, false);
+        var s = await svc.GenerateMonthlyAsync(Guid.CreateVersion7(), fx.CustomerId, 2026, 4, null, false);
         Assert.Null(s);
     }
 
@@ -210,7 +210,7 @@ public class CustomerStatementPersistenceServiceTests
         await SeedAsync(fx);
         var svc = fx.Build(out _);
         var s = await svc.GenerateMonthlyAsync(fx.Tenant, fx.CustomerId, 2026, 4, null, false);
-        var voided = await svc.VoidAsync(Guid.NewGuid(), s!.Id, null);
+        var voided = await svc.VoidAsync(Guid.CreateVersion7(), s!.Id, null);
         Assert.Null(voided);
     }
 }

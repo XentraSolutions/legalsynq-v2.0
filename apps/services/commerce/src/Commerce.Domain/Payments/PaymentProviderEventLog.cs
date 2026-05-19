@@ -39,7 +39,7 @@ public sealed class PaymentProviderEventLog : Entity<Guid>
 
         return new PaymentProviderEventLog
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             Provider = provider,
             ProviderEventId = providerEventId.Trim(),
             EventType = eventType.Trim(),

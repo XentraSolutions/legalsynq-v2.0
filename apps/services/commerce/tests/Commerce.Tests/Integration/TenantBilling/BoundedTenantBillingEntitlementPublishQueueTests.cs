@@ -21,7 +21,7 @@ public class BoundedTenantBillingEntitlementPublishQueueTests
     }
 
     private static TenantBillingEntitlementPublishWorkItem Item(string source = "subscription-created")
-        => new(Guid.NewGuid(), source, DateTime.UtcNow, null);
+        => new(Guid.CreateVersion7(), source, DateTime.UtcNow, null);
 
     [Fact]
     public void Capacity_is_clamped_and_reported()
@@ -48,7 +48,7 @@ public class BoundedTenantBillingEntitlementPublishQueueTests
                 Guid.Empty, "x", DateTime.UtcNow, null))
             .Should().Be(EnqueueResult.Invalid);
         q.Enqueue(new TenantBillingEntitlementPublishWorkItem(
-                Guid.NewGuid(), "  ", DateTime.UtcNow, null))
+                Guid.CreateVersion7(), "  ", DateTime.UtcNow, null))
             .Should().Be(EnqueueResult.Invalid);
         q.Depth.Should().Be(0);
     }
@@ -73,7 +73,7 @@ public class BoundedTenantBillingEntitlementPublishQueueTests
     public async Task Enqueue_allows_duplicate_billing_account_ids()
     {
         var q = Build(capacity: 4);
-        var ba = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
         q.Enqueue(new TenantBillingEntitlementPublishWorkItem(ba, "subscription-created", DateTime.UtcNow, null))
             .Should().Be(EnqueueResult.Accepted);
         q.Enqueue(new TenantBillingEntitlementPublishWorkItem(ba, "subscription-activated", DateTime.UtcNow, null))

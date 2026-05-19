@@ -110,7 +110,7 @@ public class PaymentWebhookServiceTests
     {
         using var host = new PaymentTestHost();
         host.Provider.Translator = _ => new NormalizedProviderEvent(
-            PaymentProviderType.Stripe, $"evt_{Guid.NewGuid():N}", "noop",
+            PaymentProviderType.Stripe, $"evt_{Guid.CreateVersion7():N}", "noop",
             NormalizedProviderEventKind.Unsupported,
             null, null, null, null, null, null, null, null, null, null);
 

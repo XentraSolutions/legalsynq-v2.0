@@ -39,7 +39,7 @@ public sealed class GovernanceFederationService : IGovernanceFederationService
         var now = DateTime.UtcNow;
         var entity = new GovernanceChannelScope
         {
-            Id          = Guid.NewGuid(),
+            Id          = Guid.CreateVersion7(),
             ChannelType = request.ChannelType.ToLowerInvariant(),
             ScopeMode   = request.ScopeMode,
             Enabled     = request.Enabled,
@@ -140,7 +140,7 @@ public sealed class GovernanceFederationService : IGovernanceFederationService
         var now = DateTime.UtcNow;
         var entity = new GovernanceFederatedRulePack
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             RulePackId      = request.RulePackId,
             ChannelType     = request.ChannelType.ToLowerInvariant(),
             FederationGroup = request.FederationGroup,
@@ -242,7 +242,7 @@ public sealed class GovernanceFederationService : IGovernanceFederationService
         var now = DateTime.UtcNow;
         var entity = new GovernanceFederationOverlay
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             TenantId     = request.TenantId,
             ChannelType  = request.ChannelType.ToLowerInvariant(),
             RulePackId   = request.RulePackId,
@@ -364,7 +364,7 @@ public sealed class GovernanceFederationService : IGovernanceFederationService
     {
         _db.GovernanceFederationAuditEvents.Add(new GovernanceFederationAuditEvent
         {
-            Id             = Guid.NewGuid(),
+            Id             = Guid.CreateVersion7(),
             TenantId       = tenantId,
             ChannelType    = channelType,
             FederationGroup = fedGroup,

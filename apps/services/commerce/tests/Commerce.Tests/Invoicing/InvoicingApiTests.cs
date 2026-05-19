@@ -15,7 +15,7 @@ public class InvoicingApiTests : IClassFixture<CommerceWebApplicationFactory>
 
     private async Task<Guid> CreateActiveAccountAsync(HttpClient client)
     {
-        var name = "Acme " + Guid.NewGuid().ToString("N")[..6];
+        var name = "Acme " + Guid.CreateVersion7().ToString("N")[..6];
         var resp = await client.PostAsJsonAsync("/api/commerce/billing-accounts",
             new CreateBillingAccountRequest(name, null, "USD"));
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -54,7 +54,7 @@ public class InvoicingApiTests : IClassFixture<CommerceWebApplicationFactory>
     {
         var client = _factory.CreateClient();
         var resp = await client.PostAsJsonAsync("/api/commerce/invoices",
-            new CreateInvoiceRequest(Guid.NewGuid(), "USD",
+            new CreateInvoiceRequest(Guid.CreateVersion7(), "USD",
                 new[] { new CreateInvoiceLineRequest("X", 1, 100) }));
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -73,7 +73,7 @@ public class InvoicingApiTests : IClassFixture<CommerceWebApplicationFactory>
     public async Task Get_unknown_invoice_returns_404()
     {
         var client = _factory.CreateClient();
-        var resp = await client.GetAsync($"/api/commerce/invoices/{Guid.NewGuid()}");
+        var resp = await client.GetAsync($"/api/commerce/invoices/{Guid.CreateVersion7()}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -98,7 +98,7 @@ public class InvoicingApiTests : IClassFixture<CommerceWebApplicationFactory>
     {
         var client = _factory.CreateClient();
         var resp = await client.PostAsync(
-            $"/api/commerce/payments/event-logs/{Guid.NewGuid()}/reprocess", null);
+            $"/api/commerce/payments/event-logs/{Guid.CreateVersion7()}/reprocess", null);
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }

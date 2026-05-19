@@ -42,29 +42,29 @@ public class TenantBillingEntitlementMapperTests
     [Fact]
     public void Map_populates_all_required_fields_and_raw_json()
     {
-        var ba = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
         var generatedAt = new DateTime(2026, 5, 15, 12, 0, 0, DateTimeKind.Utc);
         var graceEnd = generatedAt.AddDays(7);
-        var planId = Guid.NewGuid();
-        var subId = Guid.NewGuid();
+        var planId = Guid.CreateVersion7();
+        var subId = Guid.CreateVersion7();
         var snapshot = new CommerceEntitlementSnapshot(
             BillingAccountId: ba,
             AccountNumber: "ACC-1",
             DisplayName: "Acme Co",
             HostPlatformKey: "host-x",
-            ExternalTenantId: Guid.NewGuid().ToString(),
+            ExternalTenantId: Guid.CreateVersion7().ToString(),
             AccountStandingStatus: "GracePeriod",
             AccountStandingReason: "card-declined",
             AccountStandingGracePeriodEndsAtUtc: graceEnd,
             AccessRecommendation: AccessRecommendation.GraceLimited,
-            Products: new[] { new EntitlementProductRef(Guid.NewGuid(), "PROD-1", "Prod 1") },
+            Products: new[] { new EntitlementProductRef(Guid.CreateVersion7(), "PROD-1", "Prod 1") },
             Plans: new[] { new EntitlementPlanRef(planId, "PLAN-A", "Plan A", null, "PROD-1") },
             Subscriptions: new[]
             {
                 new EntitlementSubscriptionRef(
                     subId, "SUB-1", "Active",
                     generatedAt, generatedAt.AddDays(30), null, false,
-                    new[] { new EntitlementSubscriptionItemRef(Guid.NewGuid(), planId, "PLAN-A", 1) }),
+                    new[] { new EntitlementSubscriptionItemRef(Guid.CreateVersion7(), planId, "PLAN-A", 1) }),
             },
             Limits: Array.Empty<EntitlementFeatureLimit>(),
             GeneratedAtUtc: generatedAt);
@@ -113,7 +113,7 @@ public class TenantBillingEntitlementMapperTests
         AccessRecommendation rec,
         string? reason = null)
         => new(
-            BillingAccountId: Guid.NewGuid(),
+            BillingAccountId: Guid.CreateVersion7(),
             AccountNumber: "ACC",
             DisplayName: "n",
             HostPlatformKey: null,

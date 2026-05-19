@@ -46,7 +46,7 @@ public class InvoiceTemplateServiceTests
     public async Task Create_TenantScope_AssignsTenantOwnership()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
 
         var t = await svc.CreateAsync(tenantId, Sample());
 
@@ -73,14 +73,14 @@ public class InvoiceTemplateServiceTests
     {
         var (svc, _) = CreateService();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.CreateAsync(Guid.NewGuid(), Sample(accent: "blue")));
+            svc.CreateAsync(Guid.CreateVersion7(), Sample(accent: "blue")));
     }
 
     [Fact]
     public async Task Create_FirstActiveInScope_AutoBecomesDefault()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
 
         var t = await svc.CreateAsync(tenantId, Sample(status: InvoiceTemplateStatus.Active));
 
@@ -91,7 +91,7 @@ public class InvoiceTemplateServiceTests
     public async Task Create_SecondActiveInScope_DoesNotAutoSteal()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
 
         await svc.CreateAsync(tenantId, Sample(name: "First", status: InvoiceTemplateStatus.Active));
         var second = await svc.CreateAsync(tenantId, Sample(name: "Second", status: InvoiceTemplateStatus.Active));
@@ -104,7 +104,7 @@ public class InvoiceTemplateServiceTests
     {
         var (svc, _) = CreateService();
         await Assert.ThrowsAsync<InvalidInvoiceTemplateStatusTransitionException>(() =>
-            svc.CreateAsync(Guid.NewGuid(),
+            svc.CreateAsync(Guid.CreateVersion7(),
                 Sample(status: InvoiceTemplateStatus.Draft, isDefault: true)));
     }
 
@@ -112,7 +112,7 @@ public class InvoiceTemplateServiceTests
     public async Task Create_PlatformAndTenantWithSameId_AreDistinct()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
 
         var pt = await svc.CreateAsync(tenantId: null, Sample(status: InvoiceTemplateStatus.Active));
         var tt = await svc.CreateAsync(tenantId, Sample(status: InvoiceTemplateStatus.Active));
@@ -131,8 +131,8 @@ public class InvoiceTemplateServiceTests
     public async Task GetAsync_FromOtherTenant_ReturnsNull()
     {
         var (svc, _) = CreateService();
-        var t1 = Guid.NewGuid();
-        var t2 = Guid.NewGuid();
+        var t1 = Guid.CreateVersion7();
+        var t2 = Guid.CreateVersion7();
         var created = await svc.CreateAsync(t1, Sample());
 
         var fromOther = await svc.GetAsync(t2, created.Id);
@@ -144,8 +144,8 @@ public class InvoiceTemplateServiceTests
     public async Task UpdateAsync_FromOtherTenant_ReturnsNull()
     {
         var (svc, _) = CreateService();
-        var t1 = Guid.NewGuid();
-        var t2 = Guid.NewGuid();
+        var t1 = Guid.CreateVersion7();
+        var t2 = Guid.CreateVersion7();
         var created = await svc.CreateAsync(t1, Sample());
 
         var result = await svc.UpdateAsync(t2, created.Id,
@@ -162,7 +162,7 @@ public class InvoiceTemplateServiceTests
     public async Task UpdateAsync_OnRetired_Throws()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenantId, Sample(status: InvoiceTemplateStatus.Active));
         await svc.RetireAsync(tenantId, t.Id);
 
@@ -175,7 +175,7 @@ public class InvoiceTemplateServiceTests
     public async Task ActivateAsync_FromRetired_Throws()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenantId, Sample(status: InvoiceTemplateStatus.Active));
         await svc.RetireAsync(tenantId, t.Id);
 
@@ -187,7 +187,7 @@ public class InvoiceTemplateServiceTests
     public async Task RetireAsync_DefaultTemplate_ClearsDefaultFlag()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenantId, Sample(status: InvoiceTemplateStatus.Active));
 
         var retired = await svc.RetireAsync(tenantId, t.Id);
@@ -206,7 +206,7 @@ public class InvoiceTemplateServiceTests
     public async Task MakeDefault_PromotesAndUnsetsPrevious()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var first = await svc.CreateAsync(tenantId, Sample(name: "First", status: InvoiceTemplateStatus.Active));
         var second = await svc.CreateAsync(tenantId, Sample(name: "Second", status: InvoiceTemplateStatus.Active));
 
@@ -225,7 +225,7 @@ public class InvoiceTemplateServiceTests
     public async Task MakeDefault_OnRetired_Throws()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenantId, Sample(status: InvoiceTemplateStatus.Active));
         await svc.RetireAsync(tenantId, t.Id);
 
@@ -237,7 +237,7 @@ public class InvoiceTemplateServiceTests
     public async Task MakeDefault_OnDraft_Throws()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenantId, Sample(status: InvoiceTemplateStatus.Draft));
 
         await Assert.ThrowsAsync<InvalidInvoiceTemplateStatusTransitionException>(() =>
@@ -248,7 +248,7 @@ public class InvoiceTemplateServiceTests
     public async Task MakeDefault_Idempotent()
     {
         var (svc, _) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var t = await svc.CreateAsync(tenantId, Sample(status: InvoiceTemplateStatus.Active));
         // Already default from auto-default rule; second call no-ops.
         var again = await svc.MakeDefaultAsync(tenantId, t.Id);
@@ -259,7 +259,7 @@ public class InvoiceTemplateServiceTests
     public async Task UniqueDefaultPerScope_HoldsAfterPromotion()
     {
         var (svc, repo) = CreateService();
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var a = await svc.CreateAsync(tenantId, Sample(name: "A", status: InvoiceTemplateStatus.Active));
         var b = await svc.CreateAsync(tenantId, Sample(name: "B", status: InvoiceTemplateStatus.Active));
         var c = await svc.CreateAsync(tenantId, Sample(name: "C", status: InvoiceTemplateStatus.Active));

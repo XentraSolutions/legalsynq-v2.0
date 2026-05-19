@@ -49,7 +49,7 @@ public sealed class PaymentMethodReference : Entity<Guid>
 
         return new PaymentMethodReference
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             Provider = provider,
             ProviderPaymentMethodId = providerPaymentMethodId.Trim(),

@@ -31,7 +31,7 @@ public class SubscriptionServiceOutboxRoutingTests
         public Task<Guid> EnqueueAsync(Guid billingAccountId, string triggerSource, string? correlationId, CancellationToken ct)
         {
             Calls.Add((billingAccountId, triggerSource, correlationId));
-            return Task.FromResult(IdFactory?.Invoke() ?? Guid.NewGuid());
+            return Task.FromResult(IdFactory?.Invoke() ?? Guid.CreateVersion7());
         }
         public Task<TenantBillingEntitlementOutboxCounts> GetCountsAsync(CancellationToken ct)
             => Task.FromResult(new TenantBillingEntitlementOutboxCounts(0, 0, 0, 0, 0));
@@ -48,7 +48,7 @@ public class SubscriptionServiceOutboxRoutingTests
         public RoutingHost(bool outboxEnabled, RecordingOutbox? outbox = null)
         {
             var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-                .UseInMemoryDatabase($"sub-routing-{Guid.NewGuid()}").Options;
+                .UseInMemoryDatabase($"sub-routing-{Guid.CreateVersion7()}").Options;
             Db = new CommerceDbContext(opts);
 
             var appAsm = typeof(Commerce.Application.DependencyInjection).Assembly;

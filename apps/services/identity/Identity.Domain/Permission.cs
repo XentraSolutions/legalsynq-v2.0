@@ -48,7 +48,7 @@ public class Permission
 
         return new Permission
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProductId = productId,
             Code = normalizedCode,
             Name = name.Trim(),

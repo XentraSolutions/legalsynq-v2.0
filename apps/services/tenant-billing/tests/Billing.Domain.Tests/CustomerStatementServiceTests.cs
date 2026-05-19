@@ -53,7 +53,7 @@ public class CustomerStatementServiceTests
     {
         var p = new Payment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             InvoiceId = invoiceId,
             Amount = amount,
@@ -71,7 +71,7 @@ public class CustomerStatementServiceTests
     public async Task ZeroActivity_ReturnsZeroBalances()
     {
         var (svc, _, _, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         var doc = await svc.BuildStatementAsync(
@@ -94,7 +94,7 @@ public class CustomerStatementServiceTests
     public async Task OpeningBalance_IncludesPrePeriodInvoicesAndPayments()
     {
         var (svc, invoices, payments, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         // Pre-period: invoice $300 issued, $100 paid -> opening = 200.
@@ -116,7 +116,7 @@ public class CustomerStatementServiceTests
     public async Task PeriodInvoicesAndPayments_DriveTotals_AndClosing()
     {
         var (svc, invoices, payments, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         var inv1 = TestData.SeedInvoice(invoices, tenant, customer.Id, 500m,
@@ -141,7 +141,7 @@ public class CustomerStatementServiceTests
     public async Task Transactions_OrderedChronologically_InvoicesBeforePaymentsOnSameDay()
     {
         var (svc, invoices, payments, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         var sameDay = new DateTime(2026, 04, 10, 9, 0, 0, DateTimeKind.Utc);
@@ -167,7 +167,7 @@ public class CustomerStatementServiceTests
     public async Task OutstandingInvoices_ExcludeFullyPaid_AndExcludeVoided_AndIncludeStaleUnpaid()
     {
         var (svc, invoices, payments, customers, now) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         // Fully paid (excluded).
@@ -214,7 +214,7 @@ public class CustomerStatementServiceTests
     public async Task DaysPastDue_ZeroForFutureDueDate()
     {
         var (svc, invoices, _, customers, now) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         var future = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
@@ -232,7 +232,7 @@ public class CustomerStatementServiceTests
     public async Task MultiCurrency_ThrowsValidationException()
     {
         var (svc, invoices, _, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         var usd = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
@@ -251,8 +251,8 @@ public class CustomerStatementServiceTests
     public async Task CrossTenantCustomer_ReturnsNull()
     {
         var (svc, _, _, customers, _) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenantA);
 
         // Same id, but probed under tenantB.
@@ -266,8 +266,8 @@ public class CustomerStatementServiceTests
     public async Task CrossTenantInvoicesAndPayments_AreExcluded()
     {
         var (svc, invoices, payments, customers, _) = Build();
-        var tenantA = Guid.NewGuid();
-        var tenantB = Guid.NewGuid();
+        var tenantA = Guid.CreateVersion7();
+        var tenantB = Guid.CreateVersion7();
 
         var customerA = TestData.SeedCustomer(customers, tenantA);
         // Seed an invoice for the SAME customer id under tenantB. Real
@@ -276,7 +276,7 @@ public class CustomerStatementServiceTests
         // tenant.
         var foreign = new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantB,
             CustomerId = customerA.Id, // same guid, wrong tenant
             InvoiceNumber = "INV-999",
@@ -305,7 +305,7 @@ public class CustomerStatementServiceTests
     public async Task InvalidDateRange_ThrowsValidationException()
     {
         var (svc, _, _, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         await Assert.ThrowsAsync<StatementValidationException>(() =>
@@ -317,7 +317,7 @@ public class CustomerStatementServiceTests
     public async Task RangeOver366Days_ThrowsValidationException()
     {
         var (svc, _, _, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
 
         await Assert.ThrowsAsync<StatementValidationException>(() =>
@@ -330,7 +330,7 @@ public class CustomerStatementServiceTests
     {
         var (svc, _, _, _, _) = Build();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.BuildStatementAsync(Guid.NewGuid(), Guid.Empty,
+            svc.BuildStatementAsync(Guid.CreateVersion7(), Guid.Empty,
                 new DateTime(2026, 04, 01), new DateTime(2026, 04, 30)));
     }
 
@@ -338,7 +338,7 @@ public class CustomerStatementServiceTests
     public async Task RenderHtml_ReturnsNull_WhenCustomerMissing()
     {
         var (svc, _, _, _, _) = Build();
-        var html = await svc.RenderHtmlAsync(Guid.NewGuid(), Guid.NewGuid(),
+        var html = await svc.RenderHtmlAsync(Guid.CreateVersion7(), Guid.CreateVersion7(),
             new DateTime(2026, 04, 01), new DateTime(2026, 04, 30));
         Assert.Null(html);
     }
@@ -347,7 +347,7 @@ public class CustomerStatementServiceTests
     public async Task RenderHtml_EscapesUnsafeCustomerName_AndOmitsScriptTags()
     {
         var (svc, _, _, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         customer.Name = "<script>alert('x')</script>";
         await customers.UpdateAsync(customer);
@@ -364,7 +364,7 @@ public class CustomerStatementServiceTests
     public async Task SoftDeletedCustomer_IsTreatedAsMissing()
     {
         var (svc, _, _, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         customer.IsDeleted = true;
         await customers.UpdateAsync(customer);

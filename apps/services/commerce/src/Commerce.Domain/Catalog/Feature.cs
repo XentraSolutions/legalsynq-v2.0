@@ -20,7 +20,7 @@ public sealed class Feature : Entity<Guid>
     {
         return new Feature
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProductId = productId,
             Key = CatalogKey.Normalize(key),
             Name = name.Trim(),

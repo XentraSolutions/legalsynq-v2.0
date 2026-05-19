@@ -69,7 +69,7 @@ No domain changes required.
 
 ### `IPasswordHasher`
 
-Registered in DI. The invite and CareConnect provisioning flows both use `passwordHasher.Hash(Guid.NewGuid().ToString())` as an unusable placeholder hash. PUM-B05 follows the same pattern.
+Registered in DI. The invite and CareConnect provisioning flows both use `passwordHasher.Hash(Guid.CreateVersion7().ToString())` as an unusable placeholder hash. PUM-B05 follows the same pattern.
 
 ### Existing role assignment endpoints
 
@@ -269,7 +269,7 @@ Guard added to `AssignRole`. If the user is `ExternalCustomer` AND the resolved 
 The R07/R08 guards in `AssignRole` explicitly allow `Scope == Product` through. The existing PUM-B04 `AssignUserProductRole` handler requires active product access before role assignment — this constraint applies equally to external users.
 
 ### Unusable password hash
-External users receive `passwordHasher.Hash(Guid.NewGuid().ToString())` — a valid Argon2/bcrypt hash of a random UUID that can never be derived from any user-supplied password, preventing login via the standard `/auth/login` flow.
+External users receive `passwordHasher.Hash(Guid.CreateVersion7().ToString())` — a valid Argon2/bcrypt hash of a random UUID that can never be derived from any user-supplied password, preventing login via the standard `/auth/login` flow.
 
 ### `UserType` flag visible in all user-detail responses
 All existing user detail endpoints (`GetUser`, `ListUsers`) already surface `userType` in their responses, so callers can distinguish external users from tenant users without additional endpoints.

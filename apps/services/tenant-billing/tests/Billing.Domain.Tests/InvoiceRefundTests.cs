@@ -32,7 +32,7 @@ public class InvoiceRefundTests
             status: InvoiceStatus.Paid, currency: currency);
         invoices.AttachPayment(inv.Id, new Payment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             InvoiceId = inv.Id,
             Amount = totalAmount,
@@ -49,7 +49,7 @@ public class InvoiceRefundTests
     public async Task Full_refund_of_paid_invoice_marks_Refunded()
     {
         var (svc, invoices, customers, refunds) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -68,7 +68,7 @@ public class InvoiceRefundTests
     public async Task Partial_refund_of_paid_invoice_marks_PartiallyRefunded()
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -85,7 +85,7 @@ public class InvoiceRefundTests
     public async Task Sequential_refunds_progress_PartiallyRefunded_then_Refunded()
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -106,7 +106,7 @@ public class InvoiceRefundTests
     public async Task Refund_exceeding_paid_amount_is_rejected_and_status_unchanged()
     {
         var (svc, invoices, customers, refunds) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -124,7 +124,7 @@ public class InvoiceRefundTests
     public async Task Refund_exceeding_paid_amount_in_single_call_is_rejected()
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -145,7 +145,7 @@ public class InvoiceRefundTests
     public async Task Refund_against_non_refundable_status_is_rejected(string status)
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m, status: status);
 
@@ -157,7 +157,7 @@ public class InvoiceRefundTests
     public async Task Refund_returns_null_when_invoice_missing()
     {
         var (svc, _, _, _) = Build();
-        var result = await svc.RefundAsync(Guid.NewGuid(), Guid.NewGuid(), 10m, null, null, null);
+        var result = await svc.RefundAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), 10m, null, null, null);
         Assert.Null(result);
     }
 
@@ -165,7 +165,7 @@ public class InvoiceRefundTests
     public async Task Refund_with_zero_amount_is_rejected()
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -177,7 +177,7 @@ public class InvoiceRefundTests
     public async Task Refund_with_negative_amount_is_rejected()
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -189,7 +189,7 @@ public class InvoiceRefundTests
     public async Task Refund_with_mismatched_currency_is_rejected()
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m, currency: "USD");
 
@@ -201,7 +201,7 @@ public class InvoiceRefundTests
     public async Task Refund_currency_defaults_to_invoice_currency()
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m, currency: "EUR");
 
@@ -219,8 +219,8 @@ public class InvoiceRefundTests
         // 404 at the API layer). Throwing would leak the fact that the
         // invoice exists under another tenant.
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
-        var otherTenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
+        var otherTenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -233,7 +233,7 @@ public class InvoiceRefundTests
     public async Task Refund_amount_is_rounded_to_two_decimals()
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -247,7 +247,7 @@ public class InvoiceRefundTests
     public async Task Refund_persists_reason_and_refundedAt()
     {
         var (svc, invoices, customers, _) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
         var when = new DateTime(2026, 4, 1, 9, 30, 0, DateTimeKind.Utc);
@@ -265,7 +265,7 @@ public class InvoiceRefundTests
         var (svc, invoices, customers, _) = Build();
         var payments = new InMemoryPaymentRepository(invoices);
         var paymentSvc = new PaymentService(payments, invoices, new InMemoryUnitOfWork());
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 
@@ -284,7 +284,7 @@ public class InvoiceRefundTests
         var (svc, invoices, customers, _) = Build();
         var payments = new InMemoryPaymentRepository(invoices);
         var paymentSvc = new PaymentService(payments, invoices, new InMemoryUnitOfWork());
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = SeedPaidInvoice(invoices, tenant, customer.Id, 100m);
 

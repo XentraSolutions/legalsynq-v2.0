@@ -23,7 +23,7 @@ internal sealed class SubscriptionTestHost : IDisposable
     public SubscriptionTestHost()
     {
         var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"sub-tests-{Guid.NewGuid()}")
+            .UseInMemoryDatabase($"sub-tests-{Guid.CreateVersion7()}")
             .Options;
         Db = new CommerceDbContext(opts);
 

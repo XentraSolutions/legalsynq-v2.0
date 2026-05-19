@@ -18,7 +18,7 @@ public class ManualPaymentApiTests : IClassFixture<CommerceWebApplicationFactory
     private static async Task<Guid> CreateActiveAccountAsync(HttpClient client)
     {
         var resp = await client.PostAsJsonAsync("/api/commerce/billing-accounts",
-            new CreateBillingAccountRequest("Acme " + Guid.NewGuid().ToString("N")[..6], null, "USD"));
+            new CreateBillingAccountRequest("Acme " + Guid.CreateVersion7().ToString("N")[..6], null, "USD"));
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
         var created = await resp.Content.ReadFromJsonAsync<BillingAccountResponse>();
         var act = await client.PostAsync($"/api/commerce/billing-accounts/{created!.Id}/activate", null);
@@ -129,7 +129,7 @@ public class ManualPaymentApiTests : IClassFixture<CommerceWebApplicationFactory
     {
         var client = _factory.CreateClient();
         var resp = await client.PostAsJsonAsync(
-            $"/api/commerce/invoices/{Guid.NewGuid()}/manual-payments",
+            $"/api/commerce/invoices/{Guid.CreateVersion7()}/manual-payments",
             new RecordManualPaymentRequest(100, DateTime.UtcNow, "cash"));
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

@@ -27,7 +27,7 @@ public sealed class BillingContact : Entity<Guid>
     {
         return new BillingContact
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             BillingAccountId = billingAccountId,
             ContactType = contactType,
             Name = name.Trim(),

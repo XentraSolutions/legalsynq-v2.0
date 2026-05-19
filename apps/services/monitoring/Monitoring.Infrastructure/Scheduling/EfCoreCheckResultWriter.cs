@@ -40,7 +40,7 @@ public sealed class EfCoreCheckResultWriter : ICheckResultWriter
         ArgumentNullException.ThrowIfNull(result);
 
         var record = new CheckResultRecord(
-            id: Guid.NewGuid(),
+            id: Guid.CreateVersion7(),
             monitoredEntityId: result.EntityId,
             entityName: result.EntityName,
             monitoringType: result.MonitoringType,

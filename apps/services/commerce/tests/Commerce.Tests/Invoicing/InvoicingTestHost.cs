@@ -34,7 +34,7 @@ internal sealed class InvoicingTestHost : IDisposable
     public InvoicingTestHost()
     {
         var opts = new DbContextOptionsBuilder<CommerceDbContext>()
-            .UseInMemoryDatabase($"inv-tests-{Guid.NewGuid()}")
+            .UseInMemoryDatabase($"inv-tests-{Guid.CreateVersion7()}")
             .Options;
         Db = new CommerceDbContext(opts);
 
@@ -50,7 +50,7 @@ internal sealed class InvoicingTestHost : IDisposable
 
     public BillingAccount AddActiveAccount(string number = "COM-ACC-INV01", string currency = "USD")
     {
-        var account = BillingAccount.Create(number, "Acme " + Guid.NewGuid().ToString("N")[..6], null, currency, Clock.UtcNow);
+        var account = BillingAccount.Create(number, "Acme " + Guid.CreateVersion7().ToString("N")[..6], null, currency, Clock.UtcNow);
         account.Activate(Clock.UtcNow);
         Db.BillingAccounts.Add(account);
         Db.SaveChanges();
@@ -59,7 +59,7 @@ internal sealed class InvoicingTestHost : IDisposable
 
     public Subscription AddActiveSubscription(BillingAccount acct)
     {
-        var plan = Plan.Create(null, "k-" + Guid.NewGuid().ToString("N")[..8], "Plan", null, BillingInterval.Monthly, null, 0, Clock.UtcNow);
+        var plan = Plan.Create(null, "k-" + Guid.CreateVersion7().ToString("N")[..8], "Plan", null, BillingInterval.Monthly, null, 0, Clock.UtcNow);
         plan.Activate(Clock.UtcNow);
         Db.Plans.Add(plan);
         var price = Price.Create(plan.Id, null, null, "USD", 1999, BillingInterval.Monthly, Clock.UtcNow.AddMinutes(-5), null, Clock.UtcNow);
@@ -69,7 +69,7 @@ internal sealed class InvoicingTestHost : IDisposable
 
         var sub = Subscription.Create(
             acct.Id,
-            "COM-SUB-INV-" + Guid.NewGuid().ToString("N")[..8],
+            "COM-SUB-INV-" + Guid.CreateVersion7().ToString("N")[..8],
             Clock.UtcNow,
             Clock.UtcNow,
             Clock.UtcNow.AddMonths(1),

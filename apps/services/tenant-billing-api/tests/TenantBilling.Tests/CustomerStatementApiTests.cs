@@ -31,10 +31,10 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
 
         var customer = new Customer
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = customerName,
-            Email = $"billing+{Guid.NewGuid():N}@acme.test",
+            Email = $"billing+{Guid.CreateVersion7():N}@acme.test",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -42,10 +42,10 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
 
         var invoice = new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             CustomerId = customer.Id,
-            InvoiceNumber = $"INV-STMT-{Guid.NewGuid().ToString("N")[..8]}",
+            InvoiceNumber = $"INV-STMT-{Guid.CreateVersion7().ToString("N")[..8]}",
             Status = InvoiceStatus.Issued,
             Currency = currency,
             IssueDate = new DateTime(2026, 04, 10),
@@ -59,7 +59,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
 
         var payment = new Payment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             InvoiceId = invoice.Id,
             Amount = 50m,
@@ -77,7 +77,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task Json_ReturnsDocumentWithExpectedTotals()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -99,7 +99,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task Html_ReturnsTextHtml_ContainingCustomerName_AndPeriod()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId, customerName: "Globex Industries");
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -120,7 +120,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task Html_EscapesUnsafeCustomerName()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId,
             customerName: "<script>alert('x')</script>");
         var client = _factory.CreateClientForTenant(tenantId);
@@ -136,19 +136,19 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task MissingCustomer_Returns404()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var client = _factory.CreateClientForTenant(tenantId);
 
         var resp = await client.GetAsync(
-            $"/api/statements/customers/{Guid.NewGuid()}?from=2026-04-01&to=2026-04-30");
+            $"/api/statements/customers/{Guid.CreateVersion7()}?from=2026-04-01&to=2026-04-30");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
     [Fact]
     public async Task CrossTenantCustomer_Returns404()
     {
-        var ownerTenant = Guid.NewGuid();
-        var otherTenant = Guid.NewGuid();
+        var ownerTenant = Guid.CreateVersion7();
+        var otherTenant = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(ownerTenant);
 
         var client = _factory.CreateClientForTenant(otherTenant);
@@ -161,7 +161,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task InvalidDateRange_Returns400()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -174,7 +174,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task RangeOver366Days_Returns400()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -187,7 +187,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task MissingDateParameters_Returns400()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -198,7 +198,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task MissingTenantHeader_Returns400()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId);
         var client = _factory.CreateClient(); // no tenant header set
 
@@ -211,7 +211,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task Monthly_Returns200_WithCorrectPeriodBoundaries()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -230,7 +230,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task Monthly_InvalidMonth_Returns400()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId);
         var client = _factory.CreateClientForTenant(tenantId);
 
@@ -243,7 +243,7 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
     [Fact]
     public async Task MultipleCurrencies_ForSameCustomer_Return400ProblemDetails()
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
         var (customerId, _) = await SeedAsync(tenantId, currency: "USD");
 
         // Add a second invoice in a different currency for the same
@@ -253,10 +253,10 @@ public class CustomerStatementApiTests : IClassFixture<TenantBillingWebApplicati
             var invoices = scope.ServiceProvider.GetRequiredService<IInvoiceRepository>();
             await invoices.AddAsync(new Invoice
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 TenantId = tenantId,
                 CustomerId = customerId,
-                InvoiceNumber = $"INV-EUR-{Guid.NewGuid().ToString("N")[..8]}",
+                InvoiceNumber = $"INV-EUR-{Guid.CreateVersion7().ToString("N")[..8]}",
                 Status = InvoiceStatus.Issued,
                 Currency = "EUR",
                 IssueDate = new DateTime(2026, 04, 12),

@@ -152,7 +152,7 @@ public sealed class SeedFixture : IDisposable
     private static ProductWorkflowMapping Map(string tenantId, string productKey, string entityType,
         string entityId, Guid defId, Guid? instanceId) => new()
     {
-        Id = Guid.NewGuid(),
+        Id = Guid.CreateVersion7(),
         TenantId = tenantId,
         ProductKey = productKey,
         SourceEntityType = entityType,

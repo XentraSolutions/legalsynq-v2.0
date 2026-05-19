@@ -24,7 +24,7 @@ public class InvoiceOverdueTests
     public async Task MarkOverdueAsync_moves_Issued_past_due_to_Overdue()
     {
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Issued, dueDate: DateTime.UtcNow.AddDays(-3));
@@ -39,7 +39,7 @@ public class InvoiceOverdueTests
     public async Task MarkOverdueAsync_moves_PartiallyPaid_past_due_to_Overdue()
     {
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.PartiallyPaid, dueDate: DateTime.UtcNow.AddDays(-1));
@@ -53,7 +53,7 @@ public class InvoiceOverdueTests
     public async Task MarkOverdueAsync_rejects_when_due_date_in_future()
     {
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Issued, dueDate: DateTime.UtcNow.AddDays(5));
@@ -66,7 +66,7 @@ public class InvoiceOverdueTests
     public async Task MarkOverdueAsync_rejects_Draft()
     {
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Draft, dueDate: DateTime.UtcNow.AddDays(-3));
@@ -79,7 +79,7 @@ public class InvoiceOverdueTests
     public async Task MarkOverdueAsync_rejects_Paid()
     {
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Paid, dueDate: DateTime.UtcNow.AddDays(-3));
@@ -92,7 +92,7 @@ public class InvoiceOverdueTests
     public async Task MarkOverdueAsync_rejects_Voided()
     {
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Voided, dueDate: DateTime.UtcNow.AddDays(-3));
@@ -108,7 +108,7 @@ public class InvoiceOverdueTests
         // second mark on an already-overdue invoice is rejected at the
         // structural gate.
         var (svc, invoices, customers) = Build();
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(invoices, tenant, customer.Id, 100m,
             status: InvoiceStatus.Overdue, dueDate: DateTime.UtcNow.AddDays(-3));
@@ -121,7 +121,7 @@ public class InvoiceOverdueTests
     public async Task MarkOverdueAsync_returns_null_when_invoice_missing()
     {
         var (svc, _, _) = Build();
-        var updated = await svc.MarkOverdueAsync(Guid.NewGuid(), Guid.NewGuid());
+        var updated = await svc.MarkOverdueAsync(Guid.CreateVersion7(), Guid.CreateVersion7());
         Assert.Null(updated);
     }
 
@@ -131,8 +131,8 @@ public class InvoiceOverdueTests
         // Cross-tenant id is indistinguishable from "missing" by design:
         // the service must not leak existence to a non-owner tenant.
         var (svc, invoices, customers) = Build();
-        var ownerTenant = Guid.NewGuid();
-        var otherTenant = Guid.NewGuid();
+        var ownerTenant = Guid.CreateVersion7();
+        var otherTenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, ownerTenant);
         var inv = TestData.SeedInvoice(invoices, ownerTenant, customer.Id, 100m,
             status: InvoiceStatus.Issued, dueDate: DateTime.UtcNow.AddDays(-3));
@@ -160,7 +160,7 @@ public class InvoiceOverdueTests
         var racing = new RacingInvoiceRepository(underlying);
         var svc = new InvoiceService(racing, customers, refunds, new InvoiceLifecycleService(), new Fakes.NoTemplateSelectionService(), new InvoiceTemplateStampingService());
 
-        var tenant = Guid.NewGuid();
+        var tenant = Guid.CreateVersion7();
         var customer = TestData.SeedCustomer(customers, tenant);
         var inv = TestData.SeedInvoice(underlying, tenant, customer.Id, 100m,
             status: InvoiceStatus.Issued, dueDate: DateTime.UtcNow.AddDays(-3));

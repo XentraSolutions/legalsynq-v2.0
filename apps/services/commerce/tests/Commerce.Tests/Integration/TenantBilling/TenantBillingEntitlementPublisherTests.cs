@@ -16,8 +16,8 @@ public class TenantBillingEntitlementPublisherTests
     public async Task Disabled_publisher_returns_skipped_and_makes_no_http_call()
     {
         var (pub, http, snaps, _, _, _) = PublisherTestHelpers.Build(enabled: false);
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -30,7 +30,7 @@ public class TenantBillingEntitlementPublisherTests
     public async Task Unknown_billing_account_returns_skipped()
     {
         var (pub, http, _, _, _, _) = PublisherTestHelpers.Build();
-        var r = await pub.PublishForBillingAccountAsync(Guid.NewGuid(), default);
+        var r = await pub.PublishForBillingAccountAsync(Guid.CreateVersion7(), default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Skipped);
         r.Reason.Should().Be("billing-account-not-found");
         http.Requests.Should().BeEmpty();
@@ -40,7 +40,7 @@ public class TenantBillingEntitlementPublisherTests
     public async Task Missing_external_tenant_id_returns_skipped_and_does_not_call()
     {
         var (pub, http, snaps, _, _, _) = PublisherTestHelpers.Build();
-        var ba = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
         snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, externalTenantId: null);
         var r = await pub.PublishForBillingAccountAsync(ba, default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Skipped);
@@ -52,7 +52,7 @@ public class TenantBillingEntitlementPublisherTests
     public async Task Non_guid_external_tenant_id_returns_skipped()
     {
         var (pub, http, snaps, _, _, _) = PublisherTestHelpers.Build();
-        var ba = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
         snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, externalTenantId: "not-a-guid");
         var r = await pub.PublishForBillingAccountAsync(ba, default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Skipped);
@@ -65,8 +65,8 @@ public class TenantBillingEntitlementPublisherTests
     {
         var (pub, http, snaps, _, _, _) = PublisherTestHelpers.Build(
             handler: new FakeHttpMessageHandler(HttpStatusCode.OK, "{}"));
-        var ba = Guid.NewGuid();
-        var tenant = Guid.NewGuid();
+        var ba = Guid.CreateVersion7();
+        var tenant = Guid.CreateVersion7();
         snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, tenant.ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
@@ -94,8 +94,8 @@ public class TenantBillingEntitlementPublisherTests
     {
         var (pub, _, snaps, _, _, _) = PublisherTestHelpers.Build(
             handler: new FakeHttpMessageHandler(HttpStatusCode.Unauthorized, "nope"));
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
         var r = await pub.PublishForBillingAccountAsync(ba, default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Failed);
         r.HttpStatus.Should().Be(401);
@@ -108,8 +108,8 @@ public class TenantBillingEntitlementPublisherTests
     {
         var (pub, _, snaps, _, _, _) = PublisherTestHelpers.Build(
             handler: new FakeHttpMessageHandler(HttpStatusCode.NotFound, "{\"err\":\"x\"}"));
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
         var r = await pub.PublishForBillingAccountAsync(ba, default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Failed);
         r.HttpStatus.Should().Be(404);
@@ -121,8 +121,8 @@ public class TenantBillingEntitlementPublisherTests
     {
         var (pub, _, snaps, _, _, _) = PublisherTestHelpers.Build(
             handler: new FakeHttpMessageHandler(HttpStatusCode.Conflict));
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
         var r = await pub.PublishForBillingAccountAsync(ba, default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Failed);
         r.HttpStatus.Should().Be(409);
@@ -134,8 +134,8 @@ public class TenantBillingEntitlementPublisherTests
     {
         var (pub, _, snaps, _, _, _) = PublisherTestHelpers.Build(
             handler: FakeHttpMessageHandler.Throws(new HttpRequestException("connection refused")));
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -149,8 +149,8 @@ public class TenantBillingEntitlementPublisherTests
     {
         var (pub, _, snaps, _, _, _) = PublisherTestHelpers.Build(
             handler: new FakeHttpMessageHandler(HttpStatusCode.InternalServerError, "boom"));
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -164,8 +164,8 @@ public class TenantBillingEntitlementPublisherTests
     {
         var (pub, _, snaps, _, _, _) = PublisherTestHelpers.Build(
             handler: new FakeHttpMessageHandler(HttpStatusCode.ServiceUnavailable));
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
 
         var r = await pub.PublishForBillingAccountAsync(ba, default);
 
@@ -178,8 +178,8 @@ public class TenantBillingEntitlementPublisherTests
     public async Task Empty_base_url_returns_failed_config_reason()
     {
         var (pub, http, snaps, _, _, _) = PublisherTestHelpers.Build(baseUrl: "");
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
         var r = await pub.PublishForBillingAccountAsync(ba, default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Failed);
         r.Reason.Should().Be("base-url-not-configured");
@@ -190,8 +190,8 @@ public class TenantBillingEntitlementPublisherTests
     public async Task Empty_internal_token_returns_failed_config_reason()
     {
         var (pub, http, snaps, _, _, _) = PublisherTestHelpers.Build(token: "");
-        var ba = Guid.NewGuid();
-        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.NewGuid().ToString());
+        var ba = Guid.CreateVersion7();
+        snaps.Map[ba] = PublisherTestHelpers.Snapshot(ba, Guid.CreateVersion7().ToString());
         var r = await pub.PublishForBillingAccountAsync(ba, default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Failed);
         r.Reason.Should().Be("internal-token-not-configured");
@@ -202,7 +202,7 @@ public class TenantBillingEntitlementPublisherTests
     public async Task PublishSnapshotAsync_with_empty_tenant_id_skips()
     {
         var (pub, http, _, _, _, _) = PublisherTestHelpers.Build();
-        var snap = PublisherTestHelpers.Snapshot(externalTenantId: Guid.NewGuid().ToString());
+        var snap = PublisherTestHelpers.Snapshot(externalTenantId: Guid.CreateVersion7().ToString());
         var r = await pub.PublishSnapshotAsync(snap, Guid.Empty, default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Skipped);
         r.Reason.Should().Be("tenant-id-empty");
@@ -213,8 +213,8 @@ public class TenantBillingEntitlementPublisherTests
     public async Task PublishSnapshotAsync_when_disabled_skips_even_with_valid_input()
     {
         var (pub, http, _, _, _, _) = PublisherTestHelpers.Build(enabled: false);
-        var snap = PublisherTestHelpers.Snapshot(externalTenantId: Guid.NewGuid().ToString());
-        var r = await pub.PublishSnapshotAsync(snap, Guid.NewGuid(), default);
+        var snap = PublisherTestHelpers.Snapshot(externalTenantId: Guid.CreateVersion7().ToString());
+        var r = await pub.PublishSnapshotAsync(snap, Guid.CreateVersion7(), default);
         r.Outcome.Should().Be(PublishEntitlementOutcome.Skipped);
         r.Reason.Should().Be("publisher-disabled");
         http.Requests.Should().BeEmpty();
