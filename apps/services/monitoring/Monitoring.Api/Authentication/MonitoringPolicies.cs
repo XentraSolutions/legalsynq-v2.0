@@ -13,4 +13,12 @@ public static class MonitoringPolicies
     /// compromised platform services or the shared service-token secret.
     /// </summary>
     public const string AdminWrite = "MonitoringAdmin";
+
+    /// <summary>
+    /// Grants read-only access to monitoring status, summary, alerts, and uptime endpoints.
+    /// Satisfied by either a valid user JWT (Bearer scheme) or a valid service token
+    /// (ServiceToken scheme). This allows the Control Center BFF and other platform
+    /// services to call these endpoints from the server side.
+    /// </summary>
+    public const string Read = "MonitoringRead";
 }

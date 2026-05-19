@@ -1,3 +1,4 @@
+using Monitoring.Api.Authentication;
 using Monitoring.Api.Contracts;
 using Monitoring.Application.Queries;
 using Monitoring.Domain.Monitoring;
@@ -7,19 +8,20 @@ namespace Monitoring.Api.Endpoints;
 /// <summary>
 /// Read endpoints for monitoring status, alerts, and summary.
 ///
-/// All endpoints in this group are anonymous (same reasoning as the entity
-/// read group in <see cref="MonitoredEntityEndpoints"/>): they are called
-/// by the Control Center backend, which runs inside the trust boundary and
-/// cannot present an RS256 token. Admin (write) endpoints remain protected.
+/// All endpoints require authentication via the MonitoringRead policy, which
+/// accepts either a valid user JWT (Bearer scheme) or a valid service token
+/// (ServiceToken scheme). This prevents unauthenticated external access to
+/// internal operational telemetry while still allowing the Control Center BFF
+/// and other platform services to call these endpoints from the server side.
 ///
-/// Auth note: documented in MON-INT-01-001 report — the RS256 vs HS256
-/// mismatch will be resolved in MON-INT-01-003.
+/// Auth note: MON-INT-01-003 resolved the RS256 vs HS256 mismatch; both
+/// user JWT and service-token schemes are now wired in AddMonitoringAuthentication().
 /// </summary>
 public static class MonitoringReadEndpoints
 {
     public static IEndpointRouteBuilder MapMonitoringReadEndpoints(this IEndpointRouteBuilder app)
     {
-        var read = app.MapGroup("/monitoring").AllowAnonymous();
+        var read = app.MapGroup("/monitoring").RequireAuthorization(MonitoringPolicies.Read);
 
         read.MapGet("/status",  GetStatusAsync);
         read.MapGet("/alerts",  GetAlertsAsync);

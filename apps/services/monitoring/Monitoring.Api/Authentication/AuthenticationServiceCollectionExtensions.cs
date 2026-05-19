@@ -143,6 +143,17 @@ public static class AuthenticationServiceCollectionExtensions
                 policy
                     .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
                     .RequireRole("PlatformAdmin"));
+
+            // MonitoringRead: grants read-only access to status, summary, alerts, and uptime.
+            // Accepts either a valid user JWT (Bearer) or a valid service token (ServiceToken).
+            // This lets the Control Center BFF and other platform services call read endpoints
+            // from the server side without requiring a specific role.
+            options.AddPolicy(MonitoringPolicies.Read, policy =>
+                policy
+                    .AddAuthenticationSchemes(
+                        JwtBearerDefaults.AuthenticationScheme,
+                        ServiceTokenAuthenticationDefaults.Scheme)
+                    .RequireAuthenticatedUser());
         });
 
         return services;
