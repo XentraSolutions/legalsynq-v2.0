@@ -19,51 +19,84 @@ using MySqlConnector;
 namespace Identity.Api.Endpoints;
 
 /// <summary>
-/// Admin endpoints consumed exclusively by the LegalSynq Control Center.
+/// Admin endpoints consumed by the LegalSynq Control Center and, for
+/// tenant-scoped operations, by the Tenant Portal.
 /// All routes are prefixed /api/admin/... and are accessed via the YARP
-/// gateway under /identity/api/admin/... 
+/// gateway under /identity/api/admin/...
 ///
-/// Auth is enforced at the gateway layer (JWT cookie validation) — the
-/// Identity service trusts all forwarded requests unconditionally.
+/// Authorization is enforced at both the gateway layer (JWT validation)
+/// AND at the endpoint level:
+///   • Platform-wide operations (tenant management, settings, policy/permission
+///     catalog mutations, etc.) require the <c>PlatformAdmin</c> role.
+///   • Tenant-scoped user management operations require
+///     <c>TENANT.users:manage</c> or <c>TENANT.users:view</c>, which the
+///     RequirePermissionFilter grants to TenantAdmin and PlatformAdmin
+///     callers automatically.
 /// </summary>
 public static class AdminEndpoints
 {
     public static IEndpointRouteBuilder MapAdminEndpoints(this IEndpointRouteBuilder routes)
     {
         // ── Tenants ──────────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/tenants",                      ListTenants);
+        // All tenant-management routes are platform-wide operations restricted
+        // to PlatformAdmin.  A TenantAdmin must not be able to enumerate, create,
+        // or mutate other tenants.
+        routes.MapGet("/api/admin/tenants",                      ListTenants)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
         // DEPRECATED [TENANT-B12] — Tenant creation is now owned by the Tenant service.
         // New canonical entry point: POST /tenant/api/v1/admin/tenants
         // This endpoint is kept for backward compatibility only. Do not add new callers.
-        routes.MapPost("/api/admin/tenants",                     CreateTenant);
-        routes.MapGet("/api/admin/tenants/check-code",           CheckTenantCode);        // CC2-INT-B09
-        routes.MapPost("/api/admin/tenants/self-provision",      SelfProvisionTenant);    // CC2-INT-B09
-        routes.MapGet("/api/admin/tenants/{id:guid}",            GetTenant);
+        routes.MapPost("/api/admin/tenants",                     CreateTenant)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapGet("/api/admin/tenants/check-code",           CheckTenantCode)        // CC2-INT-B09
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPost("/api/admin/tenants/self-provision",      SelfProvisionTenant)    // CC2-INT-B09
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapGet("/api/admin/tenants/{id:guid}",            GetTenant)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
         // DEPRECATED [TENANT-B12] — Entitlement toggle is now owned by the Tenant service.
         // New canonical entry point: POST /tenant/api/v1/admin/tenants/{id}/entitlements/{productCode}
         // This endpoint is kept for backward compatibility only. Do not add new callers.
-        routes.MapPost("/api/admin/tenants/{id:guid}/entitlements/{productCode}", UpdateEntitlement);
-        routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
-        routes.MapPatch("/api/admin/tenants/{id:guid}/logo",             SetTenantLogo);
-        routes.MapDelete("/api/admin/tenants/{id:guid}/logo",            ClearTenantLogo);
-        routes.MapPatch("/api/admin/tenants/{id:guid}/logo-white",       SetTenantLogoWhite);
-        routes.MapDelete("/api/admin/tenants/{id:guid}/logo-white",      ClearTenantLogoWhite);
-        routes.MapPost("/api/admin/tenants/{id:guid}/provisioning/retry", RetryProvisioning);
-        routes.MapPost("/api/admin/tenants/{id:guid}/verification/retry", RetryVerification);
+        routes.MapPost("/api/admin/tenants/{id:guid}/entitlements/{productCode}", UpdateEntitlement)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPatch("/api/admin/tenants/{id:guid}/logo",             SetTenantLogo)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapDelete("/api/admin/tenants/{id:guid}/logo",            ClearTenantLogo)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPatch("/api/admin/tenants/{id:guid}/logo-white",       SetTenantLogoWhite)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapDelete("/api/admin/tenants/{id:guid}/logo-white",      ClearTenantLogoWhite)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPost("/api/admin/tenants/{id:guid}/provisioning/retry", RetryProvisioning)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPost("/api/admin/tenants/{id:guid}/verification/retry", RetryVerification)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── PUM-B03: Tenant User Management ──────────────────────────────────
-        routes.MapGet   ("/api/admin/tenants/{tenantId:guid}/users",                                   ListTenantUsers);
-        routes.MapPost  ("/api/admin/tenants/{tenantId:guid}/users",                                   AssignUserToTenant);
-        routes.MapDelete("/api/admin/tenants/{tenantId:guid}/users/{userId:guid}",                     RemoveUserFromTenant);
-        routes.MapPost  ("/api/admin/tenants/{tenantId:guid}/users/{userId:guid}/roles",               AssignTenantRole);
-        routes.MapDelete("/api/admin/tenants/{tenantId:guid}/users/{userId:guid}/roles/{assignmentId:guid}", RevokeTenantRole);
+        // Cross-tenant user management is a platform-level operation.
+        routes.MapGet   ("/api/admin/tenants/{tenantId:guid}/users",                                   ListTenantUsers)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPost  ("/api/admin/tenants/{tenantId:guid}/users",                                   AssignUserToTenant)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapDelete("/api/admin/tenants/{tenantId:guid}/users/{userId:guid}",                     RemoveUserFromTenant)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPost  ("/api/admin/tenants/{tenantId:guid}/users/{userId:guid}/roles",               AssignTenantRole)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapDelete("/api/admin/tenants/{tenantId:guid}/users/{userId:guid}/roles/{assignmentId:guid}", RevokeTenantRole)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── Infrastructure DNS ──────────────────────────────────────────
-        routes.MapPost("/api/admin/dns/provision", ProvisionInfraSubdomain);
+        routes.MapPost("/api/admin/dns/provision", ProvisionInfraSubdomain)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── Users ─────────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/users",           ListUsers);
-        routes.MapGet("/api/admin/users/{id:guid}", GetUser);
+        // TenantAdmin/PlatformAdmin — scoped to caller's tenant for non-PlatformAdmin callers.
+        routes.MapGet("/api/admin/users",           ListUsers)
+            .RequirePermission(PermCodes.TenantUsersView);
+        routes.MapGet("/api/admin/users/{id:guid}", GetUser)
+            .RequirePermission(PermCodes.TenantUsersView);
 
         // ── Roles ──────────────────────────────────────────────────────────
         routes.MapGet("/api/admin/roles",           ListRoles);
@@ -73,18 +106,26 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/products",        ListProducts);
 
         // ── Audit Logs ────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/audit",           ListAudit);
+        routes.MapGet("/api/admin/audit",           ListAudit)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── Platform Settings (static seed — no DB table yet) ─────────────
-        routes.MapGet("/api/admin/settings",            ListSettings);
-        routes.MapPatch("/api/admin/settings/{key}",    UpdateSetting);
+        routes.MapGet("/api/admin/settings",            ListSettings)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPatch("/api/admin/settings/{key}",    UpdateSetting)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── Support Cases (not yet persisted — empty stubs) ───────────────
-        routes.MapGet("/api/admin/support",             ListSupport);
-        routes.MapGet("/api/admin/support/{id}",        GetSupport);
-        routes.MapPost("/api/admin/support",            CreateSupport);
-        routes.MapPost("/api/admin/support/{id}/notes", AddSupportNote);
-        routes.MapPatch("/api/admin/support/{id}/status", UpdateSupportStatus);
+        routes.MapGet("/api/admin/support",             ListSupport)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapGet("/api/admin/support/{id}",        GetSupport)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPost("/api/admin/support",            CreateSupport)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPost("/api/admin/support/{id}/notes", AddSupportNote)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPatch("/api/admin/support/{id}/status", UpdateSupportStatus)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── LSCC-010: Provider auto-provisioning — minimal org creation ──────
         // Internal service-to-service endpoint.  Token-gated at the gateway.
@@ -111,8 +152,10 @@ public static class AdminEndpoints
 
         routes.MapGet("/api/admin/organization-relationships",     ListOrganizationRelationships);
         routes.MapGet("/api/admin/organization-relationships/{id:guid}", GetOrganizationRelationship);
-        routes.MapPost("/api/admin/organization-relationships",    CreateOrganizationRelationship);
-        routes.MapDelete("/api/admin/organization-relationships/{id:guid}", DeactivateOrganizationRelationship);
+        routes.MapPost("/api/admin/organization-relationships",    CreateOrganizationRelationship)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapDelete("/api/admin/organization-relationships/{id:guid}", DeactivateOrganizationRelationship)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         routes.MapGet("/api/admin/product-org-type-rules",          ListProductOrgTypeRules);
         // Two URL variants served by the same handler — client uses the short form.
@@ -120,10 +163,12 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/product-rel-type-rules",          ListProductRelationshipTypeRules);
 
         // ── Legacy coverage (Phase G) ────────────────────────────────────────
-        routes.MapGet("/api/admin/legacy-coverage", GetLegacyCoverage);
+        routes.MapGet("/api/admin/legacy-coverage", GetLegacyCoverage)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── Platform readiness summary (Phase 8) ─────────────────────────────
-        routes.MapGet("/api/admin/platform-readiness", GetPlatformReadiness);
+        routes.MapGet("/api/admin/platform-readiness", GetPlatformReadiness)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── User lifecycle ────────────────────────────────────────────────────
         // Step 27 (Phase B): user deactivation — emits identity.user.deactivated.
@@ -157,17 +202,24 @@ public static class AdminEndpoints
             .RequirePermission(PermCodes.TenantUsersManage);
 
         // UIX-003-03: security / session admin actions
+        // All security actions require at minimum TenantAdmin or PlatformAdmin privilege
+        // (enforced via TENANT.users:manage, which has TenantAdmin+PlatformAdmin bypass).
         routes.MapPost("/api/admin/users/{id:guid}/lock",                   LockUser)
             .RequirePermission(PermCodes.TenantUsersManage);
         routes.MapPost("/api/admin/users/{id:guid}/unlock",                 UnlockUser)
             .RequirePermission(PermCodes.TenantUsersManage);
-        routes.MapPost("/api/admin/users/{id:guid}/reset-password",         AdminResetPassword);
-        routes.MapPost("/api/admin/users/{id:guid}/set-password",           AdminSetPassword);
-        routes.MapPost("/api/admin/users/{id:guid}/force-logout",           ForceLogout);
-        routes.MapGet("/api/admin/users/{id:guid}/security",                GetUserSecurity);
+        routes.MapPost("/api/admin/users/{id:guid}/reset-password",         AdminResetPassword)
+            .RequirePermission(PermCodes.TenantUsersManage);
+        routes.MapPost("/api/admin/users/{id:guid}/set-password",           AdminSetPassword)
+            .RequirePermission(PermCodes.TenantUsersManage);
+        routes.MapPost("/api/admin/users/{id:guid}/force-logout",           ForceLogout)
+            .RequirePermission(PermCodes.TenantUsersManage);
+        routes.MapGet("/api/admin/users/{id:guid}/security",                GetUserSecurity)
+            .RequirePermission(PermCodes.TenantUsersManage);
 
         // UIX-004: user activity audit trail (queries local AuditLogs by EntityId)
-        routes.MapGet("/api/admin/users/{id:guid}/activity",                GetUserActivity);
+        routes.MapGet("/api/admin/users/{id:guid}/activity",                GetUserActivity)
+            .RequirePermission(PermCodes.TenantUsersView);
 
         // LSCC-01-003: Admin CareConnect provider provisioning
         routes.MapGet("/api/admin/users/{id:guid}/careconnect-readiness",   GetCareConnectReadiness);
@@ -228,33 +280,45 @@ public static class AdminEndpoints
 
         // ── Permission catalog management (LS-COR-AUT-010) ────────────────────
         routes.MapGet("/api/admin/permissions/by-product/{productCode}",                     ListPermissionsByProduct);
-        routes.MapPost("/api/admin/permissions",                                             CreatePermission);
-        routes.MapPatch("/api/admin/permissions/{id:guid}",                                  UpdatePermission);
-        routes.MapDelete("/api/admin/permissions/{id:guid}",                                 DeactivatePermission);
+        routes.MapPost("/api/admin/permissions",                                             CreatePermission)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPatch("/api/admin/permissions/{id:guid}",                                  UpdatePermission)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapDelete("/api/admin/permissions/{id:guid}",                                 DeactivatePermission)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── LS-COR-AUT-011: ABAC Policy Management ─────────────────────────
         routes.MapGet("/api/admin/policies",                                                 ListPolicies);
         routes.MapGet("/api/admin/policies/{id:guid}",                                       GetPolicy);
-        routes.MapPost("/api/admin/policies",                                                CreatePolicy);
-        routes.MapPatch("/api/admin/policies/{id:guid}",                                     UpdatePolicy);
-        routes.MapDelete("/api/admin/policies/{id:guid}",                                    DeactivatePolicy);
+        routes.MapPost("/api/admin/policies",                                                CreatePolicy)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPatch("/api/admin/policies/{id:guid}",                                     UpdatePolicy)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapDelete("/api/admin/policies/{id:guid}",                                    DeactivatePolicy)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // Policy rules
         routes.MapGet("/api/admin/policies/{policyId:guid}/rules",                           ListPolicyRules);
-        routes.MapPost("/api/admin/policies/{policyId:guid}/rules",                          CreatePolicyRule);
-        routes.MapPatch("/api/admin/policies/{policyId:guid}/rules/{ruleId:guid}",           UpdatePolicyRule);
-        routes.MapDelete("/api/admin/policies/{policyId:guid}/rules/{ruleId:guid}",          DeletePolicyRule);
+        routes.MapPost("/api/admin/policies/{policyId:guid}/rules",                          CreatePolicyRule)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapPatch("/api/admin/policies/{policyId:guid}/rules/{ruleId:guid}",           UpdatePolicyRule)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapDelete("/api/admin/policies/{policyId:guid}/rules/{ruleId:guid}",          DeletePolicyRule)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // Permission ↔ Policy mappings
         routes.MapGet("/api/admin/permission-policies",                                      ListPermissionPolicies);
-        routes.MapPost("/api/admin/permission-policies",                                     CreatePermissionPolicy);
-        routes.MapDelete("/api/admin/permission-policies/{id:guid}",                         DeactivatePermissionPolicy);
+        routes.MapPost("/api/admin/permission-policies",                                     CreatePermissionPolicy)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
+        routes.MapDelete("/api/admin/permission-policies/{id:guid}",                         DeactivatePermissionPolicy)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // Policy evaluation debug
         routes.MapGet("/api/admin/policies/supported-fields",                                GetSupportedFields);
 
         // ── LS-COR-AUT-011D: Authorization Simulation ───────────────────────
-        routes.MapPost("/api/admin/authorization/simulate",                                  AdminEndpointsLscc010.SimulateAuthorization);
+        routes.MapPost("/api/admin/authorization/simulate",                                  AdminEndpointsLscc010.SimulateAuthorization)
+            .RequireAuthorization(pb => pb.RequireRole("PlatformAdmin"));
 
         // ── Membership lookup (notifications fan-out) ────────────────────────
         // Internal service-to-service endpoint used by the notifications service
