@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.26.1",
   "main": "index.js",
   "scripts": {
+    "preinstall": "rm -rf node_modules/@next node_modules/.cache 2>/dev/null || true",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev:web": "cd apps/web && next dev -p 3000",
     "dev:control-center": "cd apps/control-center && next dev -p 5004"
