@@ -167,6 +167,17 @@ public class NetworkRepository : INetworkRepository
         await _db.Providers.AddAsync(provider, ct);
     }
 
+    public async Task<bool> IsProviderInTenantNetworkAsync(Guid tenantId, Guid providerId, CancellationToken ct = default)
+    {
+        return await _db.NetworkProviders
+            .AsNoTracking()
+            .AnyAsync(np =>
+                np.ProviderId == providerId &&
+                np.TenantId   == tenantId   &&
+                _db.ProviderNetworks.Any(n => n.Id == np.ProviderNetworkId && n.TenantId == tenantId && !n.IsDeleted),
+                ct);
+    }
+
     public async Task SyncProviderCategoriesAsync(Guid providerId, List<Guid> categoryIds, CancellationToken ct = default)
     {
         var existing = await _db.ProviderCategories

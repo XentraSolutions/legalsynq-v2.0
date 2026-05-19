@@ -272,12 +272,13 @@ public static class PublicNetworkEndpoints
             HttpContext           http,
             IConfiguration       config,
             IProviderRepository  providerRepo,
+            INetworkRepository   networkRepo,
             IReferralService     referralSvc,
             ILoggerFactory       loggerFactory,
             CancellationToken    ct) =>
         {
             var logger = loggerFactory.CreateLogger("CareConnect.PublicReferrals");
-            return await HandlePublicReferral(req, http, config, providerRepo, referralSvc, logger, ct);
+            return await HandlePublicReferral(req, http, config, providerRepo, networkRepo, referralSvc, logger, ct);
         })
         .AllowAnonymous()
         .RequireRateLimiting("public-referral-limit");
@@ -392,6 +393,7 @@ public static class PublicNetworkEndpoints
         HttpContext           http,
         IConfiguration       config,
         IProviderRepository  providerRepo,
+        INetworkRepository   networkRepo,
         IReferralService     referralSvc,
         ILogger              logger,
         CancellationToken    ct)
@@ -420,6 +422,26 @@ public static class PublicNetworkEndpoints
                 {
                     message = "This provider is not currently accepting referrals."
                 });
+
+            // CC2-SEC-01: Public referral network binding.
+            // The submitted ProviderId must belong to at least one network published by this
+            // tenant's public directory. This prevents an attacker from submitting a referral
+            // to an arbitrary provider from any other tenant by replaying a foreign provider UUID
+            // against a different tenant's public endpoint (cross-tenant provider injection).
+            // Treat any membership failure as NotFound — consistent with provider-not-found so
+            // enumeration of foreign provider IDs across tenants is not possible.
+            bool providerInTenantNetwork;
+            try { providerInTenantNetwork = await networkRepo.IsProviderInTenantNetworkAsync(tenantId.Value, req.ProviderId, ct); }
+            catch { providerInTenantNetwork = false; }
+
+            if (!providerInTenantNetwork)
+            {
+                logger.LogWarning(
+                    "Public referral rejected: provider {ProviderId} is not in any network for tenant {TenantId}. " +
+                    "Possible cross-tenant provider injection attempt.",
+                    req.ProviderId, tenantId.Value);
+                return Results.NotFound(new { message = "Provider not found." });
+            }
 
             // Map to the internal CreateReferralRequest.
             // ReferrerName/ReferrerEmail drive the signed-token email notification flow.
