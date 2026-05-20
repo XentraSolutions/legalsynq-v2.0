@@ -117,7 +117,7 @@ rm -rf .next
 # Remove stray app-level lockfile so Next.js sees only the workspace-root
 # pnpm-lock.yaml and does not over-trace files or emit a workspace-root warning.
 rm -f "$ROOT/apps/web/pnpm-lock.yaml"
-NODE_OPTIONS="--max-old-space-size=2048" NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" build
+NODE_OPTIONS="--max-old-space-size=2048" NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" build --webpack
 
 echo "====== Building control center ======"
 # Deduplicate React: control-center has its own node_modules/react which creates
@@ -149,7 +149,7 @@ if [ ! -f "$CC_NEXT_BIN" ]; then
   CC_NEXT_BIN="$NEXT_BIN"
 fi
 echo "[control-center] Using next binary: $CC_NEXT_BIN"
-NODE_OPTIONS="--max-old-space-size=512" node "$CC_NEXT_BIN" build
+NODE_OPTIONS="--max-old-space-size=512" node "$CC_NEXT_BIN" build --webpack
 
 echo "====== Building .NET services ======"
 cd "$ROOT"
