@@ -140,7 +140,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const cookieStore  = await cookies();
   const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  const authHeader   = sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {};
+  const authHeader: Record<string, string> = sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {};
 
   try {
     const rollups = await fetchRollups(window, authHeader);
