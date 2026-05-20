@@ -96,7 +96,7 @@ export async function updateOrganizationType(
   await requirePlatformAdmin();
   try {
     const organization = await controlCenterServerApi.organizations.update(orgId, { orgType });
-    revalidateTag(CACHE_TAGS.tenants);
+    revalidateTag(CACHE_TAGS.tenants, {});
     return { success: true, organization };
   } catch (err) {
     return {

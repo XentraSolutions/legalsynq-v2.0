@@ -59,8 +59,8 @@ import { apiClient, CACHE_TAGS }       from '@/lib/api-client';
  * called from an App Router Server Action or Route Handler.
  */
 function safeRevalidateTag(tag: string): void {
-  void (import('next/cache') as Promise<{ revalidateTag: (tag: string) => void }>)
-    .then(({ revalidateTag }) => revalidateTag(tag))
+  void (import('next/cache') as Promise<{ revalidateTag: (tag: string, profile: string | { expire?: number }) => undefined }>)
+    .then(({ revalidateTag }) => revalidateTag(tag, {}))
     .catch(() => { /* no-op when running outside App Router */ });
 }
 import {
