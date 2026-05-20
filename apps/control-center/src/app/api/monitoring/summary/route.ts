@@ -61,7 +61,7 @@ export async function GET() {
         message:      a.message,
         severity:     a.severity,
         createdAtUtc: a.createdAtUtc,
-        entityName:   a.entityName,
+        entityName:   a.entityName ?? '',
       })),
     };
 
