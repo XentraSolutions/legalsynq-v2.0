@@ -53,6 +53,15 @@ public class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.Property(c => c.AddressLine1)
             .HasMaxLength(300);
 
+        builder.Property(c => c.AddressLine2)
+            .HasMaxLength(300);
+
+        builder.Property(c => c.Code)
+            .HasMaxLength(50);
+
+        builder.Property(c => c.ExternalReference)
+            .HasMaxLength(200);
+
         builder.Property(c => c.City)
             .HasMaxLength(100);
 

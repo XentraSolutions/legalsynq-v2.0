@@ -57,7 +57,8 @@ public sealed class ContactService : IContactService
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(request.FirstName))
             errors["firstName"] = new[] { "First name is required." };
-        if (string.IsNullOrWhiteSpace(request.LastName))
+        bool isFacility = request.ContactType == ContactType.Facility;
+        if (!isFacility && string.IsNullOrWhiteSpace(request.LastName))
             errors["lastName"] = new[] { "Last name is required." };
         if (!ContactType.All.Contains(request.ContactType))
             errors["contactType"] = new[] { $"Invalid contact type: '{request.ContactType}'. Valid types: {string.Join(", ", ContactType.All)}" };
@@ -68,11 +69,11 @@ public sealed class ContactService : IContactService
         {
             var entity = Contact.Create(
                 tenantId, orgId, request.ContactType,
-                request.FirstName, request.LastName, actingUserId,
+                request.FirstName, request.LastName ?? string.Empty, actingUserId,
                 request.Title, request.Organization,
                 request.Email, request.Phone, request.Fax, request.Website,
-                request.AddressLine1, request.City, request.State, request.PostalCode,
-                request.Notes);
+                request.AddressLine1, request.AddressLine2, request.City, request.State, request.PostalCode,
+                request.Notes, request.Code, request.ExternalReference);
 
             await _repo.AddAsync(entity, ct);
 
@@ -108,7 +109,8 @@ public sealed class ContactService : IContactService
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(request.FirstName))
             errors["firstName"] = new[] { "First name is required." };
-        if (string.IsNullOrWhiteSpace(request.LastName))
+        bool isFacilityUpd = request.ContactType == ContactType.Facility;
+        if (!isFacilityUpd && string.IsNullOrWhiteSpace(request.LastName))
             errors["lastName"] = new[] { "Last name is required." };
         if (!ContactType.All.Contains(request.ContactType))
             errors["contactType"] = new[] { $"Invalid contact type: '{request.ContactType}'." };
@@ -118,11 +120,11 @@ public sealed class ContactService : IContactService
         try
         {
             entity.Update(
-                request.FirstName, request.LastName, request.ContactType, actingUserId,
+                request.FirstName, request.LastName ?? string.Empty, request.ContactType, actingUserId,
                 request.Title, request.Organization,
                 request.Email, request.Phone, request.Fax, request.Website,
-                request.AddressLine1, request.City, request.State, request.PostalCode,
-                request.Notes);
+                request.AddressLine1, request.AddressLine2, request.City, request.State, request.PostalCode,
+                request.Notes, request.Code, request.ExternalReference);
 
             await _repo.UpdateAsync(entity, ct);
 
@@ -209,6 +211,9 @@ public sealed class ContactService : IContactService
         Fax = entity.Fax,
         Website = entity.Website,
         AddressLine1 = entity.AddressLine1,
+        AddressLine2 = entity.AddressLine2,
+        Code = entity.Code,
+        ExternalReference = entity.ExternalReference,
         City = entity.City,
         State = entity.State,
         PostalCode = entity.PostalCode,

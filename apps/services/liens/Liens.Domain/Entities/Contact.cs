@@ -23,9 +23,14 @@ public class Contact : AuditableEntity
     public string? Website      { get; private set; }
 
     public string? AddressLine1 { get; private set; }
+    public string? AddressLine2 { get; private set; }
     public string? City         { get; private set; }
     public string? State        { get; private set; }
     public string? PostalCode   { get; private set; }
+
+    // Facility-specific (only populated when ContactType == Facility)
+    public string? Code              { get; private set; }
+    public string? ExternalReference { get; private set; }
 
     public string? Notes    { get; private set; }
     public bool    IsActive { get; private set; }
@@ -46,46 +51,59 @@ public class Contact : AuditableEntity
         string? fax = null,
         string? website = null,
         string? addressLine1 = null,
+        string? addressLine2 = null,
         string? city = null,
         string? state = null,
         string? postalCode = null,
-        string? notes = null)
+        string? notes = null,
+        string? code = null,
+        string? externalReference = null)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (orgId == Guid.Empty) throw new ArgumentException("OrgId is required.", nameof(orgId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
         ArgumentException.ThrowIfNullOrWhiteSpace(firstName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
+
+        bool isFacility = contactType == Enums.ContactType.Facility;
+        if (!isFacility)
+            ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
 
         if (!Enums.ContactType.All.Contains(contactType))
             throw new ArgumentException($"Invalid contact type: '{contactType}'.");
 
+        var trimFirst = firstName.Trim();
+        var trimLast  = lastName?.Trim() ?? string.Empty;
+        var displayName = isFacility ? trimFirst : $"{trimFirst} {trimLast}";
+
         var now = DateTime.UtcNow;
         return new Contact
         {
-            Id           = Guid.NewGuid(),
-            TenantId     = tenantId,
-            OrgId        = orgId,
-            ContactType  = contactType,
-            FirstName    = firstName.Trim(),
-            LastName     = lastName.Trim(),
-            DisplayName  = $"{firstName.Trim()} {lastName.Trim()}",
-            Title        = title?.Trim(),
-            Organization = organization?.Trim(),
-            Email        = email?.Trim(),
-            Phone        = phone?.Trim(),
-            Fax          = fax?.Trim(),
-            Website      = website?.Trim(),
-            AddressLine1 = addressLine1?.Trim(),
-            City         = city?.Trim(),
-            State        = state?.Trim(),
-            PostalCode   = postalCode?.Trim(),
-            Notes        = notes?.Trim(),
-            IsActive     = true,
-            CreatedByUserId = createdByUserId,
-            UpdatedByUserId = createdByUserId,
-            CreatedAtUtc    = now,
-            UpdatedAtUtc    = now,
+            Id               = Guid.NewGuid(),
+            TenantId         = tenantId,
+            OrgId            = orgId,
+            ContactType      = contactType,
+            FirstName        = trimFirst,
+            LastName         = trimLast,
+            DisplayName      = displayName,
+            Title            = title?.Trim(),
+            Organization     = organization?.Trim(),
+            Email            = email?.Trim(),
+            Phone            = phone?.Trim(),
+            Fax              = fax?.Trim(),
+            Website          = website?.Trim(),
+            AddressLine1     = addressLine1?.Trim(),
+            AddressLine2     = addressLine2?.Trim(),
+            City             = city?.Trim(),
+            State            = state?.Trim(),
+            PostalCode       = postalCode?.Trim(),
+            Notes            = notes?.Trim(),
+            Code             = code?.Trim(),
+            ExternalReference = externalReference?.Trim(),
+            IsActive         = true,
+            CreatedByUserId  = createdByUserId,
+            UpdatedByUserId  = createdByUserId,
+            CreatedAtUtc     = now,
+            UpdatedAtUtc     = now,
         };
     }
 
@@ -101,34 +119,46 @@ public class Contact : AuditableEntity
         string? fax = null,
         string? website = null,
         string? addressLine1 = null,
+        string? addressLine2 = null,
         string? city = null,
         string? state = null,
         string? postalCode = null,
-        string? notes = null)
+        string? notes = null,
+        string? code = null,
+        string? externalReference = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(firstName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
+
+        bool isFacility = contactType == Enums.ContactType.Facility;
+        if (!isFacility)
+            ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
 
         if (!Enums.ContactType.All.Contains(contactType))
             throw new ArgumentException($"Invalid contact type: '{contactType}'.");
 
-        FirstName    = firstName.Trim();
-        LastName     = lastName.Trim();
-        DisplayName  = $"{firstName.Trim()} {lastName.Trim()}";
-        ContactType  = contactType;
-        Title        = title?.Trim();
-        Organization = organization?.Trim();
-        Email        = email?.Trim();
-        Phone        = phone?.Trim();
-        Fax          = fax?.Trim();
-        Website      = website?.Trim();
-        AddressLine1 = addressLine1?.Trim();
-        City         = city?.Trim();
-        State        = state?.Trim();
-        PostalCode   = postalCode?.Trim();
-        Notes        = notes?.Trim();
-        UpdatedByUserId = updatedByUserId;
-        UpdatedAtUtc    = DateTime.UtcNow;
+        var trimFirst = firstName.Trim();
+        var trimLast  = lastName?.Trim() ?? string.Empty;
+
+        FirstName        = trimFirst;
+        LastName         = trimLast;
+        DisplayName      = isFacility ? trimFirst : $"{trimFirst} {trimLast}";
+        ContactType      = contactType;
+        Title            = title?.Trim();
+        Organization     = organization?.Trim();
+        Email            = email?.Trim();
+        Phone            = phone?.Trim();
+        Fax              = fax?.Trim();
+        Website          = website?.Trim();
+        AddressLine1     = addressLine1?.Trim();
+        AddressLine2     = addressLine2?.Trim();
+        City             = city?.Trim();
+        State            = state?.Trim();
+        PostalCode       = postalCode?.Trim();
+        Notes            = notes?.Trim();
+        Code             = code?.Trim();
+        ExternalReference = externalReference?.Trim();
+        UpdatedByUserId  = updatedByUserId;
+        UpdatedAtUtc     = DateTime.UtcNow;
     }
 
     public void Deactivate(Guid updatedByUserId)

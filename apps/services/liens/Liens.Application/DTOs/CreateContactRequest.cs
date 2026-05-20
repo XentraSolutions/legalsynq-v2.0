@@ -12,6 +12,9 @@ public sealed class CreateContactRequest
     public string? Fax { get; init; }
     public string? Website { get; init; }
     public string? AddressLine1 { get; init; }
+    public string? AddressLine2 { get; init; }
+    public string? Code { get; init; }
+    public string? ExternalReference { get; init; }
     public string? City { get; init; }
     public string? State { get; init; }
     public string? PostalCode { get; init; }
