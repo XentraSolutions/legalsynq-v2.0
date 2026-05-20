@@ -9,7 +9,9 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'LegalSynq',
-  description: 'LegalSynq Platform',
+  description:
+    'LegalSynq is a secure multi-tenant platform for managing legal liens, ' +
+    'healthcare referrals, funding applications, and case workflows across organizations.',
 };
 
 /**
