@@ -290,10 +290,10 @@ migration was required — the block is read-only and adds no schema.
 
 ```
 $ dotnet build services/tenant-billing-api/tests/TenantBilling.Tests/TenantBilling.Tests.csproj
-  TenantBilling.Domain        -> bin/Debug/net8.0/TenantBilling.Domain.dll
-  TenantBilling.Infrastructure-> bin/Debug/net8.0/TenantBilling.Infrastructure.dll
-  TenantBilling.Api           -> bin/Debug/net8.0/TenantBilling.Api.dll
-  TenantBilling.Tests         -> bin/Debug/net8.0/TenantBilling.Tests.dll
+  TenantBilling.Domain        -> bin/Debug/net10.0/TenantBilling.Domain.dll
+  TenantBilling.Infrastructure-> bin/Debug/net10.0/TenantBilling.Infrastructure.dll
+  TenantBilling.Api           -> bin/Debug/net10.0/TenantBilling.Api.dll
+  TenantBilling.Tests         -> bin/Debug/net10.0/TenantBilling.Tests.dll
 
 Build succeeded.
     0 Warning(s)

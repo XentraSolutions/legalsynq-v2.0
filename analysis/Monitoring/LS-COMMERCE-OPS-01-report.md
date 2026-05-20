@@ -531,4 +531,4 @@ All new routes and panels use `requirePlatformAdmin()` exclusively. No new autho
 | `LS-COMMERCE-OPS-04` | Medium | Add `SuspendedAtUtc` to `TenantBillingProfile` entity to enable accurate suspension timeline |
 | `LS-COMMERCE-OPS-05` | Low | Add outbox append-only publish event log (separate from current-state row) for full publish history |
 | `LS-COMMERCE-OPS-06` | Low | Per-account entitlement snapshot inspector (uses `entitlement-snapshot` BFF route created in OPS-01) |
-| Infrastructure | High | Upgrade remaining `net10.0` services (Identity, Fund) to `net8.0` for full SDK alignment |
+| Infrastructure | High | Upgrade remaining `net10.0` services (Identity, Fund) to `net10.0` for full SDK alignment |

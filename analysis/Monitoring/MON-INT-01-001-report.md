@@ -152,10 +152,10 @@ All 4 projects nested under the `services` solution folder (GUID `{ED69C21C-...}
 ```
 dotnet build apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj
 
-  Monitoring.Domain          → bin/Debug/net8.0/Monitoring.Domain.dll
-  Monitoring.Application     → bin/Debug/net8.0/Monitoring.Application.dll
-  Monitoring.Infrastructure  → bin/Debug/net8.0/Monitoring.Infrastructure.dll
-  Monitoring.Api             → bin/Debug/net8.0/Monitoring.Api.dll
+  Monitoring.Domain          → bin/Debug/net10.0/Monitoring.Domain.dll
+  Monitoring.Application     → bin/Debug/net10.0/Monitoring.Application.dll
+  Monitoring.Infrastructure  → bin/Debug/net10.0/Monitoring.Infrastructure.dll
+  Monitoring.Api             → bin/Debug/net10.0/Monitoring.Api.dll
 
 Build succeeded.
     0 Warning(s)

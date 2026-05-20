@@ -51,7 +51,7 @@ bash: ls: /mnt/data: No such file or directory
 - This is the actively-maintained, currently-running multi-service platform.
 - `legalsynq-source.tar.gz` at the root appears to be a snapshot backup of the same
   codebase — unpacking it would duplicate what is already present and current.
-- `_archived/` services are superseded by the live .NET 8 implementations.
+- `_archived/` services are superseded by the live .NET 10 implementations.
 - The live workspace is the authoritative baseline for all integration touchpoint analysis.
 
 **Why `legalsynq-source.tar.gz` was not unpacked:**  
@@ -159,7 +159,7 @@ dependencies, and whether EF Core migrations exist or schema must be applied man
 
 ## 5. Main Platform Codebase Analysis
 
-### 5.1 Backend Services (.NET 8 Microservices)
+### 5.1 Backend Services (.NET 10 Microservices)
 
 | Service | Port | DB | csproj location |
 |---------|------|----|----------------|
@@ -268,20 +268,20 @@ ambiguity must be resolved when the archive is analyzed.
 ### 7.1 Platform Build Status
 
 `Liens.Api` was built successfully moments before this report — **0 errors**.  
-This confirms the .NET 8 + MySQL + BuildingBlocks dependency chain is fully operational.
+This confirms the .NET 10 + MySQL + BuildingBlocks dependency chain is fully operational.
 
 ### 7.2 Monitoring Service Build
 
 **Cannot be performed** — archive unavailable. Once provided:
 
-1. Confirm target framework: `<TargetFramework>net8.0</TargetFramework>`
+1. Confirm target framework: `<TargetFramework>net10.0</TargetFramework>`
 2. Check `Pomelo.EntityFrameworkCore.MySql` version matches platform (`8.x`)
 3. Run: `dotnet build Monitoring.Api/Monitoring.Api.csproj`
 4. Expected blockers: missing `ConnectionStrings__MonitoringDb` secret, missing JWT key
 
 ### 7.3 .NET Version
 
-All platform services target **.NET 8.0**. The Monitoring service must also target net8.0
+All platform services target **.NET 10.0**. The Monitoring service must also target net10.0
 to be compatible. Any mismatch is a blocker that requires runtime targeting correction.
 
 ---
@@ -511,7 +511,7 @@ data source wiring.
 
 **Assumptions (if archive is provided):**
 - Monitoring service follows the platform's Clean Architecture pattern
-- It targets .NET 8.0 with Pomelo MySQL 8.x
+- It targets .NET 10.0 with Pomelo MySQL 8.x
 - EF Core migrations exist in the archive
 - Endpoints follow the health/info + protected catch-all pattern
 

@@ -1,6 +1,6 @@
 # INV-TPL-02 — Template Application & Stamping
 
-**Service:** `services/tenant-billing-api/` (standalone .NET 8)
+**Service:** `services/tenant-billing-api/` (standalone .NET 10)
 **Block:** INV-TPL-02
 **Goal:** Add an `InvoiceTemplateId` reference and a branding **snapshot** to
 `Invoice` so historical invoices preserve their template appearance even

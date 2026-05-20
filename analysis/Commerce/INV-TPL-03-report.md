@@ -1,6 +1,6 @@
 # INV-TPL-03 — Invoice Rendering Foundation
 
-**Service:** `services/tenant-billing-api/` (standalone .NET 8)
+**Service:** `services/tenant-billing-api/` (standalone .NET 10)
 **Block:** INV-TPL-03
 **Depends on:** INV-TPL-01 (template foundation), INV-TPL-02 (template
 stamping & snapshot columns), TBS-B05 (invoice lifecycle).
@@ -37,13 +37,13 @@ tags, raw HTML, or external JavaScript is ever emitted from input.
 
 ## 2. Codebase Analysis
 
-The Tenant Billing service is a standalone .NET 8 ASP.NET Core API
+The Tenant Billing service is a standalone .NET 10 ASP.NET Core API
 at `services/tenant-billing-api/` with three layers:
 
 - **`TenantBilling.Domain`** — entities, repository interfaces, pure
   domain services (`InvoiceService`, `PaymentService`,
   `InvoiceTemplateService`, `InvoiceTemplateStampingService`).
-- **`TenantBilling.Infrastructure`** — EF Core 8 (SQL Server in prod,
+- **`TenantBilling.Infrastructure`** — EF Core 10 (SQL Server in prod,
   InMemory in tests), repositories, `EfUnitOfWork`, the DI
   composition root in `DependencyInjection.cs`.
 - **`TenantBilling.Api`** — controllers, request/response DTOs,

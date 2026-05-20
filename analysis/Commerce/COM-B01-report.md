@@ -38,7 +38,7 @@ services/Commerce/
 │   ├── Commerce.Api/             ASP.NET Core Web API host (Program.cs, controllers, middleware)
 │   ├── Commerce.Application/     Service interfaces, validators, orchestration placeholders
 │   ├── Commerce.Domain/          Entities & value objects (infra-only marker entity for B01)
-│   ├── Commerce.Infrastructure/  EF Core 8 / Pomelo, resilience policy provider
+│   ├── Commerce.Infrastructure/  EF Core 10 / Pomelo, resilience policy provider
 │   └── Commerce.Contracts/       DTOs / public API contract models
 └── tests/
     └── Commerce.Tests/           xUnit + FluentAssertions + WebApplicationFactory + Testcontainers

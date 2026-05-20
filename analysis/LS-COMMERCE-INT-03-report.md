@@ -373,7 +373,7 @@ Based on what was implemented and what remains deferred:
 
 3. **Entitlement publish trigger** — Allow PlatformAdmin to trigger a manual entitlement publish from Commerce to Tenant Billing for a specific billing account, using the existing `POST /api/commerce/integration/tenant-billing/billing-accounts/{id}/publish-entitlement` endpoint. Operational convenience only — no domain mutation.
 
-4. **Monitoring SDK upgrade alignment** — Once the Monitoring service csproj is updated to `net8.0`, validate that the bootstrap reconciliation change compiles and runs correctly end-to-end.
+4. **Monitoring SDK upgrade alignment** — Once the Monitoring service csproj is updated to `net10.0`, validate that the bootstrap reconciliation change compiles and runs correctly end-to-end.
 
 5. **Commerce subscription detail view** — Surface active subscriptions, plan keys, and current period dates for a billing account on the Commerce page. Requires `GET /api/commerce/integration/billing-accounts/{id}/entitlement-snapshot` integration.
 

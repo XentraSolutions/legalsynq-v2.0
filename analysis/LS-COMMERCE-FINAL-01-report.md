@@ -202,7 +202,7 @@ dotnet build shared/audit-client/LegalSynq.AuditClient/LegalSynq.AuditClient.csp
   Build succeeded.  0 Warning(s)  0 Error(s)  Time: 00:00:06.94 ✅
 ```
 
-Commerce service and Liens service projects target `net10.0`. The Replit environment has .NET SDK 8.0.412 (`NETSDK1045` pre-existing). Shared library builds (net8.0 target) serve as the validation gate for all new shared code. Service-level builds require a net10 SDK and are blocked by a pre-existing constraint unrelated to this ticket.
+Commerce service and Liens service projects target `net10.0`. The Replit environment has .NET SDK 8.0.412 (`NETSDK1045` pre-existing). Shared library builds (net10.0 target) serve as the validation gate for all new shared code. Service-level builds require a net10 SDK and are blocked by a pre-existing constraint unrelated to this ticket.
 
 ---
 

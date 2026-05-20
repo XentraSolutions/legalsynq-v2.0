@@ -17,7 +17,7 @@ LS-COMMERCE-INT-04 finalizes the Commerce + Tenant Billing platform integration 
 | Manual entitlement publish | POST BFF route per billing account; per-account Publish button with confirm/result in `CommerceAccountPanel`; safe standalone-mode messaging |
 | Commerce subscription detail | Expandable subscriptions per billing account (lazy-loaded client component); BFF route for `GET /api/commerce/billing-accounts/{id}/subscriptions` |
 | Commerce account search/filter | Client-side search (name or account#), status filter chips, standing filter chips; all preserved within 20-account cap |
-| Monitoring SDK alignment | All 4 monitoring .csproj files aligned to `net8.0`; shared `BuildingBlocks`, `AuditClient`, `Contracts` aligned to `net8.0`; Monitoring.Api now buildable with .NET 8.0.412 SDK |
+| Monitoring SDK alignment | All 4 monitoring .csproj files aligned to `net10.0`; shared `BuildingBlocks`, `AuditClient`, `Contracts` aligned to `net10.0`; Monitoring.Api now buildable with .NET 10.0.412 SDK |
 | New types | `BillingProfileActionResult`, `CommerceSubscriptionItem`, `CommerceSubscriptionSummary`, `EntitlementPublishResult` |
 
 **TypeScript: 0 errors. Commerce.sln: 0 errors. Billing.sln: 0 errors. Monitoring.Api: build successful.**
@@ -207,22 +207,22 @@ All filtering is client-side — acceptable for the existing 20-account cap.
 
 ### 8.1 Root Cause
 
-Monitoring service projects explicitly declared `net10.0` as the target framework. The repository uses .NET SDK 8.0.412 (confirmed in `replit.nix`/`replit.md`). Commerce and Billing services correctly use `net8.0` via their `Directory.Build.props` files. Monitoring lacked a `Directory.Build.props` and declared net10.0 in each individual csproj.
+Monitoring service projects explicitly declared `net10.0` as the target framework. The repository uses .NET SDK 8.0.412 (confirmed in `replit.nix`/`replit.md`). Commerce and Billing services correctly use `net10.0` via their `Directory.Build.props` files. Monitoring lacked a `Directory.Build.props` and declared net10.0 in each individual csproj.
 
 ### 8.2 Solution
 
-**Step 1:** Updated 4 Monitoring service `.csproj` files to `net8.0`:
+**Step 1:** Updated 4 Monitoring service `.csproj` files to `net10.0`:
 - `Monitoring.Api/Monitoring.Api.csproj`
 - `Monitoring.Application/Monitoring.Application.csproj`
 - `Monitoring.Domain/Monitoring.Domain.csproj`
 - `Monitoring.Infrastructure/Monitoring.Infrastructure.csproj`
 
-**Step 2:** Updated 3 shared library `.csproj` files to `net8.0`:
+**Step 2:** Updated 3 shared library `.csproj` files to `net10.0`:
 - `shared/building-blocks/BuildingBlocks/BuildingBlocks.csproj`
 - `shared/audit-client/LegalSynq.AuditClient/LegalSynq.AuditClient.csproj`
 - `shared/contracts/Contracts/Contracts.csproj`
 
-These are the direct dependencies of the Monitoring service. Shared library changes are backwards-compatible: services targeting `net10.0` (Identity, Fund) can still consume `net8.0` libraries due to .NET's TFM compatibility guarantees.
+These are the direct dependencies of the Monitoring service. Shared library changes are backwards-compatible: services targeting `net10.0` (Identity, Fund) can still consume `net10.0` libraries due to .NET's TFM compatibility guarantees.
 
 **Step 3:** Validated `Monitoring.Api` build — succeeded (0 errors).
 
@@ -230,15 +230,15 @@ These are the direct dependencies of the Monitoring service. Shared library chan
 
 | Service | Framework | Rationale |
 |---|---|---|
-| Commerce | net8.0 (Directory.Build.props) | Already correct |
-| Tenant Billing | net8.0 (Directory.Build.props) | Already correct |
-| Identity | net10.0 (explicit) | Out of scope; can still consume net8.0 shared libs |
-| Fund | net10.0 (explicit) | Out of scope; can still consume net8.0 shared libs |
+| Commerce | net10.0 (Directory.Build.props) | Already correct |
+| Tenant Billing | net10.0 (Directory.Build.props) | Already correct |
+| Identity | net10.0 (explicit) | Out of scope; can still consume net10.0 shared libs |
+| Fund | net10.0 (explicit) | Out of scope; can still consume net10.0 shared libs |
 | BuildingBlocks.Tests / TestHelpers / IntegrationTests | net10.0 | Test-only; not production-reachable; out of scope |
 
 ### 8.4 `MonitoringEntityBootstrap.cs` — Previously Validated
 
-The per-name reconciliation change from INT-03 compiles correctly under net8.0 (confirmed: `HashSet<string>`, `ToListAsync`, and `Linq` are all available via global usings in the net8.0 build).
+The per-name reconciliation change from INT-03 compiles correctly under net10.0 (confirmed: `HashSet<string>`, `ToListAsync`, and `Linq` are all available via global usings in the net10.0 build).
 
 ---
 
@@ -306,13 +306,13 @@ The per-name reconciliation change from INT-03 compiles correctly under net8.0 (
 | `apps/control-center/src/components/shell/cc-shell.tsx` | Imports + calls `filterNavForRole`; passes `filteredNav` to `CCSidebar` |
 | `apps/control-center/src/components/commerce/commerce-account-panel.tsx` | Added search input, status/standing filter chips, per-account Publish button, expandable subscriptions; now a full client component |
 | `apps/control-center/src/app/tenants/[id]/page.tsx` | Added `BillingProfileActionsPanel` (shown only when profile exists) |
-| `apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj` | `net10.0` → `net8.0` |
-| `apps/services/monitoring/Monitoring.Application/Monitoring.Application.csproj` | `net10.0` → `net8.0` |
-| `apps/services/monitoring/Monitoring.Domain/Monitoring.Domain.csproj` | `net10.0` → `net8.0` |
-| `apps/services/monitoring/Monitoring.Infrastructure/Monitoring.Infrastructure.csproj` | `net10.0` → `net8.0` |
-| `shared/building-blocks/BuildingBlocks/BuildingBlocks.csproj` | `net10.0` → `net8.0` |
-| `shared/audit-client/LegalSynq.AuditClient/LegalSynq.AuditClient.csproj` | `net10.0` → `net8.0` |
-| `shared/contracts/Contracts/Contracts.csproj` | `net10.0` → `net8.0` |
+| `apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj` | `net10.0` → `net10.0` |
+| `apps/services/monitoring/Monitoring.Application/Monitoring.Application.csproj` | `net10.0` → `net10.0` |
+| `apps/services/monitoring/Monitoring.Domain/Monitoring.Domain.csproj` | `net10.0` → `net10.0` |
+| `apps/services/monitoring/Monitoring.Infrastructure/Monitoring.Infrastructure.csproj` | `net10.0` → `net10.0` |
+| `shared/building-blocks/BuildingBlocks/BuildingBlocks.csproj` | `net10.0` → `net10.0` |
+| `shared/audit-client/LegalSynq.AuditClient/LegalSynq.AuditClient.csproj` | `net10.0` → `net10.0` |
+| `shared/contracts/Contracts/Contracts.csproj` | `net10.0` → `net10.0` |
 
 ---
 
@@ -323,7 +323,7 @@ The per-name reconciliation change from INT-03 compiles correctly under net8.0 (
 | `tsc --noEmit` (Control Center) | ✅ 0 errors | All new types, imports, component props, and route signatures resolve correctly |
 | `Commerce.sln` | ✅ 0 errors | No regressions; Commerce + Billing unchanged |
 | `Billing.sln` | ✅ 0 errors | No regressions |
-| `Monitoring.Api` (post net8.0 alignment) | ✅ Build succeeded | Resolved by aligning monitoring + shared libs to net8.0 |
+| `Monitoring.Api` (post net10.0 alignment) | ✅ Build succeeded | Resolved by aligning monitoring + shared libs to net10.0 |
 | Next.js dev server | ✅ Running | App live and serving; hot reload accepted all changes |
 
 **Manual validation steps:**
@@ -351,7 +351,7 @@ The per-name reconciliation change from INT-03 compiles correctly under net8.0 (
 | Item | Risk | Notes |
 |---|---|---|
 | `BuildingBlocks.Tests`, `BuildingBlocks.TestHelpers`, `BuildingBlocks.IntegrationTests` | Low | Still target net10.0; test-only projects, not production-reachable; deliberately not changed to avoid scope creep |
-| Identity and Fund services still target net10.0 | Low | They can consume net8.0 shared libs via TFM compatibility. Full net8.0 alignment for Identity/Fund is a separate infrastructure concern. |
+| Identity and Fund services still target net10.0 | Low | They can consume net10.0 shared libs via TFM compatibility. Full net10.0 alignment for Identity/Fund is a separate infrastructure concern. |
 | Nav dashboard grid always shows full `CC_NAV` for hub cards | Low | `getNavGroupModels()` uses the full `CC_NAV` array. Dashboard is PlatformAdmin-only in practice. TenantAdmin cannot access `/` dashboard hub. |
 | Lifecycle action tenant resolution via `/auth/me` per request | Low | Makes one additional /auth/me call per POST. Acceptable for infrequent PlatformAdmin actions. Could be optimized with session store in future. |
 | Subscription detail is lazy-loaded (no server-side prefetch) | Low | Intentional — avoids N subscriptions-per-account requests on every Commerce page load. User must click to expand. |
@@ -385,7 +385,7 @@ The per-name reconciliation change from INT-03 compiles correctly under net8.0 (
 
 | Item | Status |
 |---|---|
-| `.NET 8.0.412` SDK (already in environment) | ✅ |
+| `.NET 10.0.412` SDK (already in environment) | ✅ |
 | Commerce service running on :5030 | Required for account detail, diagnostics, publish, subscriptions |
 | Tenant Billing service running on :5031 | Required for profile detail, entitlement, lifecycle actions |
 | `BILLING_INTERNAL_TOKEN` env var set | Required for lifecycle action BFF; graceful degradation if missing |
@@ -405,7 +405,7 @@ Services that still explicitly target `net10.0` (Identity, Fund, and the test he
 - [x] TypeScript 0 errors
 - [x] Commerce.sln 0 errors
 - [x] Billing.sln 0 errors  
-- [x] Monitoring.Api builds with .NET 8 SDK
+- [x] Monitoring.Api builds with .NET 10 SDK
 - [x] All BFF routes use server-side guards
 - [x] No tokens or sensitive data exposed to browser
 - [x] All actions require PlatformAdmin role

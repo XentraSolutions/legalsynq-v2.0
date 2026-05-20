@@ -256,7 +256,7 @@ private async Task TryNotifyCommerceAsync(CommerceLifecycleEvent ev, Cancellatio
 
 ## 10. Build/Test Validation
 
-### Shared library builds (runnable with .NET 8 SDK)
+### Shared library builds (runnable with .NET 10 SDK)
 
 | Project | Command | Result |
 |---|---|---|
@@ -293,7 +293,7 @@ The following were verified by static inspection:
 
 ### Tests
 
-The service projects target `net10.0` and cannot be built or run locally with the .NET 8 SDK. No automated test run was possible.
+The service projects target `net10.0` and cannot be built or run locally with the .NET 10 SDK. No automated test run was possible.
 
 **Documented manual validation steps:**
 

@@ -15,7 +15,7 @@ Implement SynqComm as an independent shared service with its own physically sepa
 - No cross-database joins for core logic
 
 ## Architecture Findings
-- **Framework**: .NET 8 minimal API (WebApplication.CreateBuilder pattern)
+- **Framework**: .NET 10 minimal API (WebApplication.CreateBuilder pattern)
 - **Project structure**: Clean Architecture — Domain / Application / Infrastructure / Api
 - **ORM**: Entity Framework Core 8 with Pomelo MySQL provider
 - **Auth**: JWT Bearer with ICurrentRequestContext from BuildingBlocks

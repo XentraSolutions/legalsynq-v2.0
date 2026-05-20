@@ -1,6 +1,6 @@
 # INV-TPL-04 — Address & Issuer Enrichment Report
 
-> Service: `services/tenant-billing-api/` (.NET 8, Pomelo MySQL)
+> Service: `services/tenant-billing-api/` (.NET 10, Pomelo MySQL)
 > Builds on: INV-TPL-01 (template foundation), INV-TPL-02 (template
 > stamping), INV-TPL-03 (rendering foundation).
 

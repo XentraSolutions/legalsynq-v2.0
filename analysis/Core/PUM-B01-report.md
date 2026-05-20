@@ -11,9 +11,9 @@
 
 ## 1. Codebase Analysis
 
-The Identity service is a custom multi-tenant .NET 8 microservice using:
+The Identity service is a custom multi-tenant .NET 10 microservice using:
 - Clean Architecture (Domain / Application / Infrastructure / Api layers)
-- EF Core 8 with Pomelo MySQL provider
+- EF Core 10 with Pomelo MySQL provider
 - Custom BCrypt authentication (no ASP.NET Identity)
 - Minimal API endpoints via `IEndpointRouteBuilder`
 - Migrations: manual EF migration files without `.Designer.cs` snapshots (the ModelSnapshot is intentionally minimal)

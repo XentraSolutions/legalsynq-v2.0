@@ -14,7 +14,7 @@ Findings from the pre-implementation scan:
 - The Commerce service pins .NET SDK **8.0.416** in `services/Commerce/global.json`
   and uses Central Package Management via `Directory.Build.props` +
   `Directory.Packages.props`. We mirror that convention so the two services
-  evolve in lockstep on the same SDK and EF Core 8.0.10.
+  evolve in lockstep on the same SDK and EF Core 10.0.10.
 - Commerce uses an **EF Core In-Memory fallback** when no MySQL connection
   string is configured (see `Commerce.Infrastructure/DependencyInjection.cs`),
   so the host still boots in the Replit sandbox where MySQL is not

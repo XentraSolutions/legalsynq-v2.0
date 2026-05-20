@@ -25,7 +25,7 @@ pnpm_install
 echo "Verifying .NET SDK version..."
 dotnet --version
 
-echo "Building shared .NET libraries (net8.0 — buildable in this environment)..."
+echo "Building shared .NET libraries (net10.0)..."
 export DOTNET_GCConserveMemory=9
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export MSBUILDDISABLENODEREUSE=1

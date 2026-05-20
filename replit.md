@@ -206,7 +206,7 @@ Notification delivery gated by per-tenant governance rule packs. Five enforcemen
 
 ## Known Build Constraint
 
-Service projects target `net10.0` in their `.csproj` files. The Replit environment has .NET SDK 8.0.412 (NETSDK1045 on SDK version mismatch). **Shared libraries** (`contracts`, `building-blocks`, `audit-client`) target `net8.0` and build cleanly with `dotnet build`. Service projects require a net10 SDK to build — this is a pre-existing constraint, not caused by our changes.
+All projects (services and shared libraries) target `net10.0`. The Replit environment runs .NET SDK 8.0.412 and cannot build this repo (NETSDK1045). Local development requires the .NET 10 SDK. This is a pre-existing environment constraint unrelated to any individual change.
 
 ## Completed Major Work Areas
 

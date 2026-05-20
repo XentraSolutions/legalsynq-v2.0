@@ -19,7 +19,7 @@ out of scope and out of the codebase.
 ## 2. Codebase Analysis
 
 The standalone Tenant Billing Service lives at
-`services/tenant-billing-api/` and is an ASP.NET Core 8 / EF Core 8
+`services/tenant-billing-api/` and is an ASP.NET Core 8 / EF Core 10
 solution with three projects:
 
 - `TenantBilling.Domain` — entities (`Invoice`, `Customer`,
@@ -99,7 +99,7 @@ Controller (InvoiceTemplatesController, InvoicesController)
   └── IInvoiceTemplateSelectionService   (read-only default lookup)
         └── IInvoiceTemplateRepository  (EF Core repository)
         └── IUnitOfWork                  (atomic make-default)
-              └── TenantBillingDbContext (EF Core 8 / MySQL)
+              └── TenantBillingDbContext (EF Core 10 / MySQL)
 ```
 
 Both service interfaces are forwarded to a single

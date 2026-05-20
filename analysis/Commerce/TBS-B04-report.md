@@ -1,6 +1,6 @@
 # TBS-B04 Report — Payment Recording & Invoice Balance Logic
 
-Service: `services/tenant-billing-api/` (standalone .NET 8 Tenant Billing API).
+Service: `services/tenant-billing-api/` (standalone .NET 10 Tenant Billing API).
 
 ## 1. Codebase Analysis
 
@@ -10,7 +10,7 @@ The Tenant Billing service is a clean four-project layout under
 - `TenantBilling.Domain` — entities (`Customer`, `Invoice`, `Payment`,
   `Refund`), service interfaces (`I*Service`) and implementations, repository
   interfaces (`I*Repository`), and the typed-exception family for invariants.
-- `TenantBilling.Infrastructure` — EF Core 8 + Pomelo MySQL provider,
+- `TenantBilling.Infrastructure` — EF Core 10 + Pomelo MySQL provider,
   `TenantBillingDbContext`, repositories, `EfUnitOfWork`, design-time factory,
   and migrations.
 - `TenantBilling.Api` — ASP.NET Core controllers, request/response DTOs,

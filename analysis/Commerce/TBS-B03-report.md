@@ -3,7 +3,7 @@
 ## 1. Codebase Analysis
 
 The Tenant Billing Service (`services/tenant-billing-api/`) is a standalone
-.NET 8 / EF Core 8 / MySQL service organized into Domain (entities, services,
+.NET 10 / EF Core 10 / MySQL service organized into Domain (entities, services,
 repository interfaces), Infrastructure (EF DbContext, repositories, migrations),
 and Api (controllers, contracts, middleware) projects, with a dedicated test
 project (`tests/TenantBilling.Domain.Tests/`) that exercises the domain layer

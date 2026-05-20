@@ -699,7 +699,7 @@ Follow the `{domain}.{resource}.{verb}` pattern. Use lowercase dot-separated tok
 
 ## C# Client
 
-See [`Examples/AuditEventClientExample.cs`](../Examples/AuditEventClientExample.cs) for a complete, ready-to-adapt .NET 8 client implementation showing all 11 event patterns plus single and batch ingest.
+See [`Examples/AuditEventClientExample.cs`](../Examples/AuditEventClientExample.cs) for a complete, ready-to-adapt .NET 10 client implementation showing all 11 event patterns plus single and batch ingest.
 
 ---
 
