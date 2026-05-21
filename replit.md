@@ -24,9 +24,9 @@ This file is the agent's persistent memory. It contains architecture, convention
 | Audit | 5007 |
 | Fund | 5008 |
 | Gateway (YARP) | 5010 |
-| Flow (backend) | 5015 |
+| Flow (backend) | 5012 (launchSettings default overridden to 5012 by ASPNETCORE_URLS in run-dev.sh) |
+| Monitoring | 5015 (launchSettings default; replit.md listed 5020 but actual binding is 5015) |
 | Task | 5016 |
-| Monitoring | 5020 |
 | Notifications | 5025 |
 | Reports | 5029 |
 | Commerce (planned) | 5030 |
@@ -203,6 +203,28 @@ Notification delivery gated by per-tenant governance rule packs. Five enforcemen
 - `IngestAuth__ServiceTokens` — one token per source service
 - Retention engine wired but `JobEnabled=false`, `DryRun=true` by default
 - Event forwarding abstraction present but `Enabled=false` by default
+
+## Dev Startup — OOM Mitigation (run-dev.sh)
+
+Replit runs 17+ .NET services concurrently in a memory-constrained container. Startup order
+is critical: services started late OOM when earlier ones have consumed all available RAM.
+
+**Fixes applied (May 2026):**
+- `DOTNET_GCConserveMemory=9` on every service — shrinks GC heap footprint per process.
+- **Startup order** (services that previously OOM'd are now started early while few others are running):
+  1. Gateway (no DB)
+  2. Monitoring — starts 2nd (only 1 process running); its own OOM was killing Task and Flow when it started 15th
+  3. Commerce + Billing (InMemory, no DB migration)
+  4. Tenant (with 4-retry loop around MigrateAsync for MySQL connection storm resilience)
+  5. Reports + Task + Flow — all three moved from the end of the wave to positions 6–8
+  6. Remaining DB services — Identity, Fund, CareConnect, Liens, Audit, Documents, Notifications, Comms
+  7. Support (last — separate MySQL instance)
+- Gateway: explicit `ASPNETCORE_URLS=http://0.0.0.0:5010` (prevents YARP TypeLoadException port conflict).
+- Flow.Api: explicit `ASPNETCORE_URLS=http://0.0.0.0:5012` (matches the "Workflow" monitoring entity seed).
+- Monitoring retry wrapper: restarts once after 15 s on crash.
+- Tenant.Api/Program.cs: 4-retry loop around `MigrateAsync` (5/10/20/30 s backoff) for "Too many connections" resilience.
+
+**Stable state after startup:** 12/12 monitored entities pass; all 16 service ports (5001–5031) return 200.
 
 ## Known Build Constraint
 

@@ -97,6 +97,15 @@ PID_CC=$!
   dotnet restore "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" --verbosity quiet
   dotnet build   "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
     || echo "[build] Support.Api build error — continuing with cached binary"
+  # Commerce service (port 5030) — separate project boundary, not in LegalSynq.sln.
+  # Pre-build here so no inline build is needed once services start competing for memory.
+  dotnet restore "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj" --verbosity quiet
+  dotnet build   "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
+    || echo "[commerce] Build error — continuing with cached binary"
+  # Tenant Billing service (port 5031) — separate project boundary, not in LegalSynq.sln.
+  dotnet restore "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" --verbosity quiet
+  dotnet build   "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
+    || echo "[billing] Build error — continuing with cached binary"
   # Identity.Api can OOM inside the full solution build on constrained hosts.
   # Build it separately here with conservative GC settings so the binary always
   # reflects the latest source (including the "role" claim fix in JwtTokenService).
@@ -106,29 +115,53 @@ PID_CC=$!
     dotnet build "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" \
     --no-restore --configuration Debug --verbosity quiet -maxcpucount:1 \
     || echo "[identity] Build error — will run from cached binary"
-  NotificationsService__BaseUrl=http://localhost:5008 \
-    NotificationsService__PortalBaseUrl=http://localhost:3050 \
-    dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
-  dotnet run --no-build --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
-  AppBaseUrl="${PORTAL_BASE_URL:-https://demo.legalsynq.com}" \
-    AppBaseDomain="${Route53__BaseDomain:-demo.legalsynq.com}" \
-    TenantService__BaseUrl=http://localhost:5005 \
-    TenantService__ProvisioningToken="${TenantService__ProvisioningToken:-}" \
-    dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
-  dotnet run --no-build --project "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" &
-  ASPNETCORE_ENVIRONMENT=Development ASPNETCORE_URLS=http://0.0.0.0:5007 dotnet run --no-build --project "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" &
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" &
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" &
-  dotnet run --no-build --project "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj" &
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" &
-  # Monitoring service: use 'dotnet run' (not --no-build) so the runtime build
-  # step resolves any binary-path mismatch between solution-build and standalone
-  # run. A restart wrapper logs crashes visibly and retries once after a delay.
+  # Tenant.Api needs a separate low-memory build for the "role" RoleClaimType fix.
+  # Pre-building here means no inline build is needed during the memory-constrained
+  # service startup phase.
+  echo "[tenant] Building Tenant.Api with conservative memory settings..."
+  DOTNET_GCConserveMemory=9 \
+    dotnet build "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" \
+    --no-restore --configuration Debug --verbosity quiet -maxcpucount:1 \
+    || echo "[tenant] Build error — will run from cached binary"
+
+  # ── Service startup ──────────────────────────────────────────────────────────
+  # Gateway starts FIRST: it is stateless (no DB migration) and needs memory
+  # before the 15+ other services are initialized.  Once all DB services are
+  # running they collectively consume enough RAM to trigger OOM in any process
+  # that tries to start a thread pool gate thread.
+  # Explicit ASPNETCORE_URLS=5010 overrides launchSettings so the correct port
+  # is always used regardless of which profile dotnet run selects.
+  # DOTNET_GCConserveMemory=9 reduces the GC's memory footprint.
+  # ── Start-order rationale ──────────────────────────────────────────────────
+  # 1. Gateway (no DB) — must grab memory before 16 other processes load.
+  # 2. Monitoring — starts 2nd so only 1 process is running when it initialises.
+  #    Monitoring's OOM was killing Task and Flow when it started 15th; moving it
+  #    here gives it maximum RAM headroom. It will emit "no data" for most
+  #    entities at first, which is fine — the monitoring cycle auto-recovers.
+  # 3. Commerce + Billing (InMemory) — lightweight, start while RAM is free.
+  # 4. Tenant (has DB migration) — starts early to avoid OOM when last.
+  # 5. Reports + Task — also OOM'd when last; moved to positions 5–6.
+  # 6. Remaining DB services — staggered 3 s apart to avoid MySQL connection
+  #    storm (AWS RDS limit ~150 connections shared across all services).
+  # 7. Support — last; it has its own separate MySQL instance.
+  # All services use DOTNET_GCConserveMemory=9 to shrink per-process GC heap.
+  # ──────────────────────────────────────────────────────────────────────────
+
+  echo "[gateway] Starting Gateway on :5010..."
+  ASPNETCORE_ENVIRONMENT=Development \
+    ASPNETCORE_URLS=http://0.0.0.0:5010 \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
+  sleep 5
+
+  # Monitoring starts 2nd — only 1 other process (Gateway) is running.
+  # The retry wrapper restarts once on crash and prefixes all output with [monitoring].
   (
     for attempt in 1 2; do
       echo "[monitoring] Starting Monitoring service (attempt $attempt)..."
       ASPNETCORE_ENVIRONMENT=Development \
-        dotnet run --project "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj" \
+        DOTNET_GCConserveMemory=9 \
+        dotnet run --no-build --project "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj" \
         2>&1 | sed 's/^/[monitoring] /' || true
       if [ "$attempt" -lt 2 ]; then
         echo "[monitoring] Service exited on attempt $attempt; restarting in 15s..."
@@ -137,44 +170,97 @@ PID_CC=$!
     done
     echo "[monitoring] Monitoring service exited after 2 attempts."
   ) &
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" &
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/task/Task.Api/Task.Api.csproj" &
-  # Tenant.Api also needs a separate low-memory build to pick up the "role" RoleClaimType fix.
-  echo "[tenant] Building Tenant.Api with conservative memory settings..."
-  DOTNET_GCConserveMemory=9 \
-    dotnet build "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" \
-    --no-restore --configuration Debug --verbosity quiet -maxcpucount:1 \
-    || echo "[tenant] Build error — will run from cached binary"
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &
+  sleep 5
+
+  # Commerce and Billing are InMemory (no DB migration); start early.
+  ASPNETCORE_ENVIRONMENT=Development \
+    ASPNETCORE_URLS=http://0.0.0.0:5030 \
+    DOTNET_GCConserveMemory=9 \
+    COMMERCE_LEGALSYNQ_SIGNING_KEY="${Jwt__SigningKey:-}" \
+    dotnet run --no-build --project "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    ASPNETCORE_URLS=http://0.0.0.0:5031 \
+    DOTNET_GCConserveMemory=9 \
+    BILLING_LEGALSYNQ_SIGNING_KEY="${Jwt__SigningKey:-}" \
+    dotnet run --no-build --project "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" &
+  sleep 3
+
+  # Tenant starts 5th — only 4 processes running before it.
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &
+  sleep 5
+
+  # Reports, Task, and Flow are all moved early for the same OOM reason —
+  # they OOM'd when placed late in the 17-service startup wave.
+  # Flow.Api binds to the port set in its launchSettings (5075 default) but
+  # the monitoring entity "Workflow" checks 5012; explicit ASPNETCORE_URLS pins
+  # it to 5012 to match.
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/task/Task.Api/Task.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    ASPNETCORE_URLS=http://0.0.0.0:5012 \
+    dotnet run --no-build --project "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" &
+  sleep 5
+
+  # Remaining DB-backed services — staggered to avoid MySQL connection storm.
+  # All use DOTNET_GCConserveMemory=9 to reduce per-process GC heap footprint,
+  # leaving more memory for the processes that start later in the sequence.
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    NotificationsService__BaseUrl=http://127.0.0.1:5008 \
+    NotificationsService__PortalBaseUrl=http://127.0.0.1:3050 \
+    dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    AppBaseUrl="${PORTAL_BASE_URL:-https://demo.legalsynq.com}" \
+    AppBaseDomain="${Route53__BaseDomain:-demo.legalsynq.com}" \
+    TenantService__BaseUrl=http://127.0.0.1:5005 \
+    TenantService__ProvisioningToken="${TenantService__ProvisioningToken:-}" \
+    dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    ASPNETCORE_URLS=http://0.0.0.0:5007 \
+    dotnet run --no-build --project "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj" &
+  sleep 3
   # Support service — port 5017, standalone MySQL, JWT via Authentication:Jwt:SymmetricKey.
   # Authentication__Jwt__SymmetricKey is sourced from Jwt__SigningKey (the same secret used
   # by the gateway) so tokens minted by the platform validate correctly in Support.
   # Falls back to the matching dev key when no secret is set in the environment.
   ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
     Authentication__Jwt__SymmetricKey="${Jwt__SigningKey:-dev-only-signing-key-minimum-32-chars-long!}" \
     dotnet run --no-build --project "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" &
-  # Commerce service — port 5030 (LS-INT-01).
-  # COMMERCE_LEGALSYNQ_SIGNING_KEY must match Jwt__SigningKey when LegalSynq:Identity:Enabled=true.
-  # Defaults to Enabled=false (standalone InMemory mode) so the service starts
-  # without a DB connection string.
-  dotnet restore "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj" --verbosity quiet
-  dotnet build   "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
-    || echo "[commerce] Build error — continuing with cached binary"
-  ASPNETCORE_ENVIRONMENT=Development \
-    ASPNETCORE_URLS=http://0.0.0.0:5030 \
-    COMMERCE_LEGALSYNQ_SIGNING_KEY="${Jwt__SigningKey:-}" \
-    dotnet run --no-build --project "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj" &
-  # Tenant Billing service — port 5031 (LS-INT-01).
-  # BILLING_LEGALSYNQ_SIGNING_KEY must match Jwt__SigningKey when LegalSynq:Identity:Enabled=true.
-  # Defaults to Enabled=false (standalone InMemory mode).
-  dotnet restore "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" --verbosity quiet
-  dotnet build   "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
-    || echo "[billing] Build error — continuing with cached binary"
-  ASPNETCORE_ENVIRONMENT=Development \
-    ASPNETCORE_URLS=http://0.0.0.0:5031 \
-    BILLING_LEGALSYNQ_SIGNING_KEY="${Jwt__SigningKey:-}" \
-    dotnet run --no-build --project "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" &
-  dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
   wait
 ) &
 PID_DOTNET=$!
