@@ -79,17 +79,44 @@ app.Logger.LogInformation("Starting {Service} {Version} in {Environment}", Servi
 // Auto-migrate — apply pending EF Core migrations on startup (idempotent).
 // A failure here is fatal: starting with an out-of-sync schema causes every
 // EF query to throw, so we prefer a clean crash over a silently broken service.
+// Transient errors (e.g. "Too many connections" at startup when all services
+// migrate simultaneously) are retried with exponential back-off before giving up.
 try
 {
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
-    await db.Database.MigrateAsync();
-    app.Logger.LogInformation("Tenant database migrations applied successfully.");
+    var retryDelaysSeconds = new[] { 5, 10, 20, 30 };
+    for (var attempt = 0; ; attempt++)
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+            await db.Database.MigrateAsync();
+            app.Logger.LogInformation("Tenant database migrations applied successfully.");
+            break;
+        }
+        catch (Exception ex) when (attempt < retryDelaysSeconds.Length && IsTransientDbError(ex))
+        {
+            var delaySec = retryDelaysSeconds[attempt];
+            app.Logger.LogWarning(ex,
+                "Tenant migration attempt {Attempt} failed (transient); retrying in {Delay}s.",
+                attempt + 1, delaySec);
+            await Task.Delay(TimeSpan.FromSeconds(delaySec));
+        }
+    }
 }
 catch (Exception ex)
 {
     app.Logger.LogCritical(ex, "Tenant database migration failed — service cannot start with an out-of-sync schema.");
     throw;
+}
+
+static bool IsTransientDbError(Exception ex)
+{
+    var msg = (ex.Message + " " + (ex.InnerException?.Message ?? "")).ToLowerInvariant();
+    return msg.Contains("too many connections")
+        || msg.Contains("transient")
+        || msg.Contains("connection pool")
+        || msg.Contains("unable to connect");
 }
 
 // Migration coverage self-test — detects EF model / live schema drift at startup.
