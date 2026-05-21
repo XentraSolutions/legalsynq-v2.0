@@ -1,4 +1,5 @@
 using System.Text;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Documents.Api.Background;
 using Documents.Api.Endpoints;
 using Documents.Api.Middleware;
@@ -67,7 +68,7 @@ builder.Services
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
                 ValidateIssuer           = issuer is not null,
                 ValidIssuer              = issuer,
                 ValidateAudience         = audience is not null,

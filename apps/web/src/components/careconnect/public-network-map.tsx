@@ -12,6 +12,8 @@ export interface NumberedMarker extends PublicProviderMarker {
 export interface PublicNetworkMapProps {
   markers:           NumberedMarker[];
   selectedId:        string | null;
+  zoomToId?:         string | null;
+  onZoomed?:         () => void;
   onSelect:          (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
 }

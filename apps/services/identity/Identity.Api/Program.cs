@@ -1,6 +1,7 @@
 using System.Text;
 using System.Threading.RateLimiting;
 using BuildingBlocks;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Contracts;
 using Identity.Api;
 using Identity.Api.Endpoints;
@@ -101,7 +102,7 @@ builder.Services
             ValidateAudience         = true,
             ValidAudience            = audience,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
             ValidateLifetime         = true,
             ClockSkew                = TimeSpan.Zero,
             RoleClaimType            = "role",

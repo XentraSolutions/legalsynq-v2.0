@@ -62,7 +62,7 @@ public static class AuthenticationServiceCollectionExtensions
                     ValidIssuer              = jwtSection["Issuer"],
                     ValidAudience            = jwtSection["Audience"],
                     IssuerSigningKey         = new SymmetricSecurityKey(
-                                                  Encoding.UTF8.GetBytes(userSigningKey)),
+                                                  Encoding.UTF8.GetBytes(userSigningKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
                     RoleClaimType            = "role",
                     NameClaimType            = "sub",
                     ClockSkew                = TimeSpan.Zero,
@@ -102,7 +102,7 @@ public static class AuthenticationServiceCollectionExtensions
                     IssuerSigningKey         = string.IsNullOrWhiteSpace(serviceTokenKey)
                                                   ? null
                                                   : new SymmetricSecurityKey(
-                                                        Encoding.UTF8.GetBytes(serviceTokenKey)),
+                                                        Encoding.UTF8.GetBytes(serviceTokenKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },
                     NameClaimType            = "sub",
                     RoleClaimType            = ClaimTypes.Role,
                     ClockSkew                = TimeSpan.FromSeconds(30),

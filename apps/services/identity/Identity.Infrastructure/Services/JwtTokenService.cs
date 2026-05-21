@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Microsoft.Extensions.Configuration;
@@ -32,7 +33,7 @@ public class JwtTokenService : IJwtTokenService
             ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
         var expiryMinutes = int.TryParse(section["ExpiryMinutes"], out var m) ? m : 60;
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId };
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>

@@ -1,5 +1,6 @@
 using System.Text;
 using BuildingBlocks;
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -37,7 +38,7 @@ builder.Services
             ValidateIssuerSigningKey = true,
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
             RoleClaimType            = "role",
             ClockSkew                = TimeSpan.Zero
         };

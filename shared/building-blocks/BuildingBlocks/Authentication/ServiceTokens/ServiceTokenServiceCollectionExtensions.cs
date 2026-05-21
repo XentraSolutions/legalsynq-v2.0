@@ -118,7 +118,7 @@ public static class ServiceTokenServiceCollectionExtensions
                 ValidAudience            = audience,
                 IssuerSigningKey         = string.IsNullOrWhiteSpace(signingKey)
                     ? null
-                    : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                    : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },
                 NameClaimType            = "sub",
                 // ServiceTokenIssuer uses new JwtSecurityToken(claims:...) which does NOT apply
                 // DefaultOutboundClaimTypeMap, so ClaimTypes.Role is written as the full XML URI

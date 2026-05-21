@@ -1,5 +1,6 @@
 using System.Text;
 using Billing.Api.Hosting;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Billing.Api.LegalSynq;
 using Billing.Api.OpenApi;
 using Billing.Api.Security;
@@ -112,8 +113,8 @@ if (legalSynqIdentityEnabled)
                 RequireSignedTokens = true,
                 ClockSkew = TimeSpan.FromSeconds(30),
                 IssuerSigningKey = string.IsNullOrWhiteSpace(signingKey)
-                    ? new SymmetricSecurityKey(new byte[32])
-                    : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                    ? new SymmetricSecurityKey(new byte[32]) // dummy — signature validation always fails when key is unconfigured
+                    : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
             };
         });
 

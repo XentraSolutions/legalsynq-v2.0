@@ -49,6 +49,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm
   const [showAll,     setShowAll]     = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [hoveredId,   setHovered]     = useState<string | null>(null);
+  const [zoomToId,    setZoomToId]    = useState<string | null>(null);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const [dark, setDark] = useState<boolean>(() => {
@@ -275,6 +276,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm
                         tenantId={tenantId}
                         onHover={setHovered}
                         onToggle={toggleSelect}
+                        onClick={() => { setHovered(provider.id); setZoomToId(provider.id); }}
                         ref={el => { cardRefs.current[provider.id] = el; }}
                       />
                     ))}
@@ -288,6 +290,8 @@ export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm
                   <PublicNetworkMap
                     markers={displayedMarkers}
                     selectedId={hoveredId}
+                    zoomToId={zoomToId}
+                    onZoomed={() => setZoomToId(null)}
                     onSelect={handleMapSelect}
                     onRequestReferral={handleMapReferral}
                   />
@@ -373,15 +377,15 @@ const ProviderCard = forwardRef<
     tenantId: string;
     onHover:  (id: string | null) => void;
     onToggle: (id: string) => void;
+    onClick?: () => void;
   }
->(function ProviderCard({ provider, number, selected, hovered, compact, tenantId, onHover, onToggle }, ref) {
-  const enrollUrl = `/enroll?id=${provider.id}&tenantId=${encodeURIComponent(tenantId)}`;
-  const canEnroll = provider.accessStage === 'URL';
+>(function ProviderCard({ provider, number, selected, hovered, compact, tenantId, onHover, onToggle, onClick }, ref) {
   return (
     <div
       ref={ref}
       onMouseEnter={() => onHover(provider.id)}
       onMouseLeave={() => onHover(null)}
+      onClick={onClick}
       className={[
         'transition-colors',
         compact ? 'p-3' : 'p-4 rounded-xl border',
@@ -450,21 +454,6 @@ const ProviderCard = forwardRef<
             </span>
           </div>
 
-          {/* Enrollment CTA — only for providers not yet on the portal */}
-          {canEnroll && (
-            <a
-              href={enrollUrl}
-              onClick={e => e.stopPropagation()}
-              className={[
-                'inline-flex items-center gap-1 font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors',
-                compact ? 'text-xs mt-1.5' : 'text-sm mt-2',
-              ].join(' ')}
-              title="Get Full Portal Access"
-            >
-              <i className={compact ? 'ri-arrow-right-circle-line text-xs' : 'ri-arrow-right-circle-line text-sm'} />
-              {compact ? 'Get Portal Access' : 'Get Full Portal Access'}
-            </a>
-          )}
         </div>
 
         {/* Select button */}

@@ -42,7 +42,7 @@ builder.Services
             ValidateIssuerSigningKey = true,
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
             RoleClaimType            = "role",
             ClockSkew                = TimeSpan.Zero,
         };
@@ -69,7 +69,7 @@ builder.Services
             ValidAudiences           = ["notifications-service", "flow-service", "legalsynq-services"],
             IssuerSigningKey         = string.IsNullOrWhiteSpace(serviceTokenKey)
                 ? null
-                : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(serviceTokenKey)),
+                : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(serviceTokenKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },
             NameClaimType            = "sub",
             RoleClaimType            = "role",
             ClockSkew                = TimeSpan.FromSeconds(30),
