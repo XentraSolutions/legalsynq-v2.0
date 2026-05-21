@@ -1,9 +1,14 @@
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
 namespace Notifications.Infrastructure.Data.Migrations
 {
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260419000002_AddCategoryAndSeverity")]
     public partial class AddCategoryAndSeverity : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

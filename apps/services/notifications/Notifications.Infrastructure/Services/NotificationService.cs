@@ -1282,6 +1282,11 @@ public class NotificationServiceImpl : INotificationService
                 await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "provider_failover_attempt", Channel = notification.Channel, NotificationId = notification.Id, NotificationAttemptId = attempt.Id, Provider = route.ProviderType });
 
             if (failure?.Retryable != true) break;
+
+            // Email has a single registered adapter (SendGrid); iterating additional routes
+            // would call the same provider again. Exit the loop so the retry scheduler
+            // handles backoff instead of retrying synchronously through the same adapter.
+            if (string.Equals(notification.Channel, "email", StringComparison.OrdinalIgnoreCase)) break;
         }
 
         var isRetryable = routes.Count > 0;
@@ -1721,17 +1726,20 @@ public class NotificationServiceImpl : INotificationService
     {
         var messageJson = JsonSerializer.Serialize(request.Message);
 
-        // Extract inline subject from the message payload (e.g. CareConnect sends
-        // message: { subject, html }) so it is immediately visible in the delivery log
-        // even before template rendering runs.
-        string? inlineSubject = null;
-        try
+        // Prefer the top-level Subject field when the producer sets it explicitly.
+        // Fall back to extracting "subject" from the Message payload for producers that
+        // embed it there (e.g. CareConnect sends message: { subject, html }).
+        string? inlineSubject = request.Subject;
+        if (string.IsNullOrEmpty(inlineSubject))
         {
-            var msgEl = JsonSerializer.Deserialize<JsonElement>(messageJson);
-            if (msgEl.TryGetProperty("subject", out var subProp))
-                inlineSubject = subProp.GetString();
+            try
+            {
+                var msgEl = JsonSerializer.Deserialize<JsonElement>(messageJson);
+                if (msgEl.TryGetProperty("subject", out var subProp))
+                    inlineSubject = subProp.GetString();
+            }
+            catch { /* best-effort; subject stays null */ }
         }
-        catch { /* best-effort; subject stays null */ }
 
         // Merge canonical producer context fields into metadata (LS-NOTIF-CORE-020).
         // Producer-supplied metadata is preserved; canonical fields are added as

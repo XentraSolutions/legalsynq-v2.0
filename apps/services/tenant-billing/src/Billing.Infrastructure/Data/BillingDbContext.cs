@@ -296,18 +296,18 @@ public class BillingDbContext : DbContext
             b.Property(x => x.BillingProfileId);
 
             b.Property(x => x.Name).IsRequired().HasMaxLength(200);
-            b.Property(x => x.Description).HasMaxLength(2000);
+            b.Property(x => x.Description).HasColumnType("longtext");
             b.Property(x => x.Status).IsRequired().HasMaxLength(16);
             b.Property(x => x.IsDefault).IsRequired().HasDefaultValue(false);
 
             b.Property(x => x.LogoUrl).HasMaxLength(1000);
             b.Property(x => x.AccentColor).HasMaxLength(7);
-            b.Property(x => x.HeaderText).HasMaxLength(2000);
-            b.Property(x => x.FooterText).HasMaxLength(4000);
+            b.Property(x => x.HeaderText).HasColumnType("longtext");
+            b.Property(x => x.FooterText).HasColumnType("longtext");
 
-            b.Property(x => x.PaymentInstructions).HasMaxLength(4000);
-            b.Property(x => x.TermsText).HasMaxLength(8000);
-            b.Property(x => x.MemoPlaceholder).HasMaxLength(2000);
+            b.Property(x => x.PaymentInstructions).HasColumnType("longtext");
+            b.Property(x => x.TermsText).HasColumnType("longtext");
+            b.Property(x => x.MemoPlaceholder).HasColumnType("longtext");
 
             b.Property(x => x.DefaultDueDays);
             b.Property(x => x.InvoiceNumberPrefix).HasMaxLength(20);
@@ -393,18 +393,18 @@ public class BillingDbContext : DbContext
 
             b.Property(x => x.TenantId).IsRequired();
             b.Property(x => x.Name).IsRequired().HasMaxLength(200);
-            b.Property(x => x.Description).HasMaxLength(2000);
+            b.Property(x => x.Description).HasColumnType("longtext");
             b.Property(x => x.Status).IsRequired().HasMaxLength(16);
             b.Property(x => x.IsDefault).IsRequired().HasDefaultValue(false);
 
             b.Property(x => x.LogoUrl).HasMaxLength(1000);
             b.Property(x => x.AccentColor).HasMaxLength(7);
-            b.Property(x => x.HeaderText).HasMaxLength(2000);
-            b.Property(x => x.FooterText).HasMaxLength(4000);
+            b.Property(x => x.HeaderText).HasColumnType("longtext");
+            b.Property(x => x.FooterText).HasColumnType("longtext");
 
-            b.Property(x => x.PaymentInstructions).HasMaxLength(4000);
-            b.Property(x => x.TermsText).HasMaxLength(8000);
-            b.Property(x => x.MemoPlaceholder).HasMaxLength(2000);
+            b.Property(x => x.PaymentInstructions).HasColumnType("longtext");
+            b.Property(x => x.TermsText).HasColumnType("longtext");
+            b.Property(x => x.MemoPlaceholder).HasColumnType("longtext");
 
             b.Property(x => x.DisplayOutstandingTable).IsRequired().HasDefaultValue(true);
             b.Property(x => x.DisplayPaymentInstructions).IsRequired().HasDefaultValue(true);

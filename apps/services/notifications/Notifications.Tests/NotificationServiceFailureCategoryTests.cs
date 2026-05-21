@@ -60,6 +60,7 @@ public class NotificationServiceFailureCategoryTests
             smsRuntime, recipient, audit,
             costOptions, smsRouting, routingDecisions,
             retrySuppression, governance, templateGov,
+            new StubGovernanceExecutionRuntime(),
             logger);
     }
 
@@ -172,6 +173,7 @@ public class NotificationServiceFailureCategoryTests
             new StubSmsRetrySuppressionService(),
             new StubSmsGovernancePolicyService(),
             new StubSmsTemplateGovernanceService(),
+            new StubGovernanceExecutionRuntime(),
             NullLogger<NotificationServiceImpl>.Instance);
 
         var result = await noRouteSvc.SubmitAsync(TenantId, EmailRequest());
@@ -498,5 +500,21 @@ public class NotificationServiceFailureCategoryTests
             TemplateGovernanceDecisionQuery query, CancellationToken ct = default)
             => Task.FromResult<(int, IReadOnlyList<SmsTemplateGovernanceDecision>)>(
                 (0, Array.Empty<SmsTemplateGovernanceDecision>()));
+    }
+
+    private sealed class StubGovernanceExecutionRuntime : IGovernanceExecutionRuntime
+    {
+        public Task<GovernanceExecutionResult> EvaluateAsync(
+            GovernanceExecutionContext context, CancellationToken ct = default)
+            => Task.FromResult(new GovernanceExecutionResult { ShouldProceed = true });
+
+        public Task<GovernanceSimulationResult> SimulateAsync(
+            GovernanceSimulationRequest request, CancellationToken ct = default)
+            => Task.FromResult(new GovernanceSimulationResult());
+
+        public Task<IReadOnlyList<GovernanceChannelRuntimeStatus>> GetChannelRuntimeStatusAsync(
+            CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<GovernanceChannelRuntimeStatus>>(
+                Array.Empty<GovernanceChannelRuntimeStatus>());
     }
 }

@@ -14,8 +14,8 @@
        Flow calls. JwtBearer is referenced so the AddServiceTokenAuthentication
        extension can wire a second bearer scheme alongside the user token. -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.*" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.5.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.6.3" />
     <!-- Task #62 — MigrationCoverageProbe needs to inspect the live schema
          (information_schema / sqlite_master) and the EF Core model. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.0" />

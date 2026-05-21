@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using BuildingBlocks.Commerce;
+using Microsoft.Extensions.Logging.Abstractions;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Application.Services;
@@ -40,7 +42,9 @@ public class TenantAdminServiceGetAdminDetailTests
             capabilityRepo       ?? new StubCapabilityRepository(),
             settingRepo          ?? new StubSettingRepository(),
             identityCompat       ?? new StubIdentityCompatAdapter(),
-            identityProvisioning ?? new StubIdentityProvisioningAdapter());
+            identityProvisioning ?? new StubIdentityProvisioningAdapter(),
+            new StubCommerceLifecycleNotifier(),
+            NullLogger<TenantAdminService>.Instance);
     }
 
     // ── Tests ─────────────────────────────────────────────────────────────────
@@ -763,5 +767,11 @@ public class TenantAdminServiceGetAdminDetailTests
 
         public Task<ProvisioningRetryResult> RetryVerificationAsync(Guid tenantId, CancellationToken ct = default)
             => Task.FromResult(new ProvisioningRetryResult(false, "Unknown", null, null, null));
+    }
+
+    private sealed class StubCommerceLifecycleNotifier : ICommerceLifecycleNotifier
+    {
+        public Task NotifyAsync(CommerceLifecycleEvent ev, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 }

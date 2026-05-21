@@ -213,8 +213,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("DisplayBillingAddress")
                         .ValueGeneratedOnAdd()
@@ -232,12 +231,10 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasDefaultValue(true);
 
                     b.Property<string>("FooterText")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("HeaderText")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("InvoiceNumberFormat")
                         .HasMaxLength(100)
@@ -257,8 +254,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(1000)");
 
                     b.Property<string>("MemoPlaceholder")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -271,8 +267,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(16)");
 
                     b.Property<string>("PaymentInstructions")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -283,8 +278,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("char(36)");
 
                     b.Property<string>("TermsText")
-                        .HasMaxLength(8000)
-                        .HasColumnType("varchar(8000)");
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");

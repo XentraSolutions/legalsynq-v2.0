@@ -99,6 +99,14 @@ public sealed class NotificationsProducerRequest
     // ── Content / routing ────────────────────────────────────────────────────
 
     /// <summary>
+    /// Email subject line. When set, takes precedence over a <c>subject</c> field
+    /// embedded inside <see cref="Message"/>. Ignored for non-email channels.
+    /// </summary>
+    [JsonPropertyName("subject")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Subject { get; set; }
+
+    /// <summary>
     /// Raw message content when not using templates.
     /// Use <c>new { type = "...", subject = "...", body = "..." }</c> or
     /// a typed object.

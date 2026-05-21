@@ -8,8 +8,8 @@
     <IsTestProject>true</IsTestProject>
     <!--
       LS-FLOW-HARDEN-A1.1 — full WebApplicationFactory<Program> integration host.
-      Pinning JwtBearer to 8.0.26 mirrors the unit-test project and avoids the
-      MSB3277 conflict warning observed in A1.
+      Pinning JwtBearer to 8.0.* matches BuildingBlocks and eliminates the
+      MSB3277 conflict warning.
     -->
   </PropertyGroup>
 
@@ -17,10 +17,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageReference Include="xunit" Version="2.9.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.*" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.26" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.*" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
   </ItemGroup>
 

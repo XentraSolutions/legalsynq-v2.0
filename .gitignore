@@ -5,6 +5,7 @@ obj/
 *.suo
 *.sln.docstates
 .vs/
+.vscode/
 publish/
 *.publish.xml
 *.pubxml
@@ -20,7 +21,6 @@ coverage/
 # NuGet
 *.nupkg
 *.snupkg
-packages/
 .nuget/
 nuget.config.local
 

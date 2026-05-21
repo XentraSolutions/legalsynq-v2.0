@@ -187,6 +187,7 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
                 ProductKey     = NotificationTaxonomy.Identity.ProductKey,
                 EventKey       = eventKey,
                 SourceSystem   = NotificationTaxonomy.Identity.SourceSystem,
+                Subject        = subject,
                 IdempotencyKey = Guid.CreateVersion7().ToString("N"),
                 Recipient      = new NotificationsRecipient
                 {

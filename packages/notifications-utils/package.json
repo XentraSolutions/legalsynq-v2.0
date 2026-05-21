@@ -1,0 +1,9 @@
+{
+  "name": "@legalsynq/notifications-utils",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./index.ts"
+  },
+  "types": "./index.ts"
+}

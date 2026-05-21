@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NODE="/nix/store/51gywl5jn4nna7al9waj142pw4vfhy0k-nodejs-22.19.0/bin/node"
+NODE="$(command -v node)"
+[ -n "$NODE" ] || { echo "ERROR: 'node' not found in PATH. Install Node.js first." >&2; exit 1; }
 
 echo "====== LegalSynq dev startup ======"
 

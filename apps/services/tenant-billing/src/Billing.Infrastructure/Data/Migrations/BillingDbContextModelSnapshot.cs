@@ -319,20 +319,17 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasDefaultValue(false);
 
                     b.Property<string>("TemplateFooterText")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("TemplateHeaderText")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("TemplateLogoUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
                     b.Property<string>("TemplateMemoPlaceholder")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("TemplateName")
                         .HasMaxLength(200)
@@ -343,15 +340,13 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(16)");
 
                     b.Property<string>("TemplatePaymentInstructions")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime?>("TemplateStampedAtUtc")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("TemplateTermsText")
-                        .HasMaxLength(8000)
-                        .HasColumnType("varchar(8000)");
+                        .HasColumnType("longtext");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");
@@ -440,8 +435,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasComputedColumnSql("(CASE WHEN `IsDefault` = 1 THEN CONCAT(`OwnerType`, '|', IFNULL(`BillingAccountId`, '')) ELSE NULL END)", true);
 
                     b.Property<string>("Description")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("DisplayBillingAddress")
                         .ValueGeneratedOnAdd()
@@ -459,12 +453,10 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasDefaultValue(true);
 
                     b.Property<string>("FooterText")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("HeaderText")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("InvoiceNumberFormat")
                         .HasMaxLength(100)
@@ -532,8 +524,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(1000)");
 
                     b.Property<string>("MemoPlaceholder")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -546,8 +537,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(16)");
 
                     b.Property<string>("PaymentInstructions")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -558,8 +548,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("char(36)");
 
                     b.Property<string>("TermsText")
-                        .HasMaxLength(8000)
-                        .HasColumnType("varchar(8000)");
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -704,8 +693,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasComputedColumnSql("(CASE WHEN `IsDefault` = 1 THEN CAST(`TenantId` AS CHAR(36)) ELSE NULL END)", true);
 
                     b.Property<string>("Description")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("DisplayOutstandingTable")
                         .ValueGeneratedOnAdd()
@@ -723,12 +711,10 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasDefaultValue(true);
 
                     b.Property<string>("FooterText")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("HeaderText")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("IsDefault")
                         .ValueGeneratedOnAdd()
@@ -788,8 +774,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(1000)");
 
                     b.Property<string>("MemoPlaceholder")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -797,8 +782,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(200)");
 
                     b.Property<string>("PaymentInstructions")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("StatementNumberPrefix")
                         .HasMaxLength(20)
@@ -813,8 +797,7 @@ namespace Billing.Infrastructure.Data.Migrations
                         .HasColumnType("char(36)");
 
                     b.Property<string>("TermsText")
-                        .HasMaxLength(8000)
-                        .HasColumnType("varchar(8000)");
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");

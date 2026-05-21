@@ -22,7 +22,7 @@ namespace Billing.Infrastructure.Data.Migrations
                     BillingProfileId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
                     Name = table.Column<string>(type: "varchar(200)", maxLength: 200, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    Description = table.Column<string>(type: "varchar(2000)", maxLength: 2000, nullable: true)
+                    Description = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     Status = table.Column<string>(type: "varchar(16)", maxLength: 16, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
@@ -31,15 +31,15 @@ namespace Billing.Infrastructure.Data.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     AccentColor = table.Column<string>(type: "varchar(7)", maxLength: 7, nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    HeaderText = table.Column<string>(type: "varchar(2000)", maxLength: 2000, nullable: true)
+                    HeaderText = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    FooterText = table.Column<string>(type: "varchar(4000)", maxLength: 4000, nullable: true)
+                    FooterText = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    PaymentInstructions = table.Column<string>(type: "varchar(4000)", maxLength: 4000, nullable: true)
+                    PaymentInstructions = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    TermsText = table.Column<string>(type: "varchar(8000)", maxLength: 8000, nullable: true)
+                    TermsText = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    MemoPlaceholder = table.Column<string>(type: "varchar(2000)", maxLength: 2000, nullable: true)
+                    MemoPlaceholder = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     DefaultDueDays = table.Column<int>(type: "int", nullable: true),
                     InvoiceNumberPrefix = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: true)
