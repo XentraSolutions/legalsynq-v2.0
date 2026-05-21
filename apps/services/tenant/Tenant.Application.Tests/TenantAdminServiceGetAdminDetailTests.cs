@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using BuildingBlocks.Commerce;
+using Contracts.Commerce;
 using Microsoft.Extensions.Logging.Abstractions;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
