@@ -73,9 +73,9 @@ public static class PublicNetworkEndpoints
                 });
 
             return Results.Ok(summaries);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
-        // ── GET /api/public/network/{id}/providers ──────────────────────────
+        // ── GET /api/public/network/{id}/providers ─────────────────────────
         group.MapGet("/{id:guid}/providers", async (
             Guid               id,
             HttpContext         http,
@@ -111,7 +111,7 @@ public static class PublicNetworkEndpoints
                 });
 
             return items == null ? Results.NotFound() : Results.Ok(items);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/network/{id}/providers/markers ──────────────────
         group.MapGet("/{id:guid}/providers/markers", async (
@@ -152,7 +152,7 @@ public static class PublicNetworkEndpoints
                 });
 
             return markers == null ? Results.NotFound() : Results.Ok(markers);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/network/{id}/detail ────────────────────────────
         group.MapGet("/{id:guid}/detail", async (
@@ -207,7 +207,7 @@ public static class PublicNetworkEndpoints
                 });
 
             return detail == null ? Results.NotFound() : Results.Ok(detail);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/treatment-types ────────────────────────────────
         // Returns the platform-wide treatment type lookup list.
@@ -256,7 +256,7 @@ public static class PublicNetworkEndpoints
                 log.LogError(ex, "Failed to query cc_TreatmentTypes.");
                 return Results.Problem("Unable to load treatment types.");
             }
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── POST /api/public/referrals ──────────────────────────────────────
         // CC2-INT-B08 — Public referral initiation.
@@ -385,7 +385,8 @@ public static class PublicNetworkEndpoints
             var hasAccess = await identityOrgs.CheckReferrerPortalAccessAsync(email.Trim(), ct);
             return Results.Ok(new { hasPortalAccess = hasAccess });
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("referrer-status-limit");
     }
 
     private static async Task<IResult> HandlePublicReferral(

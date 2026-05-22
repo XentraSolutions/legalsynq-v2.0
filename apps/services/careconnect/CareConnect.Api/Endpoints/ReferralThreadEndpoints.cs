@@ -90,7 +90,7 @@ public static class ReferralThreadEndpoints
                 comments,
                 attachments,
             });
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── POST /api/public/referrals/thread/comments?token=... ────────────
         // Adds a comment and emails the other party.
@@ -166,7 +166,7 @@ public static class ReferralThreadEndpoints
                 comment.Message,
                 comment.CreatedAt,
             });
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-referral-limit");
     }
 
     private sealed record PostCommentRequest(string SenderType, string SenderName, string Message);

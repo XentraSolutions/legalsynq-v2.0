@@ -1211,6 +1211,7 @@ function ReferralConfirmModal({
                         <a
                           href={`/enroll?${new URLSearchParams({
                             tenantId:            tenantId,
+                            isFirm:              'true',
                             ...(form.email       ? { email:   form.email }       : {}),
                             ...(form.firmName    ? { firm:    form.firmName }    : {}),
                             ...(form.phone       ? { phone:   form.phone }       : {}),
