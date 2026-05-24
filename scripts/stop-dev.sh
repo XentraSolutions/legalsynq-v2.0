@@ -39,6 +39,24 @@ for proj in "${DOTNET_PROJECTS[@]}"; do
   fi
 done
 
+# ── Monitoring retry wrapper ───────────────────────────────────────────────────
+# The monitoring service is started inside a bash retry subshell in run-dev.sh.
+# Killing the dotnet process alone is not enough — the bash wrapper catches the
+# exit (via || true), sleeps 15 s, and relaunches the service.
+# We kill the sed pipeline partner ([monitoring] prefix) and then walk up to its
+# bash parent (the retry subshell) and kill that too.
+_monitoring_sed_pids=$(pgrep -f '\[monitoring\]' 2>/dev/null || true)
+if [ -n "$_monitoring_sed_pids" ]; then
+  for _pid in $_monitoring_sed_pids; do
+    _ppid=$(ps -o ppid= -p "$_pid" 2>/dev/null | tr -d ' ' || true)
+    echo "[monitoring] Stopping retry wrapper (sed pid: $_pid, bash pid: ${_ppid:-?})"
+    kill "$_pid" 2>/dev/null || true
+    [ -n "$_ppid" ] && [ "$_ppid" -gt 1 ] && kill "$_ppid" 2>/dev/null || true
+  done
+else
+  echo "[monitoring] No retry wrapper found (already stopped or not started)"
+fi
+
 # ── Ports used by Node / proxy / artifacts ────────────────────────────────────
 NODE_PORTS=(3050 5000 5004 5020)
 
@@ -75,6 +93,14 @@ for proj in "${DOTNET_PROJECTS[@]}"; do
     echo "[dotnet] Force-killing $proj (pids: $pids)"
     kill -9 $pids 2>/dev/null || true
   fi
+done
+
+# Force-kill any surviving monitoring retry wrapper (sed + bash parent).
+_monitoring_sed_pids=$(pgrep -f '\[monitoring\]' 2>/dev/null || true)
+for _pid in $_monitoring_sed_pids; do
+  _ppid=$(ps -o ppid= -p "$_pid" 2>/dev/null | tr -d ' ' || true)
+  kill -9 "$_pid" 2>/dev/null || true
+  [ -n "$_ppid" ] && [ "$_ppid" -gt 1 ] && kill -9 "$_ppid" 2>/dev/null || true
 done
 
 for port in "${NODE_PORTS[@]}"; do
