@@ -35,13 +35,46 @@ public sealed class CaseService : ICaseService
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        var (items, totalCount) = await _caseRepo.SearchAsync(tenantId, search, status, page, pageSize, ct);
+        var (items, totalCount) = await _caseRepo.SearchAsync(tenantId, search, status, page, pageSize, null, null, ct);
 
         return new PaginatedResult<CaseResponse>
         {
             Items = items.Select(MapToResponse).ToList(),
             Page = page,
             PageSize = pageSize,
+            TotalCount = totalCount,
+        };
+    }
+
+    public async Task<PaginatedResult<CaseResponse>> SearchV3Async(
+        Guid tenantId,
+        string? keyword,
+        string? statusId,
+        int page,
+        int limit,
+        string? sortBy,
+        string? sortDirection,
+        CancellationToken ct = default)
+    {
+        if (page < 1) page = 1;
+        if (limit < 1) limit = 20;
+        if (limit > 100) limit = 100;
+
+        var (items, totalCount) = await _caseRepo.SearchAsync(
+            tenantId,
+            keyword,
+            statusId,
+            page,
+            limit,
+            sortBy,
+            sortDirection,
+            ct);
+
+        return new PaginatedResult<CaseResponse>
+        {
+            Items = items.Select(MapToResponse).ToList(),
+            Page = page,
+            PageSize = limit,
             TotalCount = totalCount,
         };
     }

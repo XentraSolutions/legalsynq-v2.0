@@ -8,6 +8,16 @@ public interface ICaseService
         Guid tenantId, string? search, string? status, int page, int pageSize,
         CancellationToken ct = default);
 
+    Task<PaginatedResult<CaseResponse>> SearchV3Async(
+        Guid tenantId,
+        string? keyword,
+        string? statusId,
+        int page,
+        int limit,
+        string? sortBy,
+        string? sortDirection,
+        CancellationToken ct = default);
+
     Task<CaseResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     Task<CaseResponse?> GetByCaseNumberAsync(Guid tenantId, string caseNumber, CancellationToken ct = default);
