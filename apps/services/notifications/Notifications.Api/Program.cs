@@ -23,13 +23,55 @@ var signingKey = jwtSection["SigningKey"]
 
 // LS-NOTIF-CORE-021: service token signing key (shared platform secret).
 // Preferred from FLOW_SERVICE_TOKEN_SECRET env var, then ServiceTokens:SigningKey config.
+// Fails fast at startup if neither is set — avoids silently disabling signature validation.
 var serviceTokenKey =
     Environment.GetEnvironmentVariable(ServiceTokenAuthenticationDefaults.SecretEnvVar)
     ?? builder.Configuration[$"{ServiceTokenOptions.SectionName}:SigningKey"]
-    ?? string.Empty;
+    ?? throw new InvalidOperationException(
+        $"Service token signing key is not configured. "
+        + $"Set env var '{ServiceTokenAuthenticationDefaults.SecretEnvVar}' "
+        + $"or config key '{ServiceTokenOptions.SectionName}:SigningKey'.");
+
+// LS-NOTIF-CORE-021 — two JwtBearer schemes coexist (same pattern as Flow.Api):
+//   - "Bearer"       (default): user tokens issued by Identity (iss=legalsynq-identity).
+//   - "ServiceToken"           : HS256 M2M tokens minted by ServiceTokenIssuer (iss=legalsynq-service-tokens).
+// A policy scheme ("MultiAuth") peeks at the inbound token's `iss` claim and
+// forwards to whichever bearer is appropriate, so service tokens are never
+// mistakenly validated against the user-token scheme (and vice-versa).
+const string MultiScheme = "MultiAuth";
+
+// Single source of truth for service-token accepted audiences.
+// Used by both the routing selector and the ServiceToken scheme's ValidAudiences.
+string[] serviceTokenAudiences = ["notifications-service", "flow-service", "legalsynq-services"];
+
+// Reused across requests — avoids per-request allocations inside ForwardDefaultSelector.
+var tokenReader = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
 
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(MultiScheme)
+    .AddPolicyScheme(MultiScheme, MultiScheme, options =>
+    {
+        options.ForwardDefaultSelector = ctx =>
+        {
+            var auth = ctx.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrWhiteSpace(auth) &&
+                auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var raw = auth["Bearer ".Length..].Trim();
+                try
+                {
+                    var parsed = tokenReader.ReadJwtToken(raw);
+                    if (parsed.Issuer == ServiceTokenAuthenticationDefaults.DefaultIssuer)
+                        return ServiceTokenAuthenticationDefaults.Scheme;
+                }
+                catch
+                {
+                    // Not a parseable JWT — fall through to user scheme.
+                }
+            }
+            return JwtBearerDefaults.AuthenticationScheme;
+        };
+    })
     // ── Scheme 1: user JWTs from Identity ────────────────────────────────
     .AddJwtBearer(options =>
     {
@@ -60,16 +102,14 @@ builder.Services
             ValidateIssuer           = true,
             ValidateAudience         = true,
             ValidateLifetime         = true,
-            ValidateIssuerSigningKey = !string.IsNullOrWhiteSpace(serviceTokenKey),
+            ValidateIssuerSigningKey = true,
             RequireSignedTokens      = true,
             RequireExpirationTime    = true,
             ValidIssuer              = ServiceTokenAuthenticationDefaults.DefaultIssuer,
             // Accept notifications-service (new preferred) + flow-service
             // (Flow's existing issuer defaults) + legalsynq-services (future).
-            ValidAudiences           = ["notifications-service", "flow-service", "legalsynq-services"],
-            IssuerSigningKey         = string.IsNullOrWhiteSpace(serviceTokenKey)
-                ? null
-                : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(serviceTokenKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },
+            ValidAudiences           = serviceTokenAudiences,
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(serviceTokenKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },
             NameClaimType            = "sub",
             RoleClaimType            = "role",
             ClockSkew                = TimeSpan.FromSeconds(30),
