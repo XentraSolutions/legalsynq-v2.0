@@ -1,5 +1,6 @@
-import { redirect } from 'next/navigation';
-import { FirmStatusClient } from './firm-status-client';
+import { redirect }               from 'next/navigation';
+import { FirmStatusClient }       from './firm-status-client';
+import { createEnrollmentToken }  from '@/app/enroll/actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,5 +71,18 @@ export default async function FirmStatusPage({ searchParams }: Props) {
     }
   }
 
-  return <FirmStatusClient token={token} data={threadData} hasPortalAccess={hasPortalAccess} />;
+  // Extract "Firm phone: xxx" embedded by public-network-view in the referral notes.
+  const notes = threadData.notes as string | null;
+  const referrerPhone = notes?.split('\n')
+    .find(l => l.trim().toLowerCase().startsWith('firm phone:'))
+    ?.slice('firm phone:'.length).trim() ?? null;
+
+  const enrollToken = await createEnrollmentToken({
+    tenantId: threadData.tenantId as string,
+    ...(threadData.referrerEmail ? { email:   threadData.referrerEmail as string } : {}),
+    ...(threadData.referrerName  ? { contact: threadData.referrerName  as string } : {}),
+    ...(referrerPhone            ? { phone:   referrerPhone                      } : {}),
+  }).catch((err) => { console.error('[firm-status] createEnrollmentToken failed:', err); return null; });
+
+  return <FirmStatusClient token={token} data={threadData} hasPortalAccess={hasPortalAccess} loginUrl={`${process.env.CC_COMMON_PORTAL_HOSTNAME}/login`} enrollToken={enrollToken} />;
 }

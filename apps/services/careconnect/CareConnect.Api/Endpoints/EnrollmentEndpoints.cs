@@ -43,7 +43,9 @@ public static class EnrollmentEndpoints
             if (tenantId is null)
                 return Results.StatusCode(403);
 
-            var provider = await providers.GetByIdCrossAsync(providerId, ct);
+            // Use tenant-scoped lookup to prevent cross-tenant PII enumeration.
+            // A caller supplying a providerId from a different tenant will receive 404.
+            var provider = await providers.GetByIdAsync(tenantId.Value, providerId, ct);
             if (provider is null)
                 return Results.NotFound(new { message = "Provider not found." });
 
@@ -305,9 +307,11 @@ public static class EnrollmentEndpoints
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
 
-            // Use the tenantId supplied in the payload (the CareConnect tenant that owns the referral)
-            // rather than the trust-boundary resolved one which may differ.
-            var firmTenantId = body.TenantId != Guid.Empty ? body.TenantId : tenantId.Value;
+            // Always use the HMAC-validated tenantId from the trust boundary — never the body value.
+            // The body.TenantId was previously preferred here but is user-supplied and bypasses
+            // the HMAC guarantee. Both values originate from the same URL param so they are
+            // identical in legitimate flows; using the validated header value is strictly safer.
+            var firmTenantId = tenantId.Value;
 
             // Step 1: Create / resolve the LAW_FIRM org
             var orgId = await identityOrgs.EnsureLawFirmOrganizationAsync(

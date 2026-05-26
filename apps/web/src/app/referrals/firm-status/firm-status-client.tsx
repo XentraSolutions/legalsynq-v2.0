@@ -20,6 +20,7 @@ interface ThreadData {
   providerName:  string;
   referrerName:  string | null;
   referrerEmail: string | null;
+  notes:         string | null;
   createdAt:     string;
   comments:      Comment[];
 }
@@ -28,6 +29,8 @@ interface Props {
   token:           string;
   data:            ThreadData;
   hasPortalAccess: boolean;
+  loginUrl:        string;
+  enrollToken:     string | null;
 }
 
 type StatusKey = 'New' | 'NewOpened' | 'Accepted' | 'Rejected' | 'Cancelled' | 'InProgress';
@@ -147,7 +150,7 @@ function StatusTracker({ status }: { status: string }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function FirmStatusClient({ token, data, hasPortalAccess }: Props) {
+export function FirmStatusClient({ token, data, hasPortalAccess, loginUrl, enrollToken }: Props) {
   const [comments,  setComments]  = useState<Comment[]>(data.comments);
   const [senderName, setSenderName] = useState(data.referrerName ?? '');
   const [message,   setMessage]   = useState('');
@@ -156,13 +159,7 @@ export function FirmStatusClient({ token, data, hasPortalAccess }: Props) {
   const [isPending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const loginUrl = 'https://careconnect-demo.legalsynq.com/login';
-  const enrollParams = new URLSearchParams({
-    tenantId: data.tenantId,
-    ...(data.referrerEmail ? { email:   data.referrerEmail } : {}),
-    ...(data.referrerName  ? { contact: data.referrerName  } : {}),
-  });
-  const enrollUrl = `/enroll?${enrollParams.toString()}`;
+  const enrollUrl = enrollToken ? `/enroll?token=${enrollToken}` : '/enroll';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

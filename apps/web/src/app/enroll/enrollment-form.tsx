@@ -52,9 +52,13 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
   const [confirmPwd,   setConfirmPwd]   = useState('');
   const [agreeTerms,   setAgreeTerms]   = useState(false);
 
+  // Fields locked when pre-filled from a signed referral token — should not be edited.
+  const companyNameLocked = !!referralPrefill?.companyName && !prefill;
+  const emailLocked       = !!referralPrefill?.email       && !prefill;
+
   // OTP state — firm enrollments skip OTP (new account, no existing email on record)
   const originalEmail = prefill?.email ?? referralPrefill?.email ?? '';
-  const emailChanged  = !isFirmEnrollment && email.trim().toLowerCase() !== originalEmail.trim().toLowerCase();
+  const emailChanged  = !isFirmEnrollment && !emailLocked && email.trim().toLowerCase() !== originalEmail.trim().toLowerCase();
   const [otpSent,      setOtpSent]      = useState(false);
   const [otpCode,      setOtpCode]      = useState('');
   const [otpVerified,  setOtpVerified]  = useState(false);
@@ -226,10 +230,15 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
             <input
               type="text"
               value={companyName}
-              onChange={e => setCompanyName(e.target.value)}
+              onChange={e => !companyNameLocked && setCompanyName(e.target.value)}
               placeholder="Your organization name"
               required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={companyNameLocked}
+              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                companyNameLocked
+                  ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                  : 'border-gray-300'
+              }`}
             />
           </div>
 
@@ -258,10 +267,15 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
               <input
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={e => !emailLocked && setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={emailLocked}
+                className={`flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  emailLocked
+                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                    : 'border-gray-300'
+                }`}
               />
               {emailChanged && (
                 <button

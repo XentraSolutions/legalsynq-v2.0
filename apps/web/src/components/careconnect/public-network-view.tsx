@@ -12,6 +12,7 @@
 import { useState, useMemo, useCallback, useRef, forwardRef, useEffect, type FormEvent, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
+import { createEnrollmentToken } from '@/app/enroll/actions';
 import type {
   PublicNetworkDetail,
   PublicProviderItem,
@@ -531,6 +532,21 @@ function ReferralPanel({
   const [providerFiles,  setProviderFiles] = useState<Record<string, File | null>>({});
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
   const [hasPortalAccess, setHasPortalAccess] = useState(false);
+  const [enrollToken,    setEnrollToken]   = useState<string | null>(null);
+
+  // Pre-generate a signed enrollment token when the referral succeeds so the
+  // "Activate your free account" CTA never carries raw PII in the URL.
+  useEffect(() => {
+    if (state !== 'success') return;
+    createEnrollmentToken({
+      tenantId,
+      ...(form.email       ? { email:   form.email }       : {}),
+      ...(form.firmName    ? { firm:    form.firmName }    : {}),
+      ...(form.phone       ? { phone:   form.phone }       : {}),
+      ...(form.contactName ? { contact: form.contactName } : {}),
+    }).then(t => setEnrollToken(t)).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]); // form values are stable once state === 'success'
 
   // ── Address autocomplete ─────────────────────────────────────────────────
   const [addrSuggestions, setAddrSuggestions] = useState<Array<{ displayName: string; addressLine1: string; city: string; state: string; postalCode: string }>>([]);
@@ -1074,6 +1090,7 @@ function ReferralPanel({
           tenantId={tenantId}
           hasPortalAccess={hasPortalAccess}
           prefillLawFirm={prefillLawFirm}
+          enrollToken={enrollToken}
           onConfirm={confirmAndSend}
           onBack={() => setState('form')}
           onClose={() => window.location.reload()}
@@ -1102,7 +1119,7 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ReferralConfirmModal({
-  form, providers, treatmentTypes, providerFiles, state, tenantId, hasPortalAccess, prefillLawFirm, onConfirm, onBack, onClose,
+  form, providers, treatmentTypes, providerFiles, state, tenantId, hasPortalAccess, prefillLawFirm, enrollToken, onConfirm, onBack, onClose,
 }: {
   form:             ReferralForm;
   providers:        PublicProviderItem[];
@@ -1112,6 +1129,7 @@ function ReferralConfirmModal({
   tenantId:         string;
   hasPortalAccess:  boolean;
   prefillLawFirm?:  PrefillLawFirm;
+  enrollToken:      string | null;
   onConfirm:        () => void;
   onBack:           () => void;
   onClose:          () => void;
@@ -1209,14 +1227,8 @@ function ReferralConfirmModal({
                           your cases in one place — completely free.
                         </p>
                         <a
-                          href={`/enroll?${new URLSearchParams({
-                            tenantId:            tenantId,
-                            isFirm:              'true',
-                            ...(form.email       ? { email:   form.email }       : {}),
-                            ...(form.firmName    ? { firm:    form.firmName }    : {}),
-                            ...(form.phone       ? { phone:   form.phone }       : {}),
-                            ...(form.contactName ? { contact: form.contactName } : {}),
-                          }).toString()}`}
+                          href={enrollToken ? `/enroll?token=${enrollToken}` : '#'}
+                          onClick={!enrollToken ? (e: React.MouseEvent) => e.preventDefault() : undefined}
                           className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
                         >
                           <i className="ri-user-add-line" />
