@@ -606,9 +606,18 @@ function ReferralPanel({
       if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
       if (!form.email.trim()) errs['email'] = 'Email is required.';
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs['email'] = 'Enter a valid email address.';
+    } else {
+      // prefillLawFirm is active — firmName is server-supplied and not editable.
+      // Guard against an empty firmName arriving from the backend (e.g. stale session
+      // before the identity service populates org_name), which would produce
+      // senderName:"" and a server-side validation failure. Use a form-level error
+      // key (_form) so the message surfaces as a banner — there is no contactName
+      // input rendered in prefill mode for the user to correct.
+      const senderName = form.contactName.trim() || form.firmName.trim();
+      if (!senderName) errs['_form'] = 'Unable to submit: your firm name could not be loaded. Please refresh the page or sign out and sign back in.';
     }
     return errs;
-  }, [form]);
+  }, [form, prefillLawFirm]);
 
   // Validate then show confirmation modal
   const handleSubmit = useCallback((e: FormEvent) => {
@@ -824,6 +833,7 @@ function ReferralPanel({
 
             {/* Law firm section — hidden when the user is a known authenticated referrer */}
             {prefillLawFirm ? (
+              <>
               <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 bg-indigo-50/60">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500">
                   <i className="ri-briefcase-line text-white text-sm" />
@@ -833,6 +843,12 @@ function ReferralPanel({
                   <p className="text-[11px] text-indigo-500 truncate">{prefillLawFirm.email}</p>
                 </div>
               </div>
+              {fieldErrors['_form'] && (
+                <div className="mx-5 mt-2 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-xs text-red-700">
+                  {fieldErrors['_form']}
+                </div>
+              )}
+              </>
             ) : (
               <SectionRow
                 icon="ri-briefcase-line" avatarBg="bg-indigo-500"

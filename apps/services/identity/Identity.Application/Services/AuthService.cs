@@ -375,6 +375,10 @@ public class AuthService : IAuthService
         var tenantCode = principal.FindFirstValue("tenant_code") ?? string.Empty;
         var orgId      = principal.FindFirstValue("org_id");
         var orgType    = principal.FindFirstValue("org_type");
+        // org_name is baked into the JWT at login time from Organization.DisplayName.
+        // A rename after login won't be reflected until the user re-authenticates.
+        // This is intentional: org_name is display-only and not used for authorization.
+        var orgName    = principal.FindFirstValue("org_name");
 
         var productRoles = principal.FindAll("product_roles")
             .Select(c => c.Value)
@@ -480,7 +484,7 @@ public class AuthService : IAuthService
             TenantCode:             tenantCode,
             OrgId:                  orgId,
             OrgType:                orgType,
-            OrgName:                null,  // Phase 2: DB lookup by orgId for DisplayName ?? Name
+            OrgName:                orgName,
             ProductRoles:           productRoles,
             SystemRoles:            systemRoles,
             ExpiresAtUtc:           expiresAtUtc,
