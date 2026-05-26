@@ -12,6 +12,7 @@ public interface ICaseRepository
         string? status,
         int page,
         int pageSize,
+        Guid? orgId = null,
         string? sortBy = null,
         string? sortDirection = null,
         CancellationToken ct = default);

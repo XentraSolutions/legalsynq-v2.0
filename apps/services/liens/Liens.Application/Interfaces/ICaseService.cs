@@ -6,6 +6,7 @@ public interface ICaseService
 {
     Task<PaginatedResult<CaseResponse>> SearchAsync(
         Guid tenantId, string? search, string? status, int page, int pageSize,
+        Guid? orgId = null,
         CancellationToken ct = default);
 
     Task<PaginatedResult<CaseResponse>> SearchV3Async(
@@ -29,4 +30,18 @@ public interface ICaseService
     Task<CaseResponse> UpdateAsync(
         Guid tenantId, Guid id, Guid actingUserId,
         UpdateCaseRequest request, CancellationToken ct = default);
+
+    Task<bool> ReassignLawFirmAsync(
+        Guid tenantId,
+        Guid caseId,
+        Guid lawFirmOrgId,
+        Guid actingUserId,
+        CancellationToken ct = default);
+
+    Task<bool> ReassignCaseManagerAsync(
+        Guid tenantId,
+        Guid caseId,
+        Guid caseManagerId,
+        Guid actingUserId,
+        CancellationToken ct = default);
 }

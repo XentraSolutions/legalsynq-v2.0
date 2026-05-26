@@ -164,4 +164,56 @@ public class Case : AuditableEntity
         UpdatedByUserId  = updatedByUserId;
         UpdatedAtUtc     = DateTime.UtcNow;
     }
+
+    public void ReassignLawFirm(Guid lawFirmOrgId, Guid updatedByUserId)
+    {
+        if (lawFirmOrgId == Guid.Empty)
+            throw new ArgumentException("Law firm organization id is required.", nameof(lawFirmOrgId));
+
+        OrgId          = lawFirmOrgId;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
+    public void ReassignCaseManager(Guid caseManagerId, Guid updatedByUserId)
+    {
+        if (caseManagerId == Guid.Empty)
+            throw new ArgumentException("Case manager id is required.", nameof(caseManagerId));
+
+        var metadata = ParseMetadata(Notes);
+        metadata["caseManagerId"] = caseManagerId.ToString();
+        Notes = SerializeMetadata(metadata);
+
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    private static Dictionary<string, string> ParseMetadata(string? value)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(value))
+            return result;
+
+        foreach (var segment in value.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            var idx = segment.IndexOf('=');
+            if (idx <= 0)
+                continue;
+
+            var key = segment[..idx].Trim();
+            var itemValue = segment[(idx + 1)..].Trim();
+            if (key.Length > 0)
+                result[key] = itemValue;
+        }
+
+        return result;
+    }
+
+    private static string? SerializeMetadata(Dictionary<string, string> metadata)
+    {
+        if (metadata.Count == 0)
+            return null;
+
+        return string.Join("; ", metadata.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+    }
 }
