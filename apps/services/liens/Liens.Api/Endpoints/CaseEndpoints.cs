@@ -90,12 +90,57 @@ public static class CaseEndpoints
         public string? outboundCheckNumber { get; init; }
     }
 
+    private sealed class LegacyLiensMedicalCodeResponse
+    {
+        public string id { get; init; } = string.Empty;
+        public string liensId { get; init; } = string.Empty;
+        public string code { get; init; } = string.Empty;
+        public string medicareCost { get; init; } = string.Empty;
+        public string billingAmount { get; init; } = string.Empty;
+        public string purchaseAmount { get; init; } = string.Empty;
+        public string payee { get; init; } = string.Empty;
+        public string outboundCheckNumber { get; init; } = string.Empty;
+        public string created { get; init; } = string.Empty;
+        public string createdBy { get; init; } = string.Empty;
+        public string updated { get; init; } = string.Empty;
+        public string updatedBy { get; init; } = string.Empty;
+    }
+
     private sealed class LegacyPayeeOutboundRequest
     {
         public string? id { get; init; }
         public string? liensId { get; init; }
         public string? payee { get; init; }
         public string? outboundCheckNumber { get; init; }
+    }
+
+    private sealed class LegacyCaseManagerRequest
+    {
+        public string? firstname { get; init; }
+        public string? lastname { get; init; }
+        public string? email { get; init; }
+        public string? phone { get; init; }
+        public string? lawfirmId { get; init; }
+        public string? roleId { get; init; }
+    }
+
+    private sealed class LegacyCaseManagerUpdateRequest
+    {
+        public string? id { get; init; }
+        public string? firstname { get; init; }
+        public string? lastname { get; init; }
+        public string? email { get; init; }
+        public string? phone { get; init; }
+        public string? lawfirmId { get; init; }
+        public string? roleId { get; init; }
+    }
+
+    private sealed class LegacyPayeeOutboundResponse
+    {
+        public string id { get; init; } = string.Empty;
+        public string liensId { get; init; } = string.Empty;
+        public string payee { get; init; } = string.Empty;
+        public string outboundCheckNumber { get; init; } = string.Empty;
     }
 
     private sealed class LegacyLiensMedicalInformationFacilityResponse
@@ -271,10 +316,40 @@ public static class CaseEndpoints
         group.MapPost("/liens/update-medicalcode", LiensUpdateMedica1lCodeLegacy)
             .RequirePermission(LiensPermissions.LienUpdate);
 
+        // Legacy compatibility route from previous service: GET /case/liens/get-medicalcode/{caseId}
+        // under the new base path becomes GET /api/liens/cases/liens/get-medicalcode/{caseId}.
+        group.MapGet("/liens/get-medicalcode/{caseId}", GetMedicalCodeByCaseIdLegacy)
+            .RequirePermission(LiensPermissions.LienRead);
+
+        // Legacy compatibility route from previous service: DELETE /case/liens/delete-medicalcode/{lienId}
+        // under the new base path becomes DELETE /api/liens/cases/liens/delete-medicalcode/{lienId}.
+        group.MapDelete("/liens/delete-medicalcode/{lienId}", DeleteMedicalCodeByLienIdLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
         // Legacy compatibility route from previous service: POST /case/liens/payment
         // under the new base path becomes POST /api/liens/cases/liens/payment.
         group.MapPost("/liens/payment", UpdateMedicalPayeeOutboundLegacy)
             .RequirePermission(LiensPermissions.LienUpdate);
+
+        // Legacy compatibility route from previous service: GET /case/liens/get-payee-outbound/{liensId}
+        // under the new base path becomes GET /api/liens/cases/liens/get-payee-outbound/{liensId}.
+        group.MapGet("/liens/get-payee-outbound/{liensId}", GetPayeeOutboundLegacy)
+            .RequirePermission(LiensPermissions.LienRead);
+
+        // Legacy compatibility route from previous service: POST /case/casemanager
+        // under the new base path becomes POST /api/liens/cases/casemanager.
+        group.MapPost("/casemanager", CreateCaseManagerLegacy)
+            .RequirePermission(LiensPermissions.CaseCreate);
+
+        // Legacy compatibility route from previous service: POST /case/update-casemanager
+        // under the new base path becomes POST /api/liens/cases/update-casemanager.
+        group.MapPost("/update-casemanager", UpdateCaseManagerLegacy)
+            .RequirePermission(LiensPermissions.CaseUpdate);
+
+        // Legacy compatibility route from previous service: DELETE /case/delete-casemanager/{id}
+        // under the new base path becomes DELETE /api/liens/cases/delete-casemanager/{id}.
+        group.MapDelete("/delete-casemanager/{id}", DeleteCaseManagerLegacy)
+            .RequirePermission(LiensPermissions.CaseUpdate);
     }
 
     private static async Task<IResult> LiensMedicalInformationLegacy(
@@ -833,6 +908,150 @@ public static class CaseEndpoints
         }
     }
 
+    private static async Task<IResult> GetMedicalCodeByCaseIdLegacy(
+        string caseId,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        if (!Guid.TryParse(caseId, out var parsedCaseId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "No records found.",
+            });
+        }
+
+        var results = await servicingItemService.SearchAsync(
+            tenantId,
+            search: "LegacyMedicalCode",
+            status: null,
+            priority: null,
+            assignedTo: null,
+            caseId: parsedCaseId,
+            lienId: null,
+            page: 1,
+            pageSize: 500,
+            ct);
+
+        var data = results.Items
+            .Where(i => string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
+            .Select(i =>
+            {
+                var fields = ParseLegacyNoteFields(i.Notes);
+                return new LegacyLiensMedicalCodeResponse
+                {
+                    id = i.Id.ToString(),
+                    liensId = i.LienId?.ToString() ?? string.Empty,
+                    code = fields.GetValueOrDefault("code", string.Empty),
+                    medicareCost = fields.GetValueOrDefault("medicareCost", string.Empty),
+                    billingAmount = fields.GetValueOrDefault("billingAmount", string.Empty),
+                    purchaseAmount = fields.GetValueOrDefault("purchaseAmount", string.Empty),
+                    payee = fields.GetValueOrDefault("payee", string.Empty),
+                    outboundCheckNumber = fields.GetValueOrDefault("outboundCheckNumber", string.Empty),
+                    created = FormatLegacyTimestamp(i.CreatedAtUtc),
+                    createdBy = string.Empty,
+                    updated = FormatLegacyTimestamp(i.UpdatedAtUtc),
+                    updatedBy = string.Empty,
+                };
+            })
+            .ToList();
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Successfully retrieved medical code records.",
+            data,
+        });
+    }
+
+    private static async Task<IResult> DeleteMedicalCodeByLienIdLegacy(
+        string lienId,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(lienId, out var parsedLienId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "No records found.",
+            });
+        }
+
+        var results = await servicingItemService.SearchAsync(
+            tenantId,
+            search: "LegacyMedicalCode",
+            status: null,
+            priority: null,
+            assignedTo: null,
+            caseId: null,
+            lienId: parsedLienId,
+            page: 1,
+            pageSize: 500,
+            ct);
+
+        var targets = results.Items
+            .Where(i => string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "No records found.",
+            });
+        }
+
+        try
+        {
+            foreach (var item in targets)
+                await servicingItemService.DeleteAsync(tenantId, item.Id, userId, ct);
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully deleted medical code record(s).",
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = ex.Message,
+            });
+        }
+    }
+
+    private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(notes))
+            return result;
+
+        foreach (var segment in notes.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = segment.IndexOf('=');
+            if (eq > 0)
+            {
+                var key = segment[..eq].Trim();
+                var value = segment[(eq + 1)..].Trim();
+                result[key] = value;
+            }
+        }
+
+        return result;
+    }
+
     private static async Task<IResult> UpdateMedicalPayeeOutboundLegacy(
         LegacyPayeeOutboundRequest request,
         ILienService lienService,
@@ -926,6 +1145,230 @@ public static class CaseEndpoints
             {
                 isSuccess = true,
                 message = "Successfully updated payee and outbound check number.",
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = ex.Message,
+            });
+        }
+    }
+
+    private static async Task<IResult> GetPayeeOutboundLegacy(
+        string liensId,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        if (!Guid.TryParse(liensId, out var lienId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: Unable to retrieve Payee and Outbound Check Number.",
+            });
+        }
+
+        var results = await servicingItemService.SearchAsync(
+            tenantId,
+            search: "LegacyMedicalPayment",
+            status: null,
+            priority: null,
+            assignedTo: null,
+            caseId: null,
+            lienId: lienId,
+            page: 1,
+            pageSize: 100,
+            ct);
+
+        var item = results.Items.FirstOrDefault(i =>
+            string.Equals(i.TaskType, "LegacyMedicalPayment", StringComparison.Ordinal) &&
+            i.LienId == lienId);
+
+        if (item is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: Unable to retrieve Payee and Outbound Check Number.",
+            });
+        }
+
+        var fields = ParseLegacyNoteFields(item.Notes);
+        var data = new LegacyPayeeOutboundResponse
+        {
+            id = item.Id.ToString(),
+            liensId = item.LienId?.ToString() ?? string.Empty,
+            payee = fields.GetValueOrDefault("payee", string.Empty),
+            outboundCheckNumber = fields.GetValueOrDefault("outboundCheckNumber", string.Empty),
+        };
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Successfully retrieved Payee and Outbound Check Number.",
+            data,
+        });
+    }
+
+    private static async Task<IResult> CreateCaseManagerLegacy(
+        LegacyCaseManagerRequest request,
+        IContactService contactService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var orgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+
+        var isLawyer = string.Equals(request.roleId, "7", StringComparison.Ordinal);
+
+        var mapped = new CreateContactRequest
+        {
+            ContactType = ContactType.CaseManager,
+            FirstName = request.firstname ?? string.Empty,
+            LastName = request.lastname ?? string.Empty,
+            Email = request.email,
+            Phone = request.phone,
+            Organization = request.lawfirmId,
+            Notes = string.IsNullOrWhiteSpace(request.roleId)
+                ? null
+                : $"roleId={request.roleId}",
+        };
+
+        try
+        {
+            var created = await contactService.CreateAsync(tenantId, orgId, userId, mapped, ct);
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = isLawyer
+                    ? "Successfully created Lawyer."
+                    : "Successfully created Case Manager.",
+                data = created.Id.ToString(),
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = ex.Message,
+            });
+        }
+    }
+
+    private static async Task<IResult> UpdateCaseManagerLegacy(
+        LegacyCaseManagerUpdateRequest request,
+        IContactService contactService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.id, out var contactId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: Updating Case Manager.",
+            });
+        }
+
+        var existing = await contactService.GetByIdAsync(tenantId, contactId, ct);
+        if (existing is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: Updating Case Manager.",
+            });
+        }
+
+        var isLawyer = string.Equals(request.roleId, "7", StringComparison.Ordinal);
+
+        var mapped = new UpdateContactRequest
+        {
+            ContactType = ContactType.CaseManager,
+            FirstName = request.firstname ?? existing.FirstName,
+            LastName = request.lastname ?? existing.LastName,
+            Email = request.email ?? existing.Email,
+            Phone = request.phone ?? existing.Phone,
+            Organization = request.lawfirmId ?? existing.Organization,
+            Title = existing.Title,
+            Fax = existing.Fax,
+            Website = existing.Website,
+            AddressLine1 = existing.AddressLine1,
+            City = existing.City,
+            State = existing.State,
+            PostalCode = existing.PostalCode,
+            Notes = string.IsNullOrWhiteSpace(request.roleId)
+                ? existing.Notes
+                : $"roleId={request.roleId}",
+        };
+
+        try
+        {
+            await contactService.UpdateAsync(tenantId, contactId, userId, mapped, ct);
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = isLawyer
+                    ? "Successfully updated Lawyer."
+                    : "Successfully updated Case Manager.",
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = ex.Message,
+            });
+        }
+    }
+
+    private static async Task<IResult> DeleteCaseManagerLegacy(
+        string id,
+        IContactService contactService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(id, out var contactId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: Delete Case Manager.",
+            });
+        }
+
+        var existing = await contactService.GetByIdAsync(tenantId, contactId, ct);
+        if (existing is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: Delete Case Manager.",
+            });
+        }
+
+        try
+        {
+            await contactService.DeactivateAsync(tenantId, contactId, userId, ct);
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully Delete Case Manager.",
             });
         }
         catch (Exception ex)

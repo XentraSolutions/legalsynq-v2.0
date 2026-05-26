@@ -11,4 +11,5 @@ public interface IServicingItemRepository
         Guid? caseId, Guid? lienId, int page, int pageSize, CancellationToken ct = default);
     Task AddAsync(ServicingItem entity, CancellationToken ct = default);
     Task UpdateAsync(ServicingItem entity, CancellationToken ct = default);
+    Task DeleteAsync(ServicingItem entity, CancellationToken ct = default);
 }

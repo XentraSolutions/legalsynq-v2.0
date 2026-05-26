@@ -202,6 +202,26 @@ public sealed class ServicingItemService : IServicingItemService
         return MapToResponse(entity);
     }
 
+    public async Task DeleteAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default)
+    {
+        var entity = await _repo.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Servicing item '{id}' not found for tenant '{tenantId}'.");
+
+        await _repo.DeleteAsync(entity, ct);
+
+        _logger.LogInformation(
+            "ServicingItem deleted: {TaskId} Tenant={TenantId}", entity.Id, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.servicing.deleted",
+            action: "delete",
+            description: $"Servicing task '{entity.TaskNumber}' deleted",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "ServicingItem",
+            entityId: entity.Id.ToString());
+    }
+
     private static ServicingItemResponse MapToResponse(ServicingItem entity)
     {
         return new ServicingItemResponse
