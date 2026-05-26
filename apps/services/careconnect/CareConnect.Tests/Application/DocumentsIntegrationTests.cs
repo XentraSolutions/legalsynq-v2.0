@@ -75,6 +75,7 @@ public class DocumentsIntegrationTests
         Assert.Throws<InvalidOperationException>(() =>
             new ReferralEmailService(notifications.Object, producer.Object, config,
                 new Mock<ITenantServiceClient>().Object,
+                new Mock<ITenantSubdomainCache>().Object,
                 NullLogger<ReferralEmailService>.Instance));
     }
 
@@ -94,6 +95,7 @@ public class DocumentsIntegrationTests
 
         var svc = new ReferralEmailService(notifications.Object, producer.Object, config,
             new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
             NullLogger<ReferralEmailService>.Instance);
 
         var id    = Guid.CreateVersion7();
@@ -121,6 +123,7 @@ public class DocumentsIntegrationTests
 
         var svc   = new ReferralEmailService(notifications.Object, producer.Object, config,
             new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
             NullLogger<ReferralEmailService>.Instance);
         var id    = Guid.CreateVersion7();
         var token = svc.GenerateViewToken(id, 1);
@@ -505,6 +508,7 @@ public class DocumentsIntegrationTests
 
         return new ReferralEmailService(notifRepo, producer, config,
             new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
             NullLogger<ReferralEmailService>.Instance);
     }
 

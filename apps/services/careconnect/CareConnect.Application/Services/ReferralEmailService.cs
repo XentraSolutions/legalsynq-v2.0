@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using BuildingBlocks.DataGovernance;
@@ -39,26 +38,24 @@ public class ReferralEmailService : IReferralEmailService
     private readonly INotificationsProducer        _producer;
     private readonly ILogger<ReferralEmailService> _logger;
     private readonly ITenantServiceClient          _tenantClient;
+    private readonly ITenantSubdomainCache         _subdomainCache;
     private readonly string _tokenSecret;
     private readonly string _appBaseUrl;
     private readonly string _appBaseDomain;
-
-    // Short-lived in-process cache: avoids one HTTP call per email for the same tenant.
-    // Keyed by TenantId → subdomain slug. Never evicted (process lifetime cache is fine
-    // for a slug that never changes after provisioning).
-    private readonly ConcurrentDictionary<Guid, string> _subdomainCache = new();
 
     public ReferralEmailService(
         INotificationRepository       notifications,
         INotificationsProducer        producer,
         IConfiguration                configuration,
         ITenantServiceClient          tenantClient,
+        ITenantSubdomainCache         subdomainCache,
         ILogger<ReferralEmailService> logger)
     {
-        _notifications = notifications;
-        _producer      = producer;
-        _logger        = logger;
-        _tenantClient  = tenantClient;
+        _notifications  = notifications;
+        _producer       = producer;
+        _logger         = logger;
+        _tenantClient   = tenantClient;
+        _subdomainCache = subdomainCache;
         _appBaseUrl    = (configuration["AppBaseUrl"]    ?? "http://localhost:3000").TrimEnd('/');
         _appBaseDomain = (configuration["AppBaseDomain"] ?? string.Empty).Trim().TrimStart('.');
 
@@ -92,7 +89,8 @@ public class ReferralEmailService : IReferralEmailService
     //   AppBaseDomain configured → https://{subdomain}.{AppBaseDomain}{path}
     //   AppBaseDomain empty / subdomain unavailable → {AppBaseUrl}{path}
     //
-    // Subdomain is cached in-process for the lifetime of the service instance.
+    // Subdomain is sourced from ITenantSubdomainCache (Singleton), so the result
+    // survives across DI scopes and request lifetimes.
 
     private async Task<string> BuildTenantUrlAsync(
         Guid tenantId, string path, CancellationToken ct)
@@ -104,7 +102,7 @@ public class ReferralEmailService : IReferralEmailService
         {
             subdomain = await _tenantClient.GetSubdomainAsync(tenantId, ct);
             if (!string.IsNullOrWhiteSpace(subdomain))
-                _subdomainCache.TryAdd(tenantId, subdomain);
+                _subdomainCache.TryAdd(tenantId, subdomain!);
         }
 
         if (string.IsNullOrWhiteSpace(subdomain))
@@ -335,11 +333,11 @@ public class ReferralEmailService : IReferralEmailService
             return;
         }
 
-        var dedupeKey = $"referral:{referral.Id}:provider_assigned:{provider.Id}{dedupeKeySuffix}";
-        var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var viewLink  = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/view?token={token}", ct);
-        var subject   = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
-        var body      = BuildProviderAssignedEmailHtml(referral, provider, viewLink);
+        var dedupeKey  = $"referral:{referral.Id}:provider_assigned:{provider.Id}{dedupeKeySuffix}";
+        var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
+        var subject    = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
+        var body       = BuildProviderAssignedEmailHtml(referral, provider, threadLink);
 
         var notification = CareConnectNotification.Create(
             tenantId:          referral.TenantId,
@@ -349,7 +347,7 @@ public class ReferralEmailService : IReferralEmailService
             recipientType:     NotificationRecipientType.Provider,
             recipientAddress:  provider.Email,
             subject:           subject,
-            message:           viewLink,
+            message:           threadLink,
             scheduledForUtc:   null,
             createdByUserId:   actingUserId,
             triggerSource:     NotificationSource.Initial,
@@ -1028,7 +1026,7 @@ public class ReferralEmailService : IReferralEmailService
 
     // ── Template builders ─────────────────────────────────────────────────────
 
-    private static string BuildNewReferralEmailHtml(Referral r, Provider p, string viewLink)
+    private static string BuildNewReferralEmailHtml(Referral r, Provider p, string threadLink)
     {
         var provName       = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var firmName       = ExtractFirmName(r.Notes);
@@ -1076,7 +1074,7 @@ public class ReferralEmailService : IReferralEmailService
             {Section("Referring Case Manager", referrerRows)}
             {notesBlock}
             <p style="margin-top:28px">
-              <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral</a>
+              <a href="{threadLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral</a>
             </p>
             <p style="margin-top:12px;font-size:11px;color:#9ca3af">This link expires in 30 days.</p>
             """;
@@ -1122,7 +1120,7 @@ public class ReferralEmailService : IReferralEmailService
         return Wrap("Referral Submitted", body, footer);
     }
 
-    private static string BuildProviderAssignedEmailHtml(Referral r, Provider p, string viewLink)
+    private static string BuildProviderAssignedEmailHtml(Referral r, Provider p, string threadLink)
     {
         var provName      = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var firmName      = ExtractFirmName(r.Notes);
@@ -1170,7 +1168,7 @@ public class ReferralEmailService : IReferralEmailService
             {Section("Referring Case Manager", referrerRows)}
             {notesBlock}
             <p style="margin-top:28px">
-              <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral</a>
+              <a href="{threadLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral</a>
             </p>
             <p style="margin-top:12px;font-size:11px;color:#9ca3af">This link expires in 30 days.</p>
             """;

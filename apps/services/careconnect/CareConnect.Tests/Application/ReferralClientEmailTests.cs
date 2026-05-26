@@ -221,6 +221,7 @@ public class ReferralClientEmailTests
             producer,
             config,
             new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
             NullLogger<ReferralEmailService>.Instance);
     }
 

@@ -69,6 +69,7 @@ public class ProviderActivationFunnelTests
             new Mock<INotificationsProducer>().Object,
             config,
             new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
             NullLogger<ReferralEmailService>.Instance);
     }
 
