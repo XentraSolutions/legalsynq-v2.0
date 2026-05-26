@@ -33,7 +33,13 @@ namespace CareConnect.Tests.Application;
 ///     - Provider-specific attachment: receiving org can access
 ///     - Provider-specific attachment: referring org is denied
 ///
-///   Notification events:
+///   Notification events — SendNewReferralNotificationAsync:
+///     - Both provider and referrer receive emails when both addresses are present
+///     - Referrer receives submission confirmation even when provider has no email (Bug 1 fix)
+///     - Referrer receives submission confirmation even when provider dedupe fires (Bug 2 fix)
+///     - Only provider email is sent when referrerEmail is absent
+///
+///   Notification events — SendProviderAssignedNotificationAsync:
 ///     - SendProviderAssignedNotificationAsync: submits referral.provider_assigned to producer
 ///     - SendProviderAssignedNotificationAsync: skips when provider has no email
 ///     - SendProviderAssignedNotificationAsync: deduplicates correctly
@@ -491,6 +497,144 @@ public class DocumentsIntegrationTests
         Assert.Null(referral.ReceivingOrganizationId);
     }
 
+    // ── SendNewReferralNotificationAsync ──────────────────────────────────────
+
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_BothEmailsPresent_SendsToBothProviderAndReferrer()
+    {
+        // Arrange
+        var referral  = CreateTestReferralWithReferrer("referrer@lawfirm.com");
+        var provider  = CreateTestProvider("provider@clinic.com");
+        var notifRepo = new Mock<INotificationRepository>();
+        var producer  = new Mock<INotificationsProducer>();
+
+        notifRepo.Setup(r => r.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        notifRepo.Setup(r => r.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var svc = BuildEmailService(notifRepo.Object, producer.Object);
+
+        // Act
+        await svc.SendNewReferralNotificationAsync(referral, provider);
+
+        // Assert — producer called twice: once for provider, once for referrer
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(),
+            "provider@clinic.com", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(),
+            "referrer@lawfirm.com", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_ProviderHasNoEmail_ReferrerStillReceivesConfirmation()
+    {
+        // Bug 1 fix: provider missing email used to return early before the referrer block.
+        // Arrange
+        var referral  = CreateTestReferralWithReferrer("referrer@lawfirm.com");
+        var provider  = CreateTestProvider(null); // no provider email
+        var notifRepo = new Mock<INotificationRepository>();
+        var producer  = new Mock<INotificationsProducer>();
+
+        notifRepo.Setup(r => r.TryAddWithDedupeAsync(
+                It.Is<CareConnectNotification>(n => n.RecipientType == NotificationRecipientType.InternalUser),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        notifRepo.Setup(r => r.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var svc = BuildEmailService(notifRepo.Object, producer.Object);
+
+        // Act
+        await svc.SendNewReferralNotificationAsync(referral, provider);
+
+        // Assert — referrer still gets their submission confirmation
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(),
+            "referrer@lawfirm.com", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        // Provider block was skipped — only one total send
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_ProviderDedupeFires_ReferrerStillReceivesConfirmation()
+    {
+        // Bug 2 fix: provider dedupe returning false used to return early before the referrer block.
+        // Arrange
+        var referral  = CreateTestReferralWithReferrer("referrer@lawfirm.com");
+        var provider  = CreateTestProvider("provider@clinic.com");
+        var notifRepo = new Mock<INotificationRepository>();
+        var producer  = new Mock<INotificationsProducer>();
+
+        // Provider dedupe fires (duplicate detected) — referrer dedupe passes.
+        notifRepo.Setup(r => r.TryAddWithDedupeAsync(
+                It.Is<CareConnectNotification>(n => n.RecipientType == NotificationRecipientType.Provider),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        notifRepo.Setup(r => r.TryAddWithDedupeAsync(
+                It.Is<CareConnectNotification>(n => n.RecipientType == NotificationRecipientType.InternalUser),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        notifRepo.Setup(r => r.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var svc = BuildEmailService(notifRepo.Object, producer.Object);
+
+        // Act
+        await svc.SendNewReferralNotificationAsync(referral, provider);
+
+        // Assert — referrer still gets their submission confirmation despite provider dedupe
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(),
+            "referrer@lawfirm.com", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        // Provider was deduped — not sent
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(),
+            "provider@clinic.com", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_NoReferrerEmail_OnlyProviderEmailSent()
+    {
+        // Arrange — referrerEmail is null (anonymous or portal-only creation)
+        var referral  = CreateTestReferral(Guid.CreateVersion7(), Guid.CreateVersion7()); // no referrerEmail
+        var provider  = CreateTestProvider("provider@clinic.com");
+        var notifRepo = new Mock<INotificationRepository>();
+        var producer  = new Mock<INotificationsProducer>();
+
+        notifRepo.Setup(r => r.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        notifRepo.Setup(r => r.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var svc = BuildEmailService(notifRepo.Object, producer.Object);
+
+        // Act
+        await svc.SendNewReferralNotificationAsync(referral, provider);
+
+        // Assert — only one send (provider), no referrer block reached
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static ReferralEmailService BuildEmailService(
@@ -575,6 +719,29 @@ public class DocumentsIntegrationTests
             organizationRelationshipId: null,
             referrerEmail:             null,
             referrerName:              null);
+
+    private static Referral CreateTestReferralWithReferrer(string referrerEmail)
+        => Referral.Create(
+            tenantId:                  Guid.CreateVersion7(),
+            referringOrganizationId:   null,
+            receivingOrganizationId:   null,
+            providerId:                Guid.CreateVersion7(),
+            subjectPartyId:            null,
+            subjectNameSnapshot:       null,
+            subjectDobSnapshot:        null,
+            clientFirstName:           "Test",
+            clientLastName:            "User",
+            clientDob:                 null,
+            clientPhone:               "555-0002",
+            clientEmail:               "test@example.com",
+            caseNumber:                null,
+            requestedService:          "Legal Aid",
+            urgency:                   Referral.ValidUrgencies.Normal,
+            notes:                     null,
+            createdByUserId:           null,
+            organizationRelationshipId: null,
+            referrerEmail:             referrerEmail,
+            referrerName:              "Jane Smith");
 
     private static Provider CreateTestProvider(string? email)
         => Provider.Create(

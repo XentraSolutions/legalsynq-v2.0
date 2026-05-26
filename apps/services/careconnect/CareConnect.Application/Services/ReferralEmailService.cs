@@ -201,47 +201,55 @@ public class ReferralEmailService : IReferralEmailService
         Provider provider,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(provider.Email))
+        var token = GenerateViewToken(referral.Id, referral.TokenVersion);
+
+        // Build both tenant URLs in parallel — independent lookups.
+        var urls = await Task.WhenAll(
+            BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct),
+            BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={token}", ct));
+        var threadLink     = urls[0];
+        var firmStatusLink = urls[1];
+
+        var tasks = new List<Task>();
+
+        // ── Provider notification ──────────────────────────────────────────
+        if (!string.IsNullOrWhiteSpace(provider.Email))
+        {
+            var dedupeKey = $"referral:{referral.Id}:created:provider";
+            var subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
+            var body      = BuildNewReferralEmailHtml(referral, provider, threadLink);
+
+            var notification = CareConnectNotification.Create(
+                tenantId:          referral.TenantId,
+                notificationType:  NotificationType.ReferralCreated,
+                relatedEntityType: NotificationRelatedEntityType.Referral,
+                relatedEntityId:   referral.Id,
+                recipientType:     NotificationRecipientType.Provider,
+                recipientAddress:  provider.Email,
+                subject:           subject,
+                message:           threadLink,
+                scheduledForUtc:   null,
+                createdByUserId:   referral.CreatedByUserId,
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         dedupeKey);
+
+            if (await _notifications.TryAddWithDedupeAsync(notification, ct))
+                // LSCC-005-02: schedule retry on failure (attempt 1 → retry after 5 min)
+                tasks.Add(TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            else
+                _logger.LogInformation("Duplicate new-referral provider notification skipped for referral {ReferralId}.", referral.Id);
+        }
+        else
         {
             _logger.LogWarning(
-                "Cannot send new-referral notification: provider {ProviderId} has no email address.",
+                "Cannot send new-referral provider notification: provider {ProviderId} has no email address.",
                 provider.Id);
-            return;
         }
 
-        var dedupeKey = $"referral:{referral.Id}:created:provider";
-
-        var token          = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var threadLink     = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
-        var firmStatusLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={token}", ct);
-        var subject        = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
-        var body           = BuildNewReferralEmailHtml(referral, provider, threadLink);
-
-        var notification = CareConnectNotification.Create(
-            tenantId:          referral.TenantId,
-            notificationType:  NotificationType.ReferralCreated,
-            relatedEntityType: NotificationRelatedEntityType.Referral,
-            relatedEntityId:   referral.Id,
-            recipientType:     NotificationRecipientType.Provider,
-            recipientAddress:  provider.Email,
-            subject:           subject,
-            message:           threadLink,
-            scheduledForUtc:   null,
-            createdByUserId:   referral.CreatedByUserId,
-            triggerSource:     NotificationSource.Initial,
-            dedupeKey:         dedupeKey);
-
-        if (!await _notifications.TryAddWithDedupeAsync(notification, ct))
-        {
-            _logger.LogInformation("Duplicate new-referral notification skipped for referral {ReferralId}.", referral.Id);
-            return;
-        }
-
-        // LSCC-005-02: schedule retry on failure (attempt 1 → retry after 5 min)
-        await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct,
-            nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1));
-
-        // LSCC-005-03: Send submission confirmation to the law firm (referrer).
+        // ── Referrer submission confirmation ───────────────────────────────
+        // LSCC-005-03: Independent of provider path — referrer always receives
+        // their submission confirmation as long as ReferrerEmail is present.
         if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
         {
             var refDedupeKey = $"referral:{referral.Id}:created:referrer";
@@ -263,8 +271,13 @@ public class ReferralEmailService : IReferralEmailService
                 dedupeKey:         refDedupeKey);
 
             if (await _notifications.TryAddWithDedupeAsync(refNotif, ct))
-                await TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct);
+                tasks.Add(TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            else
+                _logger.LogInformation("Duplicate new-referral referrer notification skipped for referral {ReferralId}.", referral.Id);
         }
+
+        await Task.WhenAll(tasks);
     }
 
     /// <summary>

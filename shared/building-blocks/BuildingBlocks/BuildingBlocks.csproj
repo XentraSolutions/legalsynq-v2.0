@@ -19,6 +19,9 @@
     <!-- Task #62 — MigrationCoverageProbe needs to inspect the live schema
          (information_schema / sqlite_master) and the EF Core model. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.0" />
+    <!-- Security: pin transitive Microsoft.Extensions.Caching.Memory to patched version.
+         EFCore.Relational 8.0.0 pulls in 8.0.0 which has GHSA-qj66-m88j-hmgj (high severity). -->
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
   </ItemGroup>
 
   <!-- LS-ID-TNT-017-002 — User Access Audit:

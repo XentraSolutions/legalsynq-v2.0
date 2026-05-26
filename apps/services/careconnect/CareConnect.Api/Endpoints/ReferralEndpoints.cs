@@ -202,7 +202,11 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
+            // JWT claims are authoritative for authenticated referral creation —
+            // override any client-submitted referrer identity with the verified token values.
             request.ReferringOrganizationId = ctx.OrgId;
+            if (!string.IsNullOrWhiteSpace(ctx.Name))  request.ReferrerName  = ctx.Name;
+            if (!string.IsNullOrWhiteSpace(ctx.Email)) request.ReferrerEmail = ctx.Email;
             var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct, actorName: ctx.Name ?? ctx.Email);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
         })
