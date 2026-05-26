@@ -72,6 +72,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       heading: 'MY TOOLS',
       items: [
+        { href: '/lien/reports', label: 'Reports', icon: 'ri-file-copy-2-line' },
         { href: '/lien/batch-entry',       label: 'Batch Entry',       icon: 'ri-upload-2-line', requiredRoles: [ProductRole.SynqLienSeller] },
         { href: '/lien/document-handling', label: 'Document Handling', icon: 'ri-file-copy-2-line' },
       ],
