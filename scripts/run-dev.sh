@@ -226,8 +226,8 @@ PID_CC=$!
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
-    AppBaseUrl="${PORTAL_BASE_URL:-https://demo.legalsynq.com}" \
-    AppBaseDomain="${Route53__BaseDomain:-demo.legalsynq.com}" \
+    AppBaseUrl="${PORTAL_BASE_URL:-http://localhost:3000}" \
+    AppBaseDomain="${Route53__BaseDomain:-}" \
     TenantService__BaseUrl=http://127.0.0.1:5005 \
     TenantService__ProvisioningToken="${TenantService__ProvisioningToken:-}" \
     dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
