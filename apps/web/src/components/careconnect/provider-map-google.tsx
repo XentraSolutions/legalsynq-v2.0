@@ -78,6 +78,9 @@ export function ProviderMapGoogle({
       if (!marker) {
         marker = new window.google.maps.Marker({ position: { lat: m.latitude, lng: m.longitude }, map, icon, zIndex: isSelected ? 100 : 1 });
         marker.addListener('click', () => {
+          map.panTo({ lat: m.latitude, lng: m.longitude });
+          const currentZoom = map.getZoom() ?? 0;
+          if (currentZoom < 13) map.setZoom(13);
           onSelect(m.id);
           const content = `
             <div style="font-family:system-ui,sans-serif;min-width:180px">
