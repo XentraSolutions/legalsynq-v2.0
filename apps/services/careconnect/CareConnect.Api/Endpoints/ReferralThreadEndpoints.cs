@@ -84,9 +84,11 @@ public static class ReferralThreadEndpoints
                 notes         = referral.Notes,
                 providerName  = provName,
                 // Law firm / referrer information
-                referrerName  = referral.ReferrerName,
-                referrerEmail = referral.ReferrerEmail,
-                createdAt     = referral.CreatedAtUtc,
+                referrerName       = referral.ReferrerName,
+                referrerEmail      = referral.ReferrerEmail,
+                createdAt          = referral.CreatedAtUtc,
+                providerHasAccount = referral.Provider is not null &&
+                                     ProviderAccessStage.IsAtLeast(referral.Provider.AccessStage, ProviderAccessStage.CommonPortal),
                 comments,
                 attachments,
             });

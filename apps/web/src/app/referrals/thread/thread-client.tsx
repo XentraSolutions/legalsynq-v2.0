@@ -33,11 +33,12 @@ interface ThreadData {
   notes:         string | null;
   providerName:  string;
   // Law firm / referrer
-  referrerName:  string | null;
-  referrerEmail: string | null;
-  createdAt:     string;
-  comments:      Comment[];
-  attachments:   Attachment[];
+  referrerName:        string | null;
+  referrerEmail:       string | null;
+  createdAt:           string;
+  comments:            Comment[];
+  attachments:         Attachment[];
+  providerHasAccount?: boolean;
 }
 
 interface Props {
@@ -223,16 +224,21 @@ export function ThreadClient({ token, data }: Props) {
                 Manage all your referrals in one place
               </p>
               <p style={{ margin: 0, fontSize: 13, color: '#bfdbfe', lineHeight: 1.5 }}>
-                Activate your CareConnect provider account to accept referrals, view patient details, track statuses, and collaborate — all from a single dashboard.
+                {data.providerHasAccount
+                  ? 'Log in to your provider dashboard to accept referrals, view patient details, and manage this case.'
+                  : 'Activate your CareConnect provider account to accept referrals, view patient details, track statuses, and collaborate — all from a single dashboard.'}
               </p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 160 }}>
-              <a href={activateUrl} style={{ ...s.btnPrimary, background: '#fff', color: '#1a56db', padding: '9px 16px', fontSize: 13 }}>
-                Activate free account
-              </a>
-              <a href={loginUrl} style={{ ...s.btnPrimary, background: 'transparent', color: '#e0f2fe', border: '1px solid #60a5fa', padding: '8px 16px', fontSize: 13 }}>
-                Already have access? Log in
-              </a>
+              {data.providerHasAccount ? (
+                <a href={loginUrl} style={{ ...s.btnPrimary, background: '#fff', color: '#1a56db', padding: '9px 16px', fontSize: 13 }}>
+                  Log in to your account
+                </a>
+              ) : (
+                <a href={activateUrl} style={{ ...s.btnPrimary, background: '#fff', color: '#1a56db', padding: '9px 16px', fontSize: 13 }}>
+                  Activate free account
+                </a>
+              )}
             </div>
           </div>
         </div>
