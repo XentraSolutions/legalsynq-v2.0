@@ -204,6 +204,14 @@ Notification delivery gated by per-tenant governance rule packs. Five enforcemen
 - Retention engine wired but `JobEnabled=false`, `DryRun=true` by default
 - Event forwarding abstraction present but `Enabled=false` by default
 
+## Production Startup — run-prod.sh (May 2026 fixes)
+
+- **Missing services added:** Commerce (5030), Billing (5031), Reports (5029), Comms (5011) were absent from `BUILD_PROJECTS` and never started in production. All four now included in `run-prod.sh` and `build-prod.sh`.
+- **`DOTNET_GCConserveMemory=9`** exported before the launch loop — inherited by all 17 .NET processes, preventing OOM cycles that caused repeated Gateway outages.
+- **Gateway explicit `ASPNETCORE_URLS=http://0.0.0.0:5010`** — prevents YARP TypeLoadException when launchSettings picks the wrong port.
+- **Next.js binary detection** updated for Next.js 16 (was looking for `next@15.5.15`).
+- **Health probe list** updated to match all 17 services (was 13).
+
 ## Dev Startup — OOM Mitigation (run-dev.sh)
 
 Replit runs 17+ .NET services concurrently in a memory-constrained container. Startup order
