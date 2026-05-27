@@ -536,8 +536,9 @@ function ReferralPanel({
 
   // Pre-generate a signed enrollment token when the referral succeeds so the
   // "Activate your free account" CTA never carries raw PII in the URL.
+  // Skipped when the user is already authenticated (prefillLawFirm present) — CTA is hidden.
   useEffect(() => {
-    if (state !== 'success') return;
+    if (state !== 'success' || !!prefillLawFirm) return;
     createEnrollmentToken({
       tenantId,
       ...(form.email       ? { email:   form.email }       : {}),
@@ -690,7 +691,8 @@ function ReferralPanel({
 
       // CC-PORTAL-CHECK: fire-and-forget — check if the law firm email already has
       // an active portal account so the success screen shows the right CTA.
-      if (form.email) {
+      // Skipped when the user is already authenticated (prefillLawFirm present) — CTA is hidden.
+      if (form.email && !prefillLawFirm) {
         fetch(`/api/public/careconnect/api/public/referrer-status?email=${encodeURIComponent(form.email)}`, {
           headers: { 'X-Tenant-Id': tenantId },
         })
@@ -1207,7 +1209,9 @@ function ReferralConfirmModal({
               </div>
 
               {/* Account CTA — login if already registered, activate if not */}
-              <div className="px-6 py-5">
+              {/* Hidden when the user is already authenticated (prefillLawFirm present) */}
+              {!prefillLawFirm && (
+                <div className="px-6 py-5">
                 {hasPortalAccess ? (
                   <div className="rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-100 dark:border-green-700/50 p-4">
                     <div className="flex gap-3 items-start">
@@ -1255,6 +1259,7 @@ function ReferralConfirmModal({
                   </div>
                 )}
               </div>
+              )}
             </div>
 
             {/* Footer */}
