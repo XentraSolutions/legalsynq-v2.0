@@ -18,6 +18,7 @@ import { useSelectionState } from '@/hooks/use-selection-state';
 import { casesService, type CaseListItem, type PaginationMeta } from '@/lib/cases';
 import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
 import { ApiError } from '@/lib/api-client';
+import { CasesFilter } from './components/cases-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,9 @@ export default function CasesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ id: string; status: string } | null>(null);
+  const [actionOpen, setActionOpen] = useState(false);
 
   const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -118,6 +121,11 @@ export default function CasesPage() {
     fetchCases();
   };
 
+  const handleCasesFilter = () => {
+    setShowFilter(false);
+    fetchCases();
+  };
+
   const handleBulkAction = (actionKey: string) => {
     const action = BULK_ACTIONS.find((a) => a.key === actionKey);
     if (action) setBulkAction(action);
@@ -144,12 +152,51 @@ export default function CasesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Cases" subtitle={loading ? 'Loading...' : `${pagination.totalCount} cases`}
-        actions={ra.can('case:create') ? (
-          <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
-            <i className="ri-add-line text-base" />Create Case
-          </button>
-        ) : undefined}
+      <PageHeader
+        title="Cases"
+        subtitle={loading ? 'Loading...' : `${pagination.totalCount} cases`}
+        actions={
+          <div className="relative">
+            {/* Dropdown Button */}
+            <button
+              onClick={() => setActionOpen(!actionOpen)}
+              className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
+              Actions
+              <i className="ri-arrow-down-s-line text-base" />
+            </button>
+            {/* Dropdown Menu */}
+            {actionOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                {/* Create Case */}
+                {ra.can('case:create') && (
+                  <button
+                    onClick={() => {
+                      setShowCreate(true);
+                      setActionOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
+                    Create Case
+                  </button>
+                )}
+                {/* Filter */}
+                <button
+                  onClick={() => {
+                    setShowFilter(true);
+                    setActionOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
+                  Filter
+                </button>
+
+                {/* Export CSV */}
+                <button onClick={() => { setActionOpen(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
+                  Export
+                </button>
+
+              </div>
+            )}
+          </div>
+        }
       />
 
       <FilterToolbar searchPlaceholder="Search by case number or client name..." onSearch={setSearch} filters={[{
@@ -280,6 +327,7 @@ export default function CasesPage() {
       )}
 
       <CreateCaseForm open={showCreate} onClose={() => setShowCreate(false)} onCreated={handleCaseCreated} />
+      <CasesFilter open={showFilter} onClose={() => setShowFilter(false)} onApplyFilter={handleCasesFilter} />
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}
