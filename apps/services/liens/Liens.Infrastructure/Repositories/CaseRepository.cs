@@ -31,11 +31,15 @@ public class CaseRepository : ICaseRepository
     public async Task<(List<Case> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? status,
         int page, int pageSize,
+        Guid? orgId = null,
         string? sortBy = null,
         string? sortDirection = null,
         CancellationToken ct = default)
     {
         var q = _db.Cases.Where(c => c.TenantId == tenantId);
+
+        if (orgId.HasValue)
+            q = q.Where(c => c.OrgId == orgId.Value);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
