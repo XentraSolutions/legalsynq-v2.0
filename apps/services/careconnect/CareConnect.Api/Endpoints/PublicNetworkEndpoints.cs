@@ -239,9 +239,15 @@ public static class PublicNetworkEndpoints
                 await using var reader = await cmd.ExecuteReaderAsync(ct);
                 while (await reader.ReadAsync(ct))
                 {
+                    var treatmentTypeId = reader.GetValue(0) switch
+                    {
+                        Guid guidId => guidId.ToString(),
+                        _ => reader.GetString(0),
+                    };
+
                     result.Add(new
                     {
-                        id           = reader.GetString(0),
+                        id           = treatmentTypeId,
                         name         = reader.GetString(1),
                         category     = reader.IsDBNull(2) ? null : reader.GetString(2),
                         displayOrder = reader.GetInt32(3),
