@@ -84,5 +84,5 @@ export default async function FirmStatusPage({ searchParams }: Props) {
     ...(referrerPhone            ? { phone:   referrerPhone                      } : {}),
   }).catch((err) => { console.error('[firm-status] createEnrollmentToken failed:', err); return null; });
 
-  return <FirmStatusClient token={token} data={threadData} hasPortalAccess={hasPortalAccess} loginUrl={`${process.env.CC_COMMON_PORTAL_HOSTNAME}/login`} enrollToken={enrollToken} />;
+  return <FirmStatusClient token={token} data={threadData} hasPortalAccess={hasPortalAccess} loginUrl="/login" enrollToken={enrollToken} />;
 }

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Json;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.DataGovernance;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
@@ -21,6 +22,7 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuditEventClient _auditClient;
     private readonly IEffectiveAccessService _effectiveAccessService;
+    private readonly IPermissionService _permissionService;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<AuthService> _logger;
 
@@ -31,6 +33,7 @@ public class AuthService : IAuthService
         IJwtTokenService jwtTokenService,
         IAuditEventClient auditClient,
         IEffectiveAccessService effectiveAccessService,
+        IPermissionService permissionService,
         IHttpContextAccessor httpContextAccessor,
         ILogger<AuthService> logger)
     {
@@ -40,6 +43,7 @@ public class AuthService : IAuthService
         _jwtTokenService = jwtTokenService;
         _auditClient = auditClient;
         _effectiveAccessService = effectiveAccessService;
+        _permissionService = permissionService;
         _httpContextAccessor = httpContextAccessor;
         _logger = logger;
     }
@@ -309,10 +313,12 @@ public class AuthService : IAuthService
         var productRolesFlat = effectiveAccess.ProductRolesFlat;
         const string CcProductPrefix   = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":";
         const string CcReferrerRole    = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":CARECONNECT_REFERRER";
+        var ccRoleAutoInjected = false;
         if (string.Equals(orgTypeForResponse, Domain.OrgType.LawFirm, StringComparison.OrdinalIgnoreCase)
             && !productRolesFlat.Any(r => r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase)))
         {
             productRolesFlat = [.. productRolesFlat, CcReferrerRole];
+            ccRoleAutoInjected = true;
         }
 
         // Load all active tenant memberships to populate tenant_ids JWT claim and LoginResponse.Tenants.
@@ -332,11 +338,23 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
+        // CC-AUTH-01 fix: when the referrer role was auto-injected (not provisioned in DB),
+        // effectiveAccess.Permissions was computed before the injection and omits the referrer's
+        // capabilities. Fetch and merge them so the JWT `permissions` claim is complete.
+        var finalPermissions = effectiveAccess.Permissions;
+        if (ccRoleAutoInjected)
+        {
+            var injected = await _permissionService.GetPermissionsAsync(
+                [ProductRoleCodes.CareConnectReferrer], ct);
+            finalPermissions = [.. finalPermissions,
+                .. injected.Except(finalPermissions, StringComparer.OrdinalIgnoreCase)];
+        }
+
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
             userWithRoles, tenant, roleNames, org, productRolesFlat,
             sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
             productCodes: effectiveAccess.Products,
-            permissions: effectiveAccess.Permissions,
+            permissions: finalPermissions,
             tenantIds: tenantMemberships.Select(ut => ut.TenantId));
 
         // Build TenantSummary list for the LoginResponse from the membership rows.

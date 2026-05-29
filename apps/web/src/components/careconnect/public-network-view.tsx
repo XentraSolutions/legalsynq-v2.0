@@ -659,13 +659,40 @@ function ReferralPanel({
       ].filter(Boolean).join('\n') || undefined,
     }));
 
+    // Authenticated users (prefillLawFirm present) submit through the auth endpoint —
+    // tenant is resolved from the JWT, no host-based resolution needed.
+    // Unauthenticated users use the anonymous public endpoint with X-Tenant-Id.
+    const isAuthenticated = !!prefillLawFirm;
+
     try {
       const responses = await Promise.all(payloads.map(async payload => {
-        const res = await fetch('/api/public/careconnect/api/public/referrals', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId },
-          body:    JSON.stringify(payload),
-        });
+        let res: Response;
+        if (isAuthenticated) {
+          const authBody = {
+            providerId:       payload.providerId,
+            clientFirstName:  payload.patientFirstName,
+            clientLastName:   payload.patientLastName,
+            clientPhone:      payload.patientPhone,
+            clientEmail:      payload.patientEmail ?? '',
+            clientDob:        payload.patientDateOfBirth,
+            requestedService: payload.serviceType ?? 'General Referral',
+            urgency:          'Normal',
+            notes:            payload.notes,
+            referrerEmail:    payload.senderEmail,
+            referrerName:     payload.senderName,
+          };
+          res = await fetch('/api/careconnect/api/referrals', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(authBody),
+          });
+        } else {
+          res = await fetch('/api/public/careconnect/api/public/referrals', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId },
+            body:    JSON.stringify(payload),
+          });
+        }
         if (!res.ok) {
           // Parse the error body; fall back to a generic message if parsing fails.
           let body: unknown;
@@ -680,9 +707,14 @@ function ReferralPanel({
         if (!fileForProvider) return Promise.resolve();
         const fd = new FormData();
         fd.append('file', fileForProvider);
-        return fetch(`/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`, {
+        const uploadEndpoint = isAuthenticated
+          ? `/api/careconnect/api/referrals/${r.referralId}/attachments/upload`
+          : `/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`;
+        const uploadHeaders: Record<string, string> = {};
+        if (!isAuthenticated) uploadHeaders['X-Tenant-Id'] = tenantId;
+        return fetch(uploadEndpoint, {
           method:  'POST',
-          headers: { 'X-Tenant-Id': tenantId },
+          headers: uploadHeaders,
           body:    fd,
         });
       }));

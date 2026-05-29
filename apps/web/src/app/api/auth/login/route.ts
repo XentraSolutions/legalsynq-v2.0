@@ -4,7 +4,7 @@ const GATEWAY_URL             = process.env.GATEWAY_URL ?? 'http://127.0.0.1:500
 const IS_PROD                 = process.env.NODE_ENV === 'production';
 // AUTH-CC01: When the request arrives on this hostname, always resolve the tenant
 // from the user's email — no tenant code or subdomain lookup required.
-// Matches CC_COMMON_PORTAL_HOSTNAME in middleware.ts and login/page.tsx.
+// Matches CC_COMMON_PORTAL_HOSTNAME in middleware.ts.
 const CC_COMMON_PORTAL_HOSTNAME =
   (process.env.CC_COMMON_PORTAL_HOSTNAME ?? '').trim().toLowerCase();
 
@@ -265,6 +265,7 @@ export async function POST(request: NextRequest) {
  *   "liens-company.demo.legalsynq.com" → "liens-company"
  *   "legalsynq.demo.legalsynq.com"     → "legalsynq"
  *   "localhost:3000"                     → null (no subdomain)
+ *   "careconnect-demo.localhost:3000"    → "careconnect-demo"
  */
 function extractRawSubdomain(rawHost: string): string | null {
   const host = rawHost.split(',')[0].trim();
@@ -280,6 +281,9 @@ function extractRawSubdomain(rawHost: string): string | null {
     if (sub === 'www') return null;
     return sub;
   }
+
+  // *.localhost pattern (local dev): careconnect-demo.localhost
+  if (parts.length === 2 && parts[1] === 'localhost') return parts[0];
 
   return null;
 }

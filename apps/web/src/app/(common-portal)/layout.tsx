@@ -8,9 +8,10 @@
  * JWT is NEVER exposed to the browser; HttpOnly platform_session cookie only.
  */
 
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { requireExternalPortal } from '@/lib/auth-guards';
-import { OrgType } from '@/types';
+import { OrgType, ProductRole } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,12 @@ export default async function CommonPortalLayout({
   children: React.ReactNode;
 }) {
   const session = await requireExternalPortal();
+
+  const hasCcRole =
+    session.productRoles.includes(ProductRole.CareConnectReferrer) ||
+    session.productRoles.includes(ProductRole.CareConnectReceiver) ||
+    session.productRoles.includes(ProductRole.CareConnectNetworkManager);
+  if (!hasCcRole) redirect('/access-denied');
 
   const orgLabel =
     session.orgType === OrgType.LawFirm ? 'Law Firm Portal' : 'Provider Portal';

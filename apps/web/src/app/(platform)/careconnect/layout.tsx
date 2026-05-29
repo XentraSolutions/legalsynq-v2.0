@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { requireProductAccess, FrontendProductCode } from '@/lib/auth-guards';
-import { getServerSession } from '@/lib/session';
 import { ProductRole } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -27,14 +26,12 @@ export default async function CareConnectLayout({
   const session = await requireProductAccess(FrontendProductCode.CareConnect);
 
   // Defense-in-depth: ensure the user holds a CC product role.
-  // PlatformAdmins and TenantAdmins with stale JWTs are allowed through.
-  if (!session.isPlatformAdmin && !session.isTenantAdmin) {
-    const hasCcRole =
-      session.productRoles.includes(ProductRole.CareConnectReferrer) ||
-      session.productRoles.includes(ProductRole.CareConnectReceiver);
-    if (!hasCcRole) {
-      redirect('/access-denied');
-    }
+  // All users including PlatformAdmins and TenantAdmins must have an explicit CC role.
+  const hasCcRole =
+    session.productRoles.includes(ProductRole.CareConnectReferrer) ||
+    session.productRoles.includes(ProductRole.CareConnectReceiver);
+  if (!hasCcRole) {
+    redirect('/access-denied');
   }
 
   return <>{children}</>;

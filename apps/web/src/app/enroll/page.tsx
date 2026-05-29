@@ -76,7 +76,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
 
         <p className="text-center text-xs text-gray-400 mt-6">
           Already have an account?{' '}
-          <a href={`${process.env.CC_COMMON_PORTAL_HOSTNAME}/login`} className="text-blue-600 hover:underline">Sign in</a>
+          <a href="/login" className="text-blue-600 hover:underline">Sign in</a>
         </p>
       </div>
     </main>
