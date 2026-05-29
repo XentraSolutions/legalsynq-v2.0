@@ -37,12 +37,12 @@ public partial class SeedPlatformAdminUser : Migration
 INSERT IGNORE INTO `idt_Users`
     (`Id`, `TenantId`, `Email`, `PasswordHash`,
      `FirstName`, `LastName`, `IsActive`,
-     `IsLocked`, `FailedLoginCount`, `UserType`,
+     `IsLocked`, `UserType`,
      `CreatedAtUtc`, `UpdatedAtUtc`)
 VALUES (
     '{UserId}', '{TenantId}',
     'admin@legalsynq.com', '{PasswordHash}',
-    'Platform', 'Admin', 1, 0, 0, 'PlatformInternal',
+    'Platform', 'Admin', 1, 0, 'PlatformInternal',
     '2024-01-01 00:00:00', '2024-01-01 00:00:00'
 );");
 

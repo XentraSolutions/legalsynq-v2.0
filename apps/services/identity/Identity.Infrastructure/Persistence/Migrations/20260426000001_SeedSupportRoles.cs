@@ -100,6 +100,18 @@ WHERE u.`IsActive` = 1
     WHERE  sra.`UserId`    = u.`Id`
       AND  sra.`ScopeType` = 'GLOBAL'
       AND  sra.`IsActive`  = 1
+  )
+  -- Exclude CareConnect-only primary org users (PROVIDER = receiver, LAW_FIRM = referrer).
+  -- These users are gated to the CC common portal only; assigning a system role here
+  -- would incorrectly allow them to log into the tenant portal.
+  AND NOT EXISTS (
+    SELECT 1
+    FROM   `idt_UserOrganizationMemberships` uom
+    JOIN   `idt_Organizations` o ON o.`Id` = uom.`OrganizationId`
+    WHERE  uom.`UserId`    = u.`Id`
+      AND  uom.`IsPrimary` = 1
+      AND  uom.`IsActive`  = 1
+      AND  o.`OrgType`     IN ('PROVIDER', 'LAW_FIRM')
   );
 ");
     }

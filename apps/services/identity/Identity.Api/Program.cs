@@ -7,6 +7,7 @@ using Identity.Api;
 using Identity.Api.Endpoints;
 using Identity.Infrastructure;
 using Identity.Infrastructure.Data;
+using Identity.Infrastructure.Persistence.Migrations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -317,6 +318,16 @@ WHERE u.`IsActive` = 1
   AND NOT EXISTS (
     SELECT 1 FROM `idt_ScopedRoleAssignments` sra
     WHERE sra.`UserId` = u.`Id` AND sra.`ScopeType` = 'GLOBAL' AND sra.`IsActive` = 1
+  )
+  -- Exclude CareConnect-only primary org users (PROVIDER = receiver, LAW_FIRM = referrer).
+  AND NOT EXISTS (
+    SELECT 1
+    FROM   `idt_UserOrganizationMemberships` uom
+    JOIN   `idt_Organizations` o ON o.`Id` = uom.`OrganizationId`
+    WHERE  uom.`UserId`    = u.`Id`
+      AND  uom.`IsPrimary` = 1
+      AND  uom.`IsActive`  = 1
+      AND  o.`OrgType`     IN ('PROVIDER', 'LAW_FIRM')
   );";
             c.ExecuteNonQuery();
         });
@@ -344,6 +355,16 @@ WHERE u.`IsActive` = 1
   AND NOT EXISTS (
     SELECT 1 FROM `idt_ScopedRoleAssignments` sra
     WHERE sra.`UserId` = u.`Id` AND sra.`ScopeType` = 'GLOBAL' AND sra.`IsActive` = 1
+  )
+  -- Exclude CareConnect-only primary org users (PROVIDER = receiver, LAW_FIRM = referrer).
+  AND NOT EXISTS (
+    SELECT 1
+    FROM   `idt_UserOrganizationMemberships` uom
+    JOIN   `idt_Organizations` o ON o.`Id` = uom.`OrganizationId`
+    WHERE  uom.`UserId`    = u.`Id`
+      AND  uom.`IsPrimary` = 1
+      AND  uom.`IsActive`  = 1
+      AND  o.`OrgType`     IN ('PROVIDER', 'LAW_FIRM')
   );";
             c.ExecuteNonQuery();
         });
@@ -408,12 +429,12 @@ WHERE u.`TenantId` = '{PlatformTenantId}'
 INSERT IGNORE INTO `idt_Users`
     (`Id`, `TenantId`, `Email`, `PasswordHash`,
      `FirstName`, `LastName`, `IsActive`,
-     `IsLocked`, `FailedLoginCount`, `UserType`,
+     `IsLocked`, `UserType`,
      `CreatedAtUtc`, `UpdatedAtUtc`)
 VALUES (
     '{AdminUserId}', '{PlatformTenantId}',
     'admin@legalsynq.com', '{AdminPwHash}',
-    'Platform', 'Admin', 1, 0, 0, 'PlatformInternal',
+    'Platform', 'Admin', 1, 0, 'PlatformInternal',
     '2024-01-01 00:00:00', '2024-01-01 00:00:00'
 );";
             c.ExecuteNonQuery();
@@ -452,6 +473,40 @@ VALUES (
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex, "LS-ID-SUP-002 pre-migration guard failed — proceeding with normal migration");
+}
+
+// ── LS-ID-CC-001: Strip wrongly-backfilled TenantAdmin from CC-only users ─
+// Migration 20260426000001 assigned TenantAdmin to every user with no GLOBAL
+// ScopedRoleAssignment, including PROVIDER-type org users who are CareConnect-
+// only and must be gated to the CC common portal only.  This guard runs the
+// corrective UPDATE as a one-time idempotent operation.  The EF migration
+// 20260530000001_RemoveTenantAdminFromCcOnlyUsers contains the same logic and
+// will apply it for clean DB installs; this guard covers already-running DBs.
+try
+{
+    using var scope2 = app.Services.CreateScope();
+    var db2  = scope2.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    var conn2 = db2.Database.GetDbConnection();
+    if (conn2.State != System.Data.ConnectionState.Open) conn2.Open();
+    using var cmd2 = conn2.CreateCommand();
+    Identity.Infrastructure.StartupMigrationGuard.ApplyIfMissing(
+        cmd2,
+        migrationId: "20260530000001_RemoveTenantAdminFromCcOnlyUsers",
+        efVersion:   "8.0.7",
+        logger:      app.Logger,
+        guardLabel:  "LS-ID-CC-001",
+        apply: c =>
+        {
+            // SQL is defined once on the migration class to avoid duplication.
+            c.CommandText = RemoveTenantAdminFromCcOnlyUsers.UpSql;
+            c.ExecuteNonQuery();
+        });
+    // conn2 is managed by db2/scope2 — no manual close needed.
+}
+catch (Exception ex)
+{
+    // LogError: a failure here means CC-only users may still access the tenant portal.
+    app.Logger.LogError(ex, "LS-ID-CC-001 CC-user GLOBAL role cleanup guard failed — proceeding");
 }
 
 try

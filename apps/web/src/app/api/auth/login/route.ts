@@ -1,7 +1,12 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
-const IS_PROD     = process.env.NODE_ENV === 'production';
+const GATEWAY_URL             = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
+const IS_PROD                 = process.env.NODE_ENV === 'production';
+// AUTH-CC01: When the request arrives on this hostname, always resolve the tenant
+// from the user's email — no tenant code or subdomain lookup required.
+// Matches CC_COMMON_PORTAL_HOSTNAME in middleware.ts and login/page.tsx.
+const CC_COMMON_PORTAL_HOSTNAME =
+  (process.env.CC_COMMON_PORTAL_HOSTNAME ?? '').trim().toLowerCase();
 
 interface RateLimitEntry {
   count: number;
@@ -72,11 +77,23 @@ export async function POST(request: NextRequest) {
   }
 
   const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
+  const incomingHost = rawHost.split(':')[0].toLowerCase();
   const rawSubdomain = extractRawSubdomain(rawHost);
-  const tenantCode = explicitTenantCode?.trim() || rawSubdomain || null;
+
+  // AUTH-CC01: If the request is arriving on the configured common portal hostname
+  // (e.g. careconnect-demo.legalsynq.com in prod, or localhost in dev), skip all
+  // tenant-code resolution and tell Identity to resolve the tenant from the user's
+  // email.  This covers the case where CC_COMMON_PORTAL_HOSTNAME has no subdomain
+  // (e.g. bare "localhost") so extractRawSubdomain returns null.
+  const isCommonPortalHost =
+    !!CC_COMMON_PORTAL_HOSTNAME && incomingHost === CC_COMMON_PORTAL_HOSTNAME;
+
+  const tenantCode = isCommonPortalHost
+    ? 'common-portal'                          // placeholder — not sent to Identity
+    : (explicitTenantCode?.trim() || rawSubdomain || null);
 
   const redactedEmail = email.replace(/(.{2}).+@/, '$1***@');
-  console.log(`[login] host=${rawHost}, subdomain=${rawSubdomain}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${redactedEmail}`);
+  console.log(`[login] host=${rawHost}, subdomain=${rawSubdomain}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, isCommonPortal=${isCommonPortalHost}, email=${redactedEmail}`);
 
   if (!tenantCode) {
     return NextResponse.json(
@@ -86,14 +103,17 @@ export async function POST(request: NextRequest) {
   }
 
   // AUTH-B01 / AUTH-CC01: Resolve tenant from the Tenant service.
+  // - Common portal host → resolveByEmail immediately, skip subdomain lookup.
   // - If the subdomain maps to a known tenant, pass tenantId + code (AUTH-B01 fallback path).
   // - If the Tenant service returns 404, this is the common portal (multi-tenant); tell
   //   Identity to resolve the tenant from the user's email instead (AUTH-CC01).
   let resolvedTenantId: string | null = null;
   let resolvedTenantCode: string = tenantCode;
-  let resolveByEmail = false;
+  let resolveByEmail = isCommonPortalHost;
 
-  if (rawSubdomain) {
+  if (isCommonPortalHost) {
+    console.log(`[login] AUTH-CC01 common portal host detected (${incomingHost}) — resolving by email`);
+  } else if (rawSubdomain) {
     try {
       const tenantRes = await fetch(
         `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-subdomain/${encodeURIComponent(rawSubdomain)}`,

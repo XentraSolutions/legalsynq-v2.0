@@ -251,10 +251,25 @@ public class AuthService : IAuthService
         bool requireCareConnectAccess = false,
         bool requireTenantAccess = false)
     {
+        // requireCareConnectAccess and requireTenantAccess are mutually exclusive guard paths:
+        // the CC portal path checks for a CC product role; the tenant portal path checks for
+        // a system role.  Passing both true would apply the tenant-portal block first, which
+        // is coincidentally correct but semantically wrong.  Assert here so any future caller
+        // error is caught immediately in Debug/test builds.
+        Debug.Assert(!(requireCareConnectAccess && requireTenantAccess),
+            "requireCareConnectAccess and requireTenantAccess are mutually exclusive guard paths.");
+
         // Phase G: ScopedRoleAssignments (GLOBAL) is the sole authoritative role source.
         // UserRoles table has been dropped (migration 20260330200004).
+        // LS-ID-CC-001: restrict to system roles only (Scope = Platform or Tenant).
+        // Product roles (e.g. CARECONNECT_REFERRER) may exist as GLOBAL ScopedRoleAssignments
+        // due to the phase-G backfill from old UserRoles rows; they must not satisfy the
+        // tenant portal guard, which only applies to PlatformAdmin / TenantAdmin.
+        // Note: s.IsActive is guaranteed by the filtered Include in GetByIdWithRolesAsync;
+        // no need to recheck it here.
         var roleNames = userWithRoles.ScopedRoleAssignments
-            .Where(s => s.IsActive && s.ScopeType == Domain.ScopedRoleAssignment.ScopeTypes.Global)
+            .Where(s => s.ScopeType == Domain.ScopedRoleAssignment.ScopeTypes.Global
+                     && s.Role.Scope is Domain.RoleScopes.Platform or Domain.RoleScopes.Tenant)
             .Select(s => s.Role.Name)
             .ToList();
 
