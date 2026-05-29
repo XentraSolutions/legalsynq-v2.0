@@ -4,6 +4,7 @@ using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Liens.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(LiensDbContext))]
-    partial class LiensDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260529160319_AddFacilityContactPersons")]
+    partial class AddFacilityContactPersons
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -362,50 +365,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_Contacts_TenantId_OrgId_DisplayName");
 
                     b.ToTable("liens_Contacts", (string)null);
-                });
-
-            modelBuilder.Entity("Liens.Domain.Entities.DIYReportConfig", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("ConfigJson")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("CreatedByUserId")
-                        .IsRequired()
-                        .HasColumnType("char(36)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "UserId");
-
-                    b.ToTable("liens_DIYReportConfigs", (string)null);
                 });
 
             modelBuilder.Entity("Liens.Domain.Entities.Facility", b =>
@@ -892,113 +851,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_LienOffers_TenantId_SellerOrgId_Status");
 
                     b.ToTable("liens_LienOffers", (string)null);
-                });
-
-            modelBuilder.Entity("Liens.Domain.Entities.LienReduction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<Guid>("CaseId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("CreatedByUserId")
-                        .IsRequired()
-                        .HasColumnType("char(36)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<Guid>("LienId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<DateOnly>("ReductionDate")
-                        .HasColumnType("date");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "CaseId");
-
-                    b.HasIndex("TenantId", "LienId");
-
-                    b.ToTable("liens_LienReductions", (string)null);
-                });
-
-            modelBuilder.Entity("Liens.Domain.Entities.LienSettlement", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<Guid>("CaseId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("CreatedByUserId")
-                        .IsRequired()
-                        .HasColumnType("char(36)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<Guid>("LienId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<int>("PaymentNumber")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "CaseId");
-
-                    b.HasIndex("TenantId", "LienId");
-
-                    b.ToTable("liens_LienSettlements", (string)null);
                 });
 
             modelBuilder.Entity("Liens.Domain.Entities.LienTask", b =>
@@ -1611,68 +1463,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_ServicingItems_TenantId_TaskNumber");
 
                     b.ToTable("liens_ServicingItems", (string)null);
-                });
-
-            modelBuilder.Entity("Liens.Domain.Entities.SettlementPaymentDetail", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<Guid>("CaseId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("CheckNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("CreatedByUserId")
-                        .IsRequired()
-                        .HasColumnType("char(36)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<Guid>("LienId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<string>("Payee")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<DateOnly?>("PaymentDate")
-                        .HasColumnType("date");
-
-                    b.Property<int>("PaymentNumber")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "CaseId");
-
-                    b.HasIndex("TenantId", "LienId");
-
-                    b.ToTable("liens_SettlementPaymentDetails", (string)null);
                 });
 
             modelBuilder.Entity("Liens.Domain.Entities.BillOfSale", b =>

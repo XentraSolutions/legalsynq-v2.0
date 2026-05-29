@@ -2943,13 +2943,13 @@ public static class CaseEndpoints
         return (rawAddress.Trim(), string.Empty, string.Empty, string.Empty);
     }
 
-    private static Guid RequireTenantId(ICurrentRequestContext ctx)
+    internal static Guid RequireTenantId(ICurrentRequestContext ctx)
     {
         return ctx.TenantId
             ?? throw new UnauthorizedAccessException("Tenant context is required.");
     }
 
-    private static Guid RequireUserId(ICurrentRequestContext ctx)
+    internal static Guid RequireUserId(ICurrentRequestContext ctx)
     {
         return ctx.UserId
             ?? throw new UnauthorizedAccessException("User context is required.");

@@ -4,6 +4,7 @@ using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Liens.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(LiensDbContext))]
-    partial class LiensDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260529161458_AddSettlementTables")]
+    partial class AddSettlementTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -362,50 +365,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_Contacts_TenantId_OrgId_DisplayName");
 
                     b.ToTable("liens_Contacts", (string)null);
-                });
-
-            modelBuilder.Entity("Liens.Domain.Entities.DIYReportConfig", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("ConfigJson")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("CreatedByUserId")
-                        .IsRequired()
-                        .HasColumnType("char(36)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "UserId");
-
-                    b.ToTable("liens_DIYReportConfigs", (string)null);
                 });
 
             modelBuilder.Entity("Liens.Domain.Entities.Facility", b =>

@@ -163,6 +163,8 @@ app.MapCaseNoteEndpoints();
 app.MapServicingEndpoints();
 app.MapContactEndpoints();
 app.MapFacilityEndpoints();
+app.MapSettlementEndpoints();
+app.MapReportEndpoints();
 // Lookup reference data (states, accident types, contact types, lien statuses, etc.)
 app.MapLookupEndpoints();
 // LS-FLOW-MERGE-P4 — product → Flow integration endpoints.

@@ -73,6 +73,14 @@ public static class DependencyInjection
         services.AddScoped<ILienTaskGenerationEngine, LienTaskGenerationEngine>();
         services.AddScoped<ILienTaskNoteService, LienTaskNoteService>();
         services.AddScoped<ILienCaseNoteService, LienCaseNoteService>();
+        // Settlement, Reduction & Payment
+        services.AddScoped<ILienReductionRepository, LienReductionRepository>();
+        services.AddScoped<ILienSettlementRepository, LienSettlementRepository>();
+        services.AddScoped<ISettlementPaymentDetailRepository, SettlementPaymentDetailRepository>();
+        services.AddScoped<ISettlementService, SettlementService>();
+        // DIY Reports
+        services.AddScoped<IDIYReportConfigRepository, DIYReportConfigRepository>();
+        services.AddScoped<IDIYReportService, DIYReportService>();
         // LS-LIENS-FLOW-006 — Task governance
         services.AddScoped<ILienTaskGovernanceService, LienTaskGovernanceService>();
         // LS-LIENS-FLOW-007 — Flow instance linkage resolver
