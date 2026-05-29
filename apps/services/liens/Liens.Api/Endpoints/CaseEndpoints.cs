@@ -5,6 +5,7 @@ using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
 using Liens.Domain.Enums;
+using System.Text;
 using System.Globalization;
 
 namespace Liens.Api.Endpoints;
@@ -51,6 +52,60 @@ public static class CaseEndpoints
         public string? keyword { get; init; }
         public string? sortBy { get; init; }
         public string? sortDirection { get; init; }
+    }
+
+    private sealed class LegacyLawFirmV3Request
+    {
+        public string? LawFirmId { get; init; }
+        public string? Keyword { get; init; }
+        public int Page { get; init; } = 1;
+        public int Limit { get; init; } = 10;
+    }
+
+    private sealed class LegacyMedicalLiensV3Request
+    {
+        public string? MedicalId { get; init; }
+        public string? Keyword { get; init; }
+        public int Page { get; init; } = 1;
+        public int Limit { get; init; } = 10;
+    }
+
+    private sealed class LegacyFundingCompanyLiensV3Request
+    {
+        public string? FundingCompanyId { get; init; }
+        public string? Keyword { get; init; }
+        public int Page { get; init; } = 1;
+        public int Limit { get; init; } = 10;
+    }
+
+    private sealed class LegacyFacilityLiensV3Request
+    {
+        public string? FacilityId { get; init; }
+        public string? Keyword { get; init; }
+        public int Page { get; init; } = 1;
+        public int Limit { get; init; } = 10;
+    }
+
+    private sealed class LegacyLeadCaseV3Request
+    {
+        public string? LeadId { get; init; }
+        public string? Keyword { get; init; }
+        public int Page { get; init; } = 1;
+        public int Limit { get; init; } = 10;
+    }
+
+    private sealed class LegacyCaseUpdatesV3Request
+    {
+        public string? CaseId { get; init; }
+        public int Page { get; init; } = 1;
+        public int Limit { get; init; } = 10;
+    }
+
+    private sealed class LegacyLiensUpdatesV3Request
+    {
+        public string? CaseId { get; init; }
+        public int Page { get; init; } = 1;
+        public int Limit { get; init; } = 10;
     }
 
     private sealed class LegacyLiensMedicalInformationFacilityRequest
@@ -133,6 +188,73 @@ public static class CaseEndpoints
         public string? phone { get; init; }
         public string? lawfirmId { get; init; }
         public string? roleId { get; init; }
+    }
+
+    private sealed class LegacyReassignLawFirmRequest
+    {
+        public string? caseId { get; init; }
+        public string? lawfirm { get; init; }
+    }
+
+    private sealed class LegacyReassignCaseManagerRequest
+    {
+        public string? caseId { get; init; }
+        public string? caseManager { get; init; }
+    }
+
+    private sealed class LegacyReassignLeadRequest
+    {
+        public string? caseId { get; init; }
+        public string? leadId { get; init; }
+    }
+
+    private sealed class LegacyBatchReassignRequest
+    {
+        public string? contactType { get; init; }
+        public string? oldId { get; init; }
+        public string? newId { get; init; }
+    }
+
+    private sealed class LegacyGenerateCaseCsvRequest
+    {
+        public string? caseId { get; init; }
+        public string? lawFirmId { get; init; }
+        public string? accidentTypeId { get; init; }
+        public string? statusId { get; init; }
+        public string? caseManagerId { get; init; }
+    }
+
+    private sealed class LegacyGenerateLiensCsvRequest
+    {
+        public string? caseId { get; init; }
+        public string? liensId { get; init; }
+        public string? lawFirmId { get; init; }
+        public string? medicalFacilityId { get; init; }
+        public string? purchaseDate { get; init; }
+        public string? caseManagerId { get; init; }
+        public string? lienStatusId { get; init; }
+    }
+
+    private sealed class LegacyLiensCsvRow
+    {
+        public string CaseCode { get; init; } = string.Empty;
+        public string LiensCode { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+        public string PurchaseDate { get; init; } = string.Empty;
+        public string InitialServiceDate { get; init; } = string.Empty;
+        public string EndServiceDate { get; init; } = string.Empty;
+        public string Note { get; init; } = string.Empty;
+        public string FacilityEmail { get; init; } = string.Empty;
+        public string FacilityPhone { get; init; } = string.Empty;
+        public string TotalPurchase { get; init; } = string.Empty;
+        public string TotalBilling { get; init; } = string.Empty;
+        public string LawFirm { get; init; } = string.Empty;
+        public string CaseManager { get; init; } = string.Empty;
+        public string FacilityName { get; init; } = string.Empty;
+        public string FacilityContactName { get; init; } = string.Empty;
+        public string MedicalProvider { get; init; } = string.Empty;
+        public string PlainTiffName { get; init; } = string.Empty;
+        public string ClosedDate { get; init; } = string.Empty;
     }
 
     private sealed class LegacyPayeeOutboundResponse
@@ -258,6 +380,46 @@ public static class CaseEndpoints
         group.MapGet("/getcaseinfo/{id:guid}", GetCaseInfoV2Legacy)
             .RequirePermission(LiensPermissions.CaseRead);
 
+        // Legacy compatibility route from previous service: GET /case/law/{lawFirmId}/{isTotal?}
+        // under the new base path becomes GET /api/liens/cases/law/{lawFirmId}/{isTotal?}.
+        group.MapGet("/law/{lawFirmId}/{isTotal?}", GetCaseByLawFirmIdLegacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: POST /case/law/v3
+        // under the new base path becomes POST /api/liens/cases/law/v3.
+        group.MapPost("/law/v3", GetLawFirmV3Legacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: POST /case/medical/v3
+        // under the new base path becomes POST /api/liens/cases/medical/v3.
+        group.MapPost("/medical/v3", GetLiensByMedicalIdV3Legacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: POST /case/funding/v3
+        // under the new base path becomes POST /api/liens/cases/funding/v3.
+        group.MapPost("/funding/v3", GetLiensByFundingCompanyIdV3Legacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: POST /case/medical/facility/v3
+        // under the new base path becomes POST /api/liens/cases/medical/facility/v3.
+        group.MapPost("/medical/facility/v3", GetLiensByMedicalFacilityIdV3Legacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: POST /case/leads/v3
+        // under the new base path becomes POST /api/liens/cases/leads/v3.
+        group.MapPost("/leads/v3", GetLeadV3Legacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: POST /case/case-updates/v3
+        // under the new base path becomes POST /api/liens/cases/case-updates/v3.
+        group.MapPost("/case-updates/v3", GetCaseUpdatesV3Legacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: POST /case/liens-updates/v3
+        // under the new base path becomes POST /api/liens/cases/liens-updates/v3.
+        group.MapPost("/liens-updates/v3", GetLiensUpdatesV3Legacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
         group.MapPost("/", CreateCase)
             .RequirePermission(LiensPermissions.CaseCreate);
 
@@ -350,7 +512,46 @@ public static class CaseEndpoints
         // under the new base path becomes DELETE /api/liens/cases/delete-casemanager/{id}.
         group.MapDelete("/delete-casemanager/{id}", DeleteCaseManagerLegacy)
             .RequirePermission(LiensPermissions.CaseUpdate);
-    }
+
+        // Legacy compatibility route from previous service: POST /case/reassign/lawfirm
+        // under the new base path becomes POST /api/liens/cases/reassign/lawfirm.
+        group.MapPost("/reassign/lawfirm", ReassignLawfirmLegacy)
+            .RequirePermission(LiensPermissions.CaseUpdate);
+
+        // Legacy compatibility route from previous service: POST /case/reassign/casemanager
+        // under the new base path becomes POST /api/liens/cases/reassign/casemanager.
+        group.MapPost("/reassign/casemanager", ReassignCaseManagerLegacy)
+            .RequirePermission(LiensPermissions.CaseUpdate);
+
+        // Legacy compatibility route from previous service: POST /case/reassign/leads
+        // under the new base path becomes POST /api/liens/cases/reassign/leads.
+        group.MapPost("/reassign/leads", ReassignLeadLegacy)
+            .RequirePermission(LiensPermissions.CaseUpdate);
+
+        // Legacy compatibility route from previous service: POST /case/batch-reassign
+        // under the new base path becomes POST /api/liens/cases/batch-reassign.
+        group.MapPost("/batch-reassign", BatchReassignLawfirmLegacy)
+            .RequirePermission(LiensPermissions.CaseUpdate);
+
+        // Legacy compatibility route from previous service: GET /case/payoff-quote/{caseId}
+        // under the new base path becomes GET /api/liens/cases/payoff-quote/{caseId}.
+        group.MapGet("/payoff-quote/{caseId:guid}", GeneratePayoffQuoteLegacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: GET /case/dashboard/piechart
+        // under the new base path becomes GET /api/liens/cases/dashboard/piechart.
+        group.MapGet("/dashboard/piechart", GetDashboardLegacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: POST /case/generate-csv
+        // under the new base path becomes POST /api/liens/cases/generate-csv.
+        group.MapPost("/generate-csv", GenerateCaseCsvLegacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy compatibility route from previous service: POST /case/liens/generate-csv
+        // under the new base path becomes POST /api/liens/cases/liens/generate-csv.
+        group.MapPost("/liens/generate-csv", GenerateLiensCsvLegacy)
+            .RequirePermission(LiensPermissions.LienRead);
 
     private static async Task<IResult> LiensMedicalInformationLegacy(
         LegacyLiensMedicalInformationFacilityRequest request,
@@ -1052,6 +1253,14 @@ public static class CaseEndpoints
         return result;
     }
 
+    private static string SerializeLegacyNoteFields(Dictionary<string, string> fields)
+    {
+        if (fields.Count == 0)
+            return string.Empty;
+
+        return string.Join("; ", fields.Select(pair => $"{pair.Key}={pair.Value}"));
+    }
+
     private static async Task<IResult> UpdateMedicalPayeeOutboundLegacy(
         LegacyPayeeOutboundRequest request,
         ILienService lienService,
@@ -1381,6 +1590,1193 @@ public static class CaseEndpoints
         }
     }
 
+    private static async Task<IResult> ReassignLawfirmLegacy(
+        LegacyReassignLawFirmRequest request,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.caseId, out var caseId) ||
+            !Guid.TryParse(request.lawfirm, out var lawFirmOrgId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned case.",
+            });
+        }
+
+        var isSuccess = await caseService.ReassignLawFirmAsync(
+            tenantId,
+            caseId,
+            lawFirmOrgId,
+            userId,
+            ct);
+
+        if (!isSuccess)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned case.",
+            });
+        }
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Successfully re-assigned case to new law firm.",
+        });
+    }
+
+    private static async Task<IResult> ReassignCaseManagerLegacy(
+        LegacyReassignCaseManagerRequest request,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.caseId, out var caseId) ||
+            !Guid.TryParse(request.caseManager, out var caseManagerId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned case.",
+            });
+        }
+
+        var isSuccess = await caseService.ReassignCaseManagerAsync(
+            tenantId,
+            caseId,
+            caseManagerId,
+            userId,
+            ct);
+
+        if (!isSuccess)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned case.",
+            });
+        }
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Successfully re-assigned case to new case manager.",
+        });
+    }
+
+    private static async Task<IResult> ReassignLeadLegacy(
+        LegacyReassignLeadRequest request,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.caseId, out var caseId) ||
+            string.IsNullOrWhiteSpace(request.leadId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned case.",
+            });
+        }
+
+        var existing = await caseService.GetByIdAsync(tenantId, caseId, ct);
+        if (existing is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned case.",
+            });
+        }
+
+        try
+        {
+            var fields = ParseLegacyNoteFields(existing.Notes);
+            fields["leadId"] = request.leadId.Trim();
+
+            var update = new UpdateCaseRequest
+            {
+                ClientFirstName = existing.ClientFirstName,
+                ClientLastName = existing.ClientLastName,
+                ExternalReference = existing.ExternalReference,
+                Title = existing.Title,
+                ClientDob = existing.ClientDob,
+                ClientPhone = existing.ClientPhone,
+                ClientEmail = existing.ClientEmail,
+                ClientAddress = existing.ClientAddress,
+                DateOfIncident = existing.DateOfIncident,
+                InsuranceCarrier = existing.InsuranceCarrier,
+                PolicyNumber = existing.PolicyNumber,
+                ClaimNumber = existing.ClaimNumber,
+                Description = existing.Description,
+                Notes = SerializeLegacyNoteFields(fields),
+                Status = existing.Status,
+                DemandAmount = existing.DemandAmount,
+                SettlementAmount = existing.SettlementAmount,
+            };
+
+            await caseService.UpdateAsync(tenantId, caseId, userId, update, ct);
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully re-assigned case to new lead.",
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned case.",
+            });
+        }
+    }
+
+    private static async Task<IResult> BatchReassignLawfirmLegacy(
+        LegacyBatchReassignRequest request,
+        ICaseService caseService,
+        ILienService lienService,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (string.IsNullOrWhiteSpace(request.contactType) ||
+            string.IsNullOrWhiteSpace(request.oldId) ||
+            string.IsNullOrWhiteSpace(request.newId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assign cases.",
+            });
+        }
+
+        try
+        {
+            switch (request.contactType)
+            {
+                case "1": // law firm
+                {
+                    if (!Guid.TryParse(request.oldId, out var oldLawFirmOrgId) ||
+                        !Guid.TryParse(request.newId, out var newLawFirmOrgId))
+                    {
+                        return Results.NotFound(new
+                        {
+                            isSuccess = false,
+                            message = "unable to re-assign cases.",
+                        });
+                    }
+
+                    const int pageSize = 200;
+                    var page = 1;
+                    while (true)
+                    {
+                        var pageResult = await caseService.SearchAsync(
+                            tenantId,
+                            search: null,
+                            status: null,
+                            page: page,
+                            pageSize: pageSize,
+                            orgId: oldLawFirmOrgId,
+                            ct);
+
+                        if (pageResult.Items.Count == 0)
+                            break;
+
+                        foreach (var item in pageResult.Items)
+                        {
+                            _ = await caseService.ReassignLawFirmAsync(
+                                tenantId,
+                                item.Id,
+                                newLawFirmOrgId,
+                                userId,
+                                ct);
+                        }
+
+                        if ((page * pageSize) >= pageResult.TotalCount)
+                            break;
+
+                        page++;
+                    }
+
+                    return Results.Ok(new
+                    {
+                        isSuccess = true,
+                        message = "Successfully Reassigned Cases.",
+                    });
+                }
+                case "2": // medical provider
+                {
+                    const int pageSize = 200;
+                    var page = 1;
+                    while (true)
+                    {
+                        var pageResult = await servicingItemService.SearchAsync(
+                            tenantId,
+                            search: "LegacyMedicalFacilityInfo",
+                            status: null,
+                            priority: null,
+                            assignedTo: null,
+                            caseId: null,
+                            lienId: null,
+                            page: page,
+                            pageSize: pageSize,
+                            ct);
+
+                        if (pageResult.Items.Count == 0)
+                            break;
+
+                        foreach (var item in pageResult.Items.Where(i =>
+                                     string.Equals(i.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal)))
+                        {
+                            var fields = ParseLegacyNoteFields(item.Notes);
+                            var currentMedicalProvider = fields.GetValueOrDefault("medicalProviderId", string.Empty);
+                            if (!string.Equals(currentMedicalProvider, request.oldId, StringComparison.Ordinal))
+                                continue;
+
+                            fields["medicalProviderId"] = request.newId.Trim();
+
+                            var update = new UpdateServicingItemRequest
+                            {
+                                TaskType = item.TaskType,
+                                Description = item.Description,
+                                AssignedTo = string.IsNullOrWhiteSpace(item.AssignedTo) ? "system" : item.AssignedTo,
+                                AssignedToUserId = item.AssignedToUserId,
+                                Priority = item.Priority,
+                                Status = item.Status,
+                                CaseId = item.CaseId,
+                                LienId = item.LienId,
+                                DueDate = item.DueDate,
+                                Notes = SerializeLegacyNoteFields(fields),
+                                Resolution = item.Resolution,
+                            };
+
+                            await servicingItemService.UpdateAsync(tenantId, item.Id, userId, update, ct);
+                        }
+
+                        if ((page * pageSize) >= pageResult.TotalCount)
+                            break;
+
+                        page++;
+                    }
+
+                    return Results.Ok(new
+                    {
+                        isSuccess = true,
+                        message = "Successfully Reassigned Liens.",
+                    });
+                }
+                case "3": // funding company
+                {
+                    const int pageSize = 200;
+                    var page = 1;
+                    while (true)
+                    {
+                        var pageResult = await lienService.SearchAsync(
+                            tenantId,
+                            search: null,
+                            status: null,
+                            lienType: null,
+                            caseId: null,
+                            facilityId: null,
+                            page: page,
+                            pageSize: pageSize,
+                            ct);
+
+                        if (pageResult.Items.Count == 0)
+                            break;
+
+                        foreach (var item in pageResult.Items.Where(i =>
+                                     string.Equals(i.ExternalReference, request.oldId, StringComparison.Ordinal)))
+                        {
+                            var update = new UpdateLienRequest
+                            {
+                                ExternalReference = request.newId.Trim(),
+                                LienType = item.LienType,
+                                CaseId = item.CaseId,
+                                FacilityId = item.FacilityId,
+                                OriginalAmount = item.OriginalAmount,
+                                Jurisdiction = item.Jurisdiction,
+                                IsConfidential = item.IsConfidential,
+                                SubjectFirstName = item.SubjectFirstName,
+                                SubjectLastName = item.SubjectLastName,
+                                IncidentDate = item.IncidentDate,
+                                Description = item.Description,
+                            };
+
+                            await lienService.UpdateAsync(tenantId, item.Id, userId, update, ct);
+                        }
+
+                        if ((page * pageSize) >= pageResult.TotalCount)
+                            break;
+
+                        page++;
+                    }
+
+                    return Results.Ok(new
+                    {
+                        isSuccess = true,
+                        message = "Successfully Reassigned Fundings.",
+                    });
+                }
+                case "4": // medical facility
+                {
+                    const int pageSize = 200;
+                    var page = 1;
+                    while (true)
+                    {
+                        var pageResult = await servicingItemService.SearchAsync(
+                            tenantId,
+                            search: "LegacyMedicalFacilityInfo",
+                            status: null,
+                            priority: null,
+                            assignedTo: null,
+                            caseId: null,
+                            lienId: null,
+                            page: page,
+                            pageSize: pageSize,
+                            ct);
+
+                        if (pageResult.Items.Count == 0)
+                            break;
+
+                        foreach (var item in pageResult.Items.Where(i =>
+                                     string.Equals(i.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal)))
+                        {
+                            var fields = ParseLegacyNoteFields(item.Notes);
+                            var currentFacilityId = fields.GetValueOrDefault("facilityId", string.Empty);
+                            if (!string.Equals(currentFacilityId, request.oldId, StringComparison.Ordinal))
+                                continue;
+
+                            fields["facilityId"] = request.newId.Trim();
+
+                            var update = new UpdateServicingItemRequest
+                            {
+                                TaskType = item.TaskType,
+                                Description = item.Description,
+                                AssignedTo = string.IsNullOrWhiteSpace(item.AssignedTo) ? "system" : item.AssignedTo,
+                                AssignedToUserId = item.AssignedToUserId,
+                                Priority = item.Priority,
+                                Status = item.Status,
+                                CaseId = item.CaseId,
+                                LienId = item.LienId,
+                                DueDate = item.DueDate,
+                                Notes = SerializeLegacyNoteFields(fields),
+                                Resolution = item.Resolution,
+                            };
+
+                            await servicingItemService.UpdateAsync(tenantId, item.Id, userId, update, ct);
+                        }
+
+                        if ((page * pageSize) >= pageResult.TotalCount)
+                            break;
+
+                        page++;
+                    }
+
+                    return Results.Ok(new
+                    {
+                        isSuccess = true,
+                        message = "Successfully Reassigned Liens.",
+                    });
+                }
+                case "5": // leads
+                {
+                    const int pageSize = 200;
+                    var page = 1;
+                    while (true)
+                    {
+                        var pageResult = await caseService.SearchAsync(
+                            tenantId,
+                            search: null,
+                            status: null,
+                            page: page,
+                            pageSize: pageSize,
+                            orgId: null,
+                            ct);
+
+                        if (pageResult.Items.Count == 0)
+                            break;
+
+                        foreach (var item in pageResult.Items)
+                        {
+                            var fields = ParseLegacyNoteFields(item.Notes);
+                            var currentLeadId = fields.GetValueOrDefault("leadId", string.Empty);
+                            if (!string.Equals(currentLeadId, request.oldId, StringComparison.Ordinal))
+                                continue;
+
+                            fields["leadId"] = request.newId.Trim();
+
+                            var update = new UpdateCaseRequest
+                            {
+                                ClientFirstName = item.ClientFirstName,
+                                ClientLastName = item.ClientLastName,
+                                ExternalReference = item.ExternalReference,
+                                Title = item.Title,
+                                ClientDob = item.ClientDob,
+                                ClientPhone = item.ClientPhone,
+                                ClientEmail = item.ClientEmail,
+                                ClientAddress = item.ClientAddress,
+                                DateOfIncident = item.DateOfIncident,
+                                InsuranceCarrier = item.InsuranceCarrier,
+                                PolicyNumber = item.PolicyNumber,
+                                ClaimNumber = item.ClaimNumber,
+                                Description = item.Description,
+                                Notes = SerializeLegacyNoteFields(fields),
+                                Status = item.Status,
+                                DemandAmount = item.DemandAmount,
+                                SettlementAmount = item.SettlementAmount,
+                            };
+
+                            await caseService.UpdateAsync(tenantId, item.Id, userId, update, ct);
+                        }
+
+                        if ((page * pageSize) >= pageResult.TotalCount)
+                            break;
+
+                        page++;
+                    }
+
+                    return Results.Ok(new
+                    {
+                        isSuccess = true,
+                        message = "Successfully Reassigned Leads.",
+                    });
+                }
+                default:
+                    return Results.NotFound(new
+                    {
+                        isSuccess = false,
+                        message = "unable to re-assign cases.",
+                    });
+            }
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assign cases.",
+            });
+        }
+    }
+
+    private static async Task<IResult> GeneratePayoffQuoteLegacy(
+        Guid caseId,
+        ICaseService caseService,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        try
+        {
+            var existingCase = await caseService.GetByIdAsync(tenantId, caseId, ct);
+            if (existingCase is null)
+            {
+                return Results.NotFound(new
+                {
+                    isSuccess = false,
+                    message = "Error: Unable to retrieve Payoff Quote",
+                });
+            }
+
+            const int pageSize = 200;
+            var page = 1;
+            var candidates = new List<ServicingItemResponse>();
+
+            while (true)
+            {
+                var result = await servicingItemService.SearchAsync(
+                    tenantId,
+                    search: null,
+                    status: null,
+                    priority: null,
+                    assignedTo: null,
+                    caseId: caseId,
+                    lienId: null,
+                    page: page,
+                    pageSize: pageSize,
+                    ct);
+
+                if (result.Items.Count == 0)
+                    break;
+
+                candidates.AddRange(result.Items);
+                if (candidates.Count >= result.TotalCount)
+                    break;
+
+                page++;
+            }
+
+            var payoffUrl = candidates
+                .Where(i => string.Equals(i.TaskType, "LegacyCaseDocument", StringComparison.Ordinal))
+                .OrderByDescending(i => i.CreatedAtUtc)
+                .Select(i => ParseLegacyNoteFields(i.Notes))
+                .Where(fields =>
+                {
+                    var typeId = fields.GetValueOrDefault("typeId", string.Empty);
+                    if (string.IsNullOrWhiteSpace(typeId))
+                        typeId = fields.GetValueOrDefault("docTypeId", string.Empty);
+                    if (string.IsNullOrWhiteSpace(typeId))
+                        typeId = fields.GetValueOrDefault("documentTypeId", string.Empty);
+
+                    var category = fields.GetValueOrDefault("category", string.Empty);
+                    return string.Equals(typeId, "14", StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(category, "PayoffStatement", StringComparison.OrdinalIgnoreCase);
+                })
+                .Select(fields =>
+                {
+                    var url = fields.GetValueOrDefault("url", string.Empty);
+                    if (string.IsNullOrWhiteSpace(url))
+                        url = fields.GetValueOrDefault("documentUrl", string.Empty);
+                    return url;
+                })
+                .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
+
+            if (!string.IsNullOrWhiteSpace(payoffUrl))
+            {
+                return Results.Ok(new
+                {
+                    isSuccess = true,
+                    message = "Successfully retrieved Payoff Quote",
+                    url = payoffUrl,
+                });
+            }
+
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: Unable to retrieve Payoff Quote",
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: Unable to retrieve Payoff Quote",
+            });
+        }
+    }
+
+    private static async Task<IResult> GetDashboardLegacy(
+        ICaseService caseService,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        const int pageSize = 200;
+
+        var cases = new List<CaseResponse>();
+        var casePage = 1;
+        while (true)
+        {
+            var chunk = await caseService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                page: casePage,
+                pageSize: pageSize,
+                orgId: null,
+                ct: ct);
+
+            if (chunk.Items.Count == 0)
+                break;
+
+            cases.AddRange(chunk.Items);
+            if (cases.Count >= chunk.TotalCount)
+                break;
+
+            casePage++;
+        }
+
+        var liens = new List<LienResponse>();
+        var lienPage = 1;
+        while (true)
+        {
+            var chunk = await lienService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                lienType: null,
+                caseId: null,
+                facilityId: null,
+                page: lienPage,
+                pageSize: pageSize,
+                ct: ct);
+
+            if (chunk.Items.Count == 0)
+                break;
+
+            liens.AddRange(chunk.Items);
+            if (liens.Count >= chunk.TotalCount)
+                break;
+
+            lienPage++;
+        }
+
+        if (cases.Count == 0 && liens.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "No dashboard data found.",
+            });
+        }
+
+        var caseStatus = cases
+            .GroupBy(c => string.IsNullOrWhiteSpace(c.Status) ? "Unknown" : c.Status)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new { label = g.Key, value = g.Count() })
+            .ToList();
+
+        var lienStatus = liens
+            .GroupBy(l => string.IsNullOrWhiteSpace(l.Status) ? "Unknown" : l.Status)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new { label = g.Key, value = g.Count() })
+            .ToList();
+
+        var data = new
+        {
+            totalCases = cases.Count,
+            totalActiveCases = cases.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.OrdinalIgnoreCase)),
+            totalLiens = liens.Count,
+            totalLienValue = liens.Sum(l => (double)l.OriginalAmount),
+            caseStatus,
+            lienStatus,
+        };
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Dashboard data retrieved successfully.",
+            data,
+        });
+    }
+
+    private static async Task<IResult> GenerateCaseCsvLegacy(
+        LegacyGenerateCaseCsvRequest request,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        try
+        {
+            Guid? lawFirmOrgId = null;
+            if (!string.IsNullOrWhiteSpace(request.lawFirmId))
+            {
+                if (!Guid.TryParse(request.lawFirmId, out var parsedLawFirmId))
+                {
+                    return Results.NotFound(new
+                    {
+                        isSuccess = false,
+                        message = "No data generated.",
+                        data = (object?)null,
+                    });
+                }
+
+                lawFirmOrgId = parsedLawFirmId;
+            }
+
+            const int pageSize = 200;
+            var page = 1;
+            var cases = new List<CaseResponse>();
+
+            while (true)
+            {
+                var result = await caseService.SearchAsync(
+                    tenantId,
+                    search: null,
+                    status: string.IsNullOrWhiteSpace(request.statusId) ? null : request.statusId,
+                    page: page,
+                    pageSize: pageSize,
+                    orgId: lawFirmOrgId,
+                    ct: ct);
+
+                if (result.Items.Count == 0)
+                    break;
+
+                cases.AddRange(result.Items);
+                if (cases.Count >= result.TotalCount)
+                    break;
+
+                page++;
+            }
+
+            var filtered = cases
+                .Where(c => string.IsNullOrWhiteSpace(request.caseId) ||
+                            string.Equals(c.CaseNumber, request.caseId, StringComparison.OrdinalIgnoreCase))
+                .Where(c =>
+                {
+                    if (string.IsNullOrWhiteSpace(request.accidentTypeId))
+                        return true;
+
+                    var fields = ParseLegacyNoteFields(c.Notes);
+                    return string.Equals(
+                        fields.GetValueOrDefault("accidentTypeId", string.Empty),
+                        request.accidentTypeId,
+                        StringComparison.OrdinalIgnoreCase);
+                })
+                .Where(c =>
+                {
+                    if (string.IsNullOrWhiteSpace(request.caseManagerId))
+                        return true;
+
+                    var fields = ParseLegacyNoteFields(c.Notes);
+                    return string.Equals(
+                        fields.GetValueOrDefault("caseManagerId", string.Empty),
+                        request.caseManagerId,
+                        StringComparison.OrdinalIgnoreCase);
+                })
+                .OrderByDescending(c => c.CaseNumber, StringComparer.Ordinal)
+                .ToList();
+
+            if (filtered.Count == 0)
+            {
+                return Results.NotFound(new
+                {
+                    isSuccess = false,
+                    message = "No cases found.",
+                    data = (object?)null,
+                });
+            }
+
+            var csvBytes = BuildLegacyCaseCsv(filtered);
+            if (csvBytes.Length == 0)
+            {
+                return Results.NotFound(new
+                {
+                    isSuccess = false,
+                    message = "No data generated.",
+                    data = (object?)null,
+                });
+            }
+
+            var timeZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+            var pacificNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
+            var filename = $"case_{pacificNow:yyyyMMddHHmmss}.csv";
+            var exportItem = new
+            {
+                base64 = Convert.ToBase64String(csvBytes),
+                filename,
+                export_format = "csv",
+            };
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "CSV generated successfully.",
+                data = new object[] { exportItem },
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = $"Error generating CSV: {ex.Message}",
+                data = (object?)null,
+            });
+        }
+    }
+
+    private static byte[] BuildLegacyCaseCsv(List<CaseResponse> items)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("CaseCode,FirstName,LastName,DateOfBirth,Address,City,State,ZipCode,IsServicing,IsUccFiled,IsBulk,AccidentType,AccidentState,DateOfLoss,LawFirm,CaseManager,Note,Created,CreateBy,Updated,UpdateBy,Status,CurrentStatus,CurrentMedicalStatus,CurrentAttributes,Email,Phone,Gender,SSN,Summary,ToGeneratePdf,SwitchedDate");
+
+        foreach (var item in items)
+        {
+            var address = SplitLegacyAddress(item.ClientAddress);
+            var fields = ParseLegacyNoteFields(item.Notes);
+            var row = string.Join(",", new[]
+            {
+                EscapeLegacyCsv(item.CaseNumber),
+                EscapeLegacyCsv(item.ClientFirstName),
+                EscapeLegacyCsv(item.ClientLastName),
+                EscapeLegacyCsv(FormatLegacyDate(item.ClientDob)),
+                EscapeLegacyCsv(address.Address),
+                EscapeLegacyCsv(address.City),
+                EscapeLegacyCsv(address.State),
+                EscapeLegacyCsv(address.Zipcode),
+                EscapeLegacyCsv(fields.GetValueOrDefault("isServicing", string.Empty)),
+                EscapeLegacyCsv(fields.GetValueOrDefault("isUccFiled", string.Empty)),
+                EscapeLegacyCsv(fields.GetValueOrDefault("isBulk", string.Empty)),
+                EscapeLegacyCsv(fields.GetValueOrDefault("accidentType", string.Empty)),
+                EscapeLegacyCsv(fields.GetValueOrDefault("accidentState", string.Empty)),
+                EscapeLegacyCsv(FormatLegacyDate(item.DateOfIncident)),
+                EscapeLegacyCsv(fields.GetValueOrDefault("lawFirm", string.Empty)),
+                EscapeLegacyCsv(fields.GetValueOrDefault("caseManager", string.Empty)),
+                EscapeLegacyCsv(item.Notes ?? string.Empty),
+                EscapeLegacyCsv(FormatLegacyTimestamp(item.CreatedAtUtc)),
+                EscapeLegacyCsv(string.Empty),
+                EscapeLegacyCsv(FormatLegacyTimestamp(item.UpdatedAtUtc)),
+                EscapeLegacyCsv(string.Empty),
+                EscapeLegacyCsv(item.Status),
+                EscapeLegacyCsv(item.Status),
+                EscapeLegacyCsv(fields.GetValueOrDefault("currentMedicalStatus", string.Empty)),
+                EscapeLegacyCsv(fields.GetValueOrDefault("currentAttributes", string.Empty)),
+                EscapeLegacyCsv(item.ClientEmail ?? string.Empty),
+                EscapeLegacyCsv(item.ClientPhone ?? string.Empty),
+                EscapeLegacyCsv(fields.GetValueOrDefault("gender", string.Empty)),
+                EscapeLegacyCsv(fields.GetValueOrDefault("ssn", string.Empty)),
+                EscapeLegacyCsv(item.Description ?? string.Empty),
+                EscapeLegacyCsv(fields.GetValueOrDefault("toGeneratePdf", string.Empty)),
+                EscapeLegacyCsv(fields.GetValueOrDefault("switchedDate", string.Empty)),
+            });
+
+            sb.AppendLine(row);
+        }
+
+        return Encoding.UTF8.GetBytes(sb.ToString());
+    }
+
+    private static async Task<IResult> GenerateLiensCsvLegacy(
+        LegacyGenerateLiensCsvRequest request,
+        ILienService lienService,
+        ICaseService caseService,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        try
+        {
+            var caseIdFilter = ParseGuidCsvValues(request.caseId);
+            var lienIdFilter = ParseGuidCsvValues(request.liensId);
+            var facilityIdFilter = ParseGuidCsvValues(request.medicalFacilityId);
+            var lawFirmFilter = ParseGuidCsvValues(request.lawFirmId);
+            var caseManagerFilter = (request.caseManagerId ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var lienStatusFilter = (request.lienStatusId ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var allLiens = new List<LienResponse>();
+            const int pageSize = 200;
+            var page = 1;
+
+            while (true)
+            {
+                var seededCaseId = caseIdFilter.Count == 1 ? caseIdFilter.First() : (Guid?)null;
+                var seededFacilityId = facilityIdFilter.Count == 1 ? facilityIdFilter.First() : (Guid?)null;
+
+                var result = await lienService.SearchAsync(
+                    tenantId,
+                    search: null,
+                    status: null,
+                    lienType: null,
+                    caseId: seededCaseId,
+                    facilityId: seededFacilityId,
+                    page: page,
+                    pageSize: pageSize,
+                    ct);
+
+                if (result.Items.Count == 0)
+                    break;
+
+                allLiens.AddRange(result.Items);
+                if (allLiens.Count >= result.TotalCount)
+                    break;
+
+                page++;
+            }
+
+            var lawFirmCaseIds = new HashSet<Guid>();
+            if (lawFirmFilter.Count > 0)
+            {
+                foreach (var orgId in lawFirmFilter)
+                {
+                    var casePage = 1;
+                    while (true)
+                    {
+                        var result = await caseService.SearchAsync(
+                            tenantId,
+                            search: null,
+                            status: null,
+                            page: casePage,
+                            pageSize: pageSize,
+                            orgId: orgId,
+                            ct: ct);
+
+                        if (result.Items.Count == 0)
+                            break;
+
+                        foreach (var item in result.Items)
+                            lawFirmCaseIds.Add(item.Id);
+
+                        if (lawFirmCaseIds.Count >= result.TotalCount)
+                            break;
+
+                        casePage++;
+                    }
+                }
+            }
+
+            var filteredLiens = allLiens
+                .Where(l => caseIdFilter.Count == 0 || (l.CaseId.HasValue && caseIdFilter.Contains(l.CaseId.Value)))
+                .Where(l => lienIdFilter.Count == 0 || lienIdFilter.Contains(l.Id))
+                .Where(l => facilityIdFilter.Count == 0 || (l.FacilityId.HasValue && facilityIdFilter.Contains(l.FacilityId.Value)))
+                .Where(l => lawFirmCaseIds.Count == 0 || (l.CaseId.HasValue && lawFirmCaseIds.Contains(l.CaseId.Value)))
+                .Where(l => lienStatusFilter.Count == 0 || lienStatusFilter.Contains(l.Status))
+                .Where(l => MatchesLegacyPurchaseDateFilter(l.IncidentDate, request.purchaseDate))
+                .OrderByDescending(l => l.CreatedAtUtc)
+                .ToList();
+
+            var rows = new List<LegacyLiensCsvRow>();
+            foreach (var lien in filteredLiens)
+            {
+                CaseResponse? caseInfo = null;
+                Dictionary<string, string> caseFields;
+                if (lien.CaseId.HasValue)
+                {
+                    caseInfo = await caseService.GetByIdAsync(tenantId, lien.CaseId.Value, ct);
+                    if (caseInfo is null)
+                        continue;
+
+                    caseFields = ParseLegacyNoteFields(caseInfo.Notes);
+                }
+                else
+                {
+                    caseFields = new Dictionary<string, string>(StringComparer.Ordinal);
+                }
+
+                if (caseManagerFilter.Count > 0)
+                {
+                    var caseManagerId = caseFields.GetValueOrDefault("caseManagerId", string.Empty);
+                    if (!caseManagerFilter.Contains(caseManagerId))
+                        continue;
+                }
+
+                decimal totalPurchase = 0m;
+                decimal totalBilling = 0m;
+                if (lien.Id != Guid.Empty)
+                {
+                    var codeResults = await servicingItemService.SearchAsync(
+                        tenantId,
+                        search: "LegacyMedicalCode",
+                        status: null,
+                        priority: null,
+                        assignedTo: null,
+                        caseId: null,
+                        lienId: lien.Id,
+                        page: 1,
+                        pageSize: 500,
+                        ct);
+
+                    foreach (var item in codeResults.Items.Where(i =>
+                                 string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal)))
+                    {
+                        var codeFields = ParseLegacyNoteFields(item.Notes);
+                        if (decimal.TryParse(codeFields.GetValueOrDefault("purchaseAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var purchase))
+                            totalPurchase += purchase;
+                        if (decimal.TryParse(codeFields.GetValueOrDefault("billingAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var billing))
+                            totalBilling += billing;
+                    }
+                }
+
+                var facilityFields = new Dictionary<string, string>(StringComparer.Ordinal);
+                if (lien.Id != Guid.Empty)
+                {
+                    var infoResults = await servicingItemService.SearchAsync(
+                        tenantId,
+                        search: "LegacyMedicalFacilityInfo",
+                        status: null,
+                        priority: null,
+                        assignedTo: null,
+                        caseId: null,
+                        lienId: lien.Id,
+                        page: 1,
+                        pageSize: 50,
+                        ct);
+
+                    var infoItem = infoResults.Items.FirstOrDefault(i =>
+                        string.Equals(i.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal));
+                    if (infoItem is not null)
+                        facilityFields = ParseLegacyNoteFields(infoItem.Notes);
+                }
+
+                var plainTiffName = caseInfo is null
+                    ? string.Empty
+                    : $"{caseInfo.ClientFirstName} {caseInfo.ClientLastName}".Trim();
+
+                var closedDate = LienStatus.Terminal.Contains(lien.Status)
+                    ? FormatLegacyTimestamp(lien.UpdatedAtUtc)
+                    : string.Empty;
+
+                rows.Add(new LegacyLiensCsvRow
+                {
+                    CaseCode = caseInfo?.CaseNumber ?? string.Empty,
+                    LiensCode = lien.LienNumber,
+                    Status = lien.Status,
+                    PurchaseDate = FormatLegacyDate(lien.IncidentDate),
+                    InitialServiceDate = facilityFields.GetValueOrDefault("initialServiceDate", string.Empty),
+                    EndServiceDate = facilityFields.GetValueOrDefault("endServiceDate", string.Empty),
+                    Note = lien.Description ?? string.Empty,
+                    FacilityEmail = facilityFields.GetValueOrDefault("email", string.Empty),
+                    FacilityPhone = facilityFields.GetValueOrDefault("phone", string.Empty),
+                    TotalPurchase = totalPurchase.ToString("#,##0.00", CultureInfo.InvariantCulture),
+                    TotalBilling = totalBilling.ToString("#,##0.00", CultureInfo.InvariantCulture),
+                    LawFirm = caseFields.GetValueOrDefault("lawFirm", string.Empty),
+                    CaseManager = caseFields.GetValueOrDefault("caseManager", string.Empty),
+                    FacilityName = facilityFields.GetValueOrDefault("facilityName", string.Empty),
+                    FacilityContactName = facilityFields.GetValueOrDefault("facilityContactPerson", string.Empty),
+                    MedicalProvider = facilityFields.GetValueOrDefault("medicalProvider", string.Empty),
+                    PlainTiffName = plainTiffName,
+                    ClosedDate = closedDate,
+                });
+            }
+
+            if (rows.Count == 0)
+            {
+                return Results.NotFound(new
+                {
+                    isSuccess = false,
+                    message = "No liens found. ",
+                    data = (object?)null,
+                });
+            }
+
+            var csvBytes = BuildLegacyLiensCsv(rows);
+            var timeZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+            var pacificNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
+            var filename = $"liens_{pacificNow:yyyyMMddHHmmss}.csv";
+            var exportItem = new
+            {
+                base64 = Convert.ToBase64String(csvBytes),
+                filename,
+                export_format = "csv",
+            };
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "CSV generated successfully.",
+                data = new object[] { exportItem },
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = $"Error generating CSV:  {ex.Message}",
+                data = (object?)null,
+            });
+        }
+    }
+
+    private static byte[] BuildLegacyLiensCsv(List<LegacyLiensCsvRow> rows)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("CaseCode,LiensCode,Status,PurchaseDate,InitialServiceDate,EndServiceDate,Note,FacilityEmail,FacilityPhone,TotalPurchase,TotalBilling,LawFirm,CaseManager,FacilityName,FacilityContactName,MedicalProvider,PlainTiffName,ClosedDate");
+
+        foreach (var row in rows)
+        {
+            sb.AppendLine(string.Join(",", new[]
+            {
+                EscapeLegacyCsv(row.CaseCode),
+                EscapeLegacyCsv(row.LiensCode),
+                EscapeLegacyCsv(row.Status),
+                EscapeLegacyCsv(row.PurchaseDate),
+                EscapeLegacyCsv(row.InitialServiceDate),
+                EscapeLegacyCsv(row.EndServiceDate),
+                EscapeLegacyCsv(row.Note),
+                EscapeLegacyCsv(row.FacilityEmail),
+                EscapeLegacyCsv(row.FacilityPhone),
+                EscapeLegacyCsv(row.TotalPurchase),
+                EscapeLegacyCsv(row.TotalBilling),
+                EscapeLegacyCsv(row.LawFirm),
+                EscapeLegacyCsv(row.CaseManager),
+                EscapeLegacyCsv(row.FacilityName),
+                EscapeLegacyCsv(row.FacilityContactName),
+                EscapeLegacyCsv(row.MedicalProvider),
+                EscapeLegacyCsv(row.PlainTiffName),
+                EscapeLegacyCsv(row.ClosedDate),
+            }));
+        }
+
+        return Encoding.UTF8.GetBytes(sb.ToString());
+    }
+
+    private static HashSet<Guid> ParseGuidCsvValues(string? raw)
+    {
+        var set = new HashSet<Guid>();
+        if (string.IsNullOrWhiteSpace(raw))
+            return set;
+
+        foreach (var token in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (Guid.TryParse(token, out var id))
+                set.Add(id);
+        }
+
+        return set;
+    }
+
+    private static bool MatchesLegacyPurchaseDateFilter(DateOnly? value, string? rawFilter)
+    {
+        if (string.IsNullOrWhiteSpace(rawFilter))
+            return true;
+        if (!value.HasValue)
+            return false;
+
+        if (rawFilter.Contains('-', StringComparison.Ordinal))
+        {
+            var range = rawFilter
+                .Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (range.Length == 2 &&
+                DateOnly.TryParseExact(range[0], "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var start) &&
+                DateOnly.TryParseExact(range[1], "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end))
+            {
+                return value.Value >= start && value.Value <= end;
+            }
+        }
+
+        if (DateOnly.TryParseExact(rawFilter, "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var exact))
+            return value.Value == exact;
+
+        return true;
+    }
+
+    private static string EscapeLegacyCsv(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        var needsQuotes = value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r');
+        if (!needsQuotes)
+            return value;
+
+        return $"\"{value.Replace("\"", "\"\"")}\"";
+    }
+
     private static DateOnly? ParseLegacyDate(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1628,6 +3024,737 @@ public static class CaseEndpoints
         var userId = RequireUserId(ctx);
         var result = await caseService.CreateAsync(tenantId, orgId, userId, request, ct);
         return Results.Created($"/api/liens/cases/{result.Id}", result);
+    }
+
+    private static async Task<IResult> GetLawFirmV3Legacy(
+        LegacyLawFirmV3Request req,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        if (!Guid.TryParse(req.LawFirmId, out var lawFirmOrgId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var page = req.Page < 1 ? 1 : req.Page;
+        var limit = req.Limit < 1 ? 10 : req.Limit;
+
+        var paged = await caseService.SearchAsync(
+            tenantId,
+            req.Keyword,
+            status: null,
+            page,
+            limit,
+            orgId: lawFirmOrgId,
+            ct);
+
+        if (paged.TotalCount == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var allCases = new List<CaseResponse>();
+        var totalPages = (int)Math.Ceiling((double)paged.TotalCount / limit);
+
+        for (var currentPage = 1; currentPage <= totalPages; currentPage++)
+        {
+            var chunk = await caseService.SearchAsync(
+                tenantId,
+                req.Keyword,
+                status: null,
+                page: currentPage,
+                pageSize: limit,
+                orgId: lawFirmOrgId,
+                ct);
+
+            allCases.AddRange(chunk.Items);
+        }
+
+        var totalCount = paged.TotalCount;
+        var totalCases = totalCount;
+        var totalActiveCases = allCases.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
+        var totalValue = allCases.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Case list retrieved successfully.",
+            data = paged.Items,
+            totalCount,
+            totalCases,
+            totalActiveCases,
+            totalValue,
+        });
+    }
+
+    private static async Task<IResult> GetLiensByMedicalIdV3Legacy(
+        LegacyMedicalLiensV3Request req,
+        ICaseService caseService,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        if (!Guid.TryParse(req.MedicalId, out var medicalId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var allLiens = new List<LienResponse>();
+        var lienPage = 1;
+        const int lienPageSize = 200;
+
+        while (true)
+        {
+            var liens = await lienService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                lienType: null,
+                caseId: null,
+                facilityId: medicalId,
+                page: lienPage,
+                pageSize: lienPageSize,
+                ct);
+
+            if (liens.Items.Count == 0)
+                break;
+
+            allLiens.AddRange(liens.Items);
+
+            if (allLiens.Count >= liens.TotalCount)
+                break;
+
+            lienPage++;
+        }
+
+        var caseIds = allLiens
+            .Select(l => l.CaseId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        if (caseIds.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var allCases = new List<CaseResponse>();
+        foreach (var caseId in caseIds)
+        {
+            var item = await caseService.GetByIdAsync(tenantId, caseId, ct);
+            if (item is not null)
+                allCases.Add(item);
+        }
+
+        IEnumerable<CaseResponse> query = allCases;
+        if (!string.IsNullOrWhiteSpace(req.Keyword))
+        {
+            var keyword = req.Keyword.Trim();
+            query = query.Where(c =>
+                c.CaseNumber.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                c.ClientFirstName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                c.ClientLastName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(c.ClientDisplayName) && c.ClientDisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        var filtered = query.ToList();
+        if (filtered.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var page = req.Page < 1 ? 1 : req.Page;
+        var limit = req.Limit < 1 ? 10 : req.Limit;
+
+        var paged = filtered
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .ToList();
+
+        var totalCount = filtered.Count;
+        var totalCases = totalCount;
+        var totalActiveCases = filtered.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
+        var totalValue = filtered.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Case list retrieved successfully.",
+            data = paged,
+            totalCount,
+            totalCases,
+            totalActiveCases,
+            totalValue,
+        });
+    }
+
+    private static async Task<IResult> GetLiensByFundingCompanyIdV3Legacy(
+        LegacyFundingCompanyLiensV3Request req,
+        ICaseService caseService,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        var fundingCompanyId = req.FundingCompanyId?.Trim();
+        if (string.IsNullOrWhiteSpace(fundingCompanyId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var allLiens = new List<LienResponse>();
+        var lienPage = 1;
+        const int lienPageSize = 200;
+
+        while (true)
+        {
+            var liens = await lienService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                lienType: null,
+                caseId: null,
+                facilityId: null,
+                page: lienPage,
+                pageSize: lienPageSize,
+                ct);
+
+            if (liens.Items.Count == 0)
+                break;
+
+            allLiens.AddRange(liens.Items);
+
+            if (allLiens.Count >= liens.TotalCount)
+                break;
+
+            lienPage++;
+        }
+
+        var caseIds = allLiens
+            .Where(l => string.Equals(l.ExternalReference, fundingCompanyId, StringComparison.OrdinalIgnoreCase))
+            .Select(l => l.CaseId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        if (caseIds.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var allCases = new List<CaseResponse>();
+        foreach (var caseId in caseIds)
+        {
+            var item = await caseService.GetByIdAsync(tenantId, caseId, ct);
+            if (item is not null)
+                allCases.Add(item);
+        }
+
+        IEnumerable<CaseResponse> query = allCases;
+        if (!string.IsNullOrWhiteSpace(req.Keyword))
+        {
+            var keyword = req.Keyword.Trim();
+            query = query.Where(c =>
+                c.CaseNumber.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                c.ClientFirstName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                c.ClientLastName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(c.ClientDisplayName) && c.ClientDisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        var filtered = query.ToList();
+        if (filtered.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var page = req.Page < 1 ? 1 : req.Page;
+        var limit = req.Limit < 1 ? 10 : req.Limit;
+
+        var paged = filtered
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .ToList();
+
+        var totalCount = filtered.Count;
+        var totalCases = totalCount;
+        var totalActiveCases = filtered.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
+        var totalValue = filtered.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Case list retrieved successfully.",
+            data = paged,
+            totalCount,
+            totalCases,
+            totalActiveCases,
+            totalValue,
+        });
+    }
+
+    private static async Task<IResult> GetLiensByMedicalFacilityIdV3Legacy(
+        LegacyFacilityLiensV3Request req,
+        ICaseService caseService,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        if (!Guid.TryParse(req.FacilityId, out var facilityId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var allLiens = new List<LienResponse>();
+        var lienPage = 1;
+        const int lienPageSize = 200;
+
+        while (true)
+        {
+            var liens = await lienService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                lienType: null,
+                caseId: null,
+                facilityId: facilityId,
+                page: lienPage,
+                pageSize: lienPageSize,
+                ct);
+
+            if (liens.Items.Count == 0)
+                break;
+
+            allLiens.AddRange(liens.Items);
+
+            if (allLiens.Count >= liens.TotalCount)
+                break;
+
+            lienPage++;
+        }
+
+        var caseIds = allLiens
+            .Select(l => l.CaseId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        if (caseIds.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var allCases = new List<CaseResponse>();
+        foreach (var caseId in caseIds)
+        {
+            var item = await caseService.GetByIdAsync(tenantId, caseId, ct);
+            if (item is not null)
+                allCases.Add(item);
+        }
+
+        IEnumerable<CaseResponse> query = allCases;
+        if (!string.IsNullOrWhiteSpace(req.Keyword))
+        {
+            var keyword = req.Keyword.Trim();
+            query = query.Where(c =>
+                c.CaseNumber.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                c.ClientFirstName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                c.ClientLastName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(c.ClientDisplayName) && c.ClientDisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        var filtered = query.ToList();
+        if (filtered.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var page = req.Page < 1 ? 1 : req.Page;
+        var limit = req.Limit < 1 ? 10 : req.Limit;
+
+        var paged = filtered
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .ToList();
+
+        var totalCount = filtered.Count;
+        var totalCases = totalCount;
+        var totalActiveCases = filtered.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
+        var totalValue = filtered.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Case list retrieved successfully.",
+            data = paged,
+            totalCount,
+            totalCases,
+            totalActiveCases,
+            totalValue,
+        });
+    }
+
+    private static async Task<IResult> GetLeadV3Legacy(
+        LegacyLeadCaseV3Request req,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        var leadId = req.LeadId?.Trim();
+        if (string.IsNullOrWhiteSpace(leadId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var allCases = new List<CaseResponse>();
+        var page = 1;
+        const int fetchPageSize = 200;
+
+        while (true)
+        {
+            var chunk = await caseService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                page: page,
+                pageSize: fetchPageSize,
+                orgId: null,
+                ct);
+
+            if (chunk.Items.Count == 0)
+                break;
+
+            allCases.AddRange(chunk.Items);
+
+            if (allCases.Count >= chunk.TotalCount)
+                break;
+
+            page++;
+        }
+
+        var filteredByLead = allCases
+            .Where(c =>
+            {
+                var fields = ParseLegacyNoteFields(c.Notes);
+                var value = fields.GetValueOrDefault("leadId", string.Empty);
+                return string.Equals(value, leadId, StringComparison.OrdinalIgnoreCase);
+            })
+            .ToList();
+
+        IEnumerable<CaseResponse> query = filteredByLead;
+        if (!string.IsNullOrWhiteSpace(req.Keyword))
+        {
+            var keyword = req.Keyword.Trim();
+            query = query.Where(c =>
+                c.CaseNumber.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                c.ClientFirstName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                c.ClientLastName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(c.ClientDisplayName) &&
+                 c.ClientDisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        var filtered = query.ToList();
+        if (filtered.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No cases found.",
+            });
+        }
+
+        var requestPage = req.Page < 1 ? 1 : req.Page;
+        var requestLimit = req.Limit < 1 ? 10 : req.Limit;
+
+        var paged = filtered
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .Skip((requestPage - 1) * requestLimit)
+            .Take(requestLimit)
+            .ToList();
+
+        var totalCount = filtered.Count;
+        var totalCases = totalCount;
+        var totalActiveCases = filtered.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
+        var totalValue = filtered.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Case list retrieved successfully.",
+            data = paged,
+            totalCount,
+            totalCases,
+            totalActiveCases,
+            totalValue,
+        });
+    }
+
+    private static async Task<IResult> GetCaseUpdatesV3Legacy(
+        LegacyCaseUpdatesV3Request req,
+        ILienCaseNoteService caseNoteService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        if (!Guid.TryParse(req.CaseId, out var caseId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No case updates found.",
+            });
+        }
+
+        var notes = await caseNoteService.GetNotesAsync(tenantId, caseId, ct);
+        var ordered = notes
+            .OrderByDescending(n => n.UpdatedAtUtc ?? n.CreatedAtUtc)
+            .ToList();
+
+        if (ordered.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No case updates found.",
+            });
+        }
+
+        var page = req.Page < 1 ? 1 : req.Page;
+        var limit = req.Limit < 1 ? 10 : req.Limit;
+
+        var data = ordered
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .Select(n => new
+            {
+                id = n.Id.ToString(),
+                caseId = n.CaseId.ToString(),
+                note = n.Content,
+                category = n.Category,
+                isPinned = n.IsPinned,
+                isEdited = n.IsEdited,
+                created = FormatLegacyTimestamp(n.CreatedAtUtc),
+                createdBy = n.CreatedByName,
+                updated = n.UpdatedAtUtc.HasValue ? FormatLegacyTimestamp(n.UpdatedAtUtc.Value) : string.Empty,
+                updatedBy = n.CreatedByName,
+            })
+            .ToList();
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Case updates retrieved successfully.",
+            data,
+            totalCount = ordered.Count,
+            page,
+            limit,
+        });
+    }
+
+    private static async Task<IResult> GetLiensUpdatesV3Legacy(
+        LegacyLiensUpdatesV3Request req,
+        ILienService lienService,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        if (!Guid.TryParse(req.CaseId, out var caseId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No liens updates found.",
+            });
+        }
+
+        const int fetchPageSize = 200;
+
+        var liens = new List<LienResponse>();
+        var lienPage = 1;
+        while (true)
+        {
+            var chunk = await lienService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                lienType: null,
+                caseId: caseId,
+                facilityId: null,
+                page: lienPage,
+                pageSize: fetchPageSize,
+                ct);
+
+            if (chunk.Items.Count == 0)
+                break;
+
+            liens.AddRange(chunk.Items);
+
+            if (liens.Count >= chunk.TotalCount)
+                break;
+
+            lienPage++;
+        }
+
+        var servicingItems = new List<ServicingItemResponse>();
+        var servicingPage = 1;
+        while (true)
+        {
+            var chunk = await servicingItemService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                priority: null,
+                assignedTo: null,
+                caseId: caseId,
+                lienId: null,
+                page: servicingPage,
+                pageSize: fetchPageSize,
+                ct);
+
+            if (chunk.Items.Count == 0)
+                break;
+
+            servicingItems.AddRange(chunk.Items);
+
+            if (servicingItems.Count >= chunk.TotalCount)
+                break;
+
+            servicingPage++;
+        }
+
+        var combined = liens
+            .Select(l => new
+            {
+                id = l.Id.ToString(),
+                caseId = caseId.ToString(),
+                lienId = l.Id.ToString(),
+                action = "LienStatus",
+                description = string.IsNullOrWhiteSpace(l.Status)
+                    ? "Lien update"
+                    : $"Lien status updated to {l.Status}.",
+                updatedBy = string.Empty,
+                timestamp = FormatLegacyTimestamp(l.UpdatedAtUtc),
+                sortAt = l.UpdatedAtUtc,
+            })
+            .Concat(
+                servicingItems
+                    .Where(i => i.LienId.HasValue)
+                    .Select(i => new
+                    {
+                        id = i.Id.ToString(),
+                        caseId = i.CaseId?.ToString() ?? caseId.ToString(),
+                        lienId = i.LienId!.Value.ToString(),
+                        action = i.TaskType,
+                        description = string.IsNullOrWhiteSpace(i.Resolution) ? i.Description : i.Resolution,
+                        updatedBy = i.AssignedTo,
+                        timestamp = FormatLegacyTimestamp(i.UpdatedAtUtc),
+                        sortAt = i.UpdatedAtUtc,
+                    }))
+            .OrderByDescending(i => i.sortAt)
+            .ToList();
+
+        if (combined.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No liens updates found.",
+            });
+        }
+
+        var page = req.Page < 1 ? 1 : req.Page;
+        var limit = req.Limit < 1 ? 10 : req.Limit;
+
+        var data = combined
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .Select(i => new
+            {
+                i.id,
+                i.caseId,
+                i.lienId,
+                i.action,
+                i.description,
+                i.updatedBy,
+                i.timestamp,
+            })
+            .ToList();
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Liens updates retrieved successfully.",
+            data,
+            totalCount = combined.Count,
+            page,
+            limit,
+        });
     }
 
     private static async Task<IResult> GetCasesV3Legacy(

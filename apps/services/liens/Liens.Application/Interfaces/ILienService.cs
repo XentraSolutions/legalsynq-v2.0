@@ -20,4 +20,6 @@ public interface ILienService
     Task<LienResponse> UpdateAsync(
         Guid tenantId, Guid id, Guid actingUserId,
         UpdateLienRequest request, CancellationToken ct = default);
+
+    Task DeleteAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default);
 }
