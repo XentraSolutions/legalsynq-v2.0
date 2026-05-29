@@ -265,4 +265,43 @@ public sealed class LienService : ILienService
         var display = $"{firstName} {lastName}".Trim();
         return string.IsNullOrEmpty(display) ? null : display;
     }
+
+    public async Task DeleteAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default)
+    {
+        var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
+
+        // Already terminal — treat as success (idempotent soft-delete).
+        if (LienStatus.Terminal.Contains(entity.Status))
+        {
+            return;
+        }
+
+        // Transition to the appropriate terminal state respecting the state machine.
+        // Cancelled is reachable from Draft, Sold, Active, Disputed.
+        // Withdrawn is reachable from Offered, UnderReview.
+        if (LienStatus.AllowedTransitions.TryGetValue(entity.Status, out var allowed) &&
+            allowed.Contains(LienStatus.Cancelled))
+        {
+            entity.TransitionStatus(LienStatus.Cancelled, actingUserId);
+        }
+        else
+        {
+            entity.TransitionStatus(LienStatus.Withdrawn, actingUserId);
+        }
+
+        await _lienRepo.UpdateAsync(entity, ct);
+
+        _logger.LogInformation(
+            "Lien deleted (status={Status}): {LienId} Tenant={TenantId}", entity.Status, entity.Id, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.lien.deleted",
+            action: "delete",
+            description: $"Lien '{entity.LienNumber}' deleted (transitioned to {entity.Status})",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Lien",
+            entityId: entity.Id.ToString());
+    }
 }

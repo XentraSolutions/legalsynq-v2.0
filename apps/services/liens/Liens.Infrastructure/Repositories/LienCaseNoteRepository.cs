@@ -22,6 +22,14 @@ public sealed class LienCaseNoteRepository : ILienCaseNoteRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<LienCaseNote>> GetByCaseIdIncludingDeletedAsync(Guid tenantId, Guid caseId, CancellationToken ct = default)
+    {
+        return await _db.LienCaseNotes
+            .Where(n => n.TenantId == tenantId && n.CaseId == caseId)
+            .OrderBy(n => n.CreatedAtUtc)
+            .ToListAsync(ct);
+    }
+
     public async Task<LienCaseNote?> GetByIdAsync(Guid tenantId, Guid noteId, CancellationToken ct = default)
     {
         return await _db.LienCaseNotes

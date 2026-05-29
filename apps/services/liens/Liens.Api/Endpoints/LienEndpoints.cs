@@ -76,6 +76,30 @@ public static class LienEndpoints
         public string status { get; init; } = string.Empty;
     }
 
+    private sealed class LegacyReassignMedicalProviderRequest
+    {
+        public string? liensId { get; init; }
+        public string? medicalProvider { get; init; }
+    }
+
+    private sealed class LegacyReassignFacilityRequest
+    {
+        public string? liensId { get; init; }
+        public string? facility { get; init; }
+    }
+
+    private sealed class LegacyReassignFacilityContactPersonRequest
+    {
+        public string? liensId { get; init; }
+        public string? facilityContactPerson { get; init; }
+    }
+
+    private sealed class LegacyReassignFundingCompanyRequest
+    {
+        public string? liensId { get; init; }
+        public string? fundingCompany { get; init; }
+    }
+
     public static void MapLienEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/liens/liens")
@@ -117,6 +141,26 @@ public static class LienEndpoints
         // Legacy compatibility route from previous service: DELETE /case/delete-casedocument/{id}
         // under the liens base path becomes DELETE /api/liens/liens/delete-casedocument/{id}.
         group.MapDelete("/delete-casedocument/{id:guid}", DeleteCaseDocumentLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
+        // Legacy transfer from CaseEndpoints: POST /case/liens/reassign/medical-provider.
+        group.MapPost("/reassign/medical-provider", ReassignMedicalProviderLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
+        // Legacy transfer from CaseEndpoints: POST /case/liens/reassign/facility.
+        group.MapPost("/reassign/facility", ReassignFacilityLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
+        // Legacy migration from CaseController: POST /case/liens/reassign/contact-person.
+        group.MapPost("/reassign/contact-person", ReassignFacilityContactPersonLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
+        // Legacy migration from CaseController: POST /case/liens/reassign/funding-company.
+        group.MapPost("/reassign/funding-company", ReassignFundingCompanyLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
+        // Legacy compatibility route from previous service: DELETE /case/liens/delete/{liensId}
+        group.MapDelete("/delete/{liensId:guid}", DeleteLiensLegacy)
             .RequirePermission(LiensPermissions.LienUpdate);
 
         group.MapPost("/", CreateLien)
@@ -491,6 +535,432 @@ public static class LienEndpoints
         }
     }
 
+    private static async Task<IResult> ReassignMedicalProviderLegacy(
+        LegacyReassignMedicalProviderRequest request,
+        ILienService lienService,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var orgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.liensId, out var lienId) || string.IsNullOrWhiteSpace(request.medicalProvider))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+
+        var lien = await lienService.GetByIdAsync(tenantId, lienId, ct);
+        if (lien is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+
+        try
+        {
+            var infoResult = await servicingItemService.SearchAsync(
+                tenantId,
+                search: "LegacyMedicalFacilityInfo",
+                status: null,
+                priority: null,
+                assignedTo: null,
+                caseId: null,
+                lienId: lienId,
+                page: 1,
+                pageSize: 50,
+                ct);
+
+            var existing = infoResult.Items.FirstOrDefault(i =>
+                string.Equals(i.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal) &&
+                i.LienId == lienId);
+
+            if (existing is null)
+            {
+                var create = new CreateServicingItemRequest
+                {
+                    TaskNumber = $"LMFI-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
+                    TaskType = "LegacyMedicalFacilityInfo",
+                    Description = "Legacy medical facility information",
+                    AssignedTo = "system",
+                    CaseId = lien.CaseId,
+                    LienId = lienId,
+                    Notes = $"medicalProviderId={request.medicalProvider.Trim()}",
+                };
+
+                await servicingItemService.CreateAsync(tenantId, orgId, userId, create, ct);
+            }
+            else
+            {
+                var fields = ParseLegacyNoteFields(existing.Notes);
+                fields["medicalProviderId"] = request.medicalProvider.Trim();
+
+                var update = new UpdateServicingItemRequest
+                {
+                    TaskType = existing.TaskType,
+                    Description = existing.Description,
+                    AssignedTo = string.IsNullOrWhiteSpace(existing.AssignedTo) ? "system" : existing.AssignedTo,
+                    AssignedToUserId = existing.AssignedToUserId,
+                    Priority = existing.Priority,
+                    Status = existing.Status,
+                    CaseId = existing.CaseId,
+                    LienId = existing.LienId,
+                    DueDate = existing.DueDate,
+                    Notes = SerializeLegacyNoteFields(fields),
+                    Resolution = existing.Resolution,
+                };
+
+                await servicingItemService.UpdateAsync(tenantId, existing.Id, userId, update, ct);
+            }
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully re-assigned liens to new medical provider.",
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+    }
+
+    private static async Task<IResult> ReassignFacilityLegacy(
+        LegacyReassignFacilityRequest request,
+        ILienService lienService,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var orgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.liensId, out var lienId) ||
+            !Guid.TryParse(request.facility, out var facilityId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+
+        var lien = await lienService.GetByIdAsync(tenantId, lienId, ct);
+        if (lien is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+
+        try
+        {
+            var mapped = new UpdateLienRequest
+            {
+                ExternalReference = lien.ExternalReference,
+                LienType = lien.LienType,
+                CaseId = lien.CaseId,
+                FacilityId = facilityId,
+                OriginalAmount = lien.OriginalAmount,
+                Jurisdiction = lien.Jurisdiction,
+                IsConfidential = lien.IsConfidential,
+                SubjectFirstName = lien.SubjectFirstName,
+                SubjectLastName = lien.SubjectLastName,
+                IncidentDate = lien.IncidentDate,
+                Description = lien.Description,
+            };
+
+            await lienService.UpdateAsync(tenantId, lienId, userId, mapped, ct);
+
+            var infoResult = await servicingItemService.SearchAsync(
+                tenantId,
+                search: "LegacyMedicalFacilityInfo",
+                status: null,
+                priority: null,
+                assignedTo: null,
+                caseId: null,
+                lienId: lienId,
+                page: 1,
+                pageSize: 50,
+                ct);
+
+            var existing = infoResult.Items.FirstOrDefault(i =>
+                string.Equals(i.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal) &&
+                i.LienId == lienId);
+
+            if (existing is null)
+            {
+                var create = new CreateServicingItemRequest
+                {
+                    TaskNumber = $"LMFI-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
+                    TaskType = "LegacyMedicalFacilityInfo",
+                    Description = "Legacy medical facility information",
+                    AssignedTo = "system",
+                    CaseId = lien.CaseId,
+                    LienId = lienId,
+                    Notes = $"facilityId={facilityId}",
+                };
+
+                await servicingItemService.CreateAsync(tenantId, orgId, userId, create, ct);
+            }
+            else
+            {
+                var fields = ParseLegacyNoteFields(existing.Notes);
+                fields["facilityId"] = facilityId.ToString();
+
+                var update = new UpdateServicingItemRequest
+                {
+                    TaskType = existing.TaskType,
+                    Description = existing.Description,
+                    AssignedTo = string.IsNullOrWhiteSpace(existing.AssignedTo) ? "system" : existing.AssignedTo,
+                    AssignedToUserId = existing.AssignedToUserId,
+                    Priority = existing.Priority,
+                    Status = existing.Status,
+                    CaseId = existing.CaseId,
+                    LienId = existing.LienId,
+                    DueDate = existing.DueDate,
+                    Notes = SerializeLegacyNoteFields(fields),
+                    Resolution = existing.Resolution,
+                };
+
+                await servicingItemService.UpdateAsync(tenantId, existing.Id, userId, update, ct);
+            }
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully re-assigned liens to new facility.",
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+    }
+
+    private static async Task<IResult> ReassignFacilityContactPersonLegacy(
+        LegacyReassignFacilityContactPersonRequest request,
+        ILienService lienService,
+        IServicingItemService servicingItemService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var orgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.liensId, out var lienId) ||
+            !Guid.TryParse(request.facilityContactPerson, out var facilityContactId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+
+        var lien = await lienService.GetByIdAsync(tenantId, lienId, ct);
+        if (lien is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+
+        try
+        {
+            var infoResult = await servicingItemService.SearchAsync(
+                tenantId,
+                search: "LegacyMedicalFacilityInfo",
+                status: null,
+                priority: null,
+                assignedTo: null,
+                caseId: null,
+                lienId: lienId,
+                page: 1,
+                pageSize: 50,
+                ct);
+
+            var existing = infoResult.Items.FirstOrDefault(i =>
+                string.Equals(i.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal) &&
+                i.LienId == lienId);
+
+            if (existing is null)
+            {
+                var create = new CreateServicingItemRequest
+                {
+                    TaskNumber = $"LMFI-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
+                    TaskType = "LegacyMedicalFacilityInfo",
+                    Description = "Legacy medical facility information",
+                    AssignedTo = "system",
+                    CaseId = lien.CaseId,
+                    LienId = lienId,
+                    Notes = $"facilityContactId={facilityContactId}",
+                };
+
+                await servicingItemService.CreateAsync(tenantId, orgId, userId, create, ct);
+            }
+            else
+            {
+                var fields = ParseLegacyNoteFields(existing.Notes);
+                fields["facilityContactId"] = facilityContactId.ToString();
+
+                var update = new UpdateServicingItemRequest
+                {
+                    TaskType = existing.TaskType,
+                    Description = existing.Description,
+                    AssignedTo = string.IsNullOrWhiteSpace(existing.AssignedTo) ? "system" : existing.AssignedTo,
+                    AssignedToUserId = existing.AssignedToUserId,
+                    Priority = existing.Priority,
+                    Status = existing.Status,
+                    CaseId = existing.CaseId,
+                    LienId = existing.LienId,
+                    DueDate = existing.DueDate,
+                    Notes = SerializeLegacyNoteFields(fields),
+                    Resolution = existing.Resolution,
+                };
+
+                await servicingItemService.UpdateAsync(tenantId, existing.Id, userId, update, ct);
+            }
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully re-assigned liens to new facility contact person.",
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+    }
+
+    private static async Task<IResult> ReassignFundingCompanyLegacy(
+        LegacyReassignFundingCompanyRequest request,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.liensId, out var lienId) || string.IsNullOrWhiteSpace(request.fundingCompany))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+
+        var lien = await lienService.GetByIdAsync(tenantId, lienId, ct);
+        if (lien is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+
+        try
+        {
+            var mapped = new UpdateLienRequest
+            {
+                ExternalReference = request.fundingCompany.Trim(),
+                LienType = lien.LienType,
+                CaseId = lien.CaseId,
+                FacilityId = lien.FacilityId,
+                OriginalAmount = lien.OriginalAmount,
+                Jurisdiction = lien.Jurisdiction,
+                IsConfidential = lien.IsConfidential,
+                SubjectFirstName = lien.SubjectFirstName,
+                SubjectLastName = lien.SubjectLastName,
+                IncidentDate = lien.IncidentDate,
+                Description = lien.Description,
+            };
+
+            await lienService.UpdateAsync(tenantId, lienId, userId, mapped, ct);
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully re-assigned liens to new funding company.",
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "unable to re-assigned liens.",
+            });
+        }
+    }
+
+    private static async Task<IResult> DeleteLiensLegacy(
+        Guid liensId,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId   = RequireUserId(ctx);
+
+        var existing = await lienService.GetByIdAsync(tenantId, liensId, ct);
+        if (existing is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "No record found to delete.",
+            });
+        }
+
+        try
+        {
+            await lienService.DeleteAsync(tenantId, liensId, userId, ct);
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully Deleted Lien.",
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = ex.Message,
+            });
+        }
+    }
+
     private static async Task<List<LienResponse>> GetLegacyLiensListingAsync(
         ILienService lienService,
         Guid tenantId,
@@ -546,6 +1016,14 @@ public static class LienEndpoints
         }
 
         return result;
+    }
+
+    private static string SerializeLegacyNoteFields(Dictionary<string, string> fields)
+    {
+        if (fields.Count == 0)
+            return string.Empty;
+
+        return string.Join("; ", fields.Select(pair => $"{pair.Key}={pair.Value}"));
     }
 
     private static string FormatLegacyDate(DateOnly? value)

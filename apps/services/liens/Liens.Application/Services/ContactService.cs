@@ -195,6 +195,13 @@ public sealed class ContactService : IContactService
         return MapToResponse(entity);
     }
 
+    public async Task<List<ContactResponse>> GetAllByTypeAsync(
+        Guid tenantId, string? contactType, bool? isActive = true, CancellationToken ct = default)
+    {
+        var items = await _repo.GetAllByTypeAsync(tenantId, contactType, isActive, ct);
+        return items.Select(MapToResponse).ToList();
+    }
+
     private static ContactResponse MapToResponse(Contact entity) => new()
     {
         Id = entity.Id,
