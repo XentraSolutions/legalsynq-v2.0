@@ -12,10 +12,18 @@ public static class LookupCategory
     public const string State             = "State";
     public const string AccidentType      = "AccidentType";
 
+    // Legacy SynqLiens-Core categories
+    public const string MedicalStatus     = "MedicalStatus";
+    public const string SettlementStatus  = "SettlementStatus";
+    public const string SettlementType    = "SettlementType";
+    public const string CurrentAttributes = "CurrentAttributes";
+    public const string ProcedureCode     = "ProcedureCode";
+
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
         CaseStatus, LienStatus, LienType, ContactType,
         ServicingStatus, ServicingPriority, DocumentCategory,
-        State, AccidentType
+        State, AccidentType,
+        MedicalStatus, SettlementStatus, SettlementType, CurrentAttributes, ProcedureCode,
     };
 }

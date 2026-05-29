@@ -454,6 +454,65 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.ToTable("liens_Facilities", (string)null);
                 });
 
+            modelBuilder.Entity("Liens.Domain.Entities.FacilityContactPerson", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("varchar(320)");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Position")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FacilityId");
+
+                    b.HasIndex("TenantId", "FacilityId");
+
+                    b.ToTable("liens_FacilityContactPersons", (string)null);
+                });
+
             modelBuilder.Entity("Liens.Domain.Entities.Lien", b =>
                 {
                     b.Property<Guid>("Id")
@@ -860,8 +919,15 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("UpdatedByUserId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("WorkflowInstanceId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid?>("WorkflowStageId")
                         .HasColumnType("char(36)");
+
+                    b.Property<string>("WorkflowStepKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.HasKey("Id");
 
@@ -876,6 +942,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("IX_Tasks_TenantId_Status");
+
+                    b.HasIndex("TenantId", "WorkflowInstanceId")
+                        .HasDatabaseName("IX_Tasks_TenantId_WorkflowInstanceId");
 
                     b.ToTable("liens_Tasks", (string)null);
                 });
@@ -1058,9 +1127,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.ToTable("liens_TaskNotes", (string)null);
                 });
 
-            // TASK-MIG-09: LienTaskTemplate entity block removed — liens_TaskTemplates dropped.
-            // See migration 20260421000002_DropLiensConfigTables.
-
             modelBuilder.Entity("Liens.Domain.Entities.LienWorkflowConfig", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1211,6 +1277,10 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FromStageId");
+
+                    b.HasIndex("ToStageId");
 
                     b.HasIndex("WorkflowConfigId", "FromStageId")
                         .HasDatabaseName("IX_WorkflowTransitions_WorkflowId_FromStage");
@@ -1407,6 +1477,17 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Liens.Domain.Entities.FacilityContactPerson", b =>
+                {
+                    b.HasOne("Liens.Domain.Entities.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Facility");
+                });
+
             modelBuilder.Entity("Liens.Domain.Entities.Lien", b =>
                 {
                     b.HasOne("Liens.Domain.Entities.Case", null)
@@ -1440,27 +1521,23 @@ namespace Liens.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Liens.Domain.Entities.LienWorkflowTransition", b =>
                 {
-                    b.HasOne("Liens.Domain.Entities.LienWorkflowConfig", null)
-                        .WithMany("Transitions")
-                        .HasForeignKey("WorkflowConfigId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Liens.Domain.Entities.LienWorkflowStage", "FromStage")
+                    b.HasOne("Liens.Domain.Entities.LienWorkflowStage", null)
                         .WithMany()
                         .HasForeignKey("FromStageId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Liens.Domain.Entities.LienWorkflowStage", "ToStage")
+                    b.HasOne("Liens.Domain.Entities.LienWorkflowStage", null)
                         .WithMany()
                         .HasForeignKey("ToStageId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("FromStage");
-
-                    b.Navigation("ToStage");
+                    b.HasOne("Liens.Domain.Entities.LienWorkflowConfig", null)
+                        .WithMany("Transitions")
+                        .HasForeignKey("WorkflowConfigId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Liens.Domain.Entities.LienWorkflowConfig", b =>

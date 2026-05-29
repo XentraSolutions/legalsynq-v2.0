@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<ICaseRepository, CaseRepository>();
         services.AddScoped<IContactRepository, ContactRepository>();
         services.AddScoped<IFacilityRepository, FacilityRepository>();
+        services.AddScoped<IFacilityContactPersonRepository, FacilityContactPersonRepository>();
         services.AddScoped<ILookupValueRepository, LookupValueRepository>();
         services.AddScoped<ILienRepository, LienRepository>();
         services.AddScoped<ILienOfferRepository, LienOfferRepository>();
@@ -63,6 +64,7 @@ public static class DependencyInjection
         services.AddScoped<IServicingItemService, ServicingItemService>();
         services.AddScoped<ILookupValueService, LookupValueService>();
         services.AddScoped<IContactService, ContactService>();
+        services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<ILienTaskService, LienTaskService>();
         services.AddScoped<ILienWorkflowConfigService, LienWorkflowConfigService>();
         services.AddScoped<IWorkflowTransitionValidationService, WorkflowTransitionValidationService>();
