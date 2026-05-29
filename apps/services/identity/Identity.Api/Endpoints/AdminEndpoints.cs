@@ -7704,36 +7704,145 @@ public static partial class AdminEndpointsLscc010
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
 
-        // Idempotency: return existing user if already present in the tenant
+        // ── Multi-tenant: global email lookup ─────────────────────────────────
         var existingUser = await db.Users
-            .AsNoTracking()
-            .Where(u => u.TenantId == org.TenantId && u.Email == emailLower)
-            .Select(u => new { u.Id })
+            .Where(u => u.Email == emailLower)
+            .Select(u => new { u.Id, u.TenantId, u.IsActive })
             .FirstOrDefaultAsync(ct);
 
         if (existingUser is not null)
         {
-            logger.LogInformation(
-                "LSCC-010 ProvisionProviderUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
-                emailLower, org.TenantId, id);
-            return Results.Ok(new ProvisionProviderUserResponse(
-                existingUser.Id, InvitationId: null, IsNew: false, InvitationSent: false));
+            // Check if this user already belongs to the target tenant.
+            var alreadyInTenant = existingUser.TenantId == org.TenantId
+                || await db.UserTenants.AnyAsync(
+                    ut => ut.UserId == existingUser.Id && ut.TenantId == org.TenantId, ct);
+
+            if (alreadyInTenant)
+            {
+                logger.LogInformation(
+                    "LSCC-010 ProvisionProviderUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
+                    emailLower, org.TenantId, id);
+                return Results.Ok(new ProvisionProviderUserResponse(
+                    existingUser.Id, InvitationId: null, IsNew: false, InvitationSent: false));
+            }
+
+            // User exists in a different tenant.
+            if (existingUser.IsActive)
+            {
+                // Active user: add UserTenant row + org membership; send tenant-access-granted email.
+                db.UserTenants.Add(UserTenant.Create(existingUser.Id, org.TenantId));
+
+                var crossMembership = UserOrganizationMembership.Create(
+                    existingUser.Id, org.Id, memberRole: MemberRole.Member);
+                db.UserOrganizationMemberships.Add(crossMembership);
+
+                await db.SaveChangesAsync(ct);
+
+                logger.LogInformation(
+                    "LSCC-010 ProvisionProviderUser: existing active user {UserId} ({Email}) linked to tenant {TenantId}.",
+                    existingUser.Id, emailLower, org.TenantId);
+
+                // Best-effort tenant-access-granted notification email.
+                var notificationSent = false;
+                var providerTenantForNotif = await db.Tenants.FindAsync([org.TenantId], ct);
+                var portalUrl = TenantPortalUrlHelper.BuildBaseUrl(providerTenantForNotif, notifOptions.Value);
+                if (portalUrl is not null)
+                {
+                    var displayName = $"{body.FirstName} {body.LastName ?? "User"}".Trim();
+                    var tenantName  = providerTenantForNotif?.Name ?? org.TenantId.ToString();
+                    try
+                    {
+                        var (_, emailOk, _) = await emailClient.SendTenantAccessGrantedEmailAsync(
+                            emailLower, displayName, tenantName, portalUrl, org.TenantId, ct);
+                        notificationSent = emailOk;
+                        if (!emailOk)
+                            logger.LogWarning(
+                                "LSCC-010 ProvisionProviderUser: tenant-access-granted email not sent for user {UserId} ({Email}).",
+                                existingUser.Id, emailLower);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex,
+                            "LSCC-010 ProvisionProviderUser: tenant-access-granted email threw for user {UserId} ({Email}). Non-fatal.",
+                            existingUser.Id, emailLower);
+                    }
+                }
+                else
+                {
+                    logger.LogWarning(
+                        "LSCC-010 ProvisionProviderUser: PortalBaseDomain/PortalBaseUrl not configured — " +
+                        "tenant-access-granted notification cannot be sent for user {UserId} ({Email}).",
+                        existingUser.Id, emailLower);
+                }
+
+                return Results.Ok(new ProvisionProviderUserResponse(
+                    existingUser.Id,
+                    InvitationId:     null,
+                    IsNew:            false,
+                    InvitationSent:   false,
+                    NotificationSent: notificationSent));
+            }
+            else
+            {
+                // Invite-pending (inactive) user: add UserTenant row + org membership; send new invite.
+                db.UserTenants.Add(UserTenant.Create(existingUser.Id, org.TenantId));
+
+                var crossMembership = UserOrganizationMembership.Create(
+                    existingUser.Id, org.Id, memberRole: MemberRole.Member);
+                db.UserOrganizationMemberships.Add(crossMembership);
+
+                var rawToken   = Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N");
+                var tokenHash  = Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes(rawToken)));
+                var newInvitation = UserInvitation.Create(
+                    existingUser.Id, org.TenantId, tokenHash,
+                    UserInvitation.PortalOrigins.TenantPortal,
+                    invitedByUserId: null);
+                db.UserInvitations.Add(newInvitation);
+
+                await db.SaveChangesAsync(ct);
+
+                var invSent       = false;
+                var provTenant    = await db.Tenants.FindAsync([org.TenantId], ct);
+                var activationLink = TenantPortalUrlHelper.Build(provTenant, "accept-invite", rawToken, notifOptions.Value);
+                if (activationLink is not null)
+                {
+                    var displayName = $"{body.FirstName} {body.LastName ?? "User"}".Trim();
+                    var (_, emailOk, _) = await emailClient.SendInviteEmailAsync(
+                        emailLower, displayName, activationLink, org.TenantId, ct);
+                    invSent = emailOk;
+                    if (!emailOk)
+                        logger.LogWarning(
+                            "LSCC-010 ProvisionProviderUser: invite email not sent for inactive cross-tenant user {UserId} ({Email}).",
+                            existingUser.Id, emailLower);
+                }
+
+                return Results.Ok(new ProvisionProviderUserResponse(
+                    existingUser.Id,
+                    InvitationId:     newInvitation.Id,
+                    IsNew:            false,
+                    InvitationSent:   invSent));
+            }
         }
 
-        // Create inactive user
+        // ── New user: standard provisioning path ──────────────────────────────
         var lastName = string.IsNullOrWhiteSpace(body.LastName) ? "User" : body.LastName.Trim();
         var tempHash = passwordHasher.Hash(Guid.CreateVersion7().ToString());
         var user     = User.Create(org.TenantId, emailLower, tempHash, body.FirstName.Trim(), lastName);
         user.Deactivate();
         db.Users.Add(user);
 
+        // Create UserTenant row alongside the new user.
+        db.UserTenants.Add(UserTenant.Create(user.Id, org.TenantId));
+
         // Create invitation
-        var rawToken   = Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N");
-        var tokenHash  = Convert.ToHexString(
+        var rawToken2  = Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N");
+        var tokenHash2 = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes(rawToken)));
+                System.Text.Encoding.UTF8.GetBytes(rawToken2)));
         var invitation = UserInvitation.Create(
-            user.Id, org.TenantId, tokenHash,
+            user.Id, org.TenantId, tokenHash2,
             UserInvitation.PortalOrigins.TenantPortal,
             invitedByUserId: null);
         db.UserInvitations.Add(invitation);
@@ -7761,14 +7870,14 @@ public static partial class AdminEndpointsLscc010
         });
 
         // Best-effort invitation email — LS-ID-TNT-016-01: tenant-subdomain-aware link.
-        var invitationSent  = false;
-        var providerTenant  = await db.Tenants.FindAsync([org.TenantId], ct);
-        var activationLink  = TenantPortalUrlHelper.Build(providerTenant, "accept-invite", rawToken, notifOptions.Value);
-        if (activationLink is not null)
+        var invitationSent = false;
+        var providerTenant = await db.Tenants.FindAsync([org.TenantId], ct);
+        var activationLinkNew = TenantPortalUrlHelper.Build(providerTenant, "accept-invite", rawToken2, notifOptions.Value);
+        if (activationLinkNew is not null)
         {
             var displayName     = $"{user.FirstName} {user.LastName}".Trim();
             var (_, emailOk, _) = await emailClient.SendInviteEmailAsync(
-                emailLower, displayName, activationLink, org.TenantId, ct);
+                emailLower, displayName, activationLinkNew, org.TenantId, ct);
             invitationSent = emailOk;
             if (!emailOk)
                 logger.LogWarning(
@@ -7834,26 +7943,65 @@ public static partial class AdminEndpointsLscc010
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
 
-        // Idempotency: return existing user if already present in the tenant
+        // ── Multi-tenant: global email lookup ─────────────────────────────────
         var existingUser = await db.Users
-            .AsNoTracking()
-            .Where(u => u.TenantId == org.TenantId && u.Email == emailLower)
-            .Select(u => new { u.Id })
+            .Where(u => u.Email == emailLower)
+            .Select(u => new { u.Id, u.TenantId, u.PasswordHash })
             .FirstOrDefaultAsync(ct);
 
         if (existingUser is not null)
         {
+            // Check if already in the target tenant (via User.TenantId or UserTenants row).
+            var alreadyInTenant = existingUser.TenantId == org.TenantId
+                || await db.UserTenants.AnyAsync(
+                    ut => ut.UserId == existingUser.Id && ut.TenantId == org.TenantId, ct);
+
+            if (alreadyInTenant)
+            {
+                logger.LogInformation(
+                    "CC2-ENROLL SelfRegisterUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
+                    emailLower, org.TenantId, id);
+                return Results.Ok(new SelfRegisterUserResponse(existingUser.Id, IsNew: false));
+            }
+
+            // Different tenant: verify password before linking.
+            if (!passwordHasher.Verify(body.Password, existingUser.PasswordHash))
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL SelfRegisterUser: cross-tenant enrollment password mismatch for {Email}. Returning 409.",
+                    emailLower);
+                return Results.Conflict(new
+                {
+                    error = "An account with this email already exists. " +
+                            "Please use your existing password to link your account to this network.",
+                });
+            }
+
+            // Password matches — link existing user to the new tenant.
+            db.UserTenants.Add(UserTenant.Create(existingUser.Id, org.TenantId));
+
+            var crossMembership = UserOrganizationMembership.Create(
+                existingUser.Id, org.Id, memberRole: MemberRole.Member);
+            db.UserOrganizationMemberships.Add(crossMembership);
+
+            await db.SaveChangesAsync(ct);
+
             logger.LogInformation(
-                "CC2-ENROLL SelfRegisterUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
-                emailLower, org.TenantId, id);
+                "CC2-ENROLL SelfRegisterUser: existing user {UserId} ({Email}) linked to tenant {TenantId} (org {OrgId}).",
+                existingUser.Id, emailLower, org.TenantId, id);
+
             return Results.Ok(new SelfRegisterUserResponse(existingUser.Id, IsNew: false));
         }
 
+        // ── New user: standard self-registration path ─────────────────────────
         var lastName = string.IsNullOrWhiteSpace(body.LastName) ? "User" : body.LastName.Trim();
         var hash     = passwordHasher.Hash(body.Password);
         var user     = User.Create(org.TenantId, emailLower, hash, body.FirstName.Trim(), lastName);
         // User.Create produces an active user by default — no Deactivate() call here.
         db.Users.Add(user);
+
+        // Create UserTenant row alongside the new user.
+        db.UserTenants.Add(UserTenant.Create(user.Id, org.TenantId));
 
         // CC2-ENROLL-FIRM: create primary org membership so the user can log in immediately.
         var membership = UserOrganizationMembership.Create(user.Id, id, memberRole: MemberRole.Member);
@@ -7996,7 +8144,8 @@ public static partial class AdminEndpointsLscc010
         Guid  UserId,
         Guid? InvitationId,
         bool  IsNew,
-        bool  InvitationSent);
+        bool  InvitationSent,
+        bool  NotificationSent = false);
 
     public record SelfRegisterUserRequest(
         string  Email,

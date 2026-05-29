@@ -81,7 +81,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasConversion<string>()
             .HasDefaultValue(UserType.TenantUser);
 
-        builder.HasIndex(u => new { u.TenantId, u.Email })
+        builder.HasIndex(u => u.Email)
             .IsUnique();
 
         builder.HasOne(u => u.Tenant)

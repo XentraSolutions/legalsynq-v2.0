@@ -83,4 +83,17 @@ public class CurrentRequestContext : ICurrentRequestContext
 
     public bool IsPlatformAdmin =>
         Roles.Contains(Authorization.Roles.PlatformAdmin, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Multi-tenant: all tenant IDs the user has access to, parsed from the "tenant_ids" claim.
+    /// Each claim entry is one tenant GUID. Empty when the token predates multi-tenant support.
+    /// </summary>
+    public IReadOnlyList<Guid> TenantIds =>
+        User?.FindAll("tenant_ids")
+            .Select(c => Guid.TryParse(c.Value, out var g) ? (Guid?)g : null)
+            .Where(g => g.HasValue)
+            .Select(g => g!.Value)
+            .ToList()
+            .AsReadOnly()
+        ?? (IReadOnlyList<Guid>)Array.Empty<Guid>();
 }

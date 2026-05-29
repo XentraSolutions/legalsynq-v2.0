@@ -41,7 +41,8 @@ public sealed class UserMembershipService : IUserMembershipService
             throw new InvalidOperationException($"[UserMembership] User {cmd.UserId} not found in Identity.");
 
         // Check if already in the target tenant.
-        var alreadyInTenant = user.TenantId == cmd.TenantId;
+        var alreadyInTenant = user.TenantId == cmd.TenantId
+            || await _db.UserTenants.AnyAsync(ut => ut.UserId == cmd.UserId && ut.TenantId == cmd.TenantId, ct);
 
         if (alreadyInTenant)
         {
@@ -64,6 +65,15 @@ public sealed class UserMembershipService : IUserMembershipService
             _logger.LogInformation(
                 "[UserMembership] AssignTenant: user {UserId} moved to tenant {TenantId}.",
                 cmd.UserId, cmd.TenantId);
+        }
+
+        // Ensure a UserTenant row exists for the target tenant (idempotent).
+        var utExists = await _db.UserTenants.AnyAsync(
+            ut => ut.UserId == cmd.UserId && ut.TenantId == cmd.TenantId, ct);
+        if (!utExists)
+        {
+            _db.UserTenants.Add(UserTenant.Create(cmd.UserId, cmd.TenantId));
+            await _db.SaveChangesAsync(ct);
         }
 
         // Assign roles (idempotent — duplicates are logged and skipped).

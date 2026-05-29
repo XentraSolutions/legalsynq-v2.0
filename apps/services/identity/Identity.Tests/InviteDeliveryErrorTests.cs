@@ -228,6 +228,11 @@ public class InviteDeliveryErrorTests
             string toEmail, string displayName, string activationLink, Guid tenantId,
             CancellationToken ct = default)
             => Task.FromResult(_result);
+
+        public Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantAccessGrantedEmailAsync(
+            string toEmail, string displayName, string tenantName, string portalUrl, Guid tenantId,
+            CancellationToken ct = default)
+            => Task.FromResult(_result);
     }
 
     private sealed class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>

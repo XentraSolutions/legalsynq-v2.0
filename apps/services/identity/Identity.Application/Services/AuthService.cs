@@ -123,7 +123,7 @@ public class AuthService : IAuthService
             }
 
             // Delegate the rest (role extraction, membership, JWT) to the shared tail.
-            return await BuildLoginResponseAsync(ccUserWithRoles, globalTenant, request, sw, ipAddress, ct);
+            return await BuildLoginResponseAsync(ccUserWithRoles, globalTenant, request, sw, ipAddress, ct, requireCareConnectAccess: true);
         }
 
         var tenant = await _tenantRepository.GetByCodeAsync(tenantCodeNorm, ct);
@@ -233,7 +233,7 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
-        return await BuildLoginResponseAsync(userWithRoles, tenant, request, sw, ipAddress, ct);
+        return await BuildLoginResponseAsync(userWithRoles, tenant, request, sw, ipAddress, ct, requireTenantAccess: true);
     }
 
     /// <summary>
@@ -247,7 +247,9 @@ public class AuthService : IAuthService
         LoginRequest request,
         Stopwatch sw,
         string? ipAddress,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool requireCareConnectAccess = false,
+        bool requireTenantAccess = false)
     {
         // Phase G: ScopedRoleAssignments (GLOBAL) is the sole authoritative role source.
         // UserRoles table has been dropped (migration 20260330200004).
@@ -256,8 +258,21 @@ public class AuthService : IAuthService
             .Select(s => s.Role.Name)
             .ToList();
 
-        // Load org membership for JWT context (primary org)
-        var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(userWithRoles.Id, ct);
+        // Phase 6B: operator portal guard — CC-only users (no GLOBAL system role) are blocked.
+        // Checked before product role logic so the guard fires independently of CC auto-inject.
+        if (requireTenantAccess && roleNames.Count == 0)
+        {
+            EmitLoginFailed(
+                userWithRoles.Email,
+                tenantCode: tenant.Code,
+                userId:     userWithRoles.Id.ToString(),
+                reason:     "CareConnectUserOnTenantPortal",
+                ipAddress:  ipAddress);
+            throw new UnauthorizedAccessException();
+        }
+
+        // Load org membership for JWT context (tenant-scoped: always use the login tenant's org).
+        var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(userWithRoles.Id, tenant.Id, ct);
         var org = orgMembership?.Organization;
 
         // LS-COR-AUT-003/006: compute effective access from the single source-of-truth model.
@@ -285,15 +300,40 @@ public class AuthService : IAuthService
             productRolesFlat = [.. productRolesFlat, CcReferrerRole];
         }
 
+        // Load all active tenant memberships to populate tenant_ids JWT claim and LoginResponse.Tenants.
+        var tenantMemberships = await _userRepository.GetActiveTenantMembershipsAsync(userWithRoles.Id, ct);
+
+        // Phase 6A: CC common portal guard — block users with no CC product role.
+        // This guard runs AFTER CC-AUTH-01 auto-inject so LAW_FIRM users pass cleanly.
+        if (requireCareConnectAccess
+            && !productRolesFlat.Any(r => r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            EmitLoginFailed(
+                userWithRoles.Email,
+                tenantCode: tenant.Code,
+                userId:     userWithRoles.Id.ToString(),
+                reason:     "NoCareConnectRole",
+                ipAddress:  ipAddress);
+            throw new UnauthorizedAccessException();
+        }
+
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
             userWithRoles, tenant, roleNames, org, productRolesFlat,
             sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
             productCodes: effectiveAccess.Products,
-            permissions: effectiveAccess.Permissions);
+            permissions: effectiveAccess.Permissions,
+            tenantIds: tenantMemberships.Select(ut => ut.TenantId));
 
+        // Build TenantSummary list for the LoginResponse from the membership rows.
+        var tenantSummaries = tenantMemberships
+            .Select(ut => new DTOs.TenantSummary(ut.TenantId, ut.Tenant?.Code ?? ut.TenantId.ToString()))
+            .ToList()
+            .AsReadOnly();
+
+        // Fix: use the active login tenant's Id for UserResponse, not the user's stored TenantId.
         var userResponse = new UserResponse(
             userWithRoles.Id,
-            userWithRoles.TenantId,
+            tenant.Id,
             userWithRoles.Email,
             userWithRoles.FirstName,
             userWithRoles.LastName,
@@ -351,7 +391,7 @@ public class AuthService : IAuthService
             "LoginPerf userId={UserId} tenantId={TenantId} elapsedMs={ElapsedMs} accessVersion={AccessVersion}",
             userWithRoles.Id, tenant.Id, sw.ElapsedMilliseconds, userWithRoles.AccessVersion);
 
-        return new LoginResponse(token, expiresAtUtc, userResponse);
+        return new LoginResponse(token, expiresAtUtc, userResponse, tenantSummaries);
     }
 
     /// <summary>

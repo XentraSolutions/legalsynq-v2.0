@@ -77,6 +77,11 @@ public class User
     public Tenant Tenant { get; private set; } = null!;
     public ICollection<UserOrganizationMembership> OrganizationMemberships { get; private set; } = [];
 
+    /// <summary>
+    /// Multi-tenant account linking — all tenants this user belongs to.
+    /// </summary>
+    public ICollection<UserTenant> TenantMemberships { get; private set; } = [];
+
     // Phase 4+: scoped role assignments — sole authoritative role source (Phase G).
     public ICollection<ScopedRoleAssignment> ScopedRoleAssignments { get; private set; } = [];
 

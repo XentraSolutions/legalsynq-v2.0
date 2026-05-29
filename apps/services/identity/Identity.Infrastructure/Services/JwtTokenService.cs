@@ -23,7 +23,8 @@ public class JwtTokenService : IJwtTokenService
         IEnumerable<string>? productRoles = null,
         int? sessionTimeoutMinutes = null,
         IEnumerable<string>? productCodes = null,
-        IEnumerable<string>? permissions = null)
+        IEnumerable<string>? permissions = null,
+        IEnumerable<Guid>? tenantIds = null)
     {
         var section = _configuration.GetSection("Jwt");
 
@@ -91,6 +92,10 @@ public class JwtTokenService : IJwtTokenService
 
         foreach (var perm in permissions ?? [])
             claims.Add(new Claim("permissions", perm));
+
+        // Multi-tenant: emit one tenant_ids claim per accessible tenant.
+        foreach (var tid in tenantIds ?? [])
+            claims.Add(new Claim("tenant_ids", tid.ToString()));
 
         // Embed per-tenant idle session timeout so GetCurrentUserAsync needs no DB lookup.
         var effectiveTimeout = sessionTimeoutMinutes ?? 30;
