@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<ICaseRepository, CaseRepository>();
         services.AddScoped<IContactRepository, ContactRepository>();
         services.AddScoped<IFacilityRepository, FacilityRepository>();
+        services.AddScoped<IFacilityContactPersonRepository, FacilityContactPersonRepository>();
         services.AddScoped<ILookupValueRepository, LookupValueRepository>();
         services.AddScoped<ILienRepository, LienRepository>();
         services.AddScoped<ILienOfferRepository, LienOfferRepository>();
@@ -63,6 +64,7 @@ public static class DependencyInjection
         services.AddScoped<IServicingItemService, ServicingItemService>();
         services.AddScoped<ILookupValueService, LookupValueService>();
         services.AddScoped<IContactService, ContactService>();
+        services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<ILienTaskService, LienTaskService>();
         services.AddScoped<ILienWorkflowConfigService, LienWorkflowConfigService>();
         services.AddScoped<IWorkflowTransitionValidationService, WorkflowTransitionValidationService>();
@@ -71,6 +73,14 @@ public static class DependencyInjection
         services.AddScoped<ILienTaskGenerationEngine, LienTaskGenerationEngine>();
         services.AddScoped<ILienTaskNoteService, LienTaskNoteService>();
         services.AddScoped<ILienCaseNoteService, LienCaseNoteService>();
+        // Settlement, Reduction & Payment
+        services.AddScoped<ILienReductionRepository, LienReductionRepository>();
+        services.AddScoped<ILienSettlementRepository, LienSettlementRepository>();
+        services.AddScoped<ISettlementPaymentDetailRepository, SettlementPaymentDetailRepository>();
+        services.AddScoped<ISettlementService, SettlementService>();
+        // DIY Reports
+        services.AddScoped<IDIYReportConfigRepository, DIYReportConfigRepository>();
+        services.AddScoped<IDIYReportService, DIYReportService>();
         // LS-LIENS-FLOW-006 — Task governance
         services.AddScoped<ILienTaskGovernanceService, LienTaskGovernanceService>();
         // LS-LIENS-FLOW-007 — Flow instance linkage resolver
