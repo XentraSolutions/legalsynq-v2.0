@@ -106,8 +106,10 @@ public interface IIdentityOrganizationService
 
 public sealed class SelfRegisterResult
 {
-    public Guid UserId { get; init; }
-    public bool IsNew  { get; init; }
+    public Guid UserId         { get; init; }
+    public bool IsNew          { get; init; }
+    /// <summary>True when Identity rejected enrollment because the email belongs to the tenant owner.</summary>
+    public bool IsOwnerBlocked { get; init; }
 }
 
 public sealed class ProvisionProviderUserResult
@@ -116,4 +118,6 @@ public sealed class ProvisionProviderUserResult
     public Guid? InvitationId   { get; init; }
     public bool  IsNew          { get; init; }
     public bool  InvitationSent { get; init; }
+    /// <summary>True when Identity rejected enrollment because the email belongs to the tenant owner.</summary>
+    public bool  IsOwnerBlocked { get; init; }
 }

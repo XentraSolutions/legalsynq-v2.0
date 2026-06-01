@@ -110,6 +110,9 @@ public class TenantService : ITenantService
             displayName: request.TenantName.Trim(),
             subdomain:   subdomain);
 
+        if (request.OwnerUserId.HasValue)
+            tenant.SetOwner(request.OwnerUserId.Value);
+
         await _repository.AddAsync(tenant, ct);
 
         // ── LS-COMMERCE-ECO-02: Notify Commerce of provisioned tenant ─────────

@@ -15,7 +15,9 @@ public record CheckCodeResponse(
 /// </summary>
 public record ProvisionRequest(
     string TenantName,
-    string TenantCode);
+    string TenantCode,
+    /// <summary>Optional Identity userId of the account that owns / provisioned this tenant.</summary>
+    Guid?  OwnerUserId = null);
 
 /// <summary>
 /// Response for POST /api/v1/tenants/provision

@@ -149,6 +149,15 @@ public class Tenant
     /// <summary>ISO 3166-1 alpha-2 country code (e.g. "US").</summary>
     public string? CountryCode { get; private set; }
 
+    // ── Owner ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Identity userId of the account that provisioned / owns this tenant.
+    /// Cross-service reference — no FK constraint enforced (different DB).
+    /// Set once during provisioning; never reassigned.
+    /// </summary>
+    public Guid? OwnerUserId { get; private set; }
+
     // ── Timestamps ────────────────────────────────────────────────────────────
 
     public DateTime CreatedAtUtc { get; private set; }
@@ -315,6 +324,14 @@ public class Tenant
     /// Updates the Tenant-owned provisioning state after the Identity provisioning
     /// adapter returns. Clears LastProvisioningError on success; sets it on failure.
     /// </summary>
+    public void SetOwner(Guid ownerUserId)
+    {
+        if (ownerUserId == Guid.Empty)
+            throw new ArgumentException("ownerUserId must not be empty.", nameof(ownerUserId));
+        OwnerUserId  = ownerUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public void SetProvisioningStatus(TenantProvisioningStatus status, string? error = null)
     {
         ProvisioningStatus = status;

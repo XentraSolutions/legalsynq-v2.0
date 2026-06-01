@@ -159,6 +159,18 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
             if (!response.IsSuccessStatusCode)
             {
+                if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                {
+                    var conflictBody = await response.Content
+                        .ReadFromJsonAsync<ErrorCodeResponse>(cancellationToken: cts.Token);
+                    if (conflictBody?.Code == "OWNER_ENROLLMENT_BLOCKED")
+                    {
+                        _logger.LogWarning(
+                            "CC2-INT-B04 Identity user provision blocked — owner enrollment for org {OrgId}.", orgId);
+                        return new ProvisionProviderUserResult { IsOwnerBlocked = true };
+                    }
+                }
+
                 _logger.LogWarning(
                     "CC2-INT-B04 Identity user provision returned HTTP {Status} for org {OrgId}. " +
                     "Invitation not sent — provider org link is still valid.",
@@ -237,6 +249,18 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
             if (!response.IsSuccessStatusCode)
             {
+                if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                {
+                    var conflictBody = await response.Content
+                        .ReadFromJsonAsync<ErrorCodeResponse>(cancellationToken: cts.Token);
+                    if (conflictBody?.Code == "OWNER_ENROLLMENT_BLOCKED")
+                    {
+                        _logger.LogWarning(
+                            "CC2-ENROLL Identity self-register blocked — owner enrollment for org {OrgId}.", orgId);
+                        return new SelfRegisterResult { IsOwnerBlocked = true };
+                    }
+                }
+
                 _logger.LogWarning(
                     "CC2-ENROLL Identity self-register returned HTTP {Status} for org {OrgId}.",
                     (int)response.StatusCode, orgId);
@@ -459,5 +483,14 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
     {
         [JsonPropertyName("hasPortalAccess")]
         public bool HasPortalAccess { get; set; }
+    }
+
+    private sealed class ErrorCodeResponse
+    {
+        [JsonPropertyName("code")]
+        public string? Code { get; set; }
+
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
     }
 }

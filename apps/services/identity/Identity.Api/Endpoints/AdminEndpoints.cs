@@ -575,6 +575,9 @@ public static class AdminEndpoints
             tenantId:  tenant.Id);
         db.ScopedRoleAssignments.Add(sra);
 
+        // ── Mark tenant owner (the admin user just created) ───────────────────
+        tenant.SetOwner(user.Id);
+
         await db.SaveChangesAsync(ct);
 
         // ── TENANT-B07: Dual-write to Tenant service (feature-flagged) ────────
@@ -7704,6 +7707,34 @@ public static partial class AdminEndpointsLscc010
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
 
+        // ── Owner guard: tenant owners may not enroll as providers ─────────────
+        var tenantOwnerUserId = await db.Tenants
+            .AsNoTracking()
+            .Where(t => t.Id == org.TenantId)
+            .Select(t => t.OwnerUserId)
+            .FirstOrDefaultAsync(ct);
+
+        var emailUserIdForOwnerCheck = await db.Users
+            .AsNoTracking()
+            .Where(u => u.Email == emailLower)
+            .Select(u => (Guid?)u.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (tenantOwnerUserId.HasValue &&
+            emailUserIdForOwnerCheck.HasValue &&
+            emailUserIdForOwnerCheck.Value == tenantOwnerUserId.Value)
+        {
+            logger.LogWarning(
+                "LSCC-010 ProvisionProviderUser: enrollment blocked — email {Email} belongs to tenant owner of {TenantId}.",
+                emailLower, org.TenantId);
+            return Results.Conflict(new
+            {
+                error = "This email address is associated with the account that owns this network and cannot be enrolled as a provider.",
+                code  = "OWNER_ENROLLMENT_BLOCKED",
+            });
+        }
+        // ── End owner guard ───────────────────────────────────────────────────
+
         // ── Multi-tenant: global email lookup ─────────────────────────────────
         var existingUser = await db.Users
             .Where(u => u.Email == emailLower)
@@ -7942,6 +7973,34 @@ public static partial class AdminEndpointsLscc010
             return Results.NotFound(new { error = $"Organization '{id}' not found." });
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
+
+        // ── Owner guard: tenant owners may not enroll as providers ─────────────
+        var tenantOwnerUserIdSr = await db.Tenants
+            .AsNoTracking()
+            .Where(t => t.Id == org.TenantId)
+            .Select(t => t.OwnerUserId)
+            .FirstOrDefaultAsync(ct);
+
+        var emailUserIdForOwnerCheckSr = await db.Users
+            .AsNoTracking()
+            .Where(u => u.Email == emailLower)
+            .Select(u => (Guid?)u.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (tenantOwnerUserIdSr.HasValue &&
+            emailUserIdForOwnerCheckSr.HasValue &&
+            emailUserIdForOwnerCheckSr.Value == tenantOwnerUserIdSr.Value)
+        {
+            logger.LogWarning(
+                "CC2-ENROLL SelfRegisterUser: enrollment blocked — email {Email} belongs to tenant owner of {TenantId}.",
+                emailLower, org.TenantId);
+            return Results.Conflict(new
+            {
+                error = "This email address is associated with the account that owns this network and cannot be enrolled as a provider.",
+                code  = "OWNER_ENROLLMENT_BLOCKED",
+            });
+        }
+        // ── End owner guard ───────────────────────────────────────────────────
 
         // ── Multi-tenant: global email lookup ─────────────────────────────────
         var existingUser = await db.Users

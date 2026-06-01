@@ -270,6 +270,14 @@ public class AutoProvisionService : IAutoProvisionService
             var result = await _identityOrgs.InviteProviderUserAsync(orgId, email, firstName, lastName, ct);
             if (result is null) return (false, false, null);
 
+            if (result.IsOwnerBlocked)
+            {
+                _logger.LogWarning(
+                    "CC2-INT-B04 User invitation skipped for org {OrgId} \u2014 email belongs to tenant owner. Non-fatal, provision continues.",
+                    orgId);
+                return (false, false, null);
+            }
+
             return (result.InvitationSent, !result.IsNew, result.UserId);
         }
         catch (Exception ex)

@@ -232,6 +232,18 @@ public static class EnrollmentEndpoints
                 body.LastName?.Trim(),
                 ct);
 
+            if (registerResult is { IsOwnerBlocked: true })
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL Enrollment blocked — email belongs to tenant owner for provider {ProviderId}.",
+                    provider.Id);
+                return Results.Conflict(new
+                {
+                    error = "The email address used is associated with the account that owns this network and cannot be enrolled as a provider.",
+                    code  = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
+
             if (registerResult is null)
             {
                 logger.LogWarning(
@@ -332,6 +344,18 @@ public static class EnrollmentEndpoints
                 body.FirstName.Trim(),
                 body.LastName?.Trim(),
                 ct);
+
+            if (registerResult is { IsOwnerBlocked: true })
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL-FIRM Enrollment blocked — email belongs to tenant owner for firm '{CompanyName}'.",
+                    body.CompanyName);
+                return Results.Conflict(new
+                {
+                    error = "The email address used is associated with the account that owns this network and cannot be enrolled as a provider.",
+                    code  = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
 
             if (registerResult is null)
             {
