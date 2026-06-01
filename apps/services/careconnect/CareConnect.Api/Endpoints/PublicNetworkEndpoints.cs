@@ -1,3 +1,5 @@
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Exceptions;
 using CareConnect.Application.Cache;
 using CareConnect.Application.DTOs;
@@ -274,17 +276,18 @@ public static class PublicNetworkEndpoints
         //   - SendNewReferralNotificationAsync  (email + signed token for URL-stage providers)
         //   - SendProviderAssignedNotificationAsync (platform Notifications → portal visibility)
         app.MapPost("/api/public/referrals", async (
-            PublicReferralRequest req,
-            HttpContext           http,
-            IConfiguration       config,
-            IProviderRepository  providerRepo,
-            INetworkRepository   networkRepo,
-            IReferralService     referralSvc,
-            ILoggerFactory       loggerFactory,
-            CancellationToken    ct) =>
+            PublicReferralRequest         req,
+            HttpContext                   http,
+            IConfiguration               config,
+            IProviderRepository          providerRepo,
+            INetworkRepository           networkRepo,
+            IReferralService             referralSvc,
+            IIdentityOrganizationService identityOrgs,
+            ILoggerFactory               loggerFactory,
+            CancellationToken            ct) =>
         {
             var logger = loggerFactory.CreateLogger("CareConnect.PublicReferrals");
-            return await HandlePublicReferral(req, http, config, providerRepo, networkRepo, referralSvc, logger, ct);
+            return await HandlePublicReferral(req, http, config, providerRepo, networkRepo, referralSvc, identityOrgs, logger, ct);
         })
         .AllowAnonymous()
         .RequireRateLimiting("public-referral-limit");
@@ -393,22 +396,94 @@ public static class PublicNetworkEndpoints
         })
         .AllowAnonymous()
         .RequireRateLimiting("referrer-status-limit");
+
+        // ── GET /api/treatment-types (authenticated) ────────────────────────
+        // Authenticated mirror of /api/public/treatment-types — used when a portal-
+        // authenticated law firm user loads the referral form from the browse-networks view.
+        // Treatment types are platform-wide (no tenant column) so no tenant resolution needed;
+        // JWT auth is sufficient for isolation.
+        app.MapGet("/api/treatment-types", async (
+            HttpContext       http,
+            CareConnect.Infrastructure.Data.CareConnectDbContext db,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                var conn = db.Database.GetDbConnection();
+                if (conn.State != System.Data.ConnectionState.Open)
+                    await conn.OpenAsync(ct);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = """
+                    SELECT `Id`, `Name`, `Category`, `DisplayOrder`
+                    FROM `cc_TreatmentTypes`
+                    WHERE `IsActive` = 1
+                    ORDER BY `DisplayOrder` ASC, `Name` ASC
+                    """;
+                var result = new List<object>();
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    var treatmentTypeId = reader.GetValue(0) switch
+                    {
+                        Guid guidId => guidId.ToString(),
+                        _ => reader.GetString(0),
+                    };
+                    result.Add(new
+                    {
+                        id           = treatmentTypeId,
+                        name         = reader.GetString(1),
+                        category     = reader.IsDBNull(2) ? null : reader.GetString(2),
+                        displayOrder = reader.GetInt32(3),
+                    });
+                }
+                return Results.Ok(result);
+            }
+            catch (Exception ex)
+            {
+                var log = http.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("CareConnect.TreatmentTypes");
+                log.LogError(ex, "Failed to query cc_TreatmentTypes.");
+                return Results.Problem("Unable to load treatment types.");
+            }
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
     }
 
     private static async Task<IResult> HandlePublicReferral(
-        PublicReferralRequest req,
-        HttpContext           http,
-        IConfiguration       config,
-        IProviderRepository  providerRepo,
-        INetworkRepository   networkRepo,
-        IReferralService     referralSvc,
-        ILogger              logger,
-        CancellationToken    ct)
+        PublicReferralRequest         req,
+        HttpContext                   http,
+        IConfiguration               config,
+        IProviderRepository          providerRepo,
+        INetworkRepository           networkRepo,
+        IReferralService             referralSvc,
+        IIdentityOrganizationService identityOrgs,
+        ILogger                      logger,
+        CancellationToken            ct)
     {
             var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
+
+            // CC-OWNER-CHECK: Block tenant owners from submitting referrals.
+            // The network operator (tenant owner) is not a valid referrer.
+            if (!string.IsNullOrWhiteSpace(req.SenderEmail))
+            {
+                var isOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(
+                    req.SenderEmail.Trim(), ct);
+                if (isOwner)
+                {
+                    logger.LogWarning(
+                        "Public referral rejected: sender email belongs to a tenant owner (tenantContext={TenantId}).",
+                        tenantId.Value);
+                    return Results.Conflict(new
+                    {
+                        message = "The email address used is associated with the account that owns this network and cannot be used to submit referrals.",
+                        code    = "OWNER_REFERRAL_BLOCKED",
+                    });
+                }
+            }
 
             // Input validation
             var errors = ValidatePublicReferralRequest(req);

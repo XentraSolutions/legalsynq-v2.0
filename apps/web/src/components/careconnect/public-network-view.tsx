@@ -555,9 +555,13 @@ function ReferralPanel({
   const addrDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    fetch('/api/public/careconnect/api/public/treatment-types', {
-      headers: { 'X-Tenant-Id': tenantId },
-    })
+    const url     = prefillLawFirm
+      ? '/api/careconnect/api/treatment-types'
+      : '/api/public/careconnect/api/public/treatment-types';
+    const headers: HeadersInit = prefillLawFirm
+      ? {}
+      : { 'X-Tenant-Id': tenantId };
+    fetch(url, { headers })
       .then(r => r.ok ? r.json() : null)
       .then((data: TreatmentType[] | null) => { if (data) setTreatmentTypes(data); })
       .catch(() => {});
@@ -668,6 +672,16 @@ function ReferralPanel({
       const responses = await Promise.all(payloads.map(async payload => {
         let res: Response;
         if (isAuthenticated) {
+          // Mirror the notes assembly done by the public C# handler so that
+          // patientAddress and patientDateOfAccident are not lost on the auth path.
+          const authNotes = [
+            form.notes,
+            form.patientAddress.trim()  ? `Patient Address: ${form.patientAddress.trim()}`  : '',
+            form.patientDateOfAccident  ? `Date of Accident: ${form.patientDateOfAccident}`  : '',
+            form.phone                  ? `Firm phone: ${form.phone}`                        : '',
+            form.firmName               ? `Firm: ${form.firmName}`                           : '',
+          ].filter(Boolean).join('\n') || undefined;
+
           const authBody = {
             providerId:       payload.providerId,
             clientFirstName:  payload.patientFirstName,
@@ -677,7 +691,7 @@ function ReferralPanel({
             clientDob:        payload.patientDateOfBirth,
             requestedService: payload.serviceType ?? 'General Referral',
             urgency:          'Normal',
-            notes:            payload.notes,
+            notes:            authNotes,
             referrerEmail:    payload.senderEmail,
             referrerName:     payload.senderName,
           };

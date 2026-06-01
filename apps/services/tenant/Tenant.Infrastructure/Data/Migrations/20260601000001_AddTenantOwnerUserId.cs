@@ -1,4 +1,5 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -6,6 +7,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Tenant.Infrastructure.Data.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(TenantDbContext))]
+    [Migration("20260601000001_AddTenantOwnerUserId")]
     public partial class AddTenantOwnerUserId : Migration
     {
         /// <inheritdoc />

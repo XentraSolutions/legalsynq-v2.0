@@ -179,6 +179,88 @@ public static class UserMembershipEndpoints
 
             return Results.Ok(new { hasPortalAccess = hasAccess });
         });
+
+        // ── GET /api/internal/users/is-owner?tenantId=xxx&email=xxx ──────────
+        //
+        // CC-OWNER-CHECK: Returns { isTenantOwner: bool } — whether the given email
+        // belongs to the tenant owner of the specified tenant.
+        // Used by CareConnect to block tenant owners from submitting referrals.
+        //
+        // Always HTTP 200; never discloses existence of user alone.
+        // Auth: X-Provisioning-Token (same pattern as other internal endpoints).
+
+        group.MapGet("/is-owner", async (
+            HttpContext       httpContext,
+            Guid?             tenantId,
+            string?           email,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.IsOwner");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "is-owner"))
+                return Results.Unauthorized();
+
+            if (tenantId is null || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { isTenantOwner = false });
+
+            var emailNorm = email.Trim().ToLowerInvariant();
+
+            var ownerUserId = await db.Tenants
+                .AsNoTracking()
+                .Where(t => t.Id == tenantId.Value)
+                .Select(t => t.OwnerUserId)
+                .FirstOrDefaultAsync(ct);
+
+            if (ownerUserId is null)
+                return Results.Ok(new { isTenantOwner = false });
+
+            var isOwner = await db.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Id == ownerUserId.Value && u.Email == emailNorm, ct);
+
+            return Results.Ok(new { isTenantOwner = isOwner });
+        });
+
+        // ── GET /api/internal/users/is-any-owner?email=xxx ────────────────────
+        //
+        // CC-OWNER-CHECK: Returns { isTenantOwner: bool } — whether the given email
+        // belongs to the owner of ANY tenant in the platform.
+        // Used by CareConnect to block all tenant owners from submitting referrals
+        // or self-enrolling regardless of which tenant's network they are acting on.
+        //
+        // Always HTTP 200; never discloses existence of user alone.
+        // Auth: X-Provisioning-Token (same pattern as other internal endpoints).
+
+        group.MapGet("/is-any-owner", async (
+            HttpContext       httpContext,
+            string?           email,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.IsAnyOwner");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "is-any-owner"))
+                return Results.Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { isTenantOwner = false });
+
+            var emailNorm = email.Trim().ToLowerInvariant();
+
+            // Single join query — avoids two round-trips (user lookup + tenant check).
+            var isOwner = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Email == emailNorm)
+                .Join(db.Tenants, u => u.Id, t => t.OwnerUserId, (u, t) => u.Id)
+                .AnyAsync(ct);
+
+            return Results.Ok(new { isTenantOwner = isOwner });
+        });
     }
 
     // ── Shared token guard ────────────────────────────────────────────────────

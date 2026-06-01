@@ -100,6 +100,31 @@ public interface IIdentityOrganizationService
     Task<bool> CheckReferrerPortalAccessAsync(
         string            email,
         CancellationToken ct = default);
+
+    // ── CC-OWNER-CHECK: Tenant owner referral block ────────────────────────
+
+    /// <summary>
+    /// Returns true if the supplied email belongs to the tenant owner of the given tenant.
+    ///
+    /// Used by the public referral endpoint to block tenant owners (network operators)
+    /// from submitting referrals — they are the network operator, not a referrer.
+    ///
+    /// Always returns false on any infrastructure failure — never throws.
+    /// </summary>
+    Task<bool> CheckTenantOwnerEmailAsync(
+        Guid              tenantId,
+        string            email,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns true if the supplied email belongs to the owner of ANY tenant.
+    /// Used to block all tenant owners from submitting referrals or self-enrolling
+    /// regardless of which tenant's network they are acting on.
+    /// Always returns false on any infrastructure failure — never throws.
+    /// </summary>
+    Task<bool> CheckAnyTenantOwnerEmailAsync(
+        string            email,
+        CancellationToken ct = default);
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────

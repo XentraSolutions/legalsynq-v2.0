@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -5,6 +7,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(IdentityDbContext))]
+    [Migration("20260601000002_BackfillTenantOwnerUserId")]
     public partial class BackfillTenantOwnerUserId : Migration
     {
         /// <inheritdoc />
@@ -29,25 +33,25 @@ namespace Identity.Infrastructure.Persistence.Migrations
 UPDATE `idt_Tenants` t
 INNER JOIN (
     SELECT sra.`TenantId`, sra.`UserId`
-    FROM `ScopedRoleAssignments` sra
-    INNER JOIN `Roles` r ON r.`Id` = sra.`RoleId`
+    FROM `idt_ScopedRoleAssignments` sra
+    INNER JOIN `idt_Roles` r ON r.`Id` = sra.`RoleId`
     WHERE r.`Name`         = 'TenantAdmin'
       AND sra.`IsActive`   = 1
       AND sra.`TenantId`   IS NOT NULL
 ) first_admin ON first_admin.`TenantId` = t.`Id`
 INNER JOIN (
     SELECT sra2.`TenantId`, MIN(sra2.`AssignedAtUtc`) AS `EarliestAt`
-    FROM `ScopedRoleAssignments` sra2
-    INNER JOIN `Roles` r2 ON r2.`Id` = sra2.`RoleId`
+    FROM `idt_ScopedRoleAssignments` sra2
+    INNER JOIN `idt_Roles` r2 ON r2.`Id` = sra2.`RoleId`
     WHERE r2.`Name`       = 'TenantAdmin'
       AND sra2.`IsActive` = 1
       AND sra2.`TenantId` IS NOT NULL
     GROUP BY sra2.`TenantId`
 ) earliest ON earliest.`TenantId` = first_admin.`TenantId`
-INNER JOIN `ScopedRoleAssignments` sra3
+INNER JOIN `idt_ScopedRoleAssignments` sra3
        ON  sra3.`TenantId`      = earliest.`TenantId`
        AND sra3.`AssignedAtUtc` = earliest.`EarliestAt`
-INNER JOIN `Roles` r3 ON r3.`Id` = sra3.`RoleId` AND r3.`Name` = 'TenantAdmin'
+INNER JOIN `idt_Roles` r3 ON r3.`Id` = sra3.`RoleId` AND r3.`Name` = 'TenantAdmin'
 SET t.`OwnerUserId` = sra3.`UserId`
 WHERE t.`OwnerUserId` IS NULL;");
         }

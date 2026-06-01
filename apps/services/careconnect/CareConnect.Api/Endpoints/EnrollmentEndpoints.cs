@@ -163,6 +163,22 @@ public static class EnrollmentEndpoints
             if (ProviderAccessStage.IsAtLeast(provider.AccessStage, ProviderAccessStage.CommonPortal))
                 return Results.Conflict(new { message = "This provider has already activated portal access.", alreadyEnrolled = true });
 
+            // ── CC-OWNER-CHECK: Block all tenant owners from self-enrolling ──
+            // Placed after provider existence check to avoid a cross-service call
+            // for requests with an invalid providerId.
+            var isAnyOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(body.Email.Trim(), ct);
+            if (isAnyOwner)
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL Enrollment blocked — email {Email} belongs to a tenant owner.",
+                    body.Email.Trim());
+                return Results.Conflict(new
+                {
+                    message = "The email address used is associated with a network owner account and cannot be enrolled.",
+                    code    = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
+
             // ── OTP verification (required only when email differs from record) ──
 
             var emailChanged = !string.Equals(
@@ -318,6 +334,20 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "Password must be at least 8 characters." });
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
+
+            // ── CC-OWNER-CHECK: Block all tenant owners from self-enrolling ──
+            var isAnyOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(body.Email.Trim(), ct);
+            if (isAnyOwner)
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL-FIRM Enrollment blocked — email {Email} belongs to a tenant owner.",
+                    body.Email.Trim());
+                return Results.Conflict(new
+                {
+                    message = "The email address used is associated with a network owner account and cannot be enrolled.",
+                    code    = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
 
             // Always use the HMAC-validated tenantId from the trust boundary — never the body value.
             // The body.TenantId was previously preferred here but is user-supplied and bypasses

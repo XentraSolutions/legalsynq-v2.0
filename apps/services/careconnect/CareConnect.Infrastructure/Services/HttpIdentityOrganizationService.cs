@@ -405,6 +405,92 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         }
     }
 
+    // ── CC-OWNER-CHECK: Tenant owner referral block ────────────────────────
+
+    /// <inheritdoc />
+    public async Task<bool> CheckTenantOwnerEmailAsync(
+        Guid              tenantId,
+        string            email,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+            return false;
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var url = $"api/internal/users/is-owner?tenantId={tenantId}&email={Uri.EscapeDataString(email.Trim())}";
+            using var response = await client.GetAsync(url, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "CC-OWNER-CHECK Identity is-owner returned HTTP {Status}.",
+                    (int)response.StatusCode);
+                return false;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<IsOwnerResponse>(
+                cancellationToken: cts.Token);
+
+            return result?.IsTenantOwner ?? false;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("CC-OWNER-CHECK Identity is-owner check timed out.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CC-OWNER-CHECK Identity is-owner check failed.");
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> CheckAnyTenantOwnerEmailAsync(
+        string            email,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled || string.IsNullOrWhiteSpace(email))
+            return false;
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var url = $"api/internal/users/is-any-owner?email={Uri.EscapeDataString(email.Trim())}";
+            using var response = await client.GetAsync(url, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "CC-OWNER-CHECK Identity is-any-owner returned HTTP {Status}.",
+                    (int)response.StatusCode);
+                return false;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<IsOwnerResponse>(
+                cancellationToken: cts.Token);
+            return result?.IsTenantOwner ?? false;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("CC-OWNER-CHECK Identity is-any-owner check timed out.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CC-OWNER-CHECK Identity is-any-owner check failed.");
+            return false;
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildIdentityClient()
@@ -483,6 +569,12 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
     {
         [JsonPropertyName("hasPortalAccess")]
         public bool HasPortalAccess { get; set; }
+    }
+
+    private sealed class IsOwnerResponse
+    {
+        [JsonPropertyName("isTenantOwner")]
+        public bool IsTenantOwner { get; set; }
     }
 
     private sealed class ErrorCodeResponse
