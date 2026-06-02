@@ -89,15 +89,18 @@ public interface IIdentityOrganizationService
     // ── CC-PORTAL-CHECK: Referrer portal access lookup ────────────────────────
 
     /// <summary>
-    /// Returns true if the supplied email address belongs to a fully-activated
-    /// CareConnect referrer (active user, password set, member of a LAW_FIRM org).
+    /// Returns the tenant-scoped CareConnect portal-access status for the supplied email.
     ///
-    /// Used by the public referral success screen to decide whether to show
-    /// "Activate your free account" or "Login to CareConnect to view your referrals".
+    /// Used by the public referral success screen to distinguish:
+    ///   - already active in this tenant
+    ///   - existing account on another tenant that must be linked with password verification
+    ///   - brand-new user with no account yet
     ///
-    /// Always returns false on any infrastructure failure — never throws.
+    /// Always returns <see cref="ReferrerPortalAccessStatuses.NoAccount"/> on any
+    /// infrastructure failure — never throws.
     /// </summary>
-    Task<bool> CheckReferrerPortalAccessAsync(
+    Task<string> GetReferrerPortalAccessStatusAsync(
+        Guid              tenantId,
         string            email,
         CancellationToken ct = default);
 
@@ -145,4 +148,11 @@ public sealed class ProvisionProviderUserResult
     public bool  InvitationSent { get; init; }
     /// <summary>True when Identity rejected enrollment because the email belongs to the tenant owner.</summary>
     public bool  IsOwnerBlocked { get; init; }
+}
+
+public static class ReferrerPortalAccessStatuses
+{
+    public const string ActiveInTenant          = "active_in_tenant";
+    public const string ExistingUserOtherTenant = "existing_user_other_tenant";
+    public const string NoAccount               = "no_account";
 }

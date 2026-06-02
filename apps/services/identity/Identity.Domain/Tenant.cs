@@ -66,7 +66,6 @@ public class Tenant
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string? PreferredSubdomain { get; private set; }
 
-    public ICollection<User> Users { get; private set; } = [];
     public ICollection<Role> Roles { get; private set; } = [];
     public ICollection<TenantProduct> TenantProducts { get; private set; } = [];
     public ICollection<Organization> Organizations { get; private set; } = [];

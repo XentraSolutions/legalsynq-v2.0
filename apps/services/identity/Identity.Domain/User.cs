@@ -3,7 +3,6 @@ namespace Identity.Domain;
 public class User
 {
     public Guid Id { get; private set; }
-    public Guid TenantId { get; private set; }
     public string Email { get; private set; } = string.Empty;
     public string PasswordHash { get; private set; } = string.Empty;
     public string FirstName { get; private set; } = string.Empty;
@@ -74,7 +73,6 @@ public class User
     /// </summary>
     public UserType UserType { get; private set; } = UserType.TenantUser;
 
-    public Tenant Tenant { get; private set; } = null!;
     public ICollection<UserOrganizationMembership> OrganizationMemberships { get; private set; } = [];
 
     /// <summary>
@@ -248,7 +246,6 @@ public class User
         return new User
         {
             Id             = Guid.CreateVersion7(),
-            TenantId       = tenantId,
             Email          = email.ToLowerInvariant().Trim(),
             PasswordHash   = passwordHash,
             FirstName      = firstName.Trim(),

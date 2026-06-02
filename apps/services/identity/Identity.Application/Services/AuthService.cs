@@ -78,12 +78,17 @@ public class AuthService : IAuthService
                 throw new UnauthorizedAccessException();
             }
 
-            var globalTenant = await _tenantRepository.GetByIdAsync(globalUser.TenantId, ct);
+            var userTenantMemberships = await _userRepository.GetActiveTenantMembershipsAsync(globalUser.Id, ct);
+            var firstMembership       = userTenantMemberships.FirstOrDefault();
+            var globalTenant          = firstMembership?.Tenant
+                                        ?? (firstMembership is not null
+                                            ? await _tenantRepository.GetByIdAsync(firstMembership.TenantId, ct)
+                                            : null);
             if (globalTenant is null || !globalTenant.IsActive)
             {
                 _logger.LogWarning(
-                    "AUTH-CC01: LoginAsync failed: TenantNotFoundOrInactive tenantId={TenantId} emailMasked={EmailMasked} ip={Ip}",
-                    globalUser.TenantId, PiiGuard.MaskEmail(emailNorm), ipAddress);
+                    "AUTH-CC01: LoginAsync failed: TenantNotFoundOrInactive userId={UserId} emailMasked={EmailMasked} ip={Ip}",
+                    globalUser.Id, PiiGuard.MaskEmail(emailNorm), ipAddress);
                 EmitLoginFailed(emailNorm, tenantCode: "common-portal", userId: null, reason: "TenantNotFound", ipAddress: ipAddress);
                 throw new UnauthorizedAccessException();
             }
@@ -490,6 +495,7 @@ public class AuthService : IAuthService
 
         // AvatarDocumentId is not in the JWT (changes independently) — fetch from DB.
         // UIX-003-03: also validate SessionVersion and IsLocked from DB.
+        var tenantGuidParsed = Guid.TryParse(tenantId, out var tenantGuid);
         Guid? avatarDocumentId = null;
         string? phone = null;
         if (Guid.TryParse(userId, out var userGuid))
@@ -528,13 +534,27 @@ public class AuthService : IAuthService
                 EmitAccessVersionStale(userId, tenantId, email, user.AccessVersion, tokenAccessVersion);
                 throw new UnauthorizedAccessException("Access has been updated. Please re-authenticate.");
             }
+
+            // Refresh org context from the current DB membership so profile/session UX
+            // reflects org type and name edits without requiring a fresh login.
+            var membership = tenantGuidParsed
+                ? await _userRepository.GetPrimaryOrgMembershipAsync(userGuid, tenantGuid, ct)
+                : await _userRepository.GetPrimaryOrgMembershipAsync(userGuid, ct);
+            var organization = membership?.Organization;
+            if (organization is not null)
+            {
+                orgId = organization.Id.ToString();
+                orgType = Domain.OrgTypeMapper.TryResolveCode(organization.OrganizationTypeId)
+                    ?? organization.OrgType;
+                orgName = organization.DisplayName ?? organization.Name;
+            }
         }
 
         // Resolve which products are enabled at the tenant level.
         // Returns frontend-friendly codes (e.g. "SynqFund", "CareConnect") so the
         // tenant portal can filter its product tiles without knowing DB internals.
         List<string> enabledProducts = [];
-        if (Guid.TryParse(tenantId, out var tenantGuid))
+        if (tenantGuidParsed)
         {
             var dbCodes = await _tenantRepository.GetEnabledProductCodesAsync(tenantGuid, ct);
             enabledProducts = dbCodes

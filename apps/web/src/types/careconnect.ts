@@ -76,6 +76,14 @@ export interface ReferralHistoryItem {
 
 // ── Referral ──────────────────────────────────────────────────────────────────
 
+export const ReferrerPortalAccessStatuses = {
+  ActiveInTenant:          'active_in_tenant',
+  ExistingUserOtherTenant: 'existing_user_other_tenant',
+  NoAccount:               'no_account',
+} as const;
+export type ReferrerPortalAccessStatusValue =
+  typeof ReferrerPortalAccessStatuses[keyof typeof ReferrerPortalAccessStatuses];
+
 export const ReferralStatus = {
   New:        'New',
   NewOpened:  'NewOpened',

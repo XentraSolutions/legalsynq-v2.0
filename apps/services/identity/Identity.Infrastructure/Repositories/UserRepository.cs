@@ -26,8 +26,7 @@ public class UserRepository : IUserRepository
 
     public Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
         _db.Users.FirstOrDefaultAsync(
-            u => (u.TenantId == tenantId
-                  || _db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tenantId && ut.IsActive))
+            u => _db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tenantId && ut.IsActive)
                  && u.Email == email,
             ct);
 
@@ -42,16 +41,18 @@ public class UserRepository : IUserRepository
 
     public Task<List<User>> GetByTenantWithRolesAsync(Guid tenantId, CancellationToken ct = default) =>
         _db.Users
-            .Where(u => u.TenantId == tenantId)
+            .Where(u => _db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tenantId && ut.IsActive))
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
                 .ThenInclude(s => s.Role)
             .OrderBy(u => u.LastName)
             .ThenBy(u => u.FirstName)
             .ToListAsync(ct);
 
-    public async Task AddAsync(User user, IReadOnlyList<Guid> roleIds, CancellationToken ct = default)
+    public async Task AddAsync(User user, Guid tenantId, IReadOnlyList<Guid> roleIds, CancellationToken ct = default)
     {
         await _db.Users.AddAsync(user, ct);
+
+        await _db.UserTenants.AddAsync(UserTenant.Create(user.Id, tenantId), ct);
 
         foreach (var roleId in roleIds)
         {

@@ -239,7 +239,7 @@ public static class AuthEndpoints
             if (!hasMembership)
             {
                 var tenantOrg = await db.Organizations
-                    .Where(o => o.TenantId == user.TenantId && o.IsActive)
+                    .Where(o => o.TenantId == invitation.TenantId && o.IsActive)
                     .OrderBy(o => o.Name)
                     .FirstOrDefaultAsync(ct);
 
@@ -273,12 +273,12 @@ public static class AuthEndpoints
                 Scope = new AuditEventScopeDto
                 {
                     ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
+                    TenantId  = invitation.TenantId.ToString(),
                 },
                 Actor       = new AuditEventActorDto { Type = ActorType.User, Id = user.Id.ToString() },
                 Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
                 Action      = "InviteAccepted",
-                Description = $"User '{user.Email}' accepted invitation and activated account in tenant {user.TenantId}.",
+                Description = $"User '{user.Email}' accepted invitation and activated account in tenant {invitation.TenantId}.",
                 IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.For(
                     "identity-service", "identity.user.invite_accepted", invitation.Id.ToString()),
                 Tags = ["user-management", "invite", "activation"],
@@ -286,7 +286,7 @@ public static class AuthEndpoints
 
             // LS-ID-TNT-016-01: Build tenant portal base URL so the frontend can redirect
             // the user to the correct subdomain login page after accepting the invite.
-            var inviteTenant      = await db.Tenants.FindAsync([user.TenantId], ct);
+            var inviteTenant      = await db.Tenants.FindAsync([invitation.TenantId], ct);
             var tenantPortalUrl   = TenantPortalUrlHelper.BuildBaseUrl(inviteTenant, notifOptions.Value);
 
             return Results.Ok(new
@@ -342,6 +342,8 @@ public static class AuthEndpoints
             user.SetPassword(newHash);
             await db.SaveChangesAsync(ct);
 
+            var changePwdTenantIdStr = httpContext.User.FindFirstValue("tenant_id") ?? "";
+
             var now = DateTimeOffset.UtcNow;
             _ = auditClient.IngestAsync(new IngestAuditEventRequest
             {
@@ -355,7 +357,7 @@ public static class AuthEndpoints
                 Scope = new AuditEventScopeDto
                 {
                     ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
+                    TenantId  = changePwdTenantIdStr,
                 },
                 Actor       = new AuditEventActorDto
                 {
@@ -600,6 +602,12 @@ public static class AuthEndpoints
 
             await db.SaveChangesAsync(ct);
 
+            var resetTenantId = await db.UserTenants
+                .Where(ut => ut.UserId == user.Id && ut.IsActive)
+                .OrderBy(ut => ut.JoinedAtUtc)
+                .Select(ut => (Guid?)ut.TenantId)
+                .FirstOrDefaultAsync(ct);
+
             var now = DateTimeOffset.UtcNow;
             _ = auditClient.IngestAsync(new IngestAuditEventRequest
             {
@@ -613,7 +621,7 @@ public static class AuthEndpoints
                 Scope = new AuditEventScopeDto
                 {
                     ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
+                    TenantId  = resetTenantId?.ToString() ?? "",
                 },
                 Actor = new AuditEventActorDto
                 {
@@ -623,7 +631,7 @@ public static class AuthEndpoints
                 },
                 Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
                 Action      = "PasswordResetCompleted",
-                Description = $"Password reset completed for user '{user.Email}' in tenant {user.TenantId}.",
+                Description = $"Password reset completed for user '{user.Email}'.",
                 IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
                     now, "identity-service", "identity.user.password_reset_completed", user.Id.ToString()),
                 Tags = ["auth", "security", "password-reset"],
@@ -690,7 +698,7 @@ public static class AuthEndpoints
             logger.LogInformation("[forgot-password] Tenant found: {TenantId} ({TenantCode})", tenant.Id, tenant.Code);
 
             var user = await db.Users
-                .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Email == body.Email && u.IsActive, ct);
+                .FirstOrDefaultAsync(u => db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tenant.Id && ut.IsActive) && u.Email == body.Email && u.IsActive, ct);
 
             if (user is null)
             {
@@ -748,7 +756,7 @@ public static class AuthEndpoints
                 try
                 {
                     var (_, emailSent, emailError) = await emailClient.SendPasswordResetEmailAsync(
-                        user.Email, displayName, resetLink, user.TenantId, ct);
+                        user.Email, displayName, resetLink, tenant.Id, ct);
 
                     if (!emailSent)
                         logger.LogWarning(

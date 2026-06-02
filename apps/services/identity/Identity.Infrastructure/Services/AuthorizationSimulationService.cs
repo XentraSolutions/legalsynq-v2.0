@@ -31,10 +31,15 @@ public class AuthorizationSimulationService : IAuthorizationSimulationService
     {
         var sw = Stopwatch.StartNew();
 
-        var user = await _db.Users
-            .Where(u => u.Id == request.UserId && u.TenantId == request.TenantId)
-            .Select(u => new { u.Id, u.TenantId, u.Email, u.FirstName, u.LastName })
-            .FirstOrDefaultAsync(ct);
+        var userExists = await _db.UserTenants
+            .AnyAsync(ut => ut.UserId == request.UserId && ut.TenantId == request.TenantId && ut.IsActive, ct);
+
+        var user = userExists
+            ? await _db.Users
+                .Where(u => u.Id == request.UserId)
+                .Select(u => new { u.Id, TenantId = request.TenantId, u.Email, u.FirstName, u.LastName })
+                .FirstOrDefaultAsync(ct)
+            : null;
 
         if (user == null)
         {
@@ -54,7 +59,7 @@ public class AuthorizationSimulationService : IAuthorizationSimulationService
         var userSummary = new UserIdentitySummary
         {
             UserId = user.Id,
-            TenantId = user.TenantId,
+            TenantId = request.TenantId,
             Email = user.Email,
             DisplayName = $"{user.FirstName} {user.LastName}".Trim(),
             Roles = effectiveAccess.ProductRolesFlat.Concat(effectiveAccess.TenantRoles).ToList(),

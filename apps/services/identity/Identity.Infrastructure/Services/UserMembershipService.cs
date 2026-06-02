@@ -40,30 +40,14 @@ public sealed class UserMembershipService : IUserMembershipService
         if (user is null)
             throw new InvalidOperationException($"[UserMembership] User {cmd.UserId} not found in Identity.");
 
-        // Check if already in the target tenant.
-        var alreadyInTenant = user.TenantId == cmd.TenantId
-            || await _db.UserTenants.AnyAsync(ut => ut.UserId == cmd.UserId && ut.TenantId == cmd.TenantId, ct);
+        // Check if already in the target tenant via the authoritative UserTenants table.
+        var alreadyInTenant = await _db.UserTenants.AnyAsync(ut => ut.UserId == cmd.UserId && ut.TenantId == cmd.TenantId, ct);
 
         if (alreadyInTenant)
         {
             _logger.LogInformation(
                 "[UserMembership] AssignTenant: user {UserId} is already in tenant {TenantId}. " +
-                "Skipping TenantId update — proceeding with role assignment.",
-                cmd.UserId, cmd.TenantId);
-        }
-        else
-        {
-            // Update User.TenantId via ExecuteUpdateAsync (SQL-only; bypasses EF change tracking).
-            var updated = await _db.Users
-                .Where(u => u.Id == cmd.UserId)
-                .ExecuteUpdateAsync(s => s.SetProperty(u => u.TenantId, cmd.TenantId), ct);
-
-            if (updated == 0)
-                throw new InvalidOperationException(
-                    $"[UserMembership] AssignTenant: failed to update TenantId for user {cmd.UserId}.");
-
-            _logger.LogInformation(
-                "[UserMembership] AssignTenant: user {UserId} moved to tenant {TenantId}.",
+                "Proceeding with role assignment.",
                 cmd.UserId, cmd.TenantId);
         }
 

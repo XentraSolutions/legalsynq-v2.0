@@ -1158,7 +1158,7 @@ Migrate to: `POST /tenant/api/v1/admin/tenants`
 
 ### Admin: Tenant User Management (PUM-B03)
 
-Endpoints for managing users within a specific tenant context. These operate on users whose `TenantId` already matches the target tenant (the current schema enforces single-tenant user ownership).
+Endpoints for managing users within a specific tenant context. These operate on users with an active `idt_UserTenants` membership in the target tenant.
 
 **Auth:** PlatformAdmin or TenantAdmin (TenantAdmin scoped to own tenant)
 
@@ -1199,7 +1199,7 @@ List users belonging to a tenant with pagination and search.
 
 Verify a user belongs to a tenant and optionally assign a Tenant-scoped role. Safe no-op if user is already in the tenant with no role requested.
 
-> **Architecture note (PUM-B03-R09):** `User.TenantId` is immutable. Cross-tenant user membership is not supported. If the user belongs to a different tenant, `409` is returned.
+> **Architecture note (PUM-B03-R09):** Tenant membership is stored in `idt_UserTenants`. If the user is not an active member of the target tenant, `409` is returned.
 
 **Path Parameters:**
 
@@ -1236,7 +1236,7 @@ Verify a user belongs to a tenant and optionally assign a Tenant-scoped role. Sa
 
 #### DELETE `/api/admin/tenants/{tenantId}/users/{userId}`
 
-Soft-remove a user from a tenant by revoking all their active Tenant-scoped role assignments. The user account and `User.TenantId` are not modified.
+Soft-remove a user from a tenant by revoking all their active Tenant-scoped role assignments. The user account is not globally deactivated.
 
 **Response:** `200 OK`
 

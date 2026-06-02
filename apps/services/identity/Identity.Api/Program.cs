@@ -310,10 +310,18 @@ INSERT IGNORE INTO `idt_ScopedRoleAssignments`
      `OrganizationId`, `OrganizationRelationshipId`, `ProductId`,
      `IsActive`, `AssignedAtUtc`, `UpdatedAtUtc`, `AssignedByUserId`)
 SELECT UUID(), u.`Id`,
-    CASE WHEN u.`TenantId` = '{PlatformTenantId}' THEN '{RolePlatformAdmin}' ELSE '{RoleTenantAdmin}' END,
-    'GLOBAL', u.`TenantId`, NULL, NULL, NULL,
+    CASE WHEN ut.`TenantId` = '{PlatformTenantId}' THEN '{RolePlatformAdmin}' ELSE '{RoleTenantAdmin}' END,
+    'GLOBAL', ut.`TenantId`, NULL, NULL, NULL,
     1, u.`CreatedAtUtc`, u.`CreatedAtUtc`, NULL
 FROM `idt_Users` u
+INNER JOIN `idt_UserTenants` ut
+        ON ut.`Id` = (
+            SELECT ut2.`Id`
+            FROM `idt_UserTenants` ut2
+            WHERE ut2.`UserId` = u.`Id` AND ut2.`IsActive` = 1
+            ORDER BY ut2.`JoinedAtUtc`, ut2.`Id`
+            LIMIT 1
+        )
 WHERE u.`IsActive` = 1
   AND NOT EXISTS (
     SELECT 1 FROM `idt_ScopedRoleAssignments` sra
@@ -347,10 +355,18 @@ INSERT IGNORE INTO `idt_ScopedRoleAssignments`
      `OrganizationId`, `OrganizationRelationshipId`, `ProductId`,
      `IsActive`, `AssignedAtUtc`, `UpdatedAtUtc`, `AssignedByUserId`)
 SELECT UUID(), u.`Id`,
-    CASE WHEN u.`TenantId` = '{PlatformTenantId}' THEN '{RolePlatformAdmin}' ELSE '{RoleTenantAdmin}' END,
-    'GLOBAL', u.`TenantId`, NULL, NULL, NULL,
+    CASE WHEN ut.`TenantId` = '{PlatformTenantId}' THEN '{RolePlatformAdmin}' ELSE '{RoleTenantAdmin}' END,
+    'GLOBAL', ut.`TenantId`, NULL, NULL, NULL,
     1, u.`CreatedAtUtc`, u.`CreatedAtUtc`, NULL
 FROM `idt_Users` u
+INNER JOIN `idt_UserTenants` ut
+        ON ut.`Id` = (
+            SELECT ut2.`Id`
+            FROM `idt_UserTenants` ut2
+            WHERE ut2.`UserId` = u.`Id` AND ut2.`IsActive` = 1
+            ORDER BY ut2.`JoinedAtUtc`, ut2.`Id`
+            LIMIT 1
+        )
 WHERE u.`IsActive` = 1
   AND NOT EXISTS (
     SELECT 1 FROM `idt_ScopedRoleAssignments` sra
@@ -380,10 +396,11 @@ WHERE u.`IsActive` = 1
         {
             c.CommandText = $@"
 UPDATE `idt_ScopedRoleAssignments` sra
-INNER JOIN `idt_Users` u ON u.`Id` = sra.`UserId`
+INNER JOIN `idt_UserTenants` ut ON ut.`UserId` = sra.`UserId`
 SET   sra.`RoleId`       = '{RolePlatformAdmin}',
       sra.`UpdatedAtUtc` = UTC_TIMESTAMP()
-WHERE u.`TenantId`           = '{PlatformTenantId}'
+WHERE ut.`TenantId`          = '{PlatformTenantId}'
+  AND ut.`IsActive`          = 1
   AND sra.`ScopeType`        = 'GLOBAL'
   AND sra.`IsActive`         = 1
   AND sra.`RoleId`           = '{RoleTenantAdmin}'
@@ -395,10 +412,14 @@ INSERT IGNORE INTO `idt_ScopedRoleAssignments`
     (`Id`, `UserId`, `RoleId`, `ScopeType`, `TenantId`,
      `OrganizationId`, `OrganizationRelationshipId`, `ProductId`,
      `IsActive`, `AssignedAtUtc`, `UpdatedAtUtc`, `AssignedByUserId`)
-SELECT UUID(), u.`Id`, '{RolePlatformAdmin}', 'GLOBAL', u.`TenantId`,
+SELECT UUID(), u.`Id`, '{RolePlatformAdmin}', 'GLOBAL', ut.`TenantId`,
        NULL, NULL, NULL, 1, u.`CreatedAtUtc`, u.`CreatedAtUtc`, NULL
 FROM `idt_Users` u
-WHERE u.`TenantId` = '{PlatformTenantId}'
+INNER JOIN `idt_UserTenants` ut
+        ON ut.`UserId` = u.`Id`
+       AND ut.`TenantId` = '{PlatformTenantId}'
+       AND ut.`IsActive` = 1
+WHERE 1 = 1
   AND u.`IsActive` = 1
   AND NOT EXISTS (
     SELECT 1 FROM `idt_ScopedRoleAssignments` sra2
@@ -427,15 +448,23 @@ WHERE u.`TenantId` = '{PlatformTenantId}'
 
             c.CommandText = $@"
 INSERT IGNORE INTO `idt_Users`
-    (`Id`, `TenantId`, `Email`, `PasswordHash`,
+    (`Id`, `Email`, `PasswordHash`,
      `FirstName`, `LastName`, `IsActive`,
      `IsLocked`, `UserType`,
      `CreatedAtUtc`, `UpdatedAtUtc`)
 VALUES (
-    '{AdminUserId}', '{PlatformTenantId}',
+    '{AdminUserId}',
     'admin@legalsynq.com', '{AdminPwHash}',
     'Platform', 'Admin', 1, 0, 'PlatformInternal',
     '2024-01-01 00:00:00', '2024-01-01 00:00:00'
+);";
+            c.ExecuteNonQuery();
+
+            c.CommandText = $@"
+INSERT IGNORE INTO `idt_UserTenants`
+    (`Id`, `UserId`, `TenantId`, `IsActive`, `JoinedAtUtc`)
+VALUES (
+    UUID(), '{AdminUserId}', '{PlatformTenantId}', 1, '2024-01-01 00:00:00'
 );";
             c.ExecuteNonQuery();
 
@@ -708,8 +737,16 @@ if (app.Environment.IsDevelopment())
 
         foreach (var orphan in usersWithoutMembership)
         {
+            var userTenantId = await fixDb.UserTenants
+                .Where(ut => ut.UserId == orphan.Id && ut.IsActive)
+                .OrderBy(ut => ut.JoinedAtUtc)
+                .Select(ut => (Guid?)ut.TenantId)
+                .FirstOrDefaultAsync();
+
+            if (userTenantId is null) continue;
+
             var org = await fixDb.Organizations
-                .Where(o => o.TenantId == orphan.TenantId && o.IsActive)
+                .Where(o => o.TenantId == userTenantId.Value && o.IsActive)
                 .OrderBy(o => o.CreatedAtUtc)
                 .FirstOrDefaultAsync();
 

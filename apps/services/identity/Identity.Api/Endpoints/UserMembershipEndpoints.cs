@@ -12,7 +12,7 @@ namespace Identity.Api.Endpoints;
 ///
 /// POST /api/internal/users/assign-tenant  — assign user to tenant + optional roles
 /// POST /api/internal/users/assign-roles   — assign roles to a user (idempotent)
-/// GET  /api/internal/users/portal-access  — check if email has active CareConnect portal access
+/// GET  /api/internal/users/portal-access  — tenant-scoped CareConnect portal access status
 ///
 /// Auth: X-Provisioning-Token header must match TenantService:ProvisioningSecret.
 ///       When ProvisioningSecret is empty/unset, the check is skipped (dev mode).
@@ -26,7 +26,7 @@ public static class UserMembershipEndpoints
         // ── POST /api/internal/users/assign-tenant ────────────────────────────
         //
         // Assigns an existing Identity user to a tenant.
-        // Updates User.TenantId and grants any provided roles.
+        // Writes idt_UserTenants and grants any provided roles.
         // Idempotent — safe to call even if the user is already in the target tenant.
         //
         // Request body:
@@ -137,17 +137,22 @@ public static class UserMembershipEndpoints
             }
         });
 
-        // ── GET /api/internal/users/portal-access?email=xxx ──────────────────
+        // ── GET /api/internal/users/portal-access?tenantId=xxx&email=xxx ─────
         //
-        // CC-PORTAL-CHECK: Checks whether an email address belongs to a fully-activated
-        // CareConnect referrer (active user with password set, in a LAW_FIRM org).
-        // Returns { hasPortalAccess: bool } — always HTTP 200. Never discloses user
-        // existence alone; only the combined access state (safe post-referral-submit context).
+        // CC-PORTAL-CHECK: Returns the tenant-scoped CareConnect referrer status
+        // for the given email:
+        //   - active_in_tenant
+        //   - existing_user_other_tenant
+        //   - no_account
+        //
+        // Always HTTP 200. Never discloses user existence alone beyond the referrer
+        // access state needed by the post-referral-submit UX.
         //
         // Auth: X-Provisioning-Token (same pattern as assign-tenant / assign-roles).
 
         group.MapGet("/portal-access", async (
             HttpContext       httpContext,
+            Guid?             tenantId,
             string?           email,
             IdentityDbContext db,
             IConfiguration    configuration,
@@ -159,25 +164,52 @@ public static class UserMembershipEndpoints
             if (!ValidateProvisioningToken(httpContext, configuration, log, "portal-access"))
                 return Results.Unauthorized();
 
-            if (string.IsNullOrWhiteSpace(email))
-                return Results.Ok(new { hasPortalAccess = false });
+            if (tenantId is null || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { status = "no_account" });
 
             var emailNorm = email.Trim().ToLowerInvariant();
+            var emailUser = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Email.Trim().ToLower() == emailNorm)
+                .Select(u => new { u.Id, u.IsActive, u.PasswordHash })
+                .FirstOrDefaultAsync(ct);
 
-            // A referrer is "activated" when all three conditions hold:
-            //   1. An active user record with this email exists.
-            //   2. The user has a password set (PasswordHash non-empty) — not merely invited.
-            //   3. The user has an active membership in at least one LAW_FIRM organization.
-            var hasAccess = await db.Users
-                .Where(u => u.Email == emailNorm && u.IsActive && u.PasswordHash != string.Empty)
-                .AnyAsync(u => db.UserOrganizationMemberships
-                    .Where(m => m.UserId == u.Id && m.IsActive)
-                    .Join(db.Organizations.Where(o => o.OrgType == "LAW_FIRM" && o.IsActive),
-                          m => m.OrganizationId, o => o.Id, (m, o) => o.Id)
-                    .Any(),
+            if (emailUser is null)
+                return Results.Ok(new { status = "no_account" });
+
+            var hasTenantMembership = await db.UserTenants
+                .AsNoTracking()
+                .AnyAsync(ut => ut.UserId == emailUser.Id
+                             && ut.TenantId == tenantId.Value
+                             && ut.IsActive,
                     ct);
 
-            return Results.Ok(new { hasPortalAccess = hasAccess });
+            var hasTenantLawFirmMembership = await db.UserOrganizationMemberships
+                .AsNoTracking()
+                .Where(m => m.UserId == emailUser.Id && m.IsActive)
+                .Join(
+                    db.Organizations.AsNoTracking().Where(o => o.TenantId == tenantId.Value
+                                                             && o.OrgType == "LAW_FIRM"
+                                                             && o.IsActive),
+                    m => m.OrganizationId,
+                    o => o.Id,
+                    (_, _) => true)
+                .AnyAsync(ct);
+
+            if (emailUser.IsActive
+                && emailUser.PasswordHash != string.Empty
+                && hasTenantMembership
+                && hasTenantLawFirmMembership)
+            {
+                return Results.Ok(new { status = "active_in_tenant" });
+            }
+
+            return Results.Ok(new
+            {
+                status = hasTenantMembership
+                    ? "no_account"
+                    : "existing_user_other_tenant"
+            });
         });
 
         // ── GET /api/internal/users/is-owner?tenantId=xxx&email=xxx ──────────

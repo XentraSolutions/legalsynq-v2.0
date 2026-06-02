@@ -364,12 +364,13 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
     // ── CC-PORTAL-CHECK: Referrer portal access lookup ────────────────────────
 
     /// <inheritdoc />
-    public async Task<bool> CheckReferrerPortalAccessAsync(
+    public async Task<string> GetReferrerPortalAccessStatusAsync(
+        Guid              tenantId,
         string            email,
         CancellationToken ct = default)
     {
-        if (!_isEnabled || string.IsNullOrWhiteSpace(email))
-            return false;
+        if (!_isEnabled || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+            return ReferrerPortalAccessStatuses.NoAccount;
 
         try
         {
@@ -377,7 +378,7 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
             using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
 
-            var url = $"api/internal/users/portal-access?email={Uri.EscapeDataString(email.Trim())}";
+            var url = $"api/internal/users/portal-access?tenantId={tenantId}&email={Uri.EscapeDataString(email.Trim())}";
             using var response = await client.GetAsync(url, cts.Token);
 
             if (!response.IsSuccessStatusCode)
@@ -385,23 +386,25 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
                 _logger.LogWarning(
                     "CC-PORTAL-CHECK Identity portal-access returned HTTP {Status} for email check.",
                     (int)response.StatusCode);
-                return false;
+                return ReferrerPortalAccessStatuses.NoAccount;
             }
 
             var result = await response.Content.ReadFromJsonAsync<PortalAccessResponse>(
                 cancellationToken: cts.Token);
 
-            return result?.HasPortalAccess ?? false;
+            return string.IsNullOrWhiteSpace(result?.Status)
+                ? ReferrerPortalAccessStatuses.NoAccount
+                : result.Status;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("CC-PORTAL-CHECK Identity portal-access check timed out.");
-            return false;
+            return ReferrerPortalAccessStatuses.NoAccount;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "CC-PORTAL-CHECK Identity portal-access check failed.");
-            return false;
+            return ReferrerPortalAccessStatuses.NoAccount;
         }
     }
 
@@ -567,8 +570,8 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
     private sealed class PortalAccessResponse
     {
-        [JsonPropertyName("hasPortalAccess")]
-        public bool HasPortalAccess { get; set; }
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
     }
 
     private sealed class IsOwnerResponse

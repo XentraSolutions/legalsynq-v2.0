@@ -348,7 +348,6 @@ public static class AdminEndpoints
         string search   = "")
     {
         var q = db.Tenants
-            .Include(t => t.Users)
             .Include(t => t.Organizations)
             .AsQueryable();
 
@@ -368,9 +367,13 @@ public static class AdminEndpoints
                 displayName        = t.Name,
                 type               = t.Organizations.OrderBy(o => o.CreatedAtUtc).Select(o => o.OrgType).FirstOrDefault() ?? "LAW_FIRM",
                 status             = t.IsActive ? "Active" : "Inactive",
-                primaryContactName = t.Users.OrderBy(u => u.CreatedAtUtc).Select(u => u.FirstName + " " + u.LastName).FirstOrDefault() ?? "",
+                primaryContactName = db.UserTenants
+                    .Where(ut => ut.TenantId == t.Id && ut.IsActive)
+                    .OrderBy(ut => ut.JoinedAtUtc)
+                    .Select(ut => ut.User.FirstName + " " + ut.User.LastName)
+                    .FirstOrDefault() ?? "",
                 isActive           = t.IsActive,
-                userCount          = t.Users.Count,
+                userCount          = db.UserTenants.Count(ut => ut.TenantId == t.Id && ut.IsActive),
                 orgCount           = t.Organizations.Count,
                 createdAtUtc       = t.CreatedAtUtc,
                 subdomain          = t.Subdomain,
@@ -391,7 +394,6 @@ public static class AdminEndpoints
     {
         var dnsBaseDomain = dnsService.BaseDomain;
         var t = await db.Tenants
-            .Include(t => t.Users)
             .Include(t => t.Organizations)
             .Include(t => t.TenantProducts)
                 .ThenInclude(tp => tp.Product)
@@ -399,7 +401,11 @@ public static class AdminEndpoints
 
         if (t is null) return Results.NotFound();
 
-        var firstUser = t.Users.OrderBy(u => u.CreatedAtUtc).FirstOrDefault();
+        var firstUser = await db.UserTenants
+            .Where(ut => ut.TenantId == t.Id && ut.IsActive)
+            .OrderBy(ut => ut.JoinedAtUtc)
+            .Select(ut => ut.User)
+            .FirstOrDefaultAsync();
 
         // Always return ALL active platform products so the entitlements panel
         // is never empty for newly created tenants. Products not yet in TenantProducts
@@ -436,8 +442,8 @@ public static class AdminEndpoints
             primaryContactName    = firstUser is null ? "" : $"{firstUser.FirstName} {firstUser.LastName}",
             email                 = firstUser?.Email,
             isActive              = t.IsActive,
-            userCount             = t.Users.Count,
-            activeUserCount       = t.Users.Count(u => u.IsActive),
+            userCount             = await db.UserTenants.CountAsync(ut => ut.TenantId == t.Id && ut.IsActive),
+            activeUserCount       = await db.UserTenants.CountAsync(ut => ut.TenantId == t.Id && ut.IsActive && ut.User.IsActive),
             orgCount              = t.Organizations.Count,
             linkedOrgCount        = t.Organizations.Count,
             createdAtUtc          = t.CreatedAtUtc,
@@ -561,6 +567,7 @@ public static class AdminEndpoints
             firstName:    body.AdminFirstName.Trim(),
             lastName:     body.AdminLastName.Trim());
         db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, tenant.Id));
 
         var membership = UserOrganizationMembership.Create(
             userId:         user.Id,
@@ -1492,9 +1499,7 @@ public static class AdminEndpoints
         string userType = "",
         string isActive = "")
     {
-        var q = db.Users
-            .Include(u => u.Tenant)
-            .AsQueryable();
+        var q = db.Users.AsQueryable();
 
         // ── Tenant scoping: TenantAdmin is always restricted to their own tenant ──
         // PlatformAdmin may pass an explicit tenantId filter or see all.
@@ -1504,12 +1509,12 @@ public static class AdminEndpoints
         if (!isPlatformAdmin && callerTenantId is not null && Guid.TryParse(callerTenantId, out var callerTid))
         {
             // TenantAdmin: always scope to own tenant — ignore any tenantId param
-            q = q.Where(u => u.TenantId == callerTid);
+            q = q.Where(u => db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == callerTid && ut.IsActive));
         }
         else if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var tid))
         {
             // PlatformAdmin with explicit tenant filter
-            q = q.Where(u => u.TenantId == tid);
+            q = q.Where(u => db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tid && ut.IsActive));
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -1574,8 +1579,16 @@ public static class AdminEndpoints
                                .Select(m => m.Organization.DisplayName ?? m.Organization.Name)
                                .FirstOrDefault(),
                 groupCount = db.AccessGroupMemberships.Count(am => am.UserId == u.Id && am.MembershipStatus == MembershipStatus.Active),
-                tenantId   = u.TenantId,
-                tenantCode = u.Tenant.Code,
+                tenantId   = db.UserTenants
+                               .Where(ut => ut.UserId == u.Id && ut.IsActive)
+                               .OrderBy(ut => ut.JoinedAtUtc)
+                               .Select(ut => (Guid?)ut.TenantId)
+                               .FirstOrDefault(),
+                tenantCode = db.UserTenants
+                               .Where(ut => ut.UserId == u.Id && ut.IsActive)
+                               .OrderBy(ut => ut.JoinedAtUtc)
+                               .Select(ut => ut.Tenant.Code)
+                               .FirstOrDefault(),
                 createdAtUtc = u.CreatedAtUtc,
             })
             .ToListAsync();
@@ -1641,7 +1654,7 @@ public static class AdminEndpoints
         }
 
         var q = db.Users.AsNoTracking()
-            .Where(u => u.TenantId == tid && u.IsActive);
+            .Where(u => db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tid && ut.IsActive) && u.IsActive);
 
         if (hasRoleFilter)
         {
@@ -1688,7 +1701,6 @@ public static class AdminEndpoints
         var callerTenantId  = caller.FindFirstValue("tenant_id");
 
         var u = await db.Users
-            .Include(u => u.Tenant)
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global))
                 .ThenInclude(s => s.Role)
             .Include(u => u.OrganizationMemberships.Where(m => m.IsActive))
@@ -1700,7 +1712,8 @@ public static class AdminEndpoints
         // Non-PlatformAdmins may only view users within their own tenant.
         if (!isPlatformAdmin)
         {
-            if (callerTenantId is null || !Guid.TryParse(callerTenantId, out var callerTid) || u.TenantId != callerTid)
+            if (callerTenantId is null || !Guid.TryParse(callerTenantId, out var callerTid) ||
+                !await db.UserTenants.AnyAsync(ut => ut.UserId == u.Id && ut.TenantId == callerTid && ut.IsActive, ct))
                 return Results.Forbid();
         }
 
@@ -1716,6 +1729,9 @@ public static class AdminEndpoints
 
         var status = u.IsActive ? "Active" : (hasPendingInvite ? "Invited" : "Inactive");
 
+        var userOpTenantId = await GetOperationalTenantIdAsync(caller, u.Id, db, ct);
+        var userTenant = await GetTenantSummaryAsync(db, userOpTenantId, ct);
+
         return Results.Ok(new
         {
             id                = u.Id,
@@ -1727,9 +1743,9 @@ public static class AdminEndpoints
             roles             = u.ScopedRoleAssignments.Select(s => new { roleId = s.RoleId, roleName = s.Role.Name, assignmentId = s.Id }),
             status,
             isActive          = u.IsActive,
-            tenantId          = u.TenantId,
-            tenantCode        = u.Tenant.Code,
-            tenantDisplayName = u.Tenant.Name,
+            tenantId          = userOpTenantId,
+            tenantCode        = userTenant?.Code,
+            tenantDisplayName = userTenant?.Name,
             createdAtUtc      = u.CreatedAtUtc,
             updatedAtUtc      = u.UpdatedAtUtc,
             lastLoginAtUtc    = u.LastLoginAtUtc,
@@ -1773,14 +1789,14 @@ public static class AdminEndpoints
         INotificationsCacheClient notificationsCache,
         CancellationToken         ct)
     {
-        var user = await db.Users
-            .Include(u => u.Tenant)
-            .FirstOrDefaultAsync(u => u.Id == id, ct);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (user is null) return Results.NotFound();
 
         // UIX-003-01: TenantAdmin may only deactivate users within their own tenant.
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
+
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
 
         // LS-ID-TNT-005: Backend last-admin protection.
         // Block deactivation if the target user is the only remaining active TenantAdmin
@@ -1793,7 +1809,7 @@ public static class AdminEndpoints
                         && s.Role!.Name == "TenantAdmin", ct);
         if (isTenantAdmin)
         {
-            var otherActiveAdmins = await CountOtherActiveTenantAdmins(db, user.Id, user.TenantId, ct);
+            var otherActiveAdmins = await CountOtherActiveTenantAdmins(db, user.Id, opTenantId, ct);
             if (otherActiveAdmins == 0)
                 return Results.UnprocessableEntity(new
                 {
@@ -1822,7 +1838,7 @@ public static class AdminEndpoints
             Scope = new AuditEventScopeDto
             {
                 ScopeType = ScopeType.Tenant,
-                TenantId  = user.TenantId.ToString(),
+                TenantId  = opTenantId.ToString(),
             },
             Actor = new AuditEventActorDto
             {
@@ -1831,7 +1847,7 @@ public static class AdminEndpoints
             },
             Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action      = "UserDeactivated",
-            Description = $"User '{user.Email}' deactivated in tenant {user.TenantId}.",
+            Description = $"User '{user.Email}' deactivated in tenant {opTenantId}.",
             Before      = JsonSerializer.Serialize(new { isActive = true,  email = user.Email }),
             After       = JsonSerializer.Serialize(new { isActive = false, email = user.Email }),
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.deactivated", user.Id.ToString()),
@@ -1842,7 +1858,7 @@ public static class AdminEndpoints
         // service's cached role/org member lists so role-addressed alerts
         // immediately stop including the deactivated user.
         notificationsCache.InvalidateTenant(
-            user.TenantId,
+            opTenantId,
             eventType: "identity.user.deactivated",
             reason:    $"user {user.Id} deactivated");
 
@@ -1870,8 +1886,9 @@ public static class AdminEndpoints
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
         if (user is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         var (ok, normalised, error) = PhoneNumber.TryNormalise(body.Phone);
         // Return both `message` (consumed by the Control Center api client)
         // and `error` (consumed by the tenant portal's PhoneEditor) so the
@@ -1899,7 +1916,7 @@ public static class AdminEndpoints
             Scope = new AuditEventScopeDto
             {
                 ScopeType = ScopeType.Tenant,
-                TenantId  = user.TenantId.ToString(),
+                TenantId  = opTenantId.ToString(),
             },
             Actor = new AuditEventActorDto
             {
@@ -1944,13 +1961,12 @@ public static class AdminEndpoints
         INotificationsCacheClient notificationsCache,
         CancellationToken         ct)
     {
-        var user = await db.Users
-            .Include(u => u.Tenant)
-            .FirstOrDefaultAsync(u => u.Id == id, ct);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (user is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         var callerIdStr = caller.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
                        ?? caller.FindFirstValue("sub");
         var lockingAdminId = Guid.TryParse(callerIdStr, out var aid) ? (Guid?)aid : null;
@@ -1973,7 +1989,7 @@ public static class AdminEndpoints
             Scope = new AuditEventScopeDto
             {
                 ScopeType = ScopeType.Tenant,
-                TenantId  = user.TenantId.ToString(),
+                TenantId  = opTenantId.ToString(),
             },
             Actor = new AuditEventActorDto
             {
@@ -1983,7 +1999,7 @@ public static class AdminEndpoints
             },
             Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action      = "UserLocked",
-            Description = $"User '{user.Email}' locked by admin in tenant {user.TenantId}.",
+            Description = $"User '{user.Email}' locked by admin in tenant {opTenantId}.",
             Before      = JsonSerializer.Serialize(new { isLocked = false, email = user.Email }),
             After       = JsonSerializer.Serialize(new { isLocked = true,  email = user.Email, lockedAt = now }),
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.locked", user.Id.ToString()),
@@ -1994,7 +2010,7 @@ public static class AdminEndpoints
         // service's cached role/org member lists so role-addressed alerts
         // immediately stop including the locked user.
         notificationsCache.InvalidateTenant(
-            user.TenantId,
+            opTenantId,
             eventType: "identity.user.locked",
             reason:    $"user {user.Id} locked");
 
@@ -2016,13 +2032,12 @@ public static class AdminEndpoints
         INotificationsCacheClient notificationsCache,
         CancellationToken         ct)
     {
-        var user = await db.Users
-            .Include(u => u.Tenant)
-            .FirstOrDefaultAsync(u => u.Id == id, ct);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (user is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         var changed = user.Unlock();
         if (!changed) return Results.NoContent();
 
@@ -2044,7 +2059,7 @@ public static class AdminEndpoints
             Scope = new AuditEventScopeDto
             {
                 ScopeType = ScopeType.Tenant,
-                TenantId  = user.TenantId.ToString(),
+                TenantId  = opTenantId.ToString(),
             },
             Actor = new AuditEventActorDto
             {
@@ -2054,7 +2069,7 @@ public static class AdminEndpoints
             },
             Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action      = "UserUnlocked",
-            Description = $"User '{user.Email}' unlocked by admin in tenant {user.TenantId}.",
+            Description = $"User '{user.Email}' unlocked by admin in tenant {opTenantId}.",
             Before      = JsonSerializer.Serialize(new { isLocked = true,  email = user.Email }),
             After       = JsonSerializer.Serialize(new { isLocked = false, email = user.Email }),
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.unlocked", user.Id.ToString()),
@@ -2065,7 +2080,7 @@ public static class AdminEndpoints
         // service's cached role/org member lists so role-addressed alerts
         // immediately resume including the unlocked user.
         notificationsCache.InvalidateTenant(
-            user.TenantId,
+            opTenantId,
             eventType: "identity.user.unlocked",
             reason:    $"user {user.Id} unlocked");
 
@@ -2086,13 +2101,12 @@ public static class AdminEndpoints
         IAuditEventClient auditClient,
         CancellationToken ct)
     {
-        var user = await db.Users
-            .Include(u => u.Tenant)
-            .FirstOrDefaultAsync(u => u.Id == id, ct);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (user is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         user.IncrementSessionVersion();
         await db.SaveChangesAsync(ct);
 
@@ -2112,7 +2126,7 @@ public static class AdminEndpoints
             Scope = new AuditEventScopeDto
             {
                 ScopeType = ScopeType.Tenant,
-                TenantId  = user.TenantId.ToString(),
+                TenantId  = opTenantId.ToString(),
             },
             Actor = new AuditEventActorDto
             {
@@ -2122,7 +2136,7 @@ public static class AdminEndpoints
             },
             Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action      = "ForceLogout",
-            Description = $"All sessions revoked for user '{user.Email}' in tenant {user.TenantId}.",
+            Description = $"All sessions revoked for user '{user.Email}' in tenant {opTenantId}.",
             Metadata    = JsonSerializer.Serialize(new { newSessionVersion = user.SessionVersion }),
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.force_logout", user.Id.ToString()),
             Tags = ["user-management", "security", "session", "force-logout"],
@@ -2155,12 +2169,12 @@ public static class AdminEndpoints
     {
         var logger = loggerFactory.CreateLogger(nameof(AdminEndpoints));
 
-        var user = await db.Users
-            .Include(u => u.Tenant)
-            .FirstOrDefaultAsync(u => u.Id == id, ct);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (user is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
+
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
 
         // Revoke any existing pending reset tokens for this user.
         var existingTokens = await db.PasswordResetTokens
@@ -2178,7 +2192,7 @@ public static class AdminEndpoints
                        ?? caller.FindFirstValue("sub");
         var triggeredByAdminId = Guid.TryParse(callerIdStr, out var aid) ? (Guid?)aid : null;
 
-        var resetToken = PasswordResetToken.Create(id, user.TenantId, tokenHash, triggeredByAdminId);
+        var resetToken = PasswordResetToken.Create(id, opTenantId, tokenHash, triggeredByAdminId);
         db.PasswordResetTokens.Add(resetToken);
         await db.SaveChangesAsync(ct);
 
@@ -2190,14 +2204,14 @@ public static class AdminEndpoints
                 "[LS-ID-TNT-005] Password reset triggered for user {UserId} ({Email}) in tenant {TenantId}. " +
                 "Reset token (NON-PRODUCTION ONLY — never expose in production): {RawToken}. " +
                 "Token expires at {ExpiresAt:O}.",
-                user.Id, user.Email, user.TenantId, rawToken, resetToken.ExpiresAtUtc);
+                user.Id, user.Email, opTenantId, rawToken, resetToken.ExpiresAtUtc);
         }
         else
         {
             logger.LogInformation(
                 "[UIX-003-03] Admin password reset triggered for user {UserId} in tenant {TenantId}. " +
                 "Token expires at {ExpiresAt:O}.",
-                user.Id, user.TenantId, resetToken.ExpiresAtUtc);
+                user.Id, opTenantId, resetToken.ExpiresAtUtc);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -2213,7 +2227,7 @@ public static class AdminEndpoints
             Scope = new AuditEventScopeDto
             {
                 ScopeType = ScopeType.Tenant,
-                TenantId  = user.TenantId.ToString(),
+                TenantId  = opTenantId.ToString(),
             },
             Actor = new AuditEventActorDto
             {
@@ -2223,13 +2237,13 @@ public static class AdminEndpoints
             },
             Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action      = "PasswordResetTriggered",
-            Description = $"Admin-triggered password reset for user '{user.Email}' in tenant {user.TenantId}.",
+            Description = $"Admin-triggered password reset for user '{user.Email}' in tenant {opTenantId}.",
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.password_reset_triggered", user.Id.ToString()),
             Tags = ["user-management", "security", "password-reset"],
         });
 
         // LS-ID-TNT-016-01: Build tenant-subdomain-aware reset link.
-        var resetTenant = await db.Tenants.FindAsync([user.TenantId], ct);
+        var resetTenant = await db.Tenants.FindAsync([opTenantId], ct);
         var resetLink   = TenantPortalUrlHelper.Build(resetTenant, "reset-password", rawToken, notificationsOptions.Value);
         if (resetLink is not null)
         {
@@ -2237,7 +2251,7 @@ public static class AdminEndpoints
             if (string.IsNullOrWhiteSpace(displayName)) displayName = user.Email;
 
             var (emailConfigured, delivered, deliveryError) =
-                await notificationsEmail.SendPasswordResetEmailAsync(user.Email, displayName, resetLink, user.TenantId, ct);
+                await notificationsEmail.SendPasswordResetEmailAsync(user.Email, displayName, resetLink, opTenantId, ct);
 
             if (emailConfigured)
             {
@@ -2301,13 +2315,12 @@ public static class AdminEndpoints
         if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
             return Results.BadRequest(new { error = "Password must be at least 8 characters." });
 
-        var user = await db.Users
-            .Include(u => u.Tenant)
-            .FirstOrDefaultAsync(u => u.Id == id, ct);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (user is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         var hash = passwordHasher.Hash(body.NewPassword);
         user.SetPassword(hash);
 
@@ -2326,7 +2339,7 @@ public static class AdminEndpoints
             Scope = new AuditEventScopeDto
             {
                 ScopeType = ScopeType.Tenant,
-                TenantId  = user.TenantId.ToString(),
+                TenantId  = opTenantId.ToString(),
             },
             Actor = new AuditEventActorDto
             {
@@ -2335,7 +2348,7 @@ public static class AdminEndpoints
             },
             Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action      = "PasswordSetByAdmin",
-            Description = $"Admin directly set a new password for user '{user.Email}' in tenant {user.TenantId}.",
+            Description = $"Admin directly set a new password for user '{user.Email}' in tenant {opTenantId}.",
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.password_set_by_admin", user.Id.ToString()),
             Tags = ["user-management", "security", "password-set"],
         });
@@ -2356,12 +2369,10 @@ public static class AdminEndpoints
         IdentityDbContext db,
         CancellationToken ct)
     {
-        var u = await db.Users
-            .Include(u => u.Tenant)
-            .FirstOrDefaultAsync(u => u.Id == id, ct);
+        var u = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (u is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, u.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, u.Id, db, ct)) return Results.Forbid();
 
         var hasPendingInvite = await db.UserInvitations
             .AnyAsync(i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending, ct);
@@ -2423,11 +2434,10 @@ public static class AdminEndpoints
 
         var u = await db.Users
             .AsNoTracking()
-            .Include(u => u.Tenant)
             .FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (u is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, u.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, u.Id, db, ct)) return Results.Forbid();
 
         var idStr = id.ToString();
         var q = db.AuditLogs
@@ -2503,11 +2513,12 @@ public static class AdminEndpoints
     {
         var u = await db.Users
             .AsNoTracking()
-            .Include(u => u.Tenant)
             .FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (u is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, u.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, u.Id, db, ct)) return Results.Forbid();
+
+        var opTenantId = await GetOperationalTenantIdAsync(caller, u.Id, db, ct);
 
         // ── Primary org membership ────────────────────────────────────────────
         var membership = await db.UserOrganizationMemberships
@@ -2523,7 +2534,7 @@ public static class AdminEndpoints
         // ── Tenant-level CareConnect entitlement ─────────────────────────────
         bool tenantHasCareConnect = await db.Set<Identity.Domain.TenantProduct>()
             .AsNoTracking()
-            .AnyAsync(tp => tp.TenantId == u.TenantId
+            .AnyAsync(tp => tp.TenantId == opTenantId
                          && tp.ProductId == CcProductId
                          && tp.IsEnabled, ct);
 
@@ -2581,13 +2592,12 @@ public static class AdminEndpoints
 
         var u = await db.Users
             .AsNoTracking()
-            .Include(u => u.Tenant)
-                .ThenInclude(t => t.TenantProducts)
             .FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (u is null) return Results.NotFound();
-        if (IsCrossTenantAccess(caller, u.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, u.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, u.Id, db, ct);
         var membership = await db.UserOrganizationMemberships
             .AsNoTracking()
             .Include(m => m.Organization)
@@ -2614,7 +2624,7 @@ public static class AdminEndpoints
             });
 
         var provResult = await provisioningEngine.ProvisionAsync(
-            new ProvisionProductRequest(u.TenantId, ProductCodes.SynqCareConnect, true), ct);
+            new ProvisionProductRequest(opTenantId, ProductCodes.SynqCareConnect, true), ct);
 
         bool roleAdded = false;
         var existingRole = await db.ScopedRoleAssignments
@@ -2629,7 +2639,7 @@ public static class AdminEndpoints
                 userId:           id,
                 roleId:           CcReceiverRoleId,
                 scopeType:        ScopedRoleAssignment.ScopeTypes.Global,
-                tenantId:         u.TenantId,
+                tenantId:         opTenantId,
                 assignedByUserId: callerId);
             db.ScopedRoleAssignments.Add(sra);
             roleAdded = true;
@@ -3535,7 +3545,9 @@ public static class AdminEndpoints
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
         // UIX-003-01: TenantAdmin may only assign roles within their own tenant.
-        if (IsCrossTenantAccess(ctx.User, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(ctx.User, user.Id, db, ctx.RequestAborted)) return Results.Forbid();
+
+        var opTenantId = await GetOperationalTenantIdAsync(ctx.User, user.Id, db, ctx.RequestAborted);
 
         // PUM-B02-R10: resolve role by roleId or roleKey (name).
         Role? role = null;
@@ -3595,7 +3607,7 @@ public static class AdminEndpoints
             {
                 // 1. Tenant product enablement check
                 var tenantHasProduct = await db.TenantProducts
-                    .AnyAsync(tp => tp.TenantId == user.TenantId
+                    .AnyAsync(tp => tp.TenantId == opTenantId
                                  && tp.ProductId == productRole.ProductId
                                  && tp.IsEnabled);
                 if (!tenantHasProduct)
@@ -3659,7 +3671,7 @@ public static class AdminEndpoints
 
                 var alreadyHasProductRole = await db.UserRoleAssignments
                     .AnyAsync(a =>
-                        a.TenantId         == user.TenantId &&
+                        a.TenantId         == opTenantId &&
                         a.UserId           == id &&
                         a.ProductCode      == productCode &&
                         a.RoleCode         == productRole.Code &&
@@ -3668,7 +3680,7 @@ public static class AdminEndpoints
                     return Results.Conflict(new { error = "An identical product role assignment already exists for this user." });
 
                 var productRoleAssignment = UserRoleAssignment.Create(
-                    tenantId:        user.TenantId,
+                    tenantId:        opTenantId,
                     userId:          id,
                     roleCode:        productRole.Code,
                     productCode:     productCode,
@@ -3687,7 +3699,7 @@ public static class AdminEndpoints
                     Visibility    = VisibilityScope.Tenant,
                     Severity      = SeverityLevel.Info,
                     OccurredAtUtc = prAuditNow,
-                    Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+                    Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = opTenantId.ToString() },
                     Actor  = new AuditEventActorDto { Id = body.AssignedByUserId?.ToString(), Type = ActorType.User },
                     Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
                     Action      = "ProductRoleAssigned",
@@ -3698,7 +3710,7 @@ public static class AdminEndpoints
                 });
 
                 notificationsCache.InvalidateTenant(
-                    user.TenantId,
+                    opTenantId,
                     eventType: "identity.role.assigned",
                     reason:    $"product role {productRole.Code} assigned to user {id}");
 
@@ -3745,7 +3757,7 @@ public static class AdminEndpoints
             userId:           id,
             roleId:           role.Id,
             scopeType:        ScopedRoleAssignment.ScopeTypes.Global,
-            tenantId:         user.TenantId,
+            tenantId:         opTenantId,
             assignedByUserId: body.AssignedByUserId);
         db.ScopedRoleAssignments.Add(sra);
 
@@ -3762,7 +3774,7 @@ public static class AdminEndpoints
             Visibility    = VisibilityScope.Tenant,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = auditNow,
-            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = opTenantId.ToString() },
             Actor = new AuditEventActorDto { Id = body.AssignedByUserId?.ToString(), Type = ActorType.User },
             Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
             Action      = "RoleAssigned",
@@ -3775,7 +3787,7 @@ public static class AdminEndpoints
         // Role membership for this tenant changed — invalidate the notifications
         // service's cache so the next role-addressed fan-out includes this user.
         notificationsCache.InvalidateTenant(
-            user.TenantId,
+            opTenantId,
             eventType: "identity.role.assigned",
             reason:    $"role {role.Id} assigned to user {id}");
 
@@ -3810,7 +3822,9 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync(id);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        if (IsCrossTenantAccess(ctx.User, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(ctx.User, user.Id, db, ctx.RequestAborted)) return Results.Forbid();
+
+        var opTenantId = await GetOperationalTenantIdAsync(ctx.User, user.Id, db, ctx.RequestAborted);
 
         // Resolve user's primary org type
         var primaryMembership = await db.UserOrganizationMemberships
@@ -3825,7 +3839,7 @@ public static class AdminEndpoints
 
         // Get enabled products for this tenant
         var enabledProductIds = await db.TenantProducts
-            .Where(tp => tp.TenantId == user.TenantId && tp.IsEnabled)
+            .Where(tp => tp.TenantId == opTenantId && tp.IsEnabled)
             .Select(tp => tp.ProductId)
             .ToListAsync();
         var enabledProductSet = new HashSet<Guid>(enabledProductIds);
@@ -3858,7 +3872,7 @@ public static class AdminEndpoints
         // LS-COR-AUT-010: Product roles are stored in UserRoleAssignment (not ScopedRoleAssignment).
         // Build a set of assigned product role codes so product roles show as assigned in the UI.
         var assignedProductRoleCodes = await db.UserRoleAssignments
-            .Where(a => a.TenantId == user.TenantId && a.UserId == id && a.AssignmentStatus == AssignmentStatus.Active)
+            .Where(a => a.TenantId == opTenantId && a.UserId == id && a.AssignmentStatus == AssignmentStatus.Active)
             .Select(a => a.RoleCode)
             .ToListAsync();
         var assignedProductRoleCodeSet = new HashSet<string>(assignedProductRoleCodes, StringComparer.OrdinalIgnoreCase);
@@ -4006,7 +4020,9 @@ public static class AdminEndpoints
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
         // UIX-003-01: TenantAdmin may only revoke roles within their own tenant.
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db)) return Results.Forbid();
+
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db);
 
         // Phase G: deactivate the GLOBAL ScopedRoleAssignment (sole authoritative record).
         var sra = await db.ScopedRoleAssignments
@@ -4030,7 +4046,7 @@ public static class AdminEndpoints
                 {
                     var ura = await db.UserRoleAssignments
                         .FirstOrDefaultAsync(a =>
-                            a.TenantId         == user.TenantId &&
+                            a.TenantId         == opTenantId &&
                             a.UserId           == id &&
                             a.ProductCode      == productRoleForRevoke.Product.Code &&
                             a.RoleCode         == productRoleForRevoke.Code &&
@@ -4052,7 +4068,7 @@ public static class AdminEndpoints
                         Visibility    = VisibilityScope.Tenant,
                         Severity      = SeverityLevel.Warn,
                         OccurredAtUtc = urAuditNow,
-                        Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+                        Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = opTenantId.ToString() },
                         Actor  = new AuditEventActorDto { Id = callerId, Type = ActorType.User },
                         Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
                         Action      = "ProductRoleRemoved",
@@ -4063,7 +4079,7 @@ public static class AdminEndpoints
                     });
 
                     notificationsCache.InvalidateTenant(
-                        user.TenantId,
+                        opTenantId,
                         eventType: "identity.role.removed",
                         reason:    $"product role {productRoleForRevoke.Code} removed from user {id}");
 
@@ -4082,7 +4098,7 @@ public static class AdminEndpoints
         // for their admin status to count toward the tenant minimum.
         if (roleName == "TenantAdmin" && user.IsActive)
         {
-            var otherActiveAdmins = await CountOtherActiveTenantAdmins(db, id, user.TenantId);
+            var otherActiveAdmins = await CountOtherActiveTenantAdmins(db, id, opTenantId);
             if (otherActiveAdmins == 0)
                 return Results.UnprocessableEntity(new
                 {
@@ -4106,7 +4122,7 @@ public static class AdminEndpoints
             Visibility    = VisibilityScope.Tenant,
             Severity      = SeverityLevel.Warn,
             OccurredAtUtc = auditNow,
-            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = opTenantId.ToString() },
             Actor = new AuditEventActorDto { Id = callerId, Type = ActorType.User },
             Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
             Action      = "RoleRemoved",
@@ -4119,7 +4135,7 @@ public static class AdminEndpoints
         // Role membership for this tenant changed — invalidate the notifications
         // service's cache so the next role-addressed fan-out drops this user.
         notificationsCache.InvalidateTenant(
-            user.TenantId,
+            opTenantId,
             eventType: "identity.role.removed",
             reason:    $"role {roleId} removed from user {id}");
 
@@ -4273,15 +4289,14 @@ public static class AdminEndpoints
         INotificationsCacheClient notificationsCache,
         CancellationToken         ct)
     {
-        var user = await db.Users
-            .Include(u => u.Tenant)
-            .FirstOrDefaultAsync(u => u.Id == id, ct);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
         // UIX-003-01: TenantAdmin may only activate users within their own tenant.
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         var changed = user.Activate();
         if (!changed) return Results.NoContent();
 
@@ -4297,11 +4312,11 @@ public static class AdminEndpoints
             Visibility    = VisibilityScope.Tenant,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = now,
-            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = opTenantId.ToString() },
             Actor = new AuditEventActorDto { Type = ActorType.System, Name = "admin-api" },
             Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action      = "UserActivated",
-            Description = $"User '{user.Email}' activated in tenant {user.TenantId}.",
+            Description = $"User '{user.Email}' activated in tenant {opTenantId}.",
             Before      = JsonSerializer.Serialize(new { isActive = false, email = user.Email }),
             After       = JsonSerializer.Serialize(new { isActive = true,  email = user.Email }),
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.activated", user.Id.ToString()),
@@ -4312,7 +4327,7 @@ public static class AdminEndpoints
         // service's cached role/org member lists so role-addressed alerts
         // immediately resume including the reactivated user.
         notificationsCache.InvalidateTenant(
-            user.TenantId,
+            opTenantId,
             eventType: "identity.user.activated",
             reason:    $"user {user.Id} activated");
 
@@ -4357,7 +4372,8 @@ public static class AdminEndpoints
         if (IsCrossTenantAccess(caller, body.TenantId)) return Results.Forbid();
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
-        var existing = await db.Users.AnyAsync(u => u.TenantId == body.TenantId && u.Email == emailLower, ct);
+        var existing = await db.Users.AnyAsync(u => u.Email == emailLower
+            && db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == body.TenantId && ut.IsActive), ct);
         if (existing)
             return Results.Conflict(new { error = $"User with email '{emailLower}' already exists in this tenant." });
 
@@ -4366,6 +4382,7 @@ public static class AdminEndpoints
         var user = User.Create(body.TenantId, emailLower, tempPasswordHash, body.FirstName.Trim(), body.LastName.Trim());
         user.Deactivate();
         db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, body.TenantId));
 
         // Assign initial role if provided.
         if (body.RoleId.HasValue && body.RoleId.Value != Guid.Empty)
@@ -4517,6 +4534,7 @@ public static class AdminEndpoints
             userType: Identity.Domain.UserType.PlatformInternal);
         user.Deactivate();
         db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, platformTenantId));
 
         // Assign initial Platform role if provided.
         if (body.RoleId.HasValue && body.RoleId.Value != Guid.Empty)
@@ -4616,8 +4634,9 @@ public static class AdminEndpoints
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
         // UIX-003-01: TenantAdmin may only resend invites for users in their own tenant.
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         var pending = await db.UserInvitations
             .Where(i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending)
             .ToListAsync(ct);
@@ -4626,7 +4645,7 @@ public static class AdminEndpoints
 
         var rawToken  = Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N");
         var tokenHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rawToken)));
-        var newInvite = UserInvitation.Create(id, user.TenantId, tokenHash, UserInvitation.PortalOrigins.TenantPortal);
+        var newInvite = UserInvitation.Create(id, opTenantId, tokenHash, UserInvitation.PortalOrigins.TenantPortal);
         db.UserInvitations.Add(newInvite);
 
         await db.SaveChangesAsync(ct);
@@ -4640,7 +4659,7 @@ public static class AdminEndpoints
             Visibility    = VisibilityScope.Tenant,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = DateTimeOffset.UtcNow,
-            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = opTenantId.ToString() },
             Actor = new AuditEventActorDto { Type = ActorType.System, Name = "admin-api" },
             Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
             Action      = "InviteResent",
@@ -4651,7 +4670,7 @@ public static class AdminEndpoints
 
         // LS-ID-TNT-016-01: Build tenant-subdomain-aware activation link.
         var logger        = loggerFactory.CreateLogger("AdminEndpoints.ResendInvite");
-        var inviteTenant  = await db.Tenants.FindAsync([user.TenantId], ct);
+        var inviteTenant  = await db.Tenants.FindAsync([opTenantId], ct);
         var activationLink = TenantPortalUrlHelper.Build(inviteTenant, "accept-invite", rawToken, notifOptions.Value);
 
         if (activationLink is null)
@@ -4660,7 +4679,7 @@ public static class AdminEndpoints
                 "[LS-ID-TNT-016-01] Neither PortalBaseDomain nor PortalBaseUrl is configured. " +
                 "Resend-invite email for user {UserId} ({Email}, tenant={TenantId}) cannot be sent. " +
                 "Set NotificationsService:PortalBaseDomain (or PortalBaseUrl) in configuration.",
-                id, user.Email, user.TenantId);
+                id, user.Email, opTenantId);
             return Results.Problem(
                 "Invitation refreshed but email could not be sent: portal URL is not configured. " +
                 "Configure NotificationsService:PortalBaseDomain so invitation links can be generated.",
@@ -4669,7 +4688,7 @@ public static class AdminEndpoints
         var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
 
         var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
-            user.Email, displayNameStr, activationLink, user.TenantId, ct);
+            user.Email, displayNameStr, activationLink, opTenantId, ct);
 
         if (!emailConfigured)
         {
@@ -4677,7 +4696,7 @@ public static class AdminEndpoints
                 "[LS-ID-TNT-007] NotificationsService:BaseUrl is not configured. " +
                 "Resend-invite email for user {UserId} ({Email}, tenant={TenantId}) was not sent. " +
                 "Set NotificationsService:BaseUrl in configuration.",
-                id, user.Email, user.TenantId);
+                id, user.Email, opTenantId);
             return Results.Problem(
                 "Invitation refreshed but email could not be sent: the Notifications service is not configured. " +
                 "Configure NotificationsService:BaseUrl so emails can be dispatched.",
@@ -4715,8 +4734,9 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         var pending = await db.UserInvitations
             .Where(i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending)
             .ToListAsync(ct);
@@ -4737,7 +4757,7 @@ public static class AdminEndpoints
             Visibility    = VisibilityScope.Tenant,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = DateTimeOffset.UtcNow,
-            Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = opTenantId.ToString() },
             Actor  = new AuditEventActorDto { Type = ActorType.System, Name = "admin-api" },
             Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
             Action      = "InviteCancelled",
@@ -4769,12 +4789,13 @@ public static class AdminEndpoints
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
         // UIX-003-01: TenantAdmin may only assign memberships within their own tenant.
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         var org = await db.Organizations.FindAsync([body.OrganizationId], ct);
         if (org is null) return Results.NotFound(new { error = $"Organization '{body.OrganizationId}' not found." });
 
-        if (org.TenantId != user.TenantId)
+        if (org.TenantId != opTenantId)
             return Results.BadRequest(new { error = "Organization does not belong to the user's tenant." });
 
         var exists = await db.UserOrganizationMemberships.AnyAsync(
@@ -4795,7 +4816,7 @@ public static class AdminEndpoints
         // Org membership for this tenant changed — refresh notifications so
         // org-addressed fan-out reflects the new member immediately.
         notificationsCache.InvalidateTenant(
-            user.TenantId,
+            opTenantId,
             eventType: "identity.membership.changed",
             reason:    $"user {id} added to organization {body.OrganizationId}");
 
@@ -4826,7 +4847,11 @@ public static class AdminEndpoints
     {
         // UIX-003-01: load user to enforce TenantAdmin tenant boundary.
         var user = await db.Users.FindAsync([id], ct);
-        if (user is not null && IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (user is not null && await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
+
+        Guid opTenantId = user is not null
+            ? await GetOperationalTenantIdAsync(caller, user.Id, db, ct)
+            : Guid.Empty;
 
         var target = await db.UserOrganizationMemberships
             .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == id, ct);
@@ -4847,7 +4872,7 @@ public static class AdminEndpoints
         if (user is not null)
         {
             notificationsCache.InvalidateTenant(
-                user.TenantId,
+                opTenantId,
                 eventType: "identity.membership.changed",
                 reason:    $"primary membership for user {id} set to {membershipId}");
         }
@@ -4872,7 +4897,11 @@ public static class AdminEndpoints
     {
         // UIX-003-01: load user to enforce TenantAdmin tenant boundary.
         var user = await db.Users.FindAsync([id], ct);
-        if (user is not null && IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (user is not null && await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
+
+        Guid remOpTenantId = user is not null
+            ? await GetOperationalTenantIdAsync(caller, user.Id, db, ct)
+            : Guid.Empty;
 
         var membership = await db.UserOrganizationMemberships
             .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == id && m.IsActive, ct);
@@ -4909,7 +4938,7 @@ public static class AdminEndpoints
         if (user is not null)
         {
             notificationsCache.InvalidateTenant(
-                user.TenantId,
+                remOpTenantId,
                 eventType: "identity.membership.changed",
                 reason:    $"user {id} removed from organization {membership.OrganizationId}");
         }
@@ -5185,7 +5214,7 @@ public static class AdminEndpoints
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
         if (user is null) return Results.NotFound();
 
-        if (IsCrossTenantAccess(caller, user.TenantId))
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct))
             return Results.Forbid();
 
         // Active global-scoped role assignments for this user
@@ -5259,13 +5288,14 @@ public static class AdminEndpoints
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
         if (user is null) return Results.NotFound();
 
-        if (IsCrossTenantAccess(caller, user.TenantId))
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct))
             return Results.Forbid();
 
-        var effectiveAccess = await effectiveAccessService.GetEffectiveAccessAsync(user.TenantId, user.Id, ct);
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
+        var effectiveAccess = await effectiveAccessService.GetEffectiveAccessAsync(opTenantId, user.Id, ct);
 
         var groupMemberships = await db.AccessGroupMemberships
-            .Where(m => m.TenantId == user.TenantId && m.UserId == user.Id && m.MembershipStatus == MembershipStatus.Active)
+            .Where(m => m.TenantId == opTenantId && m.UserId == user.Id && m.MembershipStatus == MembershipStatus.Active)
             .Join(db.AccessGroups,
                 m => m.GroupId,
                 g => g.Id,
@@ -5273,7 +5303,7 @@ public static class AdminEndpoints
             .ToListAsync(ct);
 
         var entitlements = await db.TenantProductEntitlements
-            .Where(e => e.TenantId == user.TenantId && e.Status == EntitlementStatus.Active)
+            .Where(e => e.TenantId == opTenantId && e.Status == EntitlementStatus.Active)
             .Select(e => new { e.ProductCode, e.Status })
             .ToListAsync(ct);
 
@@ -5286,7 +5316,7 @@ public static class AdminEndpoints
         return Results.Ok(new
         {
             userId = user.Id,
-            tenantId = user.TenantId,
+            tenantId = opTenantId,
             accessVersion = user.AccessVersion,
 
             products = effectiveAccess.ProductSources.Select(p => new
@@ -5600,6 +5630,50 @@ public static class AdminEndpoints
     }
 
     /// <summary>
+    /// Async version of <see cref="IsCrossTenantAccess"/> that verifies the target user
+    /// is a member of the caller's tenant via <c>idt_UserTenants</c>.
+    /// PlatformAdmins are never restricted.
+    /// </summary>
+    private static async Task<bool> IsCrossTenantAccessAsync(
+        ClaimsPrincipal   caller,
+        Guid              userId,
+        IdentityDbContext db,
+        CancellationToken ct = default)
+    {
+        if (caller.IsInRole("PlatformAdmin")) return false;
+        var raw = caller.FindFirstValue("tenant_id");
+        if (raw is null || !Guid.TryParse(raw, out var callerTid)) return true;
+        return !await db.UserTenants.AnyAsync(
+            ut => ut.UserId == userId && ut.TenantId == callerTid && ut.IsActive, ct);
+    }
+
+    /// <summary>
+    /// Resolves the effective tenant for an operation.
+    /// For TenantAdmin callers, returns their JWT <c>tenant_id</c> claim.
+    /// For PlatformAdmin callers (no tenant isolation), returns the user's
+    /// primary active tenant from <c>idt_UserTenants</c>.
+    /// </summary>
+    private static async Task<Guid> GetOperationalTenantIdAsync(
+        ClaimsPrincipal   caller,
+        Guid              userId,
+        IdentityDbContext db,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+        {
+            var raw = caller.FindFirstValue("tenant_id");
+            if (raw is not null && Guid.TryParse(raw, out var callerTid))
+                return callerTid;
+        }
+        // PlatformAdmin or caller without a tenant claim: use the user's primary tenant.
+        return await db.UserTenants
+            .Where(ut => ut.UserId == userId && ut.IsActive)
+            .OrderBy(ut => ut.JoinedAtUtc)
+            .Select(ut => ut.TenantId)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>
     /// LS-ID-TNT-005: Count active TenantAdmin SRAs in <paramref name="tenantId"/>
     /// that belong to users OTHER than <paramref name="excludeUserId"/>.
     ///
@@ -5614,13 +5688,12 @@ public static class AdminEndpoints
         CancellationToken ct = default) =>
         (from sra  in db.ScopedRoleAssignments
          join role in db.Roles on sra.RoleId equals role.Id
-         join u    in db.Users on sra.UserId equals u.Id
          where sra.IsActive
             && sra.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
             && sra.UserId != excludeUserId
             && role.Name == "TenantAdmin"
-            && u.TenantId == tenantId
-            && u.IsActive
+            && db.UserTenants.Any(ut => ut.UserId == sra.UserId && ut.TenantId == tenantId && ut.IsActive)
+            && db.Users.Any(u => u.Id == sra.UserId && u.IsActive)
          select sra.Id)
         .CountAsync(ct);
 
@@ -6453,7 +6526,7 @@ public static class AdminEndpoints
         if (tenant is null) return Results.NotFound(new { error = $"Tenant '{tenantId}' not found." });
 
         var q = db.Users
-            .Where(u => u.TenantId == tenantId)
+            .Where(u => db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tenantId && ut.IsActive))
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -6477,7 +6550,7 @@ public static class AdminEndpoints
                 displayName  = u.FirstName + " " + u.LastName,
                 userType     = u.UserType.ToString(),
                 isActive     = u.IsActive,
-                tenantId     = u.TenantId,
+                tenantId     = tenantId,
                 roles        = db.ScopedRoleAssignments
                                  .Where(s => s.UserId == u.Id && s.IsActive
                                           && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
@@ -6512,12 +6585,11 @@ public static class AdminEndpoints
     /// Verifies a user belongs to the given tenant and optionally assigns a
     /// Tenant-scoped role.
     ///
-    /// Architecture note (PUM-B03-R09): The current schema anchors each user to
-    /// exactly one tenant via User.TenantId.  Moving a user from one tenant to
-    /// another is not supported without a breaking schema change.  If the supplied
-    /// userId belongs to a different tenant this endpoint returns 409.
+    /// Architecture note (PUM-B03-R09): tenant membership is represented by
+    /// idt_UserTenants. If the supplied userId is not an active member of the
+    /// target tenant this endpoint returns 409.
     ///
-    /// If the user is already in the tenant (user.TenantId == tenantId) and no
+    /// If the user is already in the tenant and no
     /// role is requested, returns 200 with the current user state (safe no-op).
     /// </summary>
     private static async Task<IResult> AssignUserToTenant(
@@ -6534,16 +6606,17 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync(body.UserId);
         if (user is null) return Results.NotFound(new { error = $"User '{body.UserId}' not found." });
 
-        // PUM-B03-R09: single-tenant architecture guard
-        if (user.TenantId != tenantId)
+        // PUM-B03-R09: active tenant-membership guard
+        var userInTenant = await db.UserTenants.AnyAsync(
+            ut => ut.UserId == user.Id && ut.TenantId == tenantId && ut.IsActive);
+        if (!userInTenant)
             return Results.Conflict(new
             {
                 error   = "USER_IN_DIFFERENT_TENANT",
-                message = "This user belongs to a different tenant. " +
+                message = "This user does not belong to the specified tenant. " +
                           "Cross-tenant user membership is not supported in the current schema. " +
-                          "Each user has exactly one home tenant (User.TenantId). " +
+                          "Each user has exactly one home tenant via idt_UserTenants. " +
                           "To move a user, provision a new account in the target tenant.",
-                userTenantId   = user.TenantId,
                 targetTenantId = tenantId,
             });
 
@@ -6599,7 +6672,7 @@ public static class AdminEndpoints
         return Results.Ok(new
         {
             userId    = user.Id,
-            tenantId  = user.TenantId,
+            tenantId  = tenantId,
             email     = user.Email,
             firstName = user.FirstName,
             lastName  = user.LastName,
@@ -6614,9 +6687,8 @@ public static class AdminEndpoints
     /// Soft-removes a user from a tenant by deactivating all their active
     /// Tenant-scoped ScopedRoleAssignments.
     ///
-    /// Architecture note: User.TenantId is not changed (immutable without risky
-    /// rewrite).  The user account itself is not deactivated globally — only their
-    /// tenant role memberships are revoked.  See report section 8 for details.
+    /// Architecture note: the user account itself is not deactivated globally —
+    /// only tenant-scoped role memberships are revoked.
     /// </summary>
     private static async Task<IResult> RemoveUserFromTenant(
         Guid              tenantId,
@@ -6632,7 +6704,9 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync(userId);
         if (user is null) return Results.NotFound(new { error = $"User '{userId}' not found." });
 
-        if (user.TenantId != tenantId)
+        var userInTenantForRemove = await db.UserTenants.AnyAsync(
+            ut => ut.UserId == user.Id && ut.TenantId == tenantId && ut.IsActive);
+        if (!userInTenantForRemove)
             return Results.NotFound(new { error = $"User '{userId}' is not a member of tenant '{tenantId}'." });
 
         // Deactivate all active Tenant-scoped role assignments for this user
@@ -6694,7 +6768,9 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync(userId);
         if (user is null) return Results.NotFound(new { error = $"User '{userId}' not found." });
 
-        if (user.TenantId != tenantId)
+        var userInTenantForRole = await db.UserTenants.AnyAsync(
+            ut => ut.UserId == user.Id && ut.TenantId == tenantId && ut.IsActive);
+        if (!userInTenantForRole)
             return Results.Forbid();
 
         // PUM-B05-R08: ExternalCustomer users must not receive tenant roles
@@ -6794,7 +6870,9 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync(userId);
         if (user is null) return Results.NotFound(new { error = $"User '{userId}' not found." });
 
-        if (user.TenantId != tenantId)
+        var userInTenantForRevoke = await db.UserTenants.AnyAsync(
+            ut => ut.UserId == user.Id && ut.TenantId == tenantId && ut.IsActive);
+        if (!userInTenantForRevoke)
             return Results.NotFound(new { error = $"User '{userId}' is not a member of tenant '{tenantId}'." });
 
         var sra = await db.ScopedRoleAssignments
@@ -6872,7 +6950,7 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
         var records = await db.UserProductAccessRecords
             .Where(a => a.UserId == id)
@@ -6911,8 +6989,8 @@ public static class AdminEndpoints
     /// enforce TenantProductEntitlement — platform admins can grant access independently
     /// of tenant subscription state.  This is intentional for administrative provisioning.
     ///
-    /// tenantId in the request body must match user.TenantId (single-tenant architecture).
-    /// If omitted, user.TenantId is used.
+    /// tenantId in the request body must match an active tenant membership for the user.
+    /// If omitted, the caller/user operational tenant is used.
     /// </summary>
     private static async Task<IResult> GrantUserProductAccess(
         Guid                        id,
@@ -6924,20 +7002,25 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
-        // tenantId, if supplied, must match the user's home tenant
-        if (body.TenantId.HasValue && body.TenantId.Value != user.TenantId)
-            return Results.Conflict(new
-            {
-                error   = "TENANT_MISMATCH",
-                message = "Supplied tenantId does not match the user's home tenant. " +
-                          "Cross-tenant product access is not supported in the current single-tenant schema.",
-                userTenantId     = user.TenantId,
-                suppliedTenantId = body.TenantId.Value,
-            });
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
 
-        var effectiveTenantId = body.TenantId ?? user.TenantId;
+        // tenantId, if supplied, must match the user's tenant membership
+        if (body.TenantId.HasValue)
+        {
+            var memberOfSupplied = await db.UserTenants.AnyAsync(
+                ut => ut.UserId == user.Id && ut.TenantId == body.TenantId.Value && ut.IsActive, ct);
+            if (!memberOfSupplied)
+                return Results.Conflict(new
+                {
+                    error   = "TENANT_MISMATCH",
+                    message = "Supplied tenantId does not match any active tenant membership for this user.",
+                    suppliedTenantId = body.TenantId.Value,
+                });
+        }
+
+        var effectiveTenantId = body.TenantId ?? opTenantId;
 
         // Resolve + validate product code
         var dbCode = await ResolveProductCode(body.ProductKey, db, ct);
@@ -6983,7 +7066,7 @@ public static class AdminEndpoints
     /// PUM-B04-R07/R04: DELETE /api/admin/users/{id}/products/{productKey}
     ///
     /// Soft-revokes a user's access to a specific product.
-    /// Optional query parameter: tenantId (defaults to user.TenantId).
+    /// Optional query parameter: tenantId (defaults to caller/user operational tenant).
     /// Returns 404 if no active access record is found.
     /// </summary>
     private static async Task<IResult> RevokeUserProductAccess(
@@ -6997,9 +7080,10 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
-        var effectiveTenantId = tenantId ?? user.TenantId;
+        var revokeOpTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
+        var effectiveTenantId = tenantId ?? revokeOpTenantId;
 
         var dbCode = await ResolveProductCode(productKey, db, ct);
         if (dbCode is null)
@@ -7038,9 +7122,10 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
-        var effectiveTenantId = tenantId ?? user.TenantId;
+        var checkOpTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
+        var effectiveTenantId = tenantId ?? checkOpTenantId;
 
         var dbCode = await ResolveProductCode(productKey, db, ct);
         if (dbCode is null)
@@ -7085,9 +7170,10 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
-        var effectiveTenantId = body.TenantId ?? user.TenantId;
+        var assignRoleOpTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
+        var effectiveTenantId = body.TenantId ?? assignRoleOpTenantId;
 
         // Resolve product
         var dbCode = await ResolveProductCode(productKey, db, ct);
@@ -7189,7 +7275,7 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
         var dbCode = await ResolveProductCode(productKey, db, ct);
         if (dbCode is null)
@@ -7268,7 +7354,8 @@ public static class AdminEndpoints
 
         // Idempotent: check for existing user with same email + tenant
         var existingUser = await db.Users
-            .Where(u => u.TenantId == body.TenantId && u.Email == emailNorm)
+            .Where(u => u.Email == emailNorm
+                && db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == body.TenantId && ut.IsActive))
             .Select(u => new { u.Id, u.UserType })
             .FirstOrDefaultAsync(ct);
 
@@ -7326,6 +7413,7 @@ public static class AdminEndpoints
             user.Deactivate();
 
         db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, body.TenantId));
 
         // Grant product access for each validated product code
         foreach (var dbCode in dbCodes)
@@ -7341,7 +7429,7 @@ public static class AdminEndpoints
             new
             {
                 userId         = user.Id,
-                tenantId       = user.TenantId,
+                tenantId       = body.TenantId,
                 email          = user.Email,
                 firstName      = user.FirstName,
                 lastName       = user.LastName,
@@ -7381,11 +7469,11 @@ public static class AdminEndpoints
         if (!isPlatformAdmin)
         {
             if (!Guid.TryParse(callerTenantId, out var callerTid)) return Results.Forbid();
-            q = q.Where(u => u.TenantId == callerTid);
+            q = q.Where(u => db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == callerTid && ut.IsActive));
         }
         else if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var tid))
         {
-            q = q.Where(u => u.TenantId == tid);
+            q = q.Where(u => db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tid && ut.IsActive));
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -7427,8 +7515,16 @@ public static class AdminEndpoints
                 displayName  = u.FirstName + " " + u.LastName,
                 userType     = u.UserType.ToString(),
                 isActive     = u.IsActive,
-                tenantId     = u.TenantId,
-                tenantCode   = u.Tenant.Code,
+                tenantId     = db.UserTenants
+                                 .Where(ut => ut.UserId == u.Id && ut.IsActive)
+                                 .OrderBy(ut => ut.JoinedAtUtc)
+                                 .Select(ut => (Guid?)ut.TenantId)
+                                 .FirstOrDefault(),
+                tenantCode   = db.UserTenants
+                                 .Where(ut => ut.UserId == u.Id && ut.IsActive)
+                                 .OrderBy(ut => ut.JoinedAtUtc)
+                                 .Select(ut => ut.Tenant.Code)
+                                 .FirstOrDefault(),
                 createdAtUtc = u.CreatedAtUtc,
                 updatedAtUtc = u.UpdatedAtUtc,
             })
@@ -7451,9 +7547,7 @@ public static class AdminEndpoints
         ClaimsPrincipal   caller,
         CancellationToken ct)
     {
-        var user = await db.Users
-            .Include(u => u.Tenant)
-            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
 
         if (user is null)
             return Results.NotFound(new { error = $"User '{userId}' not found." });
@@ -7466,7 +7560,10 @@ public static class AdminEndpoints
                           $"Use GET /api/admin/users/{userId} for non-external users.",
             });
 
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
+
+        var extOpTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
+        var extTenant = await GetTenantSummaryAsync(db, extOpTenantId, ct);
 
         var productAccess = await db.UserProductAccessRecords
             .Where(a => a.UserId == userId)
@@ -7481,8 +7578,8 @@ public static class AdminEndpoints
         return Results.Ok(new
         {
             userId        = user.Id,
-            tenantId      = user.TenantId,
-            tenantCode    = user.Tenant.Code,
+            tenantId      = extOpTenantId,
+            tenantCode    = extTenant?.Code,
             email         = user.Email,
             firstName     = user.FirstName,
             lastName      = user.LastName,
@@ -7533,9 +7630,10 @@ public static class AdminEndpoints
                           $"Use GET /api/admin/users/{userId}/products/{productKey}/access for non-external users.",
             });
 
-        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
 
-        var effectiveTenantId = tenantId ?? user.TenantId;
+        var extCheckOpTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
+        var effectiveTenantId = tenantId ?? extCheckOpTenantId;
 
         var dbCode = await ResolveProductCode(productKey, db, ct);
         if (dbCode is null)
@@ -7565,6 +7663,18 @@ public static class AdminEndpoints
         string        LastName,
         bool?         IsActive    = null,
         List<string>? ProductKeys = null);
+
+    private static Task<TenantSummaryProjection?> GetTenantSummaryAsync(
+        IdentityDbContext db,
+        Guid tenantId,
+        CancellationToken ct) =>
+        db.Tenants
+            .AsNoTracking()
+            .Where(t => t.Id == tenantId)
+            .Select(t => new TenantSummaryProjection(t.Code, t.Name))
+            .FirstOrDefaultAsync(ct);
+
+    private sealed record TenantSummaryProjection(string Code, string Name);
 
 }
 
@@ -7716,7 +7826,7 @@ public static partial class AdminEndpointsLscc010
 
         var emailUserIdForOwnerCheck = await db.Users
             .AsNoTracking()
-            .Where(u => u.Email == emailLower)
+            .Where(u => u.Email.Trim().ToLower() == emailLower)
             .Select(u => (Guid?)u.Id)
             .FirstOrDefaultAsync(ct);
 
@@ -7737,15 +7847,14 @@ public static partial class AdminEndpointsLscc010
 
         // ── Multi-tenant: global email lookup ─────────────────────────────────
         var existingUser = await db.Users
-            .Where(u => u.Email == emailLower)
-            .Select(u => new { u.Id, u.TenantId, u.IsActive })
+            .Where(u => u.Email.Trim().ToLower() == emailLower)
+            .Select(u => new { u.Id, u.IsActive })
             .FirstOrDefaultAsync(ct);
 
         if (existingUser is not null)
         {
             // Check if this user already belongs to the target tenant.
-            var alreadyInTenant = existingUser.TenantId == org.TenantId
-                || await db.UserTenants.AnyAsync(
+            var alreadyInTenant = await db.UserTenants.AnyAsync(
                     ut => ut.UserId == existingUser.Id && ut.TenantId == org.TenantId, ct);
 
             if (alreadyInTenant)
@@ -7983,7 +8092,7 @@ public static partial class AdminEndpointsLscc010
 
         var emailUserIdForOwnerCheckSr = await db.Users
             .AsNoTracking()
-            .Where(u => u.Email == emailLower)
+            .Where(u => u.Email.Trim().ToLower() == emailLower)
             .Select(u => (Guid?)u.Id)
             .FirstOrDefaultAsync(ct);
 
@@ -8004,15 +8113,14 @@ public static partial class AdminEndpointsLscc010
 
         // ── Multi-tenant: global email lookup ─────────────────────────────────
         var existingUser = await db.Users
-            .Where(u => u.Email == emailLower)
-            .Select(u => new { u.Id, u.TenantId, u.PasswordHash })
+            .Where(u => u.Email.Trim().ToLower() == emailLower)
+            .Select(u => new { u.Id, u.PasswordHash })
             .FirstOrDefaultAsync(ct);
 
         if (existingUser is not null)
         {
-            // Check if already in the target tenant (via User.TenantId or UserTenants row).
-            var alreadyInTenant = existingUser.TenantId == org.TenantId
-                || await db.UserTenants.AnyAsync(
+            // Check if already in the target tenant (via UserTenants row).
+            var alreadyInTenant = await db.UserTenants.AnyAsync(
                     ut => ut.UserId == existingUser.Id && ut.TenantId == org.TenantId, ct);
 
             if (alreadyInTenant)
@@ -8258,7 +8366,8 @@ public static partial class AdminEndpointsLscc010
         }
 
         var targetUser = await db.Users
-            .Where(u => u.Id == body.UserId && u.TenantId == body.TenantId)
+            .Where(u => u.Id == body.UserId
+                && db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == body.TenantId && ut.IsActive))
             .Select(u => new { u.Id })
             .FirstOrDefaultAsync(ct);
         if (targetUser == null)

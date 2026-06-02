@@ -10,7 +10,7 @@ public interface IUserRepository
     Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string email, CancellationToken ct = default);
     Task<List<User>> GetAllWithRolesAsync(CancellationToken ct = default);
     Task<List<User>> GetByTenantWithRolesAsync(Guid tenantId, CancellationToken ct = default);
-    Task AddAsync(User user, IReadOnlyList<Guid> roleIds, CancellationToken ct = default);
+    Task AddAsync(User user, Guid tenantId, IReadOnlyList<Guid> roleIds, CancellationToken ct = default);
 
     /// <summary>
     /// Returns the primary org membership for a user (single-tenant callers that do

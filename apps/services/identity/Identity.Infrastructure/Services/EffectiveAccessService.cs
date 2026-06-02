@@ -39,7 +39,7 @@ public class EffectiveAccessService : IEffectiveAccessService
         var sw = Stopwatch.StartNew();
 
         var accessVersion = await _db.Users
-            .Where(u => u.Id == userId && u.TenantId == tenantId)
+            .Where(u => u.Id == userId)
             .Select(u => u.AccessVersion)
             .FirstOrDefaultAsync(ct);
 

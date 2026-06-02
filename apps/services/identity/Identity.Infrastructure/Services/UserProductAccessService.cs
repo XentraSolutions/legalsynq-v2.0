@@ -42,9 +42,12 @@ public class UserProductAccessService : IUserProductAccessService
     {
         var code = productCode.ToUpperInvariant().Trim();
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
-        if (user == null)
+        var isMember = await _db.UserTenants.AnyAsync(ut => ut.UserId == userId && ut.TenantId == tenantId && ut.IsActive, ct);
+        if (!isMember)
             throw new InvalidOperationException($"User {userId} not found in tenant {tenantId}.");
+
+        var user = await _db.Users.FindAsync([userId], ct)
+            ?? throw new InvalidOperationException($"User {userId} does not exist.");
 
         // Auto-entitle the tenant to the product if not already active.
         // A TenantAdmin granting a product to a user implicitly means the tenant
@@ -117,7 +120,7 @@ public class UserProductAccessService : IUserProductAccessService
         var beforeJson = JsonSerializer.Serialize(new { existing.AccessStatus, existing.GrantedAtUtc });
         existing.Revoke(actorUserId);
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+        var user = await _db.Users.FindAsync([userId], ct);
         user?.IncrementAccessVersion();
 
         await _db.SaveChangesAsync(ct);
