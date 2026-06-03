@@ -110,6 +110,7 @@ CREATE DATABASE reports_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE support CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE commerce_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE billing_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE synqcomm_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 ## 5. Deploy Code
@@ -146,9 +147,13 @@ dotnet publish apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj -
 dotnet publish apps/services/comms/Comms.Api/Comms.Api.csproj -c Release -o /opt/legalsynq/publish/comms
 ```
 
-## 6. Create Shared Environment File
+## 6. Create Environment Files
 
-Create `/etc/legalsynq/backend.env`:
+Use one env file per deployable service, plus one shared env file for values that are truly common across backend services.
+
+Keep service-specific secrets out of unrelated service processes. For example, the Fund service should receive `ConnectionStrings__FundDb`, but it should not receive the Documents S3 config or Notifications SendGrid keys.
+
+Create `/etc/legalsynq/shared.env`:
 
 ```bash
 ASPNETCORE_ENVIRONMENT=Production
@@ -156,52 +161,162 @@ Jwt__Issuer=legalsynq-identity
 Jwt__Audience=legalsynq-platform
 Jwt__SigningKey=<minimum-32-char-production-secret>
 FLOW_SERVICE_TOKEN_SECRET=<minimum-32-char-service-token-secret>
+PublicTrustBoundary__InternalRequestSecret=<secret>
+```
 
+Create service-specific files under `/etc/legalsynq`.
+
+`/etc/legalsynq/gateway.env`:
+
+```bash
+IdentityService__BaseUrl=http://localhost:5001
+TenantService__BaseUrl=http://localhost:5005
+NotificationsService__BaseUrl=http://localhost:5008
+AuditClient__BaseUrl=http://localhost:5007
+```
+
+`/etc/legalsynq/identity.env`:
+
+```bash
 ConnectionStrings__IdentityDb=Server=<rds>;Port=3306;Database=identity_db;User=<user>;Password=<pass>;
-ConnectionStrings__TenantDb=Server=<rds>;Port=3306;Database=tenant_db;User=<user>;Password=<pass>;
-ConnectionStrings__CareConnectDb=Server=<rds>;Port=3306;Database=careconnect_db;User=<user>;Password=<pass>;
-ConnectionStrings__FundDb=Server=<rds>;Port=3306;Database=fund_db;User=<user>;Password=<pass>;
-ConnectionStrings__LiensDb=Server=<rds>;Port=3306;Database=liens_db;User=<user>;Password=<pass>;
-ConnectionStrings__DocsDb=Server=<rds>;Port=3306;Database=docs_db;User=<user>;Password=<pass>;
-ConnectionStrings__AuditEventDb=Server=<rds>;Port=3306;Database=audit_event_db;User=<user>;Password=<pass>;
-ConnectionStrings__FlowDb=Server=<rds>;Port=3306;Database=flow_db;User=<user>;Password=<pass>;
-ConnectionStrings__TasksDb=Server=<rds>;Port=3306;Database=tasks_db;User=<user>;Password=<pass>;
-ConnectionStrings__MonitoringDb=Server=<rds>;Port=3306;Database=monitoring_db;User=<user>;Password=<pass>;
-ConnectionStrings__ReportsDb=Server=<rds>;Port=3306;Database=reports_db;User=<user>;Password=<pass>;
-ConnectionStrings__Support=Server=<rds>;Port=3306;Database=support;User=<user>;Password=<pass>;
+TenantService__BaseUrl=http://localhost:5005
+TenantService__ProvisioningToken=<secret>
+TenantService__ProvisioningSecret=<secret>
+```
 
+`/etc/legalsynq/tenant.env`:
+
+```bash
+ConnectionStrings__TenantDb=Server=<rds>;Port=3306;Database=tenant_db;User=<user>;Password=<pass>;
+IdentityService__BaseUrl=http://localhost:5001
+IdentityService__ProvisioningToken=<secret>
+```
+
+`/etc/legalsynq/careconnect.env`:
+
+```bash
+ConnectionStrings__CareConnectDb=Server=<rds>;Port=3306;Database=careconnect_db;User=<user>;Password=<pass>;
+NotificationsService__BaseUrl=http://localhost:5008
+```
+
+`/etc/legalsynq/fund.env`:
+
+```bash
+ConnectionStrings__FundDb=Server=<rds>;Port=3306;Database=fund_db;User=<user>;Password=<pass>;
+```
+
+`/etc/legalsynq/liens.env`:
+
+```bash
+ConnectionStrings__LiensDb=Server=<rds>;Port=3306;Database=liens_db;User=<user>;Password=<pass>;
+```
+
+`/etc/legalsynq/documents.env`:
+
+```bash
+ConnectionStrings__DocsDb=Server=<rds>;Port=3306;Database=docs_db;User=<user>;Password=<pass>;
+AWS_S3_BUCKET_NAME=<bucket>
+AWS_S3_REGION=<region>
+AWS_S3_ACCESS_KEY_ID=<access-key-if-not-using-instance-role>
+AWS_S3_SECRET_ACCESS_KEY=<secret-key-if-not-using-instance-role>
+```
+
+`/etc/legalsynq/audit.env`:
+
+```bash
+ConnectionStrings__AuditEventDb=Server=<rds>;Port=3306;Database=audit_event_db;User=<user>;Password=<pass>;
+AuditClient__ServiceToken=<secret>
+```
+
+`/etc/legalsynq/notifications.env`:
+
+```bash
 NOTIF_DB_HOST=<rds>
 NOTIF_DB_PORT=3306
 NOTIF_DB_NAME=notifications_db
 NOTIF_DB_USER=<user>
 NOTIF_DB_PASSWORD=<pass>
-
-NotificationsService__BaseUrl=http://localhost:5008
 NotificationsService__PortalBaseUrl=https://app.yourdomain.com
 NotificationsService__PortalBaseDomain=yourdomain.com
-IdentityService__BaseUrl=http://localhost:5001
-TenantService__BaseUrl=http://localhost:5005
-TenantService__ProvisioningToken=<secret>
-TenantService__ProvisioningSecret=<secret>
-IdentityService__ProvisioningToken=<secret>
-PublicTrustBoundary__InternalRequestSecret=<secret>
-
-AuditClient__BaseUrl=http://localhost:5007
-AuditClient__ServiceToken=<secret>
-
-AWS_S3_BUCKET=<bucket>
-AWS_S3_REGION=<region>
 SENDGRID_API_KEY=<key>
 SENDGRID_FROM_EMAIL=<email>
 SENDGRID_FROM_NAME=LegalSynq
 ```
 
-Secure the file:
+`/etc/legalsynq/flow.env`:
 
 ```bash
-sudo chown root:legalsynq /etc/legalsynq/backend.env
-sudo chmod 640 /etc/legalsynq/backend.env
+ConnectionStrings__FlowDb=Server=<rds>;Port=3306;Database=flow_db;User=<user>;Password=<pass>;
+AuditClient__BaseUrl=http://localhost:5007
+AuditClient__ServiceToken=<secret>
+NotificationsService__BaseUrl=http://localhost:5008
 ```
+
+`/etc/legalsynq/task.env`:
+
+```bash
+ConnectionStrings__TasksDb=Server=<rds>;Port=3306;Database=tasks_db;User=<user>;Password=<pass>;
+NotificationsService__BaseUrl=http://localhost:5008
+MonitoringService__BaseUrl=http://localhost:5015
+TASK_SERVICE_URL=http://localhost:5016
+```
+
+`/etc/legalsynq/monitoring.env`:
+
+```bash
+ConnectionStrings__MonitoringDb=Server=<rds>;Port=3306;Database=monitoring_db;User=<user>;Password=<pass>;
+```
+
+`/etc/legalsynq/reports.env`:
+
+```bash
+ConnectionStrings__ReportsDb=Server=<rds>;Port=3306;Database=reports_db;User=<user>;Password=<pass>;
+```
+
+`/etc/legalsynq/support.env`:
+
+```bash
+ConnectionStrings__Support=Server=<rds>;Port=3306;Database=support;User=<user>;Password=<pass>;
+```
+
+`/etc/legalsynq/commerce.env`:
+
+```bash
+Database__ConnectionString=Server=<rds>;Port=3306;Database=commerce_db;User=<user>;Password=<pass>;
+```
+
+`/etc/legalsynq/billing.env`:
+
+```bash
+BILLING_DB_CONNECTION=Server=<rds>;Port=3306;Database=billing_db;User=<user>;Password=<pass>;
+```
+
+`/etc/legalsynq/comms.env`:
+
+```bash
+ConnectionStrings__SynqCommDb=Server=<rds>;Port=3306;Database=synqcomm_db;User=<user>;Password=<pass>;
+Services__NotificationsUrl=http://localhost:5008
+Services__DocumentsUrl=http://localhost:5006
+AuditClient__BaseUrl=http://localhost:5007
+AuditClient__ServiceToken=<secret>
+```
+
+Only include a key in `shared.env` when every service that loads it legitimately needs the value. Prefer moving ambiguous values into the specific service env file.
+
+Secure the files:
+
+```bash
+sudo chown root:legalsynq /etc/legalsynq/*.env
+sudo chmod 640 /etc/legalsynq/*.env
+```
+
+Avoid the old single-file layout:
+
+```text
+/etc/legalsynq/backend.env
+```
+
+That file gives every backend process every secret. The per-service layout keeps runtime config isolated and makes rotation safer.
 
 ## 7. Create systemd Services
 
@@ -216,7 +331,8 @@ Wants=network-online.target
 [Service]
 User=legalsynq
 WorkingDirectory=/opt/legalsynq/publish/identity
-EnvironmentFile=/etc/legalsynq/backend.env
+EnvironmentFile=/etc/legalsynq/shared.env
+EnvironmentFile=/etc/legalsynq/identity.env
 Environment=ASPNETCORE_URLS=http://0.0.0.0:5001
 ExecStart=/usr/bin/dotnet /opt/legalsynq/publish/identity/Identity.Api.dll
 Restart=always
@@ -230,23 +346,31 @@ WantedBy=multi-user.target
 Repeat this file for each service:
 
 ```text
-legalsynq-gateway       /opt/legalsynq/publish/gateway       Gateway.Api.dll                  5010
-legalsynq-identity      /opt/legalsynq/publish/identity      Identity.Api.dll                 5001
-legalsynq-tenant        /opt/legalsynq/publish/tenant        Tenant.Api.dll                   5005
-legalsynq-careconnect   /opt/legalsynq/publish/careconnect   CareConnect.Api.dll              5003
-legalsynq-fund          /opt/legalsynq/publish/fund          Fund.Api.dll                     5002
-legalsynq-liens         /opt/legalsynq/publish/liens         Liens.Api.dll                    5009
-legalsynq-documents     /opt/legalsynq/publish/documents     Documents.Api.dll                5006
-legalsynq-audit         /opt/legalsynq/publish/audit         PlatformAuditEventService.dll    5007
-legalsynq-notifications /opt/legalsynq/publish/notifications Notifications.Api.dll            5008
-legalsynq-flow          /opt/legalsynq/publish/flow          Flow.Api.dll                     5012
-legalsynq-task          /opt/legalsynq/publish/task          Task.Api.dll                     5016
-legalsynq-monitoring    /opt/legalsynq/publish/monitoring    Monitoring.Api.dll               5015
-legalsynq-reports       /opt/legalsynq/publish/reports       Reports.Api.dll                  5029
-legalsynq-support       /opt/legalsynq/publish/support       Support.Api.dll                  5017
-legalsynq-commerce      /opt/legalsynq/publish/commerce      Commerce.Api.dll                 5030
-legalsynq-billing       /opt/legalsynq/publish/billing       Billing.Api.dll                  5031
-legalsynq-comms         /opt/legalsynq/publish/comms         Comms.Api.dll                    5011
+Service                 WorkingDirectory                       DLL                              Port  Service env file
+legalsynq-gateway       /opt/legalsynq/publish/gateway         Gateway.Api.dll                  5010  gateway.env
+legalsynq-identity      /opt/legalsynq/publish/identity        Identity.Api.dll                 5001  identity.env
+legalsynq-tenant        /opt/legalsynq/publish/tenant          Tenant.Api.dll                   5005  tenant.env
+legalsynq-careconnect   /opt/legalsynq/publish/careconnect     CareConnect.Api.dll              5003  careconnect.env
+legalsynq-fund          /opt/legalsynq/publish/fund            Fund.Api.dll                     5002  fund.env
+legalsynq-liens         /opt/legalsynq/publish/liens           Liens.Api.dll                    5009  liens.env
+legalsynq-documents     /opt/legalsynq/publish/documents       Documents.Api.dll                5006  documents.env
+legalsynq-audit         /opt/legalsynq/publish/audit           PlatformAuditEventService.dll    5007  audit.env
+legalsynq-notifications /opt/legalsynq/publish/notifications   Notifications.Api.dll            5008  notifications.env
+legalsynq-flow          /opt/legalsynq/publish/flow            Flow.Api.dll                     5012  flow.env
+legalsynq-task          /opt/legalsynq/publish/task            Task.Api.dll                     5016  task.env
+legalsynq-monitoring    /opt/legalsynq/publish/monitoring      Monitoring.Api.dll               5015  monitoring.env
+legalsynq-reports       /opt/legalsynq/publish/reports         Reports.Api.dll                  5029  reports.env
+legalsynq-support       /opt/legalsynq/publish/support         Support.Api.dll                  5017  support.env
+legalsynq-commerce      /opt/legalsynq/publish/commerce        Commerce.Api.dll                 5030  commerce.env
+legalsynq-billing       /opt/legalsynq/publish/billing         Billing.Api.dll                  5031  billing.env
+legalsynq-comms         /opt/legalsynq/publish/comms           Comms.Api.dll                    5011  comms.env
+```
+
+Each unit should load exactly two env files:
+
+```ini
+EnvironmentFile=/etc/legalsynq/shared.env
+EnvironmentFile=/etc/legalsynq/<service>.env
 ```
 
 Reload systemd:
