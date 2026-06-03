@@ -182,6 +182,11 @@ ConnectionStrings__IdentityDb=Server=<rds>;Port=3306;Database=identity_db;User=<
 TenantService__BaseUrl=http://localhost:5005
 TenantService__ProvisioningToken=<secret>
 TenantService__ProvisioningSecret=<secret>
+NotificationsService__BaseUrl=http://localhost:5008
+NotificationsService__PortalBaseUrl=https://app.yourdomain.com
+NotificationsService__PortalBaseDomain=yourdomain.com
+AuditClient__BaseUrl=http://localhost:5007
+AuditClient__ServiceToken=<secret>
 ```
 
 `/etc/legalsynq/tenant.env`:
@@ -190,13 +195,22 @@ TenantService__ProvisioningSecret=<secret>
 ConnectionStrings__TenantDb=Server=<rds>;Port=3306;Database=tenant_db;User=<user>;Password=<pass>;
 IdentityService__BaseUrl=http://localhost:5001
 IdentityService__ProvisioningToken=<secret>
+IdentityService__ProvisioningSecret=<secret>
 ```
 
 `/etc/legalsynq/careconnect.env`:
 
 ```bash
 ConnectionStrings__CareConnectDb=Server=<rds>;Port=3306;Database=careconnect_db;User=<user>;Password=<pass>;
+IdentityService__BaseUrl=http://localhost:5001
+IdentityService__ProvisioningToken=<secret>
+TenantService__BaseUrl=http://localhost:5005
+TenantService__ProvisioningToken=<secret>
 NotificationsService__BaseUrl=http://localhost:5008
+DocumentsService__BaseUrl=http://localhost:5006
+AuditClient__BaseUrl=http://localhost:5007
+AuditClient__ServiceToken=<secret>
+Flow__BaseUrl=http://localhost:5012
 ```
 
 `/etc/legalsynq/fund.env`:
@@ -303,6 +317,8 @@ AuditClient__ServiceToken=<secret>
 
 Only include a key in `shared.env` when every service that loads it legitimately needs the value. Prefer moving ambiguous values into the specific service env file.
 
+For provisioning keys, `ProvisioningToken` is the outbound value sent in the `X-Provisioning-Token` header and `ProvisioningSecret` is the receiver-side expected value. The paired values must match for the relevant service call path. Keep both names where this runbook lists both because the current services read both naming conventions.
+
 Secure the files:
 
 ```bash
@@ -320,30 +336,166 @@ That file gives every backend process every secret. The per-service layout keeps
 
 ## 7. Create systemd Services
 
-Example service file for Identity, `/etc/systemd/system/legalsynq-identity.service`:
+Create every backend service unit from the same hardened template. Each unit:
 
-```ini
+- runs as the unprivileged `legalsynq` user
+- loads `shared.env` plus exactly one service-specific env file
+- binds only to loopback through `ASPNETCORE_URLS`
+- restarts automatically after process failure
+- keeps logs in journald under the service-specific `SyslogIdentifier`
+
+Create a small helper while logged in as an admin user:
+
+```bash
+create_legalsynq_service() {
+  local name="$1"
+  local description="$2"
+  local publish_dir="$3"
+  local dll="$4"
+  local port="$5"
+  local env_file="$6"
+  local after_units="${7:-network-online.target}"
+  local wants_units="${8:-network-online.target}"
+
+  sudo tee "/etc/systemd/system/legalsynq-${name}.service" >/dev/null <<EOF
 [Unit]
-Description=LegalSynq Identity API
-After=network-online.target
-Wants=network-online.target
+Description=${description}
+After=${after_units}
+Wants=${wants_units}
 
 [Service]
+Type=simple
 User=legalsynq
-WorkingDirectory=/opt/legalsynq/publish/identity
+Group=legalsynq
+WorkingDirectory=/opt/legalsynq/publish/${publish_dir}
 EnvironmentFile=/etc/legalsynq/shared.env
-EnvironmentFile=/etc/legalsynq/identity.env
-Environment=ASPNETCORE_URLS=http://0.0.0.0:5001
-ExecStart=/usr/bin/dotnet /opt/legalsynq/publish/identity/Identity.Api.dll
+EnvironmentFile=/etc/legalsynq/${env_file}
+Environment=ASPNETCORE_URLS=http://127.0.0.1:${port}
+ExecStart=/usr/bin/dotnet /opt/legalsynq/publish/${publish_dir}/${dll}
 Restart=always
 RestartSec=5
-SyslogIdentifier=legalsynq-identity
+KillSignal=SIGINT
+TimeoutStopSec=30
+SyslogIdentifier=legalsynq-${name}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/log/legalsynq /tmp
 
 [Install]
 WantedBy=multi-user.target
+EOF
+}
 ```
 
-Repeat this file for each service:
+Create the service files:
+
+```bash
+create_legalsynq_service gateway \
+  "LegalSynq Gateway API" \
+  gateway Gateway.Api.dll 5010 gateway.env \
+  "network-online.target legalsynq-identity.service legalsynq-tenant.service" \
+  "network-online.target"
+
+create_legalsynq_service identity \
+  "LegalSynq Identity API" \
+  identity Identity.Api.dll 5001 identity.env \
+  "network-online.target legalsynq-notifications.service legalsynq-audit.service" \
+  "network-online.target"
+
+create_legalsynq_service tenant \
+  "LegalSynq Tenant API" \
+  tenant Tenant.Api.dll 5005 tenant.env \
+  "network-online.target legalsynq-identity.service" \
+  "network-online.target"
+
+create_legalsynq_service careconnect \
+  "LegalSynq CareConnect API" \
+  careconnect CareConnect.Api.dll 5003 careconnect.env \
+  "network-online.target legalsynq-identity.service legalsynq-tenant.service legalsynq-documents.service legalsynq-notifications.service legalsynq-audit.service legalsynq-flow.service" \
+  "network-online.target"
+
+create_legalsynq_service fund \
+  "LegalSynq Fund API" \
+  fund Fund.Api.dll 5002 fund.env \
+  "network-online.target legalsynq-flow.service legalsynq-audit.service" \
+  "network-online.target"
+
+create_legalsynq_service liens \
+  "LegalSynq Liens API" \
+  liens Liens.Api.dll 5009 liens.env \
+  "network-online.target legalsynq-identity.service legalsynq-documents.service legalsynq-notifications.service legalsynq-audit.service legalsynq-flow.service legalsynq-task.service" \
+  "network-online.target"
+
+create_legalsynq_service documents \
+  "LegalSynq Documents API" \
+  documents Documents.Api.dll 5006 documents.env \
+  "network-online.target" \
+  "network-online.target"
+
+create_legalsynq_service audit \
+  "LegalSynq Audit Event API" \
+  audit PlatformAuditEventService.dll 5007 audit.env \
+  "network-online.target" \
+  "network-online.target"
+
+create_legalsynq_service notifications \
+  "LegalSynq Notifications API" \
+  notifications Notifications.Api.dll 5008 notifications.env \
+  "network-online.target legalsynq-audit.service" \
+  "network-online.target"
+
+create_legalsynq_service flow \
+  "LegalSynq Flow API" \
+  flow Flow.Api.dll 5012 flow.env \
+  "network-online.target legalsynq-audit.service legalsynq-notifications.service legalsynq-task.service" \
+  "network-online.target"
+
+create_legalsynq_service task \
+  "LegalSynq Task API" \
+  task Task.Api.dll 5016 task.env \
+  "network-online.target legalsynq-notifications.service legalsynq-monitoring.service legalsynq-audit.service" \
+  "network-online.target"
+
+create_legalsynq_service monitoring \
+  "LegalSynq Monitoring API" \
+  monitoring Monitoring.Api.dll 5015 monitoring.env \
+  "network-online.target" \
+  "network-online.target"
+
+create_legalsynq_service reports \
+  "LegalSynq Reports API" \
+  reports Reports.Api.dll 5029 reports.env \
+  "network-online.target legalsynq-audit.service legalsynq-documents.service legalsynq-notifications.service" \
+  "network-online.target"
+
+create_legalsynq_service support \
+  "LegalSynq Support API" \
+  support Support.Api.dll 5017 support.env \
+  "network-online.target legalsynq-identity.service legalsynq-tenant.service legalsynq-notifications.service legalsynq-audit.service legalsynq-documents.service" \
+  "network-online.target"
+
+create_legalsynq_service commerce \
+  "LegalSynq Commerce API" \
+  commerce Commerce.Api.dll 5030 commerce.env \
+  "network-online.target legalsynq-tenant.service legalsynq-audit.service" \
+  "network-online.target"
+
+create_legalsynq_service billing \
+  "LegalSynq Billing API" \
+  billing Billing.Api.dll 5031 billing.env \
+  "network-online.target legalsynq-commerce.service legalsynq-tenant.service legalsynq-audit.service" \
+  "network-online.target"
+
+create_legalsynq_service comms \
+  "LegalSynq Comms API" \
+  comms Comms.Api.dll 5011 comms.env \
+  "network-online.target legalsynq-documents.service legalsynq-notifications.service legalsynq-audit.service" \
+  "network-online.target"
+```
+
+The generated units correspond to this service map:
 
 ```text
 Service                 WorkingDirectory                       DLL                              Port  Service env file
@@ -366,7 +518,9 @@ legalsynq-billing       /opt/legalsynq/publish/billing         Billing.Api.dll  
 legalsynq-comms         /opt/legalsynq/publish/comms           Comms.Api.dll                    5011  comms.env
 ```
 
-Each unit should load exactly two env files:
+If one service fails because a dependency is still migrating on first boot, restart it after the dependency becomes healthy. The `After=` entries order startup; they do not prove that an HTTP dependency is ready.
+
+Every generated unit loads exactly two env files:
 
 ```ini
 EnvironmentFile=/etc/legalsynq/shared.env
@@ -405,11 +559,11 @@ sudo systemctl enable \
 Start services in dependency-friendly order:
 
 ```bash
-sudo systemctl start legalsynq-audit legalsynq-notifications
-sudo systemctl start legalsynq-tenant legalsynq-identity
-sudo systemctl start legalsynq-documents legalsynq-flow legalsynq-task
+sudo systemctl start legalsynq-audit legalsynq-notifications legalsynq-monitoring
+sudo systemctl start legalsynq-identity legalsynq-tenant
+sudo systemctl start legalsynq-documents legalsynq-task legalsynq-flow
 sudo systemctl start legalsynq-fund legalsynq-careconnect legalsynq-liens
-sudo systemctl start legalsynq-monitoring legalsynq-reports legalsynq-support legalsynq-commerce legalsynq-billing legalsynq-comms
+sudo systemctl start legalsynq-reports legalsynq-support legalsynq-commerce legalsynq-billing legalsynq-comms
 sudo systemctl start legalsynq-gateway
 ```
 
