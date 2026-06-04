@@ -873,6 +873,7 @@ AuditClient__TimeoutSeconds=10
 # required
 Database__ConnectionString=Server=<rds>;Port=3306;Database=commerce_db;User=<user>;Password=<pass>;
 Database__Provider=MySql
+COMMERCE_RUN_MIGRATIONS=false
 Commerce__ServiceName=commerce
 Commerce__Version=1.0.0
 
@@ -920,6 +921,15 @@ Resilience__Http__CircuitBreaker__BreakDurationSeconds=30
 Resilience__Http__CircuitBreaker__FailureRatio=0.5
 Resilience__Http__CircuitBreaker__MinimumThroughput=10
 ```
+
+Commerce migration behavior:
+
+- In `Development`, Commerce auto-runs EF migrations on startup.
+- In `Production`, Commerce skips migrations unless `COMMERCE_RUN_MIGRATIONS=true`.
+- For first deploy or any schema-changing release, either:
+  - run `dotnet ef database update --project apps/services/commerce/src/Commerce.Infrastructure/Commerce.Infrastructure.csproj --startup-project apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj` from the checked-out repo on the EC2 host with `Database__ConnectionString` exported, or
+  - set `COMMERCE_RUN_MIGRATIONS=true` in `/etc/legalsynq/commerce.env`, restart `legalsynq-commerce` once, confirm the migration log lines, then set it back to `false`.
+- Expected boot logs are explicit: Commerce logs either `running EF Core migrations` or `skipping EF Core migrations`. If neither appears, the deployed binary is not current.
 
 `/etc/legalsynq/billing.env`:
 

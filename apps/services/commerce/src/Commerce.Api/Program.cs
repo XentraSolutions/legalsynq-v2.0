@@ -120,6 +120,62 @@ builder.Services.AddOpenTelemetry()
 
 var app = builder.Build();
 
+// ---- EF migrations ----
+// Auto-migrate runs only when:
+//   * ASPNETCORE_ENVIRONMENT is Development, OR
+//   * COMMERCE_RUN_MIGRATIONS=true
+// In every other case the service comes up without touching schema. Operators
+// can either run `dotnet ef database update` out of band or opt in for a
+// single process start by setting COMMERCE_RUN_MIGRATIONS=true.
+{
+    var explicitFlag = Environment.GetEnvironmentVariable("COMMERCE_RUN_MIGRATIONS");
+    var explicitOptIn = string.Equals(explicitFlag, "true", StringComparison.OrdinalIgnoreCase);
+    var runMigrations = app.Environment.IsDevelopment() || explicitOptIn;
+
+    using var scope = app.Services.CreateScope();
+    var startupLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    if (runMigrations)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<CommerceDbContext>();
+        if (db.Database.IsRelational())
+        {
+            startupLogger.LogInformation(
+                "Commerce: running EF Core migrations (environment={Env}, COMMERCE_RUN_MIGRATIONS={Flag}).",
+                app.Environment.EnvironmentName,
+                explicitFlag ?? "<unset>");
+            db.Database.Migrate();
+        }
+        else
+        {
+            startupLogger.LogInformation(
+                "Commerce: skipping migrations — DbContext is using a non-relational provider (likely InMemory).");
+        }
+    }
+    else
+    {
+        startupLogger.LogInformation(
+            "Commerce: skipping EF Core migrations (environment={Env}, COMMERCE_RUN_MIGRATIONS={Flag}). " +
+            "Set COMMERCE_RUN_MIGRATIONS=true to opt in for this process.",
+            app.Environment.EnvironmentName,
+            explicitFlag ?? "<unset>");
+    }
+}
+
+// ---- Migration coverage self-test ----
+// Runs after Migrate() so boot logs surface any remaining EF model vs live
+// schema mismatch instead of deferring discovery to runtime queries.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<CommerceDbContext>();
+    await BuildingBlocks.Diagnostics.MigrationCoverageProbe.RunAsync(db, app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Commerce migration coverage self-test could not run");
+}
+
 // ---- Middleware pipeline ----
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ProblemDetailsExceptionMiddleware>();
