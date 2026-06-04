@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Liens.Infrastructure.Persistence.Migrations
 {
+    [DbContext(typeof(LiensDbContext))]
+    [Migration("20260513000001_SeedLookupValues")]
     public partial class SeedLookupValues : Migration
     {
         private const string SystemUserId = "00000000-0000-0000-0000-000000000001";

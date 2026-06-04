@@ -1,10 +1,13 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Liens.Infrastructure.Persistence.Migrations
 {
+    [DbContext(typeof(LiensDbContext))]
+    [Migration("20260420000001_AddTaskGovernanceSettings")]
     /// <inheritdoc />
     public partial class AddTaskGovernanceSettings : Migration
     {

@@ -11,21 +11,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<Guid>(
-                name: "WorkflowInstanceId",
-                table: "liens_Tasks",
-                type: "char(36)",
-                nullable: true,
-                collation: "ascii_general_ci");
-
-            migrationBuilder.AddColumn<string>(
-                name: "WorkflowStepKey",
-                table: "liens_Tasks",
-                type: "varchar(200)",
-                maxLength: 200,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
             migrationBuilder.CreateTable(
                 name: "liens_FacilityContactPersons",
                 columns: table => new
@@ -62,21 +47,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateIndex(
-                name: "IX_liens_WorkflowTransitions_FromStageId",
-                table: "liens_WorkflowTransitions",
-                column: "FromStageId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_liens_WorkflowTransitions_ToStageId",
-                table: "liens_WorkflowTransitions",
-                column: "ToStageId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Tasks_TenantId_WorkflowInstanceId",
-                table: "liens_Tasks",
-                columns: new[] { "TenantId", "WorkflowInstanceId" });
-
-            migrationBuilder.CreateIndex(
                 name: "IX_liens_FacilityContactPersons_FacilityId",
                 table: "liens_FacilityContactPersons",
                 column: "FacilityId");
@@ -92,26 +62,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropTable(
                 name: "liens_FacilityContactPersons");
-
-            migrationBuilder.DropIndex(
-                name: "IX_liens_WorkflowTransitions_FromStageId",
-                table: "liens_WorkflowTransitions");
-
-            migrationBuilder.DropIndex(
-                name: "IX_liens_WorkflowTransitions_ToStageId",
-                table: "liens_WorkflowTransitions");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Tasks_TenantId_WorkflowInstanceId",
-                table: "liens_Tasks");
-
-            migrationBuilder.DropColumn(
-                name: "WorkflowInstanceId",
-                table: "liens_Tasks");
-
-            migrationBuilder.DropColumn(
-                name: "WorkflowStepKey",
-                table: "liens_Tasks");
         }
     }
 }
