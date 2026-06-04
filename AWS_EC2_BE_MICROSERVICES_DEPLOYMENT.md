@@ -276,6 +276,9 @@ IdentityService__InternalUrl=http://localhost:5001
 IdentityService__ProvisioningToken=<secret>
 IdentityService__ProvisioningSecret=<secret>
 
+# inbound provisioning auth for internal callers
+TenantService__ProvisioningSecret=<secret>
+
 # documents integration
 DocumentsService__InternalUrl=http://localhost:5006
 
