@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -34,6 +36,7 @@ namespace Identity.Infrastructure.Persistence.Migrations;
 ///
 /// Safe to re-run: all INSERTs use INSERT IGNORE / NOT EXISTS guards.
 /// </summary>
+[DbContext(typeof(IdentityDbContext))]
 [Migration("20260426000001_SeedSupportRoles")]
 public partial class SeedSupportRoles : Migration
 {

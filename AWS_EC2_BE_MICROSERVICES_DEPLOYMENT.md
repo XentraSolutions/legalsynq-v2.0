@@ -153,13 +153,26 @@ Use one env file per deployable service, plus one shared env file for values tha
 
 Keep service-specific secrets out of unrelated service processes. For example, the Fund service should receive `ConnectionStrings__FundDb`, but it should not receive the Documents S3 config or Notifications SendGrid keys.
 
+### Config coverage rules
+
+These examples intentionally include both required production settings and option-bound defaults/feature toggles. The services may boot without every toggle listed here because `appsettings.json`, `appsettings.Production.json`, option class defaults, and direct `IConfiguration[...]` reads provide fallback values. Keep this runbook reconciled against those source files whenever service config changes.
+
+Use ASP.NET Core environment variable syntax for nested config, for example `GovernanceFederation__Enabled=true`.
+
+Generated from: source `appsettings.json`, `appsettings.Production.json`, option `SectionName`/`SectionKey` constants, and direct `IConfiguration[...]` reads. Do not use generated `bin/` config copies as the source of truth.
+
+If you want to generate these files from the repository helper instead of copy/pasting each block, run `scripts/create-ec2-step6-env-files.sh` on the EC2 host after reviewing its `CHANGE_ME_...` placeholders and QA database defaults.
+
 Create `/etc/legalsynq/shared.env`:
 
 ```bash
+# required
 ASPNETCORE_ENVIRONMENT=Production
 Jwt__Issuer=legalsynq-identity
 Jwt__Audience=legalsynq-platform
 Jwt__SigningKey=<minimum-32-char-production-secret>
+
+# shared internal trust
 FLOW_SERVICE_TOKEN_SECRET=<minimum-32-char-service-token-secret>
 PublicTrustBoundary__InternalRequestSecret=<secret>
 ```
@@ -169,6 +182,28 @@ Create service-specific files under `/etc/legalsynq`.
 `/etc/legalsynq/gateway.env`:
 
 ```bash
+# required shared boundary
+PublicTrustBoundary__InternalRequestSecret=<secret>
+
+# reverse proxy destination overrides
+ReverseProxy__Clusters__identity-cluster__Destinations__identity-primary__Address=http://127.0.0.1:5001
+ReverseProxy__Clusters__fund-cluster__Destinations__fund-primary__Address=http://127.0.0.1:5002
+ReverseProxy__Clusters__careconnect-cluster__Destinations__careconnect-primary__Address=http://127.0.0.1:5003
+ReverseProxy__Clusters__tenant-cluster__Destinations__tenant-primary__Address=http://127.0.0.1:5005
+ReverseProxy__Clusters__documents-cluster__Destinations__documents-primary__Address=http://127.0.0.1:5006
+ReverseProxy__Clusters__audit-cluster__Destinations__audit-primary__Address=http://127.0.0.1:5007
+ReverseProxy__Clusters__notifications-cluster__Destinations__notifications-primary__Address=http://127.0.0.1:5008
+ReverseProxy__Clusters__liens-cluster__Destinations__liens-primary__Address=http://127.0.0.1:5009
+ReverseProxy__Clusters__comms-cluster__Destinations__comms-primary__Address=http://127.0.0.1:5011
+ReverseProxy__Clusters__flow-cluster__Destinations__flow-primary__Address=http://127.0.0.1:5012
+ReverseProxy__Clusters__monitoring-cluster__Destinations__monitoring-primary__Address=http://127.0.0.1:5015
+ReverseProxy__Clusters__task-cluster__Destinations__task-primary__Address=http://127.0.0.1:5016
+ReverseProxy__Clusters__support-cluster__Destinations__support-primary__Address=http://127.0.0.1:5017
+ReverseProxy__Clusters__reports-cluster__Destinations__reports-primary__Address=http://127.0.0.1:5029
+ReverseProxy__Clusters__commerce-cluster__Destinations__commerce-primary__Address=http://127.0.0.1:5030
+ReverseProxy__Clusters__billing-cluster__Destinations__billing-primary__Address=http://127.0.0.1:5031
+
+# legacy service clients retained for code paths that read direct clients
 IdentityService__BaseUrl=http://localhost:5001
 TenantService__BaseUrl=http://localhost:5005
 NotificationsService__BaseUrl=http://localhost:5008
@@ -178,141 +213,783 @@ AuditClient__BaseUrl=http://localhost:5007
 `/etc/legalsynq/identity.env`:
 
 ```bash
+# required
 ConnectionStrings__IdentityDb=Server=<rds>;Port=3306;Database=identity_db;User=<user>;Password=<pass>;
+Features__TenantDualWriteEnabled=false
+
+# tenant integration
 TenantService__BaseUrl=http://localhost:5005
+TenantService__InternalUrl=http://localhost:5005
 TenantService__ProvisioningToken=<secret>
 TenantService__ProvisioningSecret=<secret>
+TenantService__SyncSecret=<secret>
+
+# notifications integration
 NotificationsService__BaseUrl=http://localhost:5008
 NotificationsService__PortalBaseUrl=https://app.yourdomain.com
 NotificationsService__PortalBaseDomain=yourdomain.com
+
+# documents integration
+DocumentsService__InternalUrl=http://localhost:5006
+
+# commerce integration
+CommerceIntegration__BaseUrl=http://localhost:5030
+CommerceIntegration__HostPlatformKey=legalsynq
+CommerceIntegration__InternalServiceToken=<secret>
+CommerceIntegration__TimeoutSeconds=10
+
+# audit integration
 AuditClient__BaseUrl=http://localhost:5007
 AuditClient__ServiceToken=<secret>
+AuditClient__SourceService=identity
+AuditClient__SourceSystem=legalsynq
+AuditClient__TimeoutSeconds=10
+
+# tenant domain verification
+Route53__Region=<aws-region>
+Route53__HostedZoneId=<hosted-zone-id>
+Route53__BaseDomain=yourdomain.com
+Route53__RecordType=CNAME
+Route53__RecordValue=app.yourdomain.com
+Route53__Ttl=300
+TenantVerification__Enabled=true
+TenantVerification__ExpectedCnameTarget=app.yourdomain.com
+TenantVerification__VerificationEndpointPath=/.well-known/legalsynq-tenant-verification
+TenantVerification__DnsTimeoutSeconds=5
+TenantVerification__HttpTimeoutSeconds=5
+VerificationRetry__MaxAttempts=5
+VerificationRetry__InitialDelaySeconds=30
+VerificationRetry__BackoffMultiplier=2
+VerificationRetry__MaxDelaySeconds=900
+VerificationRetry__MaxRetryWindowMinutes=1440
 ```
 
 `/etc/legalsynq/tenant.env`:
 
 ```bash
+# required
 ConnectionStrings__TenantDb=Server=<rds>;Port=3306;Database=tenant_db;User=<user>;Password=<pass>;
+
+# identity integration
 IdentityService__BaseUrl=http://localhost:5001
+IdentityService__InternalUrl=http://localhost:5001
 IdentityService__ProvisioningToken=<secret>
 IdentityService__ProvisioningSecret=<secret>
+
+# documents integration
+DocumentsService__InternalUrl=http://localhost:5006
+
+# commerce integration
+CommerceIntegration__BaseUrl=http://localhost:5030
+CommerceIntegration__HostPlatformKey=legalsynq
+CommerceIntegration__InternalServiceToken=<secret>
+CommerceIntegration__TimeoutSeconds=10
+
+# feature toggles/read behavior
+Features__TenantDualWriteEnabled=false
+Features__TenantReadSource=tenant
+Features__TenantBrandingReadSource=tenant
+Features__TenantResolutionReadSource=tenant
+Features__TenantReadCachingEnabled=true
+Features__TenantReadCacheTtlSeconds=60
 ```
 
 `/etc/legalsynq/careconnect.env`:
 
 ```bash
+# required
 ConnectionStrings__CareConnectDb=Server=<rds>;Port=3306;Database=careconnect_db;User=<user>;Password=<pass>;
+AppBaseUrl=https://app.yourdomain.com
+AppBaseDomain=yourdomain.com
+PublicTrustBoundary__InternalRequestSecret=<secret>
+
+# service-token validation
+ServiceTokens__Issuer=legalsynq-identity
+ServiceTokens__Audience=legalsynq-platform
+ServiceTokens__SigningKey=<minimum-32-char-production-secret>
+ServiceTokens__ServiceName=careconnect
+ServiceTokens__LifetimeMinutes=10
+
+# identity integration
 IdentityService__BaseUrl=http://localhost:5001
 IdentityService__ProvisioningToken=<secret>
+IdentityService__TimeoutSeconds=10
+
+# tenant integration
 TenantService__BaseUrl=http://localhost:5005
 TenantService__ProvisioningToken=<secret>
+TenantService__TimeoutSeconds=10
+
+# notifications/documents/audit/flow integration
 NotificationsService__BaseUrl=http://localhost:5008
 DocumentsService__BaseUrl=http://localhost:5006
+DocumentsService__DocumentTypeId=<valid-document-type-uuid>
+DocumentsService__ProductId=CareConnect
+DocumentsService__ServiceToken=<secret>
 AuditClient__BaseUrl=http://localhost:5007
 AuditClient__ServiceToken=<secret>
+AuditClient__SourceService=careconnect
+AuditClient__SourceSystem=legalsynq
+AuditClient__TimeoutSeconds=10
 Flow__BaseUrl=http://localhost:5012
+Flow__TimeoutSeconds=10
+
+# upload policy
+AttachmentUpload__MaxFileSizeBytes=26214400
+AttachmentUpload__AllowedContentTypes__0=application/pdf
+AttachmentUpload__AllowedContentTypes__1=image/jpeg
+AttachmentUpload__AllowedContentTypes__2=image/png
+AttachmentUpload__AllowedContentTypes__3=image/gif
+AttachmentUpload__AllowedContentTypes__4=image/webp
+AttachmentUpload__AllowedContentTypes__5=text/plain
+AttachmentUpload__AllowedContentTypes__6=text/csv
+AttachmentUpload__AllowedContentTypes__7=application/msword
+AttachmentUpload__AllowedContentTypes__8=application/vnd.openxmlformats-officedocument.wordprocessingml.document
+AttachmentUpload__AllowedContentTypes__9=application/vnd.ms-excel
+AttachmentUpload__AllowedContentTypes__10=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+AttachmentUpload__AllowedContentTypes__11=application/zip
+AttachmentUpload__AllowedContentTypes__12=application/x-zip-compressed
+AttachmentUpload__AllowedContentTypes__13=application/octet-stream
 ```
 
 `/etc/legalsynq/fund.env`:
 
 ```bash
+# required
 ConnectionStrings__FundDb=Server=<rds>;Port=3306;Database=fund_db;User=<user>;Password=<pass>;
+
+# flow integration
+Flow__BaseUrl=http://localhost:5012
+Flow__TimeoutSeconds=10
 ```
 
 `/etc/legalsynq/liens.env`:
 
 ```bash
+# required
 ConnectionStrings__LiensDb=Server=<rds>;Port=3306;Database=liens_db;User=<user>;Password=<pass>;
+
+# audit integration
+AuditClient__BaseUrl=http://localhost:5007
+AuditClient__ServiceToken=<secret>
+AuditClient__SourceService=liens
+AuditClient__SourceSystem=legalsynq
+AuditClient__TimeoutSeconds=10
+
+# commerce integration
+CommerceIntegration__BaseUrl=http://localhost:5030
+CommerceIntegration__HostPlatformKey=legalsynq
+CommerceIntegration__TimeoutSeconds=10
+
+# service clients
+ExternalServices__Identity__BaseUrl=http://localhost:5001
+ExternalServices__Documents__BaseUrl=http://localhost:5006
+ExternalServices__Audit__BaseUrl=http://localhost:5007
+ExternalServices__Notifications__BaseUrl=http://localhost:5008
+ExternalServices__Task__BaseUrl=http://localhost:5016
+Flow__BaseUrl=http://localhost:5012
+Flow__TimeoutSeconds=10
 ```
 
 `/etc/legalsynq/documents.env`:
 
 ```bash
+# required
 ConnectionStrings__DocsDb=Server=<rds>;Port=3306;Database=docs_db;User=<user>;Password=<pass>;
+Documents__MaxUploadSizeMb=100
+Documents__MaxScannableFileSizeMb=100
+Documents__RequireCleanScanForAccess=true
+Documents__SignedUrlTtlSeconds=300
+
+# storage
+Storage__Provider=S3
+Storage__Local__BasePath=/var/lib/legalsynq/documents
+Storage__S3__BucketName=<bucket>
+Storage__S3__Region=<region>
 AWS_S3_BUCKET_NAME=<bucket>
 AWS_S3_REGION=<region>
 AWS_S3_ACCESS_KEY_ID=<access-key-if-not-using-instance-role>
 AWS_S3_SECRET_ACCESS_KEY=<secret-key-if-not-using-instance-role>
+
+# scanner
+Scanner__Provider=ClamAv
+Scanner__Mock__MockResult=Clean
+Scanner__ClamAv__Host=127.0.0.1
+Scanner__ClamAv__Port=3310
+Scanner__ClamAv__TimeoutMs=30000
+Scanner__ClamAv__ChunkSizeBytes=1048576
+Scanner__ClamAv__MaxScannableFileSizeMb=100
+Scanner__ClamAv__SignatureMaxAgeHours=48
+Scanner__ClamAv__CircuitBreaker__FailureThreshold=5
+Scanner__ClamAv__CircuitBreaker__MinimumThroughput=10
+Scanner__ClamAv__CircuitBreaker__SamplingDurationSeconds=60
+Scanner__ClamAv__CircuitBreaker__BreakDurationSeconds=30
+
+# scan worker and Redis queue
+ScanWorker__QueueProvider=Redis
+ScanWorker__QueueCapacity=1000
+ScanWorker__WorkerCount=2
+ScanWorker__MaxRetryAttempts=5
+ScanWorker__InitialRetryDelaySeconds=10
+ScanWorker__MaxRetryDelaySeconds=300
+ScanWorker__ClaimStaleJobsAfterSeconds=900
+ScanWorker__ConsumerGroup=documents-scan-workers
+ScanWorker__StreamKey=documents:scan-jobs
+ScanWorker__StreamMaxLength=10000
+Redis__Url=redis://localhost:6379
+Redis__CircuitBreaker__FailureThreshold=5
+Redis__CircuitBreaker__MinimumThroughput=10
+Redis__CircuitBreaker__SamplingDurationSeconds=60
+Redis__CircuitBreaker__BreakDurationSeconds=30
+
+# access tokens and scan-completion notifications
+AccessToken__Store=Database
+AccessToken__TtlSeconds=300
+AccessToken__RedirectTtlSeconds=60
+AccessToken__OneTimeUse=true
+Notifications__ScanCompletion__Provider=RedisStream
+Notifications__ScanCompletion__Redis__Channel=documents.scan.completed
+Notifications__ScanCompletion__Redis__StreamKey=documents:scan-completed
+Notifications__ScanCompletion__Redis__StreamMaxLength=10000
+
+# CORS
+Cors__Origins=https://app.yourdomain.com
 ```
 
 `/etc/legalsynq/audit.env`:
 
 ```bash
+# required
 ConnectionStrings__AuditEventDb=Server=<rds>;Port=3306;Database=audit_event_db;User=<user>;Password=<pass>;
-AuditClient__ServiceToken=<secret>
+Database__Provider=MySql
+Database__ServerVersion=8.0.0
+Database__ConnectionTimeoutSeconds=30
+Database__CommandTimeoutSeconds=30
+Database__MinPoolSize=0
+Database__MaxPoolSize=100
+Database__VerifyConnectionOnStartup=true
+Database__StartupProbeTimeoutSeconds=30
+AuditService__ServiceName=audit
+AuditService__Version=1.0.0
+
+# ingest/query auth
+IngestAuth__Mode=ServiceToken
+IngestAuth__RequireSourceSystemHeader=false
+IngestAuth__ServiceTokens__0__Token=<secret>
+IngestAuth__ServiceTokens__0__ServiceName=identity
+IngestAuth__ServiceTokens__0__Enabled=true
+IngestAuth__ServiceTokens__1__Token=<secret>
+IngestAuth__ServiceTokens__1__ServiceName=careconnect
+IngestAuth__ServiceTokens__1__Enabled=true
+IngestAuth__ServiceTokens__2__Token=<secret>
+IngestAuth__ServiceTokens__2__ServiceName=liens
+IngestAuth__ServiceTokens__2__Enabled=true
+IngestAuth__ServiceTokens__3__Token=<secret>
+IngestAuth__ServiceTokens__3__ServiceName=notifications
+IngestAuth__ServiceTokens__3__Enabled=true
+IngestAuth__ServiceTokens__4__Token=<secret>
+IngestAuth__ServiceTokens__4__ServiceName=task
+IngestAuth__ServiceTokens__4__Enabled=true
+IngestAuth__ServiceTokens__5__Token=<secret>
+IngestAuth__ServiceTokens__5__ServiceName=reports
+IngestAuth__ServiceTokens__5__Enabled=true
+IngestAuth__ServiceTokens__6__Token=<secret>
+IngestAuth__ServiceTokens__6__ServiceName=support
+IngestAuth__ServiceTokens__6__Enabled=true
+IngestAuth__ServiceTokens__7__Token=<secret>
+IngestAuth__ServiceTokens__7__ServiceName=comms
+IngestAuth__ServiceTokens__7__Enabled=true
+QueryAuth__Mode=Jwt
+QueryAuth__EnforceTenantScope=true
+QueryAuth__MaxPageSize=500
+QueryAuth__TenantIdClaimType=tenant_id
+QueryAuth__OrganizationIdClaimType=organization_id
+QueryAuth__UserIdClaimType=sub
+QueryAuth__RoleClaimType=role
+QueryAuth__PlatformAdminRoles__0=platform_admin
+QueryAuth__PlatformAdminRoles__1=super_admin
+QueryAuth__OrganizationAdminRoles__0=org_admin
+QueryAuth__OrganizationAdminRoles__1=organization_admin
+QueryAuth__TenantAdminRoles__0=tenant_admin
+QueryAuth__TenantAdminRoles__1=admin
+QueryAuth__TenantAdminRoles__2=owner
+QueryAuth__TenantUserRoles__0=tenant_user
+QueryAuth__TenantUserRoles__1=user
+QueryAuth__TenantUserRoles__2=member
+QueryAuth__UserSelfRoles__0=user
+QueryAuth__RestrictedRoles__0=viewer
+QueryAuth__RestrictedRoles__1=readonly
+
+# integrity and retention
+Integrity__Algorithm=HMAC-SHA256
+Integrity__HmacKeyBase64=<base64-hmac-key>
+Integrity__FlagTamperedRecords=true
+Retention__DefaultRetentionDays=2555
+Retention__HotRetentionDays=90
+Retention__JobCronUtc="0 3 * * *"
+Retention__MaxDeletesPerRun=1000
+Retention__DryRun=true
+
+# export, archival, forwarding
+Export__Provider=None
+Export__SupportedFormats__0=Json
+Export__SupportedFormats__1=Csv
+Export__SupportedFormats__2=Ndjson
+Export__MaxRecordsPerFile=100000
+Export__FileNamePrefix=audit-export
+Archival__Strategy=None
+Archival__BatchSize=1000
+Archival__LocalOutputPath=/var/lib/legalsynq/audit/archive
+Archival__FileNamePrefix=audit-archive
+EventForwarding__BrokerType=None
+EventForwarding__MinSeverity=Information
+EventForwarding__SubjectPrefix=legalsynq.audit
 ```
 
 `/etc/legalsynq/notifications.env`:
 
 ```bash
+# required database
+ConnectionStrings__NotificationsDb=Server=<rds>;Port=3306;Database=notifications_db;User=<user>;Password=<pass>;
 NOTIF_DB_HOST=<rds>
 NOTIF_DB_PORT=3306
 NOTIF_DB_NAME=notifications_db
 NOTIF_DB_USER=<user>
 NOTIF_DB_PASSWORD=<pass>
+
+# portal and providers
 NotificationsService__PortalBaseUrl=https://app.yourdomain.com
 NotificationsService__PortalBaseDomain=yourdomain.com
 SENDGRID_API_KEY=<key>
 SENDGRID_FROM_EMAIL=<email>
 SENDGRID_FROM_NAME=LegalSynq
+SENDGRID_WEBHOOK_VERIFICATION_ENABLED=true
+SENDGRID_WEBHOOK_PUBLIC_KEY=<sendgrid-webhook-public-key>
+TWILIO_ACCOUNT_SID=<twilio-account-sid>
+TWILIO_AUTH_TOKEN=<twilio-auth-token>
+TWILIO_FROM_NUMBER=<twilio-from-number>
+TWILIO_WEBHOOK_VERIFICATION_ENABLED=true
+
+# audit and identity integration
+AuditClient__BaseUrl=http://localhost:5007
+AuditClient__ServiceToken=<secret>
+AuditClient__SourceService=notifications
+AuditClient__SourceSystem=legalsynq
+AuditClient__TimeoutSeconds=10
+IdentityService__BaseUrl=http://localhost:5001
+IdentityService__TimeoutSeconds=10
+
+# SMS cost/routing/provider quality
+SmsRouting__Enabled=true
+SmsCostAnalytics__Enabled=true
+SmsCostAnalytics__DefaultCurrency=USD
+SmsCostAnalytics__TwilioEstimatedOutboundSmsCost=0.0075
+SmsCostAnalytics__RetryCostPolicy=count_retry_attempts
+SmsCostAnalytics__FailedMessageCostPolicy=count_provider_accepted
+SmsCostAnalytics__ProviderEstimates__twilio=0.0075
+SmsCostAnalytics__ProviderEstimates__telnyx=0.004
+SmsCostAnalytics__ProviderEstimates__vonage=0.006
+SmsProviderQuality__Enabled=false
+SmsProviderQuality__SnapshotWindowMinutes=1440
+SmsProviderQuality__CalculationIntervalMinutes=60
+SmsProviderQuality__MinimumAttemptCount=20
+SmsProviderQuality__DeliverySuccessWeight=0.45
+SmsProviderQuality__FailurePenaltyWeight=0.25
+SmsProviderQuality__RetryPenaltyWeight=0.10
+SmsProviderQuality__ReconciliationPenaltyWeight=0.10
+SmsProviderQuality__HealthPenaltyWeight=0.10
+SmsProviderQuality__DefaultQualityScore=50
+SmsProviderQuality__InsufficientDataScore=50
+
+# recipient intelligence
+SmsRecipientIntelligence__RecipientHashSalt=<production-salt>
+SmsRecipientIntelligence__ReputationWindowDays=30
+SmsRecipientIntelligence__CalculationIntervalMinutes=60
+SmsRecipientIntelligence__MaxSnapshotsPerCycle=1000
+SmsRecipientIntelligence__MinimumAttemptCount=3
+SmsRecipientIntelligence__MaxAttemptsPerWindow=100
+SmsRecipientIntelligence__WarnSuppressionThreshold=0.15
+SmsRecipientIntelligence__SoftSuppressionThreshold=0.30
+SmsRecipientIntelligence__HardSuppressionThreshold=0.50
+SmsRecipientIntelligence__InvalidNumberReviewThreshold=0.20
+
+# governance core
+SmsGovernance__Enabled=true
+SmsGovernance__DecisionAuditEnabled=true
+SmsGovernance__FailOpenOnEvaluationError=true
+SmsGovernance__MaxPolicyEvaluationMs=200
+SmsGovernance__RateLimitWindowMinutes=60
+SmsGovernance__DefaultTimezone=UTC
+SmsTemplateGovernance__Enabled=true
+SmsTemplateGovernance__RequireApprovedTemplates=true
+SmsTemplateGovernance__FailOpenOnEvaluationError=true
+SmsTemplateGovernance__MaxTemplateLength=1600
+SmsTemplateGovernance__MaxVariableCount=50
+SmsTemplateGovernance__AllowInlineUntemplatedMessages=false
+SmsTemplateGovernance__RestrictedCategories__0=legal_advice
+SmsTemplateGovernance__RestrictedCategories__1=regulated_content
+SmsGovernanceDynamic__Enabled=true
+SmsGovernanceDynamic__AllowRegexRules=true
+SmsGovernanceDynamic__FailOpenOnEvaluationError=true
+SmsGovernanceDynamic__MaxPatternLength=1000
+SmsGovernanceDynamic__MaxRulesPerEvaluation=100
+SmsGovernanceDynamic__RegexTimeoutMs=200
+SmsGovernanceVersioning__Enabled=true
+SmsGovernanceVersioning__IncludeRulesInPackSnapshot=true
+SmsGovernanceVersioning__MaxSnapshotJsonBytes=65536
+SmsGovernanceAnalytics__Enabled=true
+SmsGovernanceAnalytics__WindowDays=30
+SmsGovernanceAnalytics__MaxResultRows=500
+# Values < 1 are treated as ratios; values >= 1 are treated as absolute counts.
+SmsGovernanceAnalytics__FalsePositiveWarnThreshold=0.05
+# Values > 1 are treated as sim/live ratio thresholds; values <= 1 are treated as live-share thresholds.
+SmsGovernanceAnalytics__FalsePositiveLiveToSimRatio=2
+
+# release, rollout, tenant scoping, federation, runtime
+SmsGovernanceReleaseManagement__Enabled=true
+SmsGovernanceReleaseManagement__RequireApprovalForActivation=true
+SmsGovernanceReleaseManagement__EnforceApprovalRoles=true
+SmsGovernanceReleaseManagement__AllowPlatformAdminApprovalFallback=false
+SmsGovernanceReleaseManagement__AllowImmediateActivation=true
+SmsGovernanceReleaseManagement__AllowScheduledActivation=true
+SmsGovernanceReleaseManagement__FailOpenOnReleaseEvaluationError=true
+SmsGovernanceReleaseManagement__MaxReleaseItems=100
+SmsGovernanceReleaseManagement__MaxScheduledReleasesPerCycle=25
+SmsGovernanceReleaseManagement__ScheduledActivationPollMinutes=5
+SmsGovernanceReleaseManagement__ActivationRetryLimit=3
+SmsGovernanceReleaseManagement__ActivationRetryBackoffMinutes=5
+SmsGovernanceReleaseManagement__ActivationLockTimeoutMinutes=15
+SmsGovernanceReleaseManagement__DefaultApprovalStagesJson=[]
+SmsGovernanceRollouts__Enabled=true
+SmsGovernanceRollouts__DefaultCanaryPercentage=10
+SmsGovernanceRollouts__DefaultStageDurationMinutes=60
+SmsGovernanceRollouts__RolloutPollMinutes=5
+SmsGovernanceRollouts__MaxRolloutsPerCycle=25
+SmsGovernanceRollouts__AutoPauseOnThresholdBreach=true
+SmsGovernanceRollouts__FailOpenOnRolloutEvaluationError=true
+SmsGovernanceTenantScoping__Enabled=true
+SmsGovernanceTenantScoping__ResolutionMode=tenant_inherited
+SmsGovernanceTenantScoping__FailOpenOnResolutionError=true
+SmsGovernanceTenantScoping__EnableTenantOverlays=true
+SmsGovernanceTenantScoping__EnableRolloutAssignments=true
+SmsGovernanceTenantScoping__MaxAssignmentsPerTenant=20
+SmsGovernanceTenantScoping__MaxOverlaysPerTenant=50
+SmsGovernanceTenantScoping__CacheResolvedRules=false
+SmsGovernanceTenantScoping__ResolutionCacheSeconds=60
+GovernanceFederation__Enabled=true
+GovernanceFederation__DefaultScopeMode=isolated_channel
+GovernanceFederation__FailOpenOnFederationError=true
+GovernanceFederation__EnableCrossChannelOverlays=true
+GovernanceFederation__EnableFederatedRollouts=true
+GovernanceFederation__MaxFederatedPacksPerChannel=100
+GovernanceFederation__MaxFederationOverlaysPerChannel=100
+GovernanceFederation__CacheTopology=false
+GovernanceFederation__TopologyCacheSeconds=60
+GovernanceExecutionRuntime__Enabled=true
+GovernanceExecutionRuntime__FailOpenOnRuntimeError=true
+GovernanceExecutionRuntime__EnableEmailEnforcement=true
+GovernanceExecutionRuntime__EnablePushEnforcement=true
+GovernanceExecutionRuntime__EnableWebhookEnforcement=true
+GovernanceExecutionRuntime__EnableSmsCompatibilityRuntime=false
+GovernanceExecutionRuntime__PersistAllowDecisions=false
+GovernanceExecutionRuntime__MaxEvaluationTextLength=5000
+GovernanceExecutionRuntime__RegexTimeoutMs=200
 ```
 
 `/etc/legalsynq/flow.env`:
 
 ```bash
+# required
 ConnectionStrings__FlowDb=Server=<rds>;Port=3306;Database=flow_db;User=<user>;Password=<pass>;
+
+# integration
+Audit__BaseUrl=http://localhost:5007
 AuditClient__BaseUrl=http://localhost:5007
 AuditClient__ServiceToken=<secret>
+Notifications__BaseUrl=http://localhost:5008
 NotificationsService__BaseUrl=http://localhost:5008
+
+# workers/runtime
+Outbox__Enabled=true
+Outbox__PollingIntervalSeconds=5
+Outbox__BatchSize=50
+Outbox__MaxAttempts=5
+Outbox__BaseBackoffSeconds=5
+Outbox__BackoffMultiplier=2
+WorkflowSla__Enabled=true
+WorkflowSla__PollingIntervalSeconds=60
+WorkflowSla__BatchSize=100
+WorkflowSla__DueSoonThresholdMinutes=60
+WorkflowSla__EscalationThresholdMinutes=0
+WorkDistribution__EnableRecommendation=true
+WorkDistribution__EnableAutoAssignment=true
+WorkDistribution__SoftCapacityThreshold=15
+WorkDistribution__MaxActiveTasksPerUser=20
+WorkDistribution__MaxDerivedCandidates=50
+
+# CORS
+Cors__AllowedOrigins__0=https://app.yourdomain.com
 ```
 
 `/etc/legalsynq/task.env`:
 
 ```bash
+# required
 ConnectionStrings__TasksDb=Server=<rds>;Port=3306;Database=tasks_db;User=<user>;Password=<pass>;
+Service__Name=task
+
+# integrations
+AuditClient__BaseUrl=http://localhost:5007
+AuditClient__ServiceToken=<secret>
+AuditClient__TimeoutSeconds=10
 NotificationsService__BaseUrl=http://localhost:5008
+NotificationsService__TimeoutSeconds=10
 MonitoringService__BaseUrl=http://localhost:5015
+MonitoringService__TimeoutSeconds=10
 TASK_SERVICE_URL=http://localhost:5016
 ```
 
 `/etc/legalsynq/monitoring.env`:
 
 ```bash
+# required
 ConnectionStrings__MonitoringDb=Server=<rds>;Port=3306;Database=monitoring_db;User=<user>;Password=<pass>;
+Service__Name=monitoring
+
+# scheduler/runtime
+Monitoring__Scheduler__Enabled=true
+Monitoring__Scheduler__IntervalSeconds=30
+Monitoring__UptimeAggregation__Enabled=true
+Monitoring__UptimeAggregation__IntervalSeconds=300
+Monitoring__UptimeAggregation__LookbackDays=30
+Monitoring__HttpCheck__TimeoutSeconds=10
+Monitoring__HttpCheck__AllowInternalTargets=false
 ```
 
 `/etc/legalsynq/reports.env`:
 
 ```bash
+# required
 ConnectionStrings__ReportsDb=Server=<rds>;Port=3306;Database=reports_db;User=<user>;Password=<pass>;
+ConnectionStrings__LiensDb=Server=<rds>;Port=3306;Database=liens_db;User=<user>;Password=<pass>;
+ReportsService__ServiceName=reports
+ReportsService__LogLevel=Information
+
+# adapters and audit
+Adapters__IdentityBaseUrl=http://localhost:5001
+Adapters__TenantBaseUrl=http://localhost:5005
+Adapters__DocumentBaseUrl=http://localhost:5006
+Adapters__AuditBaseUrl=http://localhost:5007
+Adapters__NotificationBaseUrl=http://localhost:5008
+Adapters__ProductDataBaseUrl=http://localhost:5009
+Adapters__EntitlementBaseUrl=http://localhost:5030
+AuditService__BaseUrl=http://localhost:5007
+AuditService__ServiceToken=<secret>
+AuditService__TimeoutSeconds=10
+
+# email/SFTP delivery
+EmailDelivery__NotificationsBaseUrl=http://localhost:5008
+EmailDelivery__ServiceToken=<secret>
+EmailDelivery__TimeoutSeconds=10
+EmailDelivery__MaxRetries=3
+SftpDelivery__Host=<sftp-host>
+SftpDelivery__Port=22
+SftpDelivery__Username=<sftp-user>
+SftpDelivery__Password=<sftp-password-if-used>
+SftpDelivery__PrivateKeyPath=<private-key-path-if-used>
+SftpDelivery__PrivateKeyPassphrase=<private-key-passphrase-if-used>
+SftpDelivery__RemotePath=/incoming
+SftpDelivery__TimeoutSeconds=30
+SftpDelivery__MaxRetries=3
+
+# storage/data tuning
+Storage__Provider=S3
+Storage__BucketName=<bucket>
+Storage__Region=<region>
+Storage__AccessKeyId=<access-key-if-not-using-instance-role>
+Storage__SecretAccessKey=<secret-key-if-not-using-instance-role>
+Storage__BasePath=reports
+LiensData__MaxRows=50000
+LiensData__QueryTimeoutSeconds=30
+MySql__ConnectionString=Server=<rds>;Port=3306;Database=reports_db;User=<user>;Password=<pass>;
+MySql__CommandTimeout=30
+MySql__MaxRetryCount=3
 ```
 
 `/etc/legalsynq/support.env`:
 
 ```bash
+# required
 ConnectionStrings__Support=Server=<rds>;Port=3306;Database=support;User=<user>;Password=<pass>;
+ConnectionStrings__IdentityDb=Server=<rds>;Port=3306;Database=identity_db;User=<user>;Password=<pass>;
+ConnectionStrings__TenantDb=Server=<rds>;Port=3306;Database=tenant_db;User=<user>;Password=<pass>;
+
+# service-token validation
+ServiceTokens__Issuer=legalsynq-identity
+ServiceTokens__Audience=legalsynq-platform
+ServiceTokens__SigningKey=<minimum-32-char-production-secret>
+ServiceTokens__ServiceName=support
+ServiceTokens__LifetimeMinutes=10
+
+# notifications/audit/file storage
+Support__Notifications__Mode=Http
+Support__Notifications__TimeoutSeconds=10
+Support__Audit__Mode=Http
+Support__Audit__TimeoutSeconds=10
+Support__FileStorage__Mode=DocumentsService
+Support__FileStorage__LocalRootPath=/var/lib/legalsynq/support
+Support__FileStorage__MaxFileSizeMb=25
+Support__FileStorage__DocumentsService__UploadPath=/v1/documents
+Support__FileStorage__DocumentsService__TimeoutSeconds=30
+Support__FileStorage__AllowedContentTypes__0=application/pdf
+Support__FileStorage__AllowedContentTypes__1=image/jpeg
+Support__FileStorage__AllowedContentTypes__2=image/png
+Support__FileStorage__AllowedContentTypes__3=text/plain
+Support__FileStorage__AllowedContentTypes__4=text/csv
+Support__FileStorage__AllowedContentTypes__5=application/msword
+Support__FileStorage__AllowedContentTypes__6=application/vnd.openxmlformats-officedocument.wordprocessingml.document
+Support__FileStorage__AllowedContentTypes__7=application/vnd.ms-excel
+Support__FileStorage__AllowedContentTypes__8=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+Support__FileStorage__AllowedContentTypes__9=application/zip
+Support__FileStorage__AllowedContentTypes__10=application/x-zip-compressed
+Support__FileStorage__AllowedContentTypes__11=application/octet-stream
+
+# rate limits and outbound clients
+Support__RateLimit__CustomerPermitLimit=60
+Support__RateLimit__CustomerWindowSeconds=60
+AuditClient__BaseUrl=http://localhost:5007
+AuditClient__ServiceToken=<secret>
+AuditClient__SourceService=support
+AuditClient__SourceSystem=legalsynq
+AuditClient__TimeoutSeconds=10
 ```
 
 `/etc/legalsynq/commerce.env`:
 
 ```bash
+# required
 Database__ConnectionString=Server=<rds>;Port=3306;Database=commerce_db;User=<user>;Password=<pass>;
+Database__Provider=MySql
+Commerce__ServiceName=commerce
+Commerce__Version=1.0.0
+
+# LegalSynq host identity
+LegalSynq__Identity__Enabled=true
+LegalSynq__Identity__Issuer=legalsynq-identity
+LegalSynq__Identity__Audience=legalsynq-platform
+LegalSynq__Identity__SigningKey=<minimum-32-char-production-secret>
+LegalSynq__Identity__HostPlatformKey=legalsynq
+
+# payment providers
+PaymentProviders__Stripe__PublishableKey=<stripe-publishable-key>
+PaymentProviders__Stripe__Enabled=false
+PaymentProviders__Stripe__SecretKey=<stripe-secret-key>
+PaymentProviders__Stripe__WebhookSecret=<stripe-webhook-secret>
+PaymentProviders__Stripe__ApiBaseUrl=https://api.stripe.com
+PaymentProviders__Stripe__DefaultSuccessUrl=https://app.yourdomain.com/billing/success
+PaymentProviders__Stripe__DefaultCancelUrl=https://app.yourdomain.com/billing/cancel
+PaymentProviders__Stripe__SignatureToleranceSeconds=300
+
+# tenant billing integration
+Commerce__TenantBilling__BaseUrl=http://localhost:5031
+Commerce__TenantBilling__InternalToken=<secret>
+Commerce__TenantBilling__Enabled=false
+Commerce__TenantBilling__TimeoutSeconds=10
+Commerce__TenantBilling__RetryAttempts=3
+Commerce__TenantBilling__RetryDelayMilliseconds=250
+Commerce__TenantBilling__CircuitBreakerEnabled=false
+Commerce__TenantBilling__CircuitBreakerFailures=5
+Commerce__TenantBilling__CircuitBreakerDurationSeconds=30
+Commerce__TenantBilling__AutoPublishEnabled=false
+Commerce__TenantBilling__AutoPublishQueueCapacity=1000
+Commerce__TenantBilling__OutboxEnabled=false
+Commerce__TenantBilling__OutboxBatchSize=50
+Commerce__TenantBilling__OutboxPollSeconds=10
+Commerce__TenantBilling__OutboxMaxAttempts=5
+Commerce__TenantBilling__OutboxRetryBaseDelaySeconds=30
+
+# observability/resilience
+Observability__ServiceName=commerce
+Observability__Otlp__Enabled=false
+Observability__Otlp__Endpoint=http://localhost:4317
+Resilience__Http__RetryCount=3
+Resilience__Http__CircuitBreaker__BreakDurationSeconds=30
+Resilience__Http__CircuitBreaker__FailureRatio=0.5
+Resilience__Http__CircuitBreaker__MinimumThroughput=10
 ```
 
 `/etc/legalsynq/billing.env`:
 
 ```bash
+# required
 BILLING_DB_CONNECTION=Server=<rds>;Port=3306;Database=billing_db;User=<user>;Password=<pass>;
+ConnectionStrings__DefaultConnection=Server=<rds>;Port=3306;Database=billing_db;User=<user>;Password=<pass>;
+
+# LegalSynq host identity and tenant context
+LegalSynq__Identity__Enabled=true
+LegalSynq__Identity__Issuer=legalsynq-identity
+LegalSynq__Identity__Audience=legalsynq-platform
+LegalSynq__Identity__SigningKey=<minimum-32-char-production-secret>
+LegalSynq__TenantContext__PreferJwtTenant=true
+LegalSynq__TenantContext__AllowHeaderFallback=true
+LegalSynq__TenantContext__AllowInternalTokenFallback=true
+
+# invoice lifecycle
+InvoiceLifecycle__OverdueJobIntervalMinutes=60
+InvoiceLifecycle__OverdueBatchSize=100
+
+# delivery and retries
+Billing__Delivery__Provider=Ncm
+Billing__Delivery__Ncm__BaseUrl=<ncm-base-url>
+Billing__Delivery__Ncm__ApiKey=<ncm-api-key>
+Billing__Delivery__Ncm__FromEmail=billing@yourdomain.com
+Billing__Delivery__Ncm__FromName="LegalSynq Billing"
+Billing__Delivery__Ncm__TemplateCode=<template-code>
+Billing__Delivery__Ncm__TimeoutSeconds=30
+Billing__Delivery__Retry__MaxAttempts=3
+Billing__Delivery__Retry__CooldownSeconds=300
+Billing__Delivery__Retry__ProviderHealth__WindowSeconds=900
+Billing__Delivery__Retry__ProviderHealth__DegradedAfterFailures=3
+Billing__Delivery__Retry__ProviderHealth__UnavailableAfterFailures=5
+
+# entitlement enforcement
+Billing__EntitlementEnforcement__UnknownMode=ReadOnly
+Billing__EntitlementEnforcement__GraceLimitedMode=Limited
+Billing__EntitlementEnforcement__AllowPaymentsInReadOnly=false
+Billing__EntitlementEnforcement__AllowStatementsInReadOnly=true
+
+# QuickBooks ERP integration
+Billing__Erp__QuickBooks__Environment=Production
+Billing__Erp__QuickBooks__ClientId=<quickbooks-client-id>
+Billing__Erp__QuickBooks__ClientSecret=<quickbooks-client-secret>
+Billing__Erp__QuickBooks__RefreshToken=<quickbooks-refresh-token>
+Billing__Erp__QuickBooks__RealmId=<quickbooks-realm-id>
+Billing__Erp__QuickBooks__MinorVersion=75
+Billing__Erp__QuickBooks__TimeoutSeconds=30
+Billing__Erp__QuickBooks__ExportMode=Disabled
+Billing__Erp__QuickBooks__FallbackCustomerRef=<fallback-customer-ref>
+Billing__Erp__QuickBooks__AccountsReceivableRef=<accounts-receivable-ref>
+Billing__Erp__QuickBooks__IncomeAccountRef=<income-account-ref>
+Billing__Erp__QuickBooks__AdjustmentAccountRef=<adjustment-account-ref>
+Billing__Erp__QuickBooks__UndepositedFundsRef=<undeposited-funds-ref>
 ```
 
 `/etc/legalsynq/comms.env`:
 
 ```bash
+# required
 ConnectionStrings__SynqCommDb=Server=<rds>;Port=3306;Database=synqcomm_db;User=<user>;Password=<pass>;
+
+# service clients
 Services__NotificationsUrl=http://localhost:5008
 Services__DocumentsUrl=http://localhost:5006
+
+# audit integration
 AuditClient__BaseUrl=http://localhost:5007
 AuditClient__ServiceToken=<secret>
+AuditClient__SourceService=comms
+AuditClient__SourceSystem=legalsynq
+AuditClient__TimeoutSeconds=10
 ```
 
 Only include a key in `shared.env` when every service that loads it legitimately needs the value. Prefer moving ambiguous values into the specific service env file.

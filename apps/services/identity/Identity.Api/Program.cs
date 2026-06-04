@@ -172,6 +172,473 @@ var env = app.Environment.EnvironmentName;
 
 app.Logger.LogInformation("Starting {Service} {Version} in {Environment}", ServiceName, Version, env);
 
+// ── LS-ID-UIX-003 pre-migration guard ───────────────────────────────────────
+// 20260401200002_AddUserSecurityFields can partially commit on MySQL: ALTER
+// TABLE succeeds, then later CREATE TABLE / CREATE INDEX steps fail, leaving
+// the Users security columns present without the EF history row. The next boot
+// retries the ALTER TABLE and dies on "Duplicate column name".
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db   = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    var conn = db.Database.GetDbConnection();
+    if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+    using var cmd = conn.CreateCommand();
+
+    Identity.Infrastructure.StartupMigrationGuard.ApplyIfMissing(
+        cmd,
+        migrationId: "20260401200002_AddUserSecurityFields",
+        efVersion:   "8.0.7",
+        logger:      app.Logger,
+        guardLabel:  "LS-ID-UIX-003",
+        prerequisite: c => RequiredTablesExist(c, "Users"),
+        apply: c =>
+        {
+            EnsureColumn(
+                c,
+                tableName: "Users",
+                columnName: "IsLocked",
+                alterSql: "ALTER TABLE `Users` ADD `IsLocked` tinyint(1) NOT NULL DEFAULT FALSE;");
+            EnsureColumn(
+                c,
+                tableName: "Users",
+                columnName: "LockedAtUtc",
+                alterSql: "ALTER TABLE `Users` ADD `LockedAtUtc` datetime(6) NULL;");
+            EnsureColumn(
+                c,
+                tableName: "Users",
+                columnName: "LockedByAdminId",
+                alterSql: "ALTER TABLE `Users` ADD `LockedByAdminId` char(36) NULL;");
+            EnsureColumn(
+                c,
+                tableName: "Users",
+                columnName: "LastLoginAtUtc",
+                alterSql: "ALTER TABLE `Users` ADD `LastLoginAtUtc` datetime(6) NULL;");
+            EnsureColumn(
+                c,
+                tableName: "Users",
+                columnName: "SessionVersion",
+                alterSql: "ALTER TABLE `Users` ADD `SessionVersion` int NOT NULL DEFAULT 0;");
+
+            EnsureTable(
+                c,
+                tableName: "PasswordResetTokens",
+                createSql: @"
+CREATE TABLE `PasswordResetTokens` (
+    `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+    `UserId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `TriggeredByAdminId` char(36) COLLATE ascii_general_ci NULL,
+    `TokenHash` varchar(64) NOT NULL,
+    `Status` varchar(20) NOT NULL,
+    `ExpiresAtUtc` datetime(6) NOT NULL,
+    `UsedAtUtc` datetime(6) NULL,
+    `RevokedAtUtc` datetime(6) NULL,
+    `CreatedAtUtc` datetime(6) NOT NULL,
+    CONSTRAINT `PK_PasswordResetTokens` PRIMARY KEY (`Id`),
+    CONSTRAINT `FK_PasswordResetTokens_Users_UserId`
+        FOREIGN KEY (`UserId`) REFERENCES `Users` (`Id`) ON DELETE CASCADE
+) CHARACTER SET utf8mb4;");
+
+            EnsureIndex(
+                c,
+                tableName: "PasswordResetTokens",
+                indexName: "IX_PasswordResetTokens_TokenHash",
+                createSql: "CREATE UNIQUE INDEX `IX_PasswordResetTokens_TokenHash` ON `PasswordResetTokens` (`TokenHash`);");
+            EnsureIndex(
+                c,
+                tableName: "PasswordResetTokens",
+                indexName: "IX_PasswordResetTokens_UserId",
+                createSql: "CREATE INDEX `IX_PasswordResetTokens_UserId` ON `PasswordResetTokens` (`UserId`);");
+        },
+        warningMessage:
+            "LS-ID-UIX-003: AddUserSecurityFields is missing from EF history. " +
+            "Re-applying the migration idempotently and recording it before normal Migrate().");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "LS-ID-UIX-003 pre-migration guard failed — proceeding with normal migration");
+}
+
+// ── LS-ID-AST-001 pre-migration guard ───────────────────────────────────────
+// 20260410190647_AddAccessSourceOfTruth creates three legacy pre-prefix tables.
+// If MySQL committed those CREATE TABLE statements before the migration failed,
+// the next startup retries the same DDL and aborts on "table already exists".
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db   = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    var conn = db.Database.GetDbConnection();
+    if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+    using var cmd = conn.CreateCommand();
+
+    Identity.Infrastructure.StartupMigrationGuard.ApplyIfMissing(
+        cmd,
+        migrationId: "20260410190647_AddAccessSourceOfTruth",
+        efVersion:   "8.0.7",
+        logger:      app.Logger,
+        guardLabel:  "LS-ID-AST-001",
+        prerequisite: c => AnyTableExists(
+            c,
+            "TenantProductEntitlements",
+            "UserProductAccess",
+            "UserRoleAssignments"),
+        apply: c =>
+        {
+            EnsureTable(
+                c,
+                tableName: "TenantProductEntitlements",
+                createSql: @"
+CREATE TABLE `TenantProductEntitlements` (
+    `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+    `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `ProductCode` varchar(50) CHARACTER SET utf8mb4 NOT NULL,
+    `Status` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+    `EnabledAtUtc` datetime(6) NULL,
+    `DisabledAtUtc` datetime(6) NULL,
+    `CreatedAtUtc` datetime(6) NOT NULL,
+    `UpdatedAtUtc` datetime(6) NOT NULL,
+    `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    CONSTRAINT `PK_TenantProductEntitlements` PRIMARY KEY (`Id`)
+) CHARACTER SET utf8mb4;");
+            EnsureColumns(
+                c,
+                "TenantProductEntitlements",
+                ("TenantId", "ALTER TABLE `TenantProductEntitlements` ADD `TenantId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("ProductCode", "ALTER TABLE `TenantProductEntitlements` ADD `ProductCode` varchar(50) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("Status", "ALTER TABLE `TenantProductEntitlements` ADD `Status` varchar(20) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("EnabledAtUtc", "ALTER TABLE `TenantProductEntitlements` ADD `EnabledAtUtc` datetime(6) NULL;"),
+                ("DisabledAtUtc", "ALTER TABLE `TenantProductEntitlements` ADD `DisabledAtUtc` datetime(6) NULL;"),
+                ("CreatedAtUtc", "ALTER TABLE `TenantProductEntitlements` ADD `CreatedAtUtc` datetime(6) NOT NULL;"),
+                ("UpdatedAtUtc", "ALTER TABLE `TenantProductEntitlements` ADD `UpdatedAtUtc` datetime(6) NOT NULL;"),
+                ("CreatedByUserId", "ALTER TABLE `TenantProductEntitlements` ADD `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("UpdatedByUserId", "ALTER TABLE `TenantProductEntitlements` ADD `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL;"));
+
+            EnsureTable(
+                c,
+                tableName: "UserProductAccess",
+                createSql: @"
+CREATE TABLE `UserProductAccess` (
+    `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+    `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `UserId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `ProductCode` varchar(50) CHARACTER SET utf8mb4 NOT NULL,
+    `AccessStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+    `OrganizationId` char(36) COLLATE ascii_general_ci NULL,
+    `SourceType` varchar(20) CHARACTER SET utf8mb4 NOT NULL DEFAULT 'Direct',
+    `GrantedAtUtc` datetime(6) NULL,
+    `RevokedAtUtc` datetime(6) NULL,
+    `CreatedAtUtc` datetime(6) NOT NULL,
+    `UpdatedAtUtc` datetime(6) NOT NULL,
+    `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    CONSTRAINT `PK_UserProductAccess` PRIMARY KEY (`Id`)
+) CHARACTER SET utf8mb4;");
+            EnsureColumns(
+                c,
+                "UserProductAccess",
+                ("TenantId", "ALTER TABLE `UserProductAccess` ADD `TenantId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("UserId", "ALTER TABLE `UserProductAccess` ADD `UserId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("ProductCode", "ALTER TABLE `UserProductAccess` ADD `ProductCode` varchar(50) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("AccessStatus", "ALTER TABLE `UserProductAccess` ADD `AccessStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("OrganizationId", "ALTER TABLE `UserProductAccess` ADD `OrganizationId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("SourceType", "ALTER TABLE `UserProductAccess` ADD `SourceType` varchar(20) CHARACTER SET utf8mb4 NOT NULL DEFAULT 'Direct';"),
+                ("GrantedAtUtc", "ALTER TABLE `UserProductAccess` ADD `GrantedAtUtc` datetime(6) NULL;"),
+                ("RevokedAtUtc", "ALTER TABLE `UserProductAccess` ADD `RevokedAtUtc` datetime(6) NULL;"),
+                ("CreatedAtUtc", "ALTER TABLE `UserProductAccess` ADD `CreatedAtUtc` datetime(6) NOT NULL;"),
+                ("UpdatedAtUtc", "ALTER TABLE `UserProductAccess` ADD `UpdatedAtUtc` datetime(6) NOT NULL;"),
+                ("CreatedByUserId", "ALTER TABLE `UserProductAccess` ADD `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("UpdatedByUserId", "ALTER TABLE `UserProductAccess` ADD `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL;"));
+
+            EnsureTable(
+                c,
+                tableName: "UserRoleAssignments",
+                createSql: @"
+CREATE TABLE `UserRoleAssignments` (
+    `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+    `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `UserId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `ProductCode` varchar(50) CHARACTER SET utf8mb4 NULL,
+    `RoleCode` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+    `AssignmentStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+    `OrganizationId` char(36) COLLATE ascii_general_ci NULL,
+    `SourceType` varchar(20) CHARACTER SET utf8mb4 NOT NULL DEFAULT 'Direct',
+    `AssignedAtUtc` datetime(6) NULL,
+    `RemovedAtUtc` datetime(6) NULL,
+    `CreatedAtUtc` datetime(6) NOT NULL,
+    `UpdatedAtUtc` datetime(6) NOT NULL,
+    `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    CONSTRAINT `PK_UserRoleAssignments` PRIMARY KEY (`Id`)
+) CHARACTER SET utf8mb4;");
+            EnsureColumns(
+                c,
+                "UserRoleAssignments",
+                ("TenantId", "ALTER TABLE `UserRoleAssignments` ADD `TenantId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("UserId", "ALTER TABLE `UserRoleAssignments` ADD `UserId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("ProductCode", "ALTER TABLE `UserRoleAssignments` ADD `ProductCode` varchar(50) CHARACTER SET utf8mb4 NULL;"),
+                ("RoleCode", "ALTER TABLE `UserRoleAssignments` ADD `RoleCode` varchar(100) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("AssignmentStatus", "ALTER TABLE `UserRoleAssignments` ADD `AssignmentStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("OrganizationId", "ALTER TABLE `UserRoleAssignments` ADD `OrganizationId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("SourceType", "ALTER TABLE `UserRoleAssignments` ADD `SourceType` varchar(20) CHARACTER SET utf8mb4 NOT NULL DEFAULT 'Direct';"),
+                ("AssignedAtUtc", "ALTER TABLE `UserRoleAssignments` ADD `AssignedAtUtc` datetime(6) NULL;"),
+                ("RemovedAtUtc", "ALTER TABLE `UserRoleAssignments` ADD `RemovedAtUtc` datetime(6) NULL;"),
+                ("CreatedAtUtc", "ALTER TABLE `UserRoleAssignments` ADD `CreatedAtUtc` datetime(6) NOT NULL;"),
+                ("UpdatedAtUtc", "ALTER TABLE `UserRoleAssignments` ADD `UpdatedAtUtc` datetime(6) NOT NULL;"),
+                ("CreatedByUserId", "ALTER TABLE `UserRoleAssignments` ADD `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("UpdatedByUserId", "ALTER TABLE `UserRoleAssignments` ADD `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL;"));
+
+            EnsureIndex(
+                c,
+                tableName: "TenantProductEntitlements",
+                indexName: "IX_TenantProductEntitlements_TenantId_ProductCode",
+                createSql: "CREATE UNIQUE INDEX `IX_TenantProductEntitlements_TenantId_ProductCode` ON `TenantProductEntitlements` (`TenantId`, `ProductCode`);");
+            EnsureIndex(
+                c,
+                tableName: "UserProductAccess",
+                indexName: "IX_UserProductAccess_TenantId_UserId_ProductCode",
+                createSql: "CREATE UNIQUE INDEX `IX_UserProductAccess_TenantId_UserId_ProductCode` ON `UserProductAccess` (`TenantId`, `UserId`, `ProductCode`);");
+            EnsureIndex(
+                c,
+                tableName: "UserRoleAssignments",
+                indexName: "IX_UserRoleAssignments_TenantId_UserId_RoleCode",
+                createSql: "CREATE INDEX `IX_UserRoleAssignments_TenantId_UserId_RoleCode` ON `UserRoleAssignments` (`TenantId`, `UserId`, `RoleCode`);");
+        },
+        warningMessage:
+            "LS-ID-AST-001: AddAccessSourceOfTruth is missing from EF history. " +
+            "Ensuring legacy access-source-of-truth tables/indexes exist and recording the migration before normal Migrate().");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "LS-ID-AST-001 pre-migration guard failed — proceeding with normal migration");
+}
+
+// ── LS-ID-AVR-001 pre-migration guard ───────────────────────────────────────
+// 20260410192258_AddAccessVersion adds Users.AccessVersion and recreates the
+// UserProductAccess unique index. MySQL may commit the ADD COLUMN before the
+// history row is written, leading to duplicate-column failures on restart.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db   = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    var conn = db.Database.GetDbConnection();
+    if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+    using var cmd = conn.CreateCommand();
+
+    Identity.Infrastructure.StartupMigrationGuard.ApplyIfMissing(
+        cmd,
+        migrationId: "20260410192258_AddAccessVersion",
+        efVersion:   "8.0.7",
+        logger:      app.Logger,
+        guardLabel:  "LS-ID-AVR-001",
+        prerequisite: c => ColumnExists(c, "Users", "AccessVersion"),
+        apply: c =>
+        {
+            EnsureIndex(
+                c,
+                tableName: "UserProductAccess",
+                indexName: "IX_UserProductAccess_TenantId_UserId_ProductCode",
+                createSql: "CREATE UNIQUE INDEX `IX_UserProductAccess_TenantId_UserId_ProductCode` ON `UserProductAccess` (`TenantId`, `UserId`, `ProductCode`);");
+        },
+        warningMessage:
+            "LS-ID-AVR-001: AddAccessVersion is missing from EF history. " +
+            "Ensuring AccessVersion-side effects exist and recording the migration before normal Migrate().");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "LS-ID-AVR-001 pre-migration guard failed — proceeding with normal migration");
+}
+
+// ── LS-ID-AGR-001 pre-migration guard ───────────────────────────────────────
+// 20260410195442_AddAccessGroups creates four legacy pre-prefix tables and
+// their indexes. Handle mixed partial states before EF retries CREATE TABLE.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db   = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    var conn = db.Database.GetDbConnection();
+    if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+    using var cmd = conn.CreateCommand();
+
+    Identity.Infrastructure.StartupMigrationGuard.ApplyIfMissing(
+        cmd,
+        migrationId: "20260410195442_AddAccessGroups",
+        efVersion:   "8.0.7",
+        logger:      app.Logger,
+        guardLabel:  "LS-ID-AGR-001",
+        prerequisite: c => AnyTableExists(
+            c,
+            "AccessGroupMemberships",
+            "AccessGroups",
+            "GroupProductAccess",
+            "GroupRoleAssignments"),
+        apply: c =>
+        {
+            EnsureTable(
+                c,
+                tableName: "AccessGroupMemberships",
+                createSql: @"
+CREATE TABLE `AccessGroupMemberships` (
+    `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+    `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `GroupId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `UserId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `MembershipStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+    `AddedAtUtc` datetime(6) NOT NULL,
+    `RemovedAtUtc` datetime(6) NULL,
+    `CreatedAtUtc` datetime(6) NOT NULL,
+    `UpdatedAtUtc` datetime(6) NOT NULL,
+    `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    CONSTRAINT `PK_AccessGroupMemberships` PRIMARY KEY (`Id`)
+) CHARACTER SET utf8mb4;");
+            EnsureColumns(
+                c,
+                "AccessGroupMemberships",
+                ("TenantId", "ALTER TABLE `AccessGroupMemberships` ADD `TenantId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("GroupId", "ALTER TABLE `AccessGroupMemberships` ADD `GroupId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("UserId", "ALTER TABLE `AccessGroupMemberships` ADD `UserId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("MembershipStatus", "ALTER TABLE `AccessGroupMemberships` ADD `MembershipStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("AddedAtUtc", "ALTER TABLE `AccessGroupMemberships` ADD `AddedAtUtc` datetime(6) NOT NULL;"),
+                ("RemovedAtUtc", "ALTER TABLE `AccessGroupMemberships` ADD `RemovedAtUtc` datetime(6) NULL;"),
+                ("CreatedAtUtc", "ALTER TABLE `AccessGroupMemberships` ADD `CreatedAtUtc` datetime(6) NOT NULL;"),
+                ("UpdatedAtUtc", "ALTER TABLE `AccessGroupMemberships` ADD `UpdatedAtUtc` datetime(6) NOT NULL;"),
+                ("CreatedByUserId", "ALTER TABLE `AccessGroupMemberships` ADD `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("UpdatedByUserId", "ALTER TABLE `AccessGroupMemberships` ADD `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL;"));
+
+            EnsureTable(
+                c,
+                tableName: "AccessGroups",
+                createSql: @"
+CREATE TABLE `AccessGroups` (
+    `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+    `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `Name` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+    `Description` varchar(1000) CHARACTER SET utf8mb4 NULL,
+    `Status` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+    `ScopeType` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+    `ProductCode` varchar(100) CHARACTER SET utf8mb4 NULL,
+    `OrganizationId` char(36) COLLATE ascii_general_ci NULL,
+    `CreatedAtUtc` datetime(6) NOT NULL,
+    `UpdatedAtUtc` datetime(6) NOT NULL,
+    `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    CONSTRAINT `PK_AccessGroups` PRIMARY KEY (`Id`)
+) CHARACTER SET utf8mb4;");
+            EnsureColumns(
+                c,
+                "AccessGroups",
+                ("TenantId", "ALTER TABLE `AccessGroups` ADD `TenantId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("Name", "ALTER TABLE `AccessGroups` ADD `Name` varchar(200) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("Description", "ALTER TABLE `AccessGroups` ADD `Description` varchar(1000) CHARACTER SET utf8mb4 NULL;"),
+                ("Status", "ALTER TABLE `AccessGroups` ADD `Status` varchar(20) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("ScopeType", "ALTER TABLE `AccessGroups` ADD `ScopeType` varchar(20) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("ProductCode", "ALTER TABLE `AccessGroups` ADD `ProductCode` varchar(100) CHARACTER SET utf8mb4 NULL;"),
+                ("OrganizationId", "ALTER TABLE `AccessGroups` ADD `OrganizationId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("CreatedAtUtc", "ALTER TABLE `AccessGroups` ADD `CreatedAtUtc` datetime(6) NOT NULL;"),
+                ("UpdatedAtUtc", "ALTER TABLE `AccessGroups` ADD `UpdatedAtUtc` datetime(6) NOT NULL;"),
+                ("CreatedByUserId", "ALTER TABLE `AccessGroups` ADD `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("UpdatedByUserId", "ALTER TABLE `AccessGroups` ADD `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL;"));
+
+            EnsureTable(
+                c,
+                tableName: "GroupProductAccess",
+                createSql: @"
+CREATE TABLE `GroupProductAccess` (
+    `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+    `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `GroupId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `ProductCode` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+    `AccessStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+    `GrantedAtUtc` datetime(6) NULL,
+    `RevokedAtUtc` datetime(6) NULL,
+    `CreatedAtUtc` datetime(6) NOT NULL,
+    `UpdatedAtUtc` datetime(6) NOT NULL,
+    `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    CONSTRAINT `PK_GroupProductAccess` PRIMARY KEY (`Id`)
+) CHARACTER SET utf8mb4;");
+            EnsureColumns(
+                c,
+                "GroupProductAccess",
+                ("TenantId", "ALTER TABLE `GroupProductAccess` ADD `TenantId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("GroupId", "ALTER TABLE `GroupProductAccess` ADD `GroupId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("ProductCode", "ALTER TABLE `GroupProductAccess` ADD `ProductCode` varchar(100) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("AccessStatus", "ALTER TABLE `GroupProductAccess` ADD `AccessStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("GrantedAtUtc", "ALTER TABLE `GroupProductAccess` ADD `GrantedAtUtc` datetime(6) NULL;"),
+                ("RevokedAtUtc", "ALTER TABLE `GroupProductAccess` ADD `RevokedAtUtc` datetime(6) NULL;"),
+                ("CreatedAtUtc", "ALTER TABLE `GroupProductAccess` ADD `CreatedAtUtc` datetime(6) NOT NULL;"),
+                ("UpdatedAtUtc", "ALTER TABLE `GroupProductAccess` ADD `UpdatedAtUtc` datetime(6) NOT NULL;"),
+                ("CreatedByUserId", "ALTER TABLE `GroupProductAccess` ADD `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("UpdatedByUserId", "ALTER TABLE `GroupProductAccess` ADD `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL;"));
+
+            EnsureTable(
+                c,
+                tableName: "GroupRoleAssignments",
+                createSql: @"
+CREATE TABLE `GroupRoleAssignments` (
+    `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+    `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `GroupId` char(36) COLLATE ascii_general_ci NOT NULL,
+    `RoleCode` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+    `ProductCode` varchar(100) CHARACTER SET utf8mb4 NULL,
+    `OrganizationId` char(36) COLLATE ascii_general_ci NULL,
+    `AssignmentStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+    `AssignedAtUtc` datetime(6) NULL,
+    `RemovedAtUtc` datetime(6) NULL,
+    `CreatedAtUtc` datetime(6) NOT NULL,
+    `UpdatedAtUtc` datetime(6) NOT NULL,
+    `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+    CONSTRAINT `PK_GroupRoleAssignments` PRIMARY KEY (`Id`)
+) CHARACTER SET utf8mb4;");
+            EnsureColumns(
+                c,
+                "GroupRoleAssignments",
+                ("TenantId", "ALTER TABLE `GroupRoleAssignments` ADD `TenantId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("GroupId", "ALTER TABLE `GroupRoleAssignments` ADD `GroupId` char(36) COLLATE ascii_general_ci NOT NULL;"),
+                ("RoleCode", "ALTER TABLE `GroupRoleAssignments` ADD `RoleCode` varchar(100) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("ProductCode", "ALTER TABLE `GroupRoleAssignments` ADD `ProductCode` varchar(100) CHARACTER SET utf8mb4 NULL;"),
+                ("OrganizationId", "ALTER TABLE `GroupRoleAssignments` ADD `OrganizationId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("AssignmentStatus", "ALTER TABLE `GroupRoleAssignments` ADD `AssignmentStatus` varchar(20) CHARACTER SET utf8mb4 NOT NULL;"),
+                ("AssignedAtUtc", "ALTER TABLE `GroupRoleAssignments` ADD `AssignedAtUtc` datetime(6) NULL;"),
+                ("RemovedAtUtc", "ALTER TABLE `GroupRoleAssignments` ADD `RemovedAtUtc` datetime(6) NULL;"),
+                ("CreatedAtUtc", "ALTER TABLE `GroupRoleAssignments` ADD `CreatedAtUtc` datetime(6) NOT NULL;"),
+                ("UpdatedAtUtc", "ALTER TABLE `GroupRoleAssignments` ADD `UpdatedAtUtc` datetime(6) NOT NULL;"),
+                ("CreatedByUserId", "ALTER TABLE `GroupRoleAssignments` ADD `CreatedByUserId` char(36) COLLATE ascii_general_ci NULL;"),
+                ("UpdatedByUserId", "ALTER TABLE `GroupRoleAssignments` ADD `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL;"));
+
+            EnsureIndex(
+                c,
+                tableName: "AccessGroupMemberships",
+                indexName: "IX_AccessGroupMemberships_TenantId_GroupId_UserId",
+                createSql: "CREATE UNIQUE INDEX `IX_AccessGroupMemberships_TenantId_GroupId_UserId` ON `AccessGroupMemberships` (`TenantId`, `GroupId`, `UserId`);");
+            EnsureIndex(
+                c,
+                tableName: "AccessGroups",
+                indexName: "IX_AccessGroups_TenantId_Name",
+                createSql: "CREATE UNIQUE INDEX `IX_AccessGroups_TenantId_Name` ON `AccessGroups` (`TenantId`, `Name`);");
+            EnsureIndex(
+                c,
+                tableName: "GroupProductAccess",
+                indexName: "IX_GroupProductAccess_TenantId_GroupId_ProductCode",
+                createSql: "CREATE UNIQUE INDEX `IX_GroupProductAccess_TenantId_GroupId_ProductCode` ON `GroupProductAccess` (`TenantId`, `GroupId`, `ProductCode`);");
+            EnsureIndex(
+                c,
+                tableName: "GroupRoleAssignments",
+                indexName: "IX_GroupRoleAssignments_TenantId_GroupId_RoleCode",
+                createSql: "CREATE INDEX `IX_GroupRoleAssignments_TenantId_GroupId_RoleCode` ON `GroupRoleAssignments` (`TenantId`, `GroupId`, `RoleCode`);");
+        },
+        warningMessage:
+            "LS-ID-AGR-001: AddAccessGroups is missing from EF history. " +
+            "Ensuring legacy access-group tables/indexes exist and recording the migration before normal Migrate().");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "LS-ID-AGR-001 pre-migration guard failed — proceeding with normal migration");
+}
+
 // ── LS-ID-TNT-011 pre-migration guard ────────────────────────────────────────
 // MySQL auto-commits DDL (ALTER TABLE, CREATE TABLE) immediately, even inside a
 // failed migration transaction. If 20260418230627_AddTenantPermissionCatalog ran
@@ -235,6 +702,14 @@ try
         },
         prerequisite: c =>
         {
+            if (!RequiredTablesExist(
+                c,
+                "idt_Products",
+                "idt_Capabilities",
+                "idt_Roles",
+                "idt_RoleCapabilityAssignments"))
+                return false;
+
             // Only proceed if the DDL column was already applied (partial-commit scenario).
             c.CommandText = @"
                 SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
@@ -291,6 +766,14 @@ try
         efVersion:   EfVersion,
         logger:      app.Logger,
         guardLabel:  "LS-ID-SUP-002",
+        prerequisite: c => RequiredTablesExist(
+            c,
+            "idt_Roles",
+            "idt_ScopedRoleAssignments",
+            "idt_Users",
+            "idt_UserTenants",
+            "idt_UserOrganizationMemberships",
+            "idt_Organizations"),
         apply: c =>
         {
             c.CommandText = $@"
@@ -347,6 +830,13 @@ WHERE u.`IsActive` = 1
         efVersion:   EfVersion,
         logger:      app.Logger,
         guardLabel:  "LS-ID-SUP-002",
+        prerequisite: c => RequiredTablesExist(
+            c,
+            "idt_ScopedRoleAssignments",
+            "idt_Users",
+            "idt_UserTenants",
+            "idt_UserOrganizationMemberships",
+            "idt_Organizations"),
         apply: c =>
         {
             c.CommandText = $@"
@@ -392,6 +882,11 @@ WHERE u.`IsActive` = 1
         efVersion:   EfVersion,
         logger:      app.Logger,
         guardLabel:  "LS-ID-SUP-002",
+        prerequisite: c => RequiredTablesExist(
+            c,
+            "idt_ScopedRoleAssignments",
+            "idt_UserTenants",
+            "idt_Users"),
         apply: c =>
         {
             c.CommandText = $@"
@@ -438,6 +933,12 @@ WHERE 1 = 1
         efVersion:   EfVersion,
         logger:      app.Logger,
         guardLabel:  "LS-ID-ADM-001",
+        prerequisite: c => RequiredTablesExist(
+            c,
+            "idt_Users",
+            "idt_UserTenants",
+            "idt_UserOrganizationMemberships",
+            "idt_ScopedRoleAssignments"),
         apply: c =>
         {
             const string AdminUserId   = "50000000-0000-0000-0000-000000000001";
@@ -524,6 +1025,11 @@ try
         efVersion:   "8.0.7",
         logger:      app.Logger,
         guardLabel:  "LS-ID-CC-001",
+        prerequisite: c => RequiredTablesExist(
+            c,
+            "idt_ScopedRoleAssignments",
+            "idt_UserOrganizationMemberships",
+            "idt_Organizations"),
         apply: c =>
         {
             // SQL is defined once on the migration class to avoid duplication.
@@ -547,7 +1053,15 @@ try
 }
 catch (Exception ex)
 {
-    app.Logger.LogWarning(ex, "Could not apply migrations — ensure MySQL is running and connection string is correct");
+    if (app.Environment.IsDevelopment())
+    {
+        app.Logger.LogWarning(ex, "Could not apply migrations — ensure MySQL is running and connection string is correct");
+    }
+    else
+    {
+        app.Logger.LogCritical(ex, "Identity database migrations failed — service cannot start with an out-of-sync schema.");
+        throw;
+    }
 }
 
 // ── Migration coverage self-test ─────────────────────────────────────────
@@ -857,3 +1371,88 @@ app.MapGroupEndpoints();
 app.MapPermissionCatalogEndpoints();
 
 app.Run();
+
+static bool RequiredTablesExist(System.Data.IDbCommand cmd, params string[] tableNames)
+{
+    cmd.CommandText = $@"
+        SELECT COUNT(*)
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name IN ({string.Join(", ", tableNames.Select(t => $"'{t}'"))});";
+
+    return Convert.ToInt64(cmd.ExecuteScalar()) == tableNames.Length;
+}
+
+static bool AnyTableExists(System.Data.IDbCommand cmd, params string[] tableNames) =>
+    tableNames.Any(tableName => TableExists(cmd, tableName));
+
+static void EnsureTable(System.Data.IDbCommand cmd, string tableName, string createSql)
+{
+    if (TableExists(cmd, tableName))
+        return;
+
+    cmd.CommandText = createSql;
+    cmd.ExecuteNonQuery();
+}
+
+static void EnsureColumn(System.Data.IDbCommand cmd, string tableName, string columnName, string alterSql)
+{
+    if (ColumnExists(cmd, tableName, columnName))
+        return;
+
+    cmd.CommandText = alterSql;
+    cmd.ExecuteNonQuery();
+}
+
+static void EnsureColumns(
+    System.Data.IDbCommand cmd,
+    string tableName,
+    params (string ColumnName, string AlterSql)[] columns)
+{
+    foreach (var (columnName, alterSql) in columns)
+        EnsureColumn(cmd, tableName, columnName, alterSql);
+}
+
+static void EnsureIndex(System.Data.IDbCommand cmd, string tableName, string indexName, string createSql)
+{
+    if (IndexExists(cmd, tableName, indexName))
+        return;
+
+    cmd.CommandText = createSql;
+    cmd.ExecuteNonQuery();
+}
+
+static bool TableExists(System.Data.IDbCommand cmd, string tableName)
+{
+    cmd.CommandText = $@"
+        SELECT COUNT(*)
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name = '{tableName}';";
+
+    return Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+}
+
+static bool ColumnExists(System.Data.IDbCommand cmd, string tableName, string columnName)
+{
+    cmd.CommandText = $@"
+        SELECT COUNT(*)
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = '{tableName}'
+          AND column_name = '{columnName}';";
+
+    return Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+}
+
+static bool IndexExists(System.Data.IDbCommand cmd, string tableName, string indexName)
+{
+    cmd.CommandText = $@"
+        SELECT COUNT(*)
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = '{tableName}'
+          AND index_name = '{indexName}';";
+
+    return Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+}
