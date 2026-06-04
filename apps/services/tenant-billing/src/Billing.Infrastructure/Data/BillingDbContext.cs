@@ -118,7 +118,7 @@ public class BillingDbContext : DbContext
             b.Property(x => x.TemplateHeaderText).HasMaxLength(2000);
             b.Property(x => x.TemplateFooterText).HasMaxLength(4000);
             b.Property(x => x.TemplatePaymentInstructions).HasMaxLength(4000);
-            b.Property(x => x.TemplateTermsText).HasMaxLength(8000);
+            b.Property(x => x.TemplateTermsText).HasColumnType("longtext");
             b.Property(x => x.TemplateMemoPlaceholder).HasMaxLength(2000);
             b.Property(x => x.TemplateDisplayBillingAddress)
                 .IsRequired().HasDefaultValue(false);
