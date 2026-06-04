@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -26,6 +27,7 @@ namespace CareConnect.Infrastructure.Data.Migrations;
 /// Migration strategy:
 ///   All existing rows default to 'URL' (backward compatible — no data loss).
 /// </summary>
+[DbContext(typeof(CareConnectDbContext))]
 [Migration("20260422130000_AddProviderAccessStage")]
 public partial class AddProviderAccessStage : Migration
 {

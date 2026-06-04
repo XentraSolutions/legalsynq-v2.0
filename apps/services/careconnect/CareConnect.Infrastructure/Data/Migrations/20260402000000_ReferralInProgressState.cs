@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -22,6 +23,7 @@ namespace CareConnect.Infrastructure.Data.Migrations;
 ///   The transition matrix in ReferralWorkflowRules retains a legacy Scheduled entry
 ///   so any in-flight data that arrives after migration can still be normalised safely.
 /// </summary>
+[DbContext(typeof(CareConnectDbContext))]
 [Migration("20260402000000_ReferralInProgressState")]
 public partial class ReferralInProgressState : Migration
 {

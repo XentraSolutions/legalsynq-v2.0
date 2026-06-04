@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -16,6 +17,7 @@ namespace CareConnect.Infrastructure.Data.Migrations;
 ///   - Indexed on (TenantId, ReferralId) for per-referral timeline queries.
 ///   - Indexed on (TenantId, ReassignedAtUtc) for time-windowed admin queries.
 /// </summary>
+[DbContext(typeof(CareConnectDbContext))]
 [Migration("20260422000000_AddProviderReassignmentLog")]
 public partial class AddProviderReassignmentLog : Migration
 {
