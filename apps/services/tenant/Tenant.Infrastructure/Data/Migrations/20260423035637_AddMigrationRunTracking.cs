@@ -11,14 +11,6 @@ namespace Tenant.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "TimeZone",
-                table: "tenant_Tenants",
-                type: "varchar(100)",
-                maxLength: 100,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
             migrationBuilder.CreateTable(
                 name: "tenant_MigrationRuns",
                 columns: table => new
@@ -106,10 +98,6 @@ namespace Tenant.Infrastructure.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "tenant_MigrationRuns");
-
-            migrationBuilder.DropColumn(
-                name: "TimeZone",
-                table: "tenant_Tenants");
         }
     }
 }
