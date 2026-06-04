@@ -186,22 +186,22 @@ Create service-specific files under `/etc/legalsynq`.
 PublicTrustBoundary__InternalRequestSecret=<secret>
 
 # reverse proxy destination overrides
-ReverseProxy__Clusters__identity-cluster__Destinations__identity-primary__Address=http://127.0.0.1:5001
-ReverseProxy__Clusters__fund-cluster__Destinations__fund-primary__Address=http://127.0.0.1:5002
-ReverseProxy__Clusters__careconnect-cluster__Destinations__careconnect-primary__Address=http://127.0.0.1:5003
-ReverseProxy__Clusters__tenant-cluster__Destinations__tenant-primary__Address=http://127.0.0.1:5005
-ReverseProxy__Clusters__documents-cluster__Destinations__documents-primary__Address=http://127.0.0.1:5006
-ReverseProxy__Clusters__audit-cluster__Destinations__audit-primary__Address=http://127.0.0.1:5007
-ReverseProxy__Clusters__notifications-cluster__Destinations__notifications-primary__Address=http://127.0.0.1:5008
-ReverseProxy__Clusters__liens-cluster__Destinations__liens-primary__Address=http://127.0.0.1:5009
-ReverseProxy__Clusters__comms-cluster__Destinations__comms-primary__Address=http://127.0.0.1:5011
-ReverseProxy__Clusters__flow-cluster__Destinations__flow-primary__Address=http://127.0.0.1:5012
-ReverseProxy__Clusters__monitoring-cluster__Destinations__monitoring-primary__Address=http://127.0.0.1:5015
-ReverseProxy__Clusters__task-cluster__Destinations__task-primary__Address=http://127.0.0.1:5016
-ReverseProxy__Clusters__support-cluster__Destinations__support-primary__Address=http://127.0.0.1:5017
-ReverseProxy__Clusters__reports-cluster__Destinations__reports-primary__Address=http://127.0.0.1:5029
-ReverseProxy__Clusters__commerce-cluster__Destinations__commerce-primary__Address=http://127.0.0.1:5030
-ReverseProxy__Clusters__billing-cluster__Destinations__billing-primary__Address=http://127.0.0.1:5031
+ReverseProxy__Clusters__identity_cluster__Destinations__identity_primary__Address=http://127.0.0.1:5001
+ReverseProxy__Clusters__fund_cluster__Destinations__fund_primary__Address=http://127.0.0.1:5002
+ReverseProxy__Clusters__careconnect_cluster__Destinations__careconnect_primary__Address=http://127.0.0.1:5003
+ReverseProxy__Clusters__tenant_cluster__Destinations__tenant_primary__Address=http://127.0.0.1:5005
+ReverseProxy__Clusters__documents_cluster__Destinations__documents_primary__Address=http://127.0.0.1:5006
+ReverseProxy__Clusters__audit_cluster__Destinations__audit_primary__Address=http://127.0.0.1:5007
+ReverseProxy__Clusters__notifications_cluster__Destinations__notifications_primary__Address=http://127.0.0.1:5008
+ReverseProxy__Clusters__liens_cluster__Destinations__liens_primary__Address=http://127.0.0.1:5009
+ReverseProxy__Clusters__comms_cluster__Destinations__comms_primary__Address=http://127.0.0.1:5011
+ReverseProxy__Clusters__flow_cluster__Destinations__flow_primary__Address=http://127.0.0.1:5012
+ReverseProxy__Clusters__monitoring_cluster__Destinations__monitoring_primary__Address=http://127.0.0.1:5015
+ReverseProxy__Clusters__task_cluster__Destinations__task_primary__Address=http://127.0.0.1:5016
+ReverseProxy__Clusters__support_cluster__Destinations__support_primary__Address=http://127.0.0.1:5017
+ReverseProxy__Clusters__reports_cluster__Destinations__reports_primary__Address=http://127.0.0.1:5029
+ReverseProxy__Clusters__commerce_cluster__Destinations__commerce_primary__Address=http://127.0.0.1:5030
+ReverseProxy__Clusters__billing_cluster__Destinations__billing_primary__Address=http://127.0.0.1:5031
 
 # legacy service clients retained for code paths that read direct clients
 IdentityService__BaseUrl=http://localhost:5001
