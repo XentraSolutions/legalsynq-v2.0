@@ -21,6 +21,7 @@ units=(
   legalsynq-billing
   legalsynq-comms
   legalsynq-gateway
+  legalsynq-web
 )
 
 args=()

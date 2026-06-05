@@ -1,7 +1,10 @@
 import { redirect }                 from 'next/navigation';
 import { FirmStatusClient }         from './firm-status-client';
 import { createEnrollmentToken }    from '@/app/enroll/actions';
-import { ReferrerPortalAccessStatuses } from '@/types/careconnect';
+import {
+  ReferrerPortalAccessStatuses,
+  type ReferrerPortalAccessStatusValue,
+} from '@/types/careconnect';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,7 +55,7 @@ export default async function FirmStatusPage({ searchParams }: Props) {
 
   // CC-PORTAL-CHECK: tenant-aware access status for the referrer email.
   // Failure → safe default (no_account) so the enrollment CTA is shown instead.
-  let portalAccessStatus = ReferrerPortalAccessStatuses.NoAccount;
+  let portalAccessStatus: ReferrerPortalAccessStatusValue = ReferrerPortalAccessStatuses.NoAccount;
   const referrerEmail = threadData.referrerEmail as string | null;
   const referralTenantId = threadData.tenantId as string | null;
   if (referrerEmail && referralTenantId) {
@@ -66,7 +69,9 @@ export default async function FirmStatusPage({ searchParams }: Props) {
       );
       if (checkResp.ok) {
         const checkData = await checkResp.json() as { status?: string };
-        portalAccessStatus = checkData.status ?? ReferrerPortalAccessStatuses.NoAccount;
+        if (checkData.status && Object.values(ReferrerPortalAccessStatuses).includes(checkData.status as ReferrerPortalAccessStatusValue)) {
+          portalAccessStatus = checkData.status as ReferrerPortalAccessStatusValue;
+        }
       }
     } catch {
       // non-fatal — keep no_account

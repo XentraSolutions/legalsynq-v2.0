@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
- * Global Next.js middleware — route protection + hostname-based routing.
+ * Global Next.js proxy — route protection + hostname-based routing.
  *
  * Rules:
  *  1. Common portal hostname (CC_COMMON_PORTAL_HOSTNAME):
@@ -10,16 +10,16 @@ import { NextResponse, type NextRequest } from 'next/server';
  *  2. Public routes (/login, /portal, static assets) — always allowed through.
  *  3. Protected routes — require the platform_session cookie to exist.
  *     The existence of the cookie is a gate only; the actual token is validated
- *     server-side by /auth/me in getServerSession(). Middleware does NOT decode
+ *     server-side by /auth/me in getServerSession(). Proxy does NOT decode
  *     or trust the JWT payload for access decisions — that is the backend's job.
  *  4. Admin routes (/admin) — same cookie gate; real role check happens in the
  *     requireAdmin() auth guard inside the route/layout Server Component.
  *  5. Portal routes (/portal) — checked for portal_session cookie only.
  *     Portal-specific pages below /portal/* that need auth will handle it in their
  *     page server components.
- *  6. This middleware NEVER makes backend capability decisions.
+ *  6. This proxy NEVER makes backend capability decisions.
  *
- * The middleware is intentionally lightweight. All detailed authorization is
+ * The proxy is intentionally lightweight. All detailed authorization is
  * server-side inside the route handlers and auth guard helpers.
  */
 
@@ -69,7 +69,7 @@ const PUBLIC_PATHS = [
   '/api/geocode/',
 ];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // ── Common portal hostname routing ─────────────────────────────────────────

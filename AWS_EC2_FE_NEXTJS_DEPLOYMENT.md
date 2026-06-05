@@ -9,6 +9,11 @@ LegalSynq Web       apps/web             port 3000
 Control Center      apps/control-center  port 5004
 ```
 
+Supported deployment modes in this repo:
+
+- Source checkout deploy: the server has the full monorepo checkout under `/opt/legalsynq/app`.
+- Built artifact deploy: the server receives copied frontend build output such as `dist/frontend/web` and `dist/frontend/control-center`.
+
 Recommended public hostnames:
 
 ```text
@@ -92,6 +97,21 @@ sudo mkdir -p /opt/legalsynq /etc/legalsynq /var/log/legalsynq
 sudo chown -R legalsynq:legalsynq /opt/legalsynq /var/log/legalsynq
 ```
 
+Verify that the application checkout path itself is writable by the `legalsynq` user before any `pnpm install` or service restart:
+
+```bash
+sudo install -d -o legalsynq -g legalsynq /opt/legalsynq/app
+sudo chown -R legalsynq:legalsynq /opt/legalsynq/app
+sudo -u legalsynq test -w /opt/legalsynq/app
+```
+
+Important:
+
+- `/opt/legalsynq/app` is the monorepo root only. It is the correct place for `git clone` and root-level `pnpm install`, but it is not the correct `systemd` working directory for the frontend apps.
+- The frontend repo path in this monorepo is `/opt/legalsynq/app/apps/web`, not `/opt/legalsynq/app/web`.
+- If your service, deploy hook, or CI job runs from `/opt/legalsynq/app/web`, fix the working directory first; otherwise `pnpm` may fail with `EACCES` while creating temporary files such as `/opt/legalsynq/app/web/_tmp_*`.
+- Exception: if you intentionally deploy a copied artifact into `/opt/legalsynq/app/web`, treat it as an artifact directory, not as the monorepo app source directory. In that mode, do not expect `pnpm start` to work unless you also deploy the app manifest and runtime dependencies needed by Next.js.
+
 ## 4. Deploy Code
 
 Clone the repository:
@@ -109,6 +129,12 @@ Install dependencies from the monorepo root:
 ```bash
 pnpm install --frozen-lockfile
 ```
+
+Important:
+
+- Run `pnpm install` from `/opt/legalsynq/app`.
+- Run `pnpm build` and `pnpm start` from each app directory such as `/opt/legalsynq/app/apps/web`.
+- If you run `pnpm start` from `/opt/legalsynq/app`, `pnpm` will fail because the root [package.json](/Users/ralphlopez/Documents/GitHub/legalsynq/legalsynq-v2.0/package.json) does not define a `start` script.
 
 If the lockfile is not current yet, use this only for the first manual deploy and commit the resulting lockfile afterward:
 
@@ -193,7 +219,96 @@ If the EC2 instance runs out of memory during build, either:
 - Add swap before building.
 - Use at least `t3.large` for build-on-instance deployments.
 
+## 6A. Understand the `dist/` Artifact Layout
+
+The local frontend build script [scripts/build-fe-local.sh](/Users/ralphlopez/Documents/GitHub/legalsynq/legalsynq-v2.0/scripts/build-fe-local.sh) packages each app into:
+
+- `dist/frontend/web`
+- `dist/frontend/control-center`
+
+Important:
+
+- These directories are app-root runtime artifacts.
+- Each artifact now contains:
+  - `.next/`
+  - `package.json`
+  - `next.config.mjs`
+  - `public/` when present
+- The artifact is still not a fully standalone Next.js server bundle.
+- You must still install runtime dependencies in the artifact directory on the server before running `pnpm start`.
+- The `dist/` output currently does not include a standalone `server.js` launcher and is not built with Next.js standalone output mode.
+
+If you deploy the copied `dist/frontend/web` folder directly to the server, use this flow:
+
+1. Copy `dist/frontend/web` to `/opt/legalsynq/app/web`.
+2. Run `pnpm install --prod` inside `/opt/legalsynq/app/web`.
+3. Start the app with `pnpm start` from `/opt/legalsynq/app/web`.
+
+Example:
+
+```bash
+sudo -iu legalsynq
+cd /opt/legalsynq/app/web
+pnpm install --prod
+set -a
+. /etc/legalsynq/web.env
+set +a
+pnpm start
+```
+
+If `pnpm install --prod` fails with:
+
+```text
+[EACCES] EACCES: permission denied, open '/opt/legalsynq/app/web/_tmp_*'
+```
+
+repair the artifact directory ownership and permissions first:
+
+```bash
+sudo chown -R legalsynq:legalsynq /opt/legalsynq/app
+sudo find /opt/legalsynq/app -type d -exec chmod 755 {} \;
+sudo find /opt/legalsynq/app -type f -exec chmod 644 {} \;
+sudo chmod 755 /opt/legalsynq/app/web
+```
+
+Then verify write access explicitly:
+
+```bash
+sudo -u legalsynq test -w /opt/legalsynq/app/web && echo writable
+sudo -u legalsynq touch /opt/legalsynq/app/web/.permcheck
+sudo -u legalsynq rm /opt/legalsynq/app/web/.permcheck
+```
+
+Only after those checks pass should you retry:
+
+```bash
+sudo -iu legalsynq
+cd /opt/legalsynq/app/web
+pnpm install --prod
+```
+
+Note about this warning:
+
+```text
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides".
+```
+
+- This warning is separate from the `EACCES` failure.
+- It does not prevent `pnpm` from running.
+- The immediate install blocker is directory write permission under `/opt/legalsynq/app/web`.
+- Clean this up later by moving overrides to the current pnpm-supported config location.
+
+Future improvement:
+
+- Switch the app to Next.js standalone output and deploy the standalone server bundle instead of relying on `pnpm start`.
+
 ## 7. Create systemd Services
+
+Choose the unit template that matches your deployment mode.
+
+### Option A — Source Checkout Deploy
+
+Use this when the server has the full monorepo under `/opt/legalsynq/app`.
 
 Create `/etc/systemd/system/legalsynq-web.service`:
 
@@ -206,6 +321,39 @@ Wants=network-online.target
 [Service]
 User=legalsynq
 WorkingDirectory=/opt/legalsynq/app/apps/web
+EnvironmentFile=/etc/legalsynq/web.env
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/usr/bin/pnpm start
+Restart=always
+RestartSec=5
+SyslogIdentifier=legalsynq-web
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Option B — Copied Artifact Deploy
+
+Use this only if `/opt/legalsynq/app/web` is a runtime artifact directory that you assembled intentionally.
+
+Important:
+
+- `ExecStart=/usr/bin/pnpm start` in `/opt/legalsynq/app/web` is valid only after you copy the packaged artifact and run `pnpm install --prod` in that directory.
+- If runtime dependencies are missing, `pnpm start` may resolve but `next start` will fail at runtime.
+- If you copied only old `.next` output into `/opt/legalsynq/app/web`, `systemd` will still fail even though the build succeeded on your local machine.
+- If the artifact was copied by `root` or another user, repair ownership before running any `pnpm` command as `legalsynq`.
+
+Example artifact-based web service:
+
+```ini
+[Unit]
+Description=LegalSynq Web Next.js App
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=legalsynq
+WorkingDirectory=/opt/legalsynq/app/web
 EnvironmentFile=/etc/legalsynq/web.env
 Environment=NEXT_TELEMETRY_DISABLED=1
 ExecStart=/usr/bin/pnpm start
@@ -253,6 +401,45 @@ Check logs:
 sudo journalctl -u legalsynq-web -n 100 --no-pager
 sudo journalctl -u legalsynq-control-center -n 100 --no-pager
 ```
+
+Quick validation for Ubuntu/systemd deployments:
+
+```bash
+sudo systemctl cat legalsynq-web
+sudo -u legalsynq test -w /opt/legalsynq/app/apps/web && echo writable
+sudo ls -ld /opt/legalsynq/app /opt/legalsynq/app/apps /opt/legalsynq/app/apps/web
+sudo -u legalsynq sh -lc 'cd /opt/legalsynq/app/apps/web && pnpm run start --help >/dev/null && echo web-start-script-found'
+```
+
+Expected result:
+
+- `WorkingDirectory=/opt/legalsynq/app/apps/web`
+- the checkout directories are owned by `legalsynq:legalsynq` or are otherwise writable by that user
+- the app-level `package.json` is the one being resolved for `pnpm start`
+
+Common failure patterns:
+
+- `ERR_PNPM_NO_SCRIPT_OR_SERVER Missing script start or file server.js`
+  - Cause: `systemd` is starting from `/opt/legalsynq/app` or another directory that does not contain the web app `package.json`.
+  - Fix: set `WorkingDirectory=/opt/legalsynq/app/apps/web`.
+- `ERR_PNPM_NO_SCRIPT_OR_SERVER Missing script start or file server.js` in `/opt/legalsynq/app/web`
+  - Cause: `/opt/legalsynq/app/web` contains old copied build output from `dist/frontend/web` without the app manifest.
+  - Fix: rebuild with the current packaging script and redeploy the full `dist/frontend/web` artifact.
+- `EACCES permission denied, open '/opt/legalsynq/app/web/_tmp_*'`
+  - Cause: a deploy hook or service is using the wrong path `/opt/legalsynq/app/web`, or the checkout tree is not writable by `legalsynq`.
+  - Fix: use `/opt/legalsynq/app/apps/web` and restore ownership with `sudo chown -R legalsynq:legalsynq /opt/legalsynq/app`.
+- `EACCES permission denied, open '/opt/legalsynq/app/web/_tmp_*'` during artifact deploy
+  - Cause: `/opt/legalsynq/app/web` exists, but the deployed artifact tree is not writable by `legalsynq`.
+  - Fix: run `sudo chown -R legalsynq:legalsynq /opt/legalsynq/app`, normalize permissions, verify `test -w`, then retry `pnpm install --prod`.
+- `pnpm start` works manually but fails in `systemd`
+  - Cause: the shell session is in the app directory, but the unit file is not.
+  - Fix: trust `systemctl cat legalsynq-web`, not the current interactive shell location.
+- `next: command not found` or `Cannot find module 'next'`
+  - Cause: the artifact was copied, but runtime dependencies were never installed in `/opt/legalsynq/app/web`.
+  - Fix: run `pnpm install --prod` in the deployed artifact directory before starting the service.
+- `The "pnpm" field in package.json is no longer read by pnpm`
+  - Cause: the deployed app uses a newer pnpm version that ignores `package.json -> pnpm.overrides`.
+  - Fix: treat it as a config warning, not as the root cause of install/start failure. Migrate the overrides later.
 
 ## 8. Configure Nginx
 

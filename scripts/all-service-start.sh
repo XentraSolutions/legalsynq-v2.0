@@ -18,4 +18,5 @@ sudo systemctl start \
   legalsynq-commerce \
   legalsynq-billing \
   legalsynq-comms \
-  legalsynq-gateway
+  legalsynq-gateway \
+  legalsynq-web
