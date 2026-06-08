@@ -1,5 +1,16 @@
 import { fetchEnrollmentPrefill, decodeEnrollmentToken } from './actions';
 import { EnrollmentForm }                               from './enrollment-form';
+import { getServerSession }                             from '@/lib/session';
+import { OrgType, ProductRole }                         from '@/types';
+
+export const dynamic = 'force-dynamic';
+
+interface AuthenticatedOrgPrefill {
+  companyName: string;
+  companyType: string;
+  email:       string;
+  phone:       string;
+}
 
 interface SearchParams {
   id?:       string;  // provider enrollment (not token-protected — tenantId scoped by HMAC prefill)
@@ -13,6 +24,7 @@ interface PageProps {
 
 export default async function EnrollPage({ searchParams }: PageProps) {
   const { id: providerId, tenantId, token } = await searchParams;
+  const session = await getServerSession();
 
   let prefill = null;
 
@@ -50,6 +62,23 @@ export default async function EnrollPage({ searchParams }: PageProps) {
   // Never derived from a user-controlled URL param.
   const isFirmEnrollment = !providerId && !!effectiveTenantId;
 
+  const hasCareConnectRole = !!session && (
+    session.productRoles.includes(ProductRole.CareConnectReferrer) ||
+    session.productRoles.includes(ProductRole.CareConnectReceiver)
+  );
+
+  const isExternalOrg = session?.orgType === OrgType.LawFirm || session?.orgType === OrgType.Provider;
+
+  const authenticatedOrgPrefill: AuthenticatedOrgPrefill | null =
+    session?.orgId && hasCareConnectRole && isExternalOrg
+      ? {
+          companyName: session.orgName ?? '',
+          companyType: session.orgType === OrgType.Provider ? 'Provider' : 'Law Firm',
+          email:       session.email,
+          phone:       session.phone ?? '',
+        }
+      : null;
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       <div className="max-w-2xl mx-auto px-4 py-12">
@@ -67,6 +96,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
         </div>
 
         <EnrollmentForm
+          authenticatedOrgPrefill={authenticatedOrgPrefill}
           prefill={prefill}
           providerId={providerId ?? null}
           tenantId={effectiveTenantId}
