@@ -496,7 +496,7 @@ export const controlCenterServerApi = {
     },
 
     clearAccessCode: async (tenantId: string): Promise<TenantAccessCodeMetadata> => {
-      const raw = await apiClient.delete<TenantAccessCodeMetadata>(
+      const raw = await apiClient.del<TenantAccessCodeMetadata>(
         `/tenant/api/tenants/${encodeURIComponent(tenantId)}/careconnect/public-network/access-code/`
       );
       safeRevalidateTag(CACHE_TAGS.tenants);
