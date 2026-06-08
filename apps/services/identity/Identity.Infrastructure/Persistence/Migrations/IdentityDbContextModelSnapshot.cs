@@ -58,7 +58,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<Guid>("TenantId")
+                    b.Property<Guid?>("TenantId")
                         .HasColumnType("char(36)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
@@ -327,6 +327,8 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationTypeId");
+
+                    b.HasIndex("OrgType", "Name");
 
                     b.HasIndex("TenantId", "Name")
                         .IsUnique();
@@ -2630,8 +2632,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasOne("Identity.Domain.Tenant", "Tenant")
                         .WithMany("Organizations")
                         .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("OrganizationTypeRef");
 

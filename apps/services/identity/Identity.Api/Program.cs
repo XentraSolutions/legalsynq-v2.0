@@ -1234,72 +1234,13 @@ catch (Exception ex)
     app.Logger.LogWarning(ex, "UIX-002-C product role seed encountered an error");
 }
 
-// ── Dev-only: ensure every user has a primary org membership ─────────────
-// Some tenants were created with the org added separately, leaving the user
-// without a UserOrganizationMembership.  This block auto-heals that gap.
+// ── Dev-only: ensure OrganizationProduct rows exist ──────────────────────
 if (app.Environment.IsDevelopment())
 {
     try
     {
         using var fixScope = app.Services.CreateScope();
         var fixDb = fixScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-
-        var usersWithoutMembership = await fixDb.Users
-            .Where(u => u.IsActive)
-            .Where(u => !fixDb.UserOrganizationMemberships.Any(m => m.UserId == u.Id))
-            .ToListAsync();
-
-        foreach (var orphan in usersWithoutMembership)
-        {
-            var userTenantId = await fixDb.UserTenants
-                .Where(ut => ut.UserId == orphan.Id && ut.IsActive)
-                .OrderBy(ut => ut.JoinedAtUtc)
-                .Select(ut => (Guid?)ut.TenantId)
-                .FirstOrDefaultAsync();
-
-            if (userTenantId is null) continue;
-
-            var org = await fixDb.Organizations
-                .Where(o => o.TenantId == userTenantId.Value && o.IsActive)
-                .OrderBy(o => o.CreatedAtUtc)
-                .FirstOrDefaultAsync();
-
-            if (org is null) continue;
-
-            var membership = Identity.Domain.UserOrganizationMembership.Create(
-                orphan.Id, org.Id, Identity.Domain.MemberRole.Admin);
-            membership.SetPrimary();
-            fixDb.UserOrganizationMemberships.Add(membership);
-
-            app.Logger.LogInformation(
-                "Dev fixup: created org membership for user {UserId} ({Email}) → org {OrgId} ({OrgName})",
-                orphan.Id, orphan.Email, org.Id, org.Name);
-        }
-
-        if (usersWithoutMembership.Count > 0)
-            await fixDb.SaveChangesAsync();
-
-        var allMemberships = await fixDb.UserOrganizationMemberships
-            .Where(m => m.IsActive)
-            .ToListAsync();
-
-        var userIdsWithPrimary = allMemberships.Where(m => m.IsPrimary).Select(m => m.UserId).ToHashSet();
-        var needsPrimary = allMemberships
-            .Where(m => !userIdsWithPrimary.Contains(m.UserId))
-            .GroupBy(m => m.UserId)
-            .Select(g => g.OrderBy(m => m.JoinedAtUtc).First())
-            .ToList();
-
-        foreach (var m in needsPrimary)
-        {
-            m.SetPrimary();
-            app.Logger.LogInformation(
-                "Dev fixup: set primary org membership for user {UserId} → org {OrgId}",
-                m.UserId, m.OrganizationId);
-        }
-
-        if (needsPrimary.Count > 0)
-            await fixDb.SaveChangesAsync();
 
         // Also ensure OrganizationProduct rows exist for every active TenantProduct + Org pair
         var tenantProducts = await fixDb.Set<Identity.Domain.TenantProduct>()

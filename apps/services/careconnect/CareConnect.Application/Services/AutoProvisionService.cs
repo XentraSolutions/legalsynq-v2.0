@@ -122,7 +122,7 @@ public class AutoProvisionService : IAutoProvisionService
 
         // Step 4: Create/resolve Identity Organization
         var orgId = await _identityOrgs.EnsureProviderOrganizationAsync(
-            referral.TenantId, provider.Id, provider.Name, ct);
+            referral.TenantId, provider.Id, provider.Name, ct: ct);
 
         if (orgId is null)
         {

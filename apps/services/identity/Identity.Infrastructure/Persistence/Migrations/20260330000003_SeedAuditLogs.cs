@@ -11,29 +11,22 @@ namespace Identity.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // 28 representative audit log entries matching the Control Center mock data.
+            // 22 representative audit log entries matching the Control Center mock data.
             // IDs use the 80000000-... prefix to avoid collisions with other seed ranges.
             // Raw SQL is used here because the lightweight designer file does not carry the
             // full model snapshot, so EF's InsertData cannot resolve column types.
             // In C# verbatim strings (@"") double-quote is escaped as "".
             migrationBuilder.Sql(@"
 INSERT INTO `AuditLogs` (`Id`,`ActorName`,`ActorType`,`Action`,`EntityType`,`EntityId`,`MetadataJson`,`CreatedAtUtc`) VALUES
-('80000000-0000-0000-0000-000000000001','admin@legalsynq.com','Admin','user.invite','User','o.chen@hartwell.law','{""tenantCode"":""HARTWELL"",""role"":""CaseManager""}','2025-03-10 11:05:00'),
-('80000000-0000-0000-0000-000000000002','admin@legalsynq.com','Admin','user.deactivate','User','a.diallo@meridiancare.com','{""tenantCode"":""MERIDIAN"",""reason"":""extended-leave""}','2024-12-10 10:00:00'),
 ('80000000-0000-0000-0000-000000000003','admin@legalsynq.com','Admin','user.lock','User','tanya@bluehavenrecovery.org','{""tenantCode"":""BLUEHAVEN"",""reason"":""policy-violation""}','2024-09-15 08:30:00'),
 ('80000000-0000-0000-0000-000000000004','n.patel@legalsynq.com','Admin','user.invite','User','s.kirk@thornfieldlaw.com','{""tenantCode"":""THORNFIELD"",""role"":""CaseManager""}','2025-02-20 14:05:00'),
 ('80000000-0000-0000-0000-000000000005','admin@legalsynq.com','Admin','user.lock','User','p.langford@graystonegov.org','{""tenantCode"":""GRAYSTONE"",""reason"":""account-suspended""}','2024-10-01 12:10:00'),
 ('80000000-0000-0000-0000-000000000006','n.patel@legalsynq.com','Admin','user.invite','User','y.tanaka@nexushealth.net','{""tenantCode"":""NEXUSHEALTH"",""role"":""ReadOnly""}','2025-03-15 11:05:00'),
-('80000000-0000-0000-0000-000000000007','admin@legalsynq.com','Admin','user.unlock','User','j.whitmore@hartwell.law','{""tenantCode"":""HARTWELL""}','2025-01-15 14:05:00'),
 ('80000000-0000-0000-0000-000000000008','admin@legalsynq.com','Admin','user.password_reset','User','r.moss@pinnaclelegal.com','{""tenantCode"":""PINNACLE"",""method"":""email-link""}','2025-03-05 08:15:00'),
-('80000000-0000-0000-0000-000000000009','admin@legalsynq.com','Admin','tenant.create','Tenant','HARTWELL','{""tenantType"":""LawFirm""}','2024-02-15 08:30:00'),
 ('80000000-0000-0000-0000-000000000010','admin@legalsynq.com','Admin','tenant.create','Tenant','NEXUSHEALTH','{""tenantType"":""Provider""}','2024-06-18 08:45:00'),
 ('80000000-0000-0000-0000-000000000011','admin@legalsynq.com','Admin','tenant.suspend','Tenant','GRAYSTONE','{""previousStatus"":""Active"",""reason"":""non-payment""}','2024-10-01 12:00:00'),
 ('80000000-0000-0000-0000-000000000012','admin@legalsynq.com','Admin','tenant.deactivate','Tenant','BLUEHAVEN','{""previousStatus"":""Active""}','2024-09-01 09:00:00'),
 ('80000000-0000-0000-0000-000000000013','n.patel@legalsynq.com','Admin','tenant.create','Tenant','THORNFIELD','{""tenantType"":""LawFirm""}','2024-06-05 11:30:00'),
-('80000000-0000-0000-0000-000000000014','n.patel@legalsynq.com','Admin','tenant.update','Tenant','MERIDIAN','{""field"":""primaryContactEmail"",""previous"":""old@meridiancare.com"",""next"":""ops@meridiancare.com""}','2025-01-05 14:30:00'),
-('80000000-0000-0000-0000-000000000015','admin@legalsynq.com','Admin','entitlement.enable','Entitlement','HARTWELL:SynqFund','{""tenantCode"":""HARTWELL"",""product"":""SynqFund""}','2024-02-16 09:00:00'),
-('80000000-0000-0000-0000-000000000016','admin@legalsynq.com','Admin','entitlement.enable','Entitlement','MERIDIAN:CareConnect','{""tenantCode"":""MERIDIAN"",""product"":""CareConnect""}','2024-03-02 10:15:00'),
 ('80000000-0000-0000-0000-000000000017','n.patel@legalsynq.com','Admin','entitlement.disable','Entitlement','BLUEHAVEN:CareConnect','{""tenantCode"":""BLUEHAVEN"",""product"":""CareConnect"",""reason"":""subscription-lapsed""}','2024-09-02 10:00:00'),
 ('80000000-0000-0000-0000-000000000018','admin@legalsynq.com','Admin','entitlement.enable','Entitlement','THORNFIELD:SynqLien','{""tenantCode"":""THORNFIELD"",""product"":""SynqLien""}','2024-06-06 08:00:00'),
 ('80000000-0000-0000-0000-000000000019','n.patel@legalsynq.com','Admin','entitlement.enable','Entitlement','NEXUSHEALTH:SynqRx','{""tenantCode"":""NEXUSHEALTH"",""product"":""SynqRx""}','2024-07-01 11:00:00'),

@@ -188,7 +188,7 @@ public static class UserMembershipEndpoints
                 .AsNoTracking()
                 .Where(m => m.UserId == emailUser.Id && m.IsActive)
                 .Join(
-                    db.Organizations.AsNoTracking().Where(o => o.TenantId == tenantId.Value
+                    db.Organizations.AsNoTracking().Where(o => (o.TenantId == tenantId.Value || o.TenantId == null)
                                                              && o.OrgType == "LAW_FIRM"
                                                              && o.IsActive),
                     m => m.OrganizationId,

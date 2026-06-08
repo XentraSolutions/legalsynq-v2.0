@@ -546,6 +546,9 @@ public class TenantAdminServiceGetAdminDetailTests
 
         public Task<bool> SetSessionTimeoutAsync(Guid tenantId, int? sessionTimeoutMinutes, CancellationToken ct = default)
             => Task.FromResult(true);
+
+        public Task<bool> SetTenantProductEntitlementAsync(Guid tenantId, string productCode, bool enabled, CancellationToken ct = default)
+            => Task.FromResult(true);
     }
 
     // ── Setting helper — bypasses key-dot validation for test keys ────────────
@@ -752,6 +755,9 @@ public class TenantAdminServiceGetAdminDetailTests
             => Task.FromResult(_sessionTimeoutMinutes);
 
         public Task<bool> SetSessionTimeoutAsync(Guid tenantId, int? sessionTimeoutMinutes, CancellationToken ct = default)
+            => Task.FromResult(true);
+
+        public Task<bool> SetTenantProductEntitlementAsync(Guid tenantId, string productCode, bool enabled, CancellationToken ct = default)
             => Task.FromResult(true);
     }
 

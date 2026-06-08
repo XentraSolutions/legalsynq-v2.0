@@ -44,7 +44,8 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         Guid              tenantId,
         Guid              providerCcId,
         string            providerName,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool              globalScope = false)
     {
         if (!_isEnabled)
         {
@@ -67,6 +68,7 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
                 tenantId     = tenantId,
                 providerCcId = providerCcId,
                 providerName = providerName,
+                globalScope  = globalScope,
             };
 
             using var response = await client.PostAsJsonAsync(
@@ -223,6 +225,7 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
     /// <inheritdoc />
     public async Task<SelfRegisterResult?> RegisterUserDirectlyAsync(
         Guid              orgId,
+        Guid              tenantId,
         string            email,
         string            password,
         string            firstName,
@@ -242,7 +245,7 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
             using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
 
-            var body = new { email, password, firstName, lastName };
+            var body = new { tenantId, email, password, firstName, lastName };
 
             using var response = await client.PostAsJsonAsync(
                 $"api/admin/organizations/{orgId}/self-register", body, cts.Token);

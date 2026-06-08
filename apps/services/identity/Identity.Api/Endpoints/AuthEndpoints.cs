@@ -229,31 +229,6 @@ public static class AuthEndpoints
             user.SetPassword(passwordHash);
             user.Activate();
 
-            // Auto-assign the user to their tenant's organization if they don't
-            // already have a membership. Invited users (tenant user / tenant admin)
-            // always belong to the tenant's primary org — without this they land
-            // on the /no-org wall immediately after their first login.
-            var hasMembership = await db.UserOrganizationMemberships
-                .AnyAsync(m => m.UserId == user.Id, ct);
-
-            if (!hasMembership)
-            {
-                var tenantOrg = await db.Organizations
-                    .Where(o => o.TenantId == invitation.TenantId && o.IsActive)
-                    .OrderBy(o => o.Name)
-                    .FirstOrDefaultAsync(ct);
-
-                if (tenantOrg is not null)
-                {
-                    var membership = UserOrganizationMembership.Create(
-                        userId:         user.Id,
-                        organizationId: tenantOrg.Id,
-                        memberRole:     MemberRole.Member);
-                    membership.SetPrimary();
-                    db.UserOrganizationMemberships.Add(membership);
-                }
-            }
-
             // Mark the invitation accepted.
             invitation.Accept();
 

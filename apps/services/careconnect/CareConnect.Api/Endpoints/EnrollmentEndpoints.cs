@@ -215,7 +215,7 @@ public static class EnrollmentEndpoints
             // ── Step 1: Create / resolve Identity org ────────────────────────
 
             var orgId = await identityOrgs.EnsureProviderOrganizationAsync(
-                provider.TenantId, provider.Id, companyName, ct);
+                provider.TenantId, provider.Id, companyName, ct: ct, globalScope: true);
 
             if (orgId is null)
             {
@@ -242,6 +242,7 @@ public static class EnrollmentEndpoints
 
             var registerResult = await identityOrgs.RegisterUserDirectlyAsync(
                 orgId.Value,
+                provider.TenantId,
                 body.Email.Trim(),
                 body.Password,
                 body.FirstName.Trim(),
@@ -369,6 +370,7 @@ public static class EnrollmentEndpoints
             // Step 2: Create active user with chosen password
             var registerResult = await identityOrgs.RegisterUserDirectlyAsync(
                 orgId.Value,
+                firmTenantId,
                 body.Email.Trim(),
                 body.Password,
                 body.FirstName.Trim(),

@@ -3261,6 +3261,10 @@ public static class AdminEndpoints
         var targetOrg = await db.Organizations.FirstOrDefaultAsync(o => o.Id == body.TargetOrganizationId);
         if (targetOrg is null)
             return Results.NotFound(new { error = "Target organization not found." });
+        if (!sourceOrg.TenantId.HasValue || !targetOrg.TenantId.HasValue)
+            return Results.BadRequest(new { error = "Global organizations cannot be used in tenant-scoped relationships." });
+        if (sourceOrg.TenantId != targetOrg.TenantId)
+            return Results.BadRequest(new { error = "Organizations must belong to the same tenant." });
 
         var relType = await db.RelationshipTypes.FirstOrDefaultAsync(rt => rt.Id == body.RelationshipTypeId);
         if (relType is null)
@@ -3276,7 +3280,7 @@ public static class AdminEndpoints
             return Results.Conflict(new { error = "Relationship already exists." });
 
         var rel = Identity.Domain.OrganizationRelationship.Create(
-            tenantId             : sourceOrg.TenantId,
+            tenantId             : sourceOrg.TenantId.Value,
             sourceOrganizationId : body.SourceOrganizationId,
             targetOrganizationId : body.TargetOrganizationId,
             relationshipTypeId   : body.RelationshipTypeId,
@@ -4372,17 +4376,59 @@ public static class AdminEndpoints
         if (IsCrossTenantAccess(caller, body.TenantId)) return Results.Forbid();
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
-        var existing = await db.Users.AnyAsync(u => u.Email == emailLower
-            && db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == body.TenantId && ut.IsActive), ct);
-        if (existing)
+        var existingUser = await db.Users
+            .FirstOrDefaultAsync(u => u.Email == emailLower, ct);
+
+        var alreadyInTenant = existingUser is not null
+            && await db.UserTenants.AnyAsync(
+                ut => ut.UserId == existingUser.Id && ut.TenantId == body.TenantId && ut.IsActive, ct);
+        if (alreadyInTenant)
             return Results.Conflict(new { error = $"User with email '{emailLower}' already exists in this tenant." });
 
-        // Create user as inactive (not yet accepted invite).
-        var tempPasswordHash = passwordHasher.Hash(Guid.CreateVersion7().ToString());
-        var user = User.Create(body.TenantId, emailLower, tempPasswordHash, body.FirstName.Trim(), body.LastName.Trim());
-        user.Deactivate();
-        db.Users.Add(user);
+        var user = existingUser;
+        if (user is null)
+        {
+            // Create user as inactive (not yet accepted invite).
+            var tempPasswordHash = passwordHasher.Hash(Guid.CreateVersion7().ToString());
+            user = User.Create(body.TenantId, emailLower, tempPasswordHash, body.FirstName.Trim(), body.LastName.Trim());
+            user.Deactivate();
+            db.Users.Add(user);
+        }
+
         db.UserTenants.Add(UserTenant.Create(user.Id, body.TenantId));
+
+        var orgDetailsPresent = !string.IsNullOrWhiteSpace(body.OrganizationName);
+        Guid? explicitOrganizationId = null;
+        if (orgDetailsPresent)
+        {
+            var orgType = string.IsNullOrWhiteSpace(body.OrganizationType)
+                ? OrgType.LawFirm
+                : body.OrganizationType.Trim().ToUpperInvariant();
+
+            if (!OrgType.IsValid(orgType))
+                return Results.BadRequest(new { error = $"organizationType '{body.OrganizationType}' is not valid." });
+
+            var orgName = body.OrganizationName!.Trim();
+            var org = await db.Organizations
+                .FirstOrDefaultAsync(o => o.TenantId == body.TenantId
+                                       && o.OrgType == orgType
+                                       && o.Name == orgName, ct);
+
+            if (org is null)
+            {
+                org = Organization.Create(
+                    tenantId:    body.TenantId,
+                    name:        orgName,
+                    orgType:     orgType,
+                    displayName: string.IsNullOrWhiteSpace(body.OrganizationDisplayName)
+                        ? orgName
+                        : body.OrganizationDisplayName.Trim());
+                db.Organizations.Add(org);
+            }
+
+            await EnsureUserOrganizationMembershipForInviteAsync(db, user.Id, org.Id, ct);
+            explicitOrganizationId = org.Id;
+        }
 
         // Assign initial role if provided.
         if (body.RoleId.HasValue && body.RoleId.Value != Guid.Empty)
@@ -4393,6 +4439,33 @@ public static class AdminEndpoints
                 var sra = ScopedRoleAssignment.Create(user.Id, role.Id, ScopedRoleAssignment.ScopeTypes.Global, tenantId: body.TenantId, assignedByUserId: body.InvitedByUserId);
                 db.ScopedRoleAssignments.Add(sra);
             }
+        }
+
+        if (existingUser is { IsActive: true })
+        {
+            await db.SaveChangesAsync(ct);
+
+            var existingLogger = loggerFactory.CreateLogger("AdminEndpoints.InviteUser");
+            var portalUrl = TenantPortalUrlHelper.BuildBaseUrl(tenant, notifOptions.Value);
+            if (portalUrl is not null)
+            {
+                var displayName = $"{user.FirstName} {user.LastName}".Trim();
+                var (_, emailOk, accessEmailError) = await emailClient.SendTenantAccessGrantedEmailAsync(
+                    emailLower, displayName, tenant.Name, portalUrl, body.TenantId, ct);
+                if (!emailOk)
+                    existingLogger.LogWarning(
+                        "Tenant-access-granted email not sent for existing active user {UserId} ({Email}): {Error}",
+                        user.Id, emailLower, accessEmailError);
+            }
+
+            return Results.Ok(new
+            {
+                userId = user.Id,
+                invitationId = (Guid?)null,
+                email = emailLower,
+                isNew = false,
+                organizationId = explicitOrganizationId,
+            });
         }
 
         // Create invitation token (raw token logged; hash stored).
@@ -4476,6 +4549,43 @@ public static class AdminEndpoints
         return Results.Created(
             $"/api/admin/users/{user.Id}",
             new { userId = user.Id, invitationId = invitation.Id, email = emailLower });
+    }
+
+    private static async Task<UserOrganizationMembership> EnsureUserOrganizationMembershipForInviteAsync(
+        IdentityDbContext db,
+        Guid userId,
+        Guid organizationId,
+        CancellationToken ct)
+    {
+        var existing = await db.UserOrganizationMemberships
+            .FirstOrDefaultAsync(m => m.UserId == userId && m.OrganizationId == organizationId, ct);
+
+        if (existing is not null)
+            return existing;
+
+        var orgTenantId = await db.Organizations
+            .AsNoTracking()
+            .Where(o => o.Id == organizationId)
+            .Select(o => o.TenantId)
+            .FirstOrDefaultAsync(ct);
+
+        if (orgTenantId.HasValue)
+        {
+            var hasTenantMembershipInTracker = db.UserTenants.Local.Any(
+                ut => ut.UserId == userId && ut.TenantId == orgTenantId.Value && ut.IsActive);
+
+            var hasTenantMembership = hasTenantMembershipInTracker
+                || await db.UserTenants.AnyAsync(
+                    ut => ut.UserId == userId && ut.TenantId == orgTenantId.Value && ut.IsActive, ct);
+
+            if (!hasTenantMembership)
+                throw new InvalidOperationException(
+                    $"User '{userId}' must belong to tenant '{orgTenantId.Value}' before joining tenant-scoped organization '{organizationId}'.");
+        }
+
+        var membership = UserOrganizationMembership.Create(userId, organizationId, MemberRole.Member);
+        db.UserOrganizationMemberships.Add(membership);
+        return membership;
     }
 
     /// <summary>
@@ -5892,7 +6002,10 @@ public static class AdminEndpoints
         string  FirstName,
         string  LastName,
         Guid?   RoleId          = null,
-        Guid?   InvitedByUserId = null);
+        Guid?   InvitedByUserId = null,
+        string? OrganizationName = null,
+        string? OrganizationType = null,
+        string? OrganizationDisplayName = null);
 
     /// <summary>PUM-B06: Payload for inviting a PlatformInternal (staff) user.</summary>
     private record InvitePlatformUserRequest(
@@ -7729,10 +7842,12 @@ public static partial class AdminEndpointsLscc010
 
         var name = OrgName(body.ProviderName, body.ProviderCcId);
 
-        // Idempotency: look up existing org with this deterministic name under the tenant
+        // Idempotency: self-enrollment uses a global provider org; legacy auto-provisioning
+        // remains tenant-scoped because its follow-up provision-user call carries only orgId.
+        var orgTenantId = body.GlobalScope ? (Guid?)null : body.TenantId;
         var existing = await db.Organizations
             .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == body.TenantId
+            .FirstOrDefaultAsync(o => o.TenantId == orgTenantId
                                    && o.OrgType   == "PROVIDER"
                                    && o.Name      == name, ct);
 
@@ -7742,11 +7857,16 @@ public static partial class AdminEndpointsLscc010
         }
 
         // Create minimal PROVIDER org — no billing, no user setup, no domains
-        var org = Organization.Create(
-            tenantId:   body.TenantId,
-            name:       name,
-            orgType:    OrgType.Provider,
-            displayName: body.ProviderName.Trim());
+        var org = body.GlobalScope
+            ? Organization.CreateGlobal(
+                name:        name,
+                orgType:     OrgType.Provider,
+                displayName: body.ProviderName.Trim())
+            : Organization.Create(
+                tenantId:    body.TenantId,
+                name:        name,
+                orgType:     OrgType.Provider,
+                displayName: body.ProviderName.Trim());
 
         db.Organizations.Add(org);
         await db.SaveChangesAsync(ct);
@@ -7814,13 +7934,17 @@ public static partial class AdminEndpointsLscc010
 
         if (org is null)
             return Results.NotFound(new { error = $"Organization '{id}' not found." });
+        if (!org.TenantId.HasValue)
+            return Results.BadRequest(new { error = "provision-user requires a tenant-scoped organization." });
+
+        var targetTenantId = org.TenantId.Value;
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
 
         // ── Owner guard: tenant owners may not enroll as providers ─────────────
         var tenantOwnerUserId = await db.Tenants
             .AsNoTracking()
-            .Where(t => t.Id == org.TenantId)
+            .Where(t => t.Id == targetTenantId)
             .Select(t => t.OwnerUserId)
             .FirstOrDefaultAsync(ct);
 
@@ -7836,7 +7960,7 @@ public static partial class AdminEndpointsLscc010
         {
             logger.LogWarning(
                 "LSCC-010 ProvisionProviderUser: enrollment blocked — email {Email} belongs to tenant owner of {TenantId}.",
-                emailLower, org.TenantId);
+                emailLower, targetTenantId);
             return Results.Conflict(new
             {
                 error = "This email address is associated with the account that owns this network and cannot be enrolled as a provider.",
@@ -7855,13 +7979,13 @@ public static partial class AdminEndpointsLscc010
         {
             // Check if this user already belongs to the target tenant.
             var alreadyInTenant = await db.UserTenants.AnyAsync(
-                    ut => ut.UserId == existingUser.Id && ut.TenantId == org.TenantId, ct);
+                    ut => ut.UserId == existingUser.Id && ut.TenantId == targetTenantId, ct);
 
             if (alreadyInTenant)
             {
                 logger.LogInformation(
                     "LSCC-010 ProvisionProviderUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
-                    emailLower, org.TenantId, id);
+                    emailLower, targetTenantId, id);
                 return Results.Ok(new ProvisionProviderUserResponse(
                     existingUser.Id, InvitationId: null, IsNew: false, InvitationSent: false));
             }
@@ -7870,7 +7994,7 @@ public static partial class AdminEndpointsLscc010
             if (existingUser.IsActive)
             {
                 // Active user: add UserTenant row + org membership; send tenant-access-granted email.
-                db.UserTenants.Add(UserTenant.Create(existingUser.Id, org.TenantId));
+                db.UserTenants.Add(UserTenant.Create(existingUser.Id, targetTenantId));
 
                 var crossMembership = UserOrganizationMembership.Create(
                     existingUser.Id, org.Id, memberRole: MemberRole.Member);
@@ -7880,20 +8004,20 @@ public static partial class AdminEndpointsLscc010
 
                 logger.LogInformation(
                     "LSCC-010 ProvisionProviderUser: existing active user {UserId} ({Email}) linked to tenant {TenantId}.",
-                    existingUser.Id, emailLower, org.TenantId);
+                    existingUser.Id, emailLower, targetTenantId);
 
                 // Best-effort tenant-access-granted notification email.
                 var notificationSent = false;
-                var providerTenantForNotif = await db.Tenants.FindAsync([org.TenantId], ct);
+                var providerTenantForNotif = await db.Tenants.FindAsync([targetTenantId], ct);
                 var portalUrl = TenantPortalUrlHelper.BuildBaseUrl(providerTenantForNotif, notifOptions.Value);
                 if (portalUrl is not null)
                 {
                     var displayName = $"{body.FirstName} {body.LastName ?? "User"}".Trim();
-                    var tenantName  = providerTenantForNotif?.Name ?? org.TenantId.ToString();
+                    var tenantName  = providerTenantForNotif?.Name ?? targetTenantId.ToString();
                     try
                     {
                         var (_, emailOk, _) = await emailClient.SendTenantAccessGrantedEmailAsync(
-                            emailLower, displayName, tenantName, portalUrl, org.TenantId, ct);
+                            emailLower, displayName, tenantName, portalUrl, targetTenantId, ct);
                         notificationSent = emailOk;
                         if (!emailOk)
                             logger.LogWarning(
@@ -7925,7 +8049,7 @@ public static partial class AdminEndpointsLscc010
             else
             {
                 // Invite-pending (inactive) user: add UserTenant row + org membership; send new invite.
-                db.UserTenants.Add(UserTenant.Create(existingUser.Id, org.TenantId));
+                db.UserTenants.Add(UserTenant.Create(existingUser.Id, targetTenantId));
 
                 var crossMembership = UserOrganizationMembership.Create(
                     existingUser.Id, org.Id, memberRole: MemberRole.Member);
@@ -7936,7 +8060,7 @@ public static partial class AdminEndpointsLscc010
                     System.Security.Cryptography.SHA256.HashData(
                         System.Text.Encoding.UTF8.GetBytes(rawToken)));
                 var newInvitation = UserInvitation.Create(
-                    existingUser.Id, org.TenantId, tokenHash,
+                    existingUser.Id, targetTenantId, tokenHash,
                     UserInvitation.PortalOrigins.TenantPortal,
                     invitedByUserId: null);
                 db.UserInvitations.Add(newInvitation);
@@ -7944,13 +8068,13 @@ public static partial class AdminEndpointsLscc010
                 await db.SaveChangesAsync(ct);
 
                 var invSent       = false;
-                var provTenant    = await db.Tenants.FindAsync([org.TenantId], ct);
+                var provTenant    = await db.Tenants.FindAsync([targetTenantId], ct);
                 var activationLink = TenantPortalUrlHelper.Build(provTenant, "accept-invite", rawToken, notifOptions.Value);
                 if (activationLink is not null)
                 {
                     var displayName = $"{body.FirstName} {body.LastName ?? "User"}".Trim();
                     var (_, emailOk, _) = await emailClient.SendInviteEmailAsync(
-                        emailLower, displayName, activationLink, org.TenantId, ct);
+                        emailLower, displayName, activationLink, targetTenantId, ct);
                     invSent = emailOk;
                     if (!emailOk)
                         logger.LogWarning(
@@ -7969,12 +8093,12 @@ public static partial class AdminEndpointsLscc010
         // ── New user: standard provisioning path ──────────────────────────────
         var lastName = string.IsNullOrWhiteSpace(body.LastName) ? "User" : body.LastName.Trim();
         var tempHash = passwordHasher.Hash(Guid.CreateVersion7().ToString());
-        var user     = User.Create(org.TenantId, emailLower, tempHash, body.FirstName.Trim(), lastName);
+        var user     = User.Create(targetTenantId, emailLower, tempHash, body.FirstName.Trim(), lastName);
         user.Deactivate();
         db.Users.Add(user);
 
         // Create UserTenant row alongside the new user.
-        db.UserTenants.Add(UserTenant.Create(user.Id, org.TenantId));
+        db.UserTenants.Add(UserTenant.Create(user.Id, targetTenantId));
 
         // Create invitation
         var rawToken2  = Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N");
@@ -7982,7 +8106,7 @@ public static partial class AdminEndpointsLscc010
             System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(rawToken2)));
         var invitation = UserInvitation.Create(
-            user.Id, org.TenantId, tokenHash2,
+            user.Id, targetTenantId, tokenHash2,
             UserInvitation.PortalOrigins.TenantPortal,
             invitedByUserId: null);
         db.UserInvitations.Add(invitation);
@@ -8000,7 +8124,7 @@ public static partial class AdminEndpointsLscc010
             Visibility    = VisibilityScope.Tenant,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = now,
-            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = org.TenantId.ToString() },
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = targetTenantId.ToString() },
             Actor         = new AuditEventActorDto { Type = ActorType.System, Name = "careconnect-autoprovision" },
             Entity        = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action        = "ProviderUserProvisioned",
@@ -8011,13 +8135,13 @@ public static partial class AdminEndpointsLscc010
 
         // Best-effort invitation email — LS-ID-TNT-016-01: tenant-subdomain-aware link.
         var invitationSent = false;
-        var providerTenant = await db.Tenants.FindAsync([org.TenantId], ct);
+        var providerTenant = await db.Tenants.FindAsync([targetTenantId], ct);
         var activationLinkNew = TenantPortalUrlHelper.Build(providerTenant, "accept-invite", rawToken2, notifOptions.Value);
         if (activationLinkNew is not null)
         {
             var displayName     = $"{user.FirstName} {user.LastName}".Trim();
             var (_, emailOk, _) = await emailClient.SendInviteEmailAsync(
-                emailLower, displayName, activationLinkNew, org.TenantId, ct);
+                emailLower, displayName, activationLinkNew, targetTenantId, ct);
             invitationSent = emailOk;
             if (!emailOk)
                 logger.LogWarning(
@@ -8081,12 +8205,16 @@ public static partial class AdminEndpointsLscc010
         if (org is null)
             return Results.NotFound(new { error = $"Organization '{id}' not found." });
 
+        var targetTenantId = body.TenantId ?? org.TenantId;
+        if (!targetTenantId.HasValue || targetTenantId.Value == Guid.Empty)
+            return Results.BadRequest(new { error = "tenantId is required for global organization self-registration." });
+
         var emailLower = body.Email.ToLowerInvariant().Trim();
 
         // ── Owner guard: tenant owners may not enroll as providers ─────────────
         var tenantOwnerUserIdSr = await db.Tenants
             .AsNoTracking()
-            .Where(t => t.Id == org.TenantId)
+            .Where(t => t.Id == targetTenantId.Value)
             .Select(t => t.OwnerUserId)
             .FirstOrDefaultAsync(ct);
 
@@ -8102,7 +8230,7 @@ public static partial class AdminEndpointsLscc010
         {
             logger.LogWarning(
                 "CC2-ENROLL SelfRegisterUser: enrollment blocked — email {Email} belongs to tenant owner of {TenantId}.",
-                emailLower, org.TenantId);
+                emailLower, targetTenantId.Value);
             return Results.Conflict(new
             {
                 error = "This email address is associated with the account that owns this network and cannot be enrolled as a provider.",
@@ -8121,13 +8249,16 @@ public static partial class AdminEndpointsLscc010
         {
             // Check if already in the target tenant (via UserTenants row).
             var alreadyInTenant = await db.UserTenants.AnyAsync(
-                    ut => ut.UserId == existingUser.Id && ut.TenantId == org.TenantId, ct);
+                    ut => ut.UserId == existingUser.Id && ut.TenantId == targetTenantId.Value && ut.IsActive, ct);
 
             if (alreadyInTenant)
             {
+                await EnsureUserOrganizationMembershipAsync(db, existingUser.Id, org.Id, ct);
+                await db.SaveChangesAsync(ct);
+
                 logger.LogInformation(
                     "CC2-ENROLL SelfRegisterUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
-                    emailLower, org.TenantId, id);
+                    emailLower, targetTenantId.Value, id);
                 return Results.Ok(new SelfRegisterUserResponse(existingUser.Id, IsNew: false));
             }
 
@@ -8145,17 +8276,15 @@ public static partial class AdminEndpointsLscc010
             }
 
             // Password matches — link existing user to the new tenant.
-            db.UserTenants.Add(UserTenant.Create(existingUser.Id, org.TenantId));
+            db.UserTenants.Add(UserTenant.Create(existingUser.Id, targetTenantId.Value));
 
-            var crossMembership = UserOrganizationMembership.Create(
-                existingUser.Id, org.Id, memberRole: MemberRole.Member);
-            db.UserOrganizationMemberships.Add(crossMembership);
+            await EnsureUserOrganizationMembershipAsync(db, existingUser.Id, org.Id, ct);
 
             await db.SaveChangesAsync(ct);
 
             logger.LogInformation(
                 "CC2-ENROLL SelfRegisterUser: existing user {UserId} ({Email}) linked to tenant {TenantId} (org {OrgId}).",
-                existingUser.Id, emailLower, org.TenantId, id);
+                existingUser.Id, emailLower, targetTenantId.Value, id);
 
             return Results.Ok(new SelfRegisterUserResponse(existingUser.Id, IsNew: false));
         }
@@ -8163,17 +8292,14 @@ public static partial class AdminEndpointsLscc010
         // ── New user: standard self-registration path ─────────────────────────
         var lastName = string.IsNullOrWhiteSpace(body.LastName) ? "User" : body.LastName.Trim();
         var hash     = passwordHasher.Hash(body.Password);
-        var user     = User.Create(org.TenantId, emailLower, hash, body.FirstName.Trim(), lastName);
+        var user     = User.Create(targetTenantId.Value, emailLower, hash, body.FirstName.Trim(), lastName);
         // User.Create produces an active user by default — no Deactivate() call here.
         db.Users.Add(user);
 
         // Create UserTenant row alongside the new user.
-        db.UserTenants.Add(UserTenant.Create(user.Id, org.TenantId));
+        db.UserTenants.Add(UserTenant.Create(user.Id, targetTenantId.Value));
 
-        // CC2-ENROLL-FIRM: create primary org membership so the user can log in immediately.
-        var membership = UserOrganizationMembership.Create(user.Id, id, memberRole: MemberRole.Member);
-        membership.SetPrimary();
-        db.UserOrganizationMemberships.Add(membership);
+        await EnsureUserOrganizationMembershipAsync(db, user.Id, id, ct);
 
         await db.SaveChangesAsync(ct);
 
@@ -8186,7 +8312,7 @@ public static partial class AdminEndpointsLscc010
             Visibility    = VisibilityScope.Tenant,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = DateTimeOffset.UtcNow,
-            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = org.TenantId.ToString() },
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = targetTenantId.Value.ToString() },
             Actor         = new AuditEventActorDto { Type = ActorType.System, Name = "careconnect-enrollment" },
             Entity        = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action        = "SelfEnrolled",
@@ -8255,20 +8381,19 @@ public static partial class AdminEndpointsLscc010
             }
         }
 
-        // Idempotency key: deterministic name embedding email so the same firm contact always maps to the same org
+        // Idempotency key: global organization keyed by firm contact.
         var idempotencyName = $"{body.FirmName.Trim()} [firm:{body.ContactEmail.Trim().ToLowerInvariant()}]";
 
         var existing = await db.Organizations
             .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == body.TenantId
+            .FirstOrDefaultAsync(o => o.TenantId == null
                                    && o.OrgType   == OrgType.LawFirm
                                    && o.Name      == idempotencyName, ct);
 
         if (existing is not null)
             return Results.Ok(new CreateLawFirmOrgResponse(existing.Id, existing.Name, IsNew: false));
 
-        var org = Organization.Create(
-            tenantId:    body.TenantId,
+        var org = Organization.CreateGlobal(
             name:        idempotencyName,
             orgType:     OrgType.LawFirm,
             displayName: body.FirmName.Trim());
@@ -8279,6 +8404,45 @@ public static partial class AdminEndpointsLscc010
         return Results.Created(
             $"/api/admin/organizations/{org.Id}",
             new CreateLawFirmOrgResponse(org.Id, org.Name, IsNew: true));
+    }
+
+    private static async Task<UserOrganizationMembership> EnsureUserOrganizationMembershipAsync(
+        IdentityDbContext db,
+        Guid userId,
+        Guid organizationId,
+        CancellationToken ct,
+        string memberRole = MemberRole.Member)
+    {
+        var existing = await db.UserOrganizationMemberships
+            .FirstOrDefaultAsync(m => m.UserId == userId && m.OrganizationId == organizationId, ct);
+
+        if (existing is not null)
+            return existing;
+
+        var org = await db.Organizations
+            .AsNoTracking()
+            .Where(o => o.Id == organizationId)
+            .Select(o => new { o.TenantId })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException($"Organization '{organizationId}' not found.");
+
+        if (org.TenantId.HasValue)
+        {
+            var hasTenantMembershipInTracker = db.UserTenants.Local.Any(
+                ut => ut.UserId == userId && ut.TenantId == org.TenantId.Value && ut.IsActive);
+
+            var hasTenantMembership = hasTenantMembershipInTracker
+                || await db.UserTenants.AnyAsync(
+                    ut => ut.UserId == userId && ut.TenantId == org.TenantId.Value && ut.IsActive, ct);
+
+            if (!hasTenantMembership)
+                throw new InvalidOperationException(
+                    $"User '{userId}' must belong to tenant '{org.TenantId.Value}' before joining tenant-scoped organization '{organizationId}'.");
+        }
+
+        var membership = UserOrganizationMembership.Create(userId, organizationId, memberRole);
+        db.UserOrganizationMemberships.Add(membership);
+        return membership;
     }
 
     // Keep the request/response records accessible to the route registration above
@@ -8295,7 +8459,8 @@ public static partial class AdminEndpointsLscc010
     public record CreateProviderOrgRequest(
         Guid   TenantId,
         Guid   ProviderCcId,
-        string ProviderName);
+        string ProviderName,
+        bool   GlobalScope = false);
 
     private record CreateProviderOrgResponse(
         Guid   Id,
@@ -8315,6 +8480,7 @@ public static partial class AdminEndpointsLscc010
         bool  NotificationSent = false);
 
     public record SelfRegisterUserRequest(
+        Guid?   TenantId,
         string  Email,
         string  Password,
         string  FirstName,

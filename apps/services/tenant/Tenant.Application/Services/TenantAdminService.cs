@@ -38,6 +38,22 @@ public class TenantAdminService : ITenantAdminService
     private readonly ILogger<TenantAdminService>  _logger;
 
     private const string HostPlatformKey = "legalsynq";
+    private static readonly Dictionary<string, string> CanonicalProductCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["careconnect"] = "CareConnect",
+        ["synq_careconnect"] = "CareConnect",
+        ["synqfund"] = "SynqFund",
+        ["synq_fund"] = "SynqFund",
+        ["synqliens"] = "SynqLien",
+        ["synq_liens"] = "SynqLien",
+        ["synqlien"] = "SynqLien",
+        ["synqbill"] = "SynqBill",
+        ["synq_bill"] = "SynqBill",
+        ["synqrx"] = "SynqRx",
+        ["synq_rx"] = "SynqRx",
+        ["synqpayout"] = "SynqPayout",
+        ["synq_payout"] = "SynqPayout",
+    };
 
     public TenantAdminService(
         ITenantRepository            tenantRepo,
@@ -98,8 +114,8 @@ public class TenantAdminService : ITenantAdminService
 
         var entitlementItems = entitlements
             .Select(e => new AdminEntitlementItem(
-                ProductCode:  e.ProductKey,
-                ProductName:  e.ProductDisplayName ?? e.ProductKey,
+                ProductCode:  ToCanonicalProductCode(e.ProductKey),
+                ProductName:  e.ProductDisplayName ?? ToCanonicalProductCode(e.ProductKey),
                 Enabled:      e.IsEnabled,
                 Status:       e.IsEnabled ? "Active" : "Disabled",
                 EnabledAtUtc: e.EffectiveFromUtc))
@@ -269,6 +285,13 @@ public class TenantAdminService : ITenantAdminService
         if (provResult.Success && !string.IsNullOrWhiteSpace(provResult.Subdomain))
             tenant.SetSubdomain(provResult.Subdomain);
 
+        if (provResult.Success
+            && !string.IsNullOrWhiteSpace(provResult.AdminUserId)
+            && Guid.TryParse(provResult.AdminUserId, out var ownerUserId))
+        {
+            tenant.SetOwner(ownerUserId);
+        }
+
         await _tenantRepo.UpdateAsync(tenant, ct);
 
         // ── LS-COMMERCE-ECO-02: Notify Commerce of new tenant creation ────────
@@ -347,15 +370,21 @@ public class TenantAdminService : ITenantAdminService
             enabledAtUtc = entitlement.EffectiveFromUtc;
         }
 
+        var identitySynced = await _identityCompat.SetTenantProductEntitlementAsync(
+            tenantId,
+            productCode,
+            enabled,
+            ct);
+
         return new AdminEntitlementToggleResponse(
             EntitlementId: entitlement.Id,
             TenantId:      tenantId,
-            ProductCode:   productCode,
-            ProductName:   entitlement.ProductDisplayName ?? productCode,
+            ProductCode:   ToCanonicalProductCode(productCode),
+            ProductName:   entitlement.ProductDisplayName ?? ToCanonicalProductCode(productCode),
             Enabled:       enabled,
             Status:        enabled ? "Active" : "Disabled",
             EnabledAtUtc:  enabledAtUtc?.ToString("o"),
-            IdentitySynced: false);
+            IdentitySynced: identitySynced);
     }
 
     // ── LS-COMMERCE-ECO-02: Safe Commerce notification helper ─────────────────
@@ -382,6 +411,11 @@ public class TenantAdminService : ITenantAdminService
                 ev.EventType, ev.ExternalTenantId);
         }
     }
+
+    private static string ToCanonicalProductCode(string productCode)
+        => CanonicalProductCodes.TryGetValue(productCode.Trim(), out var canonical)
+            ? canonical
+            : productCode;
 
     // ── Mapping ───────────────────────────────────────────────────────────────
 

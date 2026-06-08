@@ -122,7 +122,7 @@ public class UserRepository : IUserRepository
                 .ThenInclude(o => o.OrganizationTypeRef)
             .Where(m => m.UserId == userId
                      && m.IsActive
-                     && m.Organization.TenantId == tenantId)
+                     && (m.Organization.TenantId == tenantId || m.Organization.TenantId == null))
             .OrderBy(m => m.JoinedAtUtc)
             .FirstOrDefaultAsync(ct);
 
@@ -148,7 +148,7 @@ public class UserRepository : IUserRepository
             .Where(m => m.UserId == userId
                      && m.IsActive
                      && m.Organization.IsActive
-                     && m.Organization.TenantId == tenantId)
+                     && (m.Organization.TenantId == tenantId || m.Organization.TenantId == null))
             .OrderByDescending(m => m.IsPrimary)
             .ThenBy(m => m.JoinedAtUtc)
             .ToListAsync(ct);

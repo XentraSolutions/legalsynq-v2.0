@@ -34,6 +34,7 @@ public static class DependencyInjection
 
         // ── TENANT-B08: In-process memory cache (BCL; no new package dependency) ──
         services.AddMemoryCache();
+        services.AddHttpContextAccessor();
 
         // ── TENANT-B08: Runtime metrics singleton ─────────────────────────────
         services.AddSingleton<TenantRuntimeMetrics>();

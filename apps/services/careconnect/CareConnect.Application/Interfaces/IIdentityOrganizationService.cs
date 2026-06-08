@@ -32,7 +32,8 @@ public interface IIdentityOrganizationService
         Guid              tenantId,
         Guid              providerCcId,
         string            providerName,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool              globalScope = false);
 
     // ── CC2-INT-B04: Token → Identity Bridge — user invitation ───────────────
 
@@ -63,6 +64,7 @@ public interface IIdentityOrganizationService
     /// </summary>
     Task<SelfRegisterResult?> RegisterUserDirectlyAsync(
         Guid              orgId,
+        Guid              tenantId,
         string            email,
         string            password,
         string            firstName,

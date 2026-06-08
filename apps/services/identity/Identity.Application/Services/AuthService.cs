@@ -151,14 +151,16 @@ public class AuthService : IAuthService
         }
 
         // AUTH-B01: Final fallback — use the Tenant-service-resolved TenantId when both
-        // code and subdomain lookups miss.  This handles the case where the common portal
+        // code and subdomain lookups miss. This handles the case where the common portal
         // (e.g. careconnect-demo.legalsynq.com) has its canonical record in the Tenant
         // service but the Identity idt_Tenants write-through row carries a different code
-        // or has no subdomain populated yet.  When found this way, we skip the
-        // ProvisioningStatus guard: the BFF already confirmed the tenant is active by
-        // resolving it from the Tenant service, so a Pending stub in Identity is just
-        // a stale write-through record, not a real provisioning-in-progress signal.
-        var tenantFoundViaIdFallback = false;
+        // or has no subdomain populated yet.
+        //
+        // More importantly, treat a matching TenantId as authoritative even when a
+        // code/subdomain lookup already returned a row: the BFF has already resolved the
+        // tenant from the Tenant service, so a non-Active provisioning status in Identity
+        // is just stale write-through state and must not block login.
+        var tenantConfirmedByTenantService = false;
         if (tenant is null && request.TenantId.HasValue && request.TenantId.Value != Guid.Empty)
         {
             _logger.LogInformation(
@@ -166,7 +168,16 @@ public class AuthService : IAuthService
                 tenantCodeNorm, request.TenantId.Value);
             tenant = await _tenantRepository.GetByIdAsync(request.TenantId.Value, ct);
             if (tenant is not null)
-                tenantFoundViaIdFallback = true;
+                tenantConfirmedByTenantService = true;
+        }
+
+        if (!tenantConfirmedByTenantService
+            && tenant is not null
+            && request.TenantId.HasValue
+            && request.TenantId.Value != Guid.Empty
+            && tenant.Id == request.TenantId.Value)
+        {
+            tenantConfirmedByTenantService = true;
         }
 
         if (tenant is null || !tenant.IsActive)
@@ -182,7 +193,7 @@ public class AuthService : IAuthService
         // Skip provisioning-status guards when the tenant was resolved by the
         // Tenant-service-authoritative TenantId: the stub in Identity may still be
         // Pending, but the real tenant is live.
-        if (!tenantFoundViaIdFallback)
+        if (!tenantConfirmedByTenantService)
         {
             if (tenant.ProvisioningStatus == ProvisioningStatus.Verifying)
             {
