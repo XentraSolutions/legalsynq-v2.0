@@ -3,13 +3,14 @@
 import Link    from 'next/link';
 import { useState } from 'react';
 import type { NetworkSummary } from '@/types/careconnect';
+import type { PublicNetworkSummary } from '@/lib/public-network-api';
 
 export function NetworkCard({
   network,
   tenantLogoUrl,
   href,
 }: {
-  network:       NetworkSummary;
+  network:       NetworkSummary | PublicNetworkSummary;
   tenantLogoUrl: string;
   href?:         string;
 }) {

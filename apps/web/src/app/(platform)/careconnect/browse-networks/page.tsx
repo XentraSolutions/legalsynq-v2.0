@@ -1,9 +1,11 @@
 import { redirect }             from 'next/navigation';
 import { requireProductRole }    from '@/lib/auth-guards';
 import { careConnectServerApi }  from '@/lib/careconnect-server-api';
-import { fetchPublicNetworks }   from '@/lib/public-network-api';
+import {
+  fetchPublicNetworks,
+  type PublicNetworkSummary,
+} from '@/lib/public-network-api';
 import { ServerApiError }        from '@/lib/server-api-client';
-import type { NetworkSummary }   from '@/types/careconnect';
 import { NetworkCard }            from '@/components/careconnect/network-card';
 import { ProductRole, OrgType }  from '@/types';
 
@@ -32,7 +34,7 @@ export default async function BrowseNetworksPage() {
     tenantId: string;
     tenantCode: string;
     tenantName: string;
-    networks: NetworkSummary[];
+    networks: PublicNetworkSummary[];
   }> = [];
   let fetchError: string | null = null;
 
