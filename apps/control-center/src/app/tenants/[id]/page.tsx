@@ -4,6 +4,7 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 import { getCachedTenantById }            from '@/lib/tenant-fetch';
 import { TenantDetailCard }               from '@/components/tenants/tenant-detail-card';
 import { ProductEntitlementsPanel }       from '@/components/tenants/product-entitlements-panel';
+import { TenantAccessCodePanel }          from '@/components/tenants/tenant-access-code-panel';
 import { TenantSessionSettingsPanel }     from '@/components/tenants/tenant-session-settings-panel';
 import { TenantLogoUpload }              from '@/components/tenants/TenantLogoUpload';
 import { TenantOrganizationsPanel }      from '@/components/tenants/tenant-organizations-panel';
@@ -56,6 +57,7 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
   let billingEntitlement:      BillingEntitlementSnapshot | null = null;
   let billingEntitlementError: string | null                    = null;
   let settings:                PlatformSetting[]                = [];
+  let accessCodeStatus: Awaited<ReturnType<typeof controlCenterServerApi.tenants.getAccessCode>> | null = null;
 
   const cookieStore  = await cookies();
   const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
@@ -92,6 +94,12 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
     // Non-fatal — tenant.hostname remains the preferred display value.
   }
 
+  try {
+    accessCodeStatus = await controlCenterServerApi.tenants.getAccessCode(id);
+  } catch {
+    // Non-fatal — omit the panel if this fetch fails.
+  }
+
   const portalBaseDomain = String(
     settings.find(s => s.key === 'platform.portalBaseDomain')?.value ?? '',
   );
@@ -112,6 +120,13 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
         tenantId={tenant.id}
         sessionTimeoutMinutes={tenant.sessionTimeoutMinutes}
       />
+
+      {accessCodeStatus && (
+        <TenantAccessCodePanel
+          tenantId={tenant.id}
+          initialStatus={accessCodeStatus}
+        />
+      )}
 
       <ProductEntitlementsPanel
         tenantId={tenant.id}

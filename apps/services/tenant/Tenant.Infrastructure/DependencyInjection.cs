@@ -57,6 +57,7 @@ public static class DependencyInjection
         services.AddScoped<IEntitlementService,     EntitlementService>();
         services.AddScoped<ICapabilityService,      CapabilityService>();
         services.AddScoped<ISettingService,         SettingService>();
+        services.AddScoped<ICareConnectAccessCodeService, CareConnectAccessCodeService>();
         services.AddScoped<IMigrationUtilityService, MigrationUtilityService>();
         services.AddScoped<ITenantSyncAdapter,       NoOpTenantSyncAdapter>();
         services.AddScoped<ITenantAdminService,      TenantAdminService>();

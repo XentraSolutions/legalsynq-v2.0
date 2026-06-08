@@ -2,38 +2,139 @@
 
 import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import Image from 'next/image';
+import { apiClient, ApiError } from '@/lib/api-client';
 
-const ACCESS_CODE       = 'Password123';
-const SESSION_KEY       = 'cc-network-unlocked';
+const STORAGE_KEY_PREFIX = 'cc-network-unlocked:';
+
+function accessCodePath(tenantId: string, action: 'status' | 'verify') {
+  return `/public/careconnect/access-code/${action}?tenantId=${encodeURIComponent(tenantId)}`;
+}
 
 interface Props {
+  tenantId: string;
   children: ReactNode;
 }
 
-export function AccessCodeGate({ children }: Props) {
+interface AccessCodeStatusResponse {
+  configured: boolean;
+  version: number;
+}
+
+interface AccessCodeVerifyResponse extends AccessCodeStatusResponse {
+  ok: boolean;
+}
+
+export function AccessCodeGate({ tenantId, children }: Props) {
   const [unlocked,  setUnlocked]  = useState(false);
   const [ready,     setReady]     = useState(false);
   const [code,      setCode]      = useState('');
   const [error,     setError]     = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const canEnterCode = configured === true;
 
   useEffect(() => {
-    if (sessionStorage.getItem(SESSION_KEY) === '1') setUnlocked(true);
-    setReady(true);
-  }, []);
+    let cancelled = false;
 
-  function handleSubmit(e: FormEvent) {
+    async function loadStatus() {
+      try {
+        const { data } = await apiClient.get<AccessCodeStatusResponse>(accessCodePath(tenantId, 'status'));
+        if (cancelled) return;
+
+        const storageKey = `${STORAGE_KEY_PREFIX}${tenantId}`;
+        const storedValue = localStorage.getItem(storageKey);
+
+        setConfigured(data.configured);
+
+        if (!data.configured) {
+          localStorage.removeItem(storageKey);
+          setUnlocked(false);
+          setReady(true);
+          return;
+        }
+
+        let parsed: { tenantId?: string; version?: number; unlocked?: boolean } | null = null;
+        if (storedValue) {
+          try {
+            parsed = JSON.parse(storedValue) as { tenantId?: string; version?: number; unlocked?: boolean };
+          } catch {
+            localStorage.removeItem(storageKey);
+          }
+        }
+
+        const matchesVersion =
+          parsed?.unlocked === true &&
+          parsed.tenantId === tenantId &&
+          parsed.version === data.version;
+
+        if (!matchesVersion) {
+          localStorage.removeItem(storageKey);
+        }
+
+        setUnlocked(matchesVersion);
+      } catch {
+        if (!cancelled) {
+          setError('Unable to verify access right now. Please try again.');
+          setConfigured(null);
+          setUnlocked(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
+      }
+    }
+
+    void loadStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    if (code === ACCESS_CODE) {
-      sessionStorage.setItem(SESSION_KEY, '1');
+    try {
+      const { data } = await apiClient.post<AccessCodeVerifyResponse>(
+        accessCodePath(tenantId, 'verify'),
+        { code },
+      );
+
+      setConfigured(data.configured);
+
+      if (!data.configured) {
+        localStorage.removeItem(`${STORAGE_KEY_PREFIX}${tenantId}`);
+        setError('This directory is locked until a network access code is configured.');
+        setUnlocked(false);
+        setCode('');
+        return;
+      }
+
+      if (!data.ok) {
+        setError('Incorrect access code. Please try again.');
+        setCode('');
+        setUnlocked(false);
+        return;
+      }
+
+      localStorage.setItem(
+        `${STORAGE_KEY_PREFIX}${tenantId}`,
+        JSON.stringify({ tenantId, version: data.version, unlocked: true }),
+      );
       setError('');
       setUnlocked(true);
-    } else {
-      setError('Incorrect access code. Please try again.');
       setCode('');
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'Unable to verify access right now. Please try again.',
+      );
     }
-    setSubmitting(false);
+    finally {
+      setSubmitting(false);
+    }
   }
 
   if (!ready) return null;
@@ -78,7 +179,11 @@ export function AccessCodeGate({ children }: Props) {
                   Enter Access Code
                 </h2>
                 <p className="text-xs text-gray-500 text-center mt-1">
-                  This directory is protected. Please enter the access code provided by your network coordinator.
+                  {configured === true
+                    ? 'This directory is protected. Please enter the access code provided by your network coordinator.'
+                    : configured === false
+                      ? 'This directory is locked until a network access code is configured.'
+                      : 'Access-code status is unavailable. Try again once the network status can be verified.'}
                 </p>
               </div>
 
@@ -89,12 +194,20 @@ export function AccessCodeGate({ children }: Props) {
                 <input
                   id="cc-access-code"
                   type="password"
-                  autoFocus
+                  autoFocus={canEnterCode}
                   autoComplete="off"
                   value={code}
                   onChange={e => { setCode(e.target.value); setError(''); }}
-                  placeholder="Enter access code"
-                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                  placeholder={canEnterCode ? 'Enter access code' : 'Access code unavailable'}
+                  readOnly={!canEnterCode}
+                  aria-disabled={!canEnterCode}
+                  disabled={!canEnterCode}
+                  className={[
+                    'w-full rounded-lg border px-3.5 py-2.5 text-sm shadow-sm transition',
+                    canEnterCode
+                      ? 'border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent'
+                      : 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 placeholder-gray-400',
+                  ].join(' ')}
                 />
                 {error && (
                   <p className="text-xs text-red-600 flex items-center gap-1 mt-0.5">
@@ -106,10 +219,19 @@ export function AccessCodeGate({ children }: Props) {
 
               <button
                 type="submit"
-                disabled={!code.trim() || submitting}
-                className="w-full rounded-lg bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-sm font-semibold py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
+                disabled={!canEnterCode || !code.trim() || submitting}
+                className={[
+                  'w-full rounded-lg text-sm font-semibold py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2',
+                  canEnterCode
+                    ? 'bg-orange-500 text-white hover:bg-orange-600 disabled:bg-orange-300'
+                    : 'cursor-not-allowed bg-gray-200 text-gray-500',
+                ].join(' ')}
               >
-                Unlock Directory
+                {canEnterCode
+                  ? 'Unlock Directory'
+                  : configured === false
+                    ? 'Access Code Not Configured'
+                    : 'Access Code Unavailable'}
               </button>
             </form>
           </div>

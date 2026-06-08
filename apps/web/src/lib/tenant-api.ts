@@ -20,6 +20,16 @@ import type {
 
 export { ServerApiError };
 
+export interface CareConnectAccessCodeMetadata {
+  configured: boolean;
+  version: number;
+  updatedAtUtc: string | null;
+}
+
+export interface SetCareConnectAccessCodeResponse extends CareConnectAccessCodeMetadata {
+  revealedCode: string;
+}
+
 export const tenantServerApi = {
   getUsers: () =>
     serverApi.get<TenantUser[]>('/identity/api/users'),
@@ -85,5 +95,21 @@ export const tenantServerApi = {
   getFlowWorkflowThroughput: (window: 'today' | '7d' | '30d' = '7d') =>
     serverApi.get<TenantWorkflowThroughput>(
       `/flow/api/v1/admin/analytics/workflows?window=${encodeURIComponent(window)}`
+    ),
+
+  getCareConnectAccessCode: (tenantId: string) =>
+    serverApi.get<CareConnectAccessCodeMetadata>(
+      `/tenant/api/tenants/${tenantId}/careconnect/public-network/access-code/`
+    ),
+
+  setCareConnectAccessCode: (tenantId: string, code: string) =>
+    serverApi.put<SetCareConnectAccessCodeResponse>(
+      `/tenant/api/tenants/${tenantId}/careconnect/public-network/access-code/`,
+      { code }
+    ),
+
+  clearCareConnectAccessCode: (tenantId: string) =>
+    serverApi.delete<CareConnectAccessCodeMetadata>(
+      `/tenant/api/tenants/${tenantId}/careconnect/public-network/access-code/`
     ),
 };
