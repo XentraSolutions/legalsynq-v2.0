@@ -22,6 +22,10 @@ interface ReferralPrefill {
   phone:       string;
   firstName:   string;
   lastName:    string;
+  addressLine1: string;
+  city:         string;
+  state:        string;
+  postalCode:   string;
 }
 
 interface AuthenticatedOrgPrefill {
@@ -76,10 +80,10 @@ export function EnrollmentForm({
   const [companyName,  setCompanyName]  = useState(initialCompanyName);
   const [email,        setEmail]        = useState(initialEmail);
   const [phone,        setPhone]        = useState(initialPhone);
-  const initialAddressLine1 = prefill?.addressLine1 ?? '';
-  const initialCity         = prefill?.city         ?? '';
-  const initialState        = prefill?.state        ?? '';
-  const initialPostalCode   = prefill?.postalCode   ?? '';
+  const initialAddressLine1 = prefill?.addressLine1 ?? referralPrefill?.addressLine1 ?? '';
+  const initialCity         = prefill?.city         ?? referralPrefill?.city         ?? '';
+  const initialState        = prefill?.state        ?? referralPrefill?.state        ?? '';
+  const initialPostalCode   = prefill?.postalCode   ?? referralPrefill?.postalCode   ?? '';
   const [addressLine1, setAddressLine1] = useState(initialAddressLine1);
   const [city,         setCity]         = useState(initialCity);
   const [state,        setState]        = useState(initialState);

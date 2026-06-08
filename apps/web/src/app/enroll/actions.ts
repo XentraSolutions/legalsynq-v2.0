@@ -3,6 +3,10 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
+const IDENTITY_INTERNAL_URL =
+  process.env.IDENTITY_INTERNAL_URL ??
+  process.env.IDENTITY_SERVICE_URL ??
+  'http://127.0.0.1:5001';
 const INTERNAL_REQUEST_SECRET =
   process.env['PublicTrustBoundary__InternalRequestSecret'] ??
   process.env.INTERNAL_REQUEST_SECRET ??
@@ -170,6 +174,56 @@ export interface EnrollmentClaims {
   phone?:   string;
   contact?: string;
   exp:      number;
+}
+
+export interface ExistingEnrollmentPrefill {
+  found:       boolean;
+  companyName: string;
+  email:       string;
+  phone:       string;
+  firstName:   string;
+  lastName:    string;
+  addressLine1: string;
+  city:         string;
+  state:        string;
+  postalCode:   string;
+}
+
+export async function fetchExistingEnrollmentPrefill(
+  tenantId: string,
+  email: string,
+): Promise<ExistingEnrollmentPrefill | null> {
+  const provisioningToken = process.env.IdentityService__ProvisioningToken ?? '';
+
+  try {
+    const res = await fetch(
+      `${IDENTITY_INTERNAL_URL}/api/internal/users/enrollment-prefill?tenantId=${encodeURIComponent(tenantId)}&email=${encodeURIComponent(email)}`,
+      {
+        cache:   'no-store',
+        headers: provisioningToken ? { 'X-Provisioning-Token': provisioningToken } : {},
+      },
+    );
+
+    if (!res.ok) return null;
+
+    const data = await res.json() as Partial<ExistingEnrollmentPrefill>;
+    if (!data.found) return null;
+
+    return {
+      found:       true,
+      companyName: data.companyName ?? '',
+      email:       data.email ?? email,
+      phone:       data.phone ?? '',
+      firstName:   data.firstName ?? '',
+      lastName:    data.lastName ?? '',
+      addressLine1: data.addressLine1 ?? '',
+      city:         data.city ?? '',
+      state:        data.state ?? '',
+      postalCode:   data.postalCode ?? '',
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

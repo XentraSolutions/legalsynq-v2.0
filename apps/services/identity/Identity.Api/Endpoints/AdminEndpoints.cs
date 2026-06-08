@@ -7854,6 +7854,64 @@ public static partial class AdminEndpointsLscc010
             ct);
     }
 
+    private static async Task EnsureCareConnectEnrollmentRoleAsync(
+        IdentityDbContext db,
+        Guid tenantId,
+        Guid userId,
+        Guid orgId,
+        string? orgType,
+        Guid? organizationTypeId,
+        Guid? actorUserId,
+        CancellationToken ct)
+    {
+        var roleCode = ResolveCareConnectEnrollmentRoleCode(orgType, organizationTypeId);
+        if (roleCode is null)
+            return;
+
+        var alreadyAssigned = await db.UserRoleAssignments
+            .AnyAsync(a =>
+                a.TenantId == tenantId &&
+                a.UserId == userId &&
+                a.ProductCode == CareConnectProductCode &&
+                a.RoleCode == roleCode &&
+                a.OrganizationId == orgId &&
+                a.AssignmentStatus == AssignmentStatus.Active,
+                ct);
+        if (alreadyAssigned)
+            return;
+
+        var user = await db.Users.FindAsync([userId], ct)
+            ?? throw new InvalidOperationException($"User {userId} does not exist.");
+
+        db.UserRoleAssignments.Add(UserRoleAssignment.Create(
+            tenantId: tenantId,
+            userId: userId,
+            roleCode: roleCode,
+            productCode: CareConnectProductCode,
+            organizationId: orgId,
+            createdByUserId: actorUserId));
+
+        user.IncrementAccessVersion();
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static string? ResolveCareConnectEnrollmentRoleCode(
+        string? orgType,
+        Guid? organizationTypeId)
+    {
+        var orgTypeCode = organizationTypeId.HasValue
+            ? OrgTypeMapper.TryResolveCode(organizationTypeId)
+            : null;
+        var effectiveOrgType = orgTypeCode ?? orgType;
+
+        return effectiveOrgType?.ToUpperInvariant() switch
+        {
+            OrgType.LawFirm => "CARECONNECT_REFERRER",
+            OrgType.Provider => "CARECONNECT_RECEIVER",
+            _ => null,
+        };
+    }
+
     /// <summary>
     /// POST /api/admin/organizations
     /// Creates a minimal PROVIDER Organization for a CareConnect provider.
@@ -7982,7 +8040,7 @@ public static partial class AdminEndpointsLscc010
         var org = await db.Organizations
             .AsNoTracking()
             .Where(o => o.Id == id)
-            .Select(o => new { o.Id, o.TenantId, o.Name })
+            .Select(o => new { o.Id, o.TenantId, o.Name, o.OrgType, o.OrganizationTypeId })
             .FirstOrDefaultAsync(ct);
 
         if (org is null)
@@ -8286,7 +8344,7 @@ public static partial class AdminEndpointsLscc010
         var org = await db.Organizations
             .AsNoTracking()
             .Where(o => o.Id == id)
-            .Select(o => new { o.Id, o.TenantId, o.Name })
+            .Select(o => new { o.Id, o.TenantId, o.Name, o.OrgType, o.OrganizationTypeId })
             .FirstOrDefaultAsync(ct);
 
         if (org is null)
@@ -8351,6 +8409,16 @@ public static partial class AdminEndpointsLscc010
                     actorUserId: null,
                     ct);
 
+                await EnsureCareConnectEnrollmentRoleAsync(
+                    db,
+                    targetTenantId.Value,
+                    existingUser.Id,
+                    org.Id,
+                    org.OrgType,
+                    org.OrganizationTypeId,
+                    actorUserId: null,
+                    ct);
+
                 logger.LogInformation(
                     "CC2-ENROLL SelfRegisterUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
                     emailLower, targetTenantId.Value, id);
@@ -8385,6 +8453,16 @@ public static partial class AdminEndpointsLscc010
                 actorUserId: null,
                 ct);
 
+            await EnsureCareConnectEnrollmentRoleAsync(
+                db,
+                targetTenantId.Value,
+                existingUser.Id,
+                org.Id,
+                org.OrgType,
+                org.OrganizationTypeId,
+                actorUserId: null,
+                ct);
+
             logger.LogInformation(
                 "CC2-ENROLL SelfRegisterUser: existing user {UserId} ({Email}) linked to tenant {TenantId} (org {OrgId}).",
                 existingUser.Id, emailLower, targetTenantId.Value, id);
@@ -8411,6 +8489,16 @@ public static partial class AdminEndpointsLscc010
             user.Id,
             provisioningEngine,
             userProductAccessService,
+            actorUserId: null,
+            ct);
+
+        await EnsureCareConnectEnrollmentRoleAsync(
+            db,
+            targetTenantId.Value,
+            user.Id,
+            org.Id,
+            org.OrgType,
+            org.OrganizationTypeId,
             actorUserId: null,
             ct);
 

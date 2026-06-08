@@ -76,17 +76,67 @@ public class AuthService : IAuthService
             }
 
             var userTenantMemberships = await _userRepository.GetActiveTenantMembershipsAsync(globalUser.Id, ct);
-            var firstMembership       = userTenantMemberships.FirstOrDefault();
-            var globalTenant          = firstMembership?.Tenant
-                                        ?? (firstMembership is not null
-                                            ? await _tenantRepository.GetByIdAsync(firstMembership.TenantId, ct)
-                                            : null);
-            if (globalTenant is null || !globalTenant.IsActive)
+            var activeMemberships = userTenantMemberships
+                .Where(ut => ut.Tenant is not null && ut.Tenant.IsActive)
+                .ToList();
+
+            if (activeMemberships.Count == 0)
             {
                 _logger.LogWarning(
                     "AUTH-CC01: LoginAsync failed: TenantNotFoundOrInactive userId={UserId} emailMasked={EmailMasked} ip={Ip}",
                     globalUser.Id, PiiGuard.MaskEmail(emailNorm), ipAddress);
                 EmitLoginFailed(emailNorm, tenantCode: "common-portal", userId: null, reason: "TenantNotFound", ipAddress: ipAddress);
+                throw new UnauthorizedAccessException();
+            }
+
+            Tenant? globalTenant = null;
+
+            if (request.TenantId.HasValue && request.TenantId.Value != Guid.Empty)
+            {
+                globalTenant = activeMemberships
+                    .Where(ut => ut.TenantId == request.TenantId.Value)
+                    .Select(ut => ut.Tenant)
+                    .FirstOrDefault();
+            }
+
+            if (globalTenant is null && !string.IsNullOrWhiteSpace(request.Subdomain))
+            {
+                var requestedSubdomain = request.Subdomain.Trim().ToLowerInvariant();
+                globalTenant = activeMemberships
+                    .Where(ut => string.Equals(ut.Tenant?.Subdomain, requestedSubdomain, StringComparison.OrdinalIgnoreCase))
+                    .Select(ut => ut.Tenant)
+                    .FirstOrDefault();
+            }
+
+            if (globalTenant is null)
+            {
+                const string CcProductPrefix = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":";
+                foreach (var membership in activeMemberships)
+                {
+                    var membershipTenant = membership.Tenant!;
+                    var access = await _effectiveAccessService.GetEffectiveAccessAsync(
+                        membershipTenant.Id, globalUser.Id, ct);
+
+                    var hasCareConnectProduct = access.Products.Contains(
+                        BuildingBlocks.Authorization.ProductCodes.SynqCareConnect,
+                        StringComparer.OrdinalIgnoreCase);
+                    var hasCareConnectRole = access.ProductRolesFlat.Any(r =>
+                        r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase));
+
+                    if (hasCareConnectProduct && hasCareConnectRole)
+                    {
+                        globalTenant = membershipTenant;
+                        break;
+                    }
+                }
+            }
+
+            if (globalTenant is null)
+            {
+                _logger.LogWarning(
+                    "AUTH-CC01: LoginAsync failed: NoCareConnectTenant userId={UserId} emailMasked={EmailMasked} ip={Ip}",
+                    globalUser.Id, PiiGuard.MaskEmail(emailNorm), ipAddress);
+                EmitLoginFailed(emailNorm, tenantCode: "common-portal", userId: globalUser.Id.ToString(), reason: "NoCareConnectTenant", ipAddress: ipAddress);
                 throw new UnauthorizedAccessException();
             }
 

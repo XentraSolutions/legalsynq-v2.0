@@ -16,6 +16,12 @@ namespace Identity.Api.Endpoints;
 
 public static class AuthEndpoints
 {
+    private sealed record TenantPrimaryMembership(
+        Guid TenantId,
+        Guid OrganizationId,
+        string OrganizationName,
+        string OrganizationType);
+
     public static void MapAuthEndpoints(this WebApplication app)
     {
         // ── POST /api/auth/login ─────────────────────────────────────────────
@@ -75,6 +81,94 @@ public static class AuthEndpoints
         {
             var response = await authService.GetCurrentUserAsync(httpContext.User, ct);
             return Results.Ok(response);
+        })
+        .RequireAuthorization();
+
+        // ── GET /api/auth/my-product-access ───────────────────────────────────
+        // Authenticated (Bearer JWT required).
+        // Returns the calling user's direct product-access rows across all tenants,
+        // enriched with tenant + primary-org metadata for cross-tenant UI flows.
+        app.MapGet("/api/auth/my-product-access", async (
+            HttpContext httpContext,
+            IdentityDbContext db,
+            CancellationToken ct) =>
+        {
+            var sub = httpContext.User.FindFirstValue("sub")
+                   ?? httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!Guid.TryParse(sub, out var userId))
+                return Results.Unauthorized();
+
+            var requestedProductCode = httpContext.Request.Query["productCode"].FirstOrDefault();
+            var normalizedProductCode = string.IsNullOrWhiteSpace(requestedProductCode)
+                ? null
+                : requestedProductCode.Trim().ToUpperInvariant();
+
+            var records = await db.UserProductAccessRecords
+                .AsNoTracking()
+                .Where(a => a.UserId == userId && a.AccessStatus == AccessStatus.Granted)
+                .Where(a => normalizedProductCode == null || a.ProductCode == normalizedProductCode)
+                .Join(
+                    db.Tenants.AsNoTracking().Where(t => t.IsActive),
+                    access => access.TenantId,
+                    tenant => tenant.Id,
+                    (access, tenant) => new
+                    {
+                        access.Id,
+                        access.TenantId,
+                        access.ProductCode,
+                        access.AccessStatus,
+                        access.GrantedAtUtc,
+                        access.OrganizationId,
+                        TenantCode = tenant.Code,
+                        TenantName = tenant.Name,
+                        TenantSubdomain = tenant.Subdomain,
+                    })
+                .ToListAsync(ct);
+
+            var tenantIds = records.Select(r => r.TenantId).Distinct().ToList();
+            var primaryMemberships = tenantIds.Count == 0
+                ? new List<TenantPrimaryMembership>()
+                : await db.UserOrganizationMemberships
+                    .AsNoTracking()
+                    .Include(m => m.Organization)
+                    .Where(m => m.UserId == userId
+                             && m.IsActive
+                             && m.IsPrimary
+                             && m.Organization.TenantId != null
+                             && tenantIds.Contains(m.Organization.TenantId.Value))
+                    .Select(m => new TenantPrimaryMembership(
+                        m.Organization.TenantId!.Value,
+                        m.Organization.Id,
+                        m.Organization.DisplayName ?? m.Organization.Name,
+                        m.Organization.OrgType))
+                    .ToListAsync(ct);
+            var primaryMembershipByTenant = primaryMemberships
+                .GroupBy(m => m.TenantId)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var payload = records
+                .OrderBy(r => r.TenantName)
+                .ThenBy(r => r.ProductCode)
+                .Select(r =>
+                {
+                    primaryMembershipByTenant.TryGetValue(r.TenantId, out var membership);
+                    return new
+                    {
+                        r.Id,
+                        r.TenantId,
+                        tenantCode = r.TenantCode,
+                        tenantName = r.TenantName,
+                        tenantSubdomain = r.TenantSubdomain,
+                        r.ProductCode,
+                        accessStatus = r.AccessStatus.ToString(),
+                        r.GrantedAtUtc,
+                        organizationId = membership?.OrganizationId ?? r.OrganizationId,
+                        organizationName = membership?.OrganizationName,
+                        organizationType = membership?.OrganizationType,
+                    };
+                });
+
+            return Results.Ok(payload);
         })
         .RequireAuthorization();
 

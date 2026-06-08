@@ -199,6 +199,12 @@ public class PortalAccessStatusTests
             && a.TenantId == targetTenantId
             && a.ProductCode == CareConnectProductCode
             && a.AccessStatus == AccessStatus.Granted));
+        Assert.True(await verifyDb.UserRoleAssignments.AnyAsync(a =>
+            a.UserId == existingUserId
+            && a.TenantId == targetTenantId
+            && a.ProductCode == CareConnectProductCode
+            && a.RoleCode == "CARECONNECT_REFERRER"
+            && a.AssignmentStatus == AssignmentStatus.Active));
     }
 
     [Fact]
@@ -264,6 +270,12 @@ public class PortalAccessStatusTests
             && a.TenantId == targetTenantId
             && a.ProductCode == CareConnectProductCode
             && a.AccessStatus == AccessStatus.Granted));
+        Assert.True(await verifyDb.UserRoleAssignments.AnyAsync(a =>
+            a.UserId == body.UserId
+            && a.TenantId == targetTenantId
+            && a.ProductCode == CareConnectProductCode
+            && a.RoleCode == "CARECONNECT_REFERRER"
+            && a.AssignmentStatus == AssignmentStatus.Active));
     }
 
     private static async Task EnsureCareConnectProductSeededAsync(IdentityDbContext db)

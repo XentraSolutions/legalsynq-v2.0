@@ -69,6 +69,24 @@ public class AuthLoginTenantResolutionTests
         Assert.Equal(seeded.TenantId, response.User.TenantId);
     }
 
+    [Fact]
+    public async Task Login_ResolveByEmail_SelectsTenantWithCareConnectAccess_ForMultiTenantUser()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedMultiTenantCareConnectUserAsync(factory);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var response = await authService.LoginAsync(new LoginRequest(
+            Email: seeded.Email,
+            Password: seeded.Password,
+            ResolveByEmail: true));
+
+        Assert.Equal(seeded.CareConnectTenantId, response.User.TenantId);
+        Assert.Contains("SYNQ_CARECONNECT:CARECONNECT_REFERRER", response.User.ProductRoles ?? []);
+    }
+
     private static async Task<(Guid TenantId, string TenantCode, string Email, string Password)> SeedPendingTenantLoginUserAsync(
         WebApplicationFactory<Program> factory)
     {
@@ -111,5 +129,63 @@ public class AuthLoginTenantResolutionTests
 
         await db.SaveChangesAsync();
         return (tenant.Id, tenant.Code, email, password);
+    }
+
+    private static async Task<(Guid CareConnectTenantId, string Email, string Password)> SeedMultiTenantCareConnectUserAsync(
+        WebApplicationFactory<Program> factory)
+    {
+        const string password = "Password123!";
+        const string email = "multi.tenant@example.com";
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+
+        var homeTenant = Tenant.Create("Home Tenant", $"home-{Guid.CreateVersion7():N}");
+        var ccTenant = Tenant.Create("CareConnect Tenant", $"cc-{Guid.CreateVersion7():N}");
+        db.Tenants.AddRange(homeTenant, ccTenant);
+
+        var homeOrg = Organization.Create(homeTenant.Id, "Home Internal", OrgType.Internal, displayName: "Home Internal");
+        var ccOrg = Organization.Create(ccTenant.Id, "Referrer Firm", OrgType.LawFirm, displayName: "Referrer Firm");
+        db.Organizations.AddRange(homeOrg, ccOrg);
+
+        var ccProduct = Product.Create("SynqCareConnect", BuildingBlocks.Authorization.ProductCodes.SynqCareConnect);
+        db.Products.Add(ccProduct);
+        db.OrganizationProducts.Add(OrganizationProduct.Create(ccOrg.Id, ccProduct.Id));
+        db.Set<TenantProduct>().Add(TenantProduct.Create(ccTenant.Id, ccProduct.Id));
+
+        var ccRole = ProductRole.Create(
+            ccProduct.Id,
+            "CARECONNECT_REFERRER",
+            "CareConnect Referrer");
+        db.ProductRoles.Add(ccRole);
+
+        var user = User.Create(
+            homeTenant.Id,
+            email,
+            passwordHasher.Hash(password),
+            "Multi",
+            "Tenant");
+        db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, homeTenant.Id));
+        db.UserTenants.Add(UserTenant.Create(user.Id, ccTenant.Id));
+
+        var homeMembership = UserOrganizationMembership.Create(user.Id, homeOrg.Id, MemberRole.Member);
+        homeMembership.SetPrimary();
+        var ccMembership = UserOrganizationMembership.Create(user.Id, ccOrg.Id, MemberRole.Member);
+        db.UserOrganizationMemberships.AddRange(homeMembership, ccMembership);
+
+        db.UserProductAccessRecords.Add(UserProductAccess.Create(
+            ccTenant.Id,
+            user.Id,
+            BuildingBlocks.Authorization.ProductCodes.SynqCareConnect));
+        db.UserRoleAssignments.Add(UserRoleAssignment.Create(
+            ccTenant.Id,
+            user.Id,
+            "CARECONNECT_REFERRER",
+            BuildingBlocks.Authorization.ProductCodes.SynqCareConnect));
+
+        await db.SaveChangesAsync();
+        return (ccTenant.Id, email, password);
     }
 }

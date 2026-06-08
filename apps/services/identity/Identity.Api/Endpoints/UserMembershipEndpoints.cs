@@ -212,6 +212,106 @@ public static class UserMembershipEndpoints
             });
         });
 
+        // ── GET /api/internal/users/enrollment-prefill?tenantId=xxx&email=xxx ─
+        //
+        // Returns canonical enrollment prefill data for a law-firm referrer email.
+        // This lets CareConnect prefer the existing Identity profile + org details
+        // over transient values typed on the previous referral page.
+        //
+        // Response:
+        // {
+        //   "found": true,
+        //   "companyName": "Acme Law",
+        //   "email": "lawyer@example.com",
+        //   "phone": "+15551234567",
+        //   "firstName": "Jane",
+        //   "lastName": "Lawyer",
+        //   "addressLine1": "123 Main St",
+        //   "city": "Los Angeles",
+        //   "state": "CA",
+        //   "postalCode": "90001"
+        // }
+        //
+        // Auth: X-Provisioning-Token
+
+        group.MapGet("/enrollment-prefill", async (
+            HttpContext       httpContext,
+            Guid?             tenantId,
+            string?           email,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.EnrollmentPrefill");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "enrollment-prefill"))
+                return Results.Unauthorized();
+
+            if (tenantId is null || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { found = false });
+
+            var emailNorm = email.Trim().ToLowerInvariant();
+            var user = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Email.Trim().ToLower() == emailNorm)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Email,
+                    u.Phone,
+                    u.FirstName,
+                    u.LastName,
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (user is null)
+                return Results.Ok(new { found = false });
+
+            var organization = await db.UserOrganizationMemberships
+                .AsNoTracking()
+                .Where(m => m.UserId == user.Id && m.IsActive)
+                .Join(
+                    db.Organizations.AsNoTracking().Where(o => o.IsActive && o.OrgType == "LAW_FIRM"),
+                    m => m.OrganizationId,
+                    o => o.Id,
+                    (_, o) => new
+                    {
+                        Name = !string.IsNullOrWhiteSpace(o.DisplayName) ? o.DisplayName : o.Name,
+                        o.TenantId,
+                    })
+                .GroupJoin(
+                    db.Tenants.AsNoTracking(),
+                    o => o.TenantId,
+                    t => t.Id,
+                    (o, tenants) => new { o, tenant = tenants.FirstOrDefault() })
+                .OrderByDescending(x => x.o.TenantId == tenantId.Value)
+                .ThenByDescending(x => x.o.TenantId != null)
+                .Select(x => new
+                {
+                    x.o.Name,
+                    AddressLine1 = x.tenant != null ? x.tenant.AddressLine1 : null,
+                    City         = x.tenant != null ? x.tenant.City         : null,
+                    State        = x.tenant != null ? x.tenant.State        : null,
+                    PostalCode   = x.tenant != null ? x.tenant.PostalCode   : null,
+                })
+                .FirstOrDefaultAsync(ct);
+
+            return Results.Ok(new
+            {
+                found       = true,
+                companyName = organization?.Name         ?? string.Empty,
+                email       = user.Email,
+                phone       = user.Phone ?? string.Empty,
+                firstName   = user.FirstName,
+                lastName    = user.LastName,
+                addressLine1 = organization?.AddressLine1 ?? string.Empty,
+                city         = organization?.City         ?? string.Empty,
+                state        = organization?.State        ?? string.Empty,
+                postalCode   = organization?.PostalCode   ?? string.Empty,
+            });
+        });
+
         // ── GET /api/internal/users/is-owner?tenantId=xxx&email=xxx ──────────
         //
         // CC-OWNER-CHECK: Returns { isTenantOwner: bool } — whether the given email
