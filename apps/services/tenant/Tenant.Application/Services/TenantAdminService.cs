@@ -274,9 +274,7 @@ public class TenantAdminService : ITenantAdminService
         var provResult = await _identityProvisioning.ProvisionAsync(provisioningRequest, ct);
 
         // BLK-TS-02 — Update Tenant-owned provisioning state from Identity result.
-        var newProvStatus = provResult.Success
-            ? Domain.TenantProvisioningStatus.Provisioned
-            : Domain.TenantProvisioningStatus.Failed;
+        var newProvStatus = MapProvisioningStatus(provResult.ProvisioningStatus, provResult.Success);
         var provError = provResult.Errors.Count > 0 ? string.Join("; ", provResult.Errors) : null;
 
         tenant.SetProvisioningStatus(newProvStatus, provError);
@@ -307,9 +305,7 @@ public class TenantAdminService : ITenantAdminService
             }), ct);
 
         // ── Step 3: Build response ─────────────────────────────────────────────
-        var nextAction = provResult.Success
-            ? "None"
-            : "RetryProvisioning";
+        var nextAction = GetNextProvisioningAction(provResult.ProvisioningStatus, provResult.Success);
 
         return new AdminCreateTenantResponse(
             TenantId:            tenant.Id.ToString(),
@@ -327,6 +323,46 @@ public class TenantAdminService : ITenantAdminService
             NextAction:          nextAction,
             ProvisioningWarnings: provResult.Warnings,
             ProvisioningErrors:   provResult.Errors);
+    }
+
+    private static TenantProvisioningStatus MapProvisioningStatus(string? provisioningStatus, bool requestSucceeded)
+    {
+        if (!string.IsNullOrWhiteSpace(provisioningStatus) &&
+            Enum.TryParse<Domain.TenantProvisioningStatus>(provisioningStatus, ignoreCase: true, out var direct))
+        {
+            return direct;
+        }
+
+        if (!string.IsNullOrWhiteSpace(provisioningStatus))
+        {
+            switch (provisioningStatus.Trim())
+            {
+                case "Active":
+                case "Provisioned":
+                    return Domain.TenantProvisioningStatus.Provisioned;
+                case "Pending":
+                case "InProgress":
+                case "Verifying":
+                    return Domain.TenantProvisioningStatus.InProgress;
+                case "Failed":
+                    return Domain.TenantProvisioningStatus.Failed;
+            }
+        }
+
+        return requestSucceeded
+            ? Domain.TenantProvisioningStatus.Provisioned
+            : Domain.TenantProvisioningStatus.Failed;
+    }
+
+    private static string GetNextProvisioningAction(string? provisioningStatus, bool requestSucceeded)
+    {
+        return provisioningStatus?.Trim() switch
+        {
+            "Pending" or "InProgress" or "Verifying" => "MonitorProvisioning",
+            "Failed" => "RetryProvisioning",
+            "Active" or "Provisioned" => "None",
+            _ => requestSucceeded ? "None" : "RetryProvisioning",
+        };
     }
 
     // ── B12: Entitlement Toggle (Tenant-first) ─────────────────────────────────
