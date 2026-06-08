@@ -11,7 +11,7 @@ import { TenantBillingPanel }            from '@/components/billing/tenant-billi
 import { BillingEntitlementPanel }       from '@/components/billing/billing-entitlement-panel';
 import { BillingProfileActionsPanel }    from '@/components/billing/billing-profile-actions-panel';
 import { BillingProfileLifecyclePanel }  from '@/components/billing/billing-profile-lifecycle-panel';
-import type { TenantBillingSummary, BillingEntitlementSnapshot } from '@/types/control-center';
+import type { TenantBillingSummary, BillingEntitlementSnapshot, PlatformSetting } from '@/types/control-center';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +55,7 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
   let tenantBillingError:      string | null                    = null;
   let billingEntitlement:      BillingEntitlementSnapshot | null = null;
   let billingEntitlementError: string | null                    = null;
+  let settings:                PlatformSetting[]                = [];
 
   const cookieStore  = await cookies();
   const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
@@ -85,9 +86,19 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
       : 'Failed to load entitlement data.';
   }
 
+  try {
+    settings = await controlCenterServerApi.settings.list();
+  } catch {
+    // Non-fatal — tenant.hostname remains the preferred display value.
+  }
+
+  const portalBaseDomain = String(
+    settings.find(s => s.key === 'platform.portalBaseDomain')?.value ?? '',
+  );
+
   return (
     <div className="space-y-5">
-      <TenantDetailCard tenant={tenant} />
+      <TenantDetailCard tenant={tenant} portalBaseDomain={portalBaseDomain} />
 
       <TenantLogoUpload
         tenantId={tenant.id}
