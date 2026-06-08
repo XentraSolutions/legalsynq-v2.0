@@ -10,7 +10,7 @@
 
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { requireExternalPortal } from '@/lib/auth-guards';
+import { FrontendProductCode, requireExternalPortal, sessionHasProductAccess } from '@/lib/auth-guards';
 import { OrgType, ProductRole } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +23,10 @@ export default async function CommonPortalLayout({
   children: React.ReactNode;
 }) {
   const session = await requireExternalPortal();
+
+  if (!sessionHasProductAccess(session, FrontendProductCode.CareConnect)) {
+    redirect('/access-denied');
+  }
 
   const hasCcRole =
     session.productRoles.includes(ProductRole.CareConnectReferrer) ||

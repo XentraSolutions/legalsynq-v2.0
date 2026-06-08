@@ -71,6 +71,14 @@ public class UserProductAccessService : IUserProductAccessService
 
         if (existing != null)
         {
+            if (existing.AccessStatus == AccessStatus.Granted)
+            {
+                _logger.LogDebug(
+                    "User product access already granted: UserId={UserId}, TenantId={TenantId}, ProductCode={ProductCode}.",
+                    userId, tenantId, code);
+                return existing;
+            }
+
             var beforeJson = JsonSerializer.Serialize(new { existing.AccessStatus, existing.GrantedAtUtc, existing.RevokedAtUtc });
             existing.Grant(actorUserId);
 

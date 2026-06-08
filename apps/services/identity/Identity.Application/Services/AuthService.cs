@@ -22,7 +22,6 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuditEventClient _auditClient;
     private readonly IEffectiveAccessService _effectiveAccessService;
-    private readonly IPermissionService _permissionService;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<AuthService> _logger;
 
@@ -33,7 +32,6 @@ public class AuthService : IAuthService
         IJwtTokenService jwtTokenService,
         IAuditEventClient auditClient,
         IEffectiveAccessService effectiveAccessService,
-        IPermissionService permissionService,
         IHttpContextAccessor httpContextAccessor,
         ILogger<AuthService> logger)
     {
@@ -43,7 +41,6 @@ public class AuthService : IAuthService
         _jwtTokenService = jwtTokenService;
         _auditClient = auditClient;
         _effectiveAccessService = effectiveAccessService;
-        _permissionService = permissionService;
         _httpContextAccessor = httpContextAccessor;
         _logger = logger;
     }
@@ -321,27 +318,27 @@ public class AuthService : IAuthService
             ? (Domain.OrgTypeMapper.TryResolveCode(org.OrganizationTypeId) ?? org.OrgType)
             : null;
 
-        // CC-AUTH-01: Law firms are intrinsically CareConnect referrers.
-        // If the user belongs to a LAW_FIRM org and has no CareConnect product role yet
-        // (i.e. explicit provisioning hasn't run), auto-inject the referrer role so the
-        // backend product-access filter passes without a manual provisioning step.
-        // Mirrors how LienOwner implies NetworkManager in the front-end access rules.
         var productRolesFlat = effectiveAccess.ProductRolesFlat;
         const string CcProductPrefix   = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":";
-        const string CcReferrerRole    = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":CARECONNECT_REFERRER";
-        var ccRoleAutoInjected = false;
-        if (string.Equals(orgTypeForResponse, Domain.OrgType.LawFirm, StringComparison.OrdinalIgnoreCase)
-            && !productRolesFlat.Any(r => r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase)))
-        {
-            productRolesFlat = [.. productRolesFlat, CcReferrerRole];
-            ccRoleAutoInjected = true;
-        }
+        var hasCareConnectProduct = effectiveAccess.Products.Contains(
+            BuildingBlocks.Authorization.ProductCodes.SynqCareConnect,
+            StringComparer.OrdinalIgnoreCase);
 
         // Load all active tenant memberships to populate tenant_ids JWT claim and LoginResponse.Tenants.
         var tenantMemberships = await _userRepository.GetActiveTenantMembershipsAsync(userWithRoles.Id, ct);
 
-        // Phase 6A: CC common portal guard — block users with no CC product role.
-        // This guard runs AFTER CC-AUTH-01 auto-inject so LAW_FIRM users pass cleanly.
+        // CareConnect portal logins require both explicit product access and a CareConnect role.
+        if (requireCareConnectAccess && !hasCareConnectProduct)
+        {
+            EmitLoginFailed(
+                userWithRoles.Email,
+                tenantCode: tenant.Code,
+                userId:     userWithRoles.Id.ToString(),
+                reason:     "NoCareConnectProduct",
+                ipAddress:  ipAddress);
+            throw new UnauthorizedAccessException();
+        }
+
         if (requireCareConnectAccess
             && !productRolesFlat.Any(r => r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase)))
         {
@@ -354,23 +351,11 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
-        // CC-AUTH-01 fix: when the referrer role was auto-injected (not provisioned in DB),
-        // effectiveAccess.Permissions was computed before the injection and omits the referrer's
-        // capabilities. Fetch and merge them so the JWT `permissions` claim is complete.
-        var finalPermissions = effectiveAccess.Permissions;
-        if (ccRoleAutoInjected)
-        {
-            var injected = await _permissionService.GetPermissionsAsync(
-                [ProductRoleCodes.CareConnectReferrer], ct);
-            finalPermissions = [.. finalPermissions,
-                .. injected.Except(finalPermissions, StringComparer.OrdinalIgnoreCase)];
-        }
-
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
             userWithRoles, tenant, roleNames, org, productRolesFlat,
             sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
             productCodes: effectiveAccess.Products,
-            permissions: finalPermissions,
+            permissions: effectiveAccess.Permissions,
             tenantIds: tenantMemberships.Select(ut => ut.TenantId));
 
         // Build TenantSummary list for the LoginResponse from the membership rows.

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { requireOrg } from '@/lib/auth-guards';
-import { ProductRole, OrgType } from '@/types';
+import { ProductRole } from '@/types';
 import { checkCareConnectReceiverAccess } from '@/lib/careconnect-access';
 import { ReferralAccessBlocked } from '@/components/careconnect/referral-access-blocked';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
@@ -270,13 +270,9 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
   const searchParamsData = await searchParams;
   const session = await requireOrg();
 
-  // LawFirm org type is intrinsically a referrer even if the explicit product role
-  // hasn't been assigned yet — mirrors how LienOwner implies NetworkManager.
-  const isReferrer        = session.productRoles.includes(ProductRole.CareConnectReferrer)
-                          || session.orgType === OrgType.LawFirm;
+  const isReferrer        = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver        = session.productRoles.includes(ProductRole.CareConnectReceiver);
-  const isNetworkManager  = session.productRoles.includes(ProductRole.CareConnectNetworkManager)
-                          || session.orgType === OrgType.LienOwner;
+  const isNetworkManager  = session.productRoles.includes(ProductRole.CareConnectNetworkManager);
 
   // LSCC-01-002-02: Enforce the admin-controlled access model.
   if (!isReferrer && !isReceiver && !isNetworkManager) {

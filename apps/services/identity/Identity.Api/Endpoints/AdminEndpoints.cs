@@ -2496,9 +2496,30 @@ public static class AdminEndpoints
     // LSCC-01-003: CareConnect provider provisioning
     // =========================================================================
 
+    private const string CareConnectProductCode       = "SYNQ_CARECONNECT";
     private static readonly Guid CcProductId          = new("10000000-0000-0000-0000-000000000003");
     private static readonly Guid CcReceiverRoleId      = new("50000000-0000-0000-0000-000000000002");
     private static readonly Guid CcReferrerRoleId      = new("50000000-0000-0000-0000-000000000001");
+
+    private static async Task EnsureCareConnectUserProductAccessAsync(
+        Guid tenantId,
+        Guid userId,
+        IProductProvisioningService provisioningEngine,
+        IUserProductAccessService userProductAccessService,
+        Guid? actorUserId,
+        CancellationToken ct)
+    {
+        await provisioningEngine.ProvisionAsync(
+            new ProvisionProductRequest(tenantId, CareConnectProductCode, true),
+            ct);
+
+        await userProductAccessService.GrantAsync(
+            tenantId,
+            userId,
+            CareConnectProductCode,
+            actorUserId,
+            ct);
+    }
 
     /// <summary>
     /// GET /api/admin/users/{id}/careconnect-readiness
@@ -2585,6 +2606,7 @@ public static class AdminEndpoints
         ClaimsPrincipal   caller,
         IdentityDbContext db,
         IProductProvisioningService provisioningEngine,
+        IUserProductAccessService userProductAccessService,
         CancellationToken ct)
     {
         var callerId = caller.FindFirstValue(ClaimTypes.NameIdentifier) is { } cid
@@ -2624,7 +2646,14 @@ public static class AdminEndpoints
             });
 
         var provResult = await provisioningEngine.ProvisionAsync(
-            new ProvisionProductRequest(opTenantId, ProductCodes.SynqCareConnect, true), ct);
+            new ProvisionProductRequest(opTenantId, CareConnectProductCode, true), ct);
+
+        await userProductAccessService.GrantAsync(
+            opTenantId,
+            id,
+            CareConnectProductCode,
+            callerId,
+            ct);
 
         bool roleAdded = false;
         var existingRole = await db.ScopedRoleAssignments
@@ -7797,11 +7826,33 @@ public static class AdminEndpoints
 /// </summary>
 public static partial class AdminEndpointsLscc010
 {
+    private const string CareConnectProductCode = "SYNQ_CARECONNECT";
+
     // Deterministic org name that embeds the CareConnect provider ID for stable lookup.
     // Format: "{ProviderName} [cc:{providerCcId:D}]"
     // This is the idempotency key — the same provider always maps to the same org.
     private static string OrgName(string providerName, Guid providerCcId)
         => $"{providerName.Trim()} [cc:{providerCcId:D}]";
+
+    private static async Task EnsureCareConnectUserProductAccessAsync(
+        Guid tenantId,
+        Guid userId,
+        IProductProvisioningService provisioningEngine,
+        IUserProductAccessService userProductAccessService,
+        Guid? actorUserId,
+        CancellationToken ct)
+    {
+        await provisioningEngine.ProvisionAsync(
+            new ProvisionProductRequest(tenantId, CareConnectProductCode, true),
+            ct);
+
+        await userProductAccessService.GrantAsync(
+            tenantId,
+            userId,
+            CareConnectProductCode,
+            actorUserId,
+            ct);
+    }
 
     /// <summary>
     /// POST /api/admin/organizations
@@ -7913,6 +7964,8 @@ public static partial class AdminEndpointsLscc010
         ProvisionProviderUserRequest          body,
         IdentityDbContext                     db,
         IPasswordHasher                       passwordHasher,
+        IProductProvisioningService           provisioningEngine,
+        IUserProductAccessService             userProductAccessService,
         IAuditEventClient                     auditClient,
         IOptions<NotificationsServiceOptions> notifOptions,
         INotificationsEmailClient             emailClient,
@@ -7983,6 +8036,14 @@ public static partial class AdminEndpointsLscc010
 
             if (alreadyInTenant)
             {
+                await EnsureCareConnectUserProductAccessAsync(
+                    targetTenantId,
+                    existingUser.Id,
+                    provisioningEngine,
+                    userProductAccessService,
+                    actorUserId: null,
+                    ct);
+
                 logger.LogInformation(
                     "LSCC-010 ProvisionProviderUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
                     emailLower, targetTenantId, id);
@@ -8001,6 +8062,14 @@ public static partial class AdminEndpointsLscc010
                 db.UserOrganizationMemberships.Add(crossMembership);
 
                 await db.SaveChangesAsync(ct);
+
+                await EnsureCareConnectUserProductAccessAsync(
+                    targetTenantId,
+                    existingUser.Id,
+                    provisioningEngine,
+                    userProductAccessService,
+                    actorUserId: null,
+                    ct);
 
                 logger.LogInformation(
                     "LSCC-010 ProvisionProviderUser: existing active user {UserId} ({Email}) linked to tenant {TenantId}.",
@@ -8067,6 +8136,14 @@ public static partial class AdminEndpointsLscc010
 
                 await db.SaveChangesAsync(ct);
 
+                await EnsureCareConnectUserProductAccessAsync(
+                    targetTenantId,
+                    existingUser.Id,
+                    provisioningEngine,
+                    userProductAccessService,
+                    actorUserId: null,
+                    ct);
+
                 var invSent       = false;
                 var provTenant    = await db.Tenants.FindAsync([targetTenantId], ct);
                 var activationLink = TenantPortalUrlHelper.Build(provTenant, "accept-invite", rawToken, notifOptions.Value);
@@ -8112,6 +8189,14 @@ public static partial class AdminEndpointsLscc010
         db.UserInvitations.Add(invitation);
 
         await db.SaveChangesAsync(ct);
+
+        await EnsureCareConnectUserProductAccessAsync(
+            targetTenantId,
+            user.Id,
+            provisioningEngine,
+            userProductAccessService,
+            actorUserId: null,
+            ct);
 
         // Fire-and-forget audit
         var now = DateTimeOffset.UtcNow;
@@ -8183,6 +8268,8 @@ public static partial class AdminEndpointsLscc010
         SelfRegisterUserRequest body,
         IdentityDbContext       db,
         IPasswordHasher         passwordHasher,
+        IProductProvisioningService provisioningEngine,
+        IUserProductAccessService userProductAccessService,
         IAuditEventClient       auditClient,
         ILoggerFactory          loggerFactory,
         CancellationToken       ct)
@@ -8256,6 +8343,14 @@ public static partial class AdminEndpointsLscc010
                 await EnsureUserOrganizationMembershipAsync(db, existingUser.Id, org.Id, ct);
                 await db.SaveChangesAsync(ct);
 
+                await EnsureCareConnectUserProductAccessAsync(
+                    targetTenantId.Value,
+                    existingUser.Id,
+                    provisioningEngine,
+                    userProductAccessService,
+                    actorUserId: null,
+                    ct);
+
                 logger.LogInformation(
                     "CC2-ENROLL SelfRegisterUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
                     emailLower, targetTenantId.Value, id);
@@ -8282,6 +8377,14 @@ public static partial class AdminEndpointsLscc010
 
             await db.SaveChangesAsync(ct);
 
+            await EnsureCareConnectUserProductAccessAsync(
+                targetTenantId.Value,
+                existingUser.Id,
+                provisioningEngine,
+                userProductAccessService,
+                actorUserId: null,
+                ct);
+
             logger.LogInformation(
                 "CC2-ENROLL SelfRegisterUser: existing user {UserId} ({Email}) linked to tenant {TenantId} (org {OrgId}).",
                 existingUser.Id, emailLower, targetTenantId.Value, id);
@@ -8302,6 +8405,14 @@ public static partial class AdminEndpointsLscc010
         await EnsureUserOrganizationMembershipAsync(db, user.Id, id, ct);
 
         await db.SaveChangesAsync(ct);
+
+        await EnsureCareConnectUserProductAccessAsync(
+            targetTenantId.Value,
+            user.Id,
+            provisioningEngine,
+            userProductAccessService,
+            actorUserId: null,
+            ct);
 
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
         {

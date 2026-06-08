@@ -1,20 +1,26 @@
 using System.Net;
 using System.Net.Http.Json;
 using Identity.Application.Interfaces;
+using Identity.Api.Endpoints;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
+using LegalSynq.AuditClient;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Identity.Tests;
 
 public class PortalAccessStatusTests
 {
+    private const string CareConnectProductCode = "SYNQ_CARECONNECT";
+
     private static WebApplicationFactory<Program> BuildFactory() =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -113,6 +119,7 @@ public class PortalAccessStatusTests
         {
             var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
             var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+            await EnsureCareConnectProductSeededAsync(db);
 
             var homeTenant = Tenant.Create("Home Tenant", $"home-{Guid.CreateVersion7():N}");
             var targetTenant = Tenant.Create("Target Tenant", $"target-{Guid.CreateVersion7():N}");
@@ -144,20 +151,35 @@ public class PortalAccessStatusTests
             existingUserId = existingUser.Id;
         }
 
-        var client = factory.CreateClient();
-        var response = await client.PostAsJsonAsync(
-            $"/api/admin/organizations/{targetOrgId}/self-register",
-            new
-            {
-                email = "legacy.referrer@example.com",
-                password,
-                firstName = "Legacy",
-                lastName = "Referrer"
-            });
+        using var invokeScope = factory.Services.CreateScope();
+        var invokeDb = invokeScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        var invokePasswordHasher = invokeScope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        var provisioningEngine = invokeScope.ServiceProvider.GetRequiredService<IProductProvisioningService>();
+        var userProductAccessService = invokeScope.ServiceProvider.GetRequiredService<IUserProductAccessService>();
+        var auditClient = invokeScope.ServiceProvider.GetRequiredService<IAuditEventClient>();
+        var loggerFactory = invokeScope.ServiceProvider.GetRequiredService<ILoggerFactory>();
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<SelfRegisterResponse>();
-        Assert.NotNull(body);
+        var result = await AdminEndpointsLscc010.SelfRegisterUser(
+            targetOrgId,
+            new AdminEndpointsLscc010.SelfRegisterUserRequest(
+                TenantId: null,
+                Email: "legacy.referrer@example.com",
+                Password: password,
+                FirstName: "Legacy",
+                LastName: "Referrer"),
+            invokeDb,
+            invokePasswordHasher,
+            provisioningEngine,
+            userProductAccessService,
+            auditClient,
+            loggerFactory,
+            CancellationToken.None);
+
+        var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status200OK, statusResult.StatusCode);
+
+        var valueResult = Assert.IsAssignableFrom<IValueHttpResult>(result);
+        var body = Assert.IsType<AdminEndpointsLscc010.SelfRegisterUserResponse>(valueResult.Value);
         Assert.Equal(existingUserId, body.UserId);
         Assert.False(body.IsNew);
 
@@ -172,6 +194,84 @@ public class PortalAccessStatusTests
             ut.UserId == existingUserId && ut.TenantId == targetTenantId && ut.IsActive));
         Assert.True(await verifyDb.UserOrganizationMemberships.AnyAsync(m =>
             m.UserId == existingUserId && m.OrganizationId == targetOrgId && m.IsActive));
+        Assert.True(await verifyDb.UserProductAccessRecords.AnyAsync(a =>
+            a.UserId == existingUserId
+            && a.TenantId == targetTenantId
+            && a.ProductCode == CareConnectProductCode
+            && a.AccessStatus == AccessStatus.Granted));
+    }
+
+    [Fact]
+    public async Task SelfRegister_CreatesExplicitCareConnectProductAccess_ForNewUser()
+    {
+        using var factory = BuildFactory();
+        Guid targetOrgId;
+        Guid targetTenantId;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            await EnsureCareConnectProductSeededAsync(db);
+
+            var targetTenant = Tenant.Create("Target Tenant", $"target-{Guid.CreateVersion7():N}");
+            db.Tenants.Add(targetTenant);
+
+            var targetOrg = Organization.Create(targetTenant.Id, "Target Firm", OrgType.LawFirm, displayName: "Target Firm");
+            db.Organizations.Add(targetOrg);
+
+            await db.SaveChangesAsync();
+
+            targetOrgId = targetOrg.Id;
+            targetTenantId = targetTenant.Id;
+        }
+
+        using var invokeScope = factory.Services.CreateScope();
+        var invokeDb = invokeScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        var invokePasswordHasher = invokeScope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        var provisioningEngine = invokeScope.ServiceProvider.GetRequiredService<IProductProvisioningService>();
+        var userProductAccessService = invokeScope.ServiceProvider.GetRequiredService<IUserProductAccessService>();
+        var auditClient = invokeScope.ServiceProvider.GetRequiredService<IAuditEventClient>();
+        var loggerFactory = invokeScope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+
+        var result = await AdminEndpointsLscc010.SelfRegisterUser(
+            targetOrgId,
+            new AdminEndpointsLscc010.SelfRegisterUserRequest(
+                TenantId: null,
+                Email: "new.referrer@example.com",
+                Password: "NewPassword123!",
+                FirstName: "New",
+                LastName: "Referrer"),
+            invokeDb,
+            invokePasswordHasher,
+            provisioningEngine,
+            userProductAccessService,
+            auditClient,
+            loggerFactory,
+            CancellationToken.None);
+
+        var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status201Created, statusResult.StatusCode);
+
+        var valueResult = Assert.IsAssignableFrom<IValueHttpResult>(result);
+        var body = Assert.IsType<AdminEndpointsLscc010.SelfRegisterUserResponse>(valueResult.Value);
+        Assert.True(body.IsNew);
+
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+        Assert.True(await verifyDb.UserProductAccessRecords.AnyAsync(a =>
+            a.UserId == body.UserId
+            && a.TenantId == targetTenantId
+            && a.ProductCode == CareConnectProductCode
+            && a.AccessStatus == AccessStatus.Granted));
+    }
+
+    private static async Task EnsureCareConnectProductSeededAsync(IdentityDbContext db)
+    {
+        if (await db.Products.AnyAsync(p => p.Code == CareConnectProductCode))
+            return;
+
+        db.Products.Add(Product.Create("SynqCareConnect", CareConnectProductCode));
     }
 
     private static async Task<Guid> SeedExistingCrossTenantUserAsync(WebApplicationFactory<Program> factory, string email)
