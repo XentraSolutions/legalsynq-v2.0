@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
 
 export type PanelMode = 'split' | 'left-expanded' | 'right-expanded';
 
@@ -61,18 +60,17 @@ export function LayoutSplit({
   const rightCollapsed = isLeft;   // right is minimized when left expanded
 
   return (
-    <div className={`flex w-full items-stretch gap-0 ${className ?? ''}`}>
+      <div className={`flex w-full items-stretch gap-0 ${className ?? ''}`}>
       {/* LEFT */}
-      <motion.div
-        animate={{ flex: leftFlex }}
-        transition={{ type: 'spring', stiffness: 220, damping: 28 }}
-        className="min-w-0 relative overflow-hidden"
+      <div
+        className="min-w-0 relative overflow-hidden transition-[flex-grow] duration-300 ease-out"
+        style={{ flexGrow: leftFlex, flexBasis: 0 }}
       >
         {/* CONTENT */}
         <div className={`transition-opacity duration-200`}>
           {left}
         </div>
-      </motion.div>
+      </div>
 
       {/* CONTROLS */}
       <div className="flex flex-col items-center justify-start pt-1 gap-1 shrink-0 mx-1">
@@ -104,16 +102,15 @@ export function LayoutSplit({
       </div>
 
       {/* RIGHT */}
-      <motion.div
-        animate={{ flex: rightFlex }}
-        transition={{ type: 'spring', stiffness: 220, damping: 28 }}
-        className="min-w-0 relative overflow-hidden"
+      <div
+        className="min-w-0 relative overflow-hidden transition-[flex-grow] duration-300 ease-out"
+        style={{ flexGrow: rightFlex, flexBasis: 0 }}
       >
         {/* CONTENT */}
         <div className={`transition-opacity duration-200`}>
           {right}
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

@@ -9,26 +9,66 @@ public partial class AddNotificationDedupeKey : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql(@"
-            ALTER TABLE `cc_CareConnectNotifications`
-            ADD COLUMN IF NOT EXISTS `DedupeKey` varchar(500) CHARACTER SET utf8mb4 NULL;
-        ");
+            SET @dbname = DATABASE();
+            SET @tbl = IF(
+              (SELECT COUNT(*) FROM information_schema.tables
+               WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='cc_CareConnectNotifications') > 0,
+              'cc_CareConnectNotifications',
+              'CareConnectNotifications');
+            SET @s = IF(
+              (SELECT COUNT(*) FROM information_schema.columns
+               WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME=@tbl
+                 AND COLUMN_NAME='DedupeKey') = 0,
+              CONCAT('ALTER TABLE `', @tbl, '` ADD COLUMN `DedupeKey` varchar(500) CHARACTER SET utf8mb4 NULL'),
+              'SELECT 1');
+            PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
         migrationBuilder.Sql(@"
-            CREATE UNIQUE INDEX IF NOT EXISTS `IX_CareConnectNotifications_DedupeKey`
-            ON `cc_CareConnectNotifications` (`DedupeKey`);
-        ");
+            SET @dbname = DATABASE();
+            SET @tbl = IF(
+              (SELECT COUNT(*) FROM information_schema.tables
+               WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='cc_CareConnectNotifications') > 0,
+              'cc_CareConnectNotifications',
+              'CareConnectNotifications');
+            SET @s = IF(
+              (SELECT COUNT(*) FROM information_schema.statistics
+               WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME=@tbl
+                 AND INDEX_NAME='IX_CareConnectNotifications_DedupeKey') = 0,
+              CONCAT('CREATE UNIQUE INDEX `IX_CareConnectNotifications_DedupeKey` ON `', @tbl, '` (`DedupeKey`)'),
+              'SELECT 1');
+            PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql(@"
-            DROP INDEX IF EXISTS `IX_CareConnectNotifications_DedupeKey`
-            ON `cc_CareConnectNotifications`;
-        ");
+            SET @dbname = DATABASE();
+            SET @tbl = IF(
+              (SELECT COUNT(*) FROM information_schema.tables
+               WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='cc_CareConnectNotifications') > 0,
+              'cc_CareConnectNotifications',
+              'CareConnectNotifications');
+            SET @s = IF(
+              (SELECT COUNT(*) FROM information_schema.statistics
+               WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME=@tbl
+                 AND INDEX_NAME='IX_CareConnectNotifications_DedupeKey') > 0,
+              CONCAT('DROP INDEX `IX_CareConnectNotifications_DedupeKey` ON `', @tbl, '`'),
+              'SELECT 1');
+            PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
         migrationBuilder.Sql(@"
-            ALTER TABLE `cc_CareConnectNotifications`
-            DROP COLUMN IF EXISTS `DedupeKey`;
-        ");
+            SET @dbname = DATABASE();
+            SET @tbl = IF(
+              (SELECT COUNT(*) FROM information_schema.tables
+               WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='cc_CareConnectNotifications') > 0,
+              'cc_CareConnectNotifications',
+              'CareConnectNotifications');
+            SET @s = IF(
+              (SELECT COUNT(*) FROM information_schema.columns
+               WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME=@tbl
+                 AND COLUMN_NAME='DedupeKey') > 0,
+              CONCAT('ALTER TABLE `', @tbl, '` DROP COLUMN `DedupeKey`'),
+              'SELECT 1');
+            PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
     }
 }

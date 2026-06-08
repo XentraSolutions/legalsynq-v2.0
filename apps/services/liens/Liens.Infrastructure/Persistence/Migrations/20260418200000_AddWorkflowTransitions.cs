@@ -1,10 +1,13 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Liens.Infrastructure.Persistence.Migrations
 {
+    [DbContext(typeof(LiensDbContext))]
+    [Migration("20260418200000_AddWorkflowTransitions")]
     /// <inheritdoc />
     public partial class AddWorkflowTransitions : Migration
     {

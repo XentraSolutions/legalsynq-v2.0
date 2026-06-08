@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -15,6 +17,7 @@ namespace Identity.Infrastructure.Persistence.Migrations;
 /// Before: legacyStringOnly=0, withBothPaths=7
 /// After:  legacyStringOnly=0, withBothPaths=0, withDbRuleOnly=7
 /// </summary>
+[DbContext(typeof(IdentityDbContext))]
 [Migration("20260330200001_NullifyEligibleOrgType")]
 public partial class NullifyEligibleOrgType : Migration
 {

@@ -100,6 +100,13 @@ public class TenantConfiguration : IEntityTypeConfiguration<Domain.Tenant>
         builder.Property(t => t.CountryCode)
             .HasMaxLength(2);
 
+        // ── Owner ─────────────────────────────────────────────────────────────
+
+        builder.Property(t => t.OwnerUserId);
+
+        builder.HasIndex(t => t.OwnerUserId)
+            .HasFilter("`OwnerUserId` IS NOT NULL");
+
         // ── Timestamps ────────────────────────────────────────────────────────
 
         builder.Property(t => t.CreatedAtUtc)

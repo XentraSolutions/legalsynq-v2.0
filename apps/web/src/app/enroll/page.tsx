@@ -1,5 +1,16 @@
-import { fetchEnrollmentPrefill, decodeEnrollmentToken } from './actions';
+import { fetchEnrollmentPrefill, decodeEnrollmentToken, fetchExistingEnrollmentPrefill } from './actions';
 import { EnrollmentForm }                               from './enrollment-form';
+import { getServerSession }                             from '@/lib/session';
+import { OrgType, ProductRole }                         from '@/types';
+
+export const dynamic = 'force-dynamic';
+
+interface AuthenticatedOrgPrefill {
+  companyName: string;
+  companyType: string;
+  email:       string;
+  phone:       string;
+}
 
 interface SearchParams {
   id?:       string;  // provider enrollment (not token-protected — tenantId scoped by HMAC prefill)
@@ -13,6 +24,7 @@ interface PageProps {
 
 export default async function EnrollPage({ searchParams }: PageProps) {
   const { id: providerId, tenantId, token } = await searchParams;
+  const session = await getServerSession();
 
   let prefill = null;
 
@@ -33,22 +45,62 @@ export default async function EnrollPage({ searchParams }: PageProps) {
   // — firm/referral flow: from the decoded, signature-verified token
   const effectiveTenantId = claims?.tenantId ?? tenantId ?? null;
 
+  const existingEnrollmentPrefill =
+    claims?.email && effectiveTenantId
+      ? await fetchExistingEnrollmentPrefill(effectiveTenantId, claims.email)
+      : null;
+
   // Referral prefill from decoded token only (no raw URL params accepted for PII).
   const contact = (claims?.contact ?? '').trim();
   const parts    = contact.split(/\s+/).filter(Boolean);
   const refFirst = parts[0] ?? '';
   const refLast  = parts.slice(1).join(' ');
-  const referralPrefill = claims ? {
-    companyName: claims.firm    ?? '',
-    email:       claims.email   ?? '',
-    phone:       claims.phone   ?? '',
-    firstName:   refFirst,
-    lastName:    refLast,
-  } : null;
+  const referralPrefill = claims ? (
+    existingEnrollmentPrefill
+      ? {
+          companyName:  existingEnrollmentPrefill.companyName,
+          email:        existingEnrollmentPrefill.email,
+          phone:        existingEnrollmentPrefill.phone,
+          firstName:    existingEnrollmentPrefill.firstName,
+          lastName:     existingEnrollmentPrefill.lastName,
+          addressLine1: existingEnrollmentPrefill.addressLine1,
+          city:         existingEnrollmentPrefill.city,
+          state:        existingEnrollmentPrefill.state,
+          postalCode:   existingEnrollmentPrefill.postalCode,
+        }
+      : {
+          companyName:  claims.firm  ?? '',
+          email:        claims.email ?? '',
+          phone:        claims.phone ?? '',
+          firstName:    refFirst,
+          lastName:     refLast,
+          addressLine1: '',
+          city:         '',
+          state:        '',
+          postalCode:   '',
+        }
+  ) : null;
 
   // Firm enrollment: no providerId + valid token with a tenantId = firm/referral path.
   // Never derived from a user-controlled URL param.
   const isFirmEnrollment = !providerId && !!effectiveTenantId;
+
+  const hasCareConnectRole = !!session && (
+    session.productRoles.includes(ProductRole.CareConnectReferrer) ||
+    session.productRoles.includes(ProductRole.CareConnectReceiver)
+  );
+
+  const isExternalOrg = session?.orgType === OrgType.LawFirm || session?.orgType === OrgType.Provider;
+
+  const authenticatedOrgPrefill: AuthenticatedOrgPrefill | null =
+    session?.orgId && hasCareConnectRole && isExternalOrg
+      ? {
+          companyName: session.orgName ?? '',
+          companyType: session.orgType === OrgType.Provider ? 'Provider' : 'Law Firm',
+          email:       session.email,
+          phone:       session.phone ?? '',
+        }
+      : null;
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -67,6 +119,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
         </div>
 
         <EnrollmentForm
+          authenticatedOrgPrefill={authenticatedOrgPrefill}
           prefill={prefill}
           providerId={providerId ?? null}
           tenantId={effectiveTenantId}
@@ -76,7 +129,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
 
         <p className="text-center text-xs text-gray-400 mt-6">
           Already have an account?{' '}
-          <a href={`${process.env.CC_COMMON_PORTAL_HOSTNAME}/login`} className="text-blue-600 hover:underline">Sign in</a>
+          <a href="/login" className="text-blue-600 hover:underline">Sign in</a>
         </p>
       </div>
     </main>

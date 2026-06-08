@@ -129,7 +129,7 @@ public class GroupProductAccessService : IGroupProductAccessService
         if (memberUserIds.Count == 0) return;
 
         var updated = await _db.Users
-            .Where(u => memberUserIds.Contains(u.Id) && u.TenantId == tenantId)
+            .Where(u => memberUserIds.Contains(u.Id))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(u => u.AccessVersion, u => u.AccessVersion + 1)
                 .SetProperty(u => u.UpdatedAtUtc, DateTime.UtcNow), ct);

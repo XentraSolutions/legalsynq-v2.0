@@ -2,13 +2,13 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { SESSION_COOKIE_NAME, BASE_PATH } from '@/lib/app-config';
 
 /**
- * Control Center middleware — route protection.
+ * Control Center proxy — route protection.
  *
  * All routes except /login and Next.js internals require the platform_session
  * cookie. The cookie is a gate only — the actual role check (isPlatformAdmin)
  * is done in requirePlatformAdmin() inside each Server Component / layout.
  *
- * This middleware is intentionally lightweight. It does NOT decode the JWT or
+ * This proxy is intentionally lightweight. It does NOT decode the JWT or
  * make role decisions — those belong to the server-side auth guards.
  *
  * TODO: integrate with Identity service session validation
@@ -30,7 +30,7 @@ const PUBLIC_PATHS = [
 
 const PUBLIC_FILE_EXT = /\.(png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|eot|css|js|map)$/i;
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const systemStatusBase = `${BASE_PATH}/systemstatus`;

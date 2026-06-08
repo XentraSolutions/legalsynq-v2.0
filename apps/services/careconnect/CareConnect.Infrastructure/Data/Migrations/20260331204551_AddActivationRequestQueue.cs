@@ -33,38 +33,39 @@ namespace CareConnect.Infrastructure.Data.Migrations
                   'SELECT 1');
                 PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.AlterColumn<int>(
-                name: "TokenVersion",
-                table: "Referrals",
-                type: "int",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int",
-                oldDefaultValue: 1);
+            // These columns are introduced by later migrations in the current chain.
+            // Guard the ALTERs so a clean database can apply this earlier migration
+            // without failing, while still repairing partially-applied environments
+            // where the columns already exist.
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Referrals'
+                     AND COLUMN_NAME='TokenVersion') > 0,
+                  'ALTER TABLE `Referrals` MODIFY COLUMN `TokenVersion` int NOT NULL',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.AlterColumn<string>(
-                name: "ReferrerName",
-                table: "Referrals",
-                type: "longtext",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "varchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4")
-                .OldAnnotation("MySql:CharSet", "utf8mb4");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Referrals'
+                     AND COLUMN_NAME='ReferrerName') > 0,
+                  'ALTER TABLE `Referrals` MODIFY COLUMN `ReferrerName` longtext NULL',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.AlterColumn<string>(
-                name: "ReferrerEmail",
-                table: "Referrals",
-                type: "longtext",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "varchar(320)",
-                oldMaxLength: 320,
-                oldNullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4")
-                .OldAnnotation("MySql:CharSet", "utf8mb4");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Referrals'
+                     AND COLUMN_NAME='ReferrerEmail') > 0,
+                  'ALTER TABLE `Referrals` MODIFY COLUMN `ReferrerEmail` longtext NULL',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
             // AddColumn calls wrapped in IF NOT EXISTS checks (MySQL DDL is not transactional;
             // a previous failed run may have committed these columns already).
@@ -124,26 +125,25 @@ namespace CareConnect.Infrastructure.Data.Migrations
                   'SELECT 1');
                 PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.AlterColumn<string>(
-                name: "TriggerSource",
-                table: "CareConnectNotifications",
-                type: "longtext",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "varchar(20)",
-                oldMaxLength: 20,
-                oldDefaultValue: "Initial")
-                .Annotation("MySql:CharSet", "utf8mb4")
-                .OldAnnotation("MySql:CharSet", "utf8mb4");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='CareConnectNotifications'
+                     AND COLUMN_NAME='TriggerSource') > 0,
+                  'ALTER TABLE `CareConnectNotifications` MODIFY COLUMN `TriggerSource` longtext NOT NULL',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.AlterColumn<int>(
-                name: "AttemptCount",
-                table: "CareConnectNotifications",
-                type: "int",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int",
-                oldDefaultValue: 0);
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='CareConnectNotifications'
+                     AND COLUMN_NAME='AttemptCount') > 0,
+                  'ALTER TABLE `CareConnectNotifications` MODIFY COLUMN `AttemptCount` int NOT NULL',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
             migrationBuilder.Sql(@"
                 SET @dbname = DATABASE();

@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -6,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(IdentityDbContext))]
     [Migration("20260401220001_UIX005_AddRoleCapabilityAssignments")]
     public partial class UIX005_AddRoleCapabilityAssignments : Migration
     {
@@ -21,11 +24,13 @@ namespace Identity.Infrastructure.Persistence.Migrations
                 {
                     RoleId = table.Column<Guid>(
                         type: "char(36)",
-                        nullable: false),
+                        nullable: false,
+                        collation: "ascii_general_ci"),
 
                     CapabilityId = table.Column<Guid>(
                         type: "char(36)",
-                        nullable: false),
+                        nullable: false,
+                        collation: "ascii_general_ci"),
 
                     AssignedAtUtc = table.Column<DateTime>(
                         type: "datetime(6)",
@@ -33,7 +38,8 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     AssignedByUserId = table.Column<Guid>(
                         type: "char(36)",
-                        nullable: true),
+                        nullable: true,
+                        collation: "ascii_general_ci"),
                 },
                 constraints: table =>
                 {

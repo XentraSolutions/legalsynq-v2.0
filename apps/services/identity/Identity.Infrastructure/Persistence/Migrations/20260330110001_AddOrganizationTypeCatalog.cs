@@ -1,9 +1,12 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Identity.Infrastructure.Persistence.Migrations;
 
+[DbContext(typeof(IdentityDbContext))]
 [Migration("20260330110001_AddOrganizationTypeCatalog")]
 public partial class AddOrganizationTypeCatalog : Migration
 {

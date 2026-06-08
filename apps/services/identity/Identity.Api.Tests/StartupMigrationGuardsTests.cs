@@ -127,6 +127,12 @@ file sealed class InMemoryMigrationHistoryCommand(HashSet<string> history) : IDb
 
     public object? ExecuteScalar()
     {
+        if (CommandText.Contains("__EFMigrationsHistory") && CommandText.Contains("information_schema.tables", StringComparison.OrdinalIgnoreCase))
+            return 0L;
+
+        if (CommandText.Contains("__EFMigrationsHistory") && CommandText.Contains("sqlite_master", StringComparison.OrdinalIgnoreCase))
+            return 1L;
+
         if (CommandText.Contains("__EFMigrationsHistory") && CommandText.Contains("SELECT"))
         {
             var migId = ExtractFirstQuotedValue(CommandText);

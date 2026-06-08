@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -20,6 +22,7 @@ namespace Identity.Infrastructure.Persistence.Migrations;
 ///
 /// Safe to re-run: the WHERE clause is fully idempotent (a second run finds 0 rows).
 /// </summary>
+[DbContext(typeof(IdentityDbContext))]
 [Migration("20260426000003_CorrectPlatformAdminRole")]
 public partial class CorrectPlatformAdminRole : Migration
 {

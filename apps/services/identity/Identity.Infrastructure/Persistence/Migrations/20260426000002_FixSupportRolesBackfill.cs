@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -22,6 +24,7 @@ namespace Identity.Infrastructure.Persistence.Migrations;
 ///
 /// Safe to re-run: INSERT IGNORE + NOT EXISTS guard prevents duplicates.
 /// </summary>
+[DbContext(typeof(IdentityDbContext))]
 [Migration("20260426000002_FixSupportRolesBackfill")]
 public partial class FixSupportRolesBackfill : Migration
 {

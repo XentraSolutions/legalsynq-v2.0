@@ -389,6 +389,26 @@ static async Task EnsureSchemaObjectsAsync(
         return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
     }
 
+    async Task<bool> MigrationApplied(string migrationId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT COUNT(*) FROM information_schema.tables " +
+            $"WHERE table_schema='{dbName}' AND table_name='__EFMigrationsHistory'";
+        var historyTableExists = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+        if (!historyTableExists)
+            return false;
+
+        using var historyCmd = conn.CreateCommand();
+        historyCmd.CommandText =
+            "SELECT COUNT(*) FROM `__EFMigrationsHistory` WHERE `MigrationId` = @migrationId";
+        var parameter = historyCmd.CreateParameter();
+        parameter.ParameterName = "@migrationId";
+        parameter.Value = migrationId;
+        historyCmd.Parameters.Add(parameter);
+        return Convert.ToInt32(await historyCmd.ExecuteScalarAsync()) > 0;
+    }
+
     // Helper: execute a DDL statement, log any errors but continue
     async Task<bool> Exec(string sql, string label)
     {
@@ -408,6 +428,19 @@ static async Task EnsureSchemaObjectsAsync(
     }
 
     int applied = 0;
+
+    // Only run the B06+ repair path once the prefix migration is already part of
+    // the recorded history. On a clean database, pre-creating prefixed tables here
+    // races the actual migrations and causes duplicate-table failures.
+    if (!await MigrationApplied("20260413230000_AddTablePrefixes"))
+    {
+        logger.LogInformation(
+            "EnsureSchemaObjects: skipping advisory B06+ repair because AddTablePrefixes is not yet recorded in migration history.");
+
+        if (conn.State == System.Data.ConnectionState.Open)
+            await conn.CloseAsync();
+        return;
+    }
 
     // ── 20260422000000_AddProviderReassignmentLog ───────────────────────────
     if (!await TableExists("cc_ReferralProviderReassignments"))

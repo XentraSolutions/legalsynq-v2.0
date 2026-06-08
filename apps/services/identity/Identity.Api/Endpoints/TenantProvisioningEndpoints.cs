@@ -133,6 +133,8 @@ public static class TenantProvisioningEndpoints
                 firstName:    body.AdminFirstName?.Trim() ?? "Admin",
                 lastName:     body.AdminLastName?.Trim()  ?? "User");
             db.Users.Add(user);
+            db.UserTenants.Add(UserTenant.Create(user.Id, identityTenant.Id));
+            identityTenant.SetOwner(user.Id);
 
             var membership = UserOrganizationMembership.Create(
                 userId:         user.Id,

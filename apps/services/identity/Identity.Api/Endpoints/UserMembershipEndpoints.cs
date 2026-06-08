@@ -12,7 +12,7 @@ namespace Identity.Api.Endpoints;
 ///
 /// POST /api/internal/users/assign-tenant  — assign user to tenant + optional roles
 /// POST /api/internal/users/assign-roles   — assign roles to a user (idempotent)
-/// GET  /api/internal/users/portal-access  — check if email has active CareConnect portal access
+/// GET  /api/internal/users/portal-access  — tenant-scoped CareConnect portal access status
 ///
 /// Auth: X-Provisioning-Token header must match TenantService:ProvisioningSecret.
 ///       When ProvisioningSecret is empty/unset, the check is skipped (dev mode).
@@ -26,7 +26,7 @@ public static class UserMembershipEndpoints
         // ── POST /api/internal/users/assign-tenant ────────────────────────────
         //
         // Assigns an existing Identity user to a tenant.
-        // Updates User.TenantId and grants any provided roles.
+        // Writes idt_UserTenants and grants any provided roles.
         // Idempotent — safe to call even if the user is already in the target tenant.
         //
         // Request body:
@@ -137,17 +137,22 @@ public static class UserMembershipEndpoints
             }
         });
 
-        // ── GET /api/internal/users/portal-access?email=xxx ──────────────────
+        // ── GET /api/internal/users/portal-access?tenantId=xxx&email=xxx ─────
         //
-        // CC-PORTAL-CHECK: Checks whether an email address belongs to a fully-activated
-        // CareConnect referrer (active user with password set, in a LAW_FIRM org).
-        // Returns { hasPortalAccess: bool } — always HTTP 200. Never discloses user
-        // existence alone; only the combined access state (safe post-referral-submit context).
+        // CC-PORTAL-CHECK: Returns the tenant-scoped CareConnect referrer status
+        // for the given email:
+        //   - active_in_tenant
+        //   - existing_user_other_tenant
+        //   - no_account
+        //
+        // Always HTTP 200. Never discloses user existence alone beyond the referrer
+        // access state needed by the post-referral-submit UX.
         //
         // Auth: X-Provisioning-Token (same pattern as assign-tenant / assign-roles).
 
         group.MapGet("/portal-access", async (
             HttpContext       httpContext,
+            Guid?             tenantId,
             string?           email,
             IdentityDbContext db,
             IConfiguration    configuration,
@@ -159,25 +164,234 @@ public static class UserMembershipEndpoints
             if (!ValidateProvisioningToken(httpContext, configuration, log, "portal-access"))
                 return Results.Unauthorized();
 
-            if (string.IsNullOrWhiteSpace(email))
-                return Results.Ok(new { hasPortalAccess = false });
+            if (tenantId is null || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { status = "no_account" });
+
+            var emailNorm = email.Trim().ToLowerInvariant();
+            var emailUser = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Email.Trim().ToLower() == emailNorm)
+                .Select(u => new { u.Id, u.IsActive, u.PasswordHash })
+                .FirstOrDefaultAsync(ct);
+
+            if (emailUser is null)
+                return Results.Ok(new { status = "no_account" });
+
+            var hasTenantMembership = await db.UserTenants
+                .AsNoTracking()
+                .AnyAsync(ut => ut.UserId == emailUser.Id
+                             && ut.TenantId == tenantId.Value
+                             && ut.IsActive,
+                    ct);
+
+            var hasTenantLawFirmMembership = await db.UserOrganizationMemberships
+                .AsNoTracking()
+                .Where(m => m.UserId == emailUser.Id && m.IsActive)
+                .Join(
+                    db.Organizations.AsNoTracking().Where(o => (o.TenantId == tenantId.Value || o.TenantId == null)
+                                                             && o.OrgType == "LAW_FIRM"
+                                                             && o.IsActive),
+                    m => m.OrganizationId,
+                    o => o.Id,
+                    (_, _) => true)
+                .AnyAsync(ct);
+
+            if (emailUser.IsActive
+                && emailUser.PasswordHash != string.Empty
+                && hasTenantMembership
+                && hasTenantLawFirmMembership)
+            {
+                return Results.Ok(new { status = "active_in_tenant" });
+            }
+
+            return Results.Ok(new
+            {
+                status = hasTenantMembership
+                    ? "no_account"
+                    : "existing_user_other_tenant"
+            });
+        });
+
+        // ── GET /api/internal/users/enrollment-prefill?tenantId=xxx&email=xxx ─
+        //
+        // Returns canonical enrollment prefill data for a law-firm referrer email.
+        // This lets CareConnect prefer the existing Identity profile + org details
+        // over transient values typed on the previous referral page.
+        //
+        // Response:
+        // {
+        //   "found": true,
+        //   "companyName": "Acme Law",
+        //   "email": "lawyer@example.com",
+        //   "phone": "+15551234567",
+        //   "firstName": "Jane",
+        //   "lastName": "Lawyer",
+        //   "addressLine1": "123 Main St",
+        //   "city": "Los Angeles",
+        //   "state": "CA",
+        //   "postalCode": "90001"
+        // }
+        //
+        // Auth: X-Provisioning-Token
+
+        group.MapGet("/enrollment-prefill", async (
+            HttpContext       httpContext,
+            Guid?             tenantId,
+            string?           email,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.EnrollmentPrefill");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "enrollment-prefill"))
+                return Results.Unauthorized();
+
+            if (tenantId is null || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { found = false });
+
+            var emailNorm = email.Trim().ToLowerInvariant();
+            var user = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Email.Trim().ToLower() == emailNorm)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Email,
+                    u.Phone,
+                    u.FirstName,
+                    u.LastName,
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (user is null)
+                return Results.Ok(new { found = false });
+
+            var organization = await db.UserOrganizationMemberships
+                .AsNoTracking()
+                .Where(m => m.UserId == user.Id && m.IsActive)
+                .Join(
+                    db.Organizations.AsNoTracking().Where(o => o.IsActive && o.OrgType == "LAW_FIRM"),
+                    m => m.OrganizationId,
+                    o => o.Id,
+                    (_, o) => new
+                    {
+                        Name = !string.IsNullOrWhiteSpace(o.DisplayName) ? o.DisplayName : o.Name,
+                        o.TenantId,
+                    })
+                .GroupJoin(
+                    db.Tenants.AsNoTracking(),
+                    o => o.TenantId,
+                    t => t.Id,
+                    (o, tenants) => new { o, tenant = tenants.FirstOrDefault() })
+                .OrderByDescending(x => x.o.TenantId == tenantId.Value)
+                .ThenByDescending(x => x.o.TenantId != null)
+                .Select(x => new
+                {
+                    x.o.Name,
+                    AddressLine1 = x.tenant != null ? x.tenant.AddressLine1 : null,
+                    City         = x.tenant != null ? x.tenant.City         : null,
+                    State        = x.tenant != null ? x.tenant.State        : null,
+                    PostalCode   = x.tenant != null ? x.tenant.PostalCode   : null,
+                })
+                .FirstOrDefaultAsync(ct);
+
+            return Results.Ok(new
+            {
+                found       = true,
+                companyName = organization?.Name         ?? string.Empty,
+                email       = user.Email,
+                phone       = user.Phone ?? string.Empty,
+                firstName   = user.FirstName,
+                lastName    = user.LastName,
+                addressLine1 = organization?.AddressLine1 ?? string.Empty,
+                city         = organization?.City         ?? string.Empty,
+                state        = organization?.State        ?? string.Empty,
+                postalCode   = organization?.PostalCode   ?? string.Empty,
+            });
+        });
+
+        // ── GET /api/internal/users/is-owner?tenantId=xxx&email=xxx ──────────
+        //
+        // CC-OWNER-CHECK: Returns { isTenantOwner: bool } — whether the given email
+        // belongs to the tenant owner of the specified tenant.
+        // Used by CareConnect to block tenant owners from submitting referrals.
+        //
+        // Always HTTP 200; never discloses existence of user alone.
+        // Auth: X-Provisioning-Token (same pattern as other internal endpoints).
+
+        group.MapGet("/is-owner", async (
+            HttpContext       httpContext,
+            Guid?             tenantId,
+            string?           email,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.IsOwner");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "is-owner"))
+                return Results.Unauthorized();
+
+            if (tenantId is null || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { isTenantOwner = false });
 
             var emailNorm = email.Trim().ToLowerInvariant();
 
-            // A referrer is "activated" when all three conditions hold:
-            //   1. An active user record with this email exists.
-            //   2. The user has a password set (PasswordHash non-empty) — not merely invited.
-            //   3. The user has an active membership in at least one LAW_FIRM organization.
-            var hasAccess = await db.Users
-                .Where(u => u.Email == emailNorm && u.IsActive && u.PasswordHash != string.Empty)
-                .AnyAsync(u => db.UserOrganizationMemberships
-                    .Where(m => m.UserId == u.Id && m.IsActive)
-                    .Join(db.Organizations.Where(o => o.OrgType == "LAW_FIRM" && o.IsActive),
-                          m => m.OrganizationId, o => o.Id, (m, o) => o.Id)
-                    .Any(),
-                    ct);
+            var ownerUserId = await db.Tenants
+                .AsNoTracking()
+                .Where(t => t.Id == tenantId.Value)
+                .Select(t => t.OwnerUserId)
+                .FirstOrDefaultAsync(ct);
 
-            return Results.Ok(new { hasPortalAccess = hasAccess });
+            if (ownerUserId is null)
+                return Results.Ok(new { isTenantOwner = false });
+
+            var isOwner = await db.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Id == ownerUserId.Value && u.Email == emailNorm, ct);
+
+            return Results.Ok(new { isTenantOwner = isOwner });
+        });
+
+        // ── GET /api/internal/users/is-any-owner?email=xxx ────────────────────
+        //
+        // CC-OWNER-CHECK: Returns { isTenantOwner: bool } — whether the given email
+        // belongs to the owner of ANY tenant in the platform.
+        // Used by CareConnect to block all tenant owners from submitting referrals
+        // or self-enrolling regardless of which tenant's network they are acting on.
+        //
+        // Always HTTP 200; never discloses existence of user alone.
+        // Auth: X-Provisioning-Token (same pattern as other internal endpoints).
+
+        group.MapGet("/is-any-owner", async (
+            HttpContext       httpContext,
+            string?           email,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.IsAnyOwner");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "is-any-owner"))
+                return Results.Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(email))
+                return Results.Ok(new { isTenantOwner = false });
+
+            var emailNorm = email.Trim().ToLowerInvariant();
+
+            // Single join query — avoids two round-trips (user lookup + tenant check).
+            var isOwner = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Email == emailNorm)
+                .Join(db.Tenants, u => u.Id, t => t.OwnerUserId, (u, t) => u.Id)
+                .AnyAsync(ct);
+
+            return Results.Ok(new { isTenantOwner = isOwner });
         });
     }
 

@@ -31,4 +31,14 @@ public interface IIdentityCompatAdapter
         Guid              tenantId,
         int?              sessionTimeoutMinutes,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Proxies POST /api/admin/tenants/{id}/entitlements/{productCode} to Identity.
+    /// Returns <c>true</c> on HTTP 200, <c>false</c> on any failure/timeout.
+    /// </summary>
+    Task<bool> SetTenantProductEntitlementAsync(
+        Guid              tenantId,
+        string            productCode,
+        bool              enabled,
+        CancellationToken ct = default);
 }

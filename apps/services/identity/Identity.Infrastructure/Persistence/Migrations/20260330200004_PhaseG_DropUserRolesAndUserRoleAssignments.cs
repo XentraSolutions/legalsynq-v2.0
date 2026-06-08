@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -5,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(IdentityDbContext))]
     [Migration("20260330200004_PhaseG_DropUserRolesAndUserRoleAssignments")]
     public partial class PhaseG_DropUserRolesAndUserRoleAssignments : Migration
     {

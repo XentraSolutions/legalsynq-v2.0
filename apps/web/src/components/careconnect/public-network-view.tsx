@@ -555,9 +555,13 @@ function ReferralPanel({
   const addrDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    fetch('/api/public/careconnect/api/public/treatment-types', {
-      headers: { 'X-Tenant-Id': tenantId },
-    })
+    const url     = prefillLawFirm
+      ? '/api/careconnect/api/treatment-types'
+      : '/api/public/careconnect/api/public/treatment-types';
+    const headers: HeadersInit = prefillLawFirm
+      ? {}
+      : { 'X-Tenant-Id': tenantId };
+    fetch(url, { headers })
       .then(r => r.ok ? r.json() : null)
       .then((data: TreatmentType[] | null) => { if (data) setTreatmentTypes(data); })
       .catch(() => {});
@@ -659,13 +663,50 @@ function ReferralPanel({
       ].filter(Boolean).join('\n') || undefined,
     }));
 
+    // Authenticated users (prefillLawFirm present) submit through the auth endpoint —
+    // tenant is resolved from the JWT, no host-based resolution needed.
+    // Unauthenticated users use the anonymous public endpoint with X-Tenant-Id.
+    const isAuthenticated = !!prefillLawFirm;
+
     try {
       const responses = await Promise.all(payloads.map(async payload => {
-        const res = await fetch('/api/public/careconnect/api/public/referrals', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId },
-          body:    JSON.stringify(payload),
-        });
+        let res: Response;
+        if (isAuthenticated) {
+          // Mirror the notes assembly done by the public C# handler so that
+          // patientAddress and patientDateOfAccident are not lost on the auth path.
+          const authNotes = [
+            form.notes,
+            form.patientAddress.trim()  ? `Patient Address: ${form.patientAddress.trim()}`  : '',
+            form.patientDateOfAccident  ? `Date of Accident: ${form.patientDateOfAccident}`  : '',
+            form.phone                  ? `Firm phone: ${form.phone}`                        : '',
+            form.firmName               ? `Firm: ${form.firmName}`                           : '',
+          ].filter(Boolean).join('\n') || undefined;
+
+          const authBody = {
+            providerId:       payload.providerId,
+            clientFirstName:  payload.patientFirstName,
+            clientLastName:   payload.patientLastName,
+            clientPhone:      payload.patientPhone,
+            clientEmail:      payload.patientEmail ?? '',
+            clientDob:        payload.patientDateOfBirth,
+            requestedService: payload.serviceType ?? 'General Referral',
+            urgency:          'Normal',
+            notes:            authNotes,
+            referrerEmail:    payload.senderEmail,
+            referrerName:     payload.senderName,
+          };
+          res = await fetch('/api/careconnect/api/referrals', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(authBody),
+          });
+        } else {
+          res = await fetch('/api/public/careconnect/api/public/referrals', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId },
+            body:    JSON.stringify(payload),
+          });
+        }
         if (!res.ok) {
           // Parse the error body; fall back to a generic message if parsing fails.
           let body: unknown;
@@ -680,9 +721,14 @@ function ReferralPanel({
         if (!fileForProvider) return Promise.resolve();
         const fd = new FormData();
         fd.append('file', fileForProvider);
-        return fetch(`/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`, {
+        const uploadEndpoint = isAuthenticated
+          ? `/api/careconnect/api/referrals/${r.referralId}/attachments/upload`
+          : `/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`;
+        const uploadHeaders: Record<string, string> = {};
+        if (!isAuthenticated) uploadHeaders['X-Tenant-Id'] = tenantId;
+        return fetch(uploadEndpoint, {
           method:  'POST',
-          headers: { 'X-Tenant-Id': tenantId },
+          headers: uploadHeaders,
           body:    fd,
         });
       }));

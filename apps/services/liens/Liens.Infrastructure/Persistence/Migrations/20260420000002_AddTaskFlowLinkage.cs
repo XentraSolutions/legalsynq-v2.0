@@ -1,10 +1,13 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Liens.Infrastructure.Persistence.Migrations
 {
+    [DbContext(typeof(LiensDbContext))]
+    [Migration("20260420000002_AddTaskFlowLinkage")]
     /// <inheritdoc />
     public partial class AddTaskFlowLinkage : Migration
     {

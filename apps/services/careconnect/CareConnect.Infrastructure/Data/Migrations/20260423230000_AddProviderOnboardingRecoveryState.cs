@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -23,6 +24,7 @@ namespace CareConnect.Infrastructure.Data.Migrations;
 /// Migration strategy:
 ///   All existing rows default to TenantOnboardingStatus='None' (backward compatible).
 /// </summary>
+[DbContext(typeof(CareConnectDbContext))]
 [Migration("20260423230000_AddProviderOnboardingRecoveryState")]
 public partial class AddProviderOnboardingRecoveryState : Migration
 {

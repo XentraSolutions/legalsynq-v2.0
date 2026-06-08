@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Json;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.DataGovernance;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
@@ -74,13 +75,68 @@ public class AuthService : IAuthService
                 throw new UnauthorizedAccessException();
             }
 
-            var globalTenant = await _tenantRepository.GetByIdAsync(globalUser.TenantId, ct);
-            if (globalTenant is null || !globalTenant.IsActive)
+            var userTenantMemberships = await _userRepository.GetActiveTenantMembershipsAsync(globalUser.Id, ct);
+            var activeMemberships = userTenantMemberships
+                .Where(ut => ut.Tenant is not null && ut.Tenant.IsActive)
+                .ToList();
+
+            if (activeMemberships.Count == 0)
             {
                 _logger.LogWarning(
-                    "AUTH-CC01: LoginAsync failed: TenantNotFoundOrInactive tenantId={TenantId} emailMasked={EmailMasked} ip={Ip}",
-                    globalUser.TenantId, PiiGuard.MaskEmail(emailNorm), ipAddress);
+                    "AUTH-CC01: LoginAsync failed: TenantNotFoundOrInactive userId={UserId} emailMasked={EmailMasked} ip={Ip}",
+                    globalUser.Id, PiiGuard.MaskEmail(emailNorm), ipAddress);
                 EmitLoginFailed(emailNorm, tenantCode: "common-portal", userId: null, reason: "TenantNotFound", ipAddress: ipAddress);
+                throw new UnauthorizedAccessException();
+            }
+
+            Tenant? globalTenant = null;
+
+            if (request.TenantId.HasValue && request.TenantId.Value != Guid.Empty)
+            {
+                globalTenant = activeMemberships
+                    .Where(ut => ut.TenantId == request.TenantId.Value)
+                    .Select(ut => ut.Tenant)
+                    .FirstOrDefault();
+            }
+
+            if (globalTenant is null && !string.IsNullOrWhiteSpace(request.Subdomain))
+            {
+                var requestedSubdomain = request.Subdomain.Trim().ToLowerInvariant();
+                globalTenant = activeMemberships
+                    .Where(ut => string.Equals(ut.Tenant?.Subdomain, requestedSubdomain, StringComparison.OrdinalIgnoreCase))
+                    .Select(ut => ut.Tenant)
+                    .FirstOrDefault();
+            }
+
+            if (globalTenant is null)
+            {
+                const string CcProductPrefix = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":";
+                foreach (var membership in activeMemberships)
+                {
+                    var membershipTenant = membership.Tenant!;
+                    var access = await _effectiveAccessService.GetEffectiveAccessAsync(
+                        membershipTenant.Id, globalUser.Id, ct);
+
+                    var hasCareConnectProduct = access.Products.Contains(
+                        BuildingBlocks.Authorization.ProductCodes.SynqCareConnect,
+                        StringComparer.OrdinalIgnoreCase);
+                    var hasCareConnectRole = access.ProductRolesFlat.Any(r =>
+                        r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase));
+
+                    if (hasCareConnectProduct && hasCareConnectRole)
+                    {
+                        globalTenant = membershipTenant;
+                        break;
+                    }
+                }
+            }
+
+            if (globalTenant is null)
+            {
+                _logger.LogWarning(
+                    "AUTH-CC01: LoginAsync failed: NoCareConnectTenant userId={UserId} emailMasked={EmailMasked} ip={Ip}",
+                    globalUser.Id, PiiGuard.MaskEmail(emailNorm), ipAddress);
+                EmitLoginFailed(emailNorm, tenantCode: "common-portal", userId: globalUser.Id.ToString(), reason: "NoCareConnectTenant", ipAddress: ipAddress);
                 throw new UnauthorizedAccessException();
             }
 
@@ -123,7 +179,7 @@ public class AuthService : IAuthService
             }
 
             // Delegate the rest (role extraction, membership, JWT) to the shared tail.
-            return await BuildLoginResponseAsync(ccUserWithRoles, globalTenant, request, sw, ipAddress, ct);
+            return await BuildLoginResponseAsync(ccUserWithRoles, globalTenant, request, sw, ipAddress, ct, requireCareConnectAccess: true);
         }
 
         var tenant = await _tenantRepository.GetByCodeAsync(tenantCodeNorm, ct);
@@ -142,14 +198,16 @@ public class AuthService : IAuthService
         }
 
         // AUTH-B01: Final fallback — use the Tenant-service-resolved TenantId when both
-        // code and subdomain lookups miss.  This handles the case where the common portal
+        // code and subdomain lookups miss. This handles the case where the common portal
         // (e.g. careconnect-demo.legalsynq.com) has its canonical record in the Tenant
         // service but the Identity idt_Tenants write-through row carries a different code
-        // or has no subdomain populated yet.  When found this way, we skip the
-        // ProvisioningStatus guard: the BFF already confirmed the tenant is active by
-        // resolving it from the Tenant service, so a Pending stub in Identity is just
-        // a stale write-through record, not a real provisioning-in-progress signal.
-        var tenantFoundViaIdFallback = false;
+        // or has no subdomain populated yet.
+        //
+        // More importantly, treat a matching TenantId as authoritative even when a
+        // code/subdomain lookup already returned a row: the BFF has already resolved the
+        // tenant from the Tenant service, so a non-Active provisioning status in Identity
+        // is just stale write-through state and must not block login.
+        var tenantConfirmedByTenantService = false;
         if (tenant is null && request.TenantId.HasValue && request.TenantId.Value != Guid.Empty)
         {
             _logger.LogInformation(
@@ -157,7 +215,16 @@ public class AuthService : IAuthService
                 tenantCodeNorm, request.TenantId.Value);
             tenant = await _tenantRepository.GetByIdAsync(request.TenantId.Value, ct);
             if (tenant is not null)
-                tenantFoundViaIdFallback = true;
+                tenantConfirmedByTenantService = true;
+        }
+
+        if (!tenantConfirmedByTenantService
+            && tenant is not null
+            && request.TenantId.HasValue
+            && request.TenantId.Value != Guid.Empty
+            && tenant.Id == request.TenantId.Value)
+        {
+            tenantConfirmedByTenantService = true;
         }
 
         if (tenant is null || !tenant.IsActive)
@@ -173,7 +240,7 @@ public class AuthService : IAuthService
         // Skip provisioning-status guards when the tenant was resolved by the
         // Tenant-service-authoritative TenantId: the stub in Identity may still be
         // Pending, but the real tenant is live.
-        if (!tenantFoundViaIdFallback)
+        if (!tenantConfirmedByTenantService)
         {
             if (tenant.ProvisioningStatus == ProvisioningStatus.Verifying)
             {
@@ -233,7 +300,7 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
-        return await BuildLoginResponseAsync(userWithRoles, tenant, request, sw, ipAddress, ct);
+        return await BuildLoginResponseAsync(userWithRoles, tenant, request, sw, ipAddress, ct, requireTenantAccess: true);
     }
 
     /// <summary>
@@ -247,17 +314,47 @@ public class AuthService : IAuthService
         LoginRequest request,
         Stopwatch sw,
         string? ipAddress,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool requireCareConnectAccess = false,
+        bool requireTenantAccess = false)
     {
+        // requireCareConnectAccess and requireTenantAccess are mutually exclusive guard paths:
+        // the CC portal path checks for a CC product role; the tenant portal path checks for
+        // a system role.  Passing both true would apply the tenant-portal block first, which
+        // is coincidentally correct but semantically wrong.  Assert here so any future caller
+        // error is caught immediately in Debug/test builds.
+        Debug.Assert(!(requireCareConnectAccess && requireTenantAccess),
+            "requireCareConnectAccess and requireTenantAccess are mutually exclusive guard paths.");
+
         // Phase G: ScopedRoleAssignments (GLOBAL) is the sole authoritative role source.
         // UserRoles table has been dropped (migration 20260330200004).
+        // LS-ID-CC-001: restrict to system roles only (Scope = Platform or Tenant).
+        // Product roles (e.g. CARECONNECT_REFERRER) may exist as GLOBAL ScopedRoleAssignments
+        // due to the phase-G backfill from old UserRoles rows; they must not satisfy the
+        // tenant portal guard, which only applies to PlatformAdmin / TenantAdmin.
+        // Note: s.IsActive is guaranteed by the filtered Include in GetByIdWithRolesAsync;
+        // no need to recheck it here.
         var roleNames = userWithRoles.ScopedRoleAssignments
-            .Where(s => s.IsActive && s.ScopeType == Domain.ScopedRoleAssignment.ScopeTypes.Global)
+            .Where(s => s.ScopeType == Domain.ScopedRoleAssignment.ScopeTypes.Global
+                     && s.Role.Scope is Domain.RoleScopes.Platform or Domain.RoleScopes.Tenant)
             .Select(s => s.Role.Name)
             .ToList();
 
-        // Load org membership for JWT context (primary org)
-        var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(userWithRoles.Id, ct);
+        // Phase 6B: operator portal guard — CC-only users (no GLOBAL system role) are blocked.
+        // Checked before product role logic so the guard fires independently of CC auto-inject.
+        if (requireTenantAccess && roleNames.Count == 0)
+        {
+            EmitLoginFailed(
+                userWithRoles.Email,
+                tenantCode: tenant.Code,
+                userId:     userWithRoles.Id.ToString(),
+                reason:     "CareConnectUserOnTenantPortal",
+                ipAddress:  ipAddress);
+            throw new UnauthorizedAccessException();
+        }
+
+        // Load org membership for JWT context (tenant-scoped: always use the login tenant's org).
+        var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(userWithRoles.Id, tenant.Id, ct);
         var org = orgMembership?.Organization;
 
         // LS-COR-AUT-003/006: compute effective access from the single source-of-truth model.
@@ -271,29 +368,56 @@ public class AuthService : IAuthService
             ? (Domain.OrgTypeMapper.TryResolveCode(org.OrganizationTypeId) ?? org.OrgType)
             : null;
 
-        // CC-AUTH-01: Law firms are intrinsically CareConnect referrers.
-        // If the user belongs to a LAW_FIRM org and has no CareConnect product role yet
-        // (i.e. explicit provisioning hasn't run), auto-inject the referrer role so the
-        // backend product-access filter passes without a manual provisioning step.
-        // Mirrors how LienOwner implies NetworkManager in the front-end access rules.
         var productRolesFlat = effectiveAccess.ProductRolesFlat;
         const string CcProductPrefix   = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":";
-        const string CcReferrerRole    = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":CARECONNECT_REFERRER";
-        if (string.Equals(orgTypeForResponse, Domain.OrgType.LawFirm, StringComparison.OrdinalIgnoreCase)
+        var hasCareConnectProduct = effectiveAccess.Products.Contains(
+            BuildingBlocks.Authorization.ProductCodes.SynqCareConnect,
+            StringComparer.OrdinalIgnoreCase);
+
+        // Load all active tenant memberships to populate tenant_ids JWT claim and LoginResponse.Tenants.
+        var tenantMemberships = await _userRepository.GetActiveTenantMembershipsAsync(userWithRoles.Id, ct);
+
+        // CareConnect portal logins require both explicit product access and a CareConnect role.
+        if (requireCareConnectAccess && !hasCareConnectProduct)
+        {
+            EmitLoginFailed(
+                userWithRoles.Email,
+                tenantCode: tenant.Code,
+                userId:     userWithRoles.Id.ToString(),
+                reason:     "NoCareConnectProduct",
+                ipAddress:  ipAddress);
+            throw new UnauthorizedAccessException();
+        }
+
+        if (requireCareConnectAccess
             && !productRolesFlat.Any(r => r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase)))
         {
-            productRolesFlat = [.. productRolesFlat, CcReferrerRole];
+            EmitLoginFailed(
+                userWithRoles.Email,
+                tenantCode: tenant.Code,
+                userId:     userWithRoles.Id.ToString(),
+                reason:     "NoCareConnectRole",
+                ipAddress:  ipAddress);
+            throw new UnauthorizedAccessException();
         }
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
             userWithRoles, tenant, roleNames, org, productRolesFlat,
             sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
             productCodes: effectiveAccess.Products,
-            permissions: effectiveAccess.Permissions);
+            permissions: effectiveAccess.Permissions,
+            tenantIds: tenantMemberships.Select(ut => ut.TenantId));
 
+        // Build TenantSummary list for the LoginResponse from the membership rows.
+        var tenantSummaries = tenantMemberships
+            .Select(ut => new DTOs.TenantSummary(ut.TenantId, ut.Tenant?.Code ?? ut.TenantId.ToString()))
+            .ToList()
+            .AsReadOnly();
+
+        // Fix: use the active login tenant's Id for UserResponse, not the user's stored TenantId.
         var userResponse = new UserResponse(
             userWithRoles.Id,
-            userWithRoles.TenantId,
+            tenant.Id,
             userWithRoles.Email,
             userWithRoles.FirstName,
             userWithRoles.LastName,
@@ -351,7 +475,7 @@ public class AuthService : IAuthService
             "LoginPerf userId={UserId} tenantId={TenantId} elapsedMs={ElapsedMs} accessVersion={AccessVersion}",
             userWithRoles.Id, tenant.Id, sw.ElapsedMilliseconds, userWithRoles.AccessVersion);
 
-        return new LoginResponse(token, expiresAtUtc, userResponse);
+        return new LoginResponse(token, expiresAtUtc, userResponse, tenantSummaries);
     }
 
     /// <summary>
@@ -417,6 +541,7 @@ public class AuthService : IAuthService
 
         // AvatarDocumentId is not in the JWT (changes independently) — fetch from DB.
         // UIX-003-03: also validate SessionVersion and IsLocked from DB.
+        var tenantGuidParsed = Guid.TryParse(tenantId, out var tenantGuid);
         Guid? avatarDocumentId = null;
         string? phone = null;
         if (Guid.TryParse(userId, out var userGuid))
@@ -455,13 +580,27 @@ public class AuthService : IAuthService
                 EmitAccessVersionStale(userId, tenantId, email, user.AccessVersion, tokenAccessVersion);
                 throw new UnauthorizedAccessException("Access has been updated. Please re-authenticate.");
             }
+
+            // Refresh org context from the current DB membership so profile/session UX
+            // reflects org type and name edits without requiring a fresh login.
+            var membership = tenantGuidParsed
+                ? await _userRepository.GetPrimaryOrgMembershipAsync(userGuid, tenantGuid, ct)
+                : await _userRepository.GetPrimaryOrgMembershipAsync(userGuid, ct);
+            var organization = membership?.Organization;
+            if (organization is not null)
+            {
+                orgId = organization.Id.ToString();
+                orgType = Domain.OrgTypeMapper.TryResolveCode(organization.OrganizationTypeId)
+                    ?? organization.OrgType;
+                orgName = organization.DisplayName ?? organization.Name;
+            }
         }
 
         // Resolve which products are enabled at the tenant level.
         // Returns frontend-friendly codes (e.g. "SynqFund", "CareConnect") so the
         // tenant portal can filter its product tiles without knowing DB internals.
         List<string> enabledProducts = [];
-        if (Guid.TryParse(tenantId, out var tenantGuid))
+        if (tenantGuidParsed)
         {
             var dbCodes = await _tenantRepository.GetEnabledProductCodesAsync(tenantGuid, ct);
             enabledProducts = dbCodes

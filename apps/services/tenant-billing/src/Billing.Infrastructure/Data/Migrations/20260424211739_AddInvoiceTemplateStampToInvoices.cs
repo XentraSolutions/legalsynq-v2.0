@@ -8,119 +8,90 @@ namespace Billing.Infrastructure.Data.Migrations
     /// <inheritdoc />
     public partial class AddInvoiceTemplateStampToInvoices : Migration
     {
+        private static void AddColumnIfMissing(MigrationBuilder migrationBuilder, string table, string column, string definition)
+        {
+            migrationBuilder.Sql($"""
+                SET @ddl = IF(
+                    EXISTS(
+                        SELECT 1
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE()
+                          AND TABLE_NAME = '{table}'
+                          AND COLUMN_NAME = '{column}'),
+                    'SELECT 1',
+                    'ALTER TABLE `{table}` ADD COLUMN `{column}` {definition}');
+                PREPARE stmt FROM @ddl;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+                """);
+        }
+
+        private static void CreateIndexIfMissing(MigrationBuilder migrationBuilder, string table, string index, string columns, bool unique = false)
+        {
+            var createStatement = unique
+                ? $"CREATE UNIQUE INDEX `{index}` ON `{table}` ({columns})"
+                : $"CREATE INDEX `{index}` ON `{table}` ({columns})";
+
+            migrationBuilder.Sql($"""
+                SET @ddl = IF(
+                    EXISTS(
+                        SELECT 1
+                        FROM INFORMATION_SCHEMA.STATISTICS
+                        WHERE TABLE_SCHEMA = DATABASE()
+                          AND TABLE_NAME = '{table}'
+                          AND INDEX_NAME = '{index}'),
+                    'SELECT 1',
+                    '{createStatement}');
+                PREPARE stmt FROM @ddl;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+                """);
+        }
+
+        private static void ModifyColumnIfNeeded(MigrationBuilder migrationBuilder, string table, string column, string definition, string expectedDataType)
+        {
+            migrationBuilder.Sql($"""
+                SET @ddl = IF(
+                    EXISTS(
+                        SELECT 1
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE()
+                          AND TABLE_NAME = '{table}'
+                          AND COLUMN_NAME = '{column}'
+                          AND DATA_TYPE <> '{expectedDataType}'),
+                    'ALTER TABLE `{table}` MODIFY COLUMN `{column}` {definition}',
+                    'SELECT 1');
+                PREPARE stmt FROM @ddl;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+                """);
+        }
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<Guid>(
-                name: "InvoiceTemplateId",
-                table: "invoices",
-                type: "char(36)",
-                nullable: true,
-                collation: "ascii_general_ci");
+            AddColumnIfMissing(migrationBuilder, "invoices", "InvoiceTemplateId", "char(36) COLLATE ascii_general_ci NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateAccentColor", "varchar(7) CHARACTER SET utf8mb4 NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateDisplayBillingAddress", "tinyint(1) NOT NULL DEFAULT 0");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateDisplayPaymentInstructions", "tinyint(1) NOT NULL DEFAULT 0");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateDisplayTerms", "tinyint(1) NOT NULL DEFAULT 0");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateFooterText", "varchar(4000) CHARACTER SET utf8mb4 NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateHeaderText", "varchar(2000) CHARACTER SET utf8mb4 NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateLogoUrl", "varchar(1000) CHARACTER SET utf8mb4 NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateMemoPlaceholder", "varchar(2000) CHARACTER SET utf8mb4 NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateName", "varchar(200) CHARACTER SET utf8mb4 NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateOwnerType", "varchar(16) CHARACTER SET utf8mb4 NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplatePaymentInstructions", "varchar(4000) CHARACTER SET utf8mb4 NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateStampedAtUtc", "datetime(6) NULL");
+            AddColumnIfMissing(migrationBuilder, "invoices", "TemplateTermsText", "longtext CHARACTER SET utf8mb4 NULL");
 
-            migrationBuilder.AddColumn<string>(
-                name: "TemplateAccentColor",
-                table: "invoices",
-                type: "varchar(7)",
-                maxLength: 7,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
+            ModifyColumnIfNeeded(migrationBuilder, "invoices", "TemplateHeaderText", "longtext CHARACTER SET utf8mb4 NULL", "longtext");
+            ModifyColumnIfNeeded(migrationBuilder, "invoices", "TemplateFooterText", "longtext CHARACTER SET utf8mb4 NULL", "longtext");
+            ModifyColumnIfNeeded(migrationBuilder, "invoices", "TemplatePaymentInstructions", "longtext CHARACTER SET utf8mb4 NULL", "longtext");
+            ModifyColumnIfNeeded(migrationBuilder, "invoices", "TemplateMemoPlaceholder", "longtext CHARACTER SET utf8mb4 NULL", "longtext");
+            ModifyColumnIfNeeded(migrationBuilder, "invoices", "TemplateTermsText", "longtext CHARACTER SET utf8mb4 NULL", "longtext");
 
-            migrationBuilder.AddColumn<bool>(
-                name: "TemplateDisplayBillingAddress",
-                table: "invoices",
-                type: "tinyint(1)",
-                nullable: false,
-                defaultValue: false);
-
-            migrationBuilder.AddColumn<bool>(
-                name: "TemplateDisplayPaymentInstructions",
-                table: "invoices",
-                type: "tinyint(1)",
-                nullable: false,
-                defaultValue: false);
-
-            migrationBuilder.AddColumn<bool>(
-                name: "TemplateDisplayTerms",
-                table: "invoices",
-                type: "tinyint(1)",
-                nullable: false,
-                defaultValue: false);
-
-            migrationBuilder.AddColumn<string>(
-                name: "TemplateFooterText",
-                table: "invoices",
-                type: "varchar(4000)",
-                maxLength: 4000,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.AddColumn<string>(
-                name: "TemplateHeaderText",
-                table: "invoices",
-                type: "varchar(2000)",
-                maxLength: 2000,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.AddColumn<string>(
-                name: "TemplateLogoUrl",
-                table: "invoices",
-                type: "varchar(1000)",
-                maxLength: 1000,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.AddColumn<string>(
-                name: "TemplateMemoPlaceholder",
-                table: "invoices",
-                type: "varchar(2000)",
-                maxLength: 2000,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.AddColumn<string>(
-                name: "TemplateName",
-                table: "invoices",
-                type: "varchar(200)",
-                maxLength: 200,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.AddColumn<string>(
-                name: "TemplateOwnerType",
-                table: "invoices",
-                type: "varchar(16)",
-                maxLength: 16,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.AddColumn<string>(
-                name: "TemplatePaymentInstructions",
-                table: "invoices",
-                type: "varchar(4000)",
-                maxLength: 4000,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.AddColumn<DateTime>(
-                name: "TemplateStampedAtUtc",
-                table: "invoices",
-                type: "datetime(6)",
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "TemplateTermsText",
-                table: "invoices",
-                type: "varchar(8000)",
-                maxLength: 8000,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_invoices_InvoiceTemplateId",
-                table: "invoices",
-                column: "InvoiceTemplateId");
+            CreateIndexIfMissing(migrationBuilder, "invoices", "IX_invoices_InvoiceTemplateId", "`InvoiceTemplateId`");
         }
 
         /// <inheritdoc />

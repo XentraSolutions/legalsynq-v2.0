@@ -40,3 +40,4 @@ Gateway.Api/
 
 - All downstream services independently validate JWTs — the gateway is not a single point of auth enforcement.
 - Internal service-to-service calls (e.g. Identity → Notifications, Tenant → Identity) bypass the gateway and use direct HTTP with service tokens or provisioning secrets.
+- For `systemd` deployments that use `EnvironmentFile=`, keep YARP cluster and destination override keys underscore-only, for example `ReverseProxy__Clusters__identity_cluster__Destinations__identity_primary__Address`.

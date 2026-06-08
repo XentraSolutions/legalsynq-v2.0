@@ -37,6 +37,19 @@ dotnet ef migrations add <Name> \
 A design-time `CommerceDbContextFactory` is provided so EF tools work without
 running the host.
 
+Startup migration behavior:
+
+- `Development`: migrations run automatically on startup.
+- Non-development: migrations are skipped unless `COMMERCE_RUN_MIGRATIONS=true`.
+- Production-safe manual apply:
+
+```bash
+Database__ConnectionString='Server=<host>;Port=3306;Database=<db>;User=<user>;Password=<pass>;' \
+dotnet ef database update \
+  --project src/Commerce.Infrastructure/Commerce.Infrastructure.csproj \
+  --startup-project src/Commerce.Api/Commerce.Api.csproj
+```
+
 ## Tests
 
 ```bash

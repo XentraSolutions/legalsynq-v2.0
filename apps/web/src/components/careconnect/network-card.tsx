@@ -3,13 +3,16 @@
 import Link    from 'next/link';
 import { useState } from 'react';
 import type { NetworkSummary } from '@/types/careconnect';
+import type { PublicNetworkSummary } from '@/lib/public-network-api';
 
 export function NetworkCard({
   network,
   tenantLogoUrl,
+  href,
 }: {
-  network:       NetworkSummary;
+  network:       NetworkSummary | PublicNetworkSummary;
   tenantLogoUrl: string;
+  href?:         string;
 }) {
   const [logoFailed, setLogoFailed] = useState(false);
 
@@ -22,7 +25,7 @@ export function NetworkCard({
 
   return (
     <Link
-      href={`/careconnect/browse-networks/${network.id}`}
+      href={href ?? `/careconnect/browse-networks/${network.id}`}
       className="group flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
     >
       {/* Tenant logo with initials fallback */}

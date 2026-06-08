@@ -237,6 +237,10 @@ file sealed class NeverCalledEmailClient : INotificationsEmailClient
     public Task<(bool EmailConfigured, bool Success, string? Error)> SendInviteEmailAsync(
         string toEmail, string displayName, string activationLink, Guid tenantId, CancellationToken ct = default) =>
         throw new InvalidOperationException("SendInviteEmailAsync should not be called in this test.");
+
+    public Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantAccessGrantedEmailAsync(
+        string toEmail, string displayName, string tenantName, string portalUrl, Guid tenantId, CancellationToken ct = default) =>
+        throw new InvalidOperationException("SendTenantAccessGrantedEmailAsync should not be called in this test.");
 }
 
 file sealed class StubEmailClient(bool emailConfigured, bool delivered, string? error)
@@ -248,6 +252,10 @@ file sealed class StubEmailClient(bool emailConfigured, bool delivered, string? 
 
     public Task<(bool EmailConfigured, bool Success, string? Error)> SendInviteEmailAsync(
         string toEmail, string displayName, string activationLink, Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult((emailConfigured, delivered, error));
+
+    public Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantAccessGrantedEmailAsync(
+        string toEmail, string displayName, string tenantName, string portalUrl, Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult((emailConfigured, delivered, error));
 }
 

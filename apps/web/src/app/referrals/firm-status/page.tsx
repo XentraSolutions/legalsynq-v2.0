@@ -1,6 +1,10 @@
-import { redirect }               from 'next/navigation';
-import { FirmStatusClient }       from './firm-status-client';
-import { createEnrollmentToken }  from '@/app/enroll/actions';
+import { redirect }                 from 'next/navigation';
+import { FirmStatusClient }         from './firm-status-client';
+import { createEnrollmentToken }    from '@/app/enroll/actions';
+import {
+  ReferrerPortalAccessStatuses,
+  type ReferrerPortalAccessStatusValue,
+} from '@/types/careconnect';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,8 +21,8 @@ interface Props {
  * Shows referral status progress, provider info, messaging, and a CTA to upgrade to
  * the full portal for managing all referrals in one place.
  *
- * CC-PORTAL-CHECK: if referrerEmail already has an active portal account the upgrade
- * panel is replaced by a simple login prompt.
+ * CC-PORTAL-CHECK: tenant-scoped portal status decides whether the referrer sees
+ * a login prompt or the enrollment CTA.
  */
 export default async function FirmStatusPage({ searchParams }: Props) {
   const sp    = await searchParams;
@@ -49,25 +53,28 @@ export default async function FirmStatusPage({ searchParams }: Props) {
     redirect('/referrals/accept/invalid?reason=expired-or-invalid');
   }
 
-  // CC-PORTAL-CHECK: check if referrer email already has an active portal account.
-  // Failure → safe default (false) so the upgrade CTA is shown instead.
-  let hasPortalAccess = false;
+  // CC-PORTAL-CHECK: tenant-aware access status for the referrer email.
+  // Failure → safe default (no_account) so the enrollment CTA is shown instead.
+  let portalAccessStatus: ReferrerPortalAccessStatusValue = ReferrerPortalAccessStatuses.NoAccount;
   const referrerEmail = threadData.referrerEmail as string | null;
-  if (referrerEmail) {
+  const referralTenantId = threadData.tenantId as string | null;
+  if (referrerEmail && referralTenantId) {
     try {
       const checkResp = await fetch(
-        `${GATEWAY_URL}/identity/api/internal/users/portal-access?email=${encodeURIComponent(referrerEmail)}`,
+        `${GATEWAY_URL}/identity/api/internal/users/portal-access?tenantId=${encodeURIComponent(referralTenantId)}&email=${encodeURIComponent(referrerEmail)}`,
         {
           cache:   'no-store',
           headers: { 'X-Provisioning-Token': PROVISIONING_TOKEN },
         },
       );
       if (checkResp.ok) {
-        const checkData = await checkResp.json() as { hasPortalAccess?: boolean };
-        hasPortalAccess = checkData.hasPortalAccess === true;
+        const checkData = await checkResp.json() as { status?: string };
+        if (checkData.status && Object.values(ReferrerPortalAccessStatuses).includes(checkData.status as ReferrerPortalAccessStatusValue)) {
+          portalAccessStatus = checkData.status as ReferrerPortalAccessStatusValue;
+        }
       }
     } catch {
-      // non-fatal — keep false
+      // non-fatal — keep no_account
     }
   }
 
@@ -84,5 +91,5 @@ export default async function FirmStatusPage({ searchParams }: Props) {
     ...(referrerPhone            ? { phone:   referrerPhone                      } : {}),
   }).catch((err) => { console.error('[firm-status] createEnrollmentToken failed:', err); return null; });
 
-  return <FirmStatusClient token={token} data={threadData} hasPortalAccess={hasPortalAccess} loginUrl={`${process.env.CC_COMMON_PORTAL_HOSTNAME}/login`} enrollToken={enrollToken} />;
+  return <FirmStatusClient token={token} data={threadData} portalAccessStatus={portalAccessStatus} loginUrl="/login" enrollToken={enrollToken} />;
 }

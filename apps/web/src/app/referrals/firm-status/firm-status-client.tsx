@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef } from 'react';
 import { postReferrerComment } from './actions';
+import { ReferrerPortalAccessStatuses, type ReferrerPortalAccessStatusValue } from '@/types/careconnect';
 
 interface Comment {
   id:         string;
@@ -28,7 +29,7 @@ interface ThreadData {
 interface Props {
   token:           string;
   data:            ThreadData;
-  hasPortalAccess: boolean;
+  portalAccessStatus: ReferrerPortalAccessStatusValue;
   loginUrl:        string;
   enrollToken:     string | null;
 }
@@ -150,7 +151,7 @@ function StatusTracker({ status }: { status: string }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function FirmStatusClient({ token, data, hasPortalAccess, loginUrl, enrollToken }: Props) {
+export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, enrollToken }: Props) {
   const [comments,  setComments]  = useState<Comment[]>(data.comments);
   const [senderName, setSenderName] = useState(data.referrerName ?? '');
   const [message,   setMessage]   = useState('');
@@ -160,6 +161,29 @@ export function FirmStatusClient({ token, data, hasPortalAccess, loginUrl, enrol
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const enrollUrl = enrollToken ? `/enroll?token=${enrollToken}` : '/enroll';
+  const hasPortalAccess = portalAccessStatus === ReferrerPortalAccessStatuses.ActiveInTenant;
+  const isExistingCrossTenantUser = portalAccessStatus === ReferrerPortalAccessStatuses.ExistingUserOtherTenant;
+  const portalCta = isExistingCrossTenantUser
+    ? {
+        title: 'Link this network to your account',
+        description: 'This email already has a CareConnect account. Continue with your existing password to verify it is you, then this network will be added to the same account.',
+        primaryLabel: 'Link this network',
+        secondaryLabel: 'Log in to another account',
+        accent: '#0f766e',
+        bg: '#f0fdfa',
+        border: '#14b8a6',
+        note: 'No new account will be created when the password matches your existing CareConnect account.',
+      }
+    : {
+        title: 'See all your referrals in one place',
+        description: 'Create a CareConnect portal account to track all referral statuses, view full patient records, communicate with providers, and generate reports.',
+        primaryLabel: 'Get full portal access',
+        secondaryLabel: 'Already have access? Log in',
+        accent: '#1e3a8a',
+        bg: '#fff',
+        border: '#1a56db',
+        note: null,
+      };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,7 +222,7 @@ export function FirmStatusClient({ token, data, hasPortalAccess, loginUrl, enrol
           </div>
         </div>
 
-        {/* Portal CTA — login prompt if already registered, upgrade panel otherwise */}
+        {/* Portal CTA — login prompt if already active, linking/enrollment panel otherwise */}
         {hasPortalAccess ? (
           <div style={{ ...s.upgradeBox, borderLeft: '4px solid #16a34a', background: '#f0fdf4' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' as const }}>
@@ -211,19 +235,26 @@ export function FirmStatusClient({ token, data, hasPortalAccess, loginUrl, enrol
             </div>
           </div>
         ) : (
-          <div style={s.upgradeBox}>
+          <div style={{ ...s.upgradeBox, background: portalCta.bg, borderLeft: `4px solid ${portalCta.border}` }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' as const }}>
               <div style={{ flex: 1, minWidth: 200 }}>
-                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>
-                  See all your referrals in one place
+                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: portalCta.accent }}>
+                  {portalCta.title}
                 </p>
                 <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>
-                  Upgrade to a CareConnect portal account to track all referral statuses, view full patient records, communicate with providers, and generate reports — no more checking individual links.
+                  {portalCta.description}
                 </p>
+                {portalCta.note && (
+                  <p style={{ margin: '8px 0 0', fontSize: 12, color: '#0f766e', lineHeight: 1.45 }}>
+                    {portalCta.note}
+                  </p>
+                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 160 }}>
-                <a href={enrollUrl} style={s.btnPrimary}>Get full portal access</a>
-                <a href={loginUrl} style={{ ...s.btnOutline, fontSize: 12, padding: '7px 16px' }}>Already have access? Log in</a>
+                <a href={enrollUrl} style={{ ...s.btnPrimary, background: portalCta.border }}>{portalCta.primaryLabel}</a>
+                <a href={loginUrl} style={{ ...s.btnOutline, color: portalCta.border, borderColor: portalCta.border, fontSize: 12, padding: '7px 16px' }}>
+                  {portalCta.secondaryLabel}
+                </a>
               </div>
             </div>
           </div>

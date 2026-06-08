@@ -231,6 +231,21 @@ function normalizeTenantType(r: Record<string, unknown>): TenantType {
  */
 const PROVISIONING_STATUSES: readonly ProvisioningStatus[] = ['Pending', 'InProgress', 'Provisioned', 'Verifying', 'Active', 'Failed'];
 const PROVISIONING_FAILURE_STAGES: readonly ProvisioningFailureStage[] = ['None', 'DnsProvisioning', 'DnsVerification', 'HttpVerification'];
+const PRODUCT_CODE_ALIASES: Record<string, ProductCode> = {
+  synqfund: 'SynqFund',
+  synq_fund: 'SynqFund',
+  synqlien: 'SynqLien',
+  synq_liens: 'SynqLien',
+  synqliens: 'SynqLien',
+  synqbill: 'SynqBill',
+  synq_bill: 'SynqBill',
+  synqrx: 'SynqRx',
+  synq_rx: 'SynqRx',
+  synqpayout: 'SynqPayout',
+  synq_payout: 'SynqPayout',
+  careconnect: 'CareConnect',
+  synq_careconnect: 'CareConnect',
+};
 
 export function mapTenantSummary(raw: unknown): TenantSummary {
   const r = asObj(raw);
@@ -265,8 +280,15 @@ function mapEntitlement(raw: unknown): ProductEntitlementSummary {
   ];
   const ENTITLEMENT_STATUSES: readonly EntitlementStatus[] = ['Active', 'Disabled'];
   const enabled = bool(r, 'enabled', 'enabled', false);
+  const rawProductCode = String(r['product_code'] ?? r['productCode'] ?? '').trim();
+  const normalizedProductCode =
+    PRODUCT_CODE_ALIASES[rawProductCode.toLowerCase()] ??
+    ((PRODUCT_CODES as readonly string[]).includes(rawProductCode)
+      ? rawProductCode as ProductCode
+      : 'SynqFund');
+
   return {
-    productCode:  oneOf(r, 'product_code',  'productCode',  PRODUCT_CODES,        'SynqFund', 'mapEntitlement.productCode'),
+    productCode:  normalizedProductCode,
     productName:  str(r,  'product_name',   'productName',  '',                   'mapEntitlement.productName'),
     enabled,
     status:       oneOf(r, 'status',        'status',       ENTITLEMENT_STATUSES, enabled ? 'Active' : 'Disabled'),

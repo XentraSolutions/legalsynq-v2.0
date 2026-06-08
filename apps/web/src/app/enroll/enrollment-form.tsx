@@ -22,9 +22,21 @@ interface ReferralPrefill {
   phone:       string;
   firstName:   string;
   lastName:    string;
+  addressLine1: string;
+  city:         string;
+  state:        string;
+  postalCode:   string;
+}
+
+interface AuthenticatedOrgPrefill {
+  companyName: string;
+  companyType: string;
+  email:       string;
+  phone:       string;
 }
 
 interface EnrollmentFormProps {
+  authenticatedOrgPrefill?: AuthenticatedOrgPrefill | null;
   prefill:           EnrollmentPrefill | null;
   providerId:        string | null;
   tenantId:          string | null;
@@ -34,30 +46,69 @@ interface EnrollmentFormProps {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill, isFirmEnrollment = false }: EnrollmentFormProps) {
+export function EnrollmentForm({
+  authenticatedOrgPrefill = null,
+  prefill,
+  providerId,
+  tenantId,
+  referralPrefill,
+  isFirmEnrollment = false,
+}: EnrollmentFormProps) {
   const router = useRouter();
 
-  // Form fields — provider prefill wins over referral prefill; referral prefill wins over empty
-  const [companyName,  setCompanyName]  = useState(prefill?.companyName  ?? referralPrefill?.companyName ?? '');
-  const companyType  = prefill?.companyType ?? 'LawFirm';
-  const [email,        setEmail]        = useState(prefill?.email        ?? referralPrefill?.email       ?? '');
-  const [phone,        setPhone]        = useState(prefill?.phone        ?? referralPrefill?.phone       ?? '');
-  const [addressLine1, setAddressLine1] = useState(prefill?.addressLine1 ?? '');
-  const [city,         setCity]         = useState(prefill?.city         ?? '');
-  const [state,        setState]        = useState(prefill?.state        ?? '');
-  const [postalCode,   setPostalCode]   = useState(prefill?.postalCode   ?? '');
-  const [firstName,    setFirstName]    = useState(referralPrefill?.firstName ?? '');
-  const [lastName,     setLastName]     = useState(referralPrefill?.lastName  ?? '');
+  // Prefill precedence:
+  //   1. authenticated org/session
+  //   2. provider prefill
+  //   3. referral token prefill
+  //   4. empty defaults
+  const initialCompanyName = authenticatedOrgPrefill?.companyName
+    ?? prefill?.companyName
+    ?? referralPrefill?.companyName
+    ?? '';
+  const companyType = authenticatedOrgPrefill?.companyType
+    ?? prefill?.companyType
+    ?? 'LawFirm';
+  const initialEmail = authenticatedOrgPrefill?.email
+    ?? prefill?.email
+    ?? referralPrefill?.email
+    ?? '';
+  const initialPhone = authenticatedOrgPrefill?.phone
+    ?? prefill?.phone
+    ?? referralPrefill?.phone
+    ?? '';
+
+  const [companyName,  setCompanyName]  = useState(initialCompanyName);
+  const [email,        setEmail]        = useState(initialEmail);
+  const [phone,        setPhone]        = useState(initialPhone);
+  const initialAddressLine1 = prefill?.addressLine1 ?? referralPrefill?.addressLine1 ?? '';
+  const initialCity         = prefill?.city         ?? referralPrefill?.city         ?? '';
+  const initialState        = prefill?.state        ?? referralPrefill?.state        ?? '';
+  const initialPostalCode   = prefill?.postalCode   ?? referralPrefill?.postalCode   ?? '';
+  const [addressLine1, setAddressLine1] = useState(initialAddressLine1);
+  const [city,         setCity]         = useState(initialCity);
+  const [state,        setState]        = useState(initialState);
+  const [postalCode,   setPostalCode]   = useState(initialPostalCode);
+  const initialFirstName = referralPrefill?.firstName ?? '';
+  const initialLastName  = referralPrefill?.lastName  ?? '';
+  const [firstName,    setFirstName]    = useState(initialFirstName);
+  const [lastName,     setLastName]     = useState(initialLastName);
   const [password,     setPassword]     = useState('');
   const [confirmPwd,   setConfirmPwd]   = useState('');
   const [agreeTerms,   setAgreeTerms]   = useState(false);
 
   // Fields locked when pre-filled from a signed referral token — should not be edited.
-  const companyNameLocked = !!referralPrefill?.companyName && !prefill;
-  const emailLocked       = !!referralPrefill?.email       && !prefill;
+  const companyNameLocked = !!authenticatedOrgPrefill?.companyName || (!!referralPrefill?.companyName && !prefill);
+  const emailLocked       = !!authenticatedOrgPrefill?.email       || (!!referralPrefill?.email && !prefill);
+  const phoneLocked       = !!initialPhone;
+  const firstNameLocked   = !!initialFirstName;
+  const lastNameLocked    = !!initialLastName;
+  const addressLine1Locked = !!initialAddressLine1;
+  const cityLocked         = !!initialCity;
+  const stateLocked        = !!initialState;
+  const postalCodeLocked   = !!initialPostalCode;
 
   // OTP state — firm enrollments skip OTP (new account, no existing email on record)
-  const originalEmail = prefill?.email ?? referralPrefill?.email ?? '';
+  const originalEmail = initialEmail;
   const emailChanged  = !isFirmEnrollment && !emailLocked && email.trim().toLowerCase() !== originalEmail.trim().toLowerCase();
   const [otpSent,      setOtpSent]      = useState(false);
   const [otpCode,      setOtpCode]      = useState('');
@@ -322,9 +373,14 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
             <input
               type="tel"
               value={phone}
-              onChange={e => setPhone(e.target.value)}
+              onChange={e => !phoneLocked && setPhone(e.target.value)}
               placeholder="(555) 000-0000"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={phoneLocked}
+              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                phoneLocked
+                  ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                  : 'border-gray-300'
+              }`}
             />
           </div>
         </div>
@@ -342,12 +398,17 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
             <input
               type="text"
               value={addressLine1}
-              onChange={e => handleAddressInput(e.target.value)}
+              onChange={e => !addressLine1Locked && handleAddressInput(e.target.value)}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-              onFocus={() => addressSuggestions.length > 0 && setShowSuggestions(true)}
+              onFocus={() => !addressLine1Locked && addressSuggestions.length > 0 && setShowSuggestions(true)}
               placeholder="123 Main St"
               autoComplete="off"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={addressLine1Locked}
+              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                addressLine1Locked
+                  ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                  : 'border-gray-300'
+              }`}
             />
             {addressLoading && (
               <div className="absolute right-3 top-9 text-gray-400">
@@ -375,9 +436,14 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
               <input
                 type="text"
                 value={city}
-                onChange={e => setCity(e.target.value)}
+                onChange={e => !cityLocked && setCity(e.target.value)}
                 placeholder="City"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={cityLocked}
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  cityLocked
+                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                    : 'border-gray-300'
+                }`}
               />
             </div>
             <div>
@@ -385,10 +451,15 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
               <input
                 type="text"
                 value={state}
-                onChange={e => setState(e.target.value)}
+                onChange={e => !stateLocked && setState(e.target.value)}
                 placeholder="CA"
                 maxLength={2}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={stateLocked}
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  stateLocked
+                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                    : 'border-gray-300'
+                }`}
               />
             </div>
             <div>
@@ -396,10 +467,15 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
               <input
                 type="text"
                 value={postalCode}
-                onChange={e => setPostalCode(e.target.value)}
+                onChange={e => !postalCodeLocked && setPostalCode(e.target.value)}
                 placeholder="90210"
                 maxLength={10}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={postalCodeLocked}
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  postalCodeLocked
+                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                    : 'border-gray-300'
+                }`}
               />
             </div>
           </div>
@@ -420,10 +496,15 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
               <input
                 type="text"
                 value={firstName}
-                onChange={e => setFirstName(e.target.value)}
+                onChange={e => !firstNameLocked && setFirstName(e.target.value)}
                 placeholder="First"
                 required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={firstNameLocked}
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  firstNameLocked
+                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                    : 'border-gray-300'
+                }`}
               />
             </div>
             <div>
@@ -431,9 +512,14 @@ export function EnrollmentForm({ prefill, providerId, tenantId, referralPrefill,
               <input
                 type="text"
                 value={lastName}
-                onChange={e => setLastName(e.target.value)}
+                onChange={e => !lastNameLocked && setLastName(e.target.value)}
                 placeholder="Last"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={lastNameLocked}
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  lastNameLocked
+                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                    : 'border-gray-300'
+                }`}
               />
             </div>
           </div>

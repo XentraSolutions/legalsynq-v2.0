@@ -28,6 +28,7 @@ import type {
   NetworkProviderMarker,
   NetworkReferralPage,
 } from '@/types/careconnect';
+import type { OrgTypeValue } from '@/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,23 @@ function toQs(params: Record<string, unknown>): string {
 // DO NOT import this in Client Components — use careconnect-api.ts instead.
 
 export const careConnectServerApi = {
+  access: {
+    getMyProductAccess: (productCode: string) =>
+      serverApi.get<Array<{
+        id: string;
+        tenantId: string;
+        tenantCode: string;
+        tenantName: string;
+        tenantSubdomain?: string | null;
+        productCode: string;
+        accessStatus: string;
+        grantedAtUtc?: string | null;
+        organizationId?: string | null;
+        organizationName?: string | null;
+        organizationType?: OrgTypeValue | null;
+      }>>(`/identity/api/auth/my-product-access${toQs({ productCode })}`),
+  },
+
   providers: {
     search: (params: ProviderSearchParams = {}) =>
       serverApi.get<PagedResponse<ProviderSummary>>(
