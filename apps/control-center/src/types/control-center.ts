@@ -47,6 +47,16 @@ export interface TenantDetail extends TenantSummary {
   isVerificationRetryExhausted?:   boolean;
 }
 
+export interface TenantAccessCodeMetadata {
+  configured: boolean;
+  version: number;
+  updatedAtUtc: string | null;
+}
+
+export interface TenantAccessCodeSaveResult extends TenantAccessCodeMetadata {
+  revealedCode: string;
+}
+
 // ── Product Entitlements ──────────────────────────────────────────────────────
 
 /**

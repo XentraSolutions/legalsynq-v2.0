@@ -51,6 +51,9 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy(Policies.AdminOnly, policy =>
         policy.RequireRole(Roles.PlatformAdmin));
+
+    options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
+        policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
 });
 
 // ── Feature flags ─────────────────────────────────────────────────────────────
@@ -152,6 +155,7 @@ app.MapResolutionEndpoints();
 app.MapEntitlementEndpoints();
 app.MapCapabilityEndpoints();
 app.MapSettingEndpoints();
+app.MapCareConnectAccessCodeEndpoints();
 app.MapMigrationEndpoints();
 app.MapReadSourceEndpoints();
 app.MapSyncEndpoints();

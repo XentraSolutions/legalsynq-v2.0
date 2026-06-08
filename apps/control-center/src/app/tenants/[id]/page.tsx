@@ -4,6 +4,7 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 import { getCachedTenantById }            from '@/lib/tenant-fetch';
 import { TenantDetailCard }               from '@/components/tenants/tenant-detail-card';
 import { ProductEntitlementsPanel }       from '@/components/tenants/product-entitlements-panel';
+import { TenantAccessCodePanel }          from '@/components/tenants/tenant-access-code-panel';
 import { TenantSessionSettingsPanel }     from '@/components/tenants/tenant-session-settings-panel';
 import { TenantLogoUpload }              from '@/components/tenants/TenantLogoUpload';
 import { TenantOrganizationsPanel }      from '@/components/tenants/tenant-organizations-panel';
@@ -11,7 +12,7 @@ import { TenantBillingPanel }            from '@/components/billing/tenant-billi
 import { BillingEntitlementPanel }       from '@/components/billing/billing-entitlement-panel';
 import { BillingProfileActionsPanel }    from '@/components/billing/billing-profile-actions-panel';
 import { BillingProfileLifecyclePanel }  from '@/components/billing/billing-profile-lifecycle-panel';
-import type { TenantBillingSummary, BillingEntitlementSnapshot } from '@/types/control-center';
+import type { TenantBillingSummary, BillingEntitlementSnapshot, PlatformSetting } from '@/types/control-center';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,8 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
   let tenantBillingError:      string | null                    = null;
   let billingEntitlement:      BillingEntitlementSnapshot | null = null;
   let billingEntitlementError: string | null                    = null;
+  let settings:                PlatformSetting[]                = [];
+  let accessCodeStatus: Awaited<ReturnType<typeof controlCenterServerApi.tenants.getAccessCode>> | null = null;
 
   const cookieStore  = await cookies();
   const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
@@ -85,9 +88,25 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
       : 'Failed to load entitlement data.';
   }
 
+  try {
+    settings = await controlCenterServerApi.settings.list();
+  } catch {
+    // Non-fatal — tenant.hostname remains the preferred display value.
+  }
+
+  try {
+    accessCodeStatus = await controlCenterServerApi.tenants.getAccessCode(id);
+  } catch {
+    // Non-fatal — omit the panel if this fetch fails.
+  }
+
+  const portalBaseDomain = String(
+    settings.find(s => s.key === 'platform.portalBaseDomain')?.value ?? '',
+  );
+
   return (
     <div className="space-y-5">
-      <TenantDetailCard tenant={tenant} />
+      <TenantDetailCard tenant={tenant} portalBaseDomain={portalBaseDomain} />
 
       <TenantLogoUpload
         tenantId={tenant.id}
@@ -101,6 +120,13 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
         tenantId={tenant.id}
         sessionTimeoutMinutes={tenant.sessionTimeoutMinutes}
       />
+
+      {accessCodeStatus && (
+        <TenantAccessCodePanel
+          tenantId={tenant.id}
+          initialStatus={accessCodeStatus}
+        />
+      )}
 
       <ProductEntitlementsPanel
         tenantId={tenant.id}

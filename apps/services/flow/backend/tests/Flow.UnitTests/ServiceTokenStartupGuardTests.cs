@@ -2,6 +2,7 @@ using BuildingBlocks.Authentication.ServiceTokens;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Flow.UnitTests;
@@ -63,6 +64,33 @@ public class ServiceTokenStartupGuardTests
             auth.AddServiceTokenBearer(cfg, failFastIfMissingSecret: false));
 
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Env_secret_overrides_config_secret_for_issuer_options()
+    {
+        const string configSecret = "config-secret-should-not-win-1234567890";
+        const string envSecret = "env-secret-should-win-12345678901234567890";
+
+        Environment.SetEnvironmentVariable(
+            ServiceTokenAuthenticationDefaults.SecretEnvVar,
+            envSecret);
+
+        var cfg = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"{ServiceTokenOptions.SectionName}:SigningKey"] = configSecret
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddServiceTokenIssuer(cfg, "test-service");
+
+        using var sp = services.BuildServiceProvider();
+        var options = sp.GetRequiredService<IOptions<ServiceTokenOptions>>().Value;
+
+        Assert.Equal(envSecret, options.SigningKey);
     }
 
     // ---------------- helpers ----------------

@@ -59,7 +59,7 @@ export default async function PublicNetworkPage() {
 
   return (
     <div className="h-screen overflow-hidden">
-      <AccessCodeGate>
+      <AccessCodeGate tenantId={tenant.tenantId}>
         <PublicNetworkView
           detail={detail}
           tenantCode={tenant.tenantCode}

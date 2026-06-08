@@ -17,6 +17,7 @@ public class ProductProvisioningService : IProductProvisioningService
 {
     private readonly IdentityDbContext                         _db;
     private readonly IEnumerable<IProductProvisioningHandler> _handlers;
+    private readonly IUserProductAccessService                _userProductAccessService;
     private readonly ILogger<ProductProvisioningService>      _logger;
     private readonly ICommerceLifecycleNotifier                _commerceNotifier;
 
@@ -25,13 +26,15 @@ public class ProductProvisioningService : IProductProvisioningService
     public ProductProvisioningService(
         IdentityDbContext                         db,
         IEnumerable<IProductProvisioningHandler>  handlers,
+        IUserProductAccessService                 userProductAccessService,
         ILogger<ProductProvisioningService>       logger,
         ICommerceLifecycleNotifier                commerceNotifier)
     {
-        _db               = db;
-        _handlers         = handlers;
-        _logger           = logger;
-        _commerceNotifier = commerceNotifier;
+        _db                       = db;
+        _handlers                 = handlers;
+        _userProductAccessService = userProductAccessService;
+        _logger                   = logger;
+        _commerceNotifier         = commerceNotifier;
     }
 
     public async Task<ProvisionProductResult> ProvisionAsync(
@@ -54,6 +57,9 @@ public class ProductProvisioningService : IProductProvisioningService
             await ProvisionOrganizationProducts(request.TenantId, product, request.Enabled, ct);
 
         await _db.SaveChangesAsync(ct);
+
+        if (request.Enabled)
+            await EnsureTenantOwnerProductAccessAsync(tenant, product.Code, ct);
 
         ProductProvisioningHandlerResult? handlerResult = null;
         if (request.Enabled && eligibleOrgs.Count > 0)
@@ -94,6 +100,34 @@ public class ProductProvisioningService : IProductProvisioningService
             orgCreated,
             orgUpdated,
             handlerResult);
+    }
+
+    private async Task EnsureTenantOwnerProductAccessAsync(
+        Tenant tenant,
+        string productCode,
+        CancellationToken ct)
+    {
+        if (!tenant.OwnerUserId.HasValue)
+            return;
+
+        try
+        {
+            await _userProductAccessService.GrantAsync(
+                tenant.Id,
+                tenant.OwnerUserId.Value,
+                productCode,
+                actorUserId: tenant.OwnerUserId.Value,
+                ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Tenant owner product access grant skipped: TenantId={TenantId}, OwnerUserId={OwnerUserId}, ProductCode={ProductCode}",
+                tenant.Id,
+                tenant.OwnerUserId.Value,
+                productCode);
+        }
     }
 
     // ── LS-COMMERCE-ECO-02: Safe Commerce notification helper ─────────────────

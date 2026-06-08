@@ -33,10 +33,19 @@ public static class ServiceTokenServiceCollectionExtensions
             .Bind(configuration.GetSection(ServiceTokenOptions.SectionName))
             .PostConfigure(o =>
             {
-                if (string.IsNullOrWhiteSpace(o.SigningKey))
+                var envSigningKey = Environment.GetEnvironmentVariable(
+                    ServiceTokenAuthenticationDefaults.SecretEnvVar);
+                if (!string.IsNullOrWhiteSpace(envSigningKey))
                 {
-                    o.SigningKey = Environment.GetEnvironmentVariable(
-                        ServiceTokenAuthenticationDefaults.SecretEnvVar) ?? string.Empty;
+                    // Keep issuer and validator precedence aligned: when the
+                    // shared env var is present, it is the single source of
+                    // truth even if a per-service ServiceTokens:SigningKey
+                    // override is also configured.
+                    o.SigningKey = envSigningKey;
+                }
+                else if (string.IsNullOrWhiteSpace(o.SigningKey))
+                {
+                    o.SigningKey = string.Empty;
                 }
                 if (string.IsNullOrWhiteSpace(o.ServiceName) || o.ServiceName == "unknown-service")
                 {
@@ -82,8 +91,8 @@ public static class ServiceTokenServiceCollectionExtensions
         bool failFastIfMissingSecret = false)
     {
         var section = configuration.GetSection(ServiceTokenOptions.SectionName);
-        var signingKey = section["SigningKey"]
-                         ?? Environment.GetEnvironmentVariable(ServiceTokenAuthenticationDefaults.SecretEnvVar)
+        var signingKey = Environment.GetEnvironmentVariable(ServiceTokenAuthenticationDefaults.SecretEnvVar)
+                         ?? section["SigningKey"]
                          ?? string.Empty;
         var issuer    = section["Issuer"]   ?? ServiceTokenAuthenticationDefaults.DefaultIssuer;
         var audience  = section["Audience"] ?? ServiceTokenAuthenticationDefaults.DefaultAudience;
@@ -186,4 +195,3 @@ public static class ServiceTokenServiceCollectionExtensions
         ctx.Fail(message);
     }
 }
-

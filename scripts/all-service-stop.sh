@@ -19,4 +19,5 @@ sudo systemctl stop \
   legalsynq-billing \
   legalsynq-comms \
   legalsynq-gateway \
-  legalsynq-web
+  legalsynq-web \
+  legalsynq-control-center

@@ -2,6 +2,9 @@ import { requireOrg }              from '@/lib/auth-guards';
 import { careConnectServerApi }    from '@/lib/careconnect-server-api';
 import { ServerApiError }          from '@/lib/server-api-client';
 import { MyNetworkClient }         from '@/components/careconnect/my-network-client';
+import { PublicNetworkAccessCodePanel } from '@/components/careconnect/public-network-access-code-panel';
+import { tenantServerApi }         from '@/lib/tenant-api';
+import type { CareConnectAccessCodeMetadata } from '@/lib/tenant-api';
 import type { NetworkDetail }      from '@/types/careconnect';
 
 export const dynamic = 'force-dynamic';
@@ -14,10 +17,12 @@ export const dynamic = 'force-dynamic';
  * at /careconnect/network (no auth required).
  */
 export default async function MyNetworkPage() {
-  await requireOrg();
+  const session = await requireOrg();
+  const canManageAccessCode = session.isPlatformAdmin || session.isTenantAdmin;
 
   let network: NetworkDetail | null = null;
   let fetchError: string | null = null;
+  let accessCodeStatus: CareConnectAccessCodeMetadata | null = null;
 
   try {
     const networks = await careConnectServerApi.networks.list();
@@ -32,8 +37,19 @@ export default async function MyNetworkPage() {
     }
   }
 
+  if (canManageAccessCode) {
+    try {
+      accessCodeStatus = await tenantServerApi.getCareConnectAccessCode(session.tenantId);
+    } catch {
+      // Non-fatal — keep the page usable even if the access-code panel cannot load.
+    }
+  }
+
   return (
-    <div className="space-y-1">
+    <div className="space-y-5">
+      {canManageAccessCode && accessCodeStatus && (
+        <PublicNetworkAccessCodePanel initialStatus={accessCodeStatus} />
+      )}
       <MyNetworkClient initialNetwork={network} fetchError={fetchError} />
     </div>
   );

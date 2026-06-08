@@ -22,6 +22,7 @@ units=(
   legalsynq-comms
   legalsynq-gateway
   legalsynq-web
+  legalsynq-control-center
 )
 
 args=()

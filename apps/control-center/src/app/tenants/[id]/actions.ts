@@ -89,6 +89,15 @@ export interface UpdateOrganizationResult {
   error?:        string;
 }
 
+export interface UpdateTenantAccessCodeResult {
+  success: boolean;
+  configured?: boolean;
+  version?: number;
+  updatedAtUtc?: string | null;
+  revealedCode?: string;
+  error?: string;
+}
+
 export async function updateOrganizationType(
   orgId:   string,
   orgType: string,
@@ -102,6 +111,39 @@ export async function updateOrganizationType(
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Failed to update organization type.',
+    };
+  }
+}
+
+export async function setTenantAccessCode(
+  tenantId: string,
+  code: string,
+): Promise<UpdateTenantAccessCodeResult> {
+  await requirePlatformAdmin();
+  try {
+    const result = await controlCenterServerApi.tenants.setAccessCode(tenantId, code);
+    revalidateTag(CACHE_TAGS.tenants, {});
+    return { success: true, ...result };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to save access code.',
+    };
+  }
+}
+
+export async function clearTenantAccessCode(
+  tenantId: string,
+): Promise<UpdateTenantAccessCodeResult> {
+  await requirePlatformAdmin();
+  try {
+    const result = await controlCenterServerApi.tenants.clearAccessCode(tenantId);
+    revalidateTag(CACHE_TAGS.tenants, {});
+    return { success: true, ...result };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to clear access code.',
     };
   }
 }

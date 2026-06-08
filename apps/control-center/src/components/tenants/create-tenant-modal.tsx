@@ -17,11 +17,12 @@ interface AddressSuggestion {
 
 interface CreateTenantModalProps {
   onClose: () => void;
+  portalBaseDomain?: string;
 }
 
 type Step = 'form' | 'success';
 
-export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
+export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantModalProps) {
   const titleId = useId();
   const router  = useRouter();
 
@@ -220,6 +221,10 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
     setTimeout(() => setCopied(false), 2500);
   }
 
+  const previewFqdn = form.code
+    ? buildTenantHostname(form.code, portalBaseDomain)
+    : null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
@@ -294,7 +299,11 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
                 />
                 <p className="mt-1 text-[11px] text-gray-400">
                   Lowercase letters, numbers, and hyphens. This will also be the tenant's subdomain
-                  (<span className="font-mono">{form.code || '...'}.demo.legalsynq.com</span>). Cannot be changed later.
+                  ({' '}
+                  <span className="font-mono">
+                    {previewFqdn ?? `${form.code || '...'}.${portalBaseDomain || 'your-domain.example'}`}
+                  </span>
+                  {' '}). Cannot be changed later.
                 </p>
               </div>
 
@@ -554,6 +563,7 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
                 <DnsSetupInstructions
                   subdomain={result.subdomain || result.code || form.code}
                   hostname={result.hostname}
+                  portalBaseDomain={portalBaseDomain}
                   status={result.provisioningStatus}
                 />
               </div>
@@ -614,8 +624,6 @@ const selectClass = [
   'text-gray-900',
   'focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400',
 ].join(' ');
-
-const BASE_DOMAIN = 'demo.legalsynq.com';
 
 function getProvisioningLabel(status?: string): string {
   switch (status) {
@@ -684,13 +692,15 @@ function getProvisioningMessage(status?: string): string | null {
 function DnsSetupInstructions({
   subdomain,
   hostname,
+  portalBaseDomain,
   status,
 }: {
   subdomain: string;
   hostname?: string;
+  portalBaseDomain?: string;
   status: string;
 }) {
-  const fqdn = hostname || `${subdomain}.${BASE_DOMAIN}`;
+  const fqdn = hostname || buildTenantHostname(subdomain, portalBaseDomain);
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -773,4 +783,9 @@ function DnsSetupInstructions({
       )}
     </div>
   );
+}
+
+function buildTenantHostname(slug: string, portalBaseDomain?: string): string {
+  const baseDomain = portalBaseDomain?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  return baseDomain ? `${slug}.${baseDomain}` : slug;
 }
