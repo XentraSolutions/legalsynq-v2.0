@@ -43,6 +43,17 @@ public interface ITenantServiceClient
     Task<string?> GetSubdomainAsync(
         Guid              tenantId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves the tenant display name for a given tenant ID.
+    /// Calls GET /api/v1/public/resolve/by-id/{id} on the Tenant service.
+    ///
+    /// Returns null when the tenant is not found, the Tenant service is unreachable,
+    /// or BaseUrl is not configured.
+    /// </summary>
+    Task<string?> GetDisplayNameAsync(
+        Guid              tenantId,
+        CancellationToken ct = default);
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────

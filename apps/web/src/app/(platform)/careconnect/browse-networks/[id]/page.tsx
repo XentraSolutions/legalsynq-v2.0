@@ -8,6 +8,7 @@ import {
 } from '@/lib/public-network-api';
 import { PublicNetworkView }         from '@/components/careconnect/public-network-view';
 import type { PrefillLawFirm }       from '@/components/careconnect/public-network-view';
+import { signReferrerScope }         from '@/lib/referrer-scope-signature';
 import { ProductRole, OrgType }      from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +42,6 @@ export default async function BrowseNetworkDetailPage({ params, searchParams }: 
       tenantId: item.tenantId,
       tenantCode: item.tenantCode,
       tenantName: item.tenantName,
-      organizationName: item.organizationName,
     }))
     .filter((item, index, arr) => arr.findIndex(x => x.tenantId === item.tenantId) === index);
 
@@ -50,7 +50,7 @@ export default async function BrowseNetworkDetailPage({ params, searchParams }: 
     : assignedTenants.find(item => item.tenantId === session.tenantId)
       ?? assignedTenants[0];
 
-  if (!selectedTenant) return notFound();
+  if (!selectedTenant || !session.orgId) return notFound();
 
   let detail: PublicNetworkDetail | null = null;
 
@@ -63,9 +63,12 @@ export default async function BrowseNetworkDetailPage({ params, searchParams }: 
   if (!detail) return notFound();
 
   const prefillLawFirm: PrefillLawFirm = {
-    firmName:    selectedTenant.organizationName ?? session.orgName ?? '',
+    firmName:    session.orgName ?? '',
     email:       session.email,
   };
+
+  const referrerScopeSignature =
+    signReferrerScope(session.userId, selectedTenant.tenantId);
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] -mx-6 -mt-6 overflow-hidden">
@@ -86,6 +89,7 @@ export default async function BrowseNetworkDetailPage({ params, searchParams }: 
           detail={detail}
           tenantCode={selectedTenant.tenantCode}
           tenantId={selectedTenant.tenantId}
+          referrerScopeSignature={referrerScopeSignature}
           prefillLawFirm={prefillLawFirm}
         />
       </div>

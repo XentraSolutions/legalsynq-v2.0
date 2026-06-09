@@ -12,6 +12,8 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Application.Cache;
+using CareConnect.Application.Interfaces;
+using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -208,6 +210,7 @@ public static class AdminDashboardEndpoints
     //             TenantAdmin callerTenantId override is always ignored for safety.
     private static async Task<IResult> GetAdminReferralsAsync(
         CareConnectDbContext    db,
+        ITenantServiceClient    tenantClient,
         ICurrentRequestContext  ctx,
         HttpContext             http,
         [FromQuery] int      page     = 1,
@@ -264,9 +267,32 @@ public static class AdminDashboardEndpoints
             })
             .ToListAsync(ct);
 
+        var tenantDisplayNames = await ReferralTenantNameResolver.ResolveAsync(
+            items.Select(x => x.tenantId),
+            tenantClient,
+            ct);
+
+        var resultItems = items.Select(x => new
+        {
+            x.id,
+            x.tenantId,
+            networkName = tenantDisplayNames.GetValueOrDefault(x.tenantId, ReferralTenantNameResolver.Fallback),
+            x.status,
+            x.urgency,
+            x.requestedService,
+            x.providerName,
+            x.providerEmail,
+            x.referringOrganizationId,
+            x.receivingOrganizationId,
+            x.referrerName,
+            x.referrerEmail,
+            x.createdAtUtc,
+            x.updatedAtUtc,
+        });
+
         return Results.Ok(new
         {
-            items,
+            items = resultItems,
             total,
             page,
             pageSize,

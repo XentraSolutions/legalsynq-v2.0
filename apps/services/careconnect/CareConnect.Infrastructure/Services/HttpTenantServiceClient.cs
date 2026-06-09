@@ -223,6 +223,55 @@ public sealed class HttpTenantServiceClient : ITenantServiceClient
         }
     }
 
+    // ── GET /api/v1/public/resolve/by-id/{id} ───────────────────────────────
+
+    public async Task<string?> GetDisplayNameAsync(
+        Guid              tenantId,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+        {
+            _logger.LogDebug("BLK-CC-01 GetDisplayName skipped (BaseUrl not configured) for tenant '{TenantId}'.", tenantId);
+            return null;
+        }
+
+        try
+        {
+            using var client = BuildClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync(
+                $"api/v1/public/resolve/by-id/{tenantId}", cts.Token);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "BLK-CC-01 GetDisplayName returned HTTP {Status} for tenant '{TenantId}'.",
+                    (int)response.StatusCode, tenantId);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<TenantResolutionResponse>(
+                cancellationToken: cts.Token);
+
+            return string.IsNullOrWhiteSpace(result?.DisplayName) ? null : result.DisplayName;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("BLK-CC-01 GetDisplayName timed out for tenant '{TenantId}'.", tenantId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "BLK-CC-01 GetDisplayName failed for tenant '{TenantId}'.", tenantId);
+            return null;
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildClient()
@@ -270,5 +319,11 @@ public sealed class HttpTenantServiceClient : ITenantServiceClient
     {
         [JsonPropertyName("subdomain")]
         public string? Subdomain { get; set; }
+    }
+
+    private sealed class TenantResolutionResponse
+    {
+        [JsonPropertyName("displayName")]
+        public string? DisplayName { get; set; }
     }
 }

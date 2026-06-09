@@ -7,6 +7,8 @@ using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Domain;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace CareConnect.Api.Endpoints;
 
@@ -59,6 +61,7 @@ public static class ReferralEndpoints
             else
             {
                 query.ReferringOrgId = ctx.OrgId;
+                query.TenantIds      = GetReferrerTenantScope(ctx);
                 // CC-REFERRER-EMAIL: also surface public referrals submitted before the
                 // law firm activated their portal (those have ReferrerEmail set but no
                 // ReferringOrganizationId).
@@ -132,7 +135,7 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+            var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
             var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
 
             if (!ctx.IsPlatformAdmin)
@@ -169,7 +172,7 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+            var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 
             // Participant check — mirrors GET /{id:guid} to prevent cross-tenant data access.
             var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
@@ -205,7 +208,7 @@ public static class ReferralEndpoints
                 id,
                 ctx.OrgId,
                 ctx.Email,
-                useGlobalLookup: CareConnectParticipantHelper.IsAdmin(ctx) || string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase),
+                useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)),
                 bypassParticipantCheck: CareConnectParticipantHelper.IsAdmin(ctx),
                 ct);
 
@@ -245,8 +248,7 @@ public static class ReferralEndpoints
                 ctx.Email,
                 senderName,
                 request.Message,
-                useGlobalLookup: CareConnectParticipantHelper.IsAdmin(ctx)
-                    || string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase),
+                useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)),
                 ct);
 
             return comment is null
@@ -262,16 +264,21 @@ public static class ReferralEndpoints
             IReferralService service,
             ICurrentRequestContext ctx,
             AuthorizationService authSvc,
+            IConfiguration config,
             CancellationToken ct) =>
         {
-            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
+            var effectiveTenantId = AuthenticatedReferralScopeResolver.ResolveTenantId(
+                ctx,
+                request,
+                HasVerifiedScopeSelection(ctx, request, config));
             // JWT claims are authoritative for authenticated referral creation —
             // override any client-submitted referrer identity with the verified token values.
+            // Referring organization always comes from the authenticated account context.
             request.ReferringOrganizationId = ctx.OrgId;
             if (!string.IsNullOrWhiteSpace(ctx.Name))  request.ReferrerName  = ctx.Name;
             if (!string.IsNullOrWhiteSpace(ctx.Email)) request.ReferrerEmail = ctx.Email;
-            var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct, actorName: ctx.Name ?? ctx.Email);
+            var referral = await service.CreateAsync(effectiveTenantId, ctx.UserId, request, ct, actorName: ctx.Name ?? ctx.Email);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
@@ -293,7 +300,7 @@ public static class ReferralEndpoints
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredPermission, ct);
 
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var bypassTenant = ctx.IsPlatformAdmin || isProviderOrg;
+            var bypassTenant = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 
             // Participant check — verify caller is a participant before mutating the referral.
             // Returns 404 (not 403) to avoid confirming record existence across tenants.
@@ -329,7 +336,7 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+            var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 
             // Participant check — mirrors GET /{id:guid} to prevent cross-tenant data access.
             var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
@@ -367,7 +374,11 @@ public static class ReferralEndpoints
             try
             {
                 // LSCC-01-005-01 (DEF-002)
-                var referral = await service.ResendEmailAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+                var referral = await service.ResendEmailAsync(
+                    tenantId,
+                    id,
+                    ct,
+                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)));
                 return Results.Ok(referral);
             }
             catch (NotFoundException)
@@ -425,7 +436,11 @@ public static class ReferralEndpoints
 
             try
             {
-                var referral = await service.RevokeTokenAsync(tenantId, id, ct);
+                var referral = await service.RevokeTokenAsync(
+                    tenantId,
+                    id,
+                    ct,
+                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)));
                 return Results.Ok(referral);
             }
             catch (NotFoundException)
@@ -450,7 +465,11 @@ public static class ReferralEndpoints
             try
             {
                 // LSCC-01-005-01 (DEF-002)
-                var timeline = await service.GetAuditTimelineAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+                var timeline = await service.GetAuditTimelineAsync(
+                    tenantId,
+                    id,
+                    ct,
+                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)));
                 return Results.Ok(timeline);
             }
             catch (NotFoundException)
@@ -643,6 +662,80 @@ public static class ReferralEndpoints
             }
         });
         // Note: no .RequireAuthorization — intentionally public, token-gated
+    }
+
+    private static bool HasVerifiedScopeSelection(
+        ICurrentRequestContext ctx,
+        CreateReferralRequest request,
+        IConfiguration config)
+    {
+        if (!ctx.UserId.HasValue ||
+            !request.TenantId.HasValue ||
+            string.IsNullOrWhiteSpace(request.ReferrerScopeSignature))
+            return false;
+
+        var secret = config["PublicTrustBoundary:InternalRequestSecret"];
+        if (string.IsNullOrWhiteSpace(secret))
+            return false;
+
+        var data = BuildReferrerScopeSignaturePayload(
+            ctx.UserId.Value,
+            request.TenantId.Value);
+
+        return TryValidateHmac(data, request.ReferrerScopeSignature, secret);
+    }
+
+    private static string BuildReferrerScopeSignaturePayload(
+        Guid userId,
+        Guid tenantId) =>
+        $"{userId:D}:{tenantId:D}";
+
+    private static bool TryValidateHmac(string data, string sig, string secret)
+    {
+        try
+        {
+            byte[] sigBytes;
+            try { sigBytes = Convert.FromBase64String(sig); }
+            catch { return false; }
+
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+            var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(data));
+
+            return sigBytes.Length == expected.Length &&
+                   CryptographicOperations.FixedTimeEquals(expected, sigBytes);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static IReadOnlyList<Guid>? GetReferrerTenantScope(ICurrentRequestContext ctx)
+    {
+        var tenantIds = ctx.TenantIds
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        if (tenantIds.Count > 0)
+            return tenantIds;
+
+        return ctx.TenantId.HasValue
+            ? [ctx.TenantId.Value]
+            : null;
+    }
+
+    private static bool ShouldUseGlobalReferralLookup(ICurrentRequestContext ctx, bool isProviderOrg)
+    {
+        if (ctx.IsPlatformAdmin || isProviderOrg)
+            return true;
+
+        var tenantScope = GetReferrerTenantScope(ctx);
+        if (tenantScope is null || tenantScope.Count <= 1)
+            return false;
+
+        return ctx.ProductRoles.Any(role =>
+            role.EndsWith(":CARECONNECT_REFERRER", StringComparison.OrdinalIgnoreCase));
     }
 }
 

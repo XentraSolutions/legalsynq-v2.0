@@ -17,8 +17,11 @@ namespace CareConnect.Application.Services;
 
 public class ReferralService : IReferralService
 {
+    private const string QueueDisplayFallback = "-";
+
     private readonly IReferralRepository _referrals;
     private readonly IProviderRepository _providers;
+    private readonly ITenantServiceClient _tenantClient;
     private readonly INotificationService _notifications;
     private readonly INotificationRepository _notificationRepo;
     private readonly IReferralEmailService _emailService;
@@ -33,6 +36,7 @@ public class ReferralService : IReferralService
     public ReferralService(
         IReferralRepository referrals,
         IProviderRepository providers,
+        ITenantServiceClient tenantClient,
         INotificationService notifications,
         INotificationRepository notificationRepo,
         IReferralEmailService emailService,
@@ -46,6 +50,7 @@ public class ReferralService : IReferralService
     {
         _referrals            = referrals;
         _providers            = providers;
+        _tenantClient         = tenantClient;
         _notifications        = notifications;
         _notificationRepo     = notificationRepo;
         _emailService         = emailService;
@@ -63,15 +68,12 @@ public class ReferralService : IReferralService
         ValidateQuery(query);
 
         var (items, totalCount) = await _referrals.SearchAsync(tenantId, query, ct);
-
-        var networkNames = await _referrals.GetProviderNetworkNamesAsync(
-            items.Select(r => r.ProviderId), ct);
+        var tenantDisplayNames = await ReferralTenantNameResolver.ResolveForReferralsAsync(items, _tenantClient, ct);
 
         var responses = items.Select(r =>
         {
             var resp = ToResponse(r);
-            if (networkNames.TryGetValue(r.ProviderId, out var name))
-                resp.NetworkName = name;
+            resp.NetworkName = tenantDisplayNames.GetValueOrDefault(r.TenantId, QueueDisplayFallback);
             return resp;
         }).ToList();
 
@@ -861,10 +863,13 @@ public class ReferralService : IReferralService
     /// Any token with an older version will be rejected as revoked.
     /// Newly generated tokens (e.g. from resend) will use the new version and will work.
     /// </summary>
-    public async Task<ReferralResponse> RevokeTokenAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    public async Task<ReferralResponse> RevokeTokenAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false)
     {
-        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
-            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+        var referral = isPlatformAdmin
+            ? await _referrals.GetByIdGlobalAsync(referralId, ct)
+            : await _referrals.GetByIdAsync(tenantId, referralId, ct);
+        if (referral is null)
+            throw new NotFoundException($"Referral '{referralId}' was not found.");
 
         var oldVersion = referral.TokenVersion;
         referral.IncrementTokenVersion();
@@ -885,7 +890,7 @@ public class ReferralService : IReferralService
             Visibility    = AuditVisibility.Tenant,
             Severity      = SeverityLevel.Warn,
             OccurredAtUtc = now,
-            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = referral.TenantId.ToString() },
             Actor         = new AuditEventActorDto { Type = ActorType.User },
             Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
             Action        = "ReferralTokenRevoked",
@@ -897,7 +902,7 @@ public class ReferralService : IReferralService
             Tags           = ["referral", "token", "revoked", "security"],
         });
 
-        var latest = await _notificationRepo.GetLatestByReferralAsync(tenantId, referralId, ct: ct);
+        var latest = await _notificationRepo.GetLatestByReferralAsync(referral.TenantId, referralId, ct: ct);
         return ToResponse(referral, latest);
     }
 
