@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { normalizeCareConnectPortalHost } from '@/lib/careconnect-login-url';
 
 const GATEWAY_URL             = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 const IS_PROD                 = process.env.NODE_ENV === 'production';
@@ -6,7 +7,7 @@ const IS_PROD                 = process.env.NODE_ENV === 'production';
 // from the user's email — no tenant code or subdomain lookup required.
 // Matches CC_COMMON_PORTAL_HOSTNAME in middleware.ts.
 const CC_COMMON_PORTAL_HOSTNAME =
-  (process.env.CC_COMMON_PORTAL_HOSTNAME ?? '').trim().toLowerCase();
+  normalizeCareConnectPortalHost(process.env.CC_COMMON_PORTAL_HOSTNAME);
 
 interface RateLimitEntry {
   count: number;

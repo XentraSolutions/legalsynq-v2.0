@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { normalizeCareConnectPortalHost } from './lib/careconnect-login-url';
 
 /**
  * Global Next.js proxy — route protection + hostname-based routing.
@@ -29,7 +30,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 // When a request arrives on this hostname, the root path / is redirected to the
 // common portal dashboard. All other path-level routing rules still apply.
 const CC_COMMON_PORTAL_HOSTNAME =
-  (process.env.CC_COMMON_PORTAL_HOSTNAME ?? '').trim().toLowerCase();
+  normalizeCareConnectPortalHost(process.env.CC_COMMON_PORTAL_HOSTNAME);
 
 const PUBLIC_PATHS = [
   '/login',
