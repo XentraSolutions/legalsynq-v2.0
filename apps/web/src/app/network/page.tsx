@@ -32,6 +32,7 @@ import {
   type ResolvedTenant,
 } from '@/lib/public-network-api';
 import { PublicNetworkView } from '@/components/careconnect/public-network-view';
+import { getCareConnectLoginUrlFromEnv } from '@/lib/careconnect-login-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,7 @@ interface PageProps {
 
 export default async function PublicNetworkPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const loginUrl = getCareConnectLoginUrlFromEnv();
 
   // Resolve tenant code from: subdomain → query param → env var
   const tenantCode = await resolveTenantCodeServerSide(sp.tenant);
@@ -95,7 +97,7 @@ export default async function PublicNetworkPage({ searchParams }: PageProps) {
 
       {/* Main view — interactive provider list + map */}
       {detail ? (
-        <PublicNetworkView detail={detail} tenantCode={tenantCode} tenantId={tenant.tenantId} />
+        <PublicNetworkView detail={detail} tenantCode={tenantCode} tenantId={tenant.tenantId} loginUrl={loginUrl} />
       ) : (
         <p className="text-sm text-gray-500">
           This network has no providers yet.

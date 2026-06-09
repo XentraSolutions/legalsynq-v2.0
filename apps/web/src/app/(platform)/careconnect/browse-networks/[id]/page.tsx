@@ -8,6 +8,7 @@ import {
 } from '@/lib/public-network-api';
 import { PublicNetworkView }         from '@/components/careconnect/public-network-view';
 import type { PrefillLawFirm }       from '@/components/careconnect/public-network-view';
+import { getCareConnectLoginUrlFromEnv } from '@/lib/careconnect-login-url';
 import { signReferrerScope }         from '@/lib/referrer-scope-signature';
 import { ProductRole, OrgType }      from '@/types';
 
@@ -69,6 +70,7 @@ export default async function BrowseNetworkDetailPage({ params, searchParams }: 
 
   const referrerScopeSignature =
     signReferrerScope(session.userId, selectedTenant.tenantId);
+  const loginUrl = getCareConnectLoginUrlFromEnv();
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] -mx-6 -mt-6 overflow-hidden">
@@ -89,6 +91,7 @@ export default async function BrowseNetworkDetailPage({ params, searchParams }: 
           detail={detail}
           tenantCode={selectedTenant.tenantCode}
           tenantId={selectedTenant.tenantId}
+          loginUrl={loginUrl}
           referrerScopeSignature={referrerScopeSignature}
           prefillLawFirm={prefillLawFirm}
         />

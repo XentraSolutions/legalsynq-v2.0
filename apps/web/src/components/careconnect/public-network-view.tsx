@@ -36,6 +36,7 @@ interface PublicNetworkViewProps {
   detail:          PublicNetworkDetail;
   tenantCode:      string;
   tenantId:        string;
+  loginUrl:        string;
   referrerScopeSignature?: string;
   /** When provided, the law firm section is hidden and pre-filled (authenticated referrer flow). */
   prefillLawFirm?: PrefillLawFirm;
@@ -49,6 +50,7 @@ export function PublicNetworkView({
   detail,
   tenantCode,
   tenantId,
+  loginUrl,
   referrerScopeSignature,
   prefillLawFirm,
 }: PublicNetworkViewProps) {
@@ -364,6 +366,7 @@ export function PublicNetworkView({
         <ReferralPanel
           providers={selectedProviders}
           tenantId={tenantId}
+          loginUrl={loginUrl}
           referrerScopeSignature={referrerScopeSignature}
           onClearSelection={() => setSelectedIds(new Set())}
           prefillLawFirm={prefillLawFirm}
@@ -522,10 +525,11 @@ const EMPTY_FORM: ReferralForm = {
 type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error';
 
 function ReferralPanel({
-  providers, tenantId, referrerScopeSignature, onClearSelection, prefillLawFirm,
+  providers, tenantId, loginUrl, referrerScopeSignature, onClearSelection, prefillLawFirm,
 }: {
   providers:        PublicProviderItem[];
   tenantId:         string;
+  loginUrl:         string;
   referrerScopeSignature?: string;
   onClearSelection: () => void;
   prefillLawFirm?:  PrefillLawFirm;
@@ -1169,6 +1173,7 @@ function ReferralPanel({
           providerFiles={providerFiles}
           state={state}
           tenantId={tenantId}
+          loginUrl={loginUrl}
           hasPortalAccess={hasPortalAccess}
           prefillLawFirm={prefillLawFirm}
           enrollToken={enrollToken}
@@ -1200,7 +1205,7 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ReferralConfirmModal({
-  form, providers, treatmentTypes, providerFiles, state, tenantId, hasPortalAccess, prefillLawFirm, enrollToken, onConfirm, onBack, onClose,
+  form, providers, treatmentTypes, providerFiles, state, tenantId, loginUrl, hasPortalAccess, prefillLawFirm, enrollToken, onConfirm, onBack, onClose,
 }: {
   form:             ReferralForm;
   providers:        PublicProviderItem[];
@@ -1208,6 +1213,7 @@ function ReferralConfirmModal({
   providerFiles:    Record<string, File | null>;
   state:            PanelState;
   tenantId:         string;
+  loginUrl:         string;
   hasPortalAccess:  boolean;
   prefillLawFirm?:  PrefillLawFirm;
   enrollToken:      string | null;
@@ -1288,7 +1294,7 @@ function ReferralConfirmModal({
                           all your cases in one place.
                         </p>
                         <a
-                          href="/login"
+                          href={loginUrl}
                           className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
                         >
                           <i className="ri-login-circle-line" />
