@@ -1,0 +1,303 @@
+using CareConnect.Application.DTOs;
+using CareConnect.Application.Interfaces;
+using CareConnect.Application.Repositories;
+using CareConnect.Application.Authorization;
+using CareConnect.Domain;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+namespace CareConnect.Application.Services;
+
+public class ReferralThreadService : IReferralThreadService
+{
+    private readonly IReferralRepository _referrals;
+    private readonly IReferralCommentRepository _comments;
+    private readonly IReferralAttachmentRepository _attachments;
+    private readonly IReferralEmailService _emailService;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<ReferralThreadService> _logger;
+
+    public ReferralThreadService(
+        IReferralRepository referrals,
+        IReferralCommentRepository comments,
+        IReferralAttachmentRepository attachments,
+        IReferralEmailService emailService,
+        IServiceScopeFactory scopeFactory,
+        ILogger<ReferralThreadService> logger)
+    {
+        _referrals = referrals;
+        _comments = comments;
+        _attachments = attachments;
+        _emailService = emailService;
+        _scopeFactory = scopeFactory;
+        _logger = logger;
+    }
+
+    public async Task<PublicReferralThreadResponse?> GetPublicThreadAsync(string token, CancellationToken ct = default)
+    {
+        var referral = await GetReferralByTokenAsync(token, ct);
+        if (referral is null)
+            return null;
+
+        var comments = await _comments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
+        var attachments = await _attachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
+
+        var providerName = BuildProviderName(referral);
+        return new PublicReferralThreadResponse
+        {
+            ReferralId = referral.Id,
+            TenantId = referral.TenantId,
+            Status = referral.Status,
+            ClientName = $"{referral.ClientFirstName} {referral.ClientLastName}".Trim(),
+            ClientPhone = referral.ClientPhone,
+            ClientEmail = referral.ClientEmail,
+            ClientDob = referral.ClientDob.HasValue
+                ? referral.ClientDob.Value.ToString("MM/dd/yyyy")
+                : null,
+            CaseNumber = referral.CaseNumber,
+            Service = referral.RequestedService,
+            Urgency = referral.Urgency,
+            Notes = referral.Notes,
+            ProviderName = providerName,
+            ReferrerName = referral.ReferrerName,
+            ReferrerEmail = referral.ReferrerEmail,
+            CreatedAt = referral.CreatedAtUtc,
+            ProviderHasAccount = referral.Provider is not null &&
+                                 ProviderAccessStage.IsAtLeast(referral.Provider.AccessStage, ProviderAccessStage.CommonPortal),
+            Comments = comments.Select(MapComment).ToList(),
+            Attachments = attachments
+                .OrderBy(a => a.CreatedAtUtc)
+                .Select(a => new ReferralThreadAttachmentResponse
+                {
+                    Id = a.Id,
+                    FileName = a.FileName,
+                    ContentType = a.ContentType,
+                    FileSizeBytes = a.FileSizeBytes,
+                })
+                .ToList(),
+        };
+    }
+
+    public async Task<ReferralCommentResponse?> PostPublicCommentAsync(
+        string token,
+        string senderType,
+        string senderName,
+        string message,
+        CancellationToken ct = default)
+    {
+        var referral = await GetReferralByTokenAsync(token, ct);
+        if (referral is null)
+            return null;
+
+        var comment = new ReferralComment
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = referral.TenantId,
+            ReferralId = referral.Id,
+            SenderType = senderType.Trim(),
+            SenderName = senderName.Trim(),
+            Message = message.Trim(),
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        await _comments.AddAsync(comment, ct);
+        QueueCommentNotification(referral, comment);
+        return MapComment(comment);
+    }
+
+    public async Task<IReadOnlyList<ReferralCommentResponse>?> GetAuthenticatedCommentsAsync(
+        Guid tenantId,
+        Guid referralId,
+        Guid? callerOrganizationId,
+        string? callerEmail,
+        bool useGlobalLookup,
+        bool bypassParticipantCheck,
+        CancellationToken ct = default)
+    {
+        var referral = await LoadAuthenticatedReferralAsync(
+            tenantId,
+            referralId,
+            callerOrganizationId,
+            callerEmail,
+            useGlobalLookup,
+            bypassParticipantCheck,
+            ct);
+        if (referral is null)
+            return null;
+
+        var comments = await _comments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
+        return comments.Select(MapComment).ToList();
+    }
+
+    public async Task<ReferralCommentResponse?> PostAuthenticatedCommentAsync(
+        Guid tenantId,
+        Guid referralId,
+        Guid? callerOrganizationId,
+        string? callerEmail,
+        string senderName,
+        string message,
+        bool useGlobalLookup,
+        CancellationToken ct = default)
+    {
+        var participant = await LoadAuthenticatedCommentParticipantAsync(
+            tenantId,
+            referralId,
+            callerOrganizationId,
+            callerEmail,
+            useGlobalLookup,
+            ct);
+        if (participant is null)
+            return null;
+
+        var comment = new ReferralComment
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = participant.Referral.TenantId,
+            ReferralId = participant.Referral.Id,
+            SenderType = participant.SenderType,
+            SenderName = senderName.Trim(),
+            Message = message.Trim(),
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        await _comments.AddAsync(comment, ct);
+        QueueCommentNotification(participant.Referral, comment);
+        return MapComment(comment);
+    }
+
+    private async Task<Referral?> GetReferralByTokenAsync(string token, CancellationToken ct)
+    {
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)
+            return null;
+
+        var referral = await _referrals.GetByIdGlobalAsync(tokenResult.ReferralId, ct);
+        if (referral is null || referral.TokenVersion != tokenResult.TokenVersion)
+            return null;
+
+        return referral;
+    }
+
+    private async Task<Referral?> LoadAuthenticatedReferralAsync(
+        Guid tenantId,
+        Guid referralId,
+        Guid? callerOrganizationId,
+        string? callerEmail,
+        bool useGlobalLookup,
+        bool bypassParticipantCheck,
+        CancellationToken ct)
+    {
+        var referral = useGlobalLookup
+            ? await _referrals.GetByIdGlobalAsync(referralId, ct)
+            : await _referrals.GetByIdAsync(tenantId, referralId, ct);
+        if (referral is null)
+            return null;
+
+        if (bypassParticipantCheck)
+            return referral;
+
+        return IsAuthenticatedParticipant(referral, callerOrganizationId, callerEmail)
+            ? referral
+            : null;
+    }
+
+    private async Task<AuthenticatedCommentParticipant?> LoadAuthenticatedCommentParticipantAsync(
+        Guid tenantId,
+        Guid referralId,
+        Guid? callerOrganizationId,
+        string? callerEmail,
+        bool useGlobalLookup,
+        CancellationToken ct)
+    {
+        var referral = await LoadAuthenticatedReferralAsync(
+            tenantId,
+            referralId,
+            callerOrganizationId,
+            callerEmail,
+            useGlobalLookup,
+            bypassParticipantCheck: false,
+            ct);
+        if (referral is null)
+            return null;
+
+        var senderType = ResolveSenderType(referral, callerOrganizationId, callerEmail);
+        return senderType is null
+            ? null
+            : new AuthenticatedCommentParticipant(referral, senderType);
+    }
+
+    private void QueueCommentNotification(Referral referral, ReferralComment comment)
+    {
+        var referralId = referral.Id;
+        _logger.LogInformation(
+            "ReferralThread: comment posted on referral {ReferralId} by {SenderType} '{SenderName}'.",
+            referralId,
+            comment.SenderType,
+            comment.SenderName);
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var emailService = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
+            try
+            {
+                await emailService.SendCommentNotificationAsync(referral, comment, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "ReferralThread: failed to send comment notification for referral {ReferralId}.",
+                    referralId);
+            }
+        }, CancellationToken.None);
+    }
+
+    private static ReferralCommentResponse MapComment(ReferralComment comment) => new()
+    {
+        Id = comment.Id,
+        SenderType = comment.SenderType,
+        SenderName = comment.SenderName,
+        Message = comment.Message,
+        CreatedAt = comment.CreatedAt,
+    };
+
+    private static string BuildProviderName(Referral referral)
+    {
+        if (referral.Provider is null)
+            return "Provider";
+
+        return string.IsNullOrWhiteSpace(referral.Provider.OrganizationName)
+            ? referral.Provider.Name
+            : referral.Provider.OrganizationName;
+    }
+
+    private static bool IsAuthenticatedParticipant(Referral referral, Guid? callerOrganizationId, string? callerEmail)
+    {
+        if (CareConnectParticipantHelper.IsReferralParticipant(referral, callerOrganizationId))
+            return true;
+
+        return referral.ReferringOrganizationId is null
+            && !string.IsNullOrWhiteSpace(callerEmail)
+            && string.Equals(referral.ReferrerEmail, callerEmail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ResolveSenderType(Referral referral, Guid? callerOrganizationId, string? callerEmail)
+    {
+        if (callerOrganizationId.HasValue && referral.ReceivingOrganizationId == callerOrganizationId)
+            return "provider";
+
+        if (callerOrganizationId.HasValue && referral.ReferringOrganizationId == callerOrganizationId)
+            return "referrer";
+
+        if (referral.ReferringOrganizationId is null
+            && !string.IsNullOrWhiteSpace(callerEmail)
+            && string.Equals(referral.ReferrerEmail, callerEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            return "referrer";
+        }
+
+        return null;
+    }
+
+    private sealed record AuthenticatedCommentParticipant(Referral Referral, string SenderType);
+}

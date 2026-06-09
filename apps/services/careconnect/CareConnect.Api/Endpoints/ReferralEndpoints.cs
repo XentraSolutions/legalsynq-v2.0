@@ -192,6 +192,70 @@ public static class ReferralEndpoints
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect);
 
+        group.MapGet("/{id:guid}/comments", async (
+            Guid id,
+            IReferralThreadService threadService,
+            ICurrentRequestContext ctx,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+
+            var comments = await threadService.GetAuthenticatedCommentsAsync(
+                tenantId,
+                id,
+                ctx.OrgId,
+                ctx.Email,
+                useGlobalLookup: CareConnectParticipantHelper.IsAdmin(ctx) || string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase),
+                bypassParticipantCheck: CareConnectParticipantHelper.IsAdmin(ctx),
+                ct);
+
+            return comments is null ? Results.NotFound() : Results.Ok(comments);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
+
+        group.MapPost("/{id:guid}/comments", async (
+            Guid id,
+            [FromBody] CreateReferralCommentRequest request,
+            IReferralThreadService threadService,
+            ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 4000)
+                return Results.BadRequest(new { error = "message is required and must be 4000 characters or fewer." });
+
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var canPostThread = await CareConnectAuthHelper.HasAnyAsync(
+                ctx,
+                authSvc,
+                [PermissionCodes.ReferralReadOwn, PermissionCodes.ReferralReadAddressed],
+                ct);
+            if (!canPostThread)
+                return Results.Forbid();
+
+            var senderName = string.IsNullOrWhiteSpace(ctx.Name)
+                ? (string.IsNullOrWhiteSpace(ctx.Email) ? "Provider" : ctx.Email!)
+                : ctx.Name!;
+
+            var comment = await threadService.PostAuthenticatedCommentAsync(
+                tenantId,
+                id,
+                ctx.OrgId,
+                ctx.Email,
+                senderName,
+                request.Message,
+                useGlobalLookup: CareConnectParticipantHelper.IsAdmin(ctx)
+                    || string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase),
+                ct);
+
+            return comment is null
+                ? Results.NotFound()
+                : Results.Created($"/api/referrals/{id}/comments/{comment.Id}", comment);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
+
         // LS-ID-TNT-012: filter-level JWT permission check; handler also validates via IEffectivePermissionService.
         group.MapPost("/", async (
             [FromBody] CreateReferralRequest request,
