@@ -80,6 +80,7 @@ public static class DependencyInjection
 
         services.AddScoped<IProviderRepository, ProviderRepository>();
         services.AddScoped<IReferralRepository, ReferralRepository>();
+        services.AddScoped<IReferralCommentRepository, ReferralCommentRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<IFacilityRepository, FacilityRepository>();
         services.AddScoped<IServiceOfferingRepository, ServiceOfferingRepository>();
@@ -98,6 +99,7 @@ public static class DependencyInjection
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
+        services.AddScoped<IReferralThreadService, ReferralThreadService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<IServiceOfferingService, ServiceOfferingService>();
@@ -153,6 +155,8 @@ public static class DependencyInjection
         services.AddHttpClient("NotificationsService")
             .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
         services.AddScoped<INotificationsProducer, NotificationsProducerClient>();
+        // Singleton: subdomain slugs never change after provisioning; cache must outlive Scoped email service.
+        services.AddSingleton<ITenantSubdomainCache, TenantSubdomainCache>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();
 
         // LSCC-005-02: Automatic email retry background worker

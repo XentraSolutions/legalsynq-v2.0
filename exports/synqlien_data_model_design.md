@@ -407,7 +407,7 @@ public class Lien : AuditableEntity
         var now = DateTime.UtcNow;
         return new Lien
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             SellingOrganizationId = sellingOrgId,
             LienNumber = lienNumber,
@@ -473,7 +473,7 @@ public class LienStatusHistory
         Guid? userId, Guid? orgId, string? reason = null)
         => new()
         {
-            Id = Guid.NewGuid(), LienId = lienId,
+            Id = Guid.CreateVersion7(), LienId = lienId,
             FromStatus = from, ToStatus = to,
             ChangedByUserId = userId, ChangedByOrgId = orgId,
             Reason = reason, ChangedAtUtc = DateTime.UtcNow

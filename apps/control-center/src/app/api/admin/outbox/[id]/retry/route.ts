@@ -52,7 +52,7 @@ export async function POST(
 
   try {
     const result = await controlCenterServerApi.outbox.retry(id, reason);
-    revalidateTag('cc:outbox');
+    revalidateTag('cc:outbox', {});
     return NextResponse.json({ result });
   } catch (err: unknown) {
     if (err instanceof ApiError) {

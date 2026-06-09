@@ -13,7 +13,7 @@ public sealed class EfReportRepository : IReportRepository
     public async Task<ReportExecution> SaveAsync(ReportExecution execution, CancellationToken ct)
     {
         if (execution.Id == Guid.Empty)
-            execution.Id = Guid.NewGuid();
+            execution.Id = Guid.CreateVersion7();
 
         _db.ReportExecutions.Add(execution);
         await _db.SaveChangesAsync(ct);

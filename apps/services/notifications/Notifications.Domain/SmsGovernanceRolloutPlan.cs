@@ -17,7 +17,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsGovernanceRolloutPlan
 {
-    public Guid    Id                  { get; set; } = Guid.NewGuid();
+    public Guid    Id                  { get; set; } = Guid.CreateVersion7();
 
     /// <summary>The release package this rollout deploys.</summary>
     public Guid    ReleasePackageId    { get; set; }

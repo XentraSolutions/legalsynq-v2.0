@@ -27,7 +27,7 @@ public sealed class ConversationSlaTriggerState
         var now = DateTime.UtcNow;
         return new ConversationSlaTriggerState
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             EvaluationVersion = 0,

@@ -12,7 +12,8 @@ NEXT_BIN=""
 # Always resolve to the real JS entrypoint at next/dist/bin/next.
 for candidate in \
   "$ROOT/node_modules/next/dist/bin/next" \
-  "$ROOT/node_modules/.pnpm/next@15.5.15"*/node_modules/next/dist/bin/next \
+  "$ROOT/node_modules/.pnpm/next@16.2.6"*/node_modules/next/dist/bin/next \
+  "$ROOT/node_modules/.pnpm/next@15"*/node_modules/next/dist/bin/next \
   "$(npm root 2>/dev/null)/next/dist/bin/next"; do
   # Expand glob — skip if candidate still contains a wildcard
   case "$candidate" in *\**) continue ;; esac
@@ -92,23 +93,27 @@ if command -v dotnet &>/dev/null; then
     # Add a new service by appending its .csproj path here.  The DLL check,
     # build step, and post-build verification all derive from this list
     # automatically — no other section needs updating for the build pipeline.
-    # Services are listed in launch order: backend services first, Gateway last
-    # so it only begins routing once all upstream services are started.
-    # New services should be inserted before Gateway.Api.csproj.
+    # Services launch simultaneously (all backgrounded). Order here reflects
+    # the same stable startup sequence as run-dev.sh: Gateway and Monitoring
+    # early (low memory), then InMemory services, then DB-heavy services.
     BUILD_PROJECTS=(
+      "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
+      "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj"
+      "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj"
+      "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj"
+      "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj"
+      "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj"
+      "$ROOT/apps/services/task/Task.Api/Task.Api.csproj"
+      "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
       "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
       "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
       "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
-      "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
-      "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
-      "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
       "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj"
-      "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
-      "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj"
-      "$ROOT/apps/services/task/Task.Api/Task.Api.csproj"
-      "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj"
+      "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
+      "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
+      "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
+      "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj"
       "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
-      "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
     )
 
     # Derives the expected Release output DLL from a .csproj path.
@@ -162,11 +167,16 @@ if command -v dotnet &>/dev/null; then
     # automatically even if it has no special configuration.
     # SVC_PIDS / SVC_NAMES are populated here and consumed by the crash-monitor
     # immediately below the loop.
+
+    # Shrink GC heap footprint for every .NET process — critical for running
+    # 17+ services concurrently in a memory-constrained container.
+    export DOTNET_GCConserveMemory=9
+
     SVC_PIDS=()
     SVC_NAMES=()
     PID_IDENTITY="" PID_FUND="" PID_CARECONNECT="" PID_DOCUMENTS=""
     PID_AUDIT="" PID_NOTIFICATIONS="" PID_LIENS="" PID_GATEWAY="" PID_FLOW="" PID_MONITORING="" PID_TASK=""
-    PID_SUPPORT=""
+    PID_TENANT="" PID_SUPPORT="" PID_COMMERCE="" PID_BILLING="" PID_REPORTS="" PID_COMMS=""
 
     # ── Resolve portal URL / domain once — used by Identity, CareConnect, Support ──
     # PortalBaseUrl → PORTAL_BASE_URL secret/env if set; otherwise derived from
@@ -224,7 +234,11 @@ if command -v dotnet &>/dev/null; then
             "Support__Audit__Enabled=true" \
             "Support__Audit__Mode=Http"
           PID_SUPPORT=$! ;;
-        Gateway.Api)   launch_svc "$_svc_label" "$csproj"; PID_GATEWAY=$! ;;
+        Gateway.Api)
+          # Explicit ASPNETCORE_URLS prevents YARP TypeLoadException when
+          # launchSettings picks the wrong port on Production startup.
+          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5010
+          PID_GATEWAY=$! ;;
         Identity.Api)
           # NotificationsService:BaseUrl, :PortalBaseUrl, and :PortalBaseDomain must
           # all be non-empty in Production (Program.cs startup guard).
@@ -247,6 +261,20 @@ if command -v dotnet &>/dev/null; then
           PID_CARECONNECT=$! ;;
         Documents.Api) launch_svc "$_svc_label" "$csproj"; PID_DOCUMENTS=$! ;;
         Liens.Api)     launch_svc "$_svc_label" "$csproj"; PID_LIENS=$! ;;
+        Commerce.Api)
+          launch_svc "$_svc_label" "$csproj" env \
+            ASPNETCORE_URLS=http://0.0.0.0:5030 \
+            "COMMERCE_LEGALSYNQ_SIGNING_KEY=${Jwt__SigningKey:-}"
+          PID_COMMERCE=$! ;;
+        Billing.Api)
+          launch_svc "$_svc_label" "$csproj" env \
+            ASPNETCORE_URLS=http://0.0.0.0:5031 \
+            "BILLING_LEGALSYNQ_SIGNING_KEY=${Jwt__SigningKey:-}"
+          PID_BILLING=$! ;;
+        Reports.Api)
+          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5029
+          PID_REPORTS=$! ;;
+        Comms.Api)     launch_svc "$_svc_label" "$csproj"; PID_COMMS=$! ;;
         *)             launch_svc "$_svc_label" "$csproj" ;;
       esac
       # $! is the PID of the dotnet process just backgrounded by launch_svc
@@ -275,19 +303,23 @@ if command -v dotnet &>/dev/null; then
     # within the deadline.
     # _probe_svc is defined at the top of this script and inherited here.
 
-    _probe_svc "Identity"      5001 /health   "${PID_IDENTITY:-}"      "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Fund"          5002 /health   "${PID_FUND:-}"          "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "CareConnect"   5003 /health   "${PID_CARECONNECT:-}"   "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Documents"     5006 /health   "${PID_DOCUMENTS:-}"     "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Audit"         5007 /health   "${PID_AUDIT:-}"         "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Notifications" 5008 /health   "${PID_NOTIFICATIONS:-}" "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Liens"         5009 /health   "${PID_LIENS:-}"         "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Gateway"       5010 /health   "${PID_GATEWAY:-}"       "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Flow"          5012 /healthz  "${PID_FLOW:-}"          "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Monitoring"    5015 /health   "${PID_MONITORING:-}"    "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Task"          5016 /health        "${PID_TASK:-}"          "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Tenant"        5005 /health        "${PID_TENANT:-}"        "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Support"       5017 /support/api/health "${PID_SUPPORT:-}"  "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Gateway"       5010 /health            "${PID_GATEWAY:-}"       "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Monitoring"    5015 /health            "${PID_MONITORING:-}"    "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Commerce"      5030 /health            "${PID_COMMERCE:-}"      "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Billing"       5031 /health            "${PID_BILLING:-}"       "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Tenant"        5005 /health            "${PID_TENANT:-}"        "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Reports"       5029 /api/v1/health     "${PID_REPORTS:-}"       "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Task"          5016 /health            "${PID_TASK:-}"          "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Flow"          5012 /healthz           "${PID_FLOW:-}"          "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Identity"      5001 /health            "${PID_IDENTITY:-}"      "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Fund"          5002 /health            "${PID_FUND:-}"          "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "CareConnect"   5003 /health            "${PID_CARECONNECT:-}"   "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Documents"     5006 /health            "${PID_DOCUMENTS:-}"     "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Audit"         5007 /health            "${PID_AUDIT:-}"         "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Notifications" 5008 /health            "${PID_NOTIFICATIONS:-}" "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Liens"         5009 /health            "${PID_LIENS:-}"         "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Comms"         5011 /health            "${PID_COMMS:-}"         "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Support"       5017 /support/api/health "${PID_SUPPORT:-}"      "$PROBE_TIMEOUT_DOTNET"
 
     wait
   ) &

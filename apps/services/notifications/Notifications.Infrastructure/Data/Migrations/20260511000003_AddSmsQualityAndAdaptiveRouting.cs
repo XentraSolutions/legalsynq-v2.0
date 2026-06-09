@@ -1,5 +1,8 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
@@ -19,6 +22,8 @@ namespace Notifications.Infrastructure.Data.Migrations
     /// webhook URLs, or raw provider payloads stored in either table.
     /// ProviderConfigId fields are opaque Guids only.
     /// </summary>
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260511000003_AddSmsQualityAndAdaptiveRouting")]
     public partial class AddSmsQualityAndAdaptiveRouting : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

@@ -58,7 +58,9 @@ public static class MigrationCoverageProbe
     {
         try
         {
-            await conn.OpenAsync(cancellationToken);
+            var alreadyOpen = conn.State == System.Data.ConnectionState.Open;
+            if (!alreadyOpen)
+                await conn.OpenAsync(cancellationToken);
             try
             {
                 Dictionary<string, HashSet<string>> actualColumns;
@@ -66,6 +68,24 @@ public static class MigrationCoverageProbe
                 if (providerName.Contains("MySql", StringComparison.OrdinalIgnoreCase))
                 {
                     actualColumns = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+                    // Use SELECT DATABASE() instead of conn.Database — the latter can return
+                    // empty string on a pooled connection before EF has issued any query,
+                    // causing the information_schema lookup to match zero rows and falsely
+                    // report every table as missing.
+                    string dbName;
+                    using (var dbCmd = conn.CreateCommand())
+                    {
+                        dbCmd.CommandText = "SELECT DATABASE()";
+                        dbName = (await dbCmd.ExecuteScalarAsync(cancellationToken))?.ToString() ?? string.Empty;
+                    }
+
+                    if (string.IsNullOrEmpty(dbName))
+                    {
+                        logger.LogWarning("Migration coverage check skipped — could not determine current MySQL database name.");
+                        return;
+                    }
+
                     using var listCmd = conn.CreateCommand();
                     // Parameterized to avoid quoting/escape edge cases on the
                     // schema name (e.g. database names containing apostrophes).
@@ -74,7 +94,7 @@ public static class MigrationCoverageProbe
                         WHERE table_schema = @schema";
                     var schemaParam = listCmd.CreateParameter();
                     schemaParam.ParameterName = "@schema";
-                    schemaParam.Value = conn.Database ?? string.Empty;
+                    schemaParam.Value = dbName;
                     listCmd.Parameters.Add(schemaParam);
                     using var reader = await listCmd.ExecuteReaderAsync(cancellationToken);
                     while (await reader.ReadAsync(cancellationToken))
@@ -163,7 +183,8 @@ public static class MigrationCoverageProbe
             }
             finally
             {
-                await conn.CloseAsync();
+                if (!alreadyOpen)
+                    await conn.CloseAsync();
             }
         }
         catch (Exception ex)

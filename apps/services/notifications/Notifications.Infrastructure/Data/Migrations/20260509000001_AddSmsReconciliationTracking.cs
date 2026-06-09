@@ -1,5 +1,8 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
@@ -11,6 +14,8 @@ namespace Notifications.Infrastructure.Data.Migrations
     /// without consulting audit events or inferring from delivery status alone.
     /// No credentials, raw provider payloads, or phone numbers are stored in any of these columns.
     /// </summary>
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260509000001_AddSmsReconciliationTracking")]
     public partial class AddSmsReconciliationTracking : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

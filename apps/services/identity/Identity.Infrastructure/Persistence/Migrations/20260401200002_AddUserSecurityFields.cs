@@ -29,7 +29,8 @@ namespace Identity.Infrastructure.Persistence.Migrations
                 name: "LockedByAdminId",
                 table: "Users",
                 type: "char(36)",
-                nullable: true);
+                nullable: true,
+                collation: "ascii_general_ci");
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "LastLoginAtUtc",
@@ -49,10 +50,10 @@ namespace Identity.Infrastructure.Persistence.Migrations
                 name: "PasswordResetTokens",
                 columns: table => new
                 {
-                    Id                 = table.Column<Guid>(type: "char(36)", nullable: false),
-                    UserId             = table.Column<Guid>(type: "char(36)", nullable: false),
-                    TenantId           = table.Column<Guid>(type: "char(36)", nullable: false),
-                    TriggeredByAdminId = table.Column<Guid>(type: "char(36)", nullable: true),
+                    Id                 = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    UserId             = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    TenantId           = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    TriggeredByAdminId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
                     TokenHash          = table.Column<string>(type: "varchar(64)", maxLength: 64, nullable: false),
                     Status             = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false),
                     ExpiresAtUtc       = table.Column<DateTime>(type: "datetime(6)", nullable: false),

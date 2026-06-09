@@ -17,7 +17,7 @@ namespace Support.Tests;
 /// </summary>
 public class FileUploadApiFactory : WebApplicationFactory<Program>
 {
-    public string DbName { get; } = $"support-tests-upload-{Guid.NewGuid()}";
+    public string DbName { get; } = $"support-tests-upload-{Guid.CreateVersion7()}";
     public RecordingFileStorageProvider Recorder { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -31,7 +31,7 @@ public class FileUploadApiFactory : WebApplicationFactory<Program>
                 ["Support:FileStorage:Mode"] = "Local", // any non-NoOp; the recorder replaces it
                 ["Support:FileStorage:MaxFileSizeMb"] = "1",
                 ["Support:FileStorage:LocalRootPath"] =
-                    Path.Combine(Path.GetTempPath(), $"support-uploads-{Guid.NewGuid():N}"),
+                    Path.Combine(Path.GetTempPath(), $"support-uploads-{Guid.CreateVersion7():N}"),
                 ["Support:FileStorage:AllowedContentTypes:0"] = "application/pdf",
                 ["Support:FileStorage:AllowedContentTypes:1"] = "image/png",
                 ["Support:FileStorage:AllowedContentTypes:2"] = "text/plain",
@@ -60,9 +60,9 @@ public class FileUploadApiFactory : WebApplicationFactory<Program>
 /// </summary>
 public class LocalProviderApiFactory : WebApplicationFactory<Program>, IDisposable
 {
-    public string DbName { get; } = $"support-tests-local-{Guid.NewGuid()}";
+    public string DbName { get; } = $"support-tests-local-{Guid.CreateVersion7()}";
     public string LocalRoot { get; } =
-        Path.Combine(Path.GetTempPath(), $"support-uploads-{Guid.NewGuid():N}");
+        Path.Combine(Path.GetTempPath(), $"support-uploads-{Guid.CreateVersion7():N}");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

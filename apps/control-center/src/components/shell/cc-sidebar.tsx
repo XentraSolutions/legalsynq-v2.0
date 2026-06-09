@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useState, useEffect, Suspense } from 'react';
 import { useSettings } from '@/contexts/settings-context';
 import { getSectionForPathname, getSectionBySlug } from '@/lib/nav-utils';
-import type { NavItem } from '@/types';
+import type { NavItem, NavSection } from '@/types';
 import { clsx } from 'clsx';
 
 const STORAGE_KEY = 'ls_cc_sidebar_collapsed';
@@ -28,10 +28,11 @@ const STORAGE_KEY = 'ls_cc_sidebar_collapsed';
 
 // ── Inner (reads useSearchParams — must live inside a Suspense boundary) ─────
 
-function CCSidebarInner({ collapsed, mounted, toggle }: {
-  collapsed: boolean;
-  mounted:   boolean;
-  toggle:    () => void;
+function CCSidebarInner({ collapsed, mounted, toggle, navSections }: {
+  collapsed:    boolean;
+  mounted:      boolean;
+  toggle:       () => void;
+  navSections?: NavSection[];
 }) {
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -43,10 +44,10 @@ function CCSidebarInner({ collapsed, mounted, toggle }: {
 
   // Active section: param-based on home, pathname-based elsewhere
   const contextSection = groupParam
-    ? getSectionBySlug(groupParam)
+    ? getSectionBySlug(groupParam, navSections)
     : isHome
       ? undefined
-      : getSectionForPathname(pathname ?? '');
+      : getSectionForPathname(pathname ?? '', navSections);
 
   // Home is only "active" on pure / with no group selected
   const homeIsActive = isHome && !groupParam;
@@ -183,7 +184,7 @@ function CCSidebarInner({ collapsed, mounted, toggle }: {
 
 // ── Outer wrapper (manages collapse state, keyboard shortcut, Suspense) ───────
 
-export function CCSidebar() {
+export function CCSidebar({ navSections }: { navSections?: NavSection[] } = {}) {
   const [collapsed, setCollapsed] = useState(false);
   const [mounted,   setMounted]   = useState(false);
 
@@ -219,7 +220,7 @@ export function CCSidebar() {
         />
       }
     >
-      <CCSidebarInner collapsed={collapsed} mounted={mounted} toggle={toggle} />
+      <CCSidebarInner collapsed={collapsed} mounted={mounted} toggle={toggle} navSections={navSections} />
     </Suspense>
   );
 }

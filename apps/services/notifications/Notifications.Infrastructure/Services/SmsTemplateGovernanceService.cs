@@ -459,7 +459,7 @@ public sealed partial class SmsTemplateGovernanceService : ISmsTemplateGovernanc
     {
         var template = new SmsTemplate
         {
-            Id                    = Guid.NewGuid(),
+            Id                    = Guid.CreateVersion7(),
             TenantId              = request.TenantId,
             TemplateKey           = request.TemplateKey,
             Name                  = request.Name,
@@ -529,7 +529,7 @@ public sealed partial class SmsTemplateGovernanceService : ISmsTemplateGovernanc
         var newVersion = template.CurrentVersion + 1;
         var version = new SmsTemplateVersion
         {
-            Id                    = Guid.NewGuid(),
+            Id                    = Guid.CreateVersion7(),
             TemplateId            = request.TemplateId,
             VersionNumber         = newVersion,
             TemplateBody          = request.TemplateBody,
@@ -719,7 +719,7 @@ public sealed partial class SmsTemplateGovernanceService : ISmsTemplateGovernanc
         {
             var decision = new SmsTemplateGovernanceDecision
             {
-                Id                       = Guid.NewGuid(),
+                Id                       = Guid.CreateVersion7(),
                 NotificationId           = request.NotificationId,
                 AttemptId                = request.AttemptId,
                 TemplateId               = templateId,

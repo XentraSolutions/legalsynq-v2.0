@@ -1,3 +1,5 @@
+using BuildingBlocks.Commerce;
+using Contracts.Commerce;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
@@ -6,20 +8,33 @@ using Microsoft.Extensions.Logging;
 
 namespace Identity.Infrastructure.Services;
 
+/// <summary>
+/// LS-COMMERCE-ECO-02: Commerce lifecycle notifications wired for product
+/// enabled/disabled events.  Notifications are noop-first and never block
+/// the primary product provisioning operation.
+/// </summary>
 public class ProductProvisioningService : IProductProvisioningService
 {
-    private readonly IdentityDbContext _db;
+    private readonly IdentityDbContext                         _db;
     private readonly IEnumerable<IProductProvisioningHandler> _handlers;
-    private readonly ILogger<ProductProvisioningService> _logger;
+    private readonly IUserProductAccessService                _userProductAccessService;
+    private readonly ILogger<ProductProvisioningService>      _logger;
+    private readonly ICommerceLifecycleNotifier                _commerceNotifier;
+
+    private const string HostPlatformKey = "legalsynq";
 
     public ProductProvisioningService(
-        IdentityDbContext db,
-        IEnumerable<IProductProvisioningHandler> handlers,
-        ILogger<ProductProvisioningService> logger)
+        IdentityDbContext                         db,
+        IEnumerable<IProductProvisioningHandler>  handlers,
+        IUserProductAccessService                 userProductAccessService,
+        ILogger<ProductProvisioningService>       logger,
+        ICommerceLifecycleNotifier                commerceNotifier)
     {
-        _db = db;
-        _handlers = handlers;
-        _logger = logger;
+        _db                       = db;
+        _handlers                 = handlers;
+        _userProductAccessService = userProductAccessService;
+        _logger                   = logger;
+        _commerceNotifier         = commerceNotifier;
     }
 
     public async Task<ProvisionProductResult> ProvisionAsync(
@@ -43,6 +58,9 @@ public class ProductProvisioningService : IProductProvisioningService
 
         await _db.SaveChangesAsync(ct);
 
+        if (request.Enabled)
+            await EnsureTenantOwnerProductAccessAsync(tenant, product.Code, ct);
+
         ProductProvisioningHandlerResult? handlerResult = null;
         if (request.Enabled && eligibleOrgs.Count > 0)
         {
@@ -55,6 +73,25 @@ public class ProductProvisioningService : IProductProvisioningService
             "TenantProductCreated={TpCreated}, OrgProductsCreated={OrgCreated}, OrgProductsUpdated={OrgUpdated}",
             request.TenantId, request.ProductCode, request.Enabled, tpCreated, orgCreated, orgUpdated);
 
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of product lifecycle change ───
+        var productEventType = request.Enabled
+            ? CommerceEventTypes.ProductEnabled
+            : CommerceEventTypes.ProductDisabled;
+
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        productEventType,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: request.TenantId.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            ProductKey:       request.ProductCode,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["productCode"]          = request.ProductCode,
+                ["tenantProductCreated"] = tpCreated.ToString().ToLowerInvariant(),
+                ["orgProductsCreated"]   = orgCreated.ToString(),
+                ["orgProductsUpdated"]   = orgUpdated.ToString()
+            }), ct);
+
         return new ProvisionProductResult(
             request.TenantId,
             request.ProductCode,
@@ -63,6 +100,59 @@ public class ProductProvisioningService : IProductProvisioningService
             orgCreated,
             orgUpdated,
             handlerResult);
+    }
+
+    private async Task EnsureTenantOwnerProductAccessAsync(
+        Tenant tenant,
+        string productCode,
+        CancellationToken ct)
+    {
+        if (!tenant.OwnerUserId.HasValue)
+            return;
+
+        try
+        {
+            await _userProductAccessService.GrantAsync(
+                tenant.Id,
+                tenant.OwnerUserId.Value,
+                productCode,
+                actorUserId: tenant.OwnerUserId.Value,
+                ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Tenant owner product access grant skipped: TenantId={TenantId}, OwnerUserId={OwnerUserId}, ProductCode={ProductCode}",
+                tenant.Id,
+                tenant.OwnerUserId.Value,
+                productCode);
+        }
+    }
+
+    // ── LS-COMMERCE-ECO-02: Safe Commerce notification helper ─────────────────
+
+    /// <summary>
+    /// Sends a Commerce lifecycle event without blocking or throwing into the
+    /// caller.  The <see cref="ICommerceLifecycleNotifier"/> contract already
+    /// requires implementations to swallow delivery errors; this wrapper adds a
+    /// second safety net at the call-site level.
+    /// </summary>
+    private async Task TryNotifyCommerceAsync(CommerceLifecycleEvent ev, CancellationToken ct)
+    {
+        try
+        {
+            await _commerceNotifier.NotifyAsync(ev, ct);
+            _logger.LogDebug(
+                "Commerce lifecycle notification dispatched: EventType={EventType}, TenantId={TenantId}, ProductKey={ProductKey}",
+                ev.EventType, ev.ExternalTenantId, ev.ProductKey);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Commerce lifecycle notification failed (non-blocking): EventType={EventType}, TenantId={TenantId}, ProductKey={ProductKey}",
+                ev.EventType, ev.ExternalTenantId, ev.ProductKey);
+        }
     }
 
     private async Task<bool> ProvisionTenantProduct(

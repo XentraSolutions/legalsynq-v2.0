@@ -1,0 +1,442 @@
+You are integrating the completed standalone Commerce + Tenant Billing subsystem into the main LegalSynq multi-tenant platform.
+
+The source code for the standalone services will be uploaded into this Replit project.
+
+Create the report file FIRST:
+
+/analysis/LS-INT-01-report.md
+
+Update the report incrementally as each major integration step is completed.
+
+# Objective
+
+Integrate the standalone Commerce + Tenant Billing services into the LegalSynq platform while preserving them as independent bounded domain services.
+
+This is NOT a merge/rewrite project.
+
+This is a platform integration project.
+
+# Critical Architecture Rule
+
+DO NOT merge the billing domains.
+
+Maintain separation:
+
+Platform / SaaS Billing:
+Commerce
+Platform → Tenant
+
+Tenant Billing:
+Tenant → Customer / Client
+
+These domains must remain isolated.
+
+# Source Code Upload Requirement
+
+The uploaded source code includes the standalone implementation for:
+
+- services/Commerce/
+- services/tenant-billing/
+- analysis/
+
+Possibly legacy:
+- services/tenant-billing-api/
+
+Before implementing anything:
+
+1. Inspect all uploaded services.
+2. Validate actual folder structure.
+3. Identify canonical runtime services.
+4. Confirm standalone Tenant Billing remains intact.
+5. Confirm Commerce remains separate.
+6. Confirm legacy tenant-billing-api is not the canonical runtime.
+
+Document findings in the report before integration begins.
+
+# Required Integration Goal
+
+Integrate Tenant Billing into LegalSynq through:
+
+- LegalSynq Identity
+- canonical tenant context
+- platform routing/gateway
+- Control Center awareness
+- shared infrastructure conventions
+
+WITHOUT:
+- collapsing service boundaries
+- merging databases
+- merging invoices/payments/statements
+- rewriting billing domains
+
+# Required Scope
+
+Implement only:
+
+1. Inspect uploaded standalone source code.
+2. Validate current architecture boundaries.
+3. Integrate LegalSynq authentication/JWT support.
+4. Add canonical tenant context resolution.
+5. Preserve existing standalone fallback behavior.
+6. Prepare gateway/BFF routing integration.
+7. Add platform-compatible RBAC mapping.
+8. Enrich audit/request context with canonical identity.
+9. Preserve Commerce ↔ Tenant Billing bridge.
+10. Preserve entitlement enforcement behavior.
+11. Produce integration report.
+
+# Strict Exclusions
+
+Do NOT implement:
+
+- database merges
+- billing table merges
+- invoice/payment consolidation
+- shared DbContexts
+- direct cross-service EF access
+- direct Tenant Billing → Commerce runtime dependency
+- Control Center UI redesign
+- Tenant Portal redesign
+- payment provider rewrite
+- notification rewrite
+- document rewrite
+- route namespace rewrite
+- removal of standalone mode
+- deletion of legacy services
+- migration rewrites
+
+# Required Initial Audit
+
+Before coding:
+
+Inspect and document:
+
+## Commerce
+
+services/Commerce/
+
+Validate:
+- BillingAccount model
+- entitlement publishing
+- durable outbox
+- diagnostics endpoints
+- auto-publish
+- standalone runtime behavior
+
+## Tenant Billing
+
+services/tenant-billing/
+
+Validate:
+- standalone runtime
+- DbContext isolation
+- enforcement
+- entitlement snapshots
+- invoice/payment/template/statement functionality
+
+## Legacy Tenant Billing
+
+services/tenant-billing-api/
+
+Determine:
+- whether deprecated
+- whether referenced
+- whether safe to preserve as rollback artifact
+
+## LegalSynq Platform
+
+Inspect:
+- Identity/auth implementation
+- tenant resolution
+- gateway/BFF patterns
+- shared middleware
+- RBAC patterns
+- audit conventions
+- YARP/reverse proxy if present
+
+# Required Integration Design
+
+Use dual-mode compatibility.
+
+Preferred tenant resolution hierarchy:
+
+1. LegalSynq JWT tenant claims
+2. internal service-token claims
+3. existing X-Tenant-Id fallback
+
+This preserves:
+- standalone compatibility
+- staged migration
+- operational rollback capability
+
+# Required New Components
+
+Implement/additive integration only.
+
+Suggested:
+
+## ITenantIdentityContextResolver
+
+Responsibilities:
+- inspect JWT claims
+- resolve canonical TenantId
+- resolve UserId
+- resolve roles
+- populate existing billing tenant context
+
+## Platform Tenant Context Adapter
+
+Bridge LegalSynq identity context into:
+- Tenant Billing
+- Commerce
+without changing core billing domain logic.
+
+# Authentication Requirements
+
+Preserve:
+
+- existing internal token mode
+- existing standalone compatibility
+- existing X-Tenant-Id support
+
+Add:
+- LegalSynq JWT support
+- platform identity compatibility
+
+Do NOT remove current behavior.
+
+# Suggested Claims
+
+Support claims such as:
+
+- tenant_id
+- sub
+- role
+- internal_service
+- product_access
+
+Map into:
+- canonical tenant context
+- audit scope
+- enforcement scope
+
+# RBAC Requirements
+
+Map LegalSynq roles.
+
+Suggested:
+
+- PlatformAdmin
+- TenantAdmin
+- BillingManager
+- BillingReadOnly
+- SupportAgent
+- InternalService
+
+Do NOT redesign entire RBAC system.
+
+# Enforcement Rules
+
+Preserve existing Tenant Billing enforcement architecture.
+
+Identity determines:
+- WHO the caller is
+
+Entitlement determines:
+- WHAT the tenant may do
+
+Do not mix them.
+
+Do not move enforcement to Commerce.
+
+# Middleware Requirements
+
+Current likely flow:
+
+Request
+  ↓
+Tenant middleware
+  ↓
+Enforcement
+  ↓
+Controller
+
+Target flow:
+
+JWT/Auth
+  ↓
+Canonical Tenant Resolver
+  ↓
+Tenant Context
+  ↓
+Entitlement Enforcement
+  ↓
+Controller
+
+Must preserve:
+- internal token compatibility
+- standalone mode
+- service-to-service auth
+
+# Gateway/BFF Preparation
+
+Prepare for LegalSynq routing.
+
+Requirements:
+- support forwarded auth context
+- support reverse proxy routing
+- avoid hardcoded host assumptions
+- preserve health endpoints
+- preserve diagnostics endpoints
+
+Do not build full gateway UI.
+
+# Audit/Observability
+
+Enrich:
+- tenant id
+- user id
+- auth source
+- platform role
+
+into:
+- request scope
+- logs
+- audit events
+- enforcement logs
+
+Do not expose secrets/tokens.
+
+# Configuration Requirements
+
+Add additive configuration only.
+
+Examples:
+
+LegalSynq:Identity:
+  Enabled: true
+
+LegalSynq:TenantContext:
+  PreferJwtTenant: true
+  AllowHeaderFallback: true
+
+Rules:
+- preserve standalone compatibility
+- preserve current configs
+- safe defaults
+- no real secrets
+
+# Tests Required
+
+Add tests covering:
+
+## Identity/Tenant Context
+
+- JWT tenant resolution
+- X-Tenant-Id fallback
+- internal service token compatibility
+- missing tenant rejection where appropriate
+- role mapping
+
+## Enforcement Compatibility
+
+- enforcement still works with JWT tenant
+- enforcement still works with fallback header
+- admin/internal endpoints remain accessible
+
+## Gateway Compatibility
+
+- forwarded auth context supported
+- tenant resolution works behind proxy if feasible
+
+## Regression
+
+- standalone mode still works
+- Commerce publisher still works
+- durable outbox still works
+- diagnostics endpoints still work
+- Tenant Billing APIs still work
+- existing enforcement tests still pass
+
+# Validation Commands
+
+Run and report:
+
+## Tenant Billing
+
+- dotnet restore services/tenant-billing/Billing.sln
+- dotnet build services/tenant-billing/Billing.sln
+- dotnet test services/tenant-billing/tests/Billing.Domain.Tests/Billing.Domain.Tests.csproj
+- dotnet test services/tenant-billing/tests/Billing.Tests/Billing.Tests.csproj
+
+## Commerce
+
+- dotnet restore services/Commerce/Commerce.sln
+- dotnet build services/Commerce/Commerce.sln
+- dotnet test services/Commerce/Commerce.sln
+
+## LegalSynq platform
+
+Run relevant solution builds/tests after integration changes.
+
+If tests timeout:
+- run logical chunks
+- document exact commands/results
+
+# Required Report Structure
+
+Update:
+
+/analysis/LS-INT-01-report.md
+
+Include:
+
+1. Executive Summary
+2. Uploaded Source Audit
+3. Canonical Runtime Determination
+4. Standalone Boundary Validation
+5. Commerce Integration Validation
+6. Identity Integration Design
+7. Tenant Context Resolution Design
+8. RBAC Mapping
+9. Middleware Changes
+10. Gateway/BFF Preparation
+11. Enforcement Compatibility Validation
+12. Configuration Changes
+13. Build/Test Validation
+14. Risks / Deferred Items
+15. Confirmation of Non-Merge Boundaries
+16. Recommended Next Integration Block
+
+# Acceptance Criteria
+
+LS-INT-01 is complete only if:
+
+- Tenant Billing remains standalone
+- Commerce remains standalone
+- LegalSynq JWT auth is supported
+- canonical tenant context resolution exists
+- X-Tenant-Id fallback still works
+- internal token mode still works
+- enforcement still works
+- Commerce publisher/outbox still works
+- no database/domain merge occurs
+- no direct Tenant Billing → Commerce runtime dependency is added
+- builds/tests pass or failures are documented
+- /analysis/LS-INT-01-report.md is complete
+
+# Final Instruction
+
+This is a platform integration project.
+
+NOT a billing rewrite project.
+
+Preserve standalone bounded contexts.
+
+Integrate through:
+- identity
+- tenant context
+- gateway routing
+- platform conventions
+
+without collapsing service boundaries.

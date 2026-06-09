@@ -114,7 +114,7 @@ public static class SmsRoutingEndpoints
             var actor = GetActor(principal);
             var policy = new SmsRoutingPolicy
             {
-                Id                         = Guid.NewGuid(),
+                Id                         = Guid.CreateVersion7(),
                 TenantId                   = body.TenantId,
                 Name                       = body.Name.Trim()[..Math.Min(body.Name.Trim().Length, 200)],
                 Enabled                    = body.Enabled,

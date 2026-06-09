@@ -209,5 +209,205 @@ public sealed class NotificationTemplateRegistry
                 new NotificationTokenDefinition { Name = "taskTitle", Required = true },
             },
         };
+
+        // ── Commerce: billing standing alerts (LS-COMMERCE-ECO-01) ──────────
+        // All Commerce templates are disabled by default. Activation requires
+        // Commerce integration to be wired and enabled for the tenant.
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceBillingGracePeriodStarted,
+            Name            = "Billing grace period started",
+            Channels        = new[] { NotificationChannels.Email, NotificationChannels.InApp },
+            SubjectTemplate = "Action required: payment issue on your account",
+            BodyTemplate    = "Your account has entered a billing grace period due to a payment issue. " +
+                              "Please update your payment method within {{graceDaysRemaining}} day(s) to avoid service interruption.",
+            Severity        = NotificationSeverity.Warning,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false, // activation deferred — requires Commerce integration wiring
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",          Required = true },
+                new NotificationTokenDefinition { Name = "graceDaysRemaining", Required = true,
+                    Description = "Number of days remaining in the grace window." },
+                new NotificationTokenDefinition { Name = "billingAccountId",  Required = false },
+            },
+        };
+
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceBillingGracePeriodExpired,
+            Name            = "Billing grace period expired",
+            Channels        = new[] { NotificationChannels.Email, NotificationChannels.InApp },
+            SubjectTemplate = "Important: billing grace period has expired",
+            BodyTemplate    = "Your billing grace period has expired. Access to some features may be restricted. " +
+                              "Please contact your account administrator or update your payment details.",
+            Severity        = NotificationSeverity.Critical,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false,
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",         Required = true },
+                new NotificationTokenDefinition { Name = "billingAccountId", Required = false },
+            },
+        };
+
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceBillingAccountSuspended,
+            Name            = "Billing account suspended",
+            Channels        = new[] { NotificationChannels.Email, NotificationChannels.InApp },
+            SubjectTemplate = "Your account has been suspended",
+            BodyTemplate    = "Your billing account has been suspended. Please contact support to resolve this issue.",
+            Severity        = NotificationSeverity.Critical,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false,
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",         Required = true },
+                new NotificationTokenDefinition { Name = "billingAccountId", Required = false },
+            },
+        };
+
+        // ── Commerce: subscription lifecycle ─────────────────────────────────
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceSubscriptionActivated,
+            Name            = "Subscription activated",
+            Channels        = new[] { NotificationChannels.Email, NotificationChannels.InApp },
+            SubjectTemplate = "Subscription activated: {{planName}}",
+            BodyTemplate    = "Your subscription to {{planName}} has been activated. " +
+                              "Your access is now fully enabled.",
+            Severity        = NotificationSeverity.Info,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false,
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",         Required = true },
+                new NotificationTokenDefinition { Name = "planName",         Required = true },
+                new NotificationTokenDefinition { Name = "productKey",       Required = false },
+                new NotificationTokenDefinition { Name = "subscriptionId",   Required = false },
+            },
+        };
+
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceSubscriptionRenewed,
+            Name            = "Subscription renewed",
+            Channels        = new[] { NotificationChannels.Email, NotificationChannels.InApp },
+            SubjectTemplate = "Subscription renewed: {{planName}}",
+            BodyTemplate    = "Your subscription to {{planName}} has been renewed. " +
+                              "Next renewal date: {{nextRenewalDate}}.",
+            Severity        = NotificationSeverity.Info,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false,
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",       Required = true },
+                new NotificationTokenDefinition { Name = "planName",       Required = true },
+                new NotificationTokenDefinition { Name = "nextRenewalDate", Required = false,
+                    Description = "ISO-8601 UTC next renewal date." },
+                new NotificationTokenDefinition { Name = "subscriptionId", Required = false },
+            },
+        };
+
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceSubscriptionCancelled,
+            Name            = "Subscription cancelled",
+            Channels        = new[] { NotificationChannels.Email, NotificationChannels.InApp },
+            SubjectTemplate = "Subscription cancelled: {{planName}}",
+            BodyTemplate    = "Your subscription to {{planName}} has been cancelled. " +
+                              "Access will continue until {{accessEndsDate}}.",
+            Severity        = NotificationSeverity.Warning,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false,
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",       Required = true },
+                new NotificationTokenDefinition { Name = "planName",       Required = true },
+                new NotificationTokenDefinition { Name = "accessEndsDate", Required = false,
+                    Description = "ISO-8601 UTC date when access expires (period end)." },
+                new NotificationTokenDefinition { Name = "subscriptionId", Required = false },
+            },
+        };
+
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceSubscriptionTrialExpiring,
+            Name            = "Trial expiring soon",
+            Channels        = new[] { NotificationChannels.Email, NotificationChannels.InApp },
+            SubjectTemplate = "Your trial expires in {{daysRemaining}} day(s)",
+            BodyTemplate    = "Your trial for {{planName}} will expire in {{daysRemaining}} day(s) on {{trialEndDate}}. " +
+                              "Subscribe now to maintain uninterrupted access.",
+            Severity        = NotificationSeverity.Warning,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false,
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",      Required = true },
+                new NotificationTokenDefinition { Name = "planName",      Required = true },
+                new NotificationTokenDefinition { Name = "daysRemaining", Required = true },
+                new NotificationTokenDefinition { Name = "trialEndDate",  Required = false,
+                    Description = "ISO-8601 UTC trial end date." },
+            },
+        };
+
+        // ── Commerce: entitlement changes ────────────────────────────────────
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceEntitlementGranted,
+            Name            = "Entitlement granted",
+            Channels        = new[] { NotificationChannels.InApp },
+            SubjectTemplate = "Access granted: {{productName}}",
+            BodyTemplate    = "Access to {{productName}} has been granted to your account.",
+            Severity        = NotificationSeverity.Info,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false,
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",    Required = true },
+                new NotificationTokenDefinition { Name = "productName", Required = true },
+                new NotificationTokenDefinition { Name = "productKey",  Required = false },
+            },
+        };
+
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceEntitlementRevoked,
+            Name            = "Entitlement revoked",
+            Channels        = new[] { NotificationChannels.Email, NotificationChannels.InApp },
+            SubjectTemplate = "Access revoked: {{productName}}",
+            BodyTemplate    = "Access to {{productName}} has been revoked from your account. " +
+                              "Please contact your administrator if you believe this is in error.",
+            Severity        = NotificationSeverity.Warning,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false,
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",    Required = true },
+                new NotificationTokenDefinition { Name = "productName", Required = true },
+                new NotificationTokenDefinition { Name = "productKey",  Required = false },
+            },
+        };
+
+        yield return new NotificationTemplate
+        {
+            Key             = NotificationTemplateKeys.CommerceAccessDowngraded,
+            Name            = "Access level downgraded",
+            Channels        = new[] { NotificationChannels.Email, NotificationChannels.InApp },
+            SubjectTemplate = "Your account access level has changed",
+            BodyTemplate    = "Your access level has been changed to {{newAccessLevel}}. " +
+                              "Some features may no longer be available. Previous level: {{previousAccessLevel}}.",
+            Severity        = NotificationSeverity.Warning,
+            Category        = NotificationCategory.Admin,
+            Enabled         = false,
+            Tokens = new[]
+            {
+                new NotificationTokenDefinition { Name = "tenantId",             Required = true },
+                new NotificationTokenDefinition { Name = "newAccessLevel",       Required = true,
+                    Description = "New access recommendation (Allow/ReadOnly/GraceLimited/Block)." },
+                new NotificationTokenDefinition { Name = "previousAccessLevel",  Required = false },
+            },
+        };
     }
 }

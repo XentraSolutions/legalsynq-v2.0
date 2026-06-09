@@ -9,7 +9,7 @@ public interface IJobQueue
 
 public sealed class ReportJob
 {
-    public string JobId { get; init; } = Guid.NewGuid().ToString();
+    public string JobId { get; init; } = Guid.CreateVersion7().ToString();
     public string CorrelationId { get; init; } = string.Empty;
     public string JobType { get; init; } = "report_generation";
     public string TenantId { get; init; } = string.Empty;

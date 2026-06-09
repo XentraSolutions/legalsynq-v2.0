@@ -89,7 +89,7 @@ public static class MonitoredEntityEndpoints
         // The domain still validates the resulting values, so an explicitly
         // blank Scope from the wire is rejected with a 400.
         var entity = new MonitoredEntity(
-            id: Guid.NewGuid(),
+            id: Guid.CreateVersion7(),
             name: request.Name!,
             entityType: request.EntityType!.Value,
             monitoringType: request.MonitoringType!.Value,

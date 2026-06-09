@@ -120,7 +120,7 @@ public static class SmsGovernanceDynamicRuleEndpoints
 
             var pack = new SmsGovernanceRulePack
             {
-                Id              = Guid.NewGuid(),
+                Id              = Guid.CreateVersion7(),
                 TenantId        = req.TenantId,
                 Name            = req.Name.Trim(),
                 Description     = req.Description,
@@ -270,7 +270,7 @@ public static class SmsGovernanceDynamicRuleEndpoints
 
             var rule = new SmsGovernanceRule
             {
-                Id           = Guid.NewGuid(),
+                Id           = Guid.CreateVersion7(),
                 RulePackId   = req.RulePackId,
                 Name         = req.Name.Trim(),
                 Description  = req.Description,
@@ -397,7 +397,7 @@ public static class SmsGovernanceDynamicRuleEndpoints
 
             var profile = new SmsComplianceProfile
             {
-                Id                     = Guid.NewGuid(),
+                Id                     = Guid.CreateVersion7(),
                 TenantId               = req.TenantId,
                 Name                   = req.Name.Trim(),
                 Description            = req.Description,
@@ -427,7 +427,7 @@ public static class SmsGovernanceDynamicRuleEndpoints
 
             var assignment = new SmsComplianceProfileAssignment
             {
-                Id        = Guid.NewGuid(),
+                Id        = Guid.CreateVersion7(),
                 TenantId  = req.TenantId,
                 ProfileId = profileId,
                 Scope     = req.Scope ?? "tenant",

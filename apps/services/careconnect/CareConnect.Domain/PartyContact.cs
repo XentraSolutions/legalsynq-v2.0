@@ -27,7 +27,7 @@ public class PartyContact
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         return new PartyContact
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PartyId = partyId,
             ContactType = contactType.ToUpperInvariant().Trim(),
             Value = value.Trim(),

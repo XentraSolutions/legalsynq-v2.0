@@ -1,6 +1,7 @@
 import Link                         from 'next/link';
 import { notFound, redirect }        from 'next/navigation';
 import { requireProductRole }        from '@/lib/auth-guards';
+import { careConnectServerApi }      from '@/lib/careconnect-server-api';
 import {
   fetchPublicNetworkDetail,
   type PublicNetworkDetail,
@@ -13,6 +14,7 @@ export const dynamic = 'force-dynamic';
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tenantId?: string }>;
 }
 
 /**
@@ -20,8 +22,9 @@ interface Props {
  * CC-REFERRER-BROWSE: Authenticated law firm users get the same provider map +
  * referral form as the public network page, resolved via their session tenant.
  */
-export default async function BrowseNetworkDetailPage({ params }: Props) {
+export default async function BrowseNetworkDetailPage({ params, searchParams }: Props) {
   const { id }  = await params;
+  const { tenantId: requestedTenantId } = await searchParams;
   const session = await requireProductRole(ProductRole.CareConnectReferrer);
 
   // Lien company users must never access browse-networks, regardless of which
@@ -31,10 +34,28 @@ export default async function BrowseNetworkDetailPage({ params }: Props) {
     session.orgType === OrgType.LienOwner
   ) redirect('/careconnect/dashboard');
 
+  const assignments = await careConnectServerApi.access.getMyProductAccess('SYNQ_CARECONNECT');
+  const assignedTenants = assignments
+    .filter(item => item.accessStatus === 'Granted')
+    .map(item => ({
+      tenantId: item.tenantId,
+      tenantCode: item.tenantCode,
+      tenantName: item.tenantName,
+      organizationName: item.organizationName,
+    }))
+    .filter((item, index, arr) => arr.findIndex(x => x.tenantId === item.tenantId) === index);
+
+  const selectedTenant = requestedTenantId
+    ? assignedTenants.find(item => item.tenantId === requestedTenantId)
+    : assignedTenants.find(item => item.tenantId === session.tenantId)
+      ?? assignedTenants[0];
+
+  if (!selectedTenant) return notFound();
+
   let detail: PublicNetworkDetail | null = null;
 
   try {
-    detail = await fetchPublicNetworkDetail(session.tenantId, id);
+    detail = await fetchPublicNetworkDetail(selectedTenant.tenantId, id);
   } catch {
     // fall through to notFound
   }
@@ -42,7 +63,7 @@ export default async function BrowseNetworkDetailPage({ params }: Props) {
   if (!detail) return notFound();
 
   const prefillLawFirm: PrefillLawFirm = {
-    firmName:    session.orgName ?? '',
+    firmName:    selectedTenant.organizationName ?? session.orgName ?? '',
     email:       session.email,
   };
 
@@ -63,8 +84,8 @@ export default async function BrowseNetworkDetailPage({ params }: Props) {
       <div className="flex-1 overflow-hidden">
         <PublicNetworkView
           detail={detail}
-          tenantCode={session.tenantCode}
-          tenantId={session.tenantId}
+          tenantCode={selectedTenant.tenantCode}
+          tenantId={selectedTenant.tenantId}
           prefillLawFirm={prefillLawFirm}
         />
       </div>

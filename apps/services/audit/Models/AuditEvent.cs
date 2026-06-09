@@ -6,7 +6,7 @@ namespace PlatformAuditEventService.Models;
 /// </summary>
 public sealed record AuditEvent
 {
-    public Guid   Id              { get; init; } = Guid.NewGuid();
+    public Guid   Id              { get; init; } = Guid.CreateVersion7();
 
     /// <summary>Originating system or application (e.g. "identity-service", "fund-service").</summary>
     public string Source          { get; init; } = string.Empty;

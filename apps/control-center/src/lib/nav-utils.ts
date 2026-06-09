@@ -14,18 +14,19 @@ export function slugify(heading: string): string {
   return heading.toLowerCase().replace(/[\s_]+/g, '-');
 }
 
-/** Reverse-lookup a NavSection by its slug. */
-export function getSectionBySlug(slug: string): NavSection | undefined {
-  return CC_NAV.find(s => s.heading && slugify(s.heading) === slug);
+/** Reverse-lookup a NavSection by its slug. Accepts optional filtered sections. */
+export function getSectionBySlug(slug: string, sections?: NavSection[]): NavSection | undefined {
+  return (sections ?? CC_NAV).find(s => s.heading && slugify(s.heading) === slug);
 }
 
 /**
  * Find the NavSection that owns the given pathname.
  * Excludes OVERVIEW (the Home entry) so the sidebar contextual area
  * only appears on actual sub-pages.
+ * Accepts optional filtered sections for role-scoped sidebar rendering.
  */
-export function getSectionForPathname(pathname: string): NavSection | undefined {
-  return CC_NAV.find(
+export function getSectionForPathname(pathname: string, sections?: NavSection[]): NavSection | undefined {
+  return (sections ?? CC_NAV).find(
     s =>
       s.heading &&
       s.heading !== 'OVERVIEW' &&
@@ -49,18 +50,19 @@ export interface NavGroupModel {
 
 /** Explicit icon per group heading. Falls back to the first item's icon. */
 const GROUP_ICON_MAP: Record<string, string> = {
-  'PLATFORM':      'ri-server-line',
-  'IDENTITY':      'ri-shield-user-line',
-  'RELATIONSHIPS': 'ri-links-line',
-  'PRODUCT RULES': 'ri-shield-check-line',
-  'CARECONNECT':   'ri-heart-pulse-line',
-  'TENANTS':       'ri-building-2-line',
-  'NOTIFICATIONS': 'ri-notification-3-line',
-  'AUDIT':         'ri-file-list-3-line',
-  'TRACEABILITY':  'ri-git-merge-line',
-  'OPERATIONS':    'ri-flow-chart',
-  'CATALOG':       'ri-apps-line',
-  'SYSTEM':        'ri-settings-3-line',
+  'PLATFORM':           'ri-server-line',
+  'IDENTITY':           'ri-shield-user-line',
+  'RELATIONSHIPS':      'ri-links-line',
+  'PRODUCT RULES':      'ri-shield-check-line',
+  'CARECONNECT':        'ri-heart-pulse-line',
+  'TENANTS':            'ri-building-2-line',
+  'NOTIFICATIONS':      'ri-notification-3-line',
+  'AUDIT':              'ri-file-list-3-line',
+  'TRACEABILITY':       'ri-git-merge-line',
+  'OPERATIONS':         'ri-flow-chart',
+  'COMMERCE & BILLING': 'ri-store-3-line',
+  'CATALOG':            'ri-apps-line',
+  'SYSTEM':             'ri-settings-3-line',
 };
 
 /**

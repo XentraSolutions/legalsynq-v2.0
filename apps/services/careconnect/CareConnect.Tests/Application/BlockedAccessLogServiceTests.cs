@@ -34,16 +34,16 @@ public class BlockedAccessLogServiceTests
     [Fact]
     public async Task LogAsync_HappyPath_CallsAddAsync()
     {
-        var tenantId  = Guid.NewGuid();
-        var userId    = Guid.NewGuid();
+        var tenantId  = Guid.CreateVersion7();
+        var userId    = Guid.CreateVersion7();
 
         await _sut.LogAsync(
             tenantId:       tenantId,
             userId:         userId,
             userEmail:      "test@example.com",
-            organizationId: Guid.NewGuid(),
-            providerId:     Guid.NewGuid(),
-            referralId:     Guid.NewGuid(),
+            organizationId: Guid.CreateVersion7(),
+            providerId:     Guid.CreateVersion7(),
+            referralId:     Guid.CreateVersion7(),
             failureReason:  "not_provisioned");
 
         _repoMock.Verify(
@@ -65,7 +65,7 @@ public class BlockedAccessLogServiceTests
         // Must NOT throw — best-effort contract.
         var ex = await Record.ExceptionAsync(() => _sut.LogAsync(
             tenantId:       null,
-            userId:         Guid.NewGuid(),
+            userId:         Guid.CreateVersion7(),
             userEmail:      null,
             organizationId: null,
             providerId:     null,

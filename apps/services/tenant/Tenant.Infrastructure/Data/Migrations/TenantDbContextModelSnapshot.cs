@@ -242,10 +242,16 @@ namespace Tenant.Infrastructure.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("char(36)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
+
+                    b.HasIndex("OwnerUserId")
+                        .HasFilter("`OwnerUserId` IS NOT NULL");
 
                     b.HasIndex("Subdomain")
                         .IsUnique()

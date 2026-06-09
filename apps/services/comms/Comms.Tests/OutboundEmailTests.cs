@@ -43,7 +43,7 @@ public class OutboundEmailTests
 
         var conv = Conversation.Create(
             TestHelpers.TenantId, TestHelpers.OrgId, "SYNQ_COMMS",
-            ContextType.General, $"test-{Guid.NewGuid():N}",
+            ContextType.General, $"test-{Guid.CreateVersion7():N}",
             "Test Outbound Subject", VisibilityType.SharedExternal,
             userId ?? TestHelpers.UserId1);
         await convRepo.AddAsync(conv);
@@ -98,7 +98,7 @@ public class OutboundEmailTests
 
         var (conv, msg, _) = await SeedConversationWithMessage(db);
 
-        var nonParticipantUserId = Guid.NewGuid();
+        var nonParticipantUserId = Guid.CreateVersion7();
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             service.SendOutboundAsync(
                 new SendOutboundEmailRequest(conv.Id, msg.Id, "recipient@example.com"),
@@ -168,7 +168,7 @@ public class OutboundEmailTests
 
         var (conv, msg, _) = await SeedConversationWithMessage(db);
 
-        var docId = Guid.NewGuid();
+        var docId = Guid.CreateVersion7();
         var attachmentRepo = TestHelpers.CreateAttachmentRepo(db);
         var attachment = MessageAttachment.Create(
             TestHelpers.TenantId, conv.Id, msg.Id,
@@ -350,7 +350,7 @@ public class OutboundEmailTests
 
         var conv = Conversation.Create(
             TestHelpers.TenantId, TestHelpers.OrgId, "SYNQ_COMMS",
-            ContextType.General, $"test-{Guid.NewGuid():N}",
+            ContextType.General, $"test-{Guid.CreateVersion7():N}",
             "No Reply Subject", VisibilityType.SharedExternal,
             TestHelpers.UserId2);
         await convRepo.AddAsync(conv);
@@ -419,7 +419,7 @@ public class OutboundEmailTests
 
         notifClient.NextResult = new NotificationsSendResult(
             Success: true,
-            NotificationsRequestId: Guid.NewGuid(),
+            NotificationsRequestId: Guid.CreateVersion7(),
             ProviderUsed: "test-provider",
             ProviderMessageId: null,
             Status: "queued",

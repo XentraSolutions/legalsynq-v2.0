@@ -100,7 +100,7 @@ public sealed class ReportScheduleService : IReportScheduleService
 
         var schedule = new ReportSchedule
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = request.TenantId.Trim(),
             ReportTemplateId = request.ReportTemplateId,
             ProductCode = request.ProductCode.Trim(),
@@ -323,7 +323,7 @@ public sealed class ReportScheduleService : IReportScheduleService
     {
         var run = new ReportScheduleRun
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ReportScheduleId = schedule.Id,
             Status = "Pending",
             ScheduledForUtc = scheduledFor

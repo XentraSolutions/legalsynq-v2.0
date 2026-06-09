@@ -36,7 +36,7 @@ public class MessageAttachment : AuditableEntity
         var now = DateTime.UtcNow;
         return new MessageAttachment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             MessageId = messageId,

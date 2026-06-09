@@ -44,7 +44,7 @@ public class TaskStageTransition : AuditableEntity
         var now = DateTime.UtcNow;
         return new TaskStageTransition
         {
-            Id                = id ?? Guid.NewGuid(),
+            Id                = id ?? Guid.CreateVersion7(),
             TenantId          = tenantId,
             SourceProductCode = sourceProductCode.Trim().ToUpperInvariant(),
             FromStageId       = fromStageId,

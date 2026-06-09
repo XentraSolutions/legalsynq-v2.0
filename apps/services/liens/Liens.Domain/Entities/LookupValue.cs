@@ -40,7 +40,7 @@ public class LookupValue : AuditableEntity
         var now = DateTime.UtcNow;
         return new LookupValue
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             TenantId        = tenantId,
             Category        = category.Trim(),
             Code            = code.Trim(),

@@ -42,7 +42,7 @@ public class EmailTemplateConfig : AuditableEntity
         var now = DateTime.UtcNow;
         return new EmailTemplateConfig
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             TemplateKey = templateKey.Trim().ToLowerInvariant(),
             DisplayName = displayName.Trim(),

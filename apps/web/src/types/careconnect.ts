@@ -74,7 +74,23 @@ export interface ReferralHistoryItem {
   notes?:          string;
 }
 
+export interface ReferralComment {
+  id:         string;
+  senderType: string;
+  senderName: string;
+  message:    string;
+  createdAt:  string;
+}
+
 // ── Referral ──────────────────────────────────────────────────────────────────
+
+export const ReferrerPortalAccessStatuses = {
+  ActiveInTenant:          'active_in_tenant',
+  ExistingUserOtherTenant: 'existing_user_other_tenant',
+  NoAccount:               'no_account',
+} as const;
+export type ReferrerPortalAccessStatusValue =
+  typeof ReferrerPortalAccessStatuses[keyof typeof ReferrerPortalAccessStatuses];
 
 export const ReferralStatus = {
   New:        'New',
@@ -193,6 +209,10 @@ export interface ReferralSearchParams {
   createdTo?:   string;
   page?:        number;
   pageSize?:    number;
+}
+
+export interface CreateReferralCommentRequest {
+  message: string;
 }
 
 // ── Appointment ───────────────────────────────────────────────────────────────

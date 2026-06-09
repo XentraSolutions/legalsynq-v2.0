@@ -47,7 +47,7 @@ public static class UserEndpoints
                     Scope = new AuditEventScopeDto
                     {
                         ScopeType = ScopeType.Tenant,
-                        TenantId  = user.TenantId.ToString(),
+                        TenantId  = callerTenantId.ToString(),
                     },
                     Actor = new AuditEventActorDto
                     {
@@ -56,12 +56,12 @@ public static class UserEndpoints
                     },
                     Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
                     Action      = "UserCreated",
-                    Description = $"User '{user.Email}' created in tenant {user.TenantId}.",
+                    Description = $"User '{user.Email}' created in tenant {callerTenantId}.",
                     After       = System.Text.Json.JsonSerializer.Serialize(new
                     {
                         userId = user.Id,
                         email  = user.Email,
-                        tenantId = user.TenantId,
+                        tenantId = callerTenantId,
                     }),
                     IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.created", user.Id.ToString()),
                     Tags = ["user-management", "provisioning"],
@@ -135,6 +135,7 @@ public static class UserEndpoints
             Guid              id,
             ClaimsPrincipal   caller,
             IUserService      userService,
+            IdentityDbContext db,
             CancellationToken ct) =>
         {
             var tenantIdStr = caller.FindFirstValue("tenant_id");
@@ -145,7 +146,9 @@ public static class UserEndpoints
             if (user is null) return Results.NotFound();
 
             // Callers may only view users within their own tenant.
-            if (user.TenantId != callerTenantId)
+            var inSameTenant = await db.UserTenants.AnyAsync(
+                ut => ut.UserId == user.Id && ut.TenantId == callerTenantId && ut.IsActive, ct);
+            if (!inSameTenant)
                 return Results.Forbid();
 
             return Results.Ok(user);

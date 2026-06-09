@@ -62,7 +62,7 @@ public class TenantBranding
     public static TenantBranding Create(Guid tenantId) =>
         new()
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             TenantId     = tenantId,
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow

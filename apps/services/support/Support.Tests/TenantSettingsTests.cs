@@ -56,7 +56,7 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task GetSettings_DefaultsToInternalOnly_WhenNoRowExists()
     {
-        var tenant = $"ts-default-{Guid.NewGuid():N}";
+        var tenant = $"ts-default-{Guid.CreateVersion7():N}";
         var manager = ManagerClient(tenant);
 
         var resp = await manager.GetFromJsonAsync<TenantSettingsResponse>(
@@ -74,7 +74,7 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task PutSettings_SetsTenantCustomerSupport_AndGetReflectsIt()
     {
-        var tenant = $"ts-set-{Guid.NewGuid():N}";
+        var tenant = $"ts-set-{Guid.CreateVersion7():N}";
         var manager = ManagerClient(tenant);
 
         var putResp = await manager.PutAsJsonAsync(
@@ -99,20 +99,20 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerEndpoints_Return403_WhenInternalOnlyDefault()
     {
-        var tenant     = $"ts-block-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
+        var tenant     = $"ts-block-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var listResp = await customer.GetAsync("/support/api/customer/tickets");
         listResp.StatusCode.Should().Be(HttpStatusCode.Forbidden,
             "customer tickets list must fail closed when no settings row exists (InternalOnly default)");
 
-        var getResp = await customer.GetAsync($"/support/api/customer/tickets/{Guid.NewGuid()}");
+        var getResp = await customer.GetAsync($"/support/api/customer/tickets/{Guid.CreateVersion7()}");
         getResp.StatusCode.Should().Be(HttpStatusCode.Forbidden,
             "customer ticket get must fail closed when no settings row exists");
 
         var postResp = await customer.PostAsJsonAsync(
-            $"/support/api/customer/tickets/{Guid.NewGuid()}/comments",
+            $"/support/api/customer/tickets/{Guid.CreateVersion7()}/comments",
             new { body = "hello" });
         postResp.StatusCode.Should().Be(HttpStatusCode.Forbidden,
             "customer comment post must fail closed when no settings row exists");
@@ -123,7 +123,7 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task CustomerEndpoints_ProceedToRbacChecks_WhenModeEnabled()
     {
-        var tenant = $"ts-allow-{Guid.NewGuid():N}";
+        var tenant = $"ts-allow-{Guid.CreateVersion7():N}";
         const string email = "bob@example.com";
 
         var manager = ManagerClient(tenant);
@@ -162,8 +162,8 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task AdminSettings_Returns403_ForExternalCustomer()
     {
-        var tenant     = $"ts-ecustomer-{Guid.NewGuid():N}";
-        var customerId = Guid.NewGuid();
+        var tenant     = $"ts-ecustomer-{Guid.CreateVersion7():N}";
+        var customerId = Guid.CreateVersion7();
         var customer   = CustomerClient(tenant, customerId);
 
         var getResp = await customer.GetAsync("/support/api/admin/tenant-settings");
@@ -182,8 +182,8 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task Settings_AreTenantIsolated_TenantADoesNotAffectTenantB()
     {
-        var tenantA    = $"ts-iso-a-{Guid.NewGuid():N}";
-        var tenantB    = $"ts-iso-b-{Guid.NewGuid():N}";
+        var tenantA    = $"ts-iso-a-{Guid.CreateVersion7():N}";
+        var tenantB    = $"ts-iso-b-{Guid.CreateVersion7():N}";
         var managerA   = ManagerClient(tenantA);
         var managerB   = ManagerClient(tenantB);
 
@@ -200,7 +200,7 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
         settingsB.EffectiveCustomerSupportEnabled.Should().BeFalse();
 
         // Tenant B customer must be blocked.
-        var customerB  = CustomerClient(tenantB, Guid.NewGuid());
+        var customerB  = CustomerClient(tenantB, Guid.CreateVersion7());
         var customerBList = await customerB.GetAsync("/support/api/customer/tickets");
         customerBList.StatusCode.Should().Be(HttpStatusCode.Forbidden,
             "Tenant B's customer must be blocked when only Tenant A has mode enabled");
@@ -211,7 +211,7 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task EffectiveEnabled_IsFalse_WhenModeSetButPortalDisabled()
     {
-        var tenant  = $"ts-noportal-{Guid.NewGuid():N}";
+        var tenant  = $"ts-noportal-{Guid.CreateVersion7():N}";
         var manager = ManagerClient(tenant);
 
         var putResp = await manager.PutAsJsonAsync(
@@ -226,7 +226,7 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
             "effective is false when portal is disabled even if mode is TenantCustomerSupport");
 
         // Customer endpoints are still blocked.
-        var customer = CustomerClient(tenant, Guid.NewGuid());
+        var customer = CustomerClient(tenant, Guid.CreateVersion7());
         var listResp = await customer.GetAsync("/support/api/customer/tickets");
         listResp.StatusCode.Should().Be(HttpStatusCode.Forbidden,
             "customer endpoints must be blocked when portal is disabled");
@@ -237,7 +237,7 @@ public class TenantSettingsTests : IClassFixture<SupportApiProdFactory>
     [Fact]
     public async Task PutSettings_Returns422_ForInvalidSupportMode()
     {
-        var tenant  = $"ts-invalid-{Guid.NewGuid():N}";
+        var tenant  = $"ts-invalid-{Guid.CreateVersion7():N}";
         var manager = ManagerClient(tenant);
 
         var putResp = await manager.PutAsJsonAsync(

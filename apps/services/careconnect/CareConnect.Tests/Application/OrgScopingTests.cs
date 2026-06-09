@@ -11,9 +11,9 @@ namespace CareConnect.Tests.Application;
 /// </summary>
 public class OrgScopingTests
 {
-    private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid OrgA    = Guid.NewGuid();
-    private static readonly Guid OrgB    = Guid.NewGuid();
+    private static readonly Guid TenantId = Guid.CreateVersion7();
+    private static readonly Guid OrgA    = Guid.CreateVersion7();
+    private static readonly Guid OrgB    = Guid.CreateVersion7();
 
     // ─── Referral query construction helpers ─────────────────────────────────
 

@@ -11,7 +11,7 @@ namespace Notifications.Domain;
 /// </summary>
 public class SmsProviderQualitySnapshot
 {
-    public Guid   Id                  { get; set; } = Guid.NewGuid();
+    public Guid   Id                  { get; set; } = Guid.CreateVersion7();
     public string ProviderType        { get; set; } = string.Empty;
 
     /// <summary>Opaque reference to a TenantProviderConfiguration. Never contains credentials.</summary>

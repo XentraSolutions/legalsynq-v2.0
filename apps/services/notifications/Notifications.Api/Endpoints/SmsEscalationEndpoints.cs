@@ -131,7 +131,7 @@ public static class SmsEscalationEndpoints
 
             var policy = new SmsOperationalEscalationPolicy
             {
-                Id              = Guid.NewGuid(),
+                Id              = Guid.CreateVersion7(),
                 Name            = body.Name.Trim()[..Math.Min(body.Name.Trim().Length, 200)],
                 Enabled         = body.Enabled,
                 AlertType       = string.IsNullOrWhiteSpace(body.AlertType)       ? null : body.AlertType.Trim(),

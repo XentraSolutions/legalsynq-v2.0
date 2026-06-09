@@ -51,7 +51,7 @@ public sealed class ServiceTokenIssuer : IServiceTokenIssuer
             claims.Add(new Claim(ServiceTokenAuthenticationDefaults.ActorClaim, $"user:{actorUserId}"));
         }
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId };
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var jwt = new JwtSecurityToken(

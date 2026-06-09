@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using BuildingBlocks.FlowClient;
@@ -39,7 +40,7 @@ builder.Services
             ValidateIssuerSigningKey = true,
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
             RoleClaimType            = "role",
             ClockSkew                = TimeSpan.Zero
         };
@@ -161,6 +162,9 @@ app.MapCaseEndpoints();
 app.MapCaseNoteEndpoints();
 app.MapServicingEndpoints();
 app.MapContactEndpoints();
+app.MapFacilityEndpoints();
+app.MapSettlementEndpoints();
+app.MapReportEndpoints();
 // Lookup reference data (states, accident types, contact types, lien statuses, etc.)
 app.MapLookupEndpoints();
 // LS-FLOW-MERGE-P4 — product → Flow integration endpoints.

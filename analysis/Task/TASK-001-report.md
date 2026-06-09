@@ -17,7 +17,7 @@ Studied the Liens service as the reference implementation for the 4-project DDD 
 |---|---|
 | Project layout | Domain / Application / Infrastructure / Api |
 | Auth | JWT bearer via `Microsoft.AspNetCore.Authentication.JwtBearer`; `ICurrentRequestContext` (sub/tenant_id/email/roles) |
-| DB | EF Core 8 + Pomelo MySQL; `AddMySql()` in `DependencyInjection.cs` |
+| DB | EF Core 10 + Pomelo MySQL; `AddMySql()` in `DependencyInjection.cs` |
 | Table naming | `{service-slug}_{TableName}` — e.g. `liens_Tasks`, `tasks_Tasks` |
 | Endpoints | Minimal API `MapGroup` with `RequireAuthorization(Policies.AuthenticatedUser)` |
 | Exception handling | `ExceptionHandlingMiddleware` maps `NotFoundException` → 404, `InvalidOperationException` → 409, `ValidationException` → 400 |

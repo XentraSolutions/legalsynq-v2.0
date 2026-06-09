@@ -64,6 +64,9 @@ export function MyNetworkMapGoogle({ markers, selectedId, onSelect }: MyNetworkM
         marker = new window.google.maps.Marker({ position: { lat: m.latitude, lng: m.longitude }, map, icon, zIndex: selected ? 100 : 1 });
         const captured = { ...m };
         marker.addListener('click', () => {
+          map.panTo({ lat: captured.latitude, lng: captured.longitude });
+          const currentZoom = map.getZoom() ?? 0;
+          if (currentZoom < 13) map.setZoom(13);
           onSelect(captured.id);
           const phone = captured.phone ? formatPhoneDisplay(captured.phone) : '';
           const content = `

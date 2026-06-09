@@ -25,7 +25,7 @@ public class AccessGroupMembership
         var now = DateTime.UtcNow;
         return new AccessGroupMembership
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             GroupId = groupId,
             UserId = userId,

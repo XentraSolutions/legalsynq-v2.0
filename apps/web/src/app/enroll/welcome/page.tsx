@@ -1,4 +1,11 @@
 export default function EnrollWelcomePage() {
+  // Derive the portal login URL from the server-side hostname env var so this
+  // page works across all environments without hardcoding a demo URL.
+  // CC_COMMON_PORTAL_HOSTNAME is set to e.g. "careconnect-demo.legalsynq.com" in prod.
+  // Falls back to /login (same-origin) for local dev without the full gateway stack.
+  const portalHost = (process.env.CC_COMMON_PORTAL_HOSTNAME ?? '').trim();
+  const scheme = portalHost.includes('localhost') ? 'http' : 'https';
+  const portalLoginUrl = portalHost ? `${scheme}://${portalHost}/login` : '/login';
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center px-4">
       <div className="max-w-lg w-full text-center">
@@ -19,14 +26,14 @@ export default function EnrollWelcomePage() {
 
         <div className="space-y-3">
           <a
-            href="https://careconnect-demo.legalsynq.com/login"
+            href={portalLoginUrl}
             className="block w-full py-3 px-6 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors"
           >
             <i className="ri-login-box-line mr-2" />
             Sign In to Your Portal
           </a>
           <a
-            href="/network"
+            href="/careconnect/network"
             className="block w-full py-3 px-6 rounded-xl border border-gray-300 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors"
           >
             <i className="ri-arrow-left-line mr-2" />

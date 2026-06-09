@@ -61,7 +61,7 @@ public class MigrationRun
         var now = DateTime.UtcNow;
         return new MigrationRun
         {
-            Id            = Guid.NewGuid(),
+            Id            = Guid.CreateVersion7(),
             Mode          = mode,
             Scope         = scope,
             AllowCreates  = allowCreates,
@@ -133,7 +133,7 @@ public class MigrationRunItem
     {
         return new MigrationRunItem
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             RunId            = runId,
             IdentityTenantId = identityTenantId,
             Code             = code,

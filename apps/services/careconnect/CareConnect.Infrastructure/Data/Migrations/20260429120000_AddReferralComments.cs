@@ -1,10 +1,13 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace CareConnect.Infrastructure.Data.Migrations
 {
+    [DbContext(typeof(CareConnectDbContext))]
+    [Migration("20260429120000_AddReferralComments")]
     public partial class AddReferralComments : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

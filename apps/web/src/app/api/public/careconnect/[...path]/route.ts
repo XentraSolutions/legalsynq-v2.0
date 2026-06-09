@@ -90,6 +90,35 @@ async function resolveTenantIdFromHost(host: string): Promise<string | null> {
     } catch { /* fall through */ }
   }
 
+  // Local dev fallback: no subdomain on localhost, use NEXT_PUBLIC_TENANT_CODE.
+  if (process.env.NODE_ENV === 'development' && !subdomain) {
+    const devCode = process.env.NEXT_PUBLIC_TENANT_CODE;
+    if (devCode) {
+      try {
+        const res = await fetch(
+          `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-code/${encodeURIComponent(devCode)}`,
+          { method: 'GET' },
+        );
+        if (res.ok) {
+          const body = await res.json() as { tenantId?: string };
+          if (body.tenantId && body.tenantId !== '') return body.tenantId;
+        }
+      } catch { /* fall through */ }
+
+      // Also try by-subdomain in case code differs from the configured value (e.g. liens-company).
+      try {
+        const res = await fetch(
+          `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-subdomain/${encodeURIComponent(devCode)}`,
+          { method: 'GET' },
+        );
+        if (res.ok) {
+          const body = await res.json() as { tenantId?: string };
+          if (body.tenantId && body.tenantId !== '') return body.tenantId;
+        }
+      } catch { /* fall through */ }
+    }
+  }
+
   // Fallback: Identity branding endpoint (only if explicitly enabled for rollback)
   if (ENABLE_IDENTITY_FALLBACK) {
     console.warn('[careconnect-proxy] Tenant resolution failed; falling back to Identity branding endpoint', { host });

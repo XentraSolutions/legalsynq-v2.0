@@ -30,4 +30,10 @@ public interface ICurrentRequestContext
     IReadOnlyCollection<string> ProductRoles { get; }
     IReadOnlyCollection<string> Permissions { get; }
     bool IsPlatformAdmin { get; }
+
+    /// <summary>
+    /// Multi-tenant: all tenant IDs the user has access to, parsed from the "tenant_ids" JWT claim.
+    /// Empty when the token predates multi-tenant support.
+    /// </summary>
+    IReadOnlyList<Guid> TenantIds { get; }
 }

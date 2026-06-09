@@ -43,7 +43,9 @@ public static class EnrollmentEndpoints
             if (tenantId is null)
                 return Results.StatusCode(403);
 
-            var provider = await providers.GetByIdCrossAsync(providerId, ct);
+            // Use tenant-scoped lookup to prevent cross-tenant PII enumeration.
+            // A caller supplying a providerId from a different tenant will receive 404.
+            var provider = await providers.GetByIdAsync(tenantId.Value, providerId, ct);
             if (provider is null)
                 return Results.NotFound(new { message = "Provider not found." });
 
@@ -161,6 +163,22 @@ public static class EnrollmentEndpoints
             if (ProviderAccessStage.IsAtLeast(provider.AccessStage, ProviderAccessStage.CommonPortal))
                 return Results.Conflict(new { message = "This provider has already activated portal access.", alreadyEnrolled = true });
 
+            // ── CC-OWNER-CHECK: Block all tenant owners from self-enrolling ──
+            // Placed after provider existence check to avoid a cross-service call
+            // for requests with an invalid providerId.
+            var isAnyOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(body.Email.Trim(), ct);
+            if (isAnyOwner)
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL Enrollment blocked — email {Email} belongs to a tenant owner.",
+                    body.Email.Trim());
+                return Results.Conflict(new
+                {
+                    message = "The email address used is associated with a network owner account and cannot be enrolled.",
+                    code    = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
+
             // ── OTP verification (required only when email differs from record) ──
 
             var emailChanged = !string.Equals(
@@ -197,7 +215,7 @@ public static class EnrollmentEndpoints
             // ── Step 1: Create / resolve Identity org ────────────────────────
 
             var orgId = await identityOrgs.EnsureProviderOrganizationAsync(
-                provider.TenantId, provider.Id, companyName, ct);
+                provider.TenantId, provider.Id, companyName, ct: ct, globalScope: true);
 
             if (orgId is null)
             {
@@ -224,11 +242,24 @@ public static class EnrollmentEndpoints
 
             var registerResult = await identityOrgs.RegisterUserDirectlyAsync(
                 orgId.Value,
+                provider.TenantId,
                 body.Email.Trim(),
                 body.Password,
                 body.FirstName.Trim(),
                 body.LastName?.Trim(),
                 ct);
+
+            if (registerResult is { IsOwnerBlocked: true })
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL Enrollment blocked — email belongs to tenant owner for provider {ProviderId}.",
+                    provider.Id);
+                return Results.Conflict(new
+                {
+                    error = "The email address used is associated with the account that owns this network and cannot be enrolled as a provider.",
+                    code  = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
 
             if (registerResult is null)
             {
@@ -305,9 +336,25 @@ public static class EnrollmentEndpoints
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
 
-            // Use the tenantId supplied in the payload (the CareConnect tenant that owns the referral)
-            // rather than the trust-boundary resolved one which may differ.
-            var firmTenantId = body.TenantId != Guid.Empty ? body.TenantId : tenantId.Value;
+            // ── CC-OWNER-CHECK: Block all tenant owners from self-enrolling ──
+            var isAnyOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(body.Email.Trim(), ct);
+            if (isAnyOwner)
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL-FIRM Enrollment blocked — email {Email} belongs to a tenant owner.",
+                    body.Email.Trim());
+                return Results.Conflict(new
+                {
+                    message = "The email address used is associated with a network owner account and cannot be enrolled.",
+                    code    = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
+
+            // Always use the HMAC-validated tenantId from the trust boundary — never the body value.
+            // The body.TenantId was previously preferred here but is user-supplied and bypasses
+            // the HMAC guarantee. Both values originate from the same URL param so they are
+            // identical in legitimate flows; using the validated header value is strictly safer.
+            var firmTenantId = tenantId.Value;
 
             // Step 1: Create / resolve the LAW_FIRM org
             var orgId = await identityOrgs.EnsureLawFirmOrganizationAsync(
@@ -323,11 +370,24 @@ public static class EnrollmentEndpoints
             // Step 2: Create active user with chosen password
             var registerResult = await identityOrgs.RegisterUserDirectlyAsync(
                 orgId.Value,
+                firmTenantId,
                 body.Email.Trim(),
                 body.Password,
                 body.FirstName.Trim(),
                 body.LastName?.Trim(),
                 ct);
+
+            if (registerResult is { IsOwnerBlocked: true })
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL-FIRM Enrollment blocked — email belongs to tenant owner for firm '{CompanyName}'.",
+                    body.CompanyName);
+                return Results.Conflict(new
+                {
+                    error = "The email address used is associated with the account that owns this network and cannot be enrolled as a provider.",
+                    code  = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
 
             if (registerResult is null)
             {

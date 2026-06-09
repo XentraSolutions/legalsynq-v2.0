@@ -1,0 +1,469 @@
+You are continuing the LegalSynq Commerce + Tenant Billing platform integration.
+
+FIRST ACTION:
+Create the report file FIRST before performing any additional work:
+
+/analysis/LS-COMMERCE-INT-03-report.md
+
+Update this report incrementally as each major implementation step is completed.
+
+DO NOT wait until the end to write the report.
+
+====================================================
+TICKET ID: LS-COMMERCE-INT-03
+TITLE: Tenant-Aware Billing Visibility & Operational Hardening
+====================================================
+
+# Objective
+
+Expand Commerce + Tenant Billing operational maturity with:
+
+- TenantAdmin-scoped billing visibility
+- Commerce billing account detail visibility
+- entitlement snapshot operational visibility
+- Commerce ↔ Tenant Billing bridge diagnostics
+- monitoring hardening for existing deployments
+- operational production hardening
+
+This ticket builds on:
+
+- LS-COMMERCE-INT-01
+- LS-COMMERCE-INT-02
+
+This is an additive operational integration and hardening ticket.
+
+This is NOT:
+- a billing rewrite
+- a domain merge
+- a Control Center redesign
+- a payment workflow rewrite
+
+====================================================
+GIT / GITHUB REQUIREMENTS
+====================================================
+
+Use the ticket ID in all Git operations.
+
+Required conventions:
+
+Branch:
+- ls-commerce-int-03-tenant-aware-operational-hardening
+
+Commit message format:
+- LS-COMMERCE-INT-03 <summary>
+
+Examples:
+- LS-COMMERCE-INT-03 add tenant admin billing visibility
+- LS-COMMERCE-INT-03 add entitlement snapshot operational panel
+- LS-COMMERCE-INT-03 add commerce bridge diagnostics visibility
+
+If creating a PR:
+- PR title must include LS-COMMERCE-INT-03
+
+Do not use generic commit messages.
+
+====================================================
+ARCHITECTURE RULES
+====================================================
+
+Maintain strict separation between:
+
+Platform / SaaS Billing:
+Commerce
+Platform → Tenant
+
+Tenant Billing:
+Tenant → Customer / Client
+
+These domains must remain isolated.
+
+STRICTLY PROHIBITED:
+
+- database merges
+- billing table merges
+- shared DbContexts
+- invoice/payment consolidation
+- direct cross-service EF access
+- Tenant Billing → Commerce runtime dependency
+- collapsing APIs into one service
+- rewriting payment providers
+- rewriting notifications
+- removing standalone mode
+- deleting legacy services
+- route namespace rewrites
+- Control Center redesign
+- introducing a new authorization system
+
+====================================================
+PRIMARY SCOPE
+====================================================
+
+Implement additive operational enhancements for:
+
+1. TenantAdmin-scoped billing visibility
+2. Commerce billing account detail visibility
+3. Tenant Billing entitlement snapshot visibility
+4. Commerce ↔ Tenant Billing bridge diagnostics visibility
+5. Monitoring registration hardening for existing deployments
+6. Operational safety/fallback hardening
+7. Production operational readiness improvements
+8. Implementation report
+
+====================================================
+FILES / AREAS TO INSPECT
+====================================================
+
+Inspect existing implementations before modifying anything.
+
+Review:
+
+- LS-COMMERCE-INT-01 implementation areas
+- LS-COMMERCE-INT-02 implementation areas
+- Control Center layout/auth structure
+- tenant detail page authorization/layout
+- existing auth guards
+- Commerce operational endpoints
+- Tenant Billing operational endpoints
+- entitlement endpoints
+- diagnostics endpoints
+- monitoring registry/service registration logic
+- gateway/BFF route structure
+- service-card and operational panel patterns
+
+Likely areas include:
+
+- apps/control-center/
+- apps/gateway/Gateway.Api/
+- apps/services/commerce/
+- apps/services/tenant-billing/
+- shared UI/component libraries
+- monitoring registry/store modules
+
+Do not assume paths.
+Validate actual repository structure first.
+
+====================================================
+IMPLEMENTATION TASKS
+====================================================
+
+# 1. Add TenantAdmin Billing Visibility
+
+Expand tenant billing visibility beyond PlatformAdmin where appropriate.
+
+Goal:
+- TenantAdmin users can safely view their own tenant billing operational status/profile.
+
+Requirements:
+
+- preserve PlatformAdmin full visibility
+- TenantAdmin must only see their own tenant
+- continue using existing auth guards/RBAC conventions
+- no new authorization framework
+- no direct DB access from UI
+- continue using BFF/server-side API routes
+
+Potential implementation areas:
+- tenant detail layout guards
+- billing panel visibility logic
+- tenant-scoped BFF routes
+- JWT tenant claim handling
+
+Implement safe tenant ownership validation before returning billing data.
+
+# 2. Add Commerce Billing Account Detail Visibility
+
+Expand Commerce operational detail visibility.
+
+Surface where safely available:
+
+- billing account status
+- account standing
+- subscription tier
+- subscription status
+- entitlement bridge state
+- latest bridge activity timestamp if available
+- diagnostics summary if available
+
+Use existing Commerce APIs where possible.
+
+If missing:
+- add minimal read-only diagnostics endpoint ONLY if consistent with current architecture.
+
+Do not expose:
+- payment method secrets
+- tokens
+- PCI-sensitive information
+- internal connection strings
+
+# 3. Add Tenant Billing Entitlement Snapshot Visibility
+
+Add operational visibility for entitlement state.
+
+Surface where safely available:
+
+- enabled product codes
+- entitlement enforcement status
+- snapshot timestamp
+- enforcement mode
+- activation state
+- profile status
+
+Continue using:
+- BFF/server-side routes
+- internal token forwarding if required
+- safe fallback behavior
+
+Do not expose internal secrets or stack traces.
+
+# 4. Add Commerce ↔ Tenant Billing Bridge Diagnostics
+
+If diagnostics endpoints exist from LS-COMMERCE-INT-01:
+
+Surface:
+- bridge status
+- last publish attempt
+- last successful publish
+- retry state
+- queue health if available
+- outbox status summary if available
+
+This is operational visibility only.
+
+Do not add:
+- manual replay tooling
+- destructive queue controls
+- admin mutation operations
+
+# 5. Monitoring Registration Hardening
+
+Improve support for existing deployments.
+
+Current issue:
+- DEFAULT_SERVICES seeding only affects fresh deployments.
+
+Implement one of the following IF compatible with current architecture:
+
+Option A:
+- additive startup registration/sync for missing Commerce/Billing monitoring rows
+
+Option B:
+- monitoring migration/bootstrap script
+
+Option C:
+- operational reconciliation helper
+
+If implementation would require a large redesign:
+- defer and document exact reason
+
+Do not rewrite monitoring architecture.
+
+# 6. Operational Safety Hardening
+
+Improve operational resilience.
+
+Ensure safe handling for:
+
+- missing tenant context
+- invalid tenant ownership
+- diagnostics unavailable
+- entitlement snapshot unavailable
+- bridge disabled
+- service degraded
+- service offline
+- monitoring registry unavailable
+- missing internal token
+- unauthorized/forbidden access
+
+All errors must remain safe:
+- no stack traces
+- no secrets
+- no tokens
+- no internal exception dumps
+
+# 7. Add Validation / Tests
+
+Add tests where practical.
+
+Recommended areas:
+
+- TenantAdmin scoped access
+- tenant ownership enforcement
+- entitlement visibility rendering
+- bridge diagnostics rendering
+- safe fallback rendering
+- monitoring registration logic
+- unauthorized access handling
+
+If frontend test infrastructure is unavailable:
+- document manual validation steps
+
+====================================================
+FILES / AREAS TO MODIFY
+====================================================
+
+Modify only additive operational integration areas.
+
+Expected possible modification areas:
+
+- Control Center auth/layout logic
+- tenant detail page visibility logic
+- billing operational BFF routes
+- Commerce diagnostics BFF routes
+- monitoring registration logic
+- operational UI panels/components
+- shared operational status components
+- env configuration
+- tests
+- /analysis/LS-COMMERCE-INT-03-report.md
+
+Do NOT modify:
+
+- billing domain models unless strictly necessary for read-only diagnostics
+- invoice/payment processing behavior
+- payment provider integrations
+- notification services
+- document services
+- DbContexts to merge domains
+- existing LS-COMMERCE-INT-01 tenant resolver architecture unless fixing compatibility gaps
+
+====================================================
+VALIDATION COMMANDS
+====================================================
+
+Run relevant validation commands based on actual repository structure.
+
+Likely commands may include:
+
+# Frontend / Control Center
+
+- npm run build
+- npm run lint
+- npm test
+- pnpm build
+- pnpm lint
+- pnpm test
+
+# Gateway
+
+- dotnet build apps/gateway/Gateway.Api/Gateway.Api.csproj
+
+# Commerce
+
+- dotnet build apps/services/commerce/Commerce.sln
+
+# Tenant Billing
+
+- dotnet build apps/services/tenant-billing/Billing.sln
+
+# Platform
+
+Run any additional discovered platform validation commands.
+
+If commands fail:
+- document exact command
+- document exact failure
+- document whether issue appears pre-existing
+- do not fabricate success
+
+If commands are skipped:
+- document why
+
+====================================================
+ACCEPTANCE CRITERIA
+====================================================
+
+LS-COMMERCE-INT-03 is complete ONLY IF:
+
+- /analysis/LS-COMMERCE-INT-03-report.md was created first
+- report updated incrementally throughout implementation
+- TenantAdmin-scoped billing visibility implemented or explicitly deferred with reason
+- PlatformAdmin visibility preserved
+- Commerce billing account detail visibility added or deferred with reason
+- Tenant Billing entitlement snapshot visibility added or deferred with reason
+- Commerce ↔ Tenant Billing bridge diagnostics surfaced or deferred with reason
+- monitoring registration hardening implemented or deferred with reason
+- operational fallback/error handling improved
+- no billing domains merged
+- no shared DbContext introduced
+- no direct cross-service EF access introduced
+- standalone behavior preserved
+- tests/manual validations documented
+- risks/deferred items documented
+- recommended LS-COMMERCE-INT-04 scope included
+
+====================================================
+REQUIRED REPORT STRUCTURE
+====================================================
+
+Update incrementally:
+
+/analysis/LS-COMMERCE-INT-03-report.md
+
+Required sections:
+
+1. Executive Summary
+2. Prior Integration Baseline
+3. TenantAdmin Visibility Architecture
+4. Commerce Billing Detail Visibility
+5. Entitlement Snapshot Visibility
+6. Commerce ↔ Tenant Billing Diagnostics
+7. Monitoring Registration Hardening
+8. Operational Safety Improvements
+9. RBAC / Tenant Ownership Validation
+10. Error / Fallback Handling
+11. Files Changed
+12. Build/Test Validation
+13. Risks / Deferred Items
+14. Confirmation of Non-Merge Boundaries
+15. Recommended Scope for LS-COMMERCE-INT-04
+
+====================================================
+KNOWN RESTRICTIONS
+====================================================
+
+- Do not fabricate validation success.
+- Do not claim tests passed unless actually run.
+- Do not hide failures.
+- Do not redesign Control Center.
+- Do not redesign monitoring architecture.
+- Do not hardcode tenant IDs.
+- Do not expose secrets or internal tokens.
+- Do not directly query billing databases from UI.
+- Do not collapse Commerce and Tenant Billing into one service.
+- Do not change invoice/payment processing behavior.
+- Do not introduce a new auth framework.
+
+====================================================
+EXPECTED OUTPUT
+====================================================
+
+At completion:
+
+- PlatformAdmin users retain full operational visibility.
+- TenantAdmin users can safely view their own tenant billing operational status.
+- Commerce operational visibility is richer and more actionable.
+- Tenant Billing entitlement state is operationally visible.
+- Commerce ↔ Billing bridge health is operationally visible.
+- Monitoring integration is more production-safe for existing deployments.
+- Operational resiliency and fallback behavior are improved.
+
+====================================================
+FINAL INSTRUCTION
+====================================================
+
+Preserve bounded contexts.
+
+Integrate through:
+- existing gateway/BFF patterns
+- existing auth/RBAC
+- operational visibility panels
+- monitoring integration
+- safe diagnostics visibility
+
+Do not merge billing domains.
+
+Do not redesign billing.
+
+Create and maintain the report first.
+
+Do not fabricate success.

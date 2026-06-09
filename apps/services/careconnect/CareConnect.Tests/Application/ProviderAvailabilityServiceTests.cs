@@ -15,9 +15,9 @@ namespace CareConnect.Tests.Application;
 /// </summary>
 public class ProviderAvailabilityServiceTests
 {
-    private readonly Guid _tenantId   = Guid.NewGuid();
-    private readonly Guid _providerId = Guid.NewGuid();
-    private readonly Guid _facilityId = Guid.NewGuid();
+    private readonly Guid _tenantId   = Guid.CreateVersion7();
+    private readonly Guid _providerId = Guid.CreateVersion7();
+    private readonly Guid _facilityId = Guid.CreateVersion7();
 
     private readonly Mock<IProviderRepository>         _providerRepo = new();
     private readonly Mock<IAppointmentSlotRepository>  _slotRepo     = new();
@@ -161,8 +161,8 @@ public class ProviderAvailabilityServiceTests
     public async Task GetAvailabilityAsync_FacilityFilter_ExcludesNonMatchingSlots()
     {
         var provider        = MakeProvider();
-        var targetFacility  = Guid.NewGuid();
-        var otherFacility   = Guid.NewGuid();
+        var targetFacility  = Guid.CreateVersion7();
+        var otherFacility   = Guid.CreateVersion7();
         var from            = DateTime.UtcNow;
         var to              = from.AddDays(7);
 

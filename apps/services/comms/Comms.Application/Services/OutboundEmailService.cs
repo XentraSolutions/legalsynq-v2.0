@@ -163,7 +163,7 @@ public class OutboundEmailService : IOutboundEmailService
             }
         }
 
-        var sendAttemptId = Guid.NewGuid();
+        var sendAttemptId = Guid.CreateVersion7();
         var idempotencyKey = $"comms-outbound-{sendAttemptId}";
         var payload = new OutboundEmailPayload(
             TenantId: tenantId,

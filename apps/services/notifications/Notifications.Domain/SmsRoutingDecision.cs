@@ -11,7 +11,7 @@ namespace Notifications.Domain;
 /// </summary>
 public class SmsRoutingDecision
 {
-    public Guid    Id             { get; set; } = Guid.NewGuid();
+    public Guid    Id             { get; set; } = Guid.CreateVersion7();
     public Guid?   TenantId       { get; set; }
     public Guid?   NotificationId { get; set; }
 

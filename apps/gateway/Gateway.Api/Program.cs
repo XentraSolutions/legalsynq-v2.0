@@ -1,5 +1,6 @@
 using System.Text;
 using BuildingBlocks;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -40,7 +41,7 @@ builder.Services
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtSection["Issuer"],
             ValidAudience = jwtSection["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
             ClockSkew = TimeSpan.Zero
         };
     });
@@ -73,7 +74,7 @@ app.Use(async (ctx, next) =>
         && incoming.Length <= maxLen
         && System.Text.RegularExpressions.Regex.IsMatch(incoming, @"^[a-zA-Z0-9\-_]+$")
             ? incoming
-            : Guid.NewGuid().ToString();
+            : Guid.CreateVersion7().ToString();
     ctx.Items["CorrelationId"] = correlationId;
     ctx.Response.OnStarting(() =>
     {

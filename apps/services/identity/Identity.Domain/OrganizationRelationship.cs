@@ -36,7 +36,7 @@ public class OrganizationRelationship
         var now = DateTime.UtcNow;
         return new OrganizationRelationship
         {
-            Id                   = Guid.NewGuid(),
+            Id                   = Guid.CreateVersion7(),
             TenantId             = tenantId,
             SourceOrganizationId = sourceOrganizationId,
             TargetOrganizationId = targetOrganizationId,

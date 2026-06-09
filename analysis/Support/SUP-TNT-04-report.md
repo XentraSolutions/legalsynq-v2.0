@@ -7,7 +7,7 @@ _Status: COMPLETE_
 ## 1. Codebase Analysis
 
 ### Support service structure
-- `apps/services/support/Support.Api` — .NET 8 minimal-API service
+- `apps/services/support/Support.Api` — .NET 10 minimal-API service
 - MySQL via Pomelo EF Core; InMemory for tests
 - Route groups, scoped services, middleware-based tenant resolution
 - Migrations in `Data/Migrations/`, EF Core tooling verified working

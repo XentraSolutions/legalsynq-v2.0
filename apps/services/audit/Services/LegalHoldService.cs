@@ -44,7 +44,7 @@ public sealed class LegalHoldService : ILegalHoldService
 
         var hold = new LegalHold
         {
-            HoldId         = Guid.NewGuid(),
+            HoldId         = Guid.CreateVersion7(),
             AuditId        = auditId,
             HeldByUserId   = requestedByUserId,
             HeldAtUtc      = DateTimeOffset.UtcNow,

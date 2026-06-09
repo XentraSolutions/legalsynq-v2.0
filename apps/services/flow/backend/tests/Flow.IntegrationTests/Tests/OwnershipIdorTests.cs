@@ -37,7 +37,7 @@ public class OwnershipIdorTests : IClassFixture<SeedFixture>
         var resp = await TenantALienUser().GetAsync(HttpClientExtensions.Path(
             TestIds.SlugLien, TestIds.LienEntityType,
             TestIds.LienEntityId_Happy_A,
-            Guid.NewGuid()));
+            Guid.CreateVersion7()));
 
         await AssertNotOwnedAsync(resp);
     }

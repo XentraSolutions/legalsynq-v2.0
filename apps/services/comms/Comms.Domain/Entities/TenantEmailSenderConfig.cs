@@ -38,7 +38,7 @@ public class TenantEmailSenderConfig : AuditableEntity
         var now = DateTime.UtcNow;
         return new TenantEmailSenderConfig
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             DisplayName = displayName.Trim(),
             FromEmail = fromEmail.Trim().ToLowerInvariant(),

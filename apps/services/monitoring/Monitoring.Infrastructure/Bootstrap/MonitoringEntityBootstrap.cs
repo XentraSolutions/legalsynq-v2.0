@@ -62,22 +62,33 @@ public sealed class MonitoringEntityBootstrap : IHostedService
         await using var scope = _scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<MonitoringDbContext>();
 
-        var alreadySeeded = await db.MonitoredEntities.AnyAsync(cancellationToken);
-        if (alreadySeeded)
+        // LS-COMMERCE-INT-03: Changed from "skip-if-any" to per-name reconciliation so
+        // that existing deployments which already have rows for earlier services also
+        // pick up newly added entries (Commerce, Tenant Billing) without wiping state.
+        var existingNames = await db.MonitoredEntities
+            .AsNoTracking()
+            .Select(e => e.Name)
+            .ToListAsync(cancellationToken);
+
+        var existingSet = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
+        var toAdd       = Entities.Where(s => !existingSet.Contains(s.Name)).ToArray();
+
+        if (toAdd.Length == 0)
         {
             _logger.LogInformation(
-                "MonitoringEntityBootstrap: entity registry is non-empty. Skipping seed.");
+                "MonitoringEntityBootstrap: all {Count} known entities already present. Nothing to seed.",
+                Entities.Length);
             return;
         }
 
         _logger.LogInformation(
-            "MonitoringEntityBootstrap: entity registry is empty. Seeding {Count} entities.",
-            Entities.Length);
+            "MonitoringEntityBootstrap: adding {AddCount} missing entities ({ExistingCount} already present).",
+            toAdd.Length, existingSet.Count);
 
-        foreach (var seed in Entities)
+        foreach (var seed in toAdd)
         {
             var entity = new MonitoredEntity(
-                id:            Guid.NewGuid(),
+                id:            Guid.CreateVersion7(),
                 name:          seed.Name,
                 entityType:    seed.EntityType,
                 monitoringType: seed.MonitoringType,
@@ -98,8 +109,8 @@ public sealed class MonitoringEntityBootstrap : IHostedService
         await db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "MonitoringEntityBootstrap: seeded {Count} entities successfully.",
-            Entities.Length);
+            "MonitoringEntityBootstrap: seeded {AddCount} entities successfully.",
+            toAdd.Length);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -161,6 +172,19 @@ public sealed class MonitoringEntityBootstrap : IHostedService
             "http://127.0.0.1:5009/health",
             EntityType.InternalService, MonitoringType.Http,
             ImpactLevel.Degraded, "product"),
+
+        // LS-COMMERCE-INT-03: Commerce + Tenant Billing added to monitoring registry.
+        // These entries are safe to add to existing deployments because the bootstrap
+        // now uses per-name reconciliation instead of the previous skip-if-any guard.
+        new("Commerce",
+            "http://127.0.0.1:5030/health",
+            EntityType.InternalService, MonitoringType.Http,
+            ImpactLevel.Degraded, "infrastructure"),
+
+        new("Tenant Billing",
+            "http://127.0.0.1:5031/health",
+            EntityType.InternalService, MonitoringType.Http,
+            ImpactLevel.Degraded, "infrastructure"),
     ];
 
     private sealed record EntitySeed(

@@ -59,7 +59,7 @@ public static class AuditRequestBuilder
                 .Select(i => MinimalValid(
                     eventType:      $"document.uploaded.v{i}",
                     tenantId:       tenantId,
-                    idempotencyKey: $"batch-key-{i}-{Guid.NewGuid():N}"))
+                    idempotencyKey: $"batch-key-{i}-{Guid.CreateVersion7():N}"))
                 .ToList(),
         };
 }

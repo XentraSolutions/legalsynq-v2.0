@@ -19,6 +19,7 @@ import { ApiError } from '@/lib/api-client';
 import { liensService, type LienListItem, type LiensQuery, type PaginationMeta } from '@/lib/liens';
 import { useProviderMode } from '@/hooks/use-provider-mode';
 import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
+import { LiensFilter } from './components/liens-filter';
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return '\u2014';
@@ -53,6 +54,9 @@ export default function LiensPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
+
+  const [actionOpen, setActionOpen] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
 
   const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -100,6 +104,11 @@ export default function LiensPage() {
     addToast({ type: 'success', title: 'Lien Created', description: 'New lien has been created successfully' });
   };
 
+  const handleCasesFilter = () => {
+    setShowFilter(false);
+    fetchLiens(currentQuery());
+  };
+
   const canEdit = ra.can('lien:edit');
 
   const handleBulkAction = (actionKey: string) => {
@@ -130,12 +139,53 @@ export default function LiensPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Liens" subtitle={loading ? 'Loading...' : `${pagination.totalCount} liens`}
-        actions={ra.can('lien:create') ? (
-          <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
-            <i className="ri-add-line text-base" />New Lien
-          </button>
-        ) : undefined}
+        actions={
+          <div className="relative">
+            {/* Dropdown Button */}
+            <button
+              onClick={() => setActionOpen(!actionOpen)}
+              className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
+              Actions
+              <i className="ri-arrow-down-s-line text-base" />
+            </button>
+            {/* Dropdown Menu */}
+            {actionOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                {/* Create Lien */}
+                {ra.can('lien:create') && (
+                  <button
+                    onClick={() => {
+                      setShowCreate(true);
+                      setActionOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
+                    New Lien
+                  </button>
+                )}
+                {/* Filter */}
+                <button
+                  onClick={() => {
+                    setShowFilter(true);
+                    setActionOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
+                  Filter
+                </button>
+
+                {/* Export CSV */}
+                <button onClick={() => { setActionOpen(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
+                  Export
+                </button>
+
+              </div>
+            )}
+          </div>
+        }
+
       />
+
+
+
       <FilterToolbar searchPlaceholder="Search liens by number or subject..." onSearch={setSearch} filters={[
         { label: 'All Statuses', value: statusFilter, onChange: setStatusFilter, options: [
           { value: 'Draft', label: 'Draft' },
@@ -246,6 +296,7 @@ export default function LiensPage() {
       )}
 
       <CreateLienModal open={showCreate} onClose={() => setShowCreate(false)} onCreated={handleCreated} />
+      <LiensFilter open={showFilter} onClose={() => setShowFilter(false)} onApplyFilter={handleCasesFilter} />
 
       <SideDrawer open={!!previewLien} onClose={() => setPreviewId(null)} title={previewLien?.lienNumber || ''} subtitle={previewLien?.lienTypeLabel}>
         {previewLien && (

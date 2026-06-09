@@ -94,7 +94,7 @@ public sealed class SmsGovernanceImportService : ISmsGovernanceImportService
             {
                 var pack = new SmsGovernanceRulePack
                 {
-                    Id              = Guid.NewGuid(),
+                    Id              = Guid.CreateVersion7(),
                     TenantId        = bundle.RulePack.TenantId,
                     Name            = bundle.RulePack.Name.Trim(),
                     Description     = bundle.RulePack.Description,
@@ -117,7 +117,7 @@ public sealed class SmsGovernanceImportService : ISmsGovernanceImportService
                 {
                     var rule = new SmsGovernanceRule
                     {
-                        Id           = Guid.NewGuid(),
+                        Id           = Guid.CreateVersion7(),
                         RulePackId   = pack.Id,
                         Name         = entry.Name.Trim(),
                         Description  = entry.Description,

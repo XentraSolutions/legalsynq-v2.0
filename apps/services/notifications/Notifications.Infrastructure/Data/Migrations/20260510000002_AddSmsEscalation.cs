@@ -1,5 +1,8 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
@@ -13,6 +16,8 @@ namespace Notifications.Infrastructure.Data.Migrations
     /// Target (webhook URL / email) in ntf_SmsEscalationPolicies is admin-only config;
     /// only masked form is stored in ntf_SmsAlertEscalations.
     /// </summary>
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260510000002_AddSmsEscalation")]
     public partial class AddSmsEscalation : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

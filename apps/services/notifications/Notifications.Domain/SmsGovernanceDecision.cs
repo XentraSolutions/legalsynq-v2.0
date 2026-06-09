@@ -11,7 +11,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsGovernanceDecision
 {
-    public Guid    Id             { get; set; } = Guid.NewGuid();
+    public Guid    Id             { get; set; } = Guid.CreateVersion7();
     public Guid?   NotificationId { get; set; }
     public Guid?   AttemptId      { get; set; }
     public Guid?   TenantId       { get; set; }

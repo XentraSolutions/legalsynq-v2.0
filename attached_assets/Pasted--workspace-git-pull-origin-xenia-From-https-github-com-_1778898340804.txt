@@ -1,0 +1,66 @@
+~/workspace$ git pull origin xenia
+
+From https://github.com/XentraSolutions/legalsynq-v2.0
+ * branch              xenia      -> FETCH_HEAD
+hint: You have divergent branches and need to specify how to reconcile them.
+hint: You can do so by running one of the following commands sometime before
+hint: your next pull:
+hint:
+hint:   git config pull.rebase false  # merge
+hint:   git config pull.rebase true   # rebase
+hint:   git config pull.ff only       # fast-forward only
+hint:
+hint: You can replace "git config" with "git config --global" to set a default
+hint: preference for all repositories. You can also pass --rebase, --no-rebase,
+hint: or --ff-only on the command line to override the configured default per
+hint: invocation.
+fatal: Need to specify how to reconcile divergent branches.
+~/workspace$ git pull --rebase origin xenia
+
+From https://github.com/XentraSolutions/legalsynq-v2.0
+ * branch              xenia      -> FETCH_HEAD
+Auto-merging README.md
+CONFLICT (content): Merge conflict in README.md
+Auto-merging replit.md
+CONFLICT (content): Merge conflict in replit.md
+error: could not apply 72043ab6... Organize project documentation and update service information
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Could not apply 72043ab6... Organize project documentation and update service information
+~/workspace$ git fetch origin
+~/workspace$ git log --oneline HEAD..origin/xenia
+~/workspace$ git add 72043ab6...
+fatal: pathspec '72043ab6...' did not match any files
+~/workspace$ git add 72043ab
+fatal: pathspec '72043ab' did not match any files
+~/workspace$ git add 72043ab6
+fatal: pathspec '72043ab6' did not match any files
+~/workspace$ git commit    
+U   README.md
+U   replit.md
+error: Committing is not possible because you have unmerged files.
+hint: Fix them up in the work tree, and then use 'git add/rm <file>'
+hint: as appropriate to mark resolution and make a commit.
+fatal: Exiting because of an unresolved conflict.
+~/workspace$ git add README.md
+~/workspace$ git rebase --continue
+replit.md: needs merge
+You must edit all merge conflicts and then
+mark them as resolved using git add
+~/workspace$ git pull --rebase origin xenia
+
+error: Pulling is not possible because you have unmerged files.
+hint: Fix them up in the work tree, and then use 'git add/rm <file>'
+hint: as appropriate to mark resolution and make a commit.
+fatal: Exiting because of an unresolved conflict.
+~/workspace$ git fetch origin
+~/workspace$ git log --oneline HEAD..origin/xenia
+~/workspace$ git commit
+U   replit.md
+error: Committing is not possible because you have unmerged files.
+hint: Fix them up in the work tree, and then use 'git add/rm <file>'
+hint: as appropriate to mark resolution and make a commit.
+fatal: Exiting because of an unresolved conflict.

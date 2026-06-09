@@ -39,7 +39,7 @@ public class ConversationSlaState : AuditableEntity
 
         return new ConversationSlaState
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             Priority = priority,

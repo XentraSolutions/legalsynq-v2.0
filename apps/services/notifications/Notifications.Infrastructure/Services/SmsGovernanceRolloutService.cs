@@ -59,7 +59,7 @@ public sealed class SmsGovernanceRolloutService : ISmsGovernanceRolloutService
         var now  = DateTime.UtcNow;
         var plan = new SmsGovernanceRolloutPlan
         {
-            Id                   = Guid.NewGuid(),
+            Id                   = Guid.CreateVersion7(),
             ReleasePackageId     = request.ReleasePackageId,
             TenantId             = request.TenantId,
             Name                 = request.Name,
@@ -140,7 +140,7 @@ public sealed class SmsGovernanceRolloutService : ISmsGovernanceRolloutService
         var now   = DateTime.UtcNow;
         var stage = new SmsGovernanceRolloutStage
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             RolloutPlanId   = rolloutId,
             StageNumber     = request.StageNumber,
             StageName       = request.StageName,
@@ -179,7 +179,7 @@ public sealed class SmsGovernanceRolloutService : ISmsGovernanceRolloutService
         var now    = DateTime.UtcNow;
         var cohort = new SmsGovernanceTenantCohort
         {
-            Id            = Guid.NewGuid(),
+            Id            = Guid.CreateVersion7(),
             RolloutPlanId = rolloutId,
             StageId       = request.StageId,
             TenantId      = request.TenantId,
@@ -538,7 +538,7 @@ public sealed class SmsGovernanceRolloutService : ISmsGovernanceRolloutService
     {
         _db.SmsGovernanceRolloutAuditEvents.Add(new SmsGovernanceRolloutAuditEvent
         {
-            Id            = Guid.NewGuid(),
+            Id            = Guid.CreateVersion7(),
             RolloutPlanId = rolloutId,
             StageId       = stageId,
             TenantId      = tenantId,

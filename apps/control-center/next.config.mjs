@@ -98,6 +98,10 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig = {
+  // Empty turbopack config satisfies Next.js 16's requirement when a
+  // webpack() config function is also present. The actual production build
+  // uses --webpack explicitly (build-prod.sh) to keep the GCE-tuned pipeline.
+  turbopack: {},
   experimental: {
     serverActions: {
       // Next.js 14 CSRF check: compares origin vs x-forwarded-host.

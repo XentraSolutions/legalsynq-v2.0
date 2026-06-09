@@ -1,17 +1,37 @@
 using System.Net.Mail;
 using System.Text.RegularExpressions;
+using BuildingBlocks.Commerce;
 using BuildingBlocks.Exceptions;
+using Contracts.Commerce;
+using Microsoft.Extensions.Logging;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Domain;
 
 namespace Tenant.Application.Services;
 
+/// <summary>
+/// LS-COMMERCE-ECO-02: Commerce lifecycle notifications wired for tenant
+/// provisioning, creation, and deactivation.  Notifications are noop-first
+/// and never block the primary tenant lifecycle operation.
+/// </summary>
 public class TenantService : ITenantService
 {
-    private readonly ITenantRepository _repository;
+    private readonly ITenantRepository           _repository;
+    private readonly ICommerceLifecycleNotifier  _commerceNotifier;
+    private readonly ILogger<TenantService>      _logger;
 
-    public TenantService(ITenantRepository repository) => _repository = repository;
+    private const string HostPlatformKey = "legalsynq";
+
+    public TenantService(
+        ITenantRepository          repository,
+        ICommerceLifecycleNotifier commerceNotifier,
+        ILogger<TenantService>     logger)
+    {
+        _repository       = repository;
+        _commerceNotifier = commerceNotifier;
+        _logger           = logger;
+    }
 
     // ── BLK-TS-01: Tenant code format rules ──────────────────────────────────
 
@@ -90,7 +110,22 @@ public class TenantService : ITenantService
             displayName: request.TenantName.Trim(),
             subdomain:   subdomain);
 
+        if (request.OwnerUserId.HasValue)
+            tenant.SetOwner(request.OwnerUserId.Value);
+
         await _repository.AddAsync(tenant, ct);
+
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of provisioned tenant ─────────
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        CommerceEventTypes.TenantCreated,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"] = tenant.Code,
+                ["source"]     = "provision"
+            }), ct);
 
         return new ProvisionResponse(tenant.Id, tenant.Code, tenant.Subdomain ?? subdomain);
     }
@@ -170,6 +205,19 @@ public class TenantService : ITenantService
             request.CountryCode);
 
         await _repository.AddAsync(tenant, ct);
+
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of new tenant creation ─────────
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        CommerceEventTypes.TenantCreated,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"] = tenant.Code,
+                ["source"]     = "create"
+            }), ct);
+
         return ToResponse(tenant);
     }
 
@@ -242,6 +290,19 @@ public class TenantService : ITenantService
 
         tenant.SetStatus(TenantStatus.Inactive);
         await _repository.UpdateAsync(tenant, ct);
+
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of tenant deactivation ─────────
+        // Inactive is the closest domain status to suspended; no Closed status exists.
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        CommerceEventTypes.TenantSuspended,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"] = tenant.Code,
+                ["newStatus"]  = TenantStatus.Inactive.ToString()
+            }), ct);
     }
 
     /// <summary>
@@ -317,6 +378,31 @@ public class TenantService : ITenantService
 
     private static TenantStatus ParseStatus(string? status) =>
         Enum.TryParse<TenantStatus>(status, ignoreCase: true, out var s) ? s : TenantStatus.Active;
+
+    // ── LS-COMMERCE-ECO-02: Safe Commerce notification helper ─────────────────
+
+    /// <summary>
+    /// Sends a Commerce lifecycle event without blocking or throwing into the
+    /// caller.  The <see cref="ICommerceLifecycleNotifier"/> contract already
+    /// requires implementations to swallow delivery errors; this wrapper adds a
+    /// second safety net at the call-site level.
+    /// </summary>
+    private async Task TryNotifyCommerceAsync(CommerceLifecycleEvent ev, CancellationToken ct)
+    {
+        try
+        {
+            await _commerceNotifier.NotifyAsync(ev, ct);
+            _logger.LogDebug(
+                "Commerce lifecycle notification dispatched: EventType={EventType}, TenantId={TenantId}",
+                ev.EventType, ev.ExternalTenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Commerce lifecycle notification failed (non-blocking): EventType={EventType}, TenantId={TenantId}",
+                ev.EventType, ev.ExternalTenantId);
+        }
+    }
 
     // ── Validation helpers ────────────────────────────────────────────────────
 

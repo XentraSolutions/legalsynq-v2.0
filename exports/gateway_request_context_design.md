@@ -419,7 +419,7 @@ public class CorrelationIdMiddleware
     {
         var correlationId = context.Request.Headers[Header].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(correlationId) || !Guid.TryParse(correlationId, out _))
-            correlationId = Guid.NewGuid().ToString();
+            correlationId = Guid.CreateVersion7().ToString();
 
         context.Items[Header] = correlationId;
         context.Request.Headers[Header] = correlationId;   // pass downstream

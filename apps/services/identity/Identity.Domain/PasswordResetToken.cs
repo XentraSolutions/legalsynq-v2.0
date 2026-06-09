@@ -50,7 +50,7 @@ public class PasswordResetToken
         var now = DateTime.UtcNow;
         return new PasswordResetToken
         {
-            Id                  = Guid.NewGuid(),
+            Id                  = Guid.CreateVersion7(),
             UserId              = userId,
             TenantId            = tenantId,
             TriggeredByAdminId  = triggeredByAdminId,

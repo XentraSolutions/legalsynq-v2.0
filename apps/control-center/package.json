@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 5004",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start -p 5004",
     "type-check": "tsc --noEmit",
     "test": "tsx --test src/lib/__tests__/*.test.ts"
@@ -12,7 +12,7 @@
   "dependencies": {
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.4.1",
-    "next": "15.5.15",
+    "next": "16.2.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "remixicon": "^4.9.1"
@@ -27,17 +27,21 @@
     "typescript": "*"
   },
   "overrides": {
+    "brace-expansion": "^5.0.6",
     "file-type": "^22.0.1",
     "fast-xml-parser": "^5.7.1",
-    "uuid": "^11.0.5"
+    "postcss": "^8.5.10",
+    "uuid": "^11.1.1"
   },
   "pnpm": {
     "overrides": {
       "lodash": "4.17.21",
-      "next": "^15.5.15",
+      "next": "^16.2.6",
+      "postcss": "^8.5.10",
+      "brace-expansion": "^5.0.6",
       "file-type": "^22.0.1",
       "fast-xml-parser": "^5.7.1",
-      "uuid": "^11.0.5"
+      "uuid": "^11.1.1"
     }
   }
 }

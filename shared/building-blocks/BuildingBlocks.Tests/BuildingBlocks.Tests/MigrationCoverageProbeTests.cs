@@ -66,7 +66,7 @@ public class MigrationCoverageProbeTests
     private static (string path, string connStr) NewSqliteFile()
     {
         var path = Path.Combine(Path.GetTempPath(),
-            $"mig-probe-{Guid.NewGuid():N}.sqlite");
+            $"mig-probe-{Guid.CreateVersion7():N}.sqlite");
         return (path, $"Data Source={path}");
     }
 
@@ -250,7 +250,7 @@ public class MigrationCoverageProbeTests
         // InMemory is non-relational: db.Database.GetDbConnection() throws.
         // The public RunAsync must catch this and emit a Warning, never rethrow.
         var opts = new DbContextOptionsBuilder<TwoEntityContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString())
             .Options;
         await using var db = new TwoEntityContext(opts);
         var logger = new CapturingLogger();

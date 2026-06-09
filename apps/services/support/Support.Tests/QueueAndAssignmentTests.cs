@@ -161,7 +161,7 @@ public class QueueAndAssignmentTests : IClassFixture<SupportApiFactory>
         var c = ClientFor("tenant-Q9");
         var t = await CreateTicket(c);
         var resp = await c.PutAsJsonAsync($"/support/api/tickets/{t.Id}/assignment",
-            new AssignTicketRequest { AssignedQueueId = Guid.NewGuid() });
+            new AssignTicketRequest { AssignedQueueId = Guid.CreateVersion7() });
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 

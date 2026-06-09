@@ -28,7 +28,7 @@ public class OrganizationDomain
 
         return new OrganizationDomain
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             OrganizationId = organizationId,
             Domain = domain.Trim().ToLowerInvariant(),
             DomainType = domainType,

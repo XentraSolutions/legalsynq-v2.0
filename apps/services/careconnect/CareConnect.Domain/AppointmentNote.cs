@@ -25,7 +25,7 @@ public class AppointmentNote : AuditableEntity
     {
         return new AppointmentNote
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             TenantId        = tenantId,
             AppointmentId   = appointmentId,
             NoteType        = noteType,

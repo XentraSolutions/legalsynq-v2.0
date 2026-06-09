@@ -49,7 +49,27 @@ if (mode == "reset-audit")
     return 0;
 }
 
-var expectedDbs = new[] { "identity_db", "fund_db", "careconnect_db", "documents_db", "liens_db", "notifications_db", "reports_db", "audit_event_db" };
+var expectedDbs = new[]
+{
+    // Original services
+    "identity_db",
+    "fund_db",
+    "careconnect_db",
+    "documents_db",
+    "liens_db",
+    "notifications_db",
+    "reports_db",
+    "audit_event_db",
+    // Additional services
+    "flow_db",
+    "tasks_db",
+    "support",
+    "commerce",
+    "monitoring",
+    "tenant_billing",
+    "synqcomm_db",
+    "tenant_db",
+};
 
 using var showCmd = new MySqlCommand("SHOW DATABASES", conn);
 using var reader = await showCmd.ExecuteReaderAsync();

@@ -33,7 +33,7 @@ public class LienTaskNote
 
         return new LienTaskNote
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             TaskId          = taskId,
             TenantId        = tenantId,
             Content         = content.Trim(),

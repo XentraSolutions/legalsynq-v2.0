@@ -8,10 +8,12 @@ import type {
   AvailabilitySearchParams,
   ReferralSummary,
   ReferralDetail,
+  ReferralComment,
   ReferralHistoryItem,
   ReferralNotification,
   ReferralAuditEvent,
   CreateReferralRequest,
+  CreateReferralCommentRequest,
   ReferralSearchParams,
   AppointmentSummary,
   AppointmentDetail,
@@ -76,6 +78,12 @@ export const careConnectApi = {
 
     getById: (id: string) =>
       apiClient.get<ReferralDetail>(`/careconnect/api/referrals/${id}`),
+
+    getComments: (id: string) =>
+      apiClient.get<ReferralComment[]>(`/careconnect/api/referrals/${id}/comments`),
+
+    postComment: (id: string, body: CreateReferralCommentRequest) =>
+      apiClient.post<ReferralComment>(`/careconnect/api/referrals/${id}/comments`, body),
 
     /** PUT /api/referrals/{id} — update status (Accept / Decline / Cancel / etc.) */
     update: (id: string, body: { requestedService: string; urgency: string; status: string; notes?: string }) =>

@@ -15,7 +15,7 @@ No schema migrations were required. All LS-ID-TNT-001 through LS-ID-TNT-008 beha
 
 ## 2. Codebase Analysis
 
-The platform uses a .NET 8 microservices backend (Identity, CareConnect, Fund, Flow, Comms, Notifications, Documents) behind a YARP gateway, with a Next.js 15 frontend. Access enforcement is layered:
+The platform uses a .NET 10 microservices backend (Identity, CareConnect, Fund, Flow, Comms, Notifications, Documents) behind a YARP gateway, with a Next.js 15 frontend. Access enforcement is layered:
 
 - **Gateway**: JWT cookie validation on all proxied routes.
 - **BuildingBlocks**: `RequireProductAccessFilter` checks `product_codes` JWT claim; `IsTenantAdminOrAbove()` bypasses product check for TenantAdmins.

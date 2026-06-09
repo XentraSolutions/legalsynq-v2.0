@@ -37,6 +37,8 @@
  */
 
 import { NextResponse }  from 'next/server';
+import { cookies }       from 'next/headers';
+import { SESSION_COOKIE_NAME } from '@/lib/app-config';
 import {
   resolveWindow,
   totalBarsForWindow,
@@ -48,7 +50,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 const MONITORING_SOURCE = process.env.MONITORING_SOURCE ?? 'local';
-const GATEWAY_URL       = process.env.GATEWAY_URL       ?? 'http://localhost:5010';
+const GATEWAY_URL       = process.env.GATEWAY_URL       ?? 'http://127.0.0.1:5010';
 
 // ── Internal Monitoring Service shapes ────────────────────────────────────────
 
@@ -110,17 +112,17 @@ function safeLatency(val: unknown): number | null {
   return Math.round(val * 10) / 10;
 }
 
-async function fetchRollups(window: SupportedWindow): Promise<RollupsComponent[]> {
+async function fetchRollups(window: SupportedWindow, authHeader: Record<string, string>): Promise<RollupsComponent[]> {
   const url = `${GATEWAY_URL}/monitoring/monitoring/uptime/rollups?window=${window}`;
-  const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json', ...authHeader } });
   if (!res.ok) throw new Error(`Rollups returned HTTP ${res.status}`);
   const data: RollupsResponse = await res.json();
   return data.components ?? [];
 }
 
-async function fetchHistory(entityId: string, window: SupportedWindow): Promise<HistoryBucket[]> {
+async function fetchHistory(entityId: string, window: SupportedWindow, authHeader: Record<string, string>): Promise<HistoryBucket[]> {
   const url = `${GATEWAY_URL}/monitoring/monitoring/uptime/history?entityId=${entityId}&window=${window}`;
-  const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json', ...authHeader } });
   if (!res.ok) return [];
   const data: HistoryResponse = await res.json();
   return data.buckets ?? [];
@@ -141,11 +143,15 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json(empty, { headers: NO_STORE });
   }
 
+  const cookieStore  = await cookies();
+  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const authHeader: Record<string, string> = sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {};
+
   try {
-    const rollupComponents = await fetchRollups(window);
+    const rollupComponents = await fetchRollups(window, authHeader);
 
     const historyResults = await Promise.allSettled(
-      rollupComponents.map(c => fetchHistory(c.entityId, window)),
+      rollupComponents.map(c => fetchHistory(c.entityId, window, authHeader)),
     );
 
     const components: PublicUptimeComponent[] = rollupComponents.map((c, i) => {

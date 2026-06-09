@@ -8,7 +8,7 @@ namespace Comms.Tests;
 
 public class MessageAttachmentTests
 {
-    private static readonly Guid ValidDocId = Guid.NewGuid();
+    private static readonly Guid ValidDocId = Guid.CreateVersion7();
 
     private static MockDocumentServiceClient CreateDocClient(bool exists = true)
     {
@@ -93,7 +93,7 @@ public class MessageAttachmentTests
         var request = new AddMessageAttachmentRequest(ValidDocId, "test.pdf", "application/pdf");
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             service.LinkAttachmentAsync(
-                TestHelpers.TenantId, Guid.NewGuid(), conversation.Id, msg.Id, request));
+                TestHelpers.TenantId, Guid.CreateVersion7(), conversation.Id, msg.Id, request));
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public class MessageAttachmentTests
             new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<MessageAttachmentService>());
 
-        var unknownDocId = Guid.NewGuid();
+        var unknownDocId = Guid.CreateVersion7();
         var request = new AddMessageAttachmentRequest(unknownDocId, "missing.pdf", "application/pdf");
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             service.LinkAttachmentAsync(
@@ -177,9 +177,9 @@ public class MessageAttachmentTests
         await messageRepo.AddAsync(msg);
 
         var wrongTenantClient = new MockDocumentServiceClient();
-        var wrongTenantDocId = Guid.NewGuid();
+        var wrongTenantDocId = Guid.CreateVersion7();
         wrongTenantClient.SetResult(wrongTenantDocId,
-            new DocumentValidationResult(true, Guid.NewGuid()));
+            new DocumentValidationResult(true, Guid.CreateVersion7()));
 
         var service = new MessageAttachmentService(
             TestHelpers.CreateAttachmentRepo(db),
@@ -209,7 +209,7 @@ public class MessageAttachmentTests
             conversation.Id, TestHelpers.UserId1, ParticipantType.InternalUser);
         await participantRepo.AddAsync(internalParticipant);
 
-        var externalUserId = Guid.NewGuid();
+        var externalUserId = Guid.CreateVersion7();
         var externalParticipant = TestHelpers.CreateTestParticipant(
             conversation.Id, externalUserId, ParticipantType.ExternalContact,
             externalName: "External", externalEmail: "ext@test.com");
@@ -255,7 +255,7 @@ public class MessageAttachmentTests
         var msg = TestHelpers.CreateTestMessage(conversation.Id);
         await messageRepo.AddAsync(msg);
 
-        var nullTenantDocId = Guid.NewGuid();
+        var nullTenantDocId = Guid.CreateVersion7();
         var nullTenantClient = new MockDocumentServiceClient();
         nullTenantClient.SetResult(nullTenantDocId, new DocumentValidationResult(true, null));
 
@@ -288,7 +288,7 @@ public class MessageAttachmentTests
             conversation.Id, TestHelpers.UserId1, ParticipantType.InternalUser);
         await participantRepo.AddAsync(internalParticipant);
 
-        var externalUserId = Guid.NewGuid();
+        var externalUserId = Guid.CreateVersion7();
         var externalParticipant = TestHelpers.CreateTestParticipant(
             conversation.Id, externalUserId, ParticipantType.ExternalContact,
             externalName: "External", externalEmail: "ext@test.com");

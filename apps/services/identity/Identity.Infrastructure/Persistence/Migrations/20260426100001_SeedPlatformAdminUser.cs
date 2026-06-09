@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -19,6 +21,7 @@ namespace Identity.Infrastructure.Persistence.Migrations;
 /// BCrypt hash (workFactor=12, BCrypt.Net-Next, $2a$ prefix):
 ///   $2a$12$/wvZFZf.T4qlqcaD9gn5GOKmjvXHCbr3/wUXu4wtRwLzj4W4XXA2a
 /// </summary>
+[DbContext(typeof(IdentityDbContext))]
 [Migration("20260426100001_SeedPlatformAdminUser")]
 public partial class SeedPlatformAdminUser : Migration
 {
@@ -37,12 +40,12 @@ public partial class SeedPlatformAdminUser : Migration
 INSERT IGNORE INTO `idt_Users`
     (`Id`, `TenantId`, `Email`, `PasswordHash`,
      `FirstName`, `LastName`, `IsActive`,
-     `IsLocked`, `FailedLoginCount`, `UserType`,
+     `IsLocked`, `UserType`,
      `CreatedAtUtc`, `UpdatedAtUtc`)
 VALUES (
     '{UserId}', '{TenantId}',
     'admin@legalsynq.com', '{PasswordHash}',
-    'Platform', 'Admin', 1, 0, 0, 'PlatformInternal',
+    'Platform', 'Admin', 1, 0, 'PlatformInternal',
     '2024-01-01 00:00:00', '2024-01-01 00:00:00'
 );");
 

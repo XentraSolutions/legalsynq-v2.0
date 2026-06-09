@@ -98,7 +98,7 @@ public static class SmsGovernanceEndpoints
 
             var policy = new SmsGovernancePolicy
             {
-                Id                       = Guid.NewGuid(),
+                Id                       = Guid.CreateVersion7(),
                 TenantId                 = req.TenantId,
                 Name                     = req.Name,
                 PolicyType               = req.PolicyType,

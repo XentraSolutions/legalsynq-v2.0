@@ -14,7 +14,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsGovernanceRuleVersion
 {
-    public Guid    Id                { get; set; } = Guid.NewGuid();
+    public Guid    Id                { get; set; } = Guid.CreateVersion7();
     public Guid    RuleId            { get; set; }
 
     /// <summary>Denormalised for efficient pack-level version history queries.</summary>

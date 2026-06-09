@@ -22,7 +22,7 @@ public class NotificationAttemptRepository : INotificationAttemptRepository
 
     public async Task<NotificationAttempt> CreateAsync(NotificationAttempt attempt)
     {
-        attempt.Id = attempt.Id == Guid.Empty ? Guid.NewGuid() : attempt.Id;
+        attempt.Id = attempt.Id == Guid.Empty ? Guid.CreateVersion7() : attempt.Id;
         attempt.CreatedAt = DateTime.UtcNow;
         attempt.UpdatedAt = DateTime.UtcNow;
         _db.NotificationAttempts.Add(attempt);

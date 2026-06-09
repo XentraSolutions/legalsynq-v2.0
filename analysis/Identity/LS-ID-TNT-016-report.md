@@ -73,7 +73,7 @@ PENDING ──IsExpired()──► (treated as expired, returns 400 at acceptanc
 ```
 
 ### Token security
-- Raw token: `Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N")` (64 hex chars, 256 bits entropy)
+- Raw token: `Guid.CreateVersion7().ToString("N") + Guid.CreateVersion7().ToString("N")` (64 hex chars, 256 bits entropy)
 - Stored: `SHA-256(UTF-8(rawToken))` as uppercase hex
 - Transmitted: raw token only (in email link or dev API response)
 - Lookup: re-hash on acceptance, compare with stored hash — no timing risk (comparison is DB lookup by indexed column)
@@ -93,7 +93,7 @@ Request fields sent:
 - `productKey` = `"identity"`
 - `eventKey` = `"identity.user.invite.sent"`
 - `sourceSystem` = `"identity-service"`
-- `idempotencyKey` = `Guid.NewGuid().ToString("N")` (per-send unique key)
+- `idempotencyKey` = `Guid.CreateVersion7().ToString("N")` (per-send unique key)
 - `recipient.email` = invitee address
 - `recipient.tenantId` = tenant UUID
 - `message` = `{ type, subject, body: <inline HTML> }`

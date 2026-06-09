@@ -11,7 +11,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsGovernanceRuleMatchMetric
 {
-    public Guid     Id              { get; set; } = Guid.NewGuid();
+    public Guid     Id              { get; set; } = Guid.CreateVersion7();
 
     /// <summary>null for pack-level-only records.</summary>
     public Guid?    RuleId          { get; set; }

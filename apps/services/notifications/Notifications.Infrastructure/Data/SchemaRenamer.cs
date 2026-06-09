@@ -311,7 +311,7 @@ public static class SchemaRenamer
         }
         finally
         {
-            await connection.CloseAsync();
+            await db.Database.CloseConnectionAsync();
         }
     }
 

@@ -1,4 +1,5 @@
 using System.Text;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Documents.Api.Background;
 using Documents.Api.Endpoints;
 using Documents.Api.Middleware;
@@ -67,7 +68,7 @@ builder.Services
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
                 ValidateIssuer           = issuer is not null,
                 ValidIssuer              = issuer,
                 ValidateAudience         = audience is not null,
@@ -338,9 +339,12 @@ static async Task HealLogoPublicationAsync(DocsDbContext db, Microsoft.Extension
     var logoDocTypeId = Guid.Parse("20000000-0000-0000-0000-000000000002");
 
     // Eligible scan statuses: always include Clean; include Skipped when scan not required.
+    // Use List<T> (not array) — in .NET 10, EF Core's ParameterExtractingExpressionVisitor
+    // resolves array.Contains to a ReadOnlySpan<T> overload which is a ref struct and
+    // cannot be used as a generic type argument, causing a crash at startup.
     var eligibleStatuses = requireCleanScan
-        ? new[] { ScanStatus.Clean }
-        : new[] { ScanStatus.Clean, ScanStatus.Skipped };
+        ? new List<ScanStatus> { ScanStatus.Clean }
+        : new List<ScanStatus> { ScanStatus.Clean, ScanStatus.Skipped };
 
     // Tenants that have at least one eligible logo but none currently published
     var tenantsNeedingHeal = await db.Documents

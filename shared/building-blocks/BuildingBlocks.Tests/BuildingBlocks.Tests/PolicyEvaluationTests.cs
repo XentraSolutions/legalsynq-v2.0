@@ -146,7 +146,7 @@ public class PolicyRuleDomainTests
     [Fact]
     public void PolicyRuleCreate_ValidInputs_CreatesRule()
     {
-        var policyId = Guid.NewGuid();
+        var policyId = Guid.CreateVersion7();
 
         var rule = PolicyRule.Create(
             policyId,
@@ -168,27 +168,27 @@ public class PolicyRuleDomainTests
     public void PolicyRuleCreate_UnsupportedField_Throws()
     {
         Assert.Throws<ArgumentException>(() =>
-            PolicyRule.Create(Guid.NewGuid(), PolicyConditionType.Attribute, "unknown_field", RuleOperator.Equals, "val"));
+            PolicyRule.Create(Guid.CreateVersion7(), PolicyConditionType.Attribute, "unknown_field", RuleOperator.Equals, "val"));
     }
 
     [Fact]
     public void PolicyRuleCreate_NumericOperatorOnNonNumericField_Throws()
     {
         Assert.Throws<ArgumentException>(() =>
-            PolicyRule.Create(Guid.NewGuid(), PolicyConditionType.Attribute, "region", RuleOperator.GreaterThan, "5"));
+            PolicyRule.Create(Guid.CreateVersion7(), PolicyConditionType.Attribute, "region", RuleOperator.GreaterThan, "5"));
     }
 
     [Fact]
     public void PolicyRuleCreate_NumericOperatorOnAmountField_Succeeds()
     {
-        var rule = PolicyRule.Create(Guid.NewGuid(), PolicyConditionType.Attribute, "amount", RuleOperator.GreaterThan, "100");
+        var rule = PolicyRule.Create(Guid.CreateVersion7(), PolicyConditionType.Attribute, "amount", RuleOperator.GreaterThan, "100");
         Assert.Equal(RuleOperator.GreaterThan, rule.Operator);
     }
 
     [Fact]
     public void PolicyRuleCreate_NumericOperatorOnTimeField_Succeeds()
     {
-        var rule = PolicyRule.Create(Guid.NewGuid(), PolicyConditionType.Attribute, "time", RuleOperator.LessThan, "1700000000");
+        var rule = PolicyRule.Create(Guid.CreateVersion7(), PolicyConditionType.Attribute, "time", RuleOperator.LessThan, "1700000000");
         Assert.Equal(RuleOperator.LessThan, rule.Operator);
     }
 
@@ -196,13 +196,13 @@ public class PolicyRuleDomainTests
     public void PolicyRuleCreate_EmptyValue_Throws()
     {
         Assert.Throws<ArgumentException>(() =>
-            PolicyRule.Create(Guid.NewGuid(), PolicyConditionType.Attribute, "amount", RuleOperator.Equals, ""));
+            PolicyRule.Create(Guid.CreateVersion7(), PolicyConditionType.Attribute, "amount", RuleOperator.Equals, ""));
     }
 
     [Fact]
     public void PolicyRuleUpdate_InvalidField_Throws()
     {
-        var rule = PolicyRule.Create(Guid.NewGuid(), PolicyConditionType.Attribute, "amount", RuleOperator.Equals, "100");
+        var rule = PolicyRule.Create(Guid.CreateVersion7(), PolicyConditionType.Attribute, "amount", RuleOperator.Equals, "100");
         Assert.Throws<ArgumentException>(() =>
             rule.Update(PolicyConditionType.Attribute, "bad_field", RuleOperator.Equals, "100", LogicalGroupType.And));
     }
@@ -210,7 +210,7 @@ public class PolicyRuleDomainTests
     [Fact]
     public void PolicyRuleUpdate_NumericOperatorOnNonNumericField_Throws()
     {
-        var rule = PolicyRule.Create(Guid.NewGuid(), PolicyConditionType.Attribute, "amount", RuleOperator.Equals, "100");
+        var rule = PolicyRule.Create(Guid.CreateVersion7(), PolicyConditionType.Attribute, "amount", RuleOperator.Equals, "100");
         Assert.Throws<ArgumentException>(() =>
             rule.Update(PolicyConditionType.Attribute, "region", RuleOperator.GreaterThan, "5", LogicalGroupType.And));
     }
@@ -233,7 +233,7 @@ public class PermissionPolicyDomainTests
     [Fact]
     public void PermissionPolicyCreate_ValidInputs_Creates()
     {
-        var policyId = Guid.NewGuid();
+        var policyId = Guid.CreateVersion7();
         var pp = PermissionPolicy.Create("SYNQ_FUND.application:approve", policyId);
 
         Assert.Equal("SYNQ_FUND.application:approve", pp.PermissionCode);
@@ -245,7 +245,7 @@ public class PermissionPolicyDomainTests
     public void PermissionPolicyCreate_EmptyPermissionCode_Throws()
     {
         Assert.Throws<ArgumentException>(() =>
-            PermissionPolicy.Create("", Guid.NewGuid()));
+            PermissionPolicy.Create("", Guid.CreateVersion7()));
     }
 
     [Fact]
@@ -258,7 +258,7 @@ public class PermissionPolicyDomainTests
     [Fact]
     public void PermissionPolicyDeactivate_SetsInactive()
     {
-        var pp = PermissionPolicy.Create("SYNQ_FUND.application:approve", Guid.NewGuid());
+        var pp = PermissionPolicy.Create("SYNQ_FUND.application:approve", Guid.CreateVersion7());
         Assert.True(pp.IsActive);
 
         pp.Deactivate();
@@ -766,7 +766,7 @@ public class ResourceHashingTests
     [Fact]
     public void Hash_IsFixedLength()
     {
-        var ctx = new Dictionary<string, object?> { ["amount"] = "50000", ["region"] = "US-EAST-1", ["orgId"] = Guid.NewGuid().ToString() };
+        var ctx = new Dictionary<string, object?> { ["amount"] = "50000", ["region"] = "US-EAST-1", ["orgId"] = Guid.CreateVersion7().ToString() };
         var hash = PolicyEvaluationService.ComputeResourceHash(ctx);
 
         Assert.Equal(19, hash.Length); // "v1:" (3) + 16 hex chars
@@ -1212,7 +1212,7 @@ public class PerformanceTests
         {
             ["region"] = "US-EAST-1",
             ["amount"] = "50000",
-            ["orgId"] = Guid.NewGuid().ToString(),
+            ["orgId"] = Guid.CreateVersion7().ToString(),
             ["role"] = "admin",
             ["department"] = "engineering",
         };

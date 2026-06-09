@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -24,11 +26,25 @@ namespace Identity.Infrastructure.Persistence.Migrations;
 ///   - EligibleOrgType was nulled out in migration 20260330200001 before column drop.
 ///   - AuthService no longer reads EligibleOrgType after this code change.
 /// </summary>
+[DbContext(typeof(IdentityDbContext))]
 [Migration("20260330200003_PhaseFRetirement_DropEligibleOrgTypeColumn")]
 public partial class PhaseFRetirement_DropEligibleOrgTypeColumn : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
+        // MySQL may be using the old composite index to satisfy the ProductId FK.
+        // Create a dedicated ProductId index first so the obsolete composite index
+        // can be removed safely.
+        migrationBuilder.Sql(@"
+SET @db = DATABASE();
+SET @ix = IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+              WHERE TABLE_SCHEMA = @db
+              AND   TABLE_NAME  = 'ProductRoles'
+              AND   INDEX_NAME  = 'IX_ProductRoles_ProductId') = 0,
+    'CREATE INDEX `IX_ProductRoles_ProductId` ON `ProductRoles` (`ProductId`)',
+    'SELECT 1');
+PREPARE stmt FROM @ix; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
+
         // Drop the composite index before dropping the column.
         migrationBuilder.Sql(@"
 SET @db = DATABASE();
@@ -42,8 +58,14 @@ PREPARE stmt FROM @ix; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
         // Drop the column itself.
         migrationBuilder.Sql(@"
-ALTER TABLE `ProductRoles`
-    DROP COLUMN IF EXISTS `EligibleOrgType`;");
+SET @db = DATABASE();
+SET @col = IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+               WHERE TABLE_SCHEMA = @db
+               AND   TABLE_NAME  = 'ProductRoles'
+               AND   COLUMN_NAME = 'EligibleOrgType') > 0,
+    'ALTER TABLE `ProductRoles` DROP COLUMN `EligibleOrgType`',
+    'SELECT 1');
+PREPARE stmt FROM @col; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
@@ -60,6 +82,16 @@ SET @ix = IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
               AND   TABLE_NAME  = 'ProductRoles'
               AND   INDEX_NAME  = 'IX_ProductRoles_ProductId_EligibleOrgType') = 0,
     'CREATE INDEX `IX_ProductRoles_ProductId_EligibleOrgType` ON `ProductRoles` (`ProductId`, `EligibleOrgType`)',
+    'SELECT 1');
+PREPARE stmt FROM @ix; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
+
+        migrationBuilder.Sql(@"
+SET @db = DATABASE();
+SET @ix = IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+              WHERE TABLE_SCHEMA = @db
+              AND   TABLE_NAME  = 'ProductRoles'
+              AND   INDEX_NAME  = 'IX_ProductRoles_ProductId') > 0,
+    'DROP INDEX `IX_ProductRoles_ProductId` ON `ProductRoles`',
     'SELECT 1');
 PREPARE stmt FROM @ix; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
     }

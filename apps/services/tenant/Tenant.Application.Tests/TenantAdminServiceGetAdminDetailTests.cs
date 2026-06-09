@@ -1,5 +1,8 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using BuildingBlocks.Commerce;
+using Contracts.Commerce;
+using Microsoft.Extensions.Logging.Abstractions;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Application.Services;
@@ -40,7 +43,9 @@ public class TenantAdminServiceGetAdminDetailTests
             capabilityRepo       ?? new StubCapabilityRepository(),
             settingRepo          ?? new StubSettingRepository(),
             identityCompat       ?? new StubIdentityCompatAdapter(),
-            identityProvisioning ?? new StubIdentityProvisioningAdapter());
+            identityProvisioning ?? new StubIdentityProvisioningAdapter(),
+            new StubCommerceLifecycleNotifier(),
+            NullLogger<TenantAdminService>.Instance);
     }
 
     // ── Tests ─────────────────────────────────────────────────────────────────
@@ -50,7 +55,7 @@ public class TenantAdminServiceGetAdminDetailTests
     {
         var svc = BuildService(tenantRepo: new StubTenantRepository(tenant: null));
 
-        var result = await svc.GetAdminDetailAsync(Guid.NewGuid());
+        var result = await svc.GetAdminDetailAsync(Guid.CreateVersion7());
 
         Assert.Null(result);
     }
@@ -87,7 +92,7 @@ public class TenantAdminServiceGetAdminDetailTests
         branding.Update(
             brandName:      "Acme Brand",
             primaryColor:   "#001122",
-            logoDocumentId: Guid.NewGuid());
+            logoDocumentId: Guid.CreateVersion7());
 
         var svc    = BuildService(
             tenantRepo:   new StubTenantRepository(tenant),
@@ -117,12 +122,12 @@ public class TenantAdminServiceGetAdminDetailTests
     [Fact]
     public async Task GetAdminDetailAsync_LogoFallsBackToTenant_WhenBrandingHasNoLogoOverride()
     {
-        var logoId  = Guid.NewGuid();
-        var wLogoId = Guid.NewGuid();
+        var logoId  = Guid.CreateVersion7();
+        var wLogoId = Guid.CreateVersion7();
 
         // Tenant has logos but branding record does not override them
         var tenant = Domain.Tenant.Rehydrate(
-            id:                 Guid.NewGuid(),
+            id:                 Guid.CreateVersion7(),
             code:               "acme",
             displayName:        "Acme Corp",
             status:             TenantStatus.Active,
@@ -144,7 +149,7 @@ public class TenantAdminServiceGetAdminDetailTests
     [Fact]
     public async Task GetAdminDetailAsync_LogoUsedFromBranding_WhenBrandingHasLogoOverride()
     {
-        var brandingLogoId = Guid.NewGuid();
+        var brandingLogoId = Guid.CreateVersion7();
         var tenant         = Domain.Tenant.Create(code: "acme", displayName: "Acme Corp");
         var branding       = TenantBranding.Create(tenant.Id);
         branding.Update(logoDocumentId: brandingLogoId);
@@ -325,11 +330,11 @@ public class TenantAdminServiceGetAdminDetailTests
     [Fact]
     public async Task GetAdminDetailAsync_AllSubDataIsAssembled_InSingleCall()
     {
-        var logoId      = Guid.NewGuid();
+        var logoId      = Guid.CreateVersion7();
         var enabledFrom = new DateTime(2024, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
         var tenant = Domain.Tenant.Rehydrate(
-            id:                  Guid.NewGuid(),
+            id:                  Guid.CreateVersion7(),
             code:                "full",
             displayName:         "Full Tenant",
             status:              TenantStatus.Active,
@@ -541,6 +546,9 @@ public class TenantAdminServiceGetAdminDetailTests
 
         public Task<bool> SetSessionTimeoutAsync(Guid tenantId, int? sessionTimeoutMinutes, CancellationToken ct = default)
             => Task.FromResult(true);
+
+        public Task<bool> SetTenantProductEntitlementAsync(Guid tenantId, string productCode, bool enabled, CancellationToken ct = default)
+            => Task.FromResult(true);
     }
 
     // ── Setting helper — bypasses key-dot validation for test keys ────────────
@@ -560,7 +568,7 @@ public class TenantAdminServiceGetAdminDetailTests
                 .GetProperty(name, BindingFlags.Public | BindingFlags.Instance)!
                 .SetValue(setting, v);
 
-        Set(nameof(TenantSetting.Id),           Guid.NewGuid());
+        Set(nameof(TenantSetting.Id),           Guid.CreateVersion7());
         Set(nameof(TenantSetting.TenantId),     tenantId);
         Set(nameof(TenantSetting.SettingKey),   key);
         Set(nameof(TenantSetting.SettingValue), value);
@@ -748,6 +756,9 @@ public class TenantAdminServiceGetAdminDetailTests
 
         public Task<bool> SetSessionTimeoutAsync(Guid tenantId, int? sessionTimeoutMinutes, CancellationToken ct = default)
             => Task.FromResult(true);
+
+        public Task<bool> SetTenantProductEntitlementAsync(Guid tenantId, string productCode, bool enabled, CancellationToken ct = default)
+            => Task.FromResult(true);
     }
 
     private sealed class StubIdentityProvisioningAdapter : IIdentityProvisioningAdapter
@@ -763,5 +774,11 @@ public class TenantAdminServiceGetAdminDetailTests
 
         public Task<ProvisioningRetryResult> RetryVerificationAsync(Guid tenantId, CancellationToken ct = default)
             => Task.FromResult(new ProvisioningRetryResult(false, "Unknown", null, null, null));
+    }
+
+    private sealed class StubCommerceLifecycleNotifier : ICommerceLifecycleNotifier
+    {
+        public Task NotifyAsync(CommerceLifecycleEvent ev, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 }

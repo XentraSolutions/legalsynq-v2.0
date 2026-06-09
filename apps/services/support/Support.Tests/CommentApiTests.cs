@@ -56,7 +56,7 @@ public class CommentApiTests : IClassFixture<SupportApiFactory>
     public async Task Add_Comment_Fails_If_Ticket_Not_Found()
     {
         var a = ClientForTenant("tenant-CMT-B");
-        var resp = await a.PostAsJsonAsync($"/support/api/tickets/{Guid.NewGuid()}/comments",
+        var resp = await a.PostAsJsonAsync($"/support/api/tickets/{Guid.CreateVersion7()}/comments",
             new CreateCommentRequest { Body = "x" });
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

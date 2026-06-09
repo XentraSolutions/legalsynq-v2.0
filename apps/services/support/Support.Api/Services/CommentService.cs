@@ -119,7 +119,7 @@ public class CommentService : ICommentService
 
         var comment = new SupportTicketComment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TicketId = ticketId,
             TenantId = tenantId,
             CommentType = req.CommentType ?? CommentType.CustomerReply,
@@ -422,7 +422,7 @@ public class CommentService : ICommentService
 
         var comment = new SupportTicketComment
         {
-            Id          = Guid.NewGuid(),
+            Id          = Guid.CreateVersion7(),
             TicketId    = ticketId,
             TenantId    = tenantId,
             CommentType = CommentType.CustomerReply,

@@ -2,7 +2,7 @@ namespace Support.Api.Domain;
 
 public class SupportTicket
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid Id { get; set; } = Guid.CreateVersion7();
     public string TenantId { get; set; } = default!;
     public string? ProductCode { get; set; }
     public string TicketNumber { get; set; } = default!;

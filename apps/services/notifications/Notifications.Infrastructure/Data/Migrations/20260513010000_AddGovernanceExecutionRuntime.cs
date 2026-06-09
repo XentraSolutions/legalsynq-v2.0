@@ -1,11 +1,16 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
 namespace Notifications.Infrastructure.Data.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260513010000_AddGovernanceExecutionRuntime")]
     public partial class AddGovernanceExecutionRuntime : Migration
     {
         /// <inheritdoc />

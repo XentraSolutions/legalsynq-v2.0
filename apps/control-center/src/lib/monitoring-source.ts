@@ -15,8 +15,10 @@
  * instead of deriving a summary from entity registry data.
  */
 
+import { cookies } from 'next/headers';
 import { listServices, type ServiceDef } from '@/lib/system-health-store';
 import { CONTROL_CENTER_API_BASE } from '@/lib/env';
+import { SESSION_COOKIE_NAME } from '@/lib/app-config';
 import type {
   MonitoringSummary,
   MonitoringStatus,
@@ -188,6 +190,16 @@ async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
   // is the actual service path.
   const url = `${gatewayBase}/monitoring/monitoring/summary`;
 
+  // Forward the session cookie as a Bearer token so the gateway can
+  // authenticate this server-side call. If no session is present (e.g.
+  // the public /status page) the token header is omitted and the gateway
+  // will return 401, which triggers the local fallback below.
+  const cookieStore  = await cookies();
+  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const authHeaders: Record<string, string> = sessionToken
+    ? { 'Authorization': `Bearer ${sessionToken}` }
+    : {};
+
   const controller = new AbortController();
   const timeout    = setTimeout(() => controller.abort(), 10_000);
 
@@ -195,7 +207,7 @@ async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
   try {
     res = await fetch(url, {
       cache:   'no-store',
-      headers: { 'Accept': 'application/json' },
+      headers: { 'Accept': 'application/json', ...authHeaders },
       signal:  controller.signal,
     });
   } catch (err) {
@@ -265,6 +277,7 @@ export async function getMonitoringSummary(): Promise<MonitoringSummary> {
       // fall back to the local probe engine so monitoring is still available.
       const msg = err instanceof Error ? err.message : String(err);
       const isServiceUnavailable =
+        msg.includes('401') ||
         msg.includes('502') ||
         msg.includes('503') ||
         msg.includes('network error') ||

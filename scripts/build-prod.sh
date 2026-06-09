@@ -117,7 +117,7 @@ rm -rf .next
 # Remove stray app-level lockfile so Next.js sees only the workspace-root
 # pnpm-lock.yaml and does not over-trace files or emit a workspace-root warning.
 rm -f "$ROOT/apps/web/pnpm-lock.yaml"
-NODE_OPTIONS="--max-old-space-size=2048" NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" build
+NODE_OPTIONS="--max-old-space-size=2048" NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" build --webpack
 
 echo "====== Building control center ======"
 # Deduplicate React: control-center has its own node_modules/react which creates
@@ -149,7 +149,7 @@ if [ ! -f "$CC_NEXT_BIN" ]; then
   CC_NEXT_BIN="$NEXT_BIN"
 fi
 echo "[control-center] Using next binary: $CC_NEXT_BIN"
-NODE_OPTIONS="--max-old-space-size=512" node "$CC_NEXT_BIN" build
+NODE_OPTIONS="--max-old-space-size=512" node "$CC_NEXT_BIN" build --webpack
 
 echo "====== Building .NET services ======"
 cd "$ROOT"
@@ -177,17 +177,21 @@ if command -v dotnet &>/dev/null; then
   dotnet restore "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" --verbosity minimal 2>&1 || true
 
   build_service "Gateway"       "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
+  build_service "Monitoring"    "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj"
+  build_service "Commerce"      "$ROOT/apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj"
+  build_service "Billing"       "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj"
+  build_service "Tenant"        "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj"
+  build_service "Reports"       "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj"
+  build_service "Task"          "$ROOT/apps/services/task/Task.Api/Task.Api.csproj"
+  build_service "Flow API"      "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
   build_service "Identity"      "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
   build_service "Fund"          "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
   build_service "CareConnect"   "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
-  build_service "Documents"     "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
-  build_service "Audit"         "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
-  build_service "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
   build_service "Liens"         "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj"
-  build_service "Flow API"      "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
-  build_service "Monitoring"    "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj"
-  build_service "Task"          "$ROOT/apps/services/task/Task.Api/Task.Api.csproj"
-  build_service "Tenant"        "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj"
+  build_service "Audit"         "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
+  build_service "Documents"     "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
+  build_service "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
+  build_service "Comms"         "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj"
   build_service "Support"       "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
 
   if [ "$DOTNET_FAIL" -gt 0 ]; then

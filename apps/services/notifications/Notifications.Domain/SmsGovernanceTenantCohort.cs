@@ -12,7 +12,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsGovernanceTenantCohort
 {
-    public Guid   Id             { get; set; } = Guid.NewGuid();
+    public Guid   Id             { get; set; } = Guid.CreateVersion7();
     public Guid   RolloutPlanId  { get; set; }
 
     /// <summary>Null = cohort applies to all stages of the rollout; non-null = stage-specific targeting.</summary>

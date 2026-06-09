@@ -78,7 +78,7 @@ Rather than maintaining a mapping table between Liens task IDs and Task service 
 
 ```csharp
 // Task.Domain — PlatformTask factory
-Id = externalId ?? Guid.NewGuid()
+Id = externalId ?? Guid.CreateVersion7()
 ```
 
 Consequences:

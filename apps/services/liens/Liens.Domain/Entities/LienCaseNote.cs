@@ -41,7 +41,7 @@ public class LienCaseNote
 
         return new LienCaseNote
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             CaseId          = caseId,
             TenantId        = tenantId,
             Content         = content.Trim(),

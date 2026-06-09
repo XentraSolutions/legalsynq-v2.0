@@ -1,3 +1,5 @@
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Exceptions;
 using CareConnect.Application.Cache;
 using CareConnect.Application.DTOs;
@@ -73,9 +75,9 @@ public static class PublicNetworkEndpoints
                 });
 
             return Results.Ok(summaries);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
-        // ── GET /api/public/network/{id}/providers ──────────────────────────
+        // ── GET /api/public/network/{id}/providers ─────────────────────────
         group.MapGet("/{id:guid}/providers", async (
             Guid               id,
             HttpContext         http,
@@ -111,7 +113,7 @@ public static class PublicNetworkEndpoints
                 });
 
             return items == null ? Results.NotFound() : Results.Ok(items);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/network/{id}/providers/markers ──────────────────
         group.MapGet("/{id:guid}/providers/markers", async (
@@ -152,7 +154,7 @@ public static class PublicNetworkEndpoints
                 });
 
             return markers == null ? Results.NotFound() : Results.Ok(markers);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/network/{id}/detail ────────────────────────────
         group.MapGet("/{id:guid}/detail", async (
@@ -207,7 +209,7 @@ public static class PublicNetworkEndpoints
                 });
 
             return detail == null ? Results.NotFound() : Results.Ok(detail);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/treatment-types ────────────────────────────────
         // Returns the platform-wide treatment type lookup list.
@@ -239,9 +241,15 @@ public static class PublicNetworkEndpoints
                 await using var reader = await cmd.ExecuteReaderAsync(ct);
                 while (await reader.ReadAsync(ct))
                 {
+                    var treatmentTypeId = reader.GetValue(0) switch
+                    {
+                        Guid guidId => guidId.ToString(),
+                        _ => reader.GetString(0),
+                    };
+
                     result.Add(new
                     {
-                        id           = reader.GetString(0),
+                        id           = treatmentTypeId,
                         name         = reader.GetString(1),
                         category     = reader.IsDBNull(2) ? null : reader.GetString(2),
                         displayOrder = reader.GetInt32(3),
@@ -256,7 +264,7 @@ public static class PublicNetworkEndpoints
                 log.LogError(ex, "Failed to query cc_TreatmentTypes.");
                 return Results.Problem("Unable to load treatment types.");
             }
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── POST /api/public/referrals ──────────────────────────────────────
         // CC2-INT-B08 — Public referral initiation.
@@ -268,16 +276,18 @@ public static class PublicNetworkEndpoints
         //   - SendNewReferralNotificationAsync  (email + signed token for URL-stage providers)
         //   - SendProviderAssignedNotificationAsync (platform Notifications → portal visibility)
         app.MapPost("/api/public/referrals", async (
-            PublicReferralRequest req,
-            HttpContext           http,
-            IConfiguration       config,
-            IProviderRepository  providerRepo,
-            IReferralService     referralSvc,
-            ILoggerFactory       loggerFactory,
-            CancellationToken    ct) =>
+            PublicReferralRequest         req,
+            HttpContext                   http,
+            IConfiguration               config,
+            IProviderRepository          providerRepo,
+            INetworkRepository           networkRepo,
+            IReferralService             referralSvc,
+            IIdentityOrganizationService identityOrgs,
+            ILoggerFactory               loggerFactory,
+            CancellationToken            ct) =>
         {
             var logger = loggerFactory.CreateLogger("CareConnect.PublicReferrals");
-            return await HandlePublicReferral(req, http, config, providerRepo, referralSvc, logger, ct);
+            return await HandlePublicReferral(req, http, config, providerRepo, networkRepo, referralSvc, identityOrgs, logger, ct);
         })
         .AllowAnonymous()
         .RequireRateLimiting("public-referral-limit");
@@ -357,16 +367,15 @@ public static class PublicNetworkEndpoints
 
         // ── GET /api/public/referrer-status?email=xxx ────────────────────────
         // CC-PORTAL-CHECK — After a public referral is submitted, the success screen
-        // checks whether the law firm's email is already registered with an active
-        // CareConnect portal account.
+        // checks whether the law firm's email already has active portal access in
+        // this tenant.
         //
         // Response: { hasPortalAccess: bool }
         //   true  → show "Login to CareConnect to view your referrals"
-        //   false → show "Activate your free account" (default enrollment CTA)
+        //   false → show the default enrollment CTA
         //
-        // Delegates the user-record lookup to the Identity service via
-        // IIdentityOrganizationService.CheckReferrerPortalAccessAsync.
-        // Any infrastructure failure → hasPortalAccess = false (safe default).
+        // Delegates the tenant-aware user lookup to the Identity service. Any
+        // infrastructure failure → hasPortalAccess = false (safe default).
         app.MapGet("/api/public/referrer-status", async (
             string?                    email,
             HttpContext                 http,
@@ -381,25 +390,99 @@ public static class PublicNetworkEndpoints
             if (string.IsNullOrWhiteSpace(email))
                 return Results.Ok(new { hasPortalAccess = false });
 
-            var hasAccess = await identityOrgs.CheckReferrerPortalAccessAsync(email.Trim(), ct);
-            return Results.Ok(new { hasPortalAccess = hasAccess });
+            var status = await identityOrgs.GetReferrerPortalAccessStatusAsync(tenantId.Value, email.Trim(), ct);
+            return Results.Ok(new { hasPortalAccess = status == ReferrerPortalAccessStatuses.ActiveInTenant });
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("referrer-status-limit");
+
+        // ── GET /api/treatment-types (authenticated) ────────────────────────
+        // Authenticated mirror of /api/public/treatment-types — used when a portal-
+        // authenticated law firm user loads the referral form from the browse-networks view.
+        // Treatment types are platform-wide (no tenant column) so no tenant resolution needed;
+        // JWT auth is sufficient for isolation.
+        app.MapGet("/api/treatment-types", async (
+            HttpContext       http,
+            CareConnect.Infrastructure.Data.CareConnectDbContext db,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                var conn = db.Database.GetDbConnection();
+                if (conn.State != System.Data.ConnectionState.Open)
+                    await conn.OpenAsync(ct);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = """
+                    SELECT `Id`, `Name`, `Category`, `DisplayOrder`
+                    FROM `cc_TreatmentTypes`
+                    WHERE `IsActive` = 1
+                    ORDER BY `DisplayOrder` ASC, `Name` ASC
+                    """;
+                var result = new List<object>();
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    var treatmentTypeId = reader.GetValue(0) switch
+                    {
+                        Guid guidId => guidId.ToString(),
+                        _ => reader.GetString(0),
+                    };
+                    result.Add(new
+                    {
+                        id           = treatmentTypeId,
+                        name         = reader.GetString(1),
+                        category     = reader.IsDBNull(2) ? null : reader.GetString(2),
+                        displayOrder = reader.GetInt32(3),
+                    });
+                }
+                return Results.Ok(result);
+            }
+            catch (Exception ex)
+            {
+                var log = http.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("CareConnect.TreatmentTypes");
+                log.LogError(ex, "Failed to query cc_TreatmentTypes.");
+                return Results.Problem("Unable to load treatment types.");
+            }
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
     }
 
     private static async Task<IResult> HandlePublicReferral(
-        PublicReferralRequest req,
-        HttpContext           http,
-        IConfiguration       config,
-        IProviderRepository  providerRepo,
-        IReferralService     referralSvc,
-        ILogger              logger,
-        CancellationToken    ct)
+        PublicReferralRequest         req,
+        HttpContext                   http,
+        IConfiguration               config,
+        IProviderRepository          providerRepo,
+        INetworkRepository           networkRepo,
+        IReferralService             referralSvc,
+        IIdentityOrganizationService identityOrgs,
+        ILogger                      logger,
+        CancellationToken            ct)
     {
             var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
+
+            // CC-OWNER-CHECK: Block tenant owners from submitting referrals.
+            // The network operator (tenant owner) is not a valid referrer.
+            if (!string.IsNullOrWhiteSpace(req.SenderEmail))
+            {
+                var isOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(
+                    req.SenderEmail.Trim(), ct);
+                if (isOwner)
+                {
+                    logger.LogWarning(
+                        "Public referral rejected: sender email belongs to a tenant owner (tenantContext={TenantId}).",
+                        tenantId.Value);
+                    return Results.Conflict(new
+                    {
+                        message = "The email address used is associated with the account that owns this network and cannot be used to submit referrals.",
+                        code    = "OWNER_REFERRAL_BLOCKED",
+                    });
+                }
+            }
 
             // Input validation
             var errors = ValidatePublicReferralRequest(req);
@@ -420,6 +503,26 @@ public static class PublicNetworkEndpoints
                 {
                     message = "This provider is not currently accepting referrals."
                 });
+
+            // CC2-SEC-01: Public referral network binding.
+            // The submitted ProviderId must belong to at least one network published by this
+            // tenant's public directory. This prevents an attacker from submitting a referral
+            // to an arbitrary provider from any other tenant by replaying a foreign provider UUID
+            // against a different tenant's public endpoint (cross-tenant provider injection).
+            // Treat any membership failure as NotFound — consistent with provider-not-found so
+            // enumeration of foreign provider IDs across tenants is not possible.
+            bool providerInTenantNetwork;
+            try { providerInTenantNetwork = await networkRepo.IsProviderInTenantNetworkAsync(tenantId.Value, req.ProviderId, ct); }
+            catch { providerInTenantNetwork = false; }
+
+            if (!providerInTenantNetwork)
+            {
+                logger.LogWarning(
+                    "Public referral rejected: provider {ProviderId} is not in any network for tenant {TenantId}. " +
+                    "Possible cross-tenant provider injection attempt.",
+                    req.ProviderId, tenantId.Value);
+                return Results.NotFound(new { message = "Provider not found." });
+            }
 
             // Map to the internal CreateReferralRequest.
             // ReferrerName/ReferrerEmail drive the signed-token email notification flow.

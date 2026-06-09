@@ -17,7 +17,7 @@ public class ProviderActivationTests
     private static Provider BuildProvider(bool isActive, bool acceptingReferrals)
     {
         var p = Provider.Create(
-            tenantId:           Guid.NewGuid(),
+            tenantId:           Guid.CreateVersion7(),
             name:               "Test Provider",
             organizationName:   null,
             email:              "test@example.com",

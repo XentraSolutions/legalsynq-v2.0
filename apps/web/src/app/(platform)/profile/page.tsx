@@ -1,6 +1,9 @@
+import { headers } from 'next/headers';
 import { requireOrg } from '@/lib/auth-guards';
 import { AvatarUpload } from '@/components/avatar/AvatarUpload';
 import { PhoneEditor } from '@/components/profile/PhoneEditor';
+import { CopyableValue } from '@/components/profile/CopyableValue';
+import { getServerPortalConfig } from '@/lib/portal';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +15,10 @@ export const dynamic = 'force-dynamic';
  * Data:   derived entirely from the server-validated session envelope.
  */
 export default async function ProfilePage() {
+  const hdrs = await headers();
+  const rawHost = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '';
+  const portalConfig = getServerPortalConfig(rawHost);
+  const isCareConnectPortal = portalConfig?.productId === 'careconnect';
   const session = await requireOrg();
 
   const initials = (session.orgName?.slice(0, 2) ?? session.email?.slice(0, 2) ?? '??').toUpperCase();
@@ -76,11 +83,29 @@ export default async function ProfilePage() {
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
               <InfoRow label="Email" value={session.email} mono />
               <PhoneEditor phone={session.phone} />
-              <InfoRow label="Organisation" value={session.orgName ?? '—'} />
-              <InfoRow label="Org type" value={session.orgType ?? '—'} />
-              <InfoRow label="Tenant code" value={session.tenantCode} mono />
-              <InfoRow label="User ID" value={session.userId} mono truncate />
-              <InfoRow label="Tenant ID" value={session.tenantId} mono truncate />
+              <InfoRow label="Organization" value={session.orgName ?? '—'} />
+              {!isCareConnectPortal && (
+                <InfoRow label="Org type" value={session.orgType ?? '—'} />
+              )}
+              {!isCareConnectPortal && (
+                <InfoRow label="Tenant code" value={session.tenantCode} mono />
+              )}
+              <InfoRow
+                label="User ID"
+                value={session.userId}
+                mono
+                truncate
+                copyable
+              />
+              {!isCareConnectPortal && (
+                <InfoRow
+                  label="Tenant ID"
+                  value={session.tenantId}
+                  mono
+                  truncate
+                  copyable
+                />
+              )}
             </dl>
           </div>
         </div>
@@ -123,24 +148,32 @@ function InfoRow({
   value,
   mono = false,
   truncate = false,
+  copyable = false,
 }: {
   label: string;
   value: string;
   mono?: boolean;
   truncate?: boolean;
+  copyable?: boolean;
 }) {
   return (
     <div>
       <dt className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">{label}</dt>
-      <dd
-        className={[
-          'text-gray-800',
-          mono ? 'font-mono text-xs' : '',
-          truncate ? 'truncate max-w-[220px]' : '',
-        ].filter(Boolean).join(' ')}
-        title={truncate ? value : undefined}
-      >
-        {value}
+      <dd>
+        {copyable ? (
+          <CopyableValue value={value} mono={mono} truncate={truncate} />
+        ) : (
+          <span
+            className={[
+              'text-gray-800',
+              mono ? 'font-mono text-xs' : '',
+              truncate ? 'truncate max-w-[220px] block' : '',
+            ].filter(Boolean).join(' ')}
+            title={truncate ? value : undefined}
+          >
+            {value}
+          </span>
+        )}
       </dd>
     </div>
   );

@@ -41,7 +41,7 @@ public sealed class OutboxWriter : IOutboxWriter
 
         var row = new OutboxMessage
         {
-            Id                 = Guid.NewGuid(),
+            Id                 = Guid.CreateVersion7(),
             EventType          = eventType,
             WorkflowInstanceId = workflowInstanceId,
             PayloadJson        = JsonSerializer.Serialize(payload, payload.GetType(), JsonOpts),

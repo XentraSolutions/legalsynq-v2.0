@@ -12,7 +12,7 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
 
         builder.HasKey(o => o.Id);
 
-        builder.Property(o => o.TenantId).IsRequired();
+        builder.Property(o => o.TenantId).IsRequired(false);
 
         builder.Property(o => o.Name)
             .IsRequired()
@@ -40,12 +40,14 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
         builder.Property(o => o.UpdatedByUserId);
 
         builder.HasIndex(o => new { o.TenantId, o.Name }).IsUnique();
+        builder.HasIndex(o => new { o.OrgType, o.Name });
         builder.HasIndex(o => new { o.TenantId, o.OrgType });
         builder.HasIndex(o => o.OrganizationTypeId);
 
         builder.HasOne(o => o.Tenant)
             .WithMany(t => t.Organizations)
             .HasForeignKey(o => o.TenantId)
+            .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(o => o.OrganizationTypeRef)

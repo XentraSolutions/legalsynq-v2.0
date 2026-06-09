@@ -3,7 +3,7 @@ namespace Identity.Domain;
 public class Organization
 {
     public Guid Id { get; private set; }
-    public Guid TenantId { get; private set; }
+    public Guid? TenantId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string? DisplayName { get; private set; }
     public string OrgType { get; private set; } = string.Empty;
@@ -19,7 +19,7 @@ public class Organization
     public Guid? CreatedByUserId { get; private set; }
     public Guid? UpdatedByUserId { get; private set; }
 
-    public Tenant Tenant { get; private set; } = null!;
+    public Tenant? Tenant { get; private set; }
     public OrganizationType? OrganizationTypeRef { get; private set; }
     public ICollection<OrganizationDomain> Domains { get; private set; } = [];
     public ICollection<OrganizationProduct> OrganizationProducts { get; private set; } = [];
@@ -62,6 +62,13 @@ public class Organization
         Guid? createdByUserId = null)
         => Create(tenantId, name, orgType, organizationTypeId: null, displayName, createdByUserId);
 
+    public static Organization CreateGlobal(
+        string name,
+        string orgType,
+        string? displayName = null,
+        Guid? createdByUserId = null)
+        => Create(tenantId: null, name, orgType, organizationTypeId: null, displayName, createdByUserId);
+
     /// <summary>
     /// Canonical create: accepts both the string OrgType (for backward compat / JWT claims)
     /// and the new OrganizationTypeId FK (Phase 1).
@@ -69,7 +76,7 @@ public class Organization
     /// When only orgType is supplied, OrganizationTypeId is left null until a backfill resolves it.
     /// </summary>
     public static Organization Create(
-        Guid   tenantId,
+        Guid?  tenantId,
         string name,
         string orgType,
         Guid?  organizationTypeId,
@@ -90,7 +97,7 @@ public class Organization
         var now = DateTime.UtcNow;
         return new Organization
         {
-            Id                 = Guid.NewGuid(),
+            Id                 = Guid.CreateVersion7(),
             TenantId           = tenantId,
             Name               = name.Trim(),
             DisplayName        = displayName?.Trim(),

@@ -63,7 +63,7 @@ public class Message : AuditableEntity
         var now = DateTime.UtcNow;
         return new Message
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ConversationId = conversationId,
             TenantId = tenantId,
             OrgId = orgId,

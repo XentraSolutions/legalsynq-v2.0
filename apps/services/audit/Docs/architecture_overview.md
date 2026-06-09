@@ -5,7 +5,7 @@
 1. **Domain-agnostic** — no dependency on any specific product, tenant model, UI, or identity provider.
 2. **Append-only writes** — audit records are immutable. The repository interface exposes no update or delete operations.
 3. **Tamper-evident** — every record carries an HMAC-SHA256 integrity hash over its canonical fields.
-4. **Portable** — single .NET 8 project with no monorepo build coupling. Independently deployable.
+4. **Portable** — single .NET 10 project with no monorepo build coupling. Independently deployable.
 5. **Extensible** — clean interface layer between service, repository, and persistence adapter.
 
 ## Layered Structure

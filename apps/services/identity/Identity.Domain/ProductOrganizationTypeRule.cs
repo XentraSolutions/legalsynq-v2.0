@@ -30,7 +30,7 @@ public class ProductOrganizationTypeRule
     {
         return new ProductOrganizationTypeRule
         {
-            Id                 = Guid.NewGuid(),
+            Id                 = Guid.CreateVersion7(),
             ProductId          = productId,
             ProductRoleId      = productRoleId,
             OrganizationTypeId = organizationTypeId,

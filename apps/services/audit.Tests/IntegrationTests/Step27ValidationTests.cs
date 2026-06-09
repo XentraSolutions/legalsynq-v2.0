@@ -156,23 +156,23 @@ public class CorrelationIdTraceTests(AuditServiceFactory factory)
     [Fact]
     public async Task CorrelationId_SameIdAcrossThreeEvents_AllVisible()
     {
-        var correlationId = $"trace-{Guid.NewGuid():N}";
-        var tenantId      = $"tenant-trace-{Guid.NewGuid():N}";
+        var correlationId = $"trace-{Guid.CreateVersion7():N}";
+        var tenantId      = $"tenant-trace-{Guid.CreateVersion7():N}";
 
         var events = new[]
         {
             AuditRequestBuilder.MinimalValid(
                 eventType: "identity.user.login.succeeded",
                 tenantId:  tenantId,
-                idempotencyKey: $"trace-login-{Guid.NewGuid():N}"),
+                idempotencyKey: $"trace-login-{Guid.CreateVersion7():N}"),
             AuditRequestBuilder.MinimalValid(
                 eventType: "careconnect.referral.created",
                 tenantId:  tenantId,
-                idempotencyKey: $"trace-referral-{Guid.NewGuid():N}"),
+                idempotencyKey: $"trace-referral-{Guid.CreateVersion7():N}"),
             AuditRequestBuilder.MinimalValid(
                 eventType: "careconnect.appointment.scheduled",
                 tenantId:  tenantId,
-                idempotencyKey: $"trace-appt-{Guid.NewGuid():N}"),
+                idempotencyKey: $"trace-appt-{Guid.CreateVersion7():N}"),
         };
 
         // Set CorrelationId on all three events.
@@ -199,7 +199,7 @@ public class CorrelationIdTraceTests(AuditServiceFactory factory)
     public async Task CorrelationMiddleware_AutoGenerates_WhenHeaderAbsent()
     {
         var request  = AuditRequestBuilder.MinimalValid(
-            idempotencyKey: $"corr-auto-{Guid.NewGuid():N}");
+            idempotencyKey: $"corr-auto-{Guid.CreateVersion7():N}");
         var response = await _client.PostServiceJsonAsync(IngestUrl, request);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -212,12 +212,12 @@ public class CorrelationIdTraceTests(AuditServiceFactory factory)
     [Fact]
     public async Task CorrelationMiddleware_EchoesProvidedCorrelationId()
     {
-        var correlationId = $"client-provided-{Guid.NewGuid():N}";
+        var correlationId = $"client-provided-{Guid.CreateVersion7():N}";
 
         using var req = new HttpRequestMessage(HttpMethod.Post, IngestUrl);
         req.Headers.Add("X-Correlation-ID", correlationId);
         var payload   = AuditRequestBuilder.MinimalValid(
-            idempotencyKey: $"echo-corr-{Guid.NewGuid():N}");
+            idempotencyKey: $"echo-corr-{Guid.CreateVersion7():N}");
         req.Content = JsonContent.Create(payload, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
         var response = await _client.SendAsync(req);
@@ -235,7 +235,7 @@ public class CorrelationIdTraceTests(AuditServiceFactory factory)
         using var req = new HttpRequestMessage(HttpMethod.Post, IngestUrl);
         req.Headers.Add("X-Correlation-ID", oversized);
         var payload   = AuditRequestBuilder.MinimalValid(
-            idempotencyKey: $"oversized-corr-{Guid.NewGuid():N}");
+            idempotencyKey: $"oversized-corr-{Guid.CreateVersion7():N}");
         req.Content = JsonContent.Create(payload, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
         var response = await _client.SendAsync(req);
@@ -273,7 +273,7 @@ public class HashChainIntegrityTests(AuditServiceFactory factory)
     public async Task ConcurrentIngest_SameChain_AllEventsAccepted()
     {
         const int concurrency = 20;
-        var tenantId     = $"tenant-chain-{Guid.NewGuid():N}";
+        var tenantId     = $"tenant-chain-{Guid.CreateVersion7():N}";
         var sourceSystem = "integrity-test-service";
 
         var requests = Enumerable.Range(0, concurrency).Select(i =>
@@ -281,7 +281,7 @@ public class HashChainIntegrityTests(AuditServiceFactory factory)
                 eventType:      $"integrity.test.event",
                 tenantId:       tenantId,
                 sourceSystem:   sourceSystem,
-                idempotencyKey: $"chain-conc-{Guid.NewGuid():N}"))
+                idempotencyKey: $"chain-conc-{Guid.CreateVersion7():N}"))
             .ToList();
 
         // Fire all ingestions concurrently.
@@ -299,14 +299,14 @@ public class HashChainIntegrityTests(AuditServiceFactory factory)
     public async Task ConcurrentIngest_SameChain_AllEventsQueryable()
     {
         const int concurrency = 15;
-        var tenantId     = $"tenant-chain-q-{Guid.NewGuid():N}";
+        var tenantId     = $"tenant-chain-q-{Guid.CreateVersion7():N}";
         var sourceSystem = "integrity-query-service";
 
         var requests = Enumerable.Range(0, concurrency).Select(i =>
             AuditRequestBuilder.MinimalValid(
                 tenantId:       tenantId,
                 sourceSystem:   sourceSystem,
-                idempotencyKey: $"chain-q-{Guid.NewGuid():N}"))
+                idempotencyKey: $"chain-q-{Guid.CreateVersion7():N}"))
             .ToList();
 
         await Task.WhenAll(requests.Select(r => _client.PostServiceJsonAsync(IngestUrl, r)));
@@ -328,12 +328,12 @@ public class HashChainIntegrityTests(AuditServiceFactory factory)
     [Fact]
     public async Task SequentialIngest_UniqueKeys_AllAccepted()
     {
-        var tenantId = $"tenant-seq-{Guid.NewGuid():N}";
+        var tenantId = $"tenant-seq-{Guid.CreateVersion7():N}";
         for (int i = 0; i < 10; i++)
         {
             var req  = AuditRequestBuilder.MinimalValid(
                 tenantId:       tenantId,
-                idempotencyKey: $"seq-{Guid.NewGuid():N}");
+                idempotencyKey: $"seq-{Guid.CreateVersion7():N}");
             var resp = await _client.PostServiceJsonAsync(IngestUrl, req);
             resp.StatusCode.Should().Be(HttpStatusCode.Created,
                 because: $"event {i} must be accepted");
@@ -345,7 +345,7 @@ public class HashChainIntegrityTests(AuditServiceFactory factory)
     [Fact]
     public async Task DuplicateIdempotencyKey_ReturnsConflict()
     {
-        var key  = $"dup-key-{Guid.NewGuid():N}";
+        var key  = $"dup-key-{Guid.CreateVersion7():N}";
         var req1 = AuditRequestBuilder.MinimalValid(idempotencyKey: key);
         var req2 = AuditRequestBuilder.MinimalValid(idempotencyKey: key);
 
@@ -386,7 +386,7 @@ public class LoadStabilityTests(AuditServiceFactory factory)
         var requests = Enumerable.Range(0, total).Select(i =>
             AuditRequestBuilder.MinimalValid(
                 tenantId:       $"tenant-load-{i % tenants:D2}",
-                idempotencyKey: $"load-{Guid.NewGuid():N}"))
+                idempotencyKey: $"load-{Guid.CreateVersion7():N}"))
             .ToList();
 
         var results = await Task.WhenAll(
@@ -402,12 +402,12 @@ public class LoadStabilityTests(AuditServiceFactory factory)
     public async Task HighVolumeConcurrent_EventsQueryable_AfterIngest()
     {
         const int total    = 50;
-        var isolatedTenant = $"tenant-load-iso-{Guid.NewGuid():N}";
+        var isolatedTenant = $"tenant-load-iso-{Guid.CreateVersion7():N}";
 
         var requests = Enumerable.Range(0, total).Select(_ =>
             AuditRequestBuilder.MinimalValid(
                 tenantId:       isolatedTenant,
-                idempotencyKey: $"load-iso-{Guid.NewGuid():N}"))
+                idempotencyKey: $"load-iso-{Guid.CreateVersion7():N}"))
             .ToList();
 
         await Task.WhenAll(requests.Select(r => _client.PostServiceJsonAsync(IngestUrl, r)));
@@ -469,7 +469,7 @@ public class AuditOfAuditTests(AuditServiceFactory factory)
     public async Task QueryAuditEvents_EmitsAuditLogAccessedEvent()
     {
         // Step 1: Trigger a query to produce the audit.log.accessed event.
-        var tenantId = $"tenant-aoa-{Guid.NewGuid():N}";
+        var tenantId = $"tenant-aoa-{Guid.CreateVersion7():N}";
         await _client.GetAsync($"{QueryUrl}?tenantId={tenantId}");
 
         // Step 2: Give the async ingest a moment to complete.
@@ -537,7 +537,7 @@ public class LegacyFreezeTests(AuditServiceFactory factory)
     public async Task LegacyIngest_ReturnsDeprecationHeader()
     {
         var request  = AuditRequestBuilder.MinimalValid(
-            idempotencyKey: $"legacy-dep-{Guid.NewGuid():N}");
+            idempotencyKey: $"legacy-dep-{Guid.CreateVersion7():N}");
         var response = await _client.PostServiceJsonAsync(LegacyIngestUrl, request);
 
         response.Headers.Should().ContainKey("Deprecation");
@@ -550,7 +550,7 @@ public class LegacyFreezeTests(AuditServiceFactory factory)
     public async Task LegacyIngest_ReturnsSunsetHeader()
     {
         var request  = AuditRequestBuilder.MinimalValid(
-            idempotencyKey: $"legacy-sun-{Guid.NewGuid():N}");
+            idempotencyKey: $"legacy-sun-{Guid.CreateVersion7():N}");
         var response = await _client.PostServiceJsonAsync(LegacyIngestUrl, request);
 
         response.Headers.Should().ContainKey("Sunset");
@@ -563,7 +563,7 @@ public class LegacyFreezeTests(AuditServiceFactory factory)
     public async Task LegacyIngest_ReturnsLinkToSuccessor()
     {
         var request  = AuditRequestBuilder.MinimalValid(
-            idempotencyKey: $"legacy-link-{Guid.NewGuid():N}");
+            idempotencyKey: $"legacy-link-{Guid.CreateVersion7():N}");
         var response = await _client.PostServiceJsonAsync(LegacyIngestUrl, request);
 
         response.Headers.Should().ContainKey("Link");
@@ -578,7 +578,7 @@ public class LegacyFreezeTests(AuditServiceFactory factory)
     public async Task CanonicalIngest_DoesNotReturnDeprecationHeader()
     {
         var request  = AuditRequestBuilder.MinimalValid(
-            idempotencyKey: $"canon-nodep-{Guid.NewGuid():N}");
+            idempotencyKey: $"canon-nodep-{Guid.CreateVersion7():N}");
         var response = await _client.PostServiceJsonAsync("/internal/audit/events", request);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);

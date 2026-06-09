@@ -41,7 +41,7 @@ public class EmailDeliveryState : AuditableEntity
         var now = DateTime.UtcNow;
         return new EmailDeliveryState
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             MessageId = messageId,

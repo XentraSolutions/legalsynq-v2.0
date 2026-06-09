@@ -22,4 +22,6 @@ public interface IServicingItemService
     Task<ServicingItemResponse> UpdateStatusAsync(
         Guid tenantId, Guid id, Guid actingUserId,
         string status, string? resolution = null, CancellationToken ct = default);
+
+    Task DeleteAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default);
 }

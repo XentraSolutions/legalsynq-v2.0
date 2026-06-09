@@ -10,7 +10,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsGovernanceRolloutAuditEvent
 {
-    public Guid    Id              { get; set; } = Guid.NewGuid();
+    public Guid    Id              { get; set; } = Guid.CreateVersion7();
     public Guid    RolloutPlanId   { get; set; }
 
     /// <summary>Null for plan-level events; non-null for stage-specific events.</summary>

@@ -110,7 +110,7 @@ Records with `IsReplay = true` participate in the chain identically to normal re
 ## Ingest Pipeline (Step 4 detail)
 
 ```
-Step 2: auditId      = Guid.NewGuid()
+Step 2: auditId      = Guid.CreateVersion7()
         recordedAtUtc = DateTimeOffset.UtcNow
 
 Step 3: chainHead    = repository.GetLatestInChainAsync(tenantId, sourceSystem)

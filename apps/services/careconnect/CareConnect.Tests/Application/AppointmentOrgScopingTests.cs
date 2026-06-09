@@ -14,12 +14,12 @@ namespace CareConnect.Tests.Application;
 /// </summary>
 public class AppointmentOrgScopingTests
 {
-    private static readonly Guid TenantId  = Guid.NewGuid();
-    private static readonly Guid OrgA      = Guid.NewGuid();
-    private static readonly Guid OrgB      = Guid.NewGuid();
-    private static readonly Guid ProviderId  = Guid.NewGuid();
-    private static readonly Guid FacilityId  = Guid.NewGuid();
-    private static readonly Guid ReferralId  = Guid.NewGuid();
+    private static readonly Guid TenantId  = Guid.CreateVersion7();
+    private static readonly Guid OrgA      = Guid.CreateVersion7();
+    private static readonly Guid OrgB      = Guid.CreateVersion7();
+    private static readonly Guid ProviderId  = Guid.CreateVersion7();
+    private static readonly Guid FacilityId  = Guid.CreateVersion7();
+    private static readonly Guid ReferralId  = Guid.CreateVersion7();
     private static readonly DateTime Now = DateTime.UtcNow;
 
     private static Appointment MakeAppointment(Guid? referringOrgId, Guid? receivingOrgId) =>
@@ -84,10 +84,10 @@ public class AppointmentOrgScopingTests
     [Fact]
     public void Two_Appointments_From_Different_Referrals_Have_Independent_OrgIds()
     {
-        var orgA1 = Guid.NewGuid();
-        var orgB1 = Guid.NewGuid();
-        var orgA2 = Guid.NewGuid();
-        var orgB2 = Guid.NewGuid();
+        var orgA1 = Guid.CreateVersion7();
+        var orgB1 = Guid.CreateVersion7();
+        var orgA2 = Guid.CreateVersion7();
+        var orgB2 = Guid.CreateVersion7();
 
         var appt1 = MakeAppointment(orgA1, orgB1);
         var appt2 = MakeAppointment(orgA2, orgB2);
@@ -169,7 +169,7 @@ public class AppointmentOrgScopingTests
     {
         var appointment = MakeAppointment(referringOrgId: OrgA, receivingOrgId: OrgB);
 
-        var callerOrgId = Guid.NewGuid(); // neither OrgA nor OrgB
+        var callerOrgId = Guid.CreateVersion7(); // neither OrgA nor OrgB
         var isParticipant =
             appointment.ReferringOrganizationId == callerOrgId ||
             appointment.ReceivingOrganizationId == callerOrgId;

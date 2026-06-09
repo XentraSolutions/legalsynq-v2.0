@@ -35,7 +35,7 @@ public class TaskNote : AuditableEntity
         var now = DateTime.UtcNow;
         return new TaskNote
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             TaskId          = taskId,
             TenantId        = tenantId,
             Note            = note.Trim(),

@@ -29,7 +29,7 @@ public class ReferralProviderReassignment
     {
         return new ReferralProviderReassignment
         {
-            Id                 = Guid.NewGuid(),
+            Id                 = Guid.CreateVersion7(),
             ReferralId         = referralId,
             TenantId           = tenantId,
             PreviousProviderId = previousProviderId,

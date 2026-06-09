@@ -14,7 +14,7 @@ namespace Support.Tests;
 /// </summary>
 public class NotificationsApiFactory : WebApplicationFactory<Program>
 {
-    public string DbName { get; } = $"support-tests-notif-{Guid.NewGuid()}";
+    public string DbName { get; } = $"support-tests-notif-{Guid.CreateVersion7()}";
     public RecordingNotificationPublisher Recorder { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

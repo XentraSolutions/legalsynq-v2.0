@@ -8,8 +8,8 @@ public class ObservabilityTests
     [Fact]
     public void CacheKey_Format_MatchesExpected()
     {
-        var tenantId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
+        var userId = Guid.CreateVersion7();
         var accessVersion = 42;
 
         var cacheKey = $"ea:{tenantId}:{userId}:{accessVersion}";
@@ -23,8 +23,8 @@ public class ObservabilityTests
     [Fact]
     public void CacheKey_DifferentVersions_ProduceDifferentKeys()
     {
-        var tenantId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
+        var userId = Guid.CreateVersion7();
 
         var key1 = $"ea:{tenantId}:{userId}:1";
         var key2 = $"ea:{tenantId}:{userId}:2";
@@ -35,9 +35,9 @@ public class ObservabilityTests
     [Fact]
     public void CacheKey_DifferentUsers_ProduceDifferentKeys()
     {
-        var tenantId = Guid.NewGuid();
-        var userId1 = Guid.NewGuid();
-        var userId2 = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
+        var userId1 = Guid.CreateVersion7();
+        var userId2 = Guid.CreateVersion7();
 
         var key1 = $"ea:{tenantId}:{userId1}:1";
         var key2 = $"ea:{tenantId}:{userId2}:1";
@@ -48,9 +48,9 @@ public class ObservabilityTests
     [Fact]
     public void CacheKey_DifferentTenants_ProduceDifferentKeys()
     {
-        var tenantId1 = Guid.NewGuid();
-        var tenantId2 = Guid.NewGuid();
-        var userId = Guid.NewGuid();
+        var tenantId1 = Guid.CreateVersion7();
+        var tenantId2 = Guid.CreateVersion7();
+        var userId = Guid.CreateVersion7();
 
         var key1 = $"ea:{tenantId1}:{userId}:1";
         var key2 = $"ea:{tenantId2}:{userId}:1";
@@ -61,8 +61,8 @@ public class ObservabilityTests
     [Fact]
     public void CacheKey_SameInputs_ProduceIdenticalKeys()
     {
-        var tenantId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
+        var userId = Guid.CreateVersion7();
 
         var key1 = $"ea:{tenantId}:{userId}:5";
         var key2 = $"ea:{tenantId}:{userId}:5";
@@ -73,8 +73,8 @@ public class ObservabilityTests
     [Fact]
     public void AuthzDecision_DenyFields_ArePopulated()
     {
-        var userId = Guid.NewGuid().ToString();
-        var tenantId = Guid.NewGuid().ToString();
+        var userId = Guid.CreateVersion7().ToString();
+        var tenantId = Guid.CreateVersion7().ToString();
         var method = "GET";
         var endpoint = "/api/fund/cases";
         var product = "SYNQ_FUND";
@@ -101,8 +101,8 @@ public class ObservabilityTests
     [Fact]
     public void AuthzDecision_AllowFields_ArePopulated()
     {
-        var userId = Guid.NewGuid().ToString();
-        var tenantId = Guid.NewGuid().ToString();
+        var userId = Guid.CreateVersion7().ToString();
+        var tenantId = Guid.CreateVersion7().ToString();
 
         var decision = new
         {
@@ -170,8 +170,8 @@ public class ObservabilityTests
     [Fact]
     public void AccessVersion_InCacheKey_MatchesDbVersion()
     {
-        var tenantId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
+        var tenantId = Guid.CreateVersion7();
+        var userId = Guid.CreateVersion7();
         var dbVersion = 123;
 
         var cacheKey = $"ea:{tenantId}:{userId}:{dbVersion}";
@@ -186,7 +186,7 @@ public class ObservabilityTests
         var sources = new[]
         {
             new { ProductCode = "SYNQ_FUND", Source = "Direct", GroupId = (string?)null, GroupName = (string?)null },
-            new { ProductCode = "SYNQ_CARECONNECT", Source = "Group", GroupId = Guid.NewGuid().ToString(), GroupName = "Nurses" },
+            new { ProductCode = "SYNQ_CARECONNECT", Source = "Group", GroupId = Guid.CreateVersion7().ToString(), GroupName = "Nurses" },
         };
 
         var directSources = sources.Where(s => s.Source == "Direct").ToList();

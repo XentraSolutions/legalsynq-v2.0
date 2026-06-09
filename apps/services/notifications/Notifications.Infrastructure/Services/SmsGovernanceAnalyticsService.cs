@@ -390,19 +390,44 @@ public sealed class SmsGovernanceAnalyticsService
     {
         if (total == 0) return null;
 
+        var warnThresholdSatisfied = MeetsWarnThreshold(warn, total);
+
         // Heuristic 1: high warn count with very low block count → likely too broad
-        if (warn >= _opts.FalsePositiveWarnThreshold && total > 0
-            && (double)warn / total > 0.8)
+        if (warnThresholdSatisfied && (double)warn / total > 0.8)
             return "High warn rate (>80% of matches are warns — rule may be too broad)";
 
         // Heuristic 2: predominantly simulation matches, rarely live
         if (sim > 0 && live == 0 && sim >= 5)
             return "Simulation-only matches (never triggered in live delivery pipeline)";
 
-        if (total >= 10 && live > 0 && (double)live / (sim + live) < _opts.FalsePositiveLiveToSimRatio)
+        if (total >= 10 && live > 0 && MatchesLiveTrafficThreshold(sim, live))
             return $"Low live-to-simulation ratio ({live}/{sim + live}) — rule may not be relevant for live traffic";
 
         return null;
+    }
+
+    private bool MeetsWarnThreshold(int warn, int total)
+    {
+        var threshold = _opts.FalsePositiveWarnThreshold;
+        if (threshold <= 0)
+            return warn > 0;
+
+        if (threshold < 1)
+            return (double)warn / total >= threshold;
+
+        return warn >= threshold;
+    }
+
+    private bool MatchesLiveTrafficThreshold(int sim, int live)
+    {
+        var threshold = _opts.FalsePositiveLiveToSimRatio;
+        if (threshold <= 0)
+            return false;
+
+        if (threshold <= 1)
+            return (double)live / (sim + live) < threshold;
+
+        return sim > 0 && (double)sim / live > threshold;
     }
 
     private static double ComputeFpScore(int warn, int total, int sim, int live)

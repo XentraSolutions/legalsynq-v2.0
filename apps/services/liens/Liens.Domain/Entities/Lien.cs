@@ -76,7 +76,7 @@ public class Lien : AuditableEntity
         var now = DateTime.UtcNow;
         return new Lien
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             TenantId          = tenantId,
             OrgId             = orgId,
             LienNumber        = lienNumber.Trim(),

@@ -1,0 +1,527 @@
+You are continuing the LegalSynq Commerce + Tenant Billing platform integration.
+
+FIRST ACTION:
+Create the report file FIRST before performing any additional work:
+
+/analysis/LS-COMMERCE-INT-04-report.md
+
+Update this report incrementally as each major implementation step is completed.
+
+DO NOT wait until the end to write the report.
+
+====================================================
+TICKET ID: LS-COMMERCE-INT-04
+TITLE: Production Operational Finalization & Billing Lifecycle Operations
+====================================================
+
+# Objective
+
+Finalize Commerce + Tenant Billing integration for production operations by adding:
+
+- role-scoped navigation visibility
+- safe billing profile lifecycle actions
+- manual entitlement publish operations
+- monitoring SDK/runtime alignment validation
+- Commerce subscription/detail visibility
+- Commerce billing account search/filter
+- final production hardening and deployment-readiness documentation
+
+This ticket builds on:
+
+- LS-COMMERCE-INT-01
+- LS-COMMERCE-INT-02
+- LS-COMMERCE-INT-03
+
+This is an additive operational finalization ticket.
+
+This is NOT:
+- a billing rewrite
+- a domain merge
+- a Control Center redesign
+- a payment workflow rewrite
+- a new authorization framework
+
+====================================================
+GIT / GITHUB REQUIREMENTS
+====================================================
+
+Use the ticket ID in all Git operations.
+
+Required conventions:
+
+Branch:
+- ls-commerce-int-04-production-operational-finalization
+
+Commit message format:
+- LS-COMMERCE-INT-04 <summary>
+
+Examples:
+- LS-COMMERCE-INT-04 add role scoped commerce billing navigation
+- LS-COMMERCE-INT-04 add billing profile lifecycle actions
+- LS-COMMERCE-INT-04 add entitlement publish operation
+
+If creating a PR:
+- PR title must include LS-COMMERCE-INT-04
+
+Do not use generic commit messages such as:
+- update
+- fix
+- changes
+- misc
+
+====================================================
+ARCHITECTURE RULES
+====================================================
+
+Maintain strict separation between:
+
+Platform / SaaS Billing:
+Commerce
+Platform → Tenant
+
+Tenant Billing:
+Tenant → Customer / Client
+
+These domains must remain isolated.
+
+STRICTLY PROHIBITED:
+
+- database merges
+- billing table merges
+- shared DbContexts
+- invoice/payment consolidation
+- direct cross-service EF access
+- Tenant Billing → Commerce runtime dependency
+- collapsing Commerce and Tenant Billing APIs into one service
+- rewriting payment providers
+- rewriting notifications
+- rewriting document services
+- removing standalone mode
+- deleting legacy services
+- route namespace rewrites
+- Control Center redesign
+- Tenant Portal redesign
+- introducing a new authorization system
+- exposing internal tokens to the browser/client
+
+====================================================
+PRIMARY SCOPE
+====================================================
+
+Implement additive production operational finalization for:
+
+1. Role-scoped Commerce/Billing navigation
+2. PlatformAdmin billing profile lifecycle actions
+3. PlatformAdmin manual entitlement publish operation
+4. Commerce subscription/detail visibility
+5. Commerce account search/filter
+6. Monitoring SDK/runtime alignment validation or documented blocker
+7. Final operational fallback/safety hardening
+8. Deployment-readiness documentation
+9. Implementation report
+
+====================================================
+FILES / AREAS TO INSPECT
+====================================================
+
+Inspect existing implementations before modifying anything.
+
+Review:
+
+- LS-COMMERCE-INT-01 implementation areas
+- LS-COMMERCE-INT-02 implementation areas
+- LS-COMMERCE-INT-03 implementation areas
+- Control Center navigation and role filtering
+- auth guard/session utilities
+- tenant detail page and billing panels
+- Commerce operational/account-detail BFF routes
+- Tenant Billing tenant-summary and entitlement BFF routes
+- existing confirmation/action UI patterns
+- Commerce entitlement publish endpoint
+- Tenant Billing profile lifecycle endpoints
+- Commerce subscription/entitlement snapshot endpoints
+- Monitoring service project target framework and bootstrap reconciliation
+- Gateway route configuration
+- service-card/panel/error-state patterns
+
+Likely areas include:
+
+- apps/control-center/
+- apps/gateway/Gateway.Api/
+- apps/services/commerce/
+- apps/services/tenant-billing/
+- apps/services/monitoring/
+- shared UI/component libraries
+- monitoring registry/store modules
+
+Do not assume paths.
+Validate actual repository structure first.
+
+====================================================
+IMPLEMENTATION TASKS
+====================================================
+
+# 1. Add Role-Scoped Commerce/Billing Navigation
+
+Update Control Center navigation so visibility reflects role permissions.
+
+Required behavior:
+
+PlatformAdmin sees:
+- Commerce
+- Tenant Billing
+- Billing Status
+
+TenantAdmin sees:
+- Billing Status only
+
+Other roles:
+- no Commerce/Billing operational nav items unless existing platform convention explicitly allows it
+
+Rules:
+
+- use existing session/auth/role helpers
+- do not introduce a new authorization system
+- page-level guards must remain authoritative
+- nav filtering is UX hardening, not security replacement
+
+# 2. Add PlatformAdmin Billing Profile Lifecycle Actions
+
+Add safe operational controls for Tenant Billing profile lifecycle actions where existing Tenant Billing APIs support them.
+
+Target actions:
+- activate profile
+- suspend profile
+- close profile
+
+Requirements:
+
+- PlatformAdmin only
+- server-side BFF POST routes only
+- forward X-Tenant-Id and internal token server-side if required
+- use existing Tenant Billing lifecycle APIs if present
+- add confirmation UI before action execution
+- refresh affected panel after action
+- show safe success/failure messages
+- do not expose internal token
+- do not mutate invoice/payment/customer records directly
+
+If APIs do not exist:
+- do not create broad domain APIs unless minimal and consistent with current Tenant Billing architecture
+- defer with exact reason in report
+
+# 3. Add PlatformAdmin Manual Entitlement Publish Operation
+
+Add operational action to trigger Commerce → Tenant Billing entitlement publish for a billing account if supported by the existing Commerce endpoint.
+
+Target endpoint if present:
+- POST /api/commerce/integration/tenant-billing/billing-accounts/{id}/publish-entitlement
+
+Requirements:
+
+- PlatformAdmin only
+- BFF POST route required
+- server-side call only
+- confirmation before action
+- safe success/failure states
+- do not expose internal tokens
+- do not add destructive replay tooling
+- do not add bulk publish/replay in this ticket
+- refresh bridge diagnostics after action if practical
+
+If endpoint does not exist or requires additional auth mode:
+- defer with exact reason in report
+
+# 4. Add Commerce Subscription / Entitlement Detail Visibility
+
+Surface additional Commerce billing account detail where existing APIs support it.
+
+Recommended fields:
+
+- active subscription id
+- plan key
+- subscription status
+- current period start
+- current period end
+- entitlement snapshot key/details if available
+- account standing
+- last entitlement publish status if available
+
+Use existing Commerce endpoints where possible.
+
+Potential endpoint if present:
+- GET /api/commerce/integration/billing-accounts/{id}/entitlement-snapshot
+
+Rules:
+
+- visibility only
+- no payment method secrets
+- no PCI-sensitive information
+- no direct database access from Control Center
+- safe fallback if endpoint unavailable
+
+# 5. Add Commerce Billing Account Search / Filter
+
+Enhance Commerce account panel for larger deployments.
+
+Required filters:
+
+- search by account number or display name
+- filter by account status if available
+- filter by standing if available
+
+Implementation guidance:
+
+- client-side filtering is acceptable for current capped result set
+- preserve account cap and overflow note
+- no backend pagination required unless already available
+- no broad API redesign
+
+# 6. Validate / Align Monitoring SDK Runtime
+
+INT-03 identified a monitoring build blocker:
+
+- Monitoring service targets net10.0
+- current environment has .NET SDK 8.0.412
+
+Tasks:
+
+- inspect monitoring project target framework
+- determine whether platform standard is .NET 8 or .NET 10 in this repository
+- if repository standards indicate .NET 8, align Monitoring target framework to net8.0 only if safe and consistent
+- if repository intentionally targets .NET 10, do not downgrade; document SDK requirement clearly
+- validate `MonitoringEntityBootstrap.cs` reconciliation change if build environment supports it
+
+Do not perform broad monitoring rewrite.
+
+# 7. Final Operational Safety Hardening
+
+Ensure safe handling for:
+
+- missing internal token
+- missing tenant context
+- unauthorized/forbidden lifecycle action
+- unsupported lifecycle action
+- entitlement publish failure
+- Commerce unavailable
+- Tenant Billing unavailable
+- monitoring unavailable
+- diagnostics disabled
+- stale account data
+- action pending state
+- action success/failure state
+
+All errors must remain safe:
+
+- no stack traces
+- no tokens
+- no connection strings
+- no raw internal exceptions
+- no sensitive payment data
+
+# 8. Add Tests / Validation
+
+Add tests where practical.
+
+Recommended areas:
+
+- role-scoped navigation visibility
+- PlatformAdmin lifecycle action BFF route authorization
+- TenantAdmin blocked from PlatformAdmin actions
+- manual entitlement publish BFF authorization
+- account search/filter behavior
+- safe fallback rendering
+- monitoring bootstrap build or documented SDK blocker
+
+If frontend test infrastructure is unavailable:
+- document manual validation steps.
+
+====================================================
+FILES / AREAS TO MODIFY
+====================================================
+
+Modify only additive operational finalization areas.
+
+Expected possible modification areas:
+
+- Control Center nav filtering utilities
+- Control Center Commerce/Billing pages
+- billing lifecycle BFF routes
+- entitlement publish BFF route
+- Commerce account panel components
+- billing profile panel components
+- confirmation/action UI components
+- monitoring project target framework or documentation
+- monitoring bootstrap validation
+- tests
+- /analysis/LS-COMMERCE-INT-04-report.md
+
+Do NOT modify:
+
+- invoice/payment processing behavior
+- customer billing workflows
+- payment provider integrations
+- notification services
+- document services
+- DbContexts to merge domains
+- Commerce/Tenant Billing domain models except minimal read-only DTO support if already consistent
+- existing LS-COMMERCE-INT-01 resolver architecture unless fixing a direct compatibility issue
+
+====================================================
+VALIDATION COMMANDS
+====================================================
+
+Run relevant validation commands based on actual repository structure.
+
+Likely commands may include:
+
+# Frontend / Control Center
+
+- npm run build
+- npm run lint
+- npm test
+- npx tsc --noEmit
+- pnpm build
+- pnpm lint
+- pnpm test
+- pnpm tsc --noEmit
+
+# Gateway
+
+- dotnet build apps/gateway/Gateway.Api/Gateway.Api.csproj
+
+# Commerce
+
+- dotnet build apps/services/commerce/Commerce.sln
+
+# Tenant Billing
+
+- dotnet build apps/services/tenant-billing/Billing.sln
+
+# Monitoring
+
+- dotnet build apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj
+- dotnet build apps/services/monitoring/Monitoring.Infrastructure/Monitoring.Infrastructure.csproj
+
+# Platform
+
+Run any additional discovered platform validation commands.
+
+If commands fail:
+
+- document exact command
+- document exact failure
+- document whether issue appears pre-existing or caused by this ticket
+- do not fabricate success
+
+If commands are skipped:
+
+- document why
+
+====================================================
+ACCEPTANCE CRITERIA
+====================================================
+
+LS-COMMERCE-INT-04 is complete ONLY IF:
+
+- /analysis/LS-COMMERCE-INT-04-report.md was created first
+- report updated incrementally throughout implementation
+- Commerce/Billing navigation is role-scoped
+- PlatformAdmin retains full Commerce/Tenant Billing operational access
+- TenantAdmin sees only permitted own-tenant billing visibility
+- billing profile lifecycle actions are implemented if supported by existing Tenant Billing APIs or explicitly deferred with reason
+- manual entitlement publish action is implemented if supported by existing Commerce endpoint or explicitly deferred with reason
+- Commerce subscription/entitlement detail is surfaced where safely available or explicitly deferred with reason
+- Commerce account search/filter is added
+- monitoring SDK/runtime mismatch is resolved or documented with exact next action
+- all operational actions use server-side BFF routes and existing RBAC
+- internal tokens are never exposed to browser/client
+- confirmation, success, failure, forbidden, unauthorized, missing-token, unavailable-service, and pending states are safe
+- no billing domains are merged
+- no shared DbContext is introduced
+- no direct cross-service EF access is introduced
+- standalone behavior remains preserved
+- tests/manual validations are documented
+- final deployment/readiness gaps are documented
+
+====================================================
+REQUIRED REPORT STRUCTURE
+====================================================
+
+Update incrementally:
+
+/analysis/LS-COMMERCE-INT-04-report.md
+
+Required sections:
+
+1. Executive Summary
+2. Prior Integration Baseline
+3. Role-Scoped Navigation
+4. Billing Profile Lifecycle Actions
+5. Manual Entitlement Publish Operation
+6. Commerce Subscription / Entitlement Detail Visibility
+7. Commerce Account Search / Filter
+8. Monitoring SDK / Runtime Alignment
+9. Operational Safety Improvements
+10. RBAC / Authorization Validation
+11. Files Changed
+12. Build/Test Validation
+13. Risks / Deferred Items
+14. Confirmation of Non-Merge Boundaries
+15. Final Production Readiness Assessment
+16. Recommended Next Step
+
+====================================================
+KNOWN RESTRICTIONS
+====================================================
+
+- Do not fabricate validation success.
+- Do not claim tests passed unless actually run.
+- Do not hide failures.
+- Do not redesign Control Center.
+- Do not redesign monitoring architecture.
+- Do not hardcode tenant IDs.
+- Do not expose secrets or internal tokens.
+- Do not directly query billing databases from UI.
+- Do not collapse Commerce and Tenant Billing into one service.
+- Do not change invoice/payment processing behavior.
+- Do not introduce a new auth framework.
+- Do not add destructive bulk replay tooling.
+- Do not downgrade Monitoring from .NET 10 unless repository standards clearly support .NET 8 alignment.
+
+====================================================
+EXPECTED OUTPUT
+====================================================
+
+At completion:
+
+- PlatformAdmin users retain full operational control and visibility.
+- TenantAdmin users see only their own billing status.
+- Commerce/Billing nav reflects role permissions.
+- PlatformAdmin can perform safe supported lifecycle operations.
+- PlatformAdmin can trigger supported manual entitlement publish operations.
+- Commerce billing account visibility is more usable for production operations.
+- Monitoring SDK/runtime alignment is resolved or explicitly documented.
+- The integration is production-operationally mature without merging billing domains.
+
+====================================================
+FINAL INSTRUCTION
+====================================================
+
+Preserve bounded contexts.
+
+Integrate through:
+
+- existing gateway/BFF patterns
+- existing auth/RBAC
+- operational visibility panels
+- monitoring integration
+- safe diagnostics/actions
+
+Do not merge billing domains.
+
+Do not redesign billing.
+
+Create and maintain the report first.
+
+Do not fabricate success.

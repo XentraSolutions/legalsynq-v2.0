@@ -29,7 +29,7 @@ public class ProductRole
 
         return new ProductRole
         {
-            Id            = Guid.NewGuid(),
+            Id            = Guid.CreateVersion7(),
             ProductId     = productId,
             Code          = code.ToUpperInvariant().Trim(),
             Name          = name.Trim(),

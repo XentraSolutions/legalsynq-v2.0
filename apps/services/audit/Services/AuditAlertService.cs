@@ -111,7 +111,7 @@ public sealed class AuditAlertService : IAuditAlertService
                 // No prior alert — create a new Open alert
                 var newAlert = new AuditAlert
                 {
-                    AlertId             = Guid.NewGuid(),
+                    AlertId             = Guid.CreateVersion7(),
                     RuleKey             = anomaly.RuleKey,
                     Fingerprint         = fingerprint,
                     ScopeType           = scopeType,
@@ -151,7 +151,7 @@ public sealed class AuditAlertService : IAuditAlertService
                     // Cooldown expired — create a fresh alert
                     var newAlert = new AuditAlert
                     {
-                        AlertId             = Guid.NewGuid(),
+                        AlertId             = Guid.CreateVersion7(),
                         RuleKey             = anomaly.RuleKey,
                         Fingerprint         = fingerprint,
                         ScopeType           = scopeType,

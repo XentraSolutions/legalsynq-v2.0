@@ -144,7 +144,7 @@ public sealed class LienTaskService : ILienTaskService
         }
 
         // ── Delegate creation to Task service ─────────────────────────────────
-        var externalId      = Guid.NewGuid();
+        var externalId      = Guid.CreateVersion7();
         var effectiveRequest = new CreateTaskRequest
         {
             Title                = request.Title,

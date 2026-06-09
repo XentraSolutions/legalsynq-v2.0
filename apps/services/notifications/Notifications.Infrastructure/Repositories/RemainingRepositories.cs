@@ -21,7 +21,7 @@ public class TenantProviderConfigRepository : ITenantProviderConfigRepository
         => await _db.TenantProviderConfigs.Where(c => c.TenantId == tenantId && c.Channel == channel && c.Status == "active").OrderBy(c => c.Priority).ToListAsync();
     public async Task<TenantProviderConfig> CreateAsync(TenantProviderConfig config)
     {
-        config.Id = config.Id == Guid.Empty ? Guid.NewGuid() : config.Id;
+        config.Id = config.Id == Guid.Empty ? Guid.CreateVersion7() : config.Id;
         config.CreatedAt = DateTime.UtcNow; config.UpdatedAt = DateTime.UtcNow;
         _db.TenantProviderConfigs.Add(config); await _db.SaveChangesAsync(); return config;
     }
@@ -58,7 +58,7 @@ public class TenantChannelProviderSettingRepository : ITenantChannelProviderSett
             await _db.SaveChangesAsync();
             return existing;
         }
-        setting.Id = Guid.NewGuid(); setting.CreatedAt = DateTime.UtcNow; setting.UpdatedAt = DateTime.UtcNow;
+        setting.Id = Guid.CreateVersion7(); setting.CreatedAt = DateTime.UtcNow; setting.UpdatedAt = DateTime.UtcNow;
         _db.TenantChannelProviderSettings.Add(setting); await _db.SaveChangesAsync(); return setting;
     }
 }
@@ -90,7 +90,7 @@ public class ProviderHealthRepository : IProviderHealthRepository
             await _db.SaveChangesAsync();
             return existing;
         }
-        health.Id = Guid.NewGuid(); health.CreatedAt = DateTime.UtcNow; health.UpdatedAt = DateTime.UtcNow;
+        health.Id = Guid.CreateVersion7(); health.CreatedAt = DateTime.UtcNow; health.UpdatedAt = DateTime.UtcNow;
         _db.ProviderHealthRecords.Add(health); await _db.SaveChangesAsync(); return health;
     }
 }
@@ -102,7 +102,7 @@ public class WebhookLogRepository : IWebhookLogRepository
 
     public async Task<ProviderWebhookLog> CreateAsync(ProviderWebhookLog log)
     {
-        log.Id = Guid.NewGuid(); log.CreatedAt = DateTime.UtcNow; log.UpdatedAt = DateTime.UtcNow;
+        log.Id = Guid.CreateVersion7(); log.CreatedAt = DateTime.UtcNow; log.UpdatedAt = DateTime.UtcNow;
         _db.ProviderWebhookLogs.Add(log); await _db.SaveChangesAsync(); return log;
     }
     public async Task UpdateStatusAsync(Guid id, string status, string? errorMessage = null)
@@ -121,7 +121,7 @@ public class NotificationEventRepository : INotificationEventRepository
         => await _db.NotificationEvents.FirstOrDefaultAsync(e => e.DedupKey == dedupKey);
     public async Task<NotificationEvent> CreateAsync(NotificationEvent evt)
     {
-        evt.Id = Guid.NewGuid(); evt.CreatedAt = DateTime.UtcNow; evt.UpdatedAt = DateTime.UtcNow;
+        evt.Id = Guid.CreateVersion7(); evt.CreatedAt = DateTime.UtcNow; evt.UpdatedAt = DateTime.UtcNow;
         _db.NotificationEvents.Add(evt); await _db.SaveChangesAsync(); return evt;
     }
     public async Task<List<NotificationEvent>> GetByNotificationIdAsync(Guid notificationId, int limit = 50)
@@ -143,7 +143,7 @@ public class ContactSuppressionRepository : IContactSuppressionRepository
             .OrderByDescending(s => s.CreatedAt).Skip(offset).Take(limit).ToListAsync();
     public async Task<ContactSuppression> CreateAsync(ContactSuppression suppression)
     {
-        suppression.Id = Guid.NewGuid(); suppression.CreatedAt = DateTime.UtcNow; suppression.UpdatedAt = DateTime.UtcNow;
+        suppression.Id = Guid.CreateVersion7(); suppression.CreatedAt = DateTime.UtcNow; suppression.UpdatedAt = DateTime.UtcNow;
         _db.ContactSuppressions.Add(suppression); await _db.SaveChangesAsync(); return suppression;
     }
     public async Task UpsertFromEventAsync(ContactSuppression suppression)
@@ -152,7 +152,7 @@ public class ContactSuppressionRepository : IContactSuppressionRepository
             s.TenantId == suppression.TenantId && s.Channel == suppression.Channel &&
             s.ContactValue == suppression.ContactValue && s.SuppressionType == suppression.SuppressionType && s.Status == "active");
         if (existing != null) { existing.Reason = suppression.Reason; existing.Notes = suppression.Notes; existing.UpdatedAt = DateTime.UtcNow; }
-        else { suppression.Id = Guid.NewGuid(); suppression.CreatedAt = DateTime.UtcNow; suppression.UpdatedAt = DateTime.UtcNow; _db.ContactSuppressions.Add(suppression); }
+        else { suppression.Id = Guid.CreateVersion7(); suppression.CreatedAt = DateTime.UtcNow; suppression.UpdatedAt = DateTime.UtcNow; _db.ContactSuppressions.Add(suppression); }
         await _db.SaveChangesAsync();
     }
     public async Task<ContactSuppression?> GetByIdAsync(Guid id) => await _db.ContactSuppressions.FindAsync(id);
@@ -179,7 +179,7 @@ public class RecipientContactHealthRepository : IRecipientContactHealthRepositor
             existing.LastRawEventType = health.LastRawEventType; existing.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(); return existing;
         }
-        health.Id = Guid.NewGuid(); health.CreatedAt = DateTime.UtcNow; health.UpdatedAt = DateTime.UtcNow;
+        health.Id = Guid.CreateVersion7(); health.CreatedAt = DateTime.UtcNow; health.UpdatedAt = DateTime.UtcNow;
         _db.RecipientContactHealthRecords.Add(health); await _db.SaveChangesAsync(); return health;
     }
 }
@@ -194,7 +194,7 @@ public class DeliveryIssueRepository : IDeliveryIssueRepository
         var existing = await _db.DeliveryIssues.FirstOrDefaultAsync(d =>
             d.TenantId == issue.TenantId && d.NotificationId == issue.NotificationId && d.IssueType == issue.IssueType);
         if (existing != null) return null;
-        issue.Id = Guid.NewGuid(); issue.CreatedAt = DateTime.UtcNow; issue.UpdatedAt = DateTime.UtcNow;
+        issue.Id = Guid.CreateVersion7(); issue.CreatedAt = DateTime.UtcNow; issue.UpdatedAt = DateTime.UtcNow;
         _db.DeliveryIssues.Add(issue); await _db.SaveChangesAsync(); return issue;
     }
     public async Task<List<DeliveryIssue>> GetByTenantAsync(Guid tenantId, int limit = 50, int offset = 0)
@@ -216,7 +216,7 @@ public class TenantBillingPlanRepository : ITenantBillingPlanRepository
         => await _db.TenantBillingPlans.Where(p => p.TenantId == tenantId).ToListAsync();
     public async Task<TenantBillingPlan> CreateAsync(TenantBillingPlan plan)
     {
-        plan.Id = Guid.NewGuid(); plan.CreatedAt = DateTime.UtcNow; plan.UpdatedAt = DateTime.UtcNow;
+        plan.Id = Guid.CreateVersion7(); plan.CreatedAt = DateTime.UtcNow; plan.UpdatedAt = DateTime.UtcNow;
         _db.TenantBillingPlans.Add(plan); await _db.SaveChangesAsync(); return plan;
     }
     public async Task UpdateAsync(TenantBillingPlan plan) { plan.UpdatedAt = DateTime.UtcNow; _db.TenantBillingPlans.Update(plan); await _db.SaveChangesAsync(); }
@@ -235,7 +235,7 @@ public class TenantBillingRateRepository : ITenantBillingRateRepository
             (channel == null || r.Channel == channel) && (providerOwnershipMode == null || r.ProviderOwnershipMode == providerOwnershipMode));
     public async Task<TenantBillingRate> CreateAsync(TenantBillingRate rate)
     {
-        rate.Id = Guid.NewGuid(); rate.CreatedAt = DateTime.UtcNow; rate.UpdatedAt = DateTime.UtcNow;
+        rate.Id = Guid.CreateVersion7(); rate.CreatedAt = DateTime.UtcNow; rate.UpdatedAt = DateTime.UtcNow;
         _db.TenantBillingRates.Add(rate); await _db.SaveChangesAsync(); return rate;
     }
     public async Task UpdateAsync(TenantBillingRate rate) { rate.UpdatedAt = DateTime.UtcNow; _db.TenantBillingRates.Update(rate); await _db.SaveChangesAsync(); }
@@ -254,7 +254,7 @@ public class TenantRateLimitPolicyRepository : ITenantRateLimitPolicyRepository
         => await _db.TenantRateLimitPolicies.Where(p => p.TenantId == tenantId).ToListAsync();
     public async Task<TenantRateLimitPolicy> CreateAsync(TenantRateLimitPolicy policy)
     {
-        policy.Id = Guid.NewGuid(); policy.CreatedAt = DateTime.UtcNow; policy.UpdatedAt = DateTime.UtcNow;
+        policy.Id = Guid.CreateVersion7(); policy.CreatedAt = DateTime.UtcNow; policy.UpdatedAt = DateTime.UtcNow;
         _db.TenantRateLimitPolicies.Add(policy); await _db.SaveChangesAsync(); return policy;
     }
     public async Task UpdateAsync(TenantRateLimitPolicy policy) { policy.UpdatedAt = DateTime.UtcNow; _db.TenantRateLimitPolicies.Update(policy); await _db.SaveChangesAsync(); }
@@ -288,7 +288,7 @@ public class TenantContactPolicyRepository : ITenantContactPolicyRepository
             existing.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(); return existing;
         }
-        policy.Id = Guid.NewGuid(); policy.CreatedAt = DateTime.UtcNow; policy.UpdatedAt = DateTime.UtcNow;
+        policy.Id = Guid.CreateVersion7(); policy.CreatedAt = DateTime.UtcNow; policy.UpdatedAt = DateTime.UtcNow;
         _db.TenantContactPolicies.Add(policy); await _db.SaveChangesAsync(); return policy;
     }
 }
@@ -316,7 +316,7 @@ public class TenantBrandingRepository : ITenantBrandingRepository
             existing.EmailHeaderHtml = branding.EmailHeaderHtml; existing.EmailFooterHtml = branding.EmailFooterHtml;
             existing.UpdatedAt = DateTime.UtcNow; await _db.SaveChangesAsync(); return existing;
         }
-        branding.Id = Guid.NewGuid(); branding.CreatedAt = DateTime.UtcNow; branding.UpdatedAt = DateTime.UtcNow;
+        branding.Id = Guid.CreateVersion7(); branding.CreatedAt = DateTime.UtcNow; branding.UpdatedAt = DateTime.UtcNow;
         _db.TenantBrandings.Add(branding); await _db.SaveChangesAsync(); return branding;
     }
 }
@@ -330,7 +330,7 @@ public class UsageMeterEventRepository : IUsageMeterEventRepository
     {
         try
         {
-            evt.Id = Guid.NewGuid(); evt.CreatedAt = DateTime.UtcNow; evt.UpdatedAt = DateTime.UtcNow;
+            evt.Id = Guid.CreateVersion7(); evt.CreatedAt = DateTime.UtcNow; evt.UpdatedAt = DateTime.UtcNow;
             _db.UsageMeterEvents.Add(evt); await _db.SaveChangesAsync();
         }
         catch { /* metering must never crash the send flow */ }

@@ -29,7 +29,7 @@ public sealed class LocalSupportFileStorageProvider : ISupportFileStorageProvide
         CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
-        var documentId = $"local-{Guid.NewGuid():N}";
+        var documentId = $"local-{Guid.CreateVersion7():N}";
         var safeName = SanitizeFileName(request.FileName);
         var safeTenant = SanitizePathSegment(request.TenantId);
 

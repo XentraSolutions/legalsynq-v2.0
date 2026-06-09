@@ -15,7 +15,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsGovernanceRulePackVersion
 {
-    public Guid    Id                        { get; set; } = Guid.NewGuid();
+    public Guid    Id                        { get; set; } = Guid.CreateVersion7();
     public Guid    RulePackId                { get; set; }
 
     /// <summary>Monotonically increasing per RulePackId. Starts at 1.</summary>

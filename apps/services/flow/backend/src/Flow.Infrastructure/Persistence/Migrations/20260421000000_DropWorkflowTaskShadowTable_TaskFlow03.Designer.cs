@@ -889,11 +889,6 @@ namespace Flow.Infrastructure.Persistence.Migrations
                     b.Navigation("Transitions");
                 });
 
-            modelBuilder.Entity("Flow.Domain.Entities.WorkflowAutomationHook", b =>
-                {
-                    b.Navigation("Actions");
-                });
-
             modelBuilder.Entity("Flow.Domain.Entities.WorkflowStage", b =>
                 {
                     b.Navigation("TransitionsFrom");
