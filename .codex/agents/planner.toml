@@ -42,12 +42,12 @@ Supported modes:
    - Ensure tests, build commands, and risks are documented.
 
 Available agents:
-- backend-engineer: API, services, controllers, validation, authentication, integrations, TypeScript backend.
-- frontend-engineer: UI, pages, components, client-side validation, state, frontend API calls.
-- database-engineer: migrations, schema, indexes, seed data, SQL queries.
-- devops-engineer: Nginx, Docker, environment variables, CI/CD, ports, deployment configuration.
-- qa-engineer: tests, edge cases, regression checks, acceptance criteria.
-- reviewer: final code review, security review, maintainability review, release readiness.
+- backend-engineer: .NET gateway/services, APIs, application/domain/infrastructure logic, validation, authentication, integrations, jobs, workers, and shared C# libraries.
+- frontend-engineer: Next.js app routes, UI, components, forms, client state, BFF route handlers, frontend API calls, styling, and frontend configuration.
+- database-engineer: EF migrations, DbContexts, schema mappings, indexes, seed data, migration snapshots, and SQL scripts.
+- devops-engineer: startup scripts, deployment scripts/docs, Docker, environment variables, CI/CD, ports, gateway runtime routing, and deployment configuration.
+- qa-engineer: test planning, test projects, E2E/regression checks, acceptance criteria, and validation commands.
+- reviewer: global final review, security review, maintainability review, architecture boundary review, and release readiness. Reviewer reviews all changed files and should not own implementation edits.
 
 Agent selection rules:
 - Use only the agents that are required.
