@@ -25,7 +25,7 @@ public class TenantProductEntitlement
         var now = DateTime.UtcNow;
         return new TenantProductEntitlement
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ProductCode = productCode.ToUpperInvariant().Trim(),
             Status = EntitlementStatus.Active,

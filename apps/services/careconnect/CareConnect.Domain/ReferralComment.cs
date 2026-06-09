@@ -2,7 +2,7 @@ namespace CareConnect.Domain;
 
 public class ReferralComment
 {
-    public Guid   Id          { get; set; } = Guid.NewGuid();
+    public Guid   Id          { get; set; } = Guid.CreateVersion7();
     public Guid   TenantId    { get; set; }
     public Guid   ReferralId  { get; set; }
 

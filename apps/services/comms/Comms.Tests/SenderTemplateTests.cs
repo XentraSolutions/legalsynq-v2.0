@@ -418,7 +418,7 @@ public class SenderTemplateTests
         var audit = new NoOpAuditPublisher();
         var templateService = CreateTemplateService(db, audit);
 
-        var otherTenantId = Guid.NewGuid();
+        var otherTenantId = Guid.CreateVersion7();
         var templateRepo = TestHelpers.CreateTemplateConfigRepo(db);
         var otherTemplate = EmailTemplateConfig.Create(
             "other_tenant_tmpl", "Other Tenant Template",

@@ -1,10 +1,15 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
 namespace Notifications.Infrastructure.Data.Migrations
 {
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260508000002_AddSmsPreferenceHistory")]
     public partial class AddSmsPreferenceHistory : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

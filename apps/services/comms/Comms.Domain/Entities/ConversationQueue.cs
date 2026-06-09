@@ -29,7 +29,7 @@ public class ConversationQueue : AuditableEntity
         var now = DateTime.UtcNow;
         return new ConversationQueue
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = name.Trim(),
             Code = NormalizeCode(code),

@@ -97,7 +97,7 @@ public class CareConnectNotification : AuditableEntity
     {
         return new CareConnectNotification
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             TenantId          = tenantId,
             NotificationType  = notificationType,
             RelatedEntityType = relatedEntityType,

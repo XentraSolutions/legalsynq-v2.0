@@ -62,7 +62,7 @@ public class EmailMessageReference : AuditableEntity
         var now = DateTime.UtcNow;
         return new EmailMessageReference
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             MessageId = messageId,
@@ -121,6 +121,6 @@ public class EmailMessageReference : AuditableEntity
 
     public static string GenerateInternetMessageId(Guid conversationId, string domain = "comms.legalsynq.com")
     {
-        return $"<{conversationId:N}.{Guid.NewGuid():N}@{domain}>";
+        return $"<{conversationId:N}.{Guid.CreateVersion7():N}@{domain}>";
     }
 }

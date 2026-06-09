@@ -373,7 +373,7 @@ public sealed class SmsAlertEscalationService : ISmsAlertEscalationService
         var now = DateTime.UtcNow;
         return new SmsOperationalAlertEscalation
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             AlertId      = alert.Id,
             PolicyId     = policy.Id,
             ChannelType  = policy.ChannelType,

@@ -26,6 +26,8 @@ namespace Tenant.Infrastructure.Services;
 /// </summary>
 public class MigrationUtilityService : IMigrationUtilityService
 {
+    private static readonly SemaphoreSlim ExecuteGate = new(1, 1);
+
     private readonly TenantDbContext _db;
     private readonly IConfiguration  _configuration;
     private readonly ILogger<MigrationUtilityService> _logger;
@@ -83,6 +85,9 @@ public class MigrationUtilityService : IMigrationUtilityService
         MigrationExecuteRequest request,
         CancellationToken       ct = default)
     {
+        await ExecuteGate.WaitAsync(ct);
+        try
+        {
         var sw          = Stopwatch.StartNew();
         var startedAt   = DateTime.UtcNow;
         var scope       = string.Equals(request.Scope, "single", StringComparison.OrdinalIgnoreCase)
@@ -271,6 +276,11 @@ public class MigrationUtilityService : IMigrationUtilityService
             DurationMs:                  sw.ElapsedMilliseconds,
             TenantResults:               tenantResults.AsReadOnly(),
             PostRunReconciliation:       postRun);
+        }
+        finally
+        {
+            ExecuteGate.Release();
+        }
     }
 
     // ── Per-tenant upsert ─────────────────────────────────────────────────────
@@ -400,7 +410,8 @@ public class MigrationUtilityService : IMigrationUtilityService
 
                 if (existingBrandings.TryGetValue(tenantId, out _))
                 {
-                    branding = await _db.Brandings.FindAsync([tenantId], ct)
+                    branding = await _db.Brandings
+                        .SingleOrDefaultAsync(b => b.TenantId == tenantId, ct)
                         ?? throw new InvalidOperationException($"Branding for {tenantId} not found.");
 
                     // Only update logo fields; preserve other branding data.
@@ -560,11 +571,23 @@ public class MigrationUtilityService : IMigrationUtilityService
     private async Task<List<TenantServiceRow>> LoadTenantServiceRowsAsync(CancellationToken ct)
     {
         var raw = await _db.Tenants.AsNoTracking()
-            .Select(t => new { t.Id, t.Code, t.DisplayName, t.Status, t.Subdomain })
+            .Select(t => new
+            {
+                t.Id,
+                t.Code,
+                t.DisplayName,
+                t.Status,
+                t.Subdomain,
+                HasLogo = t.LogoDocumentId.HasValue
+                    || t.LogoWhiteDocumentId.HasValue
+                    || _db.Brandings.Any(b =>
+                        b.TenantId == t.Id &&
+                        (b.LogoDocumentId.HasValue || b.LogoWhiteDocumentId.HasValue))
+            })
             .ToListAsync(ct);
 
         return raw.Select(t => new TenantServiceRow(
-            t.Id, t.Code, t.DisplayName, t.Status.ToString(), t.Subdomain)).ToList();
+            t.Id, t.Code, t.DisplayName, t.Status.ToString(), t.Subdomain, t.HasLogo)).ToList();
     }
 
     private MigrationDryRunReport Reconcile(
@@ -823,8 +846,6 @@ public class MigrationUtilityService : IMigrationUtilityService
         string  Code,
         string  DisplayName,
         string  Status,
-        string? Subdomain)
-    {
-        public bool HasLogo => false; // Proxy — full logo check deferred to branding join
-    }
+        string? Subdomain,
+        bool    HasLogo);
 }

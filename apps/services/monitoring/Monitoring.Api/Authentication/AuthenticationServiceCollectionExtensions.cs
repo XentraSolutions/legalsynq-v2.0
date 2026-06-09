@@ -62,7 +62,7 @@ public static class AuthenticationServiceCollectionExtensions
                     ValidIssuer              = jwtSection["Issuer"],
                     ValidAudience            = jwtSection["Audience"],
                     IssuerSigningKey         = new SymmetricSecurityKey(
-                                                  Encoding.UTF8.GetBytes(userSigningKey)),
+                                                  Encoding.UTF8.GetBytes(userSigningKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
                     RoleClaimType            = "role",
                     NameClaimType            = "sub",
                     ClockSkew                = TimeSpan.Zero,
@@ -102,7 +102,7 @@ public static class AuthenticationServiceCollectionExtensions
                     IssuerSigningKey         = string.IsNullOrWhiteSpace(serviceTokenKey)
                                                   ? null
                                                   : new SymmetricSecurityKey(
-                                                        Encoding.UTF8.GetBytes(serviceTokenKey)),
+                                                        Encoding.UTF8.GetBytes(serviceTokenKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },
                     NameClaimType            = "sub",
                     RoleClaimType            = ClaimTypes.Role,
                     ClockSkew                = TimeSpan.FromSeconds(30),
@@ -143,6 +143,17 @@ public static class AuthenticationServiceCollectionExtensions
                 policy
                     .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
                     .RequireRole("PlatformAdmin"));
+
+            // MonitoringRead: grants read-only access to status, summary, alerts, and uptime.
+            // Accepts either a valid user JWT (Bearer) or a valid service token (ServiceToken).
+            // This lets the Control Center BFF and other platform services call read endpoints
+            // from the server side without requiring a specific role.
+            options.AddPolicy(MonitoringPolicies.Read, policy =>
+                policy
+                    .AddAuthenticationSchemes(
+                        JwtBearerDefaults.AuthenticationScheme,
+                        ServiceTokenAuthenticationDefaults.Scheme)
+                    .RequireAuthenticatedUser());
         });
 
         return services;

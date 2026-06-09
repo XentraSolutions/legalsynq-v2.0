@@ -8,7 +8,7 @@ Implemented a durable, deduplicated Audit Alerting Engine for the SynqAudit serv
 
 ## 2. Codebase Analysis
 
-- **Audit service** (`apps/services/audit/`) is an ASP.NET 8 microservice with `AuditEventDbContext` (SQLite dev / MySQL prod via `MigrateAsync` / `EnsureCreated` branching).
+- **Audit service** (`apps/services/audit/`) is an ASP.NET 10 microservice with `AuditEventDbContext` (SQLite dev / MySQL prod via `MigrateAsync` / `EnsureCreated` branching).
 - **Anomaly detection** lives in `AuditAnalyticsService.DetectAnomaliesAsync` — 7 rules returning `AnomalyResult` records with `RuleKey`, `Severity`, `Title`, `Description`, `ContextJson`, `DrillDownPath`, and optional scope qualifiers (`AffectedTenantId`, `AffectedActorId`, `AffectedEventType`).
 - **Caller identity** flows through `IQueryCallerContext` (`UserId`, `TenantId`, `IsPlatformAdmin`).
 - **Existing notifications infrastructure** — email via SendGrid and in-app notification records exist but are out of scope.

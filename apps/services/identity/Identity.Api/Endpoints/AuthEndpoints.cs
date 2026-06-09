@@ -16,6 +16,12 @@ namespace Identity.Api.Endpoints;
 
 public static class AuthEndpoints
 {
+    private sealed record TenantPrimaryMembership(
+        Guid TenantId,
+        Guid OrganizationId,
+        string OrganizationName,
+        string OrganizationType);
+
     public static void MapAuthEndpoints(this WebApplication app)
     {
         // ── POST /api/auth/login ─────────────────────────────────────────────
@@ -75,6 +81,94 @@ public static class AuthEndpoints
         {
             var response = await authService.GetCurrentUserAsync(httpContext.User, ct);
             return Results.Ok(response);
+        })
+        .RequireAuthorization();
+
+        // ── GET /api/auth/my-product-access ───────────────────────────────────
+        // Authenticated (Bearer JWT required).
+        // Returns the calling user's direct product-access rows across all tenants,
+        // enriched with tenant + primary-org metadata for cross-tenant UI flows.
+        app.MapGet("/api/auth/my-product-access", async (
+            HttpContext httpContext,
+            IdentityDbContext db,
+            CancellationToken ct) =>
+        {
+            var sub = httpContext.User.FindFirstValue("sub")
+                   ?? httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!Guid.TryParse(sub, out var userId))
+                return Results.Unauthorized();
+
+            var requestedProductCode = httpContext.Request.Query["productCode"].FirstOrDefault();
+            var normalizedProductCode = string.IsNullOrWhiteSpace(requestedProductCode)
+                ? null
+                : requestedProductCode.Trim().ToUpperInvariant();
+
+            var records = await db.UserProductAccessRecords
+                .AsNoTracking()
+                .Where(a => a.UserId == userId && a.AccessStatus == AccessStatus.Granted)
+                .Where(a => normalizedProductCode == null || a.ProductCode == normalizedProductCode)
+                .Join(
+                    db.Tenants.AsNoTracking().Where(t => t.IsActive),
+                    access => access.TenantId,
+                    tenant => tenant.Id,
+                    (access, tenant) => new
+                    {
+                        access.Id,
+                        access.TenantId,
+                        access.ProductCode,
+                        access.AccessStatus,
+                        access.GrantedAtUtc,
+                        access.OrganizationId,
+                        TenantCode = tenant.Code,
+                        TenantName = tenant.Name,
+                        TenantSubdomain = tenant.Subdomain,
+                    })
+                .ToListAsync(ct);
+
+            var tenantIds = records.Select(r => r.TenantId).Distinct().ToList();
+            var primaryMemberships = tenantIds.Count == 0
+                ? new List<TenantPrimaryMembership>()
+                : await db.UserOrganizationMemberships
+                    .AsNoTracking()
+                    .Include(m => m.Organization)
+                    .Where(m => m.UserId == userId
+                             && m.IsActive
+                             && m.IsPrimary
+                             && m.Organization.TenantId != null
+                             && tenantIds.Contains(m.Organization.TenantId.Value))
+                    .Select(m => new TenantPrimaryMembership(
+                        m.Organization.TenantId!.Value,
+                        m.Organization.Id,
+                        m.Organization.DisplayName ?? m.Organization.Name,
+                        m.Organization.OrgType))
+                    .ToListAsync(ct);
+            var primaryMembershipByTenant = primaryMemberships
+                .GroupBy(m => m.TenantId)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var payload = records
+                .OrderBy(r => r.TenantName)
+                .ThenBy(r => r.ProductCode)
+                .Select(r =>
+                {
+                    primaryMembershipByTenant.TryGetValue(r.TenantId, out var membership);
+                    return new
+                    {
+                        r.Id,
+                        r.TenantId,
+                        tenantCode = r.TenantCode,
+                        tenantName = r.TenantName,
+                        tenantSubdomain = r.TenantSubdomain,
+                        r.ProductCode,
+                        accessStatus = r.AccessStatus.ToString(),
+                        r.GrantedAtUtc,
+                        organizationId = membership?.OrganizationId ?? r.OrganizationId,
+                        organizationName = membership?.OrganizationName,
+                        organizationType = membership?.OrganizationType,
+                    };
+                });
+
+            return Results.Ok(payload);
         })
         .RequireAuthorization();
 
@@ -229,31 +323,6 @@ public static class AuthEndpoints
             user.SetPassword(passwordHash);
             user.Activate();
 
-            // Auto-assign the user to their tenant's organization if they don't
-            // already have a membership. Invited users (tenant user / tenant admin)
-            // always belong to the tenant's primary org — without this they land
-            // on the /no-org wall immediately after their first login.
-            var hasMembership = await db.UserOrganizationMemberships
-                .AnyAsync(m => m.UserId == user.Id, ct);
-
-            if (!hasMembership)
-            {
-                var tenantOrg = await db.Organizations
-                    .Where(o => o.TenantId == user.TenantId && o.IsActive)
-                    .OrderBy(o => o.Name)
-                    .FirstOrDefaultAsync(ct);
-
-                if (tenantOrg is not null)
-                {
-                    var membership = UserOrganizationMembership.Create(
-                        userId:         user.Id,
-                        organizationId: tenantOrg.Id,
-                        memberRole:     MemberRole.Member);
-                    membership.SetPrimary();
-                    db.UserOrganizationMemberships.Add(membership);
-                }
-            }
-
             // Mark the invitation accepted.
             invitation.Accept();
 
@@ -273,12 +342,12 @@ public static class AuthEndpoints
                 Scope = new AuditEventScopeDto
                 {
                     ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
+                    TenantId  = invitation.TenantId.ToString(),
                 },
                 Actor       = new AuditEventActorDto { Type = ActorType.User, Id = user.Id.ToString() },
                 Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
                 Action      = "InviteAccepted",
-                Description = $"User '{user.Email}' accepted invitation and activated account in tenant {user.TenantId}.",
+                Description = $"User '{user.Email}' accepted invitation and activated account in tenant {invitation.TenantId}.",
                 IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.For(
                     "identity-service", "identity.user.invite_accepted", invitation.Id.ToString()),
                 Tags = ["user-management", "invite", "activation"],
@@ -286,7 +355,7 @@ public static class AuthEndpoints
 
             // LS-ID-TNT-016-01: Build tenant portal base URL so the frontend can redirect
             // the user to the correct subdomain login page after accepting the invite.
-            var inviteTenant      = await db.Tenants.FindAsync([user.TenantId], ct);
+            var inviteTenant      = await db.Tenants.FindAsync([invitation.TenantId], ct);
             var tenantPortalUrl   = TenantPortalUrlHelper.BuildBaseUrl(inviteTenant, notifOptions.Value);
 
             return Results.Ok(new
@@ -342,6 +411,8 @@ public static class AuthEndpoints
             user.SetPassword(newHash);
             await db.SaveChangesAsync(ct);
 
+            var changePwdTenantIdStr = httpContext.User.FindFirstValue("tenant_id") ?? "";
+
             var now = DateTimeOffset.UtcNow;
             _ = auditClient.IngestAsync(new IngestAuditEventRequest
             {
@@ -355,7 +426,7 @@ public static class AuthEndpoints
                 Scope = new AuditEventScopeDto
                 {
                     ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
+                    TenantId  = changePwdTenantIdStr,
                 },
                 Actor       = new AuditEventActorDto
                 {
@@ -600,6 +671,12 @@ public static class AuthEndpoints
 
             await db.SaveChangesAsync(ct);
 
+            var resetTenantId = await db.UserTenants
+                .Where(ut => ut.UserId == user.Id && ut.IsActive)
+                .OrderBy(ut => ut.JoinedAtUtc)
+                .Select(ut => (Guid?)ut.TenantId)
+                .FirstOrDefaultAsync(ct);
+
             var now = DateTimeOffset.UtcNow;
             _ = auditClient.IngestAsync(new IngestAuditEventRequest
             {
@@ -613,7 +690,7 @@ public static class AuthEndpoints
                 Scope = new AuditEventScopeDto
                 {
                     ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
+                    TenantId  = resetTenantId?.ToString() ?? "",
                 },
                 Actor = new AuditEventActorDto
                 {
@@ -623,7 +700,7 @@ public static class AuthEndpoints
                 },
                 Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
                 Action      = "PasswordResetCompleted",
-                Description = $"Password reset completed for user '{user.Email}' in tenant {user.TenantId}.",
+                Description = $"Password reset completed for user '{user.Email}'.",
                 IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
                     now, "identity-service", "identity.user.password_reset_completed", user.Id.ToString()),
                 Tags = ["auth", "security", "password-reset"],
@@ -690,7 +767,7 @@ public static class AuthEndpoints
             logger.LogInformation("[forgot-password] Tenant found: {TenantId} ({TenantCode})", tenant.Id, tenant.Code);
 
             var user = await db.Users
-                .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Email == body.Email && u.IsActive, ct);
+                .FirstOrDefaultAsync(u => db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tenant.Id && ut.IsActive) && u.Email == body.Email && u.IsActive, ct);
 
             if (user is null)
             {
@@ -748,7 +825,7 @@ public static class AuthEndpoints
                 try
                 {
                     var (_, emailSent, emailError) = await emailClient.SendPasswordResetEmailAsync(
-                        user.Email, displayName, resetLink, user.TenantId, ct);
+                        user.Email, displayName, resetLink, tenant.Id, ct);
 
                     if (!emailSent)
                         logger.LogWarning(

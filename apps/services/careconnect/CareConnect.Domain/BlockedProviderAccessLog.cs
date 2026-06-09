@@ -31,7 +31,7 @@ public class BlockedProviderAccessLog
     {
         return new BlockedProviderAccessLog
         {
-            Id             = Guid.NewGuid(),
+            Id             = Guid.CreateVersion7(),
             TenantId       = tenantId,
             UserId         = userId,
             UserEmail      = userEmail?.ToLowerInvariant().Trim(),

@@ -37,7 +37,7 @@ public class TaskLinkedEntity
 
         return new TaskLinkedEntity
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             TaskId           = taskId,
             TenantId         = tenantId,
             SourceProductCode = sourceProductCode?.Trim().ToUpperInvariant(),

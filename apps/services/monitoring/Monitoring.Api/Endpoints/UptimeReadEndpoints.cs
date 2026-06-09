@@ -1,3 +1,4 @@
+using Monitoring.Api.Authentication;
 using Monitoring.Api.Contracts;
 using Monitoring.Application.Queries;
 
@@ -6,10 +7,11 @@ namespace Monitoring.Api.Endpoints;
 /// <summary>
 /// Read-only endpoints for uptime rollup data.
 ///
-/// <para>All endpoints are anonymous — same policy as the existing
-/// <see cref="MonitoringReadEndpoints"/> group. They are called from within
-/// the trust boundary (Control Center backend, public status page server)
-/// and do not require authentication.</para>
+/// <para>All endpoints require the MonitoringRead policy, which accepts either
+/// a valid user JWT (Bearer scheme) or a valid service token (ServiceToken scheme).
+/// This prevents unauthenticated external access to per-entity uptime telemetry,
+/// raw check counts, and latency metrics while still allowing the Control Center
+/// BFF and other platform services to call these endpoints from the server side.</para>
 ///
 /// <para>Data is derived exclusively from the <c>uptime_hourly_rollups</c>
 /// table, which is populated by <c>UptimeAggregationHostedService</c> from
@@ -23,7 +25,7 @@ public static class UptimeReadEndpoints
 
     public static IEndpointRouteBuilder MapUptimeReadEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/monitoring/uptime").AllowAnonymous();
+        var group = app.MapGroup("/monitoring/uptime").RequireAuthorization(MonitoringPolicies.Read);
 
         // GET /monitoring/uptime/rollups?window=24h|7d|30d|90d
         group.MapGet("/rollups", GetRollupsAsync);

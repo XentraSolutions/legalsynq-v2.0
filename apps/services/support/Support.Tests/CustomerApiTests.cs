@@ -231,7 +231,7 @@ public class CustomerApiTests : IClassFixture<SupportApiProdFactory>
     public async Task Customer_Cannot_Access_Queue_Endpoints()
     {
         const string tenant   = "rbac-test-queue-07";
-        var customerId = Guid.NewGuid();
+        var customerId = Guid.CreateVersion7();
 
         var customer = CustomerClient(tenant, customerId);
         var resp = await customer.GetAsync("/support/api/queues");
@@ -245,7 +245,7 @@ public class CustomerApiTests : IClassFixture<SupportApiProdFactory>
     public async Task Customer_Cannot_Access_Internal_Ticket_List()
     {
         const string tenant   = "rbac-test-internal-08";
-        var customerId = Guid.NewGuid();
+        var customerId = Guid.CreateVersion7();
 
         var customer = CustomerClient(tenant, customerId);
         var resp = await customer.GetAsync("/support/api/tickets");

@@ -126,7 +126,7 @@ PlatformAdmin sees all rows; TenantAdmin sees only their tenant's rows.
 
 ## Validation Results
 
-- dotnet build Flow.Api: **PASS** — 0 warnings, 0 errors (19 s, net8.0)
+- dotnet build Flow.Api: **PASS** — 0 warnings, 0 errors (19 s, net10.0)
 - tsc --noEmit control-center: **PASS** — no output, clean exit
 - List endpoint responds with paginated outbox rows: verified by code review — EF projection, `IgnoreQueryFilters`, explicit tenant predicate, `OrderByDescending(o => o.CreatedAt)`, `Skip/Take` pagination
 - Summary counts reflect actual DB state: verified — `GroupBy(o => o.Status).Select(g => new { Status=g.Key, Count=g.Count() })` aggregation; force-dynamic BFF route (no caching)

@@ -13,7 +13,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsGovernancePolicy
 {
-    public Guid   Id       { get; set; } = Guid.NewGuid();
+    public Guid   Id       { get; set; } = Guid.CreateVersion7();
 
     /// <summary>null = platform-wide global policy.</summary>
     public Guid?  TenantId { get; set; }

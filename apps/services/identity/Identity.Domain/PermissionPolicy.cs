@@ -21,7 +21,7 @@ public class PermissionPolicy
 
         return new PermissionPolicy
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PermissionCode = permissionCode.Trim(),
             PolicyId = policyId,
             IsActive = true,

@@ -108,7 +108,7 @@ public class Appointment : AuditableEntity
     {
         return new Appointment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ReferralId = referralId,
             ProviderId = providerId,

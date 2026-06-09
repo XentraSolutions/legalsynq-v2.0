@@ -64,7 +64,7 @@ public class TaskTemplate : AuditableEntity
         var now = DateTime.UtcNow;
         return new TaskTemplate
         {
-            Id                 = id ?? Guid.NewGuid(),
+            Id                 = id ?? Guid.CreateVersion7(),
             TenantId           = tenantId,
             SourceProductCode  = sourceProductCode?.Trim().ToUpperInvariant(),
             Code               = code.Trim().ToUpperInvariant(),

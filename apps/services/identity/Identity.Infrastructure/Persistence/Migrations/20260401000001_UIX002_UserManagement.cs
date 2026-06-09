@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -6,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(IdentityDbContext))]
     [Migration("20260401000001_UIX002_UserManagement")]
     public partial class UIX002_UserManagement : Migration
     {

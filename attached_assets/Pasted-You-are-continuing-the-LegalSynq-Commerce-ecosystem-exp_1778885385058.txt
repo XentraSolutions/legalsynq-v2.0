@@ -1,0 +1,422 @@
+You are continuing the LegalSynq Commerce ecosystem expansion initiative.
+
+FIRST ACTION:
+Create the report file FIRST before performing any additional work:
+
+/analysis/LS-COMMERCE-ECO-02-report.md
+
+Update this report incrementally as each major implementation step is completed.
+
+DO NOT wait until the end to write the report.
+
+====================================================
+TICKET ID: LS-COMMERCE-ECO-02
+TITLE: Tenant Lifecycle ↔ Commerce Synchronization
+====================================================
+
+# Objective
+
+Wire the Commerce ecosystem foundation into tenant/product lifecycle flows so tenant creation, activation, suspension, closure, and product enablement can emit Commerce-aware lifecycle signals safely.
+
+This ticket builds on:
+
+- LS-COMMERCE-ECO-01
+- LS-COMMERCE-INT-01 through INT-04
+- LS-COMMERCE-OPS-01
+
+This is an additive lifecycle integration ticket.
+
+This is NOT:
+
+- a billing rewrite
+- a domain merge
+- automatic subscription provisioning
+- automatic billing account creation
+- a distributed event bus implementation
+- a new authorization framework
+
+====================================================
+GIT / GITHUB REQUIREMENTS
+====================================================
+
+Use the ticket ID in all Git operations.
+
+Required conventions:
+
+Branch:
+- ls-commerce-eco-02-tenant-lifecycle-commerce-sync
+
+Commit message format:
+- LS-COMMERCE-ECO-02 <summary>
+
+Examples:
+- LS-COMMERCE-ECO-02 wire tenant lifecycle commerce hooks
+- LS-COMMERCE-ECO-02 add product lifecycle commerce notifications
+- LS-COMMERCE-ECO-02 validate noop commerce lifecycle fallback
+
+If creating a PR:
+- PR title must include LS-COMMERCE-ECO-02
+
+Do not use generic commit messages.
+
+====================================================
+ARCHITECTURE RULES
+====================================================
+
+Maintain strict separation between:
+
+Platform / SaaS Billing:
+Commerce
+Platform → Tenant
+
+Tenant Billing:
+Tenant → Customer / Client
+
+These domains must remain isolated.
+
+STRICTLY PROHIBITED:
+
+- database merges
+- shared DbContexts
+- direct EF cross-access
+- collapsing Commerce into Tenant or Identity services
+- embedding billing logic into lifecycle services
+- automatic payment/subscription workflows
+- requiring Commerce for tenant/product lifecycle success
+- exposing internal tokens
+- removing standalone runtime support
+- rewriting Identity
+- rewriting Tenant Management
+- redesigning Control Center
+- introducing a new auth framework
+- implementing a distributed event bus
+
+====================================================
+PRIMARY SCOPE
+====================================================
+
+Implement additive lifecycle synchronization for:
+
+1. Tenant lifecycle Commerce notifications
+2. Product enablement Commerce notifications
+3. Noop-first lifecycle notifier safety
+4. Canonical Commerce event usage
+5. Correlation/tenant/product metadata propagation
+6. Failure-safe lifecycle behavior
+7. Optional audit/readiness visibility where existing patterns support it
+8. Implementation report
+
+====================================================
+FILES / AREAS TO INSPECT
+====================================================
+
+Inspect existing implementations before modifying anything.
+
+Review:
+
+- ECO-01 shared Commerce abstractions
+- `ICommerceLifecycleNotifier`
+- `CommerceLifecycleEvent`
+- `CommerceEventTypes`
+- Tenant lifecycle services
+- tenant creation/activation/suspension/closure methods
+- Identity product provisioning flows
+- product enable/disable methods
+- existing audit logging patterns
+- existing correlation/request context patterns
+- existing dependency injection setup
+- existing appsettings/config conventions
+- existing tests for tenant lifecycle and product provisioning
+
+Likely areas include:
+
+- apps/services/tenant/
+- apps/services/identity/
+- apps/services/commerce/
+- shared/building-blocks/
+- shared/contracts/
+- shared/audit-client/
+- apps/control-center/
+- tests/
+
+Do not assume paths.
+Validate actual repository structure first.
+
+====================================================
+IMPLEMENTATION TASKS
+====================================================
+
+# 1. Inspect Tenant/Product Lifecycle Implementation Points
+
+Before coding, identify and document:
+
+- tenant creation method(s)
+- tenant activation method(s)
+- tenant suspension/deactivation method(s)
+- tenant closure/archive method(s)
+- product enablement method(s)
+- product disablement method(s)
+- current audit/logging behavior
+- available tenant id, product key, actor id, and correlation id sources
+- existing DI registration patterns
+
+Document findings in the report.
+
+# 2. Wire Tenant Lifecycle Commerce Notifications
+
+Add Commerce lifecycle notification calls where safe.
+
+Target events:
+
+- tenant created → `CommerceEventTypes.TenantCreated`
+- tenant activated → `CommerceEventTypes.TenantActivated`
+- tenant suspended/deactivated → `CommerceEventTypes.TenantSuspended`
+- tenant closed/archived → `CommerceEventTypes.TenantClosed`
+
+Requirements:
+
+- use `ICommerceLifecycleNotifier`
+- create `CommerceLifecycleEvent`
+- set `HostPlatformKey = "legalsynq"`
+- set `ExternalTenantId` to canonical tenant ID
+- set `OccurredAtUtc`
+- include `CorrelationId` where available
+- include safe metadata where useful
+- do not block tenant lifecycle if notifier fails
+- do not create billing accounts automatically unless already supported by an existing safe API and explicitly needed
+
+# 3. Wire Product Lifecycle Commerce Notifications
+
+Add Commerce lifecycle notification calls to product provisioning flows.
+
+Target events:
+
+- product enabled → `CommerceEventTypes.ProductEnabled`
+- product disabled → `CommerceEventTypes.ProductDisabled`
+
+Requirements:
+
+- include tenant ID
+- include product key
+- include correlation ID where available
+- use `ICommerceLifecycleNotifier`
+- do not block product provisioning if notifier fails
+- do not add entitlement enforcement in this ticket
+- do not auto-create subscriptions in this ticket
+
+# 4. Ensure Noop-First Safety
+
+Commerce lifecycle integration must remain safe by default.
+
+Requirements:
+
+- `CommerceIntegration:Enabled=false` must not change lifecycle behavior
+- noop notifier must remain valid fallback
+- lifecycle calls must not throw back into primary flows
+- services must still start without Commerce running
+- missing Commerce configuration must not break tenant/product lifecycle
+
+# 5. Add Optional Audit / Readiness Visibility
+
+Where existing patterns support it, add safe visibility for Commerce lifecycle integration.
+
+Examples:
+
+- debug/info log when notification is skipped/noop
+- audit event when lifecycle notification is attempted/sent/failed
+- readiness telemetry indicating lifecycle notifier wired
+
+Rules:
+
+- do not introduce a new audit system
+- do not add noisy logs
+- do not expose tokens/secrets
+- if audit pattern is unclear, defer and document
+
+# 6. Add Tests / Validation
+
+Add tests where practical.
+
+Recommended tests:
+
+- tenant create emits Commerce lifecycle event through mock notifier
+- tenant suspend emits correct Commerce event type
+- product enable emits ProductEnabled event with product key
+- notifier failure does not fail primary lifecycle operation
+- noop/default behavior preserves existing lifecycle behavior
+- CommerceIntegration disabled mode does not require Commerce service
+
+If automated tests are not practical:
+- document manual validation steps.
+
+====================================================
+FILES / AREAS TO MODIFY
+====================================================
+
+Modify only additive lifecycle integration areas.
+
+Expected possible modification areas:
+
+- Tenant service DI setup
+- Tenant lifecycle service methods
+- Identity product provisioning service methods
+- appsettings examples/config defaults
+- lifecycle tests
+- product provisioning tests
+- report file
+
+Do NOT modify:
+
+- Commerce billing domain models
+- Tenant Billing enforcement logic
+- invoice/payment workflows
+- payment provider integrations
+- DbContexts to merge domains
+- core auth architecture
+- Control Center UI unless only documenting no change
+- distributed event infrastructure
+
+====================================================
+VALIDATION COMMANDS
+====================================================
+
+Run relevant validation commands based on actual repository structure.
+
+Likely commands may include:
+
+# Shared Contracts / BuildingBlocks
+
+- dotnet build shared/contracts/Contracts/Contracts.csproj
+- dotnet build shared/building-blocks/BuildingBlocks/BuildingBlocks.csproj
+
+# Tenant Service
+
+- dotnet build apps/services/tenant/
+- dotnet test apps/services/tenant/
+
+# Identity Service
+
+- dotnet build apps/services/identity/
+- dotnet test apps/services/identity/
+
+# Commerce
+
+- dotnet build apps/services/commerce/Commerce.sln
+
+# Platform
+
+Run any additional discovered validation commands.
+
+If commands fail:
+
+- document exact command
+- document exact failure
+- document whether issue appears pre-existing or caused by this ticket
+- do not fabricate success
+
+If commands are skipped:
+
+- document why
+
+====================================================
+ACCEPTANCE CRITERIA
+====================================================
+
+LS-COMMERCE-ECO-02 is complete ONLY IF:
+
+- /analysis/LS-COMMERCE-ECO-02-report.md was created first
+- report updated incrementally throughout implementation
+- actual tenant/product lifecycle points were inspected and documented
+- tenant lifecycle Commerce notifications are wired where safe or explicitly deferred with reason
+- product lifecycle Commerce notifications are wired where safe or explicitly deferred with reason
+- canonical `CommerceEventTypes` are used
+- `CommerceLifecycleEvent` is used
+- tenant id and product key metadata are included correctly
+- Commerce notification failure does not block tenant/product lifecycle operations
+- noop/default behavior remains safe
+- services still start without Commerce running
+- no billing domains are merged
+- no shared DbContext introduced
+- no direct EF cross-access introduced
+- no automatic subscription/payment workflow added
+- builds/tests/manual validations are documented
+- risks/deferred items are documented
+- recommended next ticket is included
+
+====================================================
+REQUIRED REPORT STRUCTURE
+====================================================
+
+Update incrementally:
+
+/analysis/LS-COMMERCE-ECO-02-report.md
+
+Required sections:
+
+1. Executive Summary
+2. Prior Ecosystem Baseline
+3. Tenant/Product Lifecycle Inspection
+4. Tenant Lifecycle Commerce Notifications
+5. Product Lifecycle Commerce Notifications
+6. Noop-First Safety Validation
+7. Audit / Readiness Visibility
+8. Failure Handling
+9. Files Changed
+10. Build/Test Validation
+11. Risks / Deferred Items
+12. Confirmation of Non-Merge Boundaries
+13. Ecosystem Readiness Assessment
+14. Recommended Next Step
+
+====================================================
+KNOWN RESTRICTIONS
+====================================================
+
+- Do not fabricate validation success.
+- Do not claim tests passed unless actually run.
+- Do not hide failures.
+- Do not redesign Tenant Management.
+- Do not redesign Identity.
+- Do not expose secrets or internal tokens.
+- Do not directly query Commerce databases from Tenant or Identity services.
+- Do not collapse Commerce into tenant lifecycle services.
+- Do not add automatic subscription creation.
+- Do not add automatic payment flows.
+- Do not introduce distributed orchestration complexity.
+- Do not introduce a new auth framework.
+
+====================================================
+EXPECTED OUTPUT
+====================================================
+
+At completion:
+
+- Tenant lifecycle flows can notify Commerce safely.
+- Product lifecycle flows can notify Commerce safely.
+- Commerce lifecycle signals use canonical shared event contracts.
+- Integration remains noop-first and non-blocking.
+- Product/tenant lifecycle operations remain successful even when Commerce is unavailable.
+- The platform is ready for entitlement enforcement adoption in selected services.
+
+====================================================
+FINAL INSTRUCTION
+====================================================
+
+Preserve bounded contexts.
+
+Integrate through:
+
+- `ICommerceLifecycleNotifier`
+- `CommerceLifecycleEvent`
+- `CommerceEventTypes`
+- additive service DI
+- noop-first fallback
+- safe lifecycle hooks
+
+Do not merge billing domains.
+
+Do not redesign billing.
+
+Create and maintain the report first.
+
+Do not fabricate success.

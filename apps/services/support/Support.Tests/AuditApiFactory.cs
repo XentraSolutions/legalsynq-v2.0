@@ -15,7 +15,7 @@ namespace Support.Tests;
 /// </summary>
 public class AuditApiFactory : WebApplicationFactory<Program>
 {
-    public string DbName { get; } = $"support-tests-audit-{Guid.NewGuid()}";
+    public string DbName { get; } = $"support-tests-audit-{Guid.CreateVersion7()}";
     public RecordingAuditPublisher Recorder { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

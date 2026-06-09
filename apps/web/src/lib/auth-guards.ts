@@ -16,6 +16,23 @@ export const FrontendProductCode = {
 } as const;
 export type FrontendProductCodeValue = (typeof FrontendProductCode)[keyof typeof FrontendProductCode];
 
+export function sessionHasProductAccess(
+  session: Pick<PlatformSession, 'isPlatformAdmin' | 'isTenantAdmin' | 'userProducts' | 'enabledProducts'>,
+  productCode: FrontendProductCodeValue,
+): boolean {
+  if (session.isPlatformAdmin || session.isTenantAdmin) return true;
+
+  // `userProducts` is the authoritative explicit-access list from Identity.
+  // Only fall back to tenant-enabled products when the field is truly absent,
+  // which covers older sessions emitted before user-level product claims existed.
+  const products =
+    session.userProducts !== undefined
+      ? session.userProducts
+      : (session.enabledProducts ?? []);
+
+  return products.includes(productCode);
+}
+
 /**
  * Ensure a valid session exists.
  * Redirects to /login if not.
@@ -66,15 +83,7 @@ export async function requireProductRole(role: ProductRoleValue): Promise<Platfo
  */
 export async function requireProductAccess(productCode: FrontendProductCodeValue): Promise<PlatformSession> {
   const session = await requireOrg();
-  // PlatformAdmins and TenantAdmins have implicit access to all products.
-  if (session.isPlatformAdmin || session.isTenantAdmin) return session;
-  // Prefer the user-level product list (JWT product_codes claim, LS-ID-TNT-009).
-  // Fall back to tenant-level enabled products for sessions that pre-date TNT-009.
-  const products: string[] =
-    (session.userProducts?.length ?? 0) > 0
-      ? session.userProducts!
-      : (session.enabledProducts ?? []);
-  if (!products.includes(productCode)) redirect('/access-denied');
+  if (!sessionHasProductAccess(session, productCode)) redirect('/access-denied');
   return session;
 }
 

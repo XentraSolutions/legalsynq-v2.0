@@ -76,6 +76,12 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(t => t.IsVerificationRetryExhausted)
             .HasDefaultValue(false);
 
+        // Write-through from Tenant service — used for enrollment owner checks.
+        builder.Property(t => t.OwnerUserId);
+
+        builder.HasIndex(t => t.OwnerUserId)
+            .HasFilter("`OwnerUserId` IS NOT NULL");
+
         builder.HasIndex(t => t.Code)
             .IsUnique();
 

@@ -26,7 +26,7 @@ public class SmsGovernanceReleaseTests : IDisposable
     public SmsGovernanceReleaseTests()
     {
         var dbOpts = new DbContextOptionsBuilder<NotificationsDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString())
             .Options;
         _db = new NotificationsDbContext(dbOpts);
     }
@@ -77,7 +77,7 @@ public class SmsGovernanceReleaseTests : IDisposable
     {
         var pkg = new SmsGovernanceReleasePackage
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             Name         = "Test Release",
             ReleaseState = ReleaseStates.Draft,
             ReleaseType  = ReleaseTypes.MixedGovernance,
@@ -88,10 +88,10 @@ public class SmsGovernanceReleaseTests : IDisposable
 
         var item = new SmsGovernanceReleaseItem
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             ReleasePackageId = pkg.Id,
             EntityType       = ReleaseEntityTypes.Rule,
-            EntityId         = Guid.NewGuid(),
+            EntityId         = Guid.CreateVersion7(),
             ActionType       = ReleaseActionTypes.Activate,
             CreatedAt        = DateTime.UtcNow,
         };
@@ -99,7 +99,7 @@ public class SmsGovernanceReleaseTests : IDisposable
 
         _db.SmsGovernanceReleaseAuditEvents.Add(new SmsGovernanceReleaseAuditEvent
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             ReleasePackageId = pkg.Id,
             EventType        = ReleaseAuditEventTypes.Created,
             CreatedAt        = DateTime.UtcNow,
@@ -109,7 +109,7 @@ public class SmsGovernanceReleaseTests : IDisposable
         pkg.ReleaseState = ReleaseStates.PendingReview;
         _db.SmsGovernanceReleaseAuditEvents.Add(new SmsGovernanceReleaseAuditEvent
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             ReleasePackageId = pkg.Id,
             EventType        = ReleaseAuditEventTypes.SubmittedForReview,
             CreatedAt        = DateTime.UtcNow,
@@ -118,7 +118,7 @@ public class SmsGovernanceReleaseTests : IDisposable
         // Create a pending approval request requiring ComplianceReviewer
         _db.SmsGovernanceApprovalRequests.Add(new SmsGovernanceApprovalRequest
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             ReleasePackageId  = pkg.Id,
             ApprovalStage     = 1,
             ApproverRole      = "ComplianceReviewer",
@@ -209,7 +209,7 @@ public class SmsGovernanceReleaseTests : IDisposable
             ReleaseType: ReleaseTypes.MixedGovernance,
             RequestedBy: "tester"));
 
-        var entityId = Guid.NewGuid();
+        var entityId = Guid.CreateVersion7();
 
         var addReq = new AddReleaseItemRequest(
             EntityType:          ReleaseEntityTypes.Rule,
@@ -244,14 +244,14 @@ public class SmsGovernanceReleaseTests : IDisposable
 
         var pkg = new SmsGovernanceReleasePackage
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             Name             = "Locked Release",
             ReleaseState     = ReleaseStates.Approved,
             ReleaseType      = ReleaseTypes.MixedGovernance,
             CreatedAt        = DateTime.UtcNow,
             UpdatedAt        = DateTime.UtcNow,
             // Simulate an active (non-expired) lock
-            ActivationLockId         = Guid.NewGuid(),
+            ActivationLockId         = Guid.CreateVersion7(),
             ActivationLockAcquiredAt = DateTime.UtcNow.AddMinutes(-1),
             ActivationLockExpiresAt  = DateTime.UtcNow.AddMinutes(9),  // not expired yet
             ActivationLockedBy       = "worker-1",
@@ -280,7 +280,7 @@ public class SmsGovernanceReleaseTests : IDisposable
     {
         var pkg = new SmsGovernanceReleasePackage
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             Name         = "Orphan Release",
             ReleaseState = ReleaseStates.Draft,
             ReleaseType  = ReleaseTypes.MixedGovernance,
@@ -307,13 +307,13 @@ public class SmsGovernanceReleaseTests : IDisposable
     {
         var pkg = new SmsGovernanceReleasePackage
         {
-            Id                       = Guid.NewGuid(),
+            Id                       = Guid.CreateVersion7(),
             Name                     = "Expired Lock Release",
             ReleaseState             = ReleaseStates.ActivationFailed,
             ReleaseType              = ReleaseTypes.MixedGovernance,
             CreatedAt                = DateTime.UtcNow,
             UpdatedAt                = DateTime.UtcNow,
-            ActivationLockId         = Guid.NewGuid(),
+            ActivationLockId         = Guid.CreateVersion7(),
             ActivationLockAcquiredAt = DateTime.UtcNow.AddHours(-2),
             ActivationLockExpiresAt  = DateTime.UtcNow.AddHours(-1),  // expired 1 hour ago
             ActivationLockedBy       = "stale-worker",

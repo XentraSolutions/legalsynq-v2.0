@@ -37,7 +37,7 @@ public class ReferralNote : AuditableEntity
         var now = DateTime.UtcNow;
         return new ReferralNote
         {
-            Id                  = Guid.NewGuid(),
+            Id                  = Guid.CreateVersion7(),
             TenantId            = tenantId,
             ReferralId          = referralId,
             OwnerOrganizationId = ownerOrganizationId,

@@ -62,7 +62,7 @@ public class ServicingItem : AuditableEntity
         var now = DateTime.UtcNow;
         return new ServicingItem
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             TenantId         = tenantId,
             OrgId            = orgId,
             TaskNumber       = taskNumber.Trim(),

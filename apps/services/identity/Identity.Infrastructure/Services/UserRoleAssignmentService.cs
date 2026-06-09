@@ -39,15 +39,19 @@ public class UserRoleAssignmentService : IUserRoleAssignmentService
         string? productCode = null, Guid? organizationId = null,
         Guid? actorUserId = null, CancellationToken ct = default)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
-        if (user == null)
+        var isMember = await _db.UserTenants
+            .AnyAsync(ut => ut.UserId == userId && ut.TenantId == tenantId && ut.IsActive, ct);
+        if (!isMember)
             throw new InvalidOperationException($"User {userId} not found in tenant {tenantId}.");
+
+        var user = await _db.Users.FindAsync([userId], ct)
+            ?? throw new InvalidOperationException($"User {userId} does not exist.");
 
         var code = productCode?.ToUpperInvariant().Trim();
         if (code != null)
         {
-            var productEntitled = await _db.TenantProductEntitlements
-                .AnyAsync(e => e.TenantId == tenantId && e.ProductCode == code && e.Status == EntitlementStatus.Active, ct);
+            var productEntitled = await _db.TenantProducts
+                .AnyAsync(tp => tp.TenantId == tenantId && tp.Product.Code == code && tp.IsEnabled, ct);
             if (!productEntitled)
                 throw new InvalidOperationException($"Product '{code}' is not entitled to tenant {tenantId}.");
         }
@@ -104,7 +108,7 @@ public class UserRoleAssignmentService : IUserRoleAssignmentService
         var beforeJson = JsonSerializer.Serialize(new { existing.AssignmentStatus, existing.AssignedAtUtc });
         existing.Remove(actorUserId);
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+        var user = await _db.Users.FindAsync([userId], ct);
         user?.IncrementAccessVersion();
 
         await _db.SaveChangesAsync(ct);

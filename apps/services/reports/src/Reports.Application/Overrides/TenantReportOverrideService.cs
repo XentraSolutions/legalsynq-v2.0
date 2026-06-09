@@ -92,7 +92,7 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
         {
             var entity = new TenantReportOverride
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 TenantId = tenantId,
                 ReportTemplateId = templateId,
                 BaseTemplateVersionNumber = publishedVersion.VersionNumber,

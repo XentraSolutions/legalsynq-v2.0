@@ -63,8 +63,8 @@ public class PermissionGovernanceTests
     [Fact]
     public void Create_ValidCode_SetsAllFields()
     {
-        var productId = Guid.NewGuid();
-        var creatorId = Guid.NewGuid();
+        var productId = Guid.CreateVersion7();
+        var creatorId = Guid.CreateVersion7();
 
         var perm = Permission.Create(productId, "SYNQ_FUND.referral:create", "Create Referral",
             "Allows creating referrals", "Referral", creatorId);
@@ -83,27 +83,27 @@ public class PermissionGovernanceTests
     public void Create_InvalidCode_Throws()
     {
         Assert.Throws<ArgumentException>(() =>
-            Permission.Create(Guid.NewGuid(), "INVALID_CODE", "Test"));
+            Permission.Create(Guid.CreateVersion7(), "INVALID_CODE", "Test"));
     }
 
     [Fact]
     public void Create_EmptyCode_Throws()
     {
         Assert.Throws<ArgumentException>(() =>
-            Permission.Create(Guid.NewGuid(), "", "Test"));
+            Permission.Create(Guid.CreateVersion7(), "", "Test"));
     }
 
     [Fact]
     public void Create_EmptyName_Throws()
     {
         Assert.Throws<ArgumentException>(() =>
-            Permission.Create(Guid.NewGuid(), "SYNQ_FUND.test:code", ""));
+            Permission.Create(Guid.CreateVersion7(), "SYNQ_FUND.test:code", ""));
     }
 
     [Fact]
     public void Create_TrimsWhitespace()
     {
-        var perm = Permission.Create(Guid.NewGuid(), "SYNQ_FUND.test:code", "  My Name  ",
+        var perm = Permission.Create(Guid.CreateVersion7(), "SYNQ_FUND.test:code", "  My Name  ",
             "  Desc  ", "  Cat  ");
 
         Assert.Equal("My Name", perm.Name);
@@ -114,8 +114,8 @@ public class PermissionGovernanceTests
     [Fact]
     public void Update_ChangesNameDescriptionCategory()
     {
-        var perm = Permission.Create(Guid.NewGuid(), "SYNQ_FUND.test:code", "Old Name");
-        var updaterId = Guid.NewGuid();
+        var perm = Permission.Create(Guid.CreateVersion7(), "SYNQ_FUND.test:code", "Old Name");
+        var updaterId = Guid.CreateVersion7();
 
         perm.Update("New Name", "New Desc", "New Category", updaterId);
 
@@ -129,17 +129,17 @@ public class PermissionGovernanceTests
     [Fact]
     public void Update_EmptyName_Throws()
     {
-        var perm = Permission.Create(Guid.NewGuid(), "SYNQ_FUND.test:code", "Name");
+        var perm = Permission.Create(Guid.CreateVersion7(), "SYNQ_FUND.test:code", "Name");
         Assert.Throws<ArgumentException>(() => perm.Update("", null, null));
     }
 
     [Fact]
     public void Deactivate_SetsIsActiveFalse()
     {
-        var perm = Permission.Create(Guid.NewGuid(), "SYNQ_FUND.test:code", "Test");
+        var perm = Permission.Create(Guid.CreateVersion7(), "SYNQ_FUND.test:code", "Test");
         Assert.True(perm.IsActive);
 
-        var updaterId = Guid.NewGuid();
+        var updaterId = Guid.CreateVersion7();
         perm.Deactivate(updaterId);
 
         Assert.False(perm.IsActive);
@@ -150,11 +150,11 @@ public class PermissionGovernanceTests
     [Fact]
     public void Activate_SetsIsActiveTrue()
     {
-        var perm = Permission.Create(Guid.NewGuid(), "SYNQ_FUND.test:code", "Test");
+        var perm = Permission.Create(Guid.CreateVersion7(), "SYNQ_FUND.test:code", "Test");
         perm.Deactivate();
         Assert.False(perm.IsActive);
 
-        var updaterId = Guid.NewGuid();
+        var updaterId = Guid.CreateVersion7();
         perm.Activate(updaterId);
 
         Assert.True(perm.IsActive);

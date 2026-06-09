@@ -27,7 +27,7 @@ public class EventLogger : IEventLogger
     {
         var ev = new SupportTicketEvent
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TicketId = ticketId,
             TenantId = tenantId,
             EventType = eventType,

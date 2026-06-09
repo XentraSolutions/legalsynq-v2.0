@@ -307,10 +307,10 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
         // them internally we would need to construct the entity first and then recompute
         // the hash — requiring either mutable fields or a two-allocation pattern.
         //
-        // TODO: replace Guid.NewGuid() with a UUIDv7 factory once available. UUIDv7
+        // TODO: replace Guid.CreateVersion7() with a UUIDv7 factory once available. UUIDv7
         //       GUIDs are time-ordered, which improves clustered-index insert locality
         //       on MySQL / MariaDB (Pomelo target) significantly for high-volume append.
-        var auditId = Guid.NewGuid();
+        var auditId = Guid.CreateVersion7();
         var now     = DateTimeOffset.UtcNow;
 
         // ── Steps 3–6: Chain-locked critical section ─────────────────────────

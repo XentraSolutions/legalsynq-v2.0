@@ -207,7 +207,7 @@ public sealed class RetentionPolicyJob
             {
                 var archiveContext = new ArchivalContext
                 {
-                    ArchiveJobId    = Guid.NewGuid().ToString("N"),
+                    ArchiveJobId    = Guid.CreateVersion7().ToString("N"),
                     WindowFrom      = toProcess.Min(r => r.RecordedAtUtc),
                     WindowTo        = toProcess.Max(r => r.RecordedAtUtc).AddTicks(1),
                     InitiatedBy     = "RetentionPolicyJob",

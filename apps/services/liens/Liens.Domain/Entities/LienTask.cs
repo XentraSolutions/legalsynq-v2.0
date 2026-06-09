@@ -63,7 +63,7 @@ public class LienTask : AuditableEntity
         var now = DateTime.UtcNow;
         return new LienTask
         {
-            Id                    = Guid.NewGuid(),
+            Id                    = Guid.CreateVersion7(),
             TenantId              = tenantId,
             Title                 = title.Trim(),
             Description           = description?.Trim(),

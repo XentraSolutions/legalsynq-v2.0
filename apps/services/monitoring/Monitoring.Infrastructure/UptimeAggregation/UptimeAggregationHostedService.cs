@@ -155,7 +155,7 @@ public sealed class UptimeAggregationHostedService : BackgroundService
                 else
                 {
                     var rollup = new UptimeHourlyRollup(
-                        id:                Guid.NewGuid(),
+                        id:                Guid.CreateVersion7(),
                         monitoredEntityId: entityId,
                         entityName:        entityName,
                         bucketHourUtc:     hourBucket,

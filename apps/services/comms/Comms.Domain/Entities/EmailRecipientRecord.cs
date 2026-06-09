@@ -39,7 +39,7 @@ public class EmailRecipientRecord : AuditableEntity
         var now = DateTime.UtcNow;
         return new EmailRecipientRecord
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             EmailMessageReferenceId = emailMessageReferenceId,

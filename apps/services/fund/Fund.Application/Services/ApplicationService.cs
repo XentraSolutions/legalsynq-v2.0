@@ -1,6 +1,7 @@
 using BuildingBlocks.Exceptions;
 using Fund.Application.DTOs;
 using Fund.Application.Interfaces;
+using System.Security.Cryptography;
 
 namespace Fund.Application.Services;
 
@@ -249,7 +250,7 @@ public class ApplicationService : IApplicationService
     private static string GenerateApplicationNumber()
     {
         var year   = DateTime.UtcNow.Year;
-        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var suffix = Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToUpperInvariant();
         return $"FUND-{year}-{suffix}";
     }
 

@@ -62,7 +62,7 @@ public sealed class ReportExportService : IReportExportService
             return ServiceResult<ExportReportResponse>.BadRequest(
                 $"Unsupported export format: {request.Format}");
 
-        var exportId = Guid.NewGuid();
+        var exportId = Guid.CreateVersion7();
 
         await TryAuditAsync(AuditEventFactory.ExportStarted(
             request.TenantId, actorId, exportId,

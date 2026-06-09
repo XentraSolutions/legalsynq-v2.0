@@ -58,7 +58,7 @@ public sealed class MockTenantReportOverrideRepository : ITenantReportOverrideRe
 
     public Task<TenantReportOverride> CreateAsync(TenantReportOverride entity, CancellationToken ct)
     {
-        if (entity.Id == Guid.Empty) entity.Id = Guid.NewGuid();
+        if (entity.Id == Guid.Empty) entity.Id = Guid.CreateVersion7();
         _overrides.Add(entity);
         return Task.FromResult(entity);
     }

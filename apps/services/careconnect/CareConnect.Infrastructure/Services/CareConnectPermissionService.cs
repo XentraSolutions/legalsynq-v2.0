@@ -4,6 +4,11 @@ namespace CareConnect.Infrastructure.Services;
 
 public sealed class CareConnectPermissionService : IPermissionService
 {
+    // JWT product_roles claims arrive as "SYNQ_CARECONNECT:CARECONNECT_RECEIVER".
+    // Strip the product-code prefix before the dictionary lookup so that both the
+    // bare role codes used in unit tests and the prefixed form used at runtime match.
+    private const string ProductPrefix = ProductCodes.SynqCareConnect + ":";
+
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> RolePermissions =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
         {
@@ -23,6 +28,8 @@ public sealed class CareConnectPermissionService : IPermissionService
                 PermissionCodes.ReferralReadAddressed,
                 PermissionCodes.ReferralAccept,
                 PermissionCodes.ReferralDecline,
+                PermissionCodes.ReferralUpdateStatus,
+                PermissionCodes.ReferralCancel,
                 PermissionCodes.AppointmentCreate,
                 PermissionCodes.AppointmentUpdate,
                 PermissionCodes.AppointmentManage,
@@ -41,7 +48,8 @@ public sealed class CareConnectPermissionService : IPermissionService
     {
         foreach (var roleCode in productRoleCodes)
         {
-            if (RolePermissions.TryGetValue(roleCode, out var perms) && perms.Contains(permissionCode))
+            var key = StripPrefix(roleCode);
+            if (RolePermissions.TryGetValue(key, out var perms) && perms.Contains(permissionCode))
                 return Task.FromResult(true);
         }
         return Task.FromResult(false);
@@ -54,9 +62,15 @@ public sealed class CareConnectPermissionService : IPermissionService
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var roleCode in productRoleCodes)
         {
-            if (RolePermissions.TryGetValue(roleCode, out var perms))
+            var key = StripPrefix(roleCode);
+            if (RolePermissions.TryGetValue(key, out var perms))
                 result.UnionWith(perms);
         }
         return Task.FromResult<IReadOnlySet<string>>(result);
     }
+
+    private static string StripPrefix(string roleCode) =>
+        roleCode.StartsWith(ProductPrefix, StringComparison.OrdinalIgnoreCase)
+            ? roleCode[ProductPrefix.Length..]
+            : roleCode;
 }

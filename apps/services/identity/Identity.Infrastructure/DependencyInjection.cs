@@ -1,5 +1,6 @@
 using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Commerce;
 using BuildingBlocks.Context;
 using BuildingBlocks.Notifications;
 using Identity.Application;
@@ -175,6 +176,11 @@ public static class DependencyInjection
         services.AddScoped<IGroupMembershipService, GroupMembershipService>();
         services.AddScoped<IGroupProductAccessService, GroupProductAccessService>();
         services.AddScoped<IGroupRoleAssignmentService, GroupRoleAssignmentService>();
+
+        // ── LS-COMMERCE-ECO-02: Commerce lifecycle notifier ───────────────────
+        // Noop by default (CommerceIntegration:Enabled=false).
+        // Set Enabled=true + BaseUrl to activate outbound HTTP notifications.
+        services.AddCommerceIntegration(configuration);
 
         services.Configure<PolicyCachingOptions>(configuration.GetSection("Authorization:PolicyCaching"));
         services.Configure<PolicyLoggingOptions>(configuration.GetSection("Authorization:PolicyLogging"));

@@ -252,7 +252,7 @@ public class Provider : AuditableEntity
     {
         return new Provider
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             TenantId         = tenantId,
             Name             = name.Trim(),
             OrganizationName = organizationName?.Trim(),

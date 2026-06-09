@@ -32,7 +32,8 @@ public interface IIdentityOrganizationService
         Guid              tenantId,
         Guid              providerCcId,
         string            providerName,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool              globalScope = false);
 
     // ── CC2-INT-B04: Token → Identity Bridge — user invitation ───────────────
 
@@ -63,6 +64,7 @@ public interface IIdentityOrganizationService
     /// </summary>
     Task<SelfRegisterResult?> RegisterUserDirectlyAsync(
         Guid              orgId,
+        Guid              tenantId,
         string            email,
         string            password,
         string            firstName,
@@ -89,15 +91,43 @@ public interface IIdentityOrganizationService
     // ── CC-PORTAL-CHECK: Referrer portal access lookup ────────────────────────
 
     /// <summary>
-    /// Returns true if the supplied email address belongs to a fully-activated
-    /// CareConnect referrer (active user, password set, member of a LAW_FIRM org).
+    /// Returns the tenant-scoped CareConnect portal-access status for the supplied email.
     ///
-    /// Used by the public referral success screen to decide whether to show
-    /// "Activate your free account" or "Login to CareConnect to view your referrals".
+    /// Used by the public referral success screen to distinguish:
+    ///   - already active in this tenant
+    ///   - existing account on another tenant that must be linked with password verification
+    ///   - brand-new user with no account yet
+    ///
+    /// Always returns <see cref="ReferrerPortalAccessStatuses.NoAccount"/> on any
+    /// infrastructure failure — never throws.
+    /// </summary>
+    Task<string> GetReferrerPortalAccessStatusAsync(
+        Guid              tenantId,
+        string            email,
+        CancellationToken ct = default);
+
+    // ── CC-OWNER-CHECK: Tenant owner referral block ────────────────────────
+
+    /// <summary>
+    /// Returns true if the supplied email belongs to the tenant owner of the given tenant.
+    ///
+    /// Used by the public referral endpoint to block tenant owners (network operators)
+    /// from submitting referrals — they are the network operator, not a referrer.
     ///
     /// Always returns false on any infrastructure failure — never throws.
     /// </summary>
-    Task<bool> CheckReferrerPortalAccessAsync(
+    Task<bool> CheckTenantOwnerEmailAsync(
+        Guid              tenantId,
+        string            email,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns true if the supplied email belongs to the owner of ANY tenant.
+    /// Used to block all tenant owners from submitting referrals or self-enrolling
+    /// regardless of which tenant's network they are acting on.
+    /// Always returns false on any infrastructure failure — never throws.
+    /// </summary>
+    Task<bool> CheckAnyTenantOwnerEmailAsync(
         string            email,
         CancellationToken ct = default);
 }
@@ -106,8 +136,10 @@ public interface IIdentityOrganizationService
 
 public sealed class SelfRegisterResult
 {
-    public Guid UserId { get; init; }
-    public bool IsNew  { get; init; }
+    public Guid UserId         { get; init; }
+    public bool IsNew          { get; init; }
+    /// <summary>True when Identity rejected enrollment because the email belongs to the tenant owner.</summary>
+    public bool IsOwnerBlocked { get; init; }
 }
 
 public sealed class ProvisionProviderUserResult
@@ -116,4 +148,13 @@ public sealed class ProvisionProviderUserResult
     public Guid? InvitationId   { get; init; }
     public bool  IsNew          { get; init; }
     public bool  InvitationSent { get; init; }
+    /// <summary>True when Identity rejected enrollment because the email belongs to the tenant owner.</summary>
+    public bool  IsOwnerBlocked { get; init; }
+}
+
+public static class ReferrerPortalAccessStatuses
+{
+    public const string ActiveInTenant          = "active_in_tenant";
+    public const string ExistingUserOtherTenant = "existing_user_other_tenant";
+    public const string NoAccount               = "no_account";
 }

@@ -55,6 +55,20 @@ public class ContactRepository : IContactRepository
         return (items, totalCount);
     }
 
+    public async Task<List<Contact>> GetAllByTypeAsync(
+        Guid tenantId, string? contactType, bool? isActive, CancellationToken ct = default)
+    {
+        var q = _db.Contacts.Where(c => c.TenantId == tenantId);
+
+        if (!string.IsNullOrWhiteSpace(contactType))
+            q = q.Where(c => c.ContactType == contactType);
+
+        if (isActive.HasValue)
+            q = q.Where(c => c.IsActive == isActive.Value);
+
+        return await q.OrderBy(c => c.DisplayName).ToListAsync(ct);
+    }
+
     public async Task AddAsync(Contact entity, CancellationToken ct = default)
     {
         await _db.Contacts.AddAsync(entity, ct);

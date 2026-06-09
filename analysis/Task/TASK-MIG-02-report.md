@@ -105,7 +105,7 @@ Rationale:
 - The generation engine's dual-read path calls `GET /api/tasks/templates/{id}` — if IDs are preserved, this works directly with no mapping table
 - Without ID preservation, every template lookup in the generation engine would require an extra JOIN or secondary lookup by `liensTemplateId` from JSON, introducing runtime complexity and a new failure mode
 
-The Task service `UpsertFromSourceAsync` accepts an explicit `Id` parameter. `TaskTemplate.Create()` was updated to accept an optional `Guid? id` parameter (default: `Guid.NewGuid()`). This is backward compatible — existing callers that don't supply an ID get a new GUID as before.
+The Task service `UpsertFromSourceAsync` accepts an explicit `Id` parameter. `TaskTemplate.Create()` was updated to accept an optional `Guid? id` parameter (default: `Guid.CreateVersion7()`). This is backward compatible — existing callers that don't supply an ID get a new GUID as before.
 
 ### `Code` field strategy
 

@@ -353,7 +353,7 @@ public class ApplicationStatusHistory
         Guid? userId, Guid? orgId, string? reason = null)
         => new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ApplicationId = applicationId,
             FromStatus = from,
             ToStatus = to,

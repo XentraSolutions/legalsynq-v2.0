@@ -94,7 +94,7 @@ public partial class EmailIntakeService : IEmailIntakeService
         {
             conversation = Conversation.Create(
                 request.TenantId, request.OrgId, "SYNQ_COMMS",
-                ContextType.General, $"email-{Guid.NewGuid():N}",
+                ContextType.General, $"email-{Guid.CreateVersion7():N}",
                 request.Subject, VisibilityType.SharedExternal,
                 SystemUserId);
             await _conversationRepo.AddAsync(conversation, ct);

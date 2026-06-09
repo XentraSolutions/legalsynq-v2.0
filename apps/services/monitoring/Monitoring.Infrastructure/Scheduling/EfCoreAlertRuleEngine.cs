@@ -124,7 +124,7 @@ public sealed class EfCoreAlertRuleEngine : IAlertRuleEngine
         }
 
         var alert = new MonitoringAlert(
-            id: Guid.NewGuid(),
+            id: Guid.CreateVersion7(),
             monitoredEntityId: entity.Id,
             entityName: entity.Name,
             scope: entity.Scope,

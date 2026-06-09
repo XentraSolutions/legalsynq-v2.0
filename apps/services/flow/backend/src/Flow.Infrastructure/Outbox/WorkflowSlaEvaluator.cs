@@ -220,7 +220,7 @@ public sealed class WorkflowSlaEvaluator : BackgroundService
         // unavailable in background scopes.
         var outbox = new OutboxMessage
         {
-            Id                 = Guid.NewGuid(),
+            Id                 = Guid.CreateVersion7(),
             EventType          = eventType,
             WorkflowInstanceId = instance.Id,
             TenantId           = instance.TenantId,

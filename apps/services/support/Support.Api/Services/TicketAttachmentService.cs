@@ -128,7 +128,7 @@ public class TicketAttachmentService : ITicketAttachmentService
 
         var attachment = new SupportTicketAttachment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TicketId = ticketId,
             TenantId = tenantId,
             DocumentId = req.DocumentId,
@@ -178,7 +178,7 @@ public class TicketAttachmentService : ITicketAttachmentService
 
         var attachment = new SupportTicketAttachment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TicketId = ticketId,
             TenantId = tenantId,
             DocumentId = result.DocumentId,

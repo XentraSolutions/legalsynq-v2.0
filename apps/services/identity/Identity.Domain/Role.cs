@@ -48,7 +48,7 @@ public class Role
         var now = DateTime.UtcNow;
         return new Role
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = name.Trim(),
             Description = description?.Trim(),

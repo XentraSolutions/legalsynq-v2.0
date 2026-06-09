@@ -2,11 +2,13 @@
 
 import { type ReactNode, useState } from 'react';
 import type { TenantDetail, ProvisioningStatus, ProvisioningFailureStage } from '@/types/control-center';
+import { PRODUCT_CATALOG } from '@/lib/product-catalog';
 import { RetryProvisioningButton } from './retry-provisioning-button';
 import { RetryVerificationButton } from './retry-verification-button';
 
 interface TenantDetailCardProps {
   tenant: TenantDetail;
+  portalBaseDomain?: string;
 }
 
 function formatDate(iso: string): string {
@@ -82,8 +84,9 @@ function isActivelyRetrying(tenant: TenantDetail): boolean {
   );
 }
 
-export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
+export function TenantDetailCard({ tenant, portalBaseDomain }: TenantDetailCardProps) {
   const enabledCount = tenant.productEntitlements.filter(p => p.enabled).length;
+  const totalProductCount = PRODUCT_CATALOG.length;
   const retrying = isActivelyRetrying(tenant);
 
   return (
@@ -93,7 +96,7 @@ export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
         <StatCard label="Total Users"      value={tenant.userCount} />
         <StatCard label="Active Users"     value={tenant.activeUserCount} />
         <StatCard label="Linked Orgs"      value={tenant.linkedOrgCount ?? tenant.orgCount} />
-        <StatCard label="Products Enabled" value={`${enabledCount} / ${tenant.productEntitlements.length}`} />
+        <StatCard label="Products Enabled" value={`${enabledCount} / ${totalProductCount}`} />
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -178,6 +181,7 @@ export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
               <DnsInstructionsPanel
                 subdomain={tenant.subdomain}
                 hostname={tenant.hostname}
+                portalBaseDomain={portalBaseDomain}
                 status={tenant.provisioningStatus}
               />
             </div>
@@ -245,19 +249,19 @@ function formatType(type: string): string {
   return labels[type] ?? type;
 }
 
-const DNS_BASE_DOMAIN = 'demo.legalsynq.com';
-
 function DnsInstructionsPanel({
   subdomain,
   hostname,
+  portalBaseDomain,
   status,
 }: {
   subdomain: string;
   hostname?: string;
+  portalBaseDomain?: string;
   status?: ProvisioningStatus;
 }) {
   const [open, setOpen] = useState(false);
-  const fqdn = hostname || `${subdomain}.${DNS_BASE_DOMAIN}`;
+  const fqdn = hostname || buildTenantHostname(subdomain, portalBaseDomain);
 
   return (
     <div className="rounded-md border border-gray-200 bg-gray-50 overflow-hidden">
@@ -343,4 +347,9 @@ function DnsInstructionsPanel({
       )}
     </div>
   );
+}
+
+function buildTenantHostname(slug: string, portalBaseDomain?: string): string {
+  const baseDomain = portalBaseDomain?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  return baseDomain ? `${slug}.${baseDomain}` : slug;
 }

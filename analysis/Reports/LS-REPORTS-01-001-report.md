@@ -97,7 +97,7 @@ Introduce MySQL + EF Core persistence foundation and implement the core data mod
 1. **Graceful fallback**: When `ConnectionStrings:ReportsDb` is empty, the service continues to work with mock repositories — no crash, no forced MySQL dependency for dev/testing.
 2. **Table prefix `rpt_`**: Consistent with platform convention (e.g., `idt_` for identity, `cc_` for CareConnect).
 3. **Pomelo 8.0.2**: Matched version used by Liens, Documents, Notifications, CareConnect, Fund services.
-4. **EF Core 8.0.7**: Matched version used across the platform for consistency.
+4. **EF Core 10.0.7**: Matched version used across the platform for consistency.
 5. **`set` over `init`**: Domain entity properties changed from `init` to `set` — EF Core change tracking requires mutable setters.
 6. **`ReportDefinitionCode` → `ReportDefinitionId`**: ReportExecution now uses proper FK (Guid) instead of string code reference — enables EF navigation and referential integrity.
 7. **Contracts references Domain**: Added `Reports.Domain` project reference to `Reports.Contracts` so repository interfaces can use strongly-typed domain entities. Domain remains dependency-free.

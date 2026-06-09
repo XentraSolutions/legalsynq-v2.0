@@ -72,7 +72,7 @@ public class InviteDeliveryErrorTests
                     .ToList();
                 foreach (var d in dbDescriptors) services.Remove(d);
 
-                var dbName = "identity-test-" + Guid.NewGuid();
+                var dbName = "identity-test-" + Guid.CreateVersion7();
                 services.AddDbContext<IdentityDbContext>(opts =>
                     opts.UseInMemoryDatabase(dbName));
 
@@ -226,6 +226,11 @@ public class InviteDeliveryErrorTests
 
         public Task<(bool EmailConfigured, bool Success, string? Error)> SendInviteEmailAsync(
             string toEmail, string displayName, string activationLink, Guid tenantId,
+            CancellationToken ct = default)
+            => Task.FromResult(_result);
+
+        public Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantAccessGrantedEmailAsync(
+            string toEmail, string displayName, string tenantName, string portalUrl, Guid tenantId,
             CancellationToken ct = default)
             => Task.FromResult(_result);
     }

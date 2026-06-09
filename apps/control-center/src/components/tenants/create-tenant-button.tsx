@@ -3,7 +3,11 @@
 import { useState }              from 'react';
 import { CreateTenantModal }     from './create-tenant-modal';
 
-export function CreateTenantButton() {
+interface CreateTenantButtonProps {
+  portalBaseDomain?: string;
+}
+
+export function CreateTenantButton({ portalBaseDomain }: CreateTenantButtonProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -16,7 +20,12 @@ export function CreateTenantButton() {
         Create Tenant
       </button>
 
-      {open && <CreateTenantModal onClose={() => setOpen(false)} />}
+      {open && (
+        <CreateTenantModal
+          onClose={() => setOpen(false)}
+          portalBaseDomain={portalBaseDomain}
+        />
+      )}
     </>
   );
 }

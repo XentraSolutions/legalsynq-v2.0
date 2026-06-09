@@ -19,7 +19,7 @@ public class NetworkProvider : AuditableEntity
     {
         return new NetworkProvider
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             TenantId         = tenantId,
             ProviderNetworkId = networkId,
             ProviderId       = providerId,

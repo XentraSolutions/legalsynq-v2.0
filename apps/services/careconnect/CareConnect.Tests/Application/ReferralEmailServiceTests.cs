@@ -44,7 +44,8 @@ public class ReferralEmailServiceTests
         ILogger<ReferralEmailService> logger = NullLogger<ReferralEmailService>.Instance;
 
         return new ReferralEmailService(notifications.Object, producer.Object, config,
-            new Mock<ITenantServiceClient>().Object, logger);
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object, logger);
     }
 
     // ── Token format ─────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ public class ReferralEmailServiceTests
     public void GenerateViewToken_ReturnsNonEmptyString()
     {
         var svc   = BuildService();
-        var token = svc.GenerateViewToken(Guid.NewGuid(), tokenVersion: 1);
+        var token = svc.GenerateViewToken(Guid.CreateVersion7(), tokenVersion: 1);
         Assert.False(string.IsNullOrWhiteSpace(token));
     }
 
@@ -61,7 +62,7 @@ public class ReferralEmailServiceTests
     public void GenerateViewToken_IsUrlSafeBase64_NoReservedChars()
     {
         var svc   = BuildService();
-        var token = svc.GenerateViewToken(Guid.NewGuid(), tokenVersion: 1);
+        var token = svc.GenerateViewToken(Guid.CreateVersion7(), tokenVersion: 1);
 
         Assert.DoesNotContain("+", token);
         Assert.DoesNotContain("/", token);
@@ -74,7 +75,7 @@ public class ReferralEmailServiceTests
         // Each token has a fresh expiry timestamp — two calls seconds apart may produce
         // different tokens. Either way, both must be non-empty and round-trip correctly.
         var svc = BuildService();
-        var id  = Guid.NewGuid();
+        var id  = Guid.CreateVersion7();
         var t1  = svc.GenerateViewToken(id, tokenVersion: 1);
         var t2  = svc.GenerateViewToken(id, tokenVersion: 1);
 
@@ -88,7 +89,7 @@ public class ReferralEmailServiceTests
         // LSCC-005-01: token version is embedded in the HMAC payload, so version 1 and
         // version 2 tokens for the same referral must differ.
         var svc = BuildService();
-        var id  = Guid.NewGuid();
+        var id  = Guid.CreateVersion7();
         var t1  = svc.GenerateViewToken(id, tokenVersion: 1);
         var t2  = svc.GenerateViewToken(id, tokenVersion: 2);
 
@@ -101,7 +102,7 @@ public class ReferralEmailServiceTests
     public void RoundTrip_Generate_Validate_ReturnsOriginalReferralId()
     {
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         var token      = svc.GenerateViewToken(referralId, tokenVersion: 1);
         var result     = svc.ValidateViewToken(token);
 
@@ -115,7 +116,7 @@ public class ReferralEmailServiceTests
         // LSCC-005-01: the token version must round-trip correctly so callers can
         // detect revoked tokens by comparing result.TokenVersion with referral.TokenVersion.
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
 
         var token2  = svc.GenerateViewToken(referralId, tokenVersion: 2);
         var result2 = svc.ValidateViewToken(token2);
@@ -132,7 +133,7 @@ public class ReferralEmailServiceTests
     public void RoundTrip_MultipleIds_EachValidatesToCorrectId()
     {
         var svc = BuildService();
-        var ids = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToList();
+        var ids = Enumerable.Range(0, 5).Select(_ => Guid.CreateVersion7()).ToList();
 
         foreach (var id in ids)
         {
@@ -150,7 +151,7 @@ public class ReferralEmailServiceTests
     public void ValidateViewToken_ExpiredToken_ReturnsNull()
     {
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         const int tokenVersion = 1;
 
         // Craft an expired 4-part token using the same algorithm the service uses.
@@ -173,7 +174,7 @@ public class ReferralEmailServiceTests
     {
         // LSCC-005-01: tokens from before the hardening upgrade (3-part format) must be
         // rejected without throwing — they lack the version field and parts.Length != 4.
-        var referralId  = Guid.NewGuid();
+        var referralId  = Guid.CreateVersion7();
         var expiry      = DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds();
         var payload     = $"{referralId}:{expiry}";              // old 2-field payload
         var keyBytes    = Encoding.UTF8.GetBytes(TestSecret);
@@ -193,7 +194,7 @@ public class ReferralEmailServiceTests
     public void ValidateViewToken_TamperedSignature_ReturnsNull()
     {
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         var token      = svc.GenerateViewToken(referralId, tokenVersion: 1);
 
         // Decode, replace the HMAC with an all-zeros hex string of the same length, re-encode.
@@ -214,7 +215,7 @@ public class ReferralEmailServiceTests
     {
         var svcA   = BuildService("SECRET-A");
         var svcB   = BuildService("SECRET-B");
-        var id     = Guid.NewGuid();
+        var id     = Guid.CreateVersion7();
         var token  = svcA.GenerateViewToken(id, tokenVersion: 1);  // signed with A
         var result = svcB.ValidateViewToken(token);                  // validated with B
         Assert.Null(result);
@@ -226,7 +227,7 @@ public class ReferralEmailServiceTests
         // LSCC-005-01: if an attacker modifies the version field in the token body,
         // the HMAC computed over the (modified) payload will not match the real signature.
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         var token      = svc.GenerateViewToken(referralId, tokenVersion: 1);
 
         // Decode and replace the version digit.
@@ -287,8 +288,9 @@ public class ReferralEmailServiceTests
         ILogger<ReferralEmailService> logger = NullLogger<ReferralEmailService>.Instance;
 
         var svc  = new ReferralEmailService(notifications.Object, producer.Object, config,
-            new Mock<ITenantServiceClient>().Object, logger);
-        var id   = Guid.NewGuid();
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object, logger);
+        var id   = Guid.CreateVersion7();
         var tok  = svc.GenerateViewToken(id, tokenVersion: 1);
         var res  = svc.ValidateViewToken(tok);
 

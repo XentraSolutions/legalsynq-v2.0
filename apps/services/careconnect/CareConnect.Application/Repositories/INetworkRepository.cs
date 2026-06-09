@@ -33,4 +33,11 @@ public interface INetworkRepository
     /// Does NOT call SaveChanges — caller is responsible.
     /// </summary>
     Task SyncProviderCategoriesAsync(Guid providerId, List<Guid> categoryIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns true when the provider is a member of at least one network that belongs to the given tenant.
+    /// Used to enforce public referral binding — prevents cross-tenant provider injection on the
+    /// anonymous POST /api/public/referrals endpoint.
+    /// </summary>
+    Task<bool> IsProviderInTenantNetworkAsync(Guid tenantId, Guid providerId, CancellationToken ct = default);
 }

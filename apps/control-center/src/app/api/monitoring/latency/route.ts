@@ -39,7 +39,9 @@
  */
 
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
+import { SESSION_COOKIE_NAME } from '@/lib/app-config';
 import {
   resolveWindow,
   totalBarsForWindow,
@@ -50,7 +52,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 const MONITORING_SOURCE = process.env.MONITORING_SOURCE ?? 'local';
-const GATEWAY_URL       = process.env.GATEWAY_URL       ?? 'http://localhost:5010';
+const GATEWAY_URL       = process.env.GATEWAY_URL       ?? 'http://127.0.0.1:5010';
 
 // ── Internal Monitoring Service shapes ────────────────────────────────────────
 
@@ -99,17 +101,17 @@ export interface InternalLatencyResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function fetchRollups(window: SupportedWindow): Promise<RollupsComponent[]> {
+async function fetchRollups(window: SupportedWindow, authHeader: Record<string, string>): Promise<RollupsComponent[]> {
   const url = `${GATEWAY_URL}/monitoring/monitoring/uptime/rollups?window=${window}`;
-  const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json', ...authHeader } });
   if (!res.ok) throw new Error(`Rollups returned HTTP ${res.status}`);
   const data: RollupsResponse = await res.json();
   return data.components ?? [];
 }
 
-async function fetchHistory(entityId: string, window: SupportedWindow): Promise<RawHistoryBucket[]> {
+async function fetchHistory(entityId: string, window: SupportedWindow, authHeader: Record<string, string>): Promise<RawHistoryBucket[]> {
   const url = `${GATEWAY_URL}/monitoring/monitoring/uptime/history?entityId=${entityId}&window=${window}`;
-  const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json', ...authHeader } });
   if (!res.ok) return [];
   const data: RawHistoryResponse = await res.json();
   return data.buckets ?? [];
@@ -136,11 +138,15 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json(empty, { headers: NO_STORE });
   }
 
+  const cookieStore  = await cookies();
+  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const authHeader: Record<string, string> = sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {};
+
   try {
-    const rollups = await fetchRollups(window);
+    const rollups = await fetchRollups(window, authHeader);
 
     const historyResults = await Promise.allSettled(
-      rollups.map(c => fetchHistory(c.entityId, window)),
+      rollups.map(c => fetchHistory(c.entityId, window, authHeader)),
     );
 
     const components: LatencyComponent[] = rollups.map((c, i) => {

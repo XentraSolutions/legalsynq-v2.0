@@ -74,7 +74,7 @@ public class BillOfSale : AuditableEntity
         var now = DateTime.UtcNow;
         return new BillOfSale
         {
-            Id                 = Guid.NewGuid(),
+            Id                 = Guid.CreateVersion7(),
             TenantId           = tenantId,
             LienId             = lienId,
             LienOfferId        = lienOfferId,

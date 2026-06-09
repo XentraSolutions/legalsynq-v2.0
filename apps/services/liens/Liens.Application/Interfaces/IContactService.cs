@@ -10,6 +10,9 @@ public interface IContactService
 
     Task<ContactResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    Task<List<ContactResponse>> GetAllByTypeAsync(
+        Guid tenantId, string? contactType, bool? isActive = true, CancellationToken ct = default);
+
     Task<ContactResponse> CreateAsync(
         Guid tenantId, Guid orgId, Guid actingUserId,
         CreateContactRequest request, CancellationToken ct = default);

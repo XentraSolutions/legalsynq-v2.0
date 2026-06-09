@@ -8,6 +8,7 @@ import { ImpersonationBanner } from '@/components/layout/impersonation-banner';
 import { getTenantContext, getImpersonation } from '@/lib/auth';
 import { AnalyticsProvider } from '@/components/analytics/analytics-provider';
 import { getServerSession } from '@/lib/session';
+import { filterNavForRole } from '@/lib/nav';
 
 interface CCShellProps {
   children:  ReactNode;
@@ -28,6 +29,10 @@ export async function CCShell({ children, userEmail }: CCShellProps) {
   const impersonation = await getImpersonation();
   const session       = await getServerSession();
   const avatarDocId   = session?.avatarDocumentId;
+  const filteredNav   = filterNavForRole(
+    session?.isPlatformAdmin ?? false,
+    session?.isTenantAdmin   ?? false,
+  );
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -96,7 +101,7 @@ export async function CCShell({ children, userEmail }: CCShellProps) {
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
-        <CCSidebar />
+        <CCSidebar navSections={filteredNav} />
         <AnalyticsProvider>
           <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
             {children}

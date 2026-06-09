@@ -221,6 +221,7 @@ public class ReferralClientEmailTests
             producer,
             config,
             new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
             NullLogger<ReferralEmailService>.Instance);
     }
 
@@ -229,10 +230,10 @@ public class ReferralClientEmailTests
         string? referrerEmail = null)
     {
         var r = Referral.Create(
-            tenantId:                  Guid.NewGuid(),
+            tenantId:                  Guid.CreateVersion7(),
             referringOrganizationId:   null,
             receivingOrganizationId:   null,
-            providerId:                Guid.NewGuid(),
+            providerId:                Guid.CreateVersion7(),
             subjectPartyId:            null,
             subjectNameSnapshot:       null,
             subjectDobSnapshot:        null,
@@ -254,7 +255,7 @@ public class ReferralClientEmailTests
 
     private static Provider BuildProvider(string email = "provider@clinic.com")
         => Provider.Create(
-            tenantId:          Guid.NewGuid(),
+            tenantId:          Guid.CreateVersion7(),
             name:              "Test Clinic",
             organizationName:  "Test Clinic LLC",
             email:             email,

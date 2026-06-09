@@ -33,7 +33,7 @@ public class QueryEndpointTests(AuditServiceFactory factory)
     {
         // Scope to a globally-unique tenant ID that no other test uses,
         // so the result is always empty regardless of shared factory state.
-        var isolatedTenant = $"tenant-zero-{Guid.NewGuid():N}";
+        var isolatedTenant = $"tenant-zero-{Guid.CreateVersion7():N}";
 
         var response = await _client.GetAsync($"{QueryUrl}?tenantId={isolatedTenant}");
 
@@ -65,7 +65,7 @@ public class QueryEndpointTests(AuditServiceFactory factory)
     [Fact]
     public async Task Query_AfterIngest_ItemsHaveExpectedShape()
     {
-        var tenantId = $"tenant-shape-{Guid.NewGuid():N}";
+        var tenantId = $"tenant-shape-{Guid.CreateVersion7():N}";
         await IngestEventAsync("query.shape.test", tenantId);
 
         var response = await _client.GetAsync($"{QueryUrl}?tenantId={tenantId}");
@@ -81,8 +81,8 @@ public class QueryEndpointTests(AuditServiceFactory factory)
     [Fact]
     public async Task Query_TenantIdFilter_ReturnsOnlyMatchingTenant()
     {
-        var tenantA = $"tenant-a-{Guid.NewGuid():N}";
-        var tenantB = $"tenant-b-{Guid.NewGuid():N}";
+        var tenantA = $"tenant-a-{Guid.CreateVersion7():N}";
+        var tenantB = $"tenant-b-{Guid.CreateVersion7():N}";
 
         await IngestEventAsync("event.a", tenantA);
         await IngestEventAsync("event.b", tenantB);
@@ -99,7 +99,7 @@ public class QueryEndpointTests(AuditServiceFactory factory)
     [Fact]
     public async Task Query_SourceSystemFilter_ReturnsOnlyMatchingSource()
     {
-        var tenantId = $"tenant-src-{Guid.NewGuid():N}";
+        var tenantId = $"tenant-src-{Guid.CreateVersion7():N}";
         var request  = AuditRequestBuilder.MinimalValid(
             tenantId:     tenantId,
             sourceSystem: "fund-service",
@@ -120,7 +120,7 @@ public class QueryEndpointTests(AuditServiceFactory factory)
     [Fact]
     public async Task Query_Pagination_PageSizeIsRespected()
     {
-        var tenantId = $"tenant-page-{Guid.NewGuid():N}";
+        var tenantId = $"tenant-page-{Guid.CreateVersion7():N}";
 
         for (var i = 0; i < 5; i++)
             await IngestEventAsync($"page.event.{i}", tenantId);
@@ -138,7 +138,7 @@ public class QueryEndpointTests(AuditServiceFactory factory)
     [Fact]
     public async Task Query_Pagination_SecondPageContainsDifferentItems()
     {
-        var tenantId = $"tenant-page2-{Guid.NewGuid():N}";
+        var tenantId = $"tenant-page2-{Guid.CreateVersion7():N}";
 
         for (var i = 0; i < 4; i++)
             await IngestEventAsync($"pageable.event.{i}", tenantId);
@@ -182,7 +182,7 @@ public class QueryEndpointTests(AuditServiceFactory factory)
         var request = AuditRequestBuilder.MinimalValid(
             eventType: eventType,
             tenantId:  tenantId,
-            idempotencyKey: Guid.NewGuid().ToString());
+            idempotencyKey: Guid.CreateVersion7().ToString());
 
         var response = await _client.PostServiceJsonAsync(IngestUrl, request);
         response.EnsureSuccessStatusCode();

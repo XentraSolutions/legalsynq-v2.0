@@ -38,24 +38,24 @@ public class UserService : IUserService
         var user = User.Create(request.TenantId, request.Email, passwordHash, request.FirstName, request.LastName);
 
         var roleIds = (request.RoleIds ?? []).AsReadOnly();
-        await _userRepository.AddAsync(user, roleIds, ct);
+        await _userRepository.AddAsync(user, request.TenantId, roleIds, ct);
 
         var created = await _userRepository.GetByIdWithRolesAsync(user.Id, ct)
             ?? throw new InvalidOperationException("User creation failed.");
 
-        return ToResponse(created);
+        return ToResponse(created, request.TenantId);
     }
 
     public async Task<List<UserResponse>> GetAllAsync(CancellationToken ct = default)
     {
         var users = await _userRepository.GetAllWithRolesAsync(ct);
-        return users.Select(ToResponse).ToList();
+        return users.Select(u => ToResponse(u)).ToList();
     }
 
     public async Task<List<UserResponse>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default)
     {
         var users = await _userRepository.GetByTenantWithRolesAsync(tenantId, ct);
-        return users.Select(ToResponse).ToList();
+        return users.Select(u => ToResponse(u, tenantId)).ToList();
     }
 
     public async Task<UserResponse?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -64,9 +64,9 @@ public class UserService : IUserService
         return user is null ? null : ToResponse(user);
     }
 
-    private static UserResponse ToResponse(User user) => new(
+    private static UserResponse ToResponse(User user, Guid tenantId = default) => new(
         user.Id,
-        user.TenantId,
+        tenantId,
         user.Email,
         user.FirstName,
         user.LastName,

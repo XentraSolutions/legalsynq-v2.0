@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,6 +12,7 @@ namespace CareConnect.Infrastructure.Data.Migrations;
 /// A non-unique index is added for lookup performance (uniqueness enforced at app layer
 /// because MySQL 8.0 does not support partial/filtered unique indexes).
 /// </summary>
+[DbContext(typeof(CareConnectDbContext))]
 [Migration("20260422120000_AddProviderNpi")]
 public partial class AddProviderNpi : Migration
 {

@@ -21,9 +21,9 @@ namespace CareConnect.Tests.Application;
 /// </summary>
 public class WorkflowIntegrationTests
 {
-    private static readonly Guid ProviderId       = Guid.NewGuid();
-    private static readonly Guid ReferralId       = Guid.NewGuid();
-    private static readonly Guid AppointmentSlotId = Guid.NewGuid();
+    private static readonly Guid ProviderId       = Guid.CreateVersion7();
+    private static readonly Guid ReferralId       = Guid.CreateVersion7();
+    private static readonly Guid AppointmentSlotId = Guid.CreateVersion7();
 
     // ── 1. Referral creation — POST /api/referrals ────────────────────────────
 

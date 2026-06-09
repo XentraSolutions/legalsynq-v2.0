@@ -4,9 +4,9 @@ namespace BuildingBlocks.Tests;
 
 public class ScopedRoleAssignmentTests
 {
-    private static readonly Guid UserId = Guid.NewGuid();
-    private static readonly Guid RoleId = Guid.NewGuid();
-    private static readonly Guid TenantId = Guid.NewGuid();
+    private static readonly Guid UserId = Guid.CreateVersion7();
+    private static readonly Guid RoleId = Guid.CreateVersion7();
+    private static readonly Guid TenantId = Guid.CreateVersion7();
 
     [Fact]
     public void Create_WithGlobalScope_Succeeds()
@@ -53,8 +53,8 @@ public class ScopedRoleAssignmentTests
     [Fact]
     public void Create_IgnoresProductAndOrgIds_EvenIfProvided()
     {
-        var orgId = Guid.NewGuid();
-        var productId = Guid.NewGuid();
+        var orgId = Guid.CreateVersion7();
+        var productId = Guid.CreateVersion7();
 
         var assignment = ScopedRoleAssignment.Create(
             UserId, RoleId, "GLOBAL",

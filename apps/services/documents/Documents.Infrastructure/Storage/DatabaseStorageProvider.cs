@@ -91,7 +91,7 @@ public sealed class DatabaseStorageProvider : IStorageProvider
 
     public Task<string> GenerateSignedUrlAsync(string key, int ttlSeconds, string disposition, CancellationToken ct = default)
     {
-        var token = Guid.NewGuid().ToString("N");
+        var token = Guid.CreateVersion7().ToString("N");
         return Task.FromResult($"/internal/files?token={token}&disposition={disposition}");
     }
 }

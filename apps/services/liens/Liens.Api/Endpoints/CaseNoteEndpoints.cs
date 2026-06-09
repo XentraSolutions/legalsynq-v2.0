@@ -3,7 +3,9 @@ using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Application.Repositories;
 using Liens.Domain;
+using System.Globalization;
 
 namespace Liens.Api.Endpoints;
 
@@ -13,6 +15,25 @@ namespace Liens.Api.Endpoints;
 /// </summary>
 public static class CaseNoteEndpoints
 {
+    private sealed class LegacyCaseNotesRequest
+    {
+        public string? caseId { get; init; }
+        public string? showDeleted { get; init; } = "false";
+        public string? sort { get; init; } = "newest";
+    }
+
+    private sealed class LegacyCaseNoteResponseItem
+    {
+        public string id { get; init; } = string.Empty;
+        public string caseId { get; init; } = string.Empty;
+        public string note { get; init; } = string.Empty;
+        public string isDeleted { get; init; } = "N";
+        public string created { get; init; } = string.Empty;
+        public string createdBy { get; init; } = string.Empty;
+        public string userId { get; init; } = string.Empty;
+        public bool canDelete { get; init; }
+    }
+
     public static void MapCaseNoteEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/liens/cases/{caseId:guid}/notes")
@@ -37,6 +58,20 @@ public static class CaseNoteEndpoints
 
         group.MapPost("/{noteId:guid}/unpin", UnpinNote)
             .RequirePermission(LiensPermissions.CaseNoteManage);
+
+        // Legacy compatibility routes from previous service /case endpoints.
+        var legacyGroup = app.MapGroup("/api/liens/cases")
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(LiensPermissions.ProductCode)
+            .WithTags("CaseNotes");
+
+        // Legacy: GET /case/notes/{caseId}
+        legacyGroup.MapGet("/notes/{caseId:guid}", GetCaseNotesLegacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy: POST /case/get-notes
+        legacyGroup.MapPost("/get-notes", GetCaseNotesFilteredLegacy)
+            .RequirePermission(LiensPermissions.CaseRead);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -44,6 +79,129 @@ public static class CaseNoteEndpoints
 
     private static Guid RequireUserId(ICurrentRequestContext ctx) =>
         ctx.UserId ?? throw new UnauthorizedAccessException("User context is required.");
+
+    private static string FormatLegacyTimestamp(DateTime value)
+        => value.ToString("MM/dd/yyyy hh:mm tt", CultureInfo.InvariantCulture);
+
+    private static async Task<IResult> GetCaseNotesLegacy(
+        Guid caseId,
+        ILienCaseNoteRepository repo,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        try
+        {
+            var notes = await repo.GetByCaseIdAsync(tenantId, caseId, ct);
+            if (notes.Count == 0)
+            {
+                return Results.NotFound(new
+                {
+                    isSuccess = false,
+                    message = "Error: No notes found",
+                });
+            }
+
+            var data = notes
+                .OrderByDescending(n => n.CreatedAtUtc)
+                .Select(n => new LegacyCaseNoteResponseItem
+                {
+                    id = n.Id.ToString(),
+                    caseId = n.CaseId.ToString(),
+                    note = n.Content,
+                    isDeleted = n.IsDeleted ? "Y" : "N",
+                    created = FormatLegacyTimestamp(n.CreatedAtUtc),
+                    createdBy = n.CreatedByName,
+                    userId = n.CreatedByUserId.ToString(),
+                    canDelete = false,
+                })
+                .ToList();
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Notes list retrieved successfully.",
+                data,
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No notes found",
+            });
+        }
+    }
+
+    private static async Task<IResult> GetCaseNotesFilteredLegacy(
+        LegacyCaseNotesRequest request,
+        ILienCaseNoteRepository repo,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.caseId))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "caseId is required.",
+            });
+        }
+
+        if (!Guid.TryParse(request.caseId, out var caseId))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "caseId is required.",
+            });
+        }
+
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        try
+        {
+            var notes = await repo.GetByCaseIdIncludingDeletedAsync(tenantId, caseId, ct);
+
+            var showDeletedOnly = string.Equals(request.showDeleted, "true", StringComparison.OrdinalIgnoreCase);
+            var sortOldest = string.Equals(request.sort, "oldest", StringComparison.OrdinalIgnoreCase);
+
+            var query = notes.Where(n => showDeletedOnly ? n.IsDeleted : !n.IsDeleted);
+            query = sortOldest
+                ? query.OrderBy(n => n.CreatedAtUtc)
+                : query.OrderByDescending(n => n.CreatedAtUtc);
+
+            var data = query.Select(n => new LegacyCaseNoteResponseItem
+            {
+                id = n.Id.ToString(),
+                caseId = n.CaseId.ToString(),
+                note = n.Content,
+                isDeleted = n.IsDeleted ? "Y" : "N",
+                created = FormatLegacyTimestamp(n.CreatedAtUtc),
+                createdBy = n.CreatedByName,
+                userId = n.CreatedByUserId.ToString(),
+                canDelete = n.CreatedByUserId == userId,
+            }).ToList();
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Notes list retrieved successfully.",
+                data,
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No notes found",
+            });
+        }
+    }
 
     private static async Task<IResult> GetNotes(
         Guid caseId,

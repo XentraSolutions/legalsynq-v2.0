@@ -3,11 +3,26 @@ bin/
 obj/
 *.user
 *.suo
+*.sln.docstates
 .vs/
+.vscode/
+publish/
+*.publish.xml
+*.pubxml
+*.pubxml.user
+
+# .NET test results & coverage
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
 
 # NuGet
 *.nupkg
-packages/
+*.snupkg
+.nuget/
+nuget.config.local
 
 # Secrets & environment
 appsettings.*.json
@@ -15,6 +30,11 @@ appsettings.*.json
 !appsettings.Production.json
 *.env
 .env*
+*.pfx
+*.p12
+*.pem
+*.key
+secrets.json
 
 # Next.js
 .next/
@@ -22,17 +42,43 @@ out/
 
 # Node
 node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # SQLite dev databases
+*.db
 *.db-wal
 *.db-shm
 
+# Logs
+logs/
+*.log
+
 # OS
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs
+.idea/
+*.swp
+*.swo
+*~
 
 # Replit
 .replit
 replit.nix
 .cache/
 .local/state/
+/.github/prompts

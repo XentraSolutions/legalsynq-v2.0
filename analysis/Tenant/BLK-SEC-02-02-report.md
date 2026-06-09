@@ -142,7 +142,7 @@ In production: the value must be set via environment variable injection, never i
 createHmac('sha256', INTERNAL_REQUEST_SECRET).update(tenantId).digest('base64')
 ```
 
-**CareConnect (.NET 8, `System.Security.Cryptography`):**
+**CareConnect (.NET 10, `System.Security.Cryptography`):**
 ```csharp
 using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
 var expected  = hmac.ComputeHash(Encoding.UTF8.GetBytes(tenantIdRaw));

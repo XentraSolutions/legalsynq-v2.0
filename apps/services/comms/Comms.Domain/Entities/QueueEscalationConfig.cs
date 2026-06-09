@@ -20,7 +20,7 @@ public sealed class QueueEscalationConfig
         var now = DateTime.UtcNow;
         return new QueueEscalationConfig
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             QueueId = queueId,
             FallbackUserId = fallbackUserId,

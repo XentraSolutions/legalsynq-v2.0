@@ -10,10 +10,29 @@ public interface IUserRepository
     Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string email, CancellationToken ct = default);
     Task<List<User>> GetAllWithRolesAsync(CancellationToken ct = default);
     Task<List<User>> GetByTenantWithRolesAsync(Guid tenantId, CancellationToken ct = default);
-    Task AddAsync(User user, IReadOnlyList<Guid> roleIds, CancellationToken ct = default);
+    Task AddAsync(User user, Guid tenantId, IReadOnlyList<Guid> roleIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the primary org membership for a user (single-tenant callers that do
+    /// not supply a tenantId). Uses the IsPrimary flag for disambiguation.
+    /// </summary>
     Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(Guid userId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Returns the active org membership for a user scoped to a specific tenant.
+    /// Used by multi-tenant login to resolve the correct org_id JWT claim.
+    /// When tenantId is supplied the IsPrimary filter is dropped — a user has exactly
+    /// one active org per tenant in the CareConnect model.
+    /// </summary>
+    Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(Guid userId, Guid tenantId, CancellationToken ct = default);
+
     Task<List<UserOrganizationMembership>> GetActiveMembershipsWithProductsAsync(Guid userId, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns all active UserTenant rows for a user, ordered by JoinedAtUtc ascending.
+    /// Used by the JWT builder to populate the tenant_ids multi-tenant claim.
+    /// </summary>
+    Task<List<UserTenant>> GetActiveTenantMembershipsAsync(Guid userId, CancellationToken ct = default);
 
     /// <summary>
     /// Updates the user's AvatarDocumentId. Pass null to clear the avatar.

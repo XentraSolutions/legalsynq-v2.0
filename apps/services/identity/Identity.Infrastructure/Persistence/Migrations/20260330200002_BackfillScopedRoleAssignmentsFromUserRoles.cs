@@ -1,3 +1,5 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -23,6 +25,7 @@ namespace Identity.Infrastructure.Persistence.Migrations;
 ///
 /// Idempotent: uses INSERT IGNORE + NOT EXISTS guard. Safe to re-run.
 /// </summary>
+[DbContext(typeof(IdentityDbContext))]
 [Migration("20260330200002_BackfillScopedRoleAssignmentsFromUserRoles")]
 public partial class BackfillScopedRoleAssignmentsFromUserRoles : Migration
 {

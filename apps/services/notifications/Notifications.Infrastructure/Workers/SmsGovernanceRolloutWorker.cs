@@ -155,7 +155,7 @@ public sealed class SmsGovernanceRolloutWorker : BackgroundService
             // Record threshold exceeded event
             db.SmsGovernanceRolloutAuditEvents.Add(new SmsGovernanceRolloutAuditEvent
             {
-                Id            = Guid.NewGuid(),
+                Id            = Guid.CreateVersion7(),
                 RolloutPlanId = rolloutId,
                 StageId       = activeStage.Id,
                 EventType     = RolloutAuditEventTypes.ThresholdExceeded,

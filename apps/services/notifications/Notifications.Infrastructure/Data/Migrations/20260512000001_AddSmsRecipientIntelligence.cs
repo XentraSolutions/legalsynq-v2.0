@@ -1,5 +1,8 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
@@ -20,6 +23,8 @@ namespace Notifications.Infrastructure.Data.Migrations
     /// webhook URLs, or raw provider payloads stored in either table.
     /// RecipientHash is an opaque HMAC-SHA256 token — computationally irreversible without salt.
     /// </summary>
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260512000001_AddSmsRecipientIntelligence")]
     public partial class AddSmsRecipientIntelligence : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

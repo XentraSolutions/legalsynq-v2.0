@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using BuildingBlocks;
@@ -12,6 +13,7 @@ using CareConnect.Infrastructure;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -36,7 +38,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
             RoleClaimType            = "role"
         };
     })
@@ -100,6 +102,28 @@ builder.Services.Configure<AttachmentUploadOptions>(
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
+// BLK-SEC-05: Forwarded-headers trust — the YARP gateway is the only upstream
+// proxy in this deployment. Trusting X-Forwarded-For rewrites
+// context.Connection.RemoteIpAddress to the real client IP, which is then used
+// as the rate-limiter partition key so per-client limits work correctly.
+//
+// ReverseProxy:KnownProxyIp (env: ReverseProxy__KnownProxyIp) should be set to
+// the gateway pod/container IP in production. Without it, the middleware falls
+// back to ASP.NET Core's default of trusting loopback only, which is safe but
+// means X-Forwarded-For is ignored when the proxy is non-loopback.
+builder.Services.Configure<ForwardedHeadersOptions>(opts =>
+{
+    opts.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+
+    var knownProxyIp = builder.Configuration["ReverseProxy:KnownProxyIp"];
+    if (!string.IsNullOrWhiteSpace(knownProxyIp) && IPAddress.TryParse(knownProxyIp, out var proxyIp))
+    {
+        opts.KnownProxies.Add(proxyIp);
+    }
+    // No else-branch: without a configured proxy IP, ASP.NET Core's default
+    // loopback-only trust applies. This is safe in all environments.
+});
+
 // CC2-INT-B08: Rate limiting for the public referral endpoint.
 // Fixed window: 10 submissions per minute per IP address.
 // Rejected requests receive 429 Too Many Requests.
@@ -111,6 +135,36 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit          = 10,
+                Window               = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    // BLK-SEC-04: Rate limiting for public network read endpoints.
+    // Sliding window: 60 requests per minute per IP, split into 4 segments of 15 s.
+    // Prevents high-volume enumeration of the provider directory.
+    options.AddPolicy("public-read-limit", context =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit          = 60,
+                Window               = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow    = 4,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    // BLK-SEC-04b: Tighter limit for /api/public/referrer-status.
+    // This endpoint probes whether an email address is a registered referrer;
+    // 60/min would allow bulk email enumeration. 20/min is sufficient for the
+    // post-referral UX (one check per submission) while blocking enumeration attempts.
+    options.AddPolicy("referrer-status-limit", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 20,
                 Window               = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit           = 0,
@@ -228,9 +282,11 @@ catch (Exception ex)
 
 app.UseMiddleware<CorrelationIdMiddleware>();    // BLK-OBS-01: assign X-Correlation-Id first
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseForwardedHeaders();                      // BLK-SEC-05: rewrite RemoteIpAddress from X-Forwarded-For before rate limiting
+app.UseRateLimiter();                           // BLK-SEC-04: shed excess traffic before authentication runs
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseRateLimiter(); // CC2-INT-B08: rate limit public referral endpoint
+app.UseMiddleware<TenantClaimGuardMiddleware>(); // BLK-SEC-03: reject authenticated requests without tenant_id claim
 
 // Health & info
 app.MapGet("/health", async (CareConnectDbContext db, CancellationToken ct) =>
@@ -333,6 +389,26 @@ static async Task EnsureSchemaObjectsAsync(
         return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
     }
 
+    async Task<bool> MigrationApplied(string migrationId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT COUNT(*) FROM information_schema.tables " +
+            $"WHERE table_schema='{dbName}' AND table_name='__EFMigrationsHistory'";
+        var historyTableExists = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+        if (!historyTableExists)
+            return false;
+
+        using var historyCmd = conn.CreateCommand();
+        historyCmd.CommandText =
+            "SELECT COUNT(*) FROM `__EFMigrationsHistory` WHERE `MigrationId` = @migrationId";
+        var parameter = historyCmd.CreateParameter();
+        parameter.ParameterName = "@migrationId";
+        parameter.Value = migrationId;
+        historyCmd.Parameters.Add(parameter);
+        return Convert.ToInt32(await historyCmd.ExecuteScalarAsync()) > 0;
+    }
+
     // Helper: execute a DDL statement, log any errors but continue
     async Task<bool> Exec(string sql, string label)
     {
@@ -352,6 +428,19 @@ static async Task EnsureSchemaObjectsAsync(
     }
 
     int applied = 0;
+
+    // Only run the B06+ repair path once the prefix migration is already part of
+    // the recorded history. On a clean database, pre-creating prefixed tables here
+    // races the actual migrations and causes duplicate-table failures.
+    if (!await MigrationApplied("20260413230000_AddTablePrefixes"))
+    {
+        logger.LogInformation(
+            "EnsureSchemaObjects: skipping advisory B06+ repair because AddTablePrefixes is not yet recorded in migration history.");
+
+        if (conn.State == System.Data.ConnectionState.Open)
+            await conn.CloseAsync();
+        return;
+    }
 
     // ── 20260422000000_AddProviderReassignmentLog ───────────────────────────
     if (!await TableExists("cc_ReferralProviderReassignments"))

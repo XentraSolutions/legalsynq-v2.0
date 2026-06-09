@@ -64,7 +64,7 @@ public class TenantProductEntitlementService : ITenantProductEntitlementService
                 .Distinct()
                 .ToListAsync(ct);
             var reEnabledUsers = await _db.Users
-                .Where(u => reEnabledUserIds.Contains(u.Id) && u.TenantId == tenantId)
+                .Where(u => reEnabledUserIds.Contains(u.Id))
                 .ToListAsync(ct);
             foreach (var u in reEnabledUsers)
                 u.IncrementAccessVersion();
@@ -116,7 +116,7 @@ public class TenantProductEntitlementService : ITenantProductEntitlementService
             .Distinct()
             .ToListAsync(ct);
         var affectedUsers = await _db.Users
-            .Where(u => affectedUserIds.Contains(u.Id) && u.TenantId == tenantId)
+            .Where(u => affectedUserIds.Contains(u.Id))
             .ToListAsync(ct);
         foreach (var u in affectedUsers)
             u.IncrementAccessVersion();

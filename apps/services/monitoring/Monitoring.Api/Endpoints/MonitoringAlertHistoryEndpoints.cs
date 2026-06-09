@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Monitoring.Api.Authentication;
 using Monitoring.Api.Contracts;
 using Monitoring.Domain.Monitoring;
 using Monitoring.Infrastructure.Persistence;
@@ -20,9 +21,9 @@ namespace Monitoring.Api.Endpoints;
 /// <c>monitoring_alerts</c> table — if the entity is renamed, history for
 /// the old name and new name remain separate rows, which is correct.</para>
 ///
-/// <para><b>Auth</b>: anonymous — same reasoning as all other monitoring read
-/// endpoints (called by the Control Center backend inside the trust boundary).
-/// </para>
+/// <para><b>Auth</b>: MonitoringRead policy — accepts either a valid user JWT
+/// (Bearer scheme) or a valid service token (ServiceToken scheme). Prevents
+/// unauthenticated external enumeration of incident history.</para>
 /// </summary>
 public static class MonitoringAlertHistoryEndpoints
 {
@@ -32,7 +33,7 @@ public static class MonitoringAlertHistoryEndpoints
     public static IEndpointRouteBuilder MapMonitoringAlertHistoryEndpoints(
         this IEndpointRouteBuilder app)
     {
-        var read = app.MapGroup("/monitoring/alerts").AllowAnonymous();
+        var read = app.MapGroup("/monitoring/alerts").RequireAuthorization(MonitoringPolicies.Read);
         read.MapGet("/history", GetHistoryAsync);
         return app;
     }

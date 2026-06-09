@@ -45,7 +45,7 @@
 
 ### Template ID management (pre-MIG-07)
 
-- `LienTaskTemplate.Create()` generates `Id = Guid.NewGuid()` in Liens domain.
+- `LienTaskTemplate.Create()` generates `Id = Guid.CreateVersion7()` in Liens domain.
 - This ID is passed to Task service via `UpsertFromSourceAsync` with `req.Id = entity.Id`.
 - Task service's `UpsertFromSourceAsync` uses `req.Id` verbatim (`TaskTemplate.Create(..., id: req.Id)`).
 - IDs are therefore identical in both systems — no translation layer needed.
@@ -118,7 +118,7 @@ Rationale:
 
 ### ID preservation
 
-IDs are still generated in the Liens domain (`LienTaskTemplate.Create()` generates `Id = Guid.NewGuid()`). The pre-generated ID is passed to `UpsertFromSourceAsync` as `req.Id`, which the Task service preserves verbatim. No ID changes. No ID translation.
+IDs are still generated in the Liens domain (`LienTaskTemplate.Create()` generates `Id = Guid.CreateVersion7()`). The pre-generated ID is passed to `UpsertFromSourceAsync` as `req.Id`, which the Task service preserves verbatim. No ID changes. No ID translation.
 
 ### Version authority (transitional)
 

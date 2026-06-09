@@ -39,7 +39,7 @@ public class EffectiveAccessService : IEffectiveAccessService
         var sw = Stopwatch.StartNew();
 
         var accessVersion = await _db.Users
-            .Where(u => u.Id == userId && u.TenantId == tenantId)
+            .Where(u => u.Id == userId)
             .Select(u => u.AccessVersion)
             .FirstOrDefaultAsync(ct);
 
@@ -147,27 +147,6 @@ public class EffectiveAccessService : IEffectiveAccessService
                 activeGroups.TryGetValue(ip.GroupId, out var gn);
                 productSources.Add(new EffectiveProductEntry(ip.ProductCode, "Inherited", ip.GroupId, gn));
             }
-        }
-
-        // LS-ID-TNT-009: Legacy default access.
-        // Users with no explicit product assignments (direct or inherited) and who are
-        // not a TenantAdmin receive access to all tenant-enabled products.
-        // This preserves the pre-LS-ID-TNT-008 behavior for users who have not yet
-        // been given explicit product grants, preventing unintentional lockout.
-        // To enforce strict explicit-only access, remove this block and run a migration
-        // that explicitly grants all tenant products to all existing active users.
-        if (!isTenantAdmin && directProducts.Count == 0 && inheritedProducts.Count == 0)
-        {
-            foreach (var code in activeEntitlements)
-            {
-                if (effectiveProductSet.Add(code))
-                    productSources.Add(new EffectiveProductEntry(code, "LegacyDefault"));
-            }
-
-            _logger.LogDebug(
-                "LegacyDefault: user {UserId} in tenant {TenantId} has no explicit product assignments — " +
-                "granting all {Count} tenant-enabled products.",
-                userId, tenantId, activeEntitlements.Count);
         }
 
         var effectiveProducts = effectiveProductSet

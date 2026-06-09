@@ -70,7 +70,7 @@ public class AcceptInviteTenantPortalUrlTests
                     .ToList();
                 foreach (var d in dbDescriptors) services.Remove(d);
 
-                var dbName = "accept-invite-test-" + Guid.NewGuid();
+                var dbName = "accept-invite-test-" + Guid.CreateVersion7();
                 services.AddDbContext<IdentityDbContext>(opts =>
                     opts.UseInMemoryDatabase(dbName));
 
@@ -96,16 +96,16 @@ public class AcceptInviteTenantPortalUrlTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
 
-        var tenant = Tenant.Create("Test Tenant", $"tstco-{Guid.NewGuid():N}");
+        var tenant = Tenant.Create("Test Tenant", $"tstco-{Guid.CreateVersion7():N}");
         if (tenantSubdomain is not null)
             tenant.SetSubdomain(tenantSubdomain);
 
         db.Tenants.Add(tenant);
 
-        var user = User.Create(tenant.Id, $"invited-{Guid.NewGuid():N}@example.com", "placeholder-hash", "Alice", "Tester");
+        var user = User.Create(tenant.Id, $"invited-{Guid.CreateVersion7():N}@example.com", "placeholder-hash", "Alice", "Tester");
         db.Users.Add(user);
 
-        var rawToken  = Guid.NewGuid().ToString("N");
+        var rawToken  = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawToken)));
 
         var invitation = UserInvitation.Create(user.Id, tenant.Id, tokenHash);

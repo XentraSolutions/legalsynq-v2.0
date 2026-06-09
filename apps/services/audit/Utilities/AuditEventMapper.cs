@@ -12,7 +12,7 @@ public static class AuditEventMapper
 
         var evt = new AuditEvent
         {
-            Id             = Guid.NewGuid(),
+            Id             = Guid.CreateVersion7(),
             Source         = req.Source.Trim(),
             EventType      = req.EventType.Trim().ToLowerInvariant(),
             Category       = req.Category.Trim().ToLowerInvariant(),

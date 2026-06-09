@@ -32,7 +32,7 @@ public class RelationshipType
 
         return new RelationshipType
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             Code         = code.ToUpperInvariant().Trim(),
             DisplayName  = displayName.Trim(),
             Description  = description?.Trim(),

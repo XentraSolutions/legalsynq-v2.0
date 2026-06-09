@@ -24,7 +24,7 @@ public class ProviderProvisioningTests
     private static Provider BuildProvider(bool isActive, bool acceptingReferrals)
     {
         return Provider.Create(
-            tenantId:           Guid.NewGuid(),
+            tenantId:           Guid.CreateVersion7(),
             name:               "Test Provider",
             organizationName:   null,
             email:              "test@example.com",
@@ -63,7 +63,7 @@ public class ProviderProvisioningTests
         var (sut, _) = BuildSut(returnedProvider: null);
 
         await Assert.ThrowsAsync<NotFoundException>(
-            () => sut.ActivateForCareConnectAsync(Guid.NewGuid()));
+            () => sut.ActivateForCareConnectAsync(Guid.CreateVersion7()));
     }
 
     [Fact]

@@ -139,6 +139,35 @@ export const CONTROL_CENTER_API_BASE: string =
   process.env.GATEWAY_URL             ??
   'http://127.0.0.1:5010';
 
+// ── Commerce service ─────────────────────────────────────────────────────────
+
+/**
+ * COMMERCE_SERVICE_URL — direct base URL for the Commerce service.
+ * Used by BFF routes only (server-side). Never forwarded to the client.
+ * Falls back to the known dev-mode port (5030).
+ */
+export const COMMERCE_SERVICE_URL: string =
+  process.env.COMMERCE_SERVICE_URL ?? 'http://127.0.0.1:5030';
+
+// ── Tenant Billing service ────────────────────────────────────────────────────
+
+/**
+ * BILLING_SERVICE_URL — direct base URL for the Tenant Billing service.
+ * Used by BFF routes only (server-side). Never forwarded to the client.
+ * Falls back to the known dev-mode port (5031).
+ */
+export const BILLING_SERVICE_URL: string =
+  process.env.BILLING_SERVICE_URL ?? 'http://127.0.0.1:5031';
+
+/**
+ * BILLING_INTERNAL_TOKEN — the shared secret required by the Billing service
+ * RequireInternalTokenMiddleware for all /api/* endpoints (X-Internal-Token).
+ * Must match BILLING_INTERNAL_TOKEN on the Billing service.
+ * Health/healthz endpoints bypass this token — probes work without it.
+ */
+export const BILLING_INTERNAL_TOKEN: string =
+  process.env.BILLING_INTERNAL_TOKEN ?? '';
+
 // ── URL path prefix ───────────────────────────────────────────────────────────
 
 /**

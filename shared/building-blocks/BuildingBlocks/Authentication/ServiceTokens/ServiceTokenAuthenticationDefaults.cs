@@ -31,4 +31,17 @@ public static class ServiceTokenAuthenticationDefaults
 
     /// <summary>Default token lifetime in minutes.</summary>
     public const int DefaultLifetimeMinutes = 5;
+
+    /// <summary>
+    /// <c>kid</c> (key ID) embedded in user JWT headers and matched by all
+    /// service validators. Required by Microsoft.IdentityModel.Tokens 7.x,
+    /// which fails with IDX10517 if the token has no <c>kid</c> header.
+    /// </summary>
+    public const string UserTokenKeyId = "ls-hs256-1";
+
+    /// <summary>
+    /// <c>kid</c> (key ID) embedded in M2M service-token headers and matched
+    /// by the <see cref="Scheme"/> bearer validator.
+    /// </summary>
+    public const string ServiceTokenKeyId = "ls-svc-hs256-1";
 }

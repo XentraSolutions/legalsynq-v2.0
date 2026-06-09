@@ -47,6 +47,16 @@ export interface TenantDetail extends TenantSummary {
   isVerificationRetryExhausted?:   boolean;
 }
 
+export interface TenantAccessCodeMetadata {
+  configured: boolean;
+  version: number;
+  updatedAtUtc: string | null;
+}
+
+export interface TenantAccessCodeSaveResult extends TenantAccessCodeMetadata {
+  revealedCode: string;
+}
+
 // ── Product Entitlements ──────────────────────────────────────────────────────
 
 /**
@@ -1686,4 +1696,277 @@ export interface PlatformAnalyticsSummary {
   outboxHealthByTenant:        TenantOutboxHealth[];
   asOf:                        string;
   windowLabel:                 string;
+}
+
+// ── LS-COMMERCE-INT-02: Commerce Operational Types ────────────────────────────
+
+export type CommerceServiceStatus = 'online' | 'degraded' | 'offline';
+
+export interface CommerceReadinessCheck {
+  name:   string;
+  status: 'ok' | 'degraded' | 'error';
+}
+
+export interface CommerceSummary {
+  serviceStatus:    CommerceServiceStatus;
+  serviceLatencyMs: number | undefined;
+  lastCheckedAtUtc: string;
+  readinessChecks:  CommerceReadinessCheck[];
+}
+
+// ── LS-COMMERCE-INT-03: Commerce Account & Bridge Types ──────────────────────
+
+export interface CommerceAccountItem {
+  id:                          string;
+  accountNumber:               string;
+  displayName:                 string;
+  status:                      string;
+  standing:                    string;
+  standingReason:              string | null;
+  standingLastEvaluatedAtUtc:  string | null;
+}
+
+export interface CommerceAccountSummary {
+  accountCount:      number;
+  accounts:          CommerceAccountItem[];
+  lastCheckedAtUtc:  string;
+  error:             string | null;
+}
+
+export interface CommerceBridgeDiagnostics {
+  enabled:                    boolean;
+  baseUrlConfigured:          boolean;
+  internalTokenConfigured:    boolean;
+  timeoutSeconds:             number;
+  retryAttempts:              number;
+  circuitBreakerEnabled:      boolean;
+  circuitBreakerState:        string;
+  targetRoute:                string;
+  mode:                       string;
+  autoPublishEnabled:         boolean;
+  autoPublishQueueDepth:      number;
+  outboxEnabled:              boolean;
+  outboxPendingCount:         number;
+  outboxFailedCount:          number;
+  outboxPublishedCount:       number;
+  lastCheckedAtUtc:           string;
+  error:                      string | null;
+}
+
+// ── LS-COMMERCE-INT-03: Tenant Billing Entitlement Types ─────────────────────
+
+export interface BillingEntitlementSnapshot {
+  profileId:           string | null;
+  billingAccountId:    string | null;
+  entitlementStatus:   string;
+  accessRecommendation: string;
+  isEnabled:           boolean;
+  writeAccessAllowed:  boolean;
+  sourcePlanKey:       string | null;
+  sourceProductKey:    string | null;
+  effectiveFromUtc:    string | null;
+  effectiveToUtc:      string | null;
+  lastSyncedAtUtc:     string | null;
+  lastCheckedAtUtc:    string;
+  error:               string | null;
+}
+
+export interface TenantAdminBillingStatus {
+  tenantId:       string;
+  profileFound:   boolean;
+  profile:        TenantBillingProfile | null;
+  entitlement:    BillingEntitlementSnapshot | null;
+  lastCheckedAtUtc: string;
+  error:          string | null;
+}
+
+// ── LS-COMMERCE-INT-02: Tenant Billing Operational Types ─────────────────────
+
+export type BillingServiceStatus = 'online' | 'degraded' | 'offline';
+
+export interface BillingSummary {
+  serviceStatus:    BillingServiceStatus;
+  serviceLatencyMs: number | undefined;
+  lastCheckedAtUtc: string;
+}
+
+export interface TenantBillingProfile {
+  id:               string;
+  tenantId:         string;
+  billingAccountId: string;
+  hostPlatformKey:  string | null;
+  externalTenantId: string | null;
+  status:           string;
+  mode:             string;
+  createdAtUtc:     string;
+  updatedAtUtc:     string;
+  activatedAtUtc:   string | null;
+  closedAtUtc:      string | null;
+}
+
+export interface TenantBillingSummary {
+  profileFound:    boolean;
+  profile:         TenantBillingProfile | null;
+  lastCheckedAtUtc: string;
+  error:           string | null;
+}
+
+export interface BillingProfileActionResult {
+  success:          boolean;
+  action:           string;
+  profileId:        string;
+  newStatus?:       string;
+  error?:           string;
+  executedAtUtc:    string;
+}
+
+export interface CommerceSubscriptionItem {
+  id:                     string;
+  billingAccountId:       string;
+  subscriptionNumber:     string;
+  status:                 string;
+  startDateUtc:           string;
+  currentPeriodStartUtc:  string;
+  currentPeriodEndUtc:    string;
+  cancelAtPeriodEnd:      boolean;
+  cancelledAtUtc:         string | null;
+  cancellationReason:     string | null;
+  createdAtUtc:           string;
+  updatedAtUtc:           string;
+  itemCount:              number;
+}
+
+export interface CommerceSubscriptionSummary {
+  subscriptions:      CommerceSubscriptionItem[];
+  totalCount:         number;
+  billingAccountId:   string | null;
+  lastCheckedAtUtc:   string;
+  error:              string | null;
+}
+
+export interface EntitlementPublishResult {
+  outcome:          string;
+  billingAccountId: string;
+  tenantId:         string | null;
+  httpStatus:       number | null;
+  reason:           string;
+  attempts:         number;
+  executedAtUtc:    string;
+  error?:           string;
+}
+
+// ── LS-COMMERCE-OPS-01: Operational Audit & Reconciliation Types ──────────────
+
+export interface CommerceAuditEvent {
+  id:           string;
+  billingAccountId: string;
+  eventType:    string;
+  description:  string;
+  actorType:    string;
+  actorId:      string | null;
+  metadataJson: string | null;
+  createdAtUtc: string;
+}
+
+export interface CommerceAuditEventList {
+  events:          CommerceAuditEvent[];
+  totalCount:      number;
+  billingAccountId: string;
+  lastCheckedAtUtc: string;
+  error:           string | null;
+}
+
+export interface CommerceEntitlementSnapshotDetail {
+  billingAccountId:                   string;
+  accountNumber:                      string;
+  displayName:                        string;
+  hostPlatformKey:                    string | null;
+  externalTenantId:                   string | null;
+  accountStandingStatus:              string;
+  accountStandingReason:              string | null;
+  accountStandingGracePeriodEndsAtUtc: string | null;
+  accessRecommendation:               string;
+  productCount:                       number;
+  planCount:                          number;
+  subscriptionCount:                  number;
+  activeSubscriptionCount:            number;
+  featureLimitCount:                  number;
+  products:                           Array<{ productKey: string; productName: string }>;
+  plans:                              Array<{ planKey: string; planName: string }>;
+  generatedAtUtc:                     string;
+  lastCheckedAtUtc:                   string;
+  error:                              string | null;
+}
+
+export interface BillingProfileLifecycleEvent {
+  event:       string;
+  status:      string;
+  occurredAtUtc: string;
+  notes:       string | null;
+}
+
+export interface BillingProfileLifecycle {
+  profileId:        string;
+  tenantId:         string;
+  billingAccountId: string;
+  currentStatus:    string;
+  mode:             string;
+  events:           BillingProfileLifecycleEvent[];
+  updatedAtUtc:     string;
+  lastCheckedAtUtc: string;
+  error:            string | null;
+}
+
+export type ReconciliationStatus = 'aligned' | 'stale' | 'mismatch' | 'unknown' | 'error';
+
+export interface ReconciliationDiagnostics {
+  billingAccountId:              string;
+  tenantId:                      string | null;
+
+  commerceAccessRecommendation:  string | null;
+  commerceAccountStanding:       string | null;
+  commerceSnapshotGeneratedAt:   string | null;
+  commerceSubscriptionCount:     number | null;
+  commerceActiveSubscriptions:   number | null;
+
+  billingEntitlementStatus:      string | null;
+  billingAccessRecommendation:   string | null;
+  billingLastSyncedAt:           string | null;
+  billingEffectiveFrom:          string | null;
+
+  reconciliationStatus:          ReconciliationStatus;
+  mismatchDetails:               string | null;
+  staleDeltaSeconds:             number | null;
+  staleThresholdSeconds:         number;
+
+  lastCheckedAtUtc:              string;
+  error:                         string | null;
+  commerceError:                 string | null;
+  billingError:                  string | null;
+}
+
+export interface RemediationItem {
+  id:              string;
+  category:        'stale-snapshot' | 'failed-publish' | 'missing-profile' | 'access-mismatch' | 'bridge-disabled' | 'pending-publish';
+  severity:        'warning' | 'info';
+  billingAccountId?: string;
+  tenantId?:         string;
+  title:           string;
+  detail:          string;
+  detectedAtUtc:   string;
+}
+
+export interface RemediationSummary {
+  items:           RemediationItem[];
+  warningCount:    number;
+  infoCount:       number;
+  lastCheckedAtUtc: string;
+}
+
+export interface OperationalExportResult {
+  format:          'json';
+  filename:        string;
+  generatedAtUtc:  string;
+  sectionCount:    number;
+  error:           string | null;
 }

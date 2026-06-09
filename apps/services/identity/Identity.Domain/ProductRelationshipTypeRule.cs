@@ -21,7 +21,7 @@ public class ProductRelationshipTypeRule
     {
         return new ProductRelationshipTypeRule
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             ProductId         = productId,
             RelationshipTypeId = relationshipTypeId,
             IsActive          = true,

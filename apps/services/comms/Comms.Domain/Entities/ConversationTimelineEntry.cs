@@ -39,7 +39,7 @@ public sealed class ConversationTimelineEntry
     {
         return new ConversationTimelineEntry
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             EventType = eventType,

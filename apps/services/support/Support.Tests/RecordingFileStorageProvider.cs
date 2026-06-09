@@ -35,7 +35,7 @@ public sealed class RecordingFileStorageProvider : ISupportFileStorageProvider
             bytes = ms.Length;
         }
 
-        var docId = DocumentIdOverride ?? $"recorded-{Guid.NewGuid():N}";
+        var docId = DocumentIdOverride ?? $"recorded-{Guid.CreateVersion7():N}";
         var result = new SupportFileUploadResult(
             DocumentId: docId,
             FileName: request.FileName,

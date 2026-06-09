@@ -1,0 +1,225 @@
+2026-05-20T00:56:00Z info: Deployment: c424708f-2471-47a1-abec-0f9b07cf77b7
+2026-05-20T00:56:00Z info: Build: 8e3f7f0c-a7e1-47f4-862e-6af810614ecd
+2026-05-20T00:56:01Z info: Running Security Scan
+2026-05-20T00:58:29Z info: Security Scan Complete
+2026-05-20T00:58:34Z info: Installing packages
+--> npm install
+
+--> npm install
+
+npm warn deprecated @types/dompurify@3.2.0: This is a stub types definition. dompurify provides its own type definitions, so you do not need this installed.
+
+npm warn deprecated @types/dompurify@3.2.0: This is a stub types definition. dompurify provides its own type definitions, so you do not need this installed.
+
+
+added 7 packages, removed 1 package, changed 110 packages, and audited 240 packages in 11s
+
+
+added 7 packages, removed 1 package, changed 110 packages, and audited 240 packages in 11s
+
+
+49 packages are looking for funding
+
+
+49 packages are looking for funding
+
+  run `npm fund` for details
+
+  run `npm fund` for details
+
+
+2 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+
+2 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.14.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.14.1
+npm notice To update run: npm install -g npm@11.14.1
+npm notice
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.14.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.14.1
+npm notice To update run: npm install -g npm@11.14.1
+npm notice
+
+2026-05-20T00:58:47Z info: Starting Build
+[pnpm-restore] Restoring pnpm-managed node_modules after npm install...
+
+Lockfile is up to date, resolution step is skipped
+
+Already up to date
+
+
+   ╭─────────────────────────────────────────╮
+   │                                         │
+   │   Update available! 10.26.1 → 11.1.3.   │
+   │   Changelog: https://pnpm.io/v/11.1.3   │
+   │    To update, run: pnpm add -g pnpm     │
+   │                                         │
+   ╰─────────────────────────────────────────╯
+
+
+
+dependencies:
++ @playwright/test 1.59.1
++ @tailwindcss/postcss 4.2.2
++ @testing-library/jest-dom 6.9.1
++ @testing-library/react 16.3.2
++ @testing-library/user-event 14.6.1
++ @types/dompurify 3.2.0
++ @types/node 25.5.0
++ @types/react 18.3.28
++ @types/react-dom 18.3.7
++ @types/testing-library__jest-dom 5.14.9
++ @vitejs/plugin-react 6.0.1
++ autoprefixer 10.4.27
++ clsx 2.1.1
++ dompurify 3.4.2
++ jose 6.2.2
++ jsdom 29.0.2
++ leaflet 1.9.4
++ lucide-react 1.7.0
++ mysql2 3.22.1
++ next 15.5.18
++ postcss 8.5.10
++ react 18.3.1
++ react-dom 18.3.1
++ react-leaflet 4.2.1
++ remixicon 4.9.1
++ tailwindcss 4.2.2
++ typescript 6.0.3
++ vitest 4.1.5
++ zustand 5.0.12
+
+devDependencies:
++ @types/google.maps 3.64.0
++ @types/leaflet 1.9.21
++ tsx 4.21.0
+
+
+Done in 2.2s using pnpm v10.26.1
+
+[pnpm-restore] Done
+
+Using next binary: /home/runner/workspace/node_modules/next/dist/bin/next
+====== Pre-build disk cleanup ======
+[pre-cleanup] Removing git history...
+
+[pre-cleanup] Removing archived files...
+
+[pre-cleanup] Removing analysis/exports/downloads...
+
+[pre-cleanup] Removing attached_assets...
+
+[pre-cleanup] Removing Replit agent/workflow state...
+
+[pre-cleanup] Done
+====== Building web app ======
+
+[dedup] Linked apps/web/node_modules/next → /home/runner/workspace/node_modules/.pnpm/next@15.5.18_@playwright+test@1.59.1_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next
+
+[dedup] Linked apps/web/node_modules/react → root pnpm store
+
+[dedup] Linked apps/web/node_modules/react-dom → root pnpm store
+
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+
+This information is used to shape Next.js' roadmap and prioritize features.
+
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+
+   ▲ Next.js 15.5.18
+
+   - Environments: .env.local, .env.production
+   - Experiments (use with caution):
+     · serverActions
+     ⨯ webpackBuildWorker
+     ✓ webpackMemoryOptimizations
+
+   Creating an optimized production build ...
+
+ ✓ Compiled successfully in 20.7s
+
+   Linting and checking validity of types ...
+
+   Collecting page data ...
+
+   Generating static pages (0/22) ...
+
+   Generating static pages (5/22) 
+   Generating static pages (10/22) 
+
+   Generating static pages (16/22) 
+ ✓ Generating static pages (22/22)
+
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+====== Building control center ======
+
+[dedup] Linked control-center/node_modules/react → pnpm store
+
+[dedup] Linked control-center/node_modules/react-dom → pnpm store
+
+[control-center] Own next binary not found, falling back to root binary
+[control-center] Using next binary: /home/runner/workspace/node_modules/next/dist/bin/next
+
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+
+https://nextjs.org/telemetry
+
+
+   ▲ Next.js 15.5.18
+
+   - Environments: .env.local
+   - Experiments (use with caution):
+     · serverActions
+
+
+   Creating an optimized production build ...
+
+ ✓ Compiled successfully in 20.8s
+
+   Linting and checking validity of types ...
+
+Failed to compile.
+
+./src/app/api/monitoring/alerts/history/route.ts:81:7
+Type error: No overload matches this call.
+  Overload 1 of 2, '(input: string | Request | URL, init?: RequestInit | undefined): Promise<Response>', gave the following error.
+    Type '{ Authorization: string; Accept: string; } | { Authorization?: undefined; Accept: string; }' is not assignable to type 'HeadersInit | undefined'.
+      Type '{ Authorization?: undefined; Accept: string; }' is not assignable to type 'HeadersInit | undefined'.
+        Type '{ Authorization?: undefined; Accept: string; }' is not assignable to type 'undefined'.
+  Overload 2 of 2, '(input: URL | RequestInfo, init?: RequestInit | undefined): Promise<Response>', gave the following error.
+    Type '{ Authorization: string; Accept: string; } | { Authorization?: undefined; Accept: string; }' is not assignable to type 'HeadersInit | undefined'.
+      Type '{ Authorization?: undefined; Accept: string; }' is not assignable to type 'HeadersInit | undefined'.
+        Type '{ Authorization?: undefined; Accept: string; }' is not assignable to type 'undefined'.
+
+  79 |     const res = await fetch(url, {
+  80 |       cache:   'no-store',
+> 81 |       headers: { 'Accept': 'application/json', ...authHeader },
+     |       ^
+  82 |     });
+  83 |
+  84 |     if (!res.ok) {
+
+Next.js build worker exited with code: 1 and signal: null

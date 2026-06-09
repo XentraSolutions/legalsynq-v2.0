@@ -408,7 +408,7 @@ public class ReferralService : IReferralService
         // even when the same provider is re-assigned multiple times concurrently.
         var scopeFactory      = _scopeFactory;
         var logger            = _logger;
-        var reassignEventGuid = Guid.NewGuid(); // GUID suffix guarantees uniqueness across concurrent reassignments
+        var reassignEventGuid = Guid.CreateVersion7(); // GUID suffix guarantees uniqueness across concurrent reassignments
         _ = Task.Run(async () =>
         {
             using var scope   = scopeFactory.CreateScope();

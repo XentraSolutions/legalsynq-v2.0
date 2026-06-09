@@ -66,6 +66,15 @@ public static class StartupMigrationGuard
         string? warningMessage = null,
         string historyInsertPrefix = "INSERT IGNORE")
     {
+        if (!MigrationHistoryTableExists(cmd))
+        {
+            logger.LogInformation(
+                "{GuardLabel}: EF migration history table does not exist yet — skipping startup repair for {MigrationId}.",
+                guardLabel,
+                migrationId);
+            return false;
+        }
+
         cmd.CommandText = $@"
             SELECT COUNT(*) FROM `__EFMigrationsHistory`
             WHERE `MigrationId` = '{migrationId}';";
@@ -89,5 +98,34 @@ public static class StartupMigrationGuard
         cmd.ExecuteNonQuery();
 
         return false;
+    }
+
+    private static bool MigrationHistoryTableExists(IDbCommand cmd)
+    {
+        if (TableExists(cmd, @"
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+              AND table_name = '__EFMigrationsHistory';"))
+        {
+            return true;
+        }
+
+        return TableExists(cmd, @"
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type = 'table'
+              AND name = '__EFMigrationsHistory';");
+    }
+
+    private static bool TableExists(IDbCommand cmd, string sql)
+    {
+        try
+        {
+            cmd.CommandText = sql;
+            return Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

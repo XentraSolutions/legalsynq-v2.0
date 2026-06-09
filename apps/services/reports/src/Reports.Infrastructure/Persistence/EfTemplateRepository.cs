@@ -47,7 +47,7 @@ public sealed class EfTemplateRepository : ITemplateRepository
     public async Task<ReportTemplate> CreateAsync(ReportTemplate template, CancellationToken ct)
     {
         if (template.Id == Guid.Empty)
-            template.Id = Guid.NewGuid();
+            template.Id = Guid.CreateVersion7();
 
         _db.ReportTemplates.Add(template);
         await _db.SaveChangesAsync(ct);
@@ -101,7 +101,7 @@ public sealed class EfTemplateRepository : ITemplateRepository
     public async Task<ReportTemplateVersion> CreateVersionAsync(ReportTemplateVersion version, CancellationToken ct)
     {
         if (version.Id == Guid.Empty)
-            version.Id = Guid.NewGuid();
+            version.Id = Guid.CreateVersion7();
 
         _db.ReportTemplateVersions.Add(version);
         await _db.SaveChangesAsync(ct);
@@ -156,7 +156,7 @@ public sealed class EfTemplateRepository : ITemplateRepository
         version.VersionNumber = nextVersion;
 
         if (version.Id == Guid.Empty)
-            version.Id = Guid.NewGuid();
+            version.Id = Guid.CreateVersion7();
 
         _db.ReportTemplateVersions.Add(version);
 

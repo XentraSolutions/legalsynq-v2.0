@@ -119,7 +119,7 @@ public class TicketProductReferenceService : ITicketProductReferenceService
 
         var pref = new SupportTicketProductRef
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TicketId = ticketId,
             TenantId = tenantId,
             ProductCode = productCode,

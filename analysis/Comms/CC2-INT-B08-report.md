@@ -86,7 +86,7 @@ File: `CareConnect.Api/Endpoints/PublicNetworkEndpoints.cs`
 
 File: `CareConnect.Api/Program.cs`
 
-- Uses .NET 8 `Microsoft.AspNetCore.RateLimiting` (no new packages needed)
+- Uses .NET 10 `Microsoft.AspNetCore.RateLimiting` (no new packages needed)
 - Policy: `fixed-window`, 10 permits / 60-second window, queue limit 0
 - Partition key: remote IP address (`HttpContext.Connection.RemoteIpAddress`)
 - Applied via `.RequireRateLimiting("public-referral-limit")` on the POST endpoint

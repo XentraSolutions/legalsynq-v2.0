@@ -31,7 +31,7 @@ public class GroupRoleAssignment
         var now = DateTime.UtcNow;
         return new GroupRoleAssignment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             GroupId = groupId,
             RoleCode = roleCode.Trim(),

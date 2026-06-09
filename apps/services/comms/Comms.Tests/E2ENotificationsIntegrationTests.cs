@@ -40,7 +40,7 @@ public class E2ENotificationsIntegrationTests
 
         var conv = Conversation.Create(
             TestHelpers.TenantId, TestHelpers.OrgId, "SYNQ_COMMS",
-            ContextType.General, $"e2e-test-{Guid.NewGuid():N}",
+            ContextType.General, $"e2e-test-{Guid.CreateVersion7():N}",
             "E2E Test Subject", VisibilityType.SharedExternal,
             TestHelpers.UserId1);
         await convRepo.AddAsync(conv);
@@ -92,7 +92,7 @@ public class E2ENotificationsIntegrationTests
         await templateRepo.AddAsync(template);
         await templateRepo.SaveChangesAsync();
 
-        var docId = Guid.NewGuid();
+        var docId = Guid.CreateVersion7();
         var attachmentRepo = TestHelpers.CreateAttachmentRepo(db);
         var att = MessageAttachment.Create(
             TestHelpers.TenantId, conv.Id, msg.Id,
@@ -314,7 +314,7 @@ public class E2ENotificationsIntegrationTests
             InternetMessageId: "<unknown@example.com>",
             Status: "delivered",
             StatusAtUtc: DateTime.UtcNow,
-            NotificationsRequestId: Guid.NewGuid().ToString());
+            NotificationsRequestId: Guid.CreateVersion7().ToString());
 
         var result = await service.ProcessDeliveryStatusAsync(updateRequest, TestHelpers.TenantId);
 
@@ -411,7 +411,7 @@ public class E2ENotificationsIntegrationTests
         await templateRepo.AddAsync(tmpl);
         await templateRepo.SaveChangesAsync();
 
-        var docId = Guid.NewGuid();
+        var docId = Guid.CreateVersion7();
         var attachRepo = TestHelpers.CreateAttachmentRepo(db);
         var att = MessageAttachment.Create(
             TestHelpers.TenantId, conv.Id, msg.Id,

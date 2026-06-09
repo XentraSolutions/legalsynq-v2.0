@@ -39,10 +39,10 @@ namespace CareConnect.Tests.Authorization;
 // LSCC-002-01: Access validation — participant, admin bypass, null-org, backfill domain scenarios
 public class AccessControlValidationTests
 {
-    private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid OrgA     = Guid.NewGuid();
-    private static readonly Guid OrgB     = Guid.NewGuid();
-    private static readonly Guid OrgC     = Guid.NewGuid(); // third party
+    private static readonly Guid TenantId = Guid.CreateVersion7();
+    private static readonly Guid OrgA     = Guid.CreateVersion7();
+    private static readonly Guid OrgB     = Guid.CreateVersion7();
+    private static readonly Guid OrgC     = Guid.CreateVersion7(); // third party
 
     // ── Context helper (mirrors CareConnectParticipantHelperTests pattern) ────
 
@@ -69,7 +69,7 @@ public class AccessControlValidationTests
             tenantId:                TenantId,
             referringOrganizationId: referringOrgId,
             receivingOrganizationId: receivingOrgId,
-            providerId:              Guid.NewGuid(),
+            providerId:              Guid.CreateVersion7(),
             subjectPartyId:          null,
             subjectNameSnapshot:     null,
             subjectDobSnapshot:      null,
@@ -87,9 +87,9 @@ public class AccessControlValidationTests
     private static Appointment MakeAppointment(Guid? referringOrgId, Guid? receivingOrgId) =>
         Appointment.Create(
             tenantId:                TenantId,
-            referralId:              Guid.NewGuid(),
-            providerId:              Guid.NewGuid(),
-            facilityId:              Guid.NewGuid(),
+            referralId:              Guid.CreateVersion7(),
+            providerId:              Guid.CreateVersion7(),
+            facilityId:              Guid.CreateVersion7(),
             serviceOfferingId:       null,
             appointmentSlotId:       null,
             scheduledStartAtUtc:     DateTime.UtcNow.AddDays(1),

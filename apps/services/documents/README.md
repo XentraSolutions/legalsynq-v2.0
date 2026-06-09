@@ -1,0 +1,51 @@
+# Documents Service
+
+Secure document storage with virus scanning, versioning, and opaque access tokens.
+
+**Port:** 5006
+
+## Responsibilities
+
+- Document upload (multipart, S3-backed storage)
+- Metadata management (name, tags, tenant scoping)
+- Virus scanning via ClamAV (circuit breaker, large-file policy)
+- Document versioning
+- Opaque access token issuance (short-lived view/download URLs)
+- Public logo serving (`/public/logos/{id}`) for tenant branding
+- Signature freshness monitoring
+
+## Layer Structure
+
+```
+Documents.Api/            Endpoints, middleware, Program.cs (port 5006)
+Documents.Application/    Interfaces, DTOs, DocumentService, AccessTokenService
+Documents.Domain/         Document, DocumentVersion, AccessToken
+Documents.Infrastructure/ DbContext (DocsDb), S3 adapter, ClamAV adapter, EF migrations
+```
+
+## Key Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/documents` | Bearer | Upload document |
+| `GET` | `/api/documents` | Bearer | List documents (tenant-scoped) |
+| `GET` | `/api/documents/{id}` | Bearer | Document metadata |
+| `POST` | `/api/documents/{id}/view-token` | Bearer | Request short-lived view URL |
+| `POST` | `/api/documents/{id}/download-token` | Bearer | Request download URL |
+| `GET` | `/api/documents/{id}/versions` | Bearer | Version history |
+| `GET` | `/public/logos/{id}` | Anonymous | Public tenant logo |
+
+## Storage
+
+AWS S3 (configured via `AWS_S3_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY` secrets).
+
+## Database
+
+`DocsDb` (MySQL).
+
+## Security Notes
+
+- All document access goes through opaque tokens — no direct S3 URL exposure
+- ClamAV integration with circuit breaker (bypasses scan on ClamAV failure, logs warning)
+- Large files (>50MB) skip AV scan with policy flag
+- Public logo endpoint is intentionally anonymous but serves only registered logo document IDs

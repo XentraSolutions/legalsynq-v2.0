@@ -1,3 +1,4 @@
+using BuildingBlocks.Commerce;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,7 @@ public static class DependencyInjection
 
         // ── TENANT-B08: In-process memory cache (BCL; no new package dependency) ──
         services.AddMemoryCache();
+        services.AddHttpContextAccessor();
 
         // ── TENANT-B08: Runtime metrics singleton ─────────────────────────────
         services.AddSingleton<TenantRuntimeMetrics>();
@@ -55,6 +57,7 @@ public static class DependencyInjection
         services.AddScoped<IEntitlementService,     EntitlementService>();
         services.AddScoped<ICapabilityService,      CapabilityService>();
         services.AddScoped<ISettingService,         SettingService>();
+        services.AddScoped<ICareConnectAccessCodeService, CareConnectAccessCodeService>();
         services.AddScoped<IMigrationUtilityService, MigrationUtilityService>();
         services.AddScoped<ITenantSyncAdapter,       NoOpTenantSyncAdapter>();
         services.AddScoped<ITenantAdminService,      TenantAdminService>();
@@ -86,6 +89,11 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IDocumentsAdapter, HttpDocumentsAdapter>();
+
+        // ── LS-COMMERCE-ECO-02: Commerce lifecycle notifier ───────────────────
+        // Noop by default (CommerceIntegration:Enabled=false).
+        // Set Enabled=true + BaseUrl to activate outbound HTTP notifications.
+        services.AddCommerceIntegration(configuration);
 
         return services;
     }

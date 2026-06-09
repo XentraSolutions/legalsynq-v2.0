@@ -370,7 +370,7 @@ public class TicketService : ITicketService
 
         var ticket = new SupportTicket
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ProductCode = req.ProductCode,
             TicketNumber = ticketNumber,

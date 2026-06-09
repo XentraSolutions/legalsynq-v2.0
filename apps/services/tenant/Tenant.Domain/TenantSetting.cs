@@ -105,7 +105,7 @@ public class TenantSetting
         var now = DateTime.UtcNow;
         return new TenantSetting
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             TenantId     = tenantId,
             SettingKey   = normalizedKey,
             SettingValue = settingValue ?? string.Empty,

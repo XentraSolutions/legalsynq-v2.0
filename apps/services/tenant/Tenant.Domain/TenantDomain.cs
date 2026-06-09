@@ -149,7 +149,7 @@ public class TenantDomain
         var now = DateTime.UtcNow;
         return new TenantDomain
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             TenantId     = tenantId,
             Host         = normalized,
             DomainType   = domainType,

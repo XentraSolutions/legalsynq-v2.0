@@ -33,7 +33,7 @@ public class ReferralAttachment : AuditableEntity
     {
         return new ReferralAttachment
         {
-            Id                       = Guid.NewGuid(),
+            Id                       = Guid.CreateVersion7(),
             TenantId                 = tenantId,
             ReferralId               = referralId,
             FileName                 = fileName.Trim(),

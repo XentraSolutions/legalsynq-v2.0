@@ -53,7 +53,7 @@ public class Policy
 
         return new Policy
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PolicyCode = normalizedCode,
             Name = name.Trim(),
             Description = description?.Trim(),

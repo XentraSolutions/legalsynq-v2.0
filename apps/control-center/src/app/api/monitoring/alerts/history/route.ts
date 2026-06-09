@@ -19,7 +19,9 @@
  */
 
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
+import { SESSION_COOKIE_NAME } from '@/lib/app-config';
 
 const MONITORING_SOURCE = process.env.MONITORING_SOURCE ?? 'local';
 
@@ -64,14 +66,19 @@ export async function GET(request: Request) {
   }
 
   // Service mode: proxy to Monitoring Service via gateway.
-  const gatewayBase = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+  // Forward the session token so the gateway can authenticate this call.
+  const gatewayBase  = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
   const url = `${gatewayBase}/monitoring/monitoring/alerts/history` +
     `?entityName=${encodeURIComponent(entityName)}&limit=${encodeURIComponent(limit)}`;
+
+  const cookieStore  = await cookies();
+  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const authHeader: Record<string, string> = sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {};
 
   try {
     const res = await fetch(url, {
       cache:   'no-store',
-      headers: { 'Accept': 'application/json' },
+      headers: { 'Accept': 'application/json', ...authHeader },
     });
 
     if (!res.ok) {

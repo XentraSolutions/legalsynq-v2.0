@@ -75,8 +75,8 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
         // ── Step 2: Seed active platform-tenant users ─────────────────────────
         // These users are created AFTER migrations ran, so the backfill SQL inside
         // the 20260426 migrations did not cover them.
-        var platformUserId1 = Guid.NewGuid();
-        var platformUserId2 = Guid.NewGuid();
+        var platformUserId1 = Guid.CreateVersion7();
+        var platformUserId2 = Guid.CreateVersion7();
 
         await using (var conn = new MySqlConnection(_cs))
         {
@@ -210,8 +210,8 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
             await db.Database.MigrateAsync();
 
         // ── Step 2: Seed one active and one inactive platform-tenant user ──────
-        var activeUserId   = Guid.NewGuid();
-        var inactiveUserId = Guid.NewGuid();
+        var activeUserId   = Guid.CreateVersion7();
+        var inactiveUserId = Guid.CreateVersion7();
 
         await using (var conn = new MySqlConnection(_cs))
         {
@@ -337,8 +337,8 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
             await db.Database.MigrateAsync();
 
         // ── Step 2: Seed active platform-tenant users ─────────────────────────
-        var platformUserId1 = Guid.NewGuid();
-        var platformUserId2 = Guid.NewGuid();
+        var platformUserId1 = Guid.CreateVersion7();
+        var platformUserId2 = Guid.CreateVersion7();
 
         await using (var conn = new MySqlConnection(_cs))
         {
@@ -453,7 +453,7 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
             await db.Database.MigrateAsync();
 
         // ── Step 2: Seed an active platform-tenant user ───────────────────────
-        var platformUserId = Guid.NewGuid();
+        var platformUserId = Guid.CreateVersion7();
 
         await using (var conn = new MySqlConnection(_cs))
         {
@@ -482,7 +482,7 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
             // guard-written rows (where AssignedByUserId IS NULL).
             const string RoleSupportAdmin         = "30000000-0000-0000-0000-000000000011";
             const string SentinelAdminId          = "00000000-0000-0000-0000-000000000001";
-            var          manualSraId              = Guid.NewGuid();
+            var          manualSraId              = Guid.CreateVersion7();
 
             cmd.CommandText = $@"
                 INSERT INTO `idt_ScopedRoleAssignments`

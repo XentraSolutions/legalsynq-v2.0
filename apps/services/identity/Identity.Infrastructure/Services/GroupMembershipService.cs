@@ -41,8 +41,12 @@ public class GroupMembershipService : IGroupMembershipService
         if (group.Status == GroupStatus.Archived)
             throw new InvalidOperationException("Cannot add members to an archived group.");
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct)
-            ?? throw new InvalidOperationException($"User {userId} not found in tenant {tenantId}.");
+        var isMember = await _db.UserTenants.AnyAsync(ut => ut.UserId == userId && ut.TenantId == tenantId && ut.IsActive, ct);
+        if (!isMember)
+            throw new InvalidOperationException($"User {userId} not found in tenant {tenantId}.");
+
+        var user = await _db.Users.FindAsync([userId], ct)
+            ?? throw new InvalidOperationException($"User {userId} does not exist.");
 
         var existing = await _db.AccessGroupMemberships
             .FirstOrDefaultAsync(m => m.TenantId == tenantId && m.GroupId == groupId && m.UserId == userId, ct);
@@ -98,7 +102,7 @@ public class GroupMembershipService : IGroupMembershipService
         var beforeJson = JsonSerializer.Serialize(new { membership.MembershipStatus, membership.AddedAtUtc });
         membership.Remove(actorUserId);
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+        var user = await _db.Users.FindAsync([userId], ct);
         user?.IncrementAccessVersion();
 
         await _db.SaveChangesAsync(ct);

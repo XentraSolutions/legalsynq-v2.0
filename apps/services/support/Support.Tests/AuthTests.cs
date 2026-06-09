@@ -53,7 +53,7 @@ public class AuthTests : IClassFixture<SupportApiProdFactory>, IClassFixture<Sup
     public async Task Prod_Comments_NoToken_Returns_401()
     {
         var c = _prod.CreateClient();
-        var r = await c.GetAsync($"/support/api/tickets/{Guid.NewGuid()}/comments");
+        var r = await c.GetAsync($"/support/api/tickets/{Guid.CreateVersion7()}/comments");
         r.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
@@ -62,7 +62,7 @@ public class AuthTests : IClassFixture<SupportApiProdFactory>, IClassFixture<Sup
     public async Task Prod_Attachments_NoToken_Returns_401()
     {
         var c = _prod.CreateClient();
-        var r = await c.GetAsync($"/support/api/tickets/{Guid.NewGuid()}/attachments");
+        var r = await c.GetAsync($"/support/api/tickets/{Guid.CreateVersion7()}/attachments");
         r.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 

@@ -53,7 +53,7 @@ public class Facility : AuditableEntity
         var now = DateTime.UtcNow;
         return new Facility
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             TenantId          = tenantId,
             OrgId             = orgId,
             Name              = name.Trim(),

@@ -7,9 +7,10 @@ public static class ContactType
     public const string LienHolder   = "LienHolder";
     public const string CaseManager  = "CaseManager";
     public const string InternalUser = "InternalUser";
+    public const string Lead         = "Lead";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
-        LawFirm, Provider, LienHolder, CaseManager, InternalUser
+        LawFirm, Provider, LienHolder, CaseManager, InternalUser, Lead
     };
 }

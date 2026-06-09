@@ -193,4 +193,25 @@ public sealed class StartupMigrationGuardsIntegrationTests : IDisposable
         Assert.Equal(1, repairApplyCalls);
         Assert.Equal(0, steadyApplyCalls);
     }
+
+    [Fact]
+    public void MissingHistoryTable_SkipsRepairSql()
+    {
+        using var conn = new SqliteConnection("Data Source=:memory:");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var applyCalls = 0;
+
+        var recorded = StartupMigrationGuard.ApplyIfMissing(
+            cmd,
+            "20260418230627_AddTenantPermissionCatalog",
+            EfVersion,
+            NullLogger.Instance,
+            GuardLabel,
+            apply: _ => applyCalls++,
+            historyInsertPrefix: SqliteInsert);
+
+        Assert.False(recorded);
+        Assert.Equal(0, applyCalls);
+    }
 }

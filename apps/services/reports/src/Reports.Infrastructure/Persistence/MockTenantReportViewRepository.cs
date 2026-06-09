@@ -27,7 +27,7 @@ public sealed class MockTenantReportViewRepository : ITenantReportViewRepository
 
     public Task<TenantReportView> CreateAsync(TenantReportView entity, CancellationToken ct)
     {
-        entity.Id = entity.Id == Guid.Empty ? Guid.NewGuid() : entity.Id;
+        entity.Id = entity.Id == Guid.Empty ? Guid.CreateVersion7() : entity.Id;
         _store.Add(entity);
         return Task.FromResult(entity);
     }

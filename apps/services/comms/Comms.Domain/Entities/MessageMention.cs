@@ -23,7 +23,7 @@ public class MessageMention
     {
         return new MessageMention
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             MessageId = messageId,

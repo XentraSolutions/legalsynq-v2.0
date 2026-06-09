@@ -26,6 +26,10 @@ _svc_label_for() {
     Task.Api)                  echo "Task" ;;
     Tenant.Api)                echo "Tenant" ;;
     Support.Api)               echo "Support" ;;
+    Commerce.Api)              echo "Commerce" ;;
+    Billing.Api)               echo "Billing" ;;
+    Reports.Api)               echo "Reports" ;;
+    Comms.Api)                 echo "Comms" ;;
     *)                         echo "$svc_name" ;;
   esac
 }

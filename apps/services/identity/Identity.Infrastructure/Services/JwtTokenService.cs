@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Microsoft.Extensions.Configuration;
@@ -22,7 +23,8 @@ public class JwtTokenService : IJwtTokenService
         IEnumerable<string>? productRoles = null,
         int? sessionTimeoutMinutes = null,
         IEnumerable<string>? productCodes = null,
-        IEnumerable<string>? permissions = null)
+        IEnumerable<string>? permissions = null,
+        IEnumerable<Guid>? tenantIds = null)
     {
         var section = _configuration.GetSection("Jwt");
 
@@ -32,7 +34,7 @@ public class JwtTokenService : IJwtTokenService
             ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
         var expiryMinutes = int.TryParse(section["ExpiryMinutes"], out var m) ? m : 60;
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId };
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>
@@ -40,7 +42,7 @@ public class JwtTokenService : IJwtTokenService
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
             new(JwtRegisteredClaimNames.Name, $"{user.FirstName} {user.LastName}".Trim()),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.CreateVersion7().ToString()),
             new("tenant_id", tenant.Id.ToString()),
             new("tenant_code", tenant.Code),
             // UIX-003-03: session invalidation — embed version at login time.
@@ -72,6 +74,14 @@ public class JwtTokenService : IJwtTokenService
                 claims.Add(new Claim("org_type_id", organization.OrganizationTypeId.Value.ToString()));
 
             claims.Add(new Claim("provider_mode", Identity.Domain.ProviderModes.Normalize(organization.ProviderMode)));
+
+            // DisplayName holds the clean user-facing org name (e.g. "Smith & Jones") and is always
+            // set to FirmName.Trim() on org creation. Name is a technical idempotency key
+            // (e.g. "Smith & Jones [firm:john@smith.com]") and should never surface to users;
+            // it is only a fallback here in case DisplayName is somehow absent on legacy rows.
+            var orgDisplayName = organization.DisplayName ?? organization.Name;
+            if (!string.IsNullOrWhiteSpace(orgDisplayName))
+                claims.Add(new Claim("org_name", orgDisplayName));
         }
 
         foreach (var pc in productCodes ?? [])
@@ -82,6 +92,10 @@ public class JwtTokenService : IJwtTokenService
 
         foreach (var perm in permissions ?? [])
             claims.Add(new Claim("permissions", perm));
+
+        // Multi-tenant: emit one tenant_ids claim per accessible tenant.
+        foreach (var tid in tenantIds ?? [])
+            claims.Add(new Claim("tenant_ids", tid.ToString()));
 
         // Embed per-tenant idle session timeout so GetCurrentUserAsync needs no DB lookup.
         var effectiveTimeout = sessionTimeoutMinutes ?? 30;

@@ -1,10 +1,13 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Liens.Infrastructure.Persistence.Migrations
 {
+    [DbContext(typeof(LiensDbContext))]
+    [Migration("20260421000002_DropLiensConfigTables")]
     /// <summary>
     /// TASK-MIG-09 — Final cleanup: drops Liens config tables that are no longer
     /// authoritative. The Task service is the sole owner of templates and governance.
