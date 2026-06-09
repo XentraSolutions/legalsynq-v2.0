@@ -74,6 +74,14 @@ export interface ReferralHistoryItem {
   notes?:          string;
 }
 
+export interface ReferralComment {
+  id:         string;
+  senderType: string;
+  senderName: string;
+  message:    string;
+  createdAt:  string;
+}
+
 // ── Referral ──────────────────────────────────────────────────────────────────
 
 export const ReferrerPortalAccessStatuses = {
@@ -201,6 +209,10 @@ export interface ReferralSearchParams {
   createdTo?:   string;
   page?:        number;
   pageSize?:    number;
+}
+
+export interface CreateReferralCommentRequest {
+  message: string;
 }
 
 // ── Appointment ───────────────────────────────────────────────────────────────

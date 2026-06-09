@@ -14,6 +14,8 @@ import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
 import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-timeline';
 import { ReferralAccessBlocked } from '@/components/careconnect/referral-access-blocked';
 import { AttachmentPanel } from '@/components/careconnect/attachment-panel';
+import { ReferralMessageThread } from '@/components/careconnect/referral-message-thread';
+import type { ReferralComment } from '@/types/careconnect';
 
 interface ReferralDetailPageProps {
   params:       Promise<{ id: string }>;
@@ -43,6 +45,8 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
 
   let referral = null;
   let fetchError: string | null = null;
+  let comments: ReferralComment[] = [];
+  let commentsError: string | null = null;
 
   try {
     referral = await careConnectServerApi.referrals.getById(id);
@@ -56,6 +60,16 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
       }
     } else {
       fetchError = 'Failed to load referral.';
+    }
+  }
+
+  if (referral) {
+    try {
+      comments = await careConnectServerApi.referrals.getComments(id);
+    } catch (err) {
+      commentsError = err instanceof ServerApiError
+        ? err.message
+        : 'Failed to load messages.';
     }
   }
 
@@ -116,6 +130,12 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
             entityType="referral"
             entityId={referral.id}
             canUpload={session.isPlatformAdmin || session.isTenantAdmin}
+          />
+
+          <ReferralMessageThread
+            referralId={referral.id}
+            initialComments={comments}
+            initialError={commentsError}
           />
 
           {/* 4. Delivery / access controls — referrers only */}
