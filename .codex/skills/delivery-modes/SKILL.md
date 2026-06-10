@@ -30,6 +30,10 @@ Interpret these phrases literally:
   - Spawn the minimum required sub-agents for the selected mode.
   - Run agents in parallel only when file ownership does not overlap.
   - Do not spawn unnecessary agents.
+  - Treat delegated file ownership as strict by default.
+  - When a sub-agent owns a file, the main agent must not edit that file while the delegated task is active.
+  - The main agent may take ownership back only after the sub-agent completes or is explicitly abandoned, and must state that ownership transfer before editing.
+  - Prefer the main agent to coordinate, validate, and integrate rather than co-edit files that were delegated.
 
 If the prompt does not contain `auto`, do not spawn agents.
 
@@ -69,6 +73,9 @@ Use review mode when the user says:
 - Use the minimum required agents.
 - For non-trivial implementation, use reviewer before final completion.
 - Use security-engineer whenever auth, authorization, session handling, CSRF, CORS, secrets, tenant isolation, or vulnerability remediation is central to the task.
+- In `delivery-modes auto`, once a file is assigned to a sub-agent, maintain single-owner editing for that file until ownership is explicitly transferred.
+- The main agent should avoid overlapping edits with delegated agents.
+- If integration requires touching an agent-owned file, wait for the agent result first, then explicitly reclaim ownership before editing.
 
 ## Agent Routing
 
@@ -117,6 +124,10 @@ Review mode:
 - Spawn `security-engineer` only for security-focused review
 - Spawn `qa-engineer` only for test-depth or regression-focused review
 - Spawn `architect` only for architecture-focused review
+- Delegation is executional, not advisory.
+- Sub-agents should perform the owned implementation work directly when the task is delegated to them.
+- The main agent should not duplicate or preempt delegated edits in those owned files.
+- If the main agent edits a delegated file before ownership is transferred back, that is a workflow violation.
 
 ## Mode References
 
