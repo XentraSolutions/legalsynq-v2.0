@@ -1,6 +1,7 @@
 import { headers }                  from 'next/headers';
 import { PublicNetworkView }        from '@/components/careconnect/public-network-view';
 import { AccessCodeGate }           from '@/components/careconnect/access-code-gate';
+import { getCareConnectLoginUrlFromEnv } from '@/lib/careconnect-login-url';
 import {
   resolveTenantFromCode,
   fetchPublicNetworks,
@@ -21,6 +22,7 @@ export const dynamic = 'force-dynamic';
 export default async function PublicNetworkPage() {
   const hdrs = await headers();
   const host = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '';
+  const loginUrl = getCareConnectLoginUrlFromEnv();
 
   // ── Resolve tenant from subdomain ────────────────────────────────────────
   const parts      = host.split('.');
@@ -64,6 +66,7 @@ export default async function PublicNetworkPage() {
           detail={detail}
           tenantCode={tenant.tenantCode}
           tenantId={tenant.tenantId}
+          loginUrl={loginUrl}
         />
       </AccessCodeGate>
     </div>

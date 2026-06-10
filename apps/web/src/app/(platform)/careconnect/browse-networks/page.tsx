@@ -49,14 +49,18 @@ export default async function BrowseNetworksPage() {
       }))
       .filter((item, index, arr) => arr.findIndex(x => x.tenantId === item.tenantId) === index);
 
-    const groups = await Promise.all(
-      careConnectTenants.map(async tenant => ({
-        ...tenant,
-        networks: await fetchPublicNetworks(tenant.tenantId),
-      })),
+    const networksByTenant = new Map(
+      await Promise.all(
+        careConnectTenants.map(async tenant => [tenant.tenantId, await fetchPublicNetworks(tenant.tenantId)] as const),
+      ),
     );
 
-    tenantNetworkGroups = groups.filter(group => group.networks.length > 0);
+    tenantNetworkGroups = careConnectTenants
+      .map(tenant => ({
+        ...tenant,
+        networks: networksByTenant.get(tenant.tenantId) ?? [],
+      }))
+      .filter(group => group.networks.length > 0);
   } catch (err) {
     if (err instanceof ServerApiError) {
       fetchError = err.message;

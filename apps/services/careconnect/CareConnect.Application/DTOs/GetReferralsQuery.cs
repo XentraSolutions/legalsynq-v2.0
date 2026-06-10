@@ -23,4 +23,10 @@ public class GetReferralsQuery
     public string? ReferrerEmail { get; set; }
 
     public bool CrossTenantReceiver { get; set; }
+
+    /// <summary>
+    /// Optional multi-tenant referrer scope. When populated, search spans these tenant IDs
+    /// instead of only the caller's active JWT tenant.
+    /// </summary>
+    public IReadOnlyList<Guid>? TenantIds { get; set; }
 }

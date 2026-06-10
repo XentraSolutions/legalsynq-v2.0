@@ -69,13 +69,29 @@ function formatDate(iso: string) {
   });
 }
 
+function normalizeNetworkDisplay(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed && trimmed !== '-' ? trimmed : null;
+}
+
+function getNetworkDisplay(item: NetworkReferralItem): string | null {
+  return normalizeNetworkDisplay(item.networkName) ?? normalizeNetworkDisplay(item.tenantName);
+}
+
 // ── Network referral row (flat table) ─────────────────────────────────────────
 
-function NetworkReferralRow({ item }: { item: NetworkReferralItem }) {
+function NetworkReferralRow({
+  item,
+  showNetworkColumn,
+}: {
+  item: NetworkReferralItem;
+  showNetworkColumn: boolean;
+}) {
   const clientName     = [item.clientFirstName, item.clientLastName].filter(Boolean).join(' ') || '—';
   const providerDisplay = item.providerOrganizationName ?? item.providerName ?? '—';
   const lawFirm        = item.referrerName  ?? '—';
   const email          = item.referrerEmail ?? '—';
+  const networkDisplay = getNetworkDisplay(item);
 
   return (
     <tr className="hover:bg-gray-50 transition-colors">
@@ -105,6 +121,17 @@ function NetworkReferralRow({ item }: { item: NetworkReferralItem }) {
           {item.requestedService}
         </div>
       </td>
+      {showNetworkColumn && (
+        <td className="px-4 py-3">
+          {networkDisplay ? (
+            <div className="text-sm text-gray-800 max-w-[160px] truncate" title={networkDisplay}>
+              {networkDisplay}
+            </div>
+          ) : (
+            <span className="text-xs text-gray-400">-</span>
+          )}
+        </td>
+      )}
       <td className="px-4 py-3">
         <StatusBadge status={item.status} />
       </td>
@@ -152,6 +179,7 @@ async function NetworkReferralsView({
   }
 
   const hasMore = data ? data.total > data.items.length : false;
+  const showNetworkColumn = data?.items.some((item) => 'networkName' in item || 'tenantName' in item) ?? false;
 
   return (
     <div className="space-y-4">
@@ -210,6 +238,9 @@ async function NetworkReferralsView({
                   <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Email</th>
                   <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Provider</th>
                   <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Service</th>
+                  {showNetworkColumn && (
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Network</th>
+                  )}
                   <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
                   <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Urgency</th>
                   <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Date</th>
@@ -218,7 +249,7 @@ async function NetworkReferralsView({
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {data.items.map((item) => (
-                  <NetworkReferralRow key={item.id} item={item} />
+                  <NetworkReferralRow key={item.id} item={item} showNetworkColumn={showNetworkColumn} />
                 ))}
               </tbody>
             </table>

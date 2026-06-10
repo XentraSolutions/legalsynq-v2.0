@@ -9,10 +9,14 @@ namespace CareConnect.Infrastructure.Repositories;
 public class NotificationRepository : INotificationRepository
 {
     private readonly CareConnectDbContext _db;
+    private readonly IDbContextFactory<CareConnectDbContext> _dbFactory;
 
-    public NotificationRepository(CareConnectDbContext db)
+    public NotificationRepository(
+        CareConnectDbContext db,
+        IDbContextFactory<CareConnectDbContext> dbFactory)
     {
-        _db = db;
+        _db        = db;
+        _dbFactory = dbFactory;
     }
 
     public async Task<CareConnectNotification?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -71,8 +75,12 @@ public class NotificationRepository : INotificationRepository
 
     public async Task UpdateAsync(CareConnectNotification notification, CancellationToken ct = default)
     {
-        _db.CareConnectNotifications.Update(notification);
-        await _db.SaveChangesAsync(ct);
+        // Use a fresh DbContext for notification status writes so a failed
+        // outbound submission can still be persisted even if the request scope
+        // is concurrently using its primary context for other work.
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        db.CareConnectNotifications.Update(notification);
+        await db.SaveChangesAsync(ct);
     }
 
     public async Task<bool> ExistsByDedupeKeyAsync(string dedupeKey, CancellationToken ct = default)

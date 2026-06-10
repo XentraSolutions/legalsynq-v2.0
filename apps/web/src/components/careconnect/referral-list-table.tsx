@@ -23,6 +23,11 @@ function rowHighlight(status: string): string {
   return 'hover:bg-gray-50 border-l-4 border-l-transparent';
 }
 
+function normalizeNetworkDisplay(networkName?: string | null): string | null {
+  const value = networkName?.trim();
+  return value && value !== '-' ? value : null;
+}
+
 export function ReferralListTable({
   referrals,
   totalCount,
@@ -59,8 +64,11 @@ export function ReferralListTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {referrals.map(r => (
-              <tr key={r.id} className={`transition-colors ${rowHighlight(r.status)}`}>
+            {referrals.map(r => {
+              const networkDisplay = normalizeNetworkDisplay(r.networkName);
+
+              return (
+                <tr key={r.id} className={`transition-colors ${rowHighlight(r.status)}`}>
                 {/* Client */}
                 <td className="px-4 py-3">
                   <p className="text-sm font-medium text-gray-900 truncate max-w-[160px]">
@@ -83,15 +91,15 @@ export function ReferralListTable({
 
                 {/* Network */}
                 <td className="px-4 py-3 hidden lg:table-cell">
-                  {r.networkName ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-100 truncate max-w-[140px]" title={r.networkName}>
-                      <svg className="w-2.5 h-2.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 12.094A5.973 5.973 0 004 15v1H1v-1a3 3 0 013.75-2.906z" />
-                      </svg>
-                      {r.networkName}
+                  {networkDisplay ? (
+                    <span
+                      className="block truncate max-w-[140px] text-sm text-gray-700"
+                      title={networkDisplay}
+                    >
+                      {networkDisplay}
                     </span>
                   ) : (
-                    <span className="text-xs text-gray-300">—</span>
+                    <span className="text-xs text-gray-300">-</span>
                   )}
                 </td>
 
@@ -122,8 +130,9 @@ export function ReferralListTable({
                     contextQs={currentQs}
                   />
                 </td>
-              </tr>
-            ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

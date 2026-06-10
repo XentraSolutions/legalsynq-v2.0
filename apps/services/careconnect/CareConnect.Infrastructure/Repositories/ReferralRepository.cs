@@ -19,12 +19,22 @@ public class ReferralRepository : IReferralRepository
     public async Task<(List<Referral> Items, int TotalCount)> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)
     {
         IQueryable<Referral> q;
+        var scopedTenantIds = query.TenantIds?
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
 
         if (query.CrossTenantReceiver && query.ReceivingOrgId.HasValue)
         {
             q = _db.Referrals
                 .AsNoTracking()
                 .Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
+        }
+        else if (scopedTenantIds is { Count: > 0 })
+        {
+            q = _db.Referrals
+                .AsNoTracking()
+                .Where(r => scopedTenantIds.Contains(r.TenantId));
         }
         else
         {

@@ -451,6 +451,7 @@ public class ProviderActivationFunnelTests
         return new ReferralService(
             referrals,
             providers,
+            new Mock<ITenantServiceClient>().Object,
             notifications,
             notificationRepo,
             emailSvc,

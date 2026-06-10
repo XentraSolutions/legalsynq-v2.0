@@ -42,7 +42,9 @@ const string MultiScheme = "MultiAuth";
 
 // Single source of truth for service-token accepted audiences.
 // Used by both the routing selector and the ServiceToken scheme's ValidAudiences.
-string[] serviceTokenAudiences = ["notifications-service", "flow-service", "legalsynq-services"];
+// "legalsynq-platform" remains accepted during the transition because some
+// deployed producers still mint service JWTs with the platform audience.
+string[] serviceTokenAudiences = ["notifications-service", "flow-service", "legalsynq-services", "legalsynq-platform"];
 
 // Reused across requests — avoids per-request allocations inside ForwardDefaultSelector.
 var tokenReader = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
@@ -92,7 +94,8 @@ builder.Services
     // ── Scheme 2: service-to-service JWTs (LS-NOTIF-CORE-021) ────────────
     // Accepts tokens minted by ServiceTokenIssuer from any producer service.
     // Validates: issuer=legalsynq-service-tokens, audience=notifications-service
-    // OR flow-service (for Flow's existing issuer config), subject=service:*
+    // OR flow-service / legalsynq-services / legalsynq-platform during the
+    // cross-service transition, subject=service:*
     .AddJwtBearer(ServiceTokenAuthenticationDefaults.Scheme, options =>
     {
         options.MapInboundClaims    = false;
@@ -107,7 +110,8 @@ builder.Services
             RequireExpirationTime    = true,
             ValidIssuer              = ServiceTokenAuthenticationDefaults.DefaultIssuer,
             // Accept notifications-service (new preferred) + flow-service
-            // (Flow's existing issuer defaults) + legalsynq-services (future).
+            // (Flow's existing issuer defaults) + legalsynq-services (future)
+            // + legalsynq-platform (legacy deployed producer configs).
             ValidAudiences           = serviceTokenAudiences,
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(serviceTokenKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },
             NameClaimType            = "sub",

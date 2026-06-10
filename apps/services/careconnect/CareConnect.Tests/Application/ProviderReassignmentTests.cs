@@ -142,6 +142,7 @@ public class ProviderReassignmentTests
         var svc = new ReferralService(
             referralRepo.Object,
             providerRepo.Object,
+            new Mock<ITenantServiceClient>().Object,
             notifSvc.Object,
             notifRepo.Object,
             emailSvc.Object,

@@ -4,6 +4,7 @@ using BuildingBlocks.Context;
 using CareConnect.Application.Cache;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
+using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
@@ -366,6 +367,7 @@ public static class NetworkEndpoints
     // Supports ?status=, ?search= (client name, case #, referrer, provider), ?page=, ?pageSize=.
     private static async Task<IResult> GetNetworkReferralsAsync(
         CareConnectDbContext    db,
+        ITenantServiceClient    tenantClient,
         ICurrentRequestContext  ctx,
         [FromQuery] int     page     = 1,
         [FromQuery] int     pageSize = 50,
@@ -374,6 +376,8 @@ public static class NetworkEndpoints
         CancellationToken   ct       = default)
     {
         var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+        var tenantDisplayNames = await ReferralTenantNameResolver.ResolveAsync([tenantId], tenantClient, ct);
+        var networkName = tenantDisplayNames.GetValueOrDefault(tenantId, ReferralTenantNameResolver.Fallback);
 
         page     = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
@@ -389,11 +393,16 @@ public static class NetworkEndpoints
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim().ToLower();
-            query = query.Where(r =>
-                EF.Functions.Like((r.ClientFirstName + " " + r.ClientLastName).ToLower(), "%" + s + "%") ||
-                (r.CaseNumber    != null && EF.Functions.Like(r.CaseNumber.ToLower(),    "%" + s + "%")) ||
-                (r.ReferrerName  != null && EF.Functions.Like(r.ReferrerName.ToLower(),  "%" + s + "%")) ||
-                (r.Provider      != null && EF.Functions.Like(r.Provider.Name.ToLower(), "%" + s + "%")));
+            var matchesNetworkName = networkName.Contains(s, StringComparison.OrdinalIgnoreCase);
+
+            if (!matchesNetworkName)
+            {
+                query = query.Where(r =>
+                    EF.Functions.Like((r.ClientFirstName + " " + r.ClientLastName).ToLower(), "%" + s + "%") ||
+                    (r.CaseNumber    != null && EF.Functions.Like(r.CaseNumber.ToLower(),    "%" + s + "%")) ||
+                    (r.ReferrerName  != null && EF.Functions.Like(r.ReferrerName.ToLower(),  "%" + s + "%")) ||
+                    (r.Provider      != null && EF.Functions.Like(r.Provider.Name.ToLower(), "%" + s + "%")));
+            }
         }
 
         query = query.OrderByDescending(r => r.CreatedAtUtc);
@@ -416,6 +425,7 @@ public static class NetworkEndpoints
                 referringOrganizationId = r.ReferringOrganizationId,
                 referrerName            = r.ReferrerName,
                 referrerEmail           = r.ReferrerEmail,
+                networkName,
                 createdAtUtc            = r.CreatedAtUtc,
                 updatedAtUtc            = r.UpdatedAtUtc,
             })

@@ -41,6 +41,16 @@ public sealed class NotificationsAuthDelegatingHandler : DelegatingHandler
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
+        // Never forward an ambient caller token to the service-submission endpoint.
+        // This path must use a service JWT when configured, otherwise no bearer at all.
+        if (request.Headers.Authorization is not null)
+        {
+            _logger.LogDebug(
+                "NotificationsAuthDelegatingHandler removed an existing Authorization header " +
+                "before submitting to Notifications.");
+            request.Headers.Authorization = null;
+        }
+
         if (_issuer.IsConfigured &&
             request.Headers.TryGetValues("X-Tenant-Id", out var vals))
         {
@@ -61,6 +71,12 @@ public sealed class NotificationsAuthDelegatingHandler : DelegatingHandler
                         tenantId);
                 }
             }
+        }
+        else if (!_issuer.IsConfigured)
+        {
+            _logger.LogWarning(
+                "NotificationsAuthDelegatingHandler has no service-token signing key configured; " +
+                "request will be sent without a Bearer token and relies on server-side legacy mode.");
         }
 
         return await base.SendAsync(request, cancellationToken);

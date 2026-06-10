@@ -4,6 +4,7 @@ using System.Text.Json;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.DataGovernance;
 using Identity.Application.DTOs;
+using Identity.Application.Exceptions;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using LegalSynq.AuditClient;
@@ -16,6 +17,9 @@ namespace Identity.Application.Services;
 
 public class AuthService : IAuthService
 {
+    private const string CareConnectPortalRestrictionMessage =
+        "This account is not eligible to access the CareConnect portal.";
+
     private readonly IUserRepository _userRepository;
     private readonly ITenantRepository _tenantRepository;
     private readonly IPasswordHasher _passwordHasher;
@@ -401,6 +405,17 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
+        if (requireCareConnectAccess && !IsEligibleForCareConnectPortal(productRolesFlat, roleNames))
+        {
+            EmitLoginFailed(
+                userWithRoles.Email,
+                tenantCode: tenant.Code,
+                userId:     userWithRoles.Id.ToString(),
+                reason:     "CareConnectPortalRoleRestricted",
+                ipAddress:  ipAddress);
+            throw new CareConnectPortalRoleRestrictedException(CareConnectPortalRestrictionMessage);
+        }
+
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
             userWithRoles, tenant, roleNames, org, productRolesFlat,
             sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
@@ -633,6 +648,26 @@ public class AuthService : IAuthService
             Phone:                  phone,
             UserProducts:           userProducts,
             Permissions:            permissions);
+    }
+
+    private static bool IsEligibleForCareConnectPortal(
+        IReadOnlyCollection<string> productRolesFlat,
+        IReadOnlyCollection<string> roleNames)
+    {
+        if (roleNames.Count > 0)
+            return false;
+
+        var careConnectRoles = productRolesFlat
+            .Where(r => r.StartsWith(BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":", StringComparison.OrdinalIgnoreCase))
+            .Select(r => r[(BuildingBlocks.Authorization.ProductCodes.SynqCareConnect.Length + 1)..])
+            .ToList();
+
+        if (careConnectRoles.Count == 0)
+            return false;
+
+        return careConnectRoles.All(role =>
+            string.Equals(role, ProductRoleCodes.CareConnectReceiver, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, ProductRoleCodes.CareConnectReferrer, StringComparison.OrdinalIgnoreCase));
     }
 
     // Maps the DB product Code column → the frontend ProductCode (TypeScript).

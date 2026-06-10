@@ -37,7 +37,7 @@ public interface IReferralService
     // LSCC-005-01: Hardening — resend, revoke, notification history
     /// <inheritdoc cref="GetByIdAsync"/>
     Task<ReferralResponse> ResendEmailAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false);
-    Task<ReferralResponse> RevokeTokenAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
+    Task<ReferralResponse> RevokeTokenAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false);
     /// <inheritdoc cref="GetByIdAsync"/>
     Task<List<ReferralNotificationResponse>> GetNotificationsAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false);
 
