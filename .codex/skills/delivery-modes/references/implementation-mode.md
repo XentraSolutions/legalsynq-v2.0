@@ -2,6 +2,8 @@
 
 Use implementation mode when the user wants changes made.
 
+If the prompt includes `delivery-modes auto`, spawn only the minimum required implementation agents and keep file ownership disjoint whenever possible.
+
 ## Goals
 
 - Discover existing patterns before editing

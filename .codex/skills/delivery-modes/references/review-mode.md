@@ -2,6 +2,8 @@
 
 Use review mode when the user wants assessment without implementation.
 
+If the prompt includes `delivery-modes auto`, spawn `reviewer` first and add `security-engineer`, `qa-engineer`, or `architect` only when the review scope calls for them.
+
 ## Goals
 
 - Identify bugs, regressions, and security risks

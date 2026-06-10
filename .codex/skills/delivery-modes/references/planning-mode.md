@@ -2,6 +2,8 @@
 
 Use planning mode for analysis-only work.
 
+If the prompt includes `delivery-modes auto`, spawn `planner` first and add other planning agents only when the task clearly warrants them.
+
 ## Goals
 
 - Classify the request

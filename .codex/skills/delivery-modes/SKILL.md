@@ -16,6 +16,23 @@ Use this skill when the user wants one of these operating modes:
 
 If the request is ambiguous, default to planning mode.
 
+## Delegation Convention
+
+Interpret these phrases literally:
+
+- `delivery-modes`
+  - Apply the selected mode rules only.
+  - Do not spawn sub-agents.
+  - Work in-process unless the user separately asks for delegation.
+
+- `delivery-modes auto`
+  - The user has explicitly authorized delegation.
+  - Spawn the minimum required sub-agents for the selected mode.
+  - Run agents in parallel only when file ownership does not overlap.
+  - Do not spawn unnecessary agents.
+
+If the prompt does not contain `auto`, do not spawn agents.
+
 ## Mode Selection
 
 Use planning mode when the user says:
@@ -75,6 +92,31 @@ Review mode:
 - qa-engineer is optional for deeper validation or test-gap analysis
 - security-engineer is optional for security-focused review
 - architect is optional for architecture-focused review
+
+## Auto Delegation Rules
+
+When the prompt includes `delivery-modes auto`:
+
+Planning mode:
+- Spawn `planner`
+- Spawn `architect` only for cross-service, high-risk, or large refactor work
+- Spawn `security-engineer` only for security-heavy requests
+
+Implementation mode:
+- Spawn only the required implementation agents:
+  - `backend-engineer`
+  - `frontend-engineer`
+  - `database-engineer`
+  - `devops-engineer`
+  - `security-engineer`
+- Spawn `qa-engineer` only when test authoring or deeper validation is needed
+- Spawn `reviewer` before final completion for substantial implementation
+
+Review mode:
+- Spawn `reviewer`
+- Spawn `security-engineer` only for security-focused review
+- Spawn `qa-engineer` only for test-depth or regression-focused review
+- Spawn `architect` only for architecture-focused review
 
 ## Mode References
 
