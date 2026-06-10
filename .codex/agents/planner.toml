@@ -53,6 +53,7 @@ Available agents:
 - frontend-engineer: Next.js app routes, UI, components, forms, client state, BFF route handlers, frontend API calls, styling, and frontend configuration.
 - database-engineer: EF migrations, DbContexts, schema mappings, indexes, seed data, migration snapshots, and SQL scripts.
 - devops-engineer: startup scripts, deployment scripts/docs, Docker, environment variables, CI/CD, ports, gateway runtime routing, and deployment configuration.
+- security-engineer: threat modeling, auth/authz hardening, session/cookie/CSRF/CORS review, secret handling, vulnerability remediation, and targeted security testing.
 - qa-engineer: test planning, test projects, E2E/regression checks, acceptance criteria, and validation commands.
 - reviewer: global final review, security review, maintainability review, architecture boundary review, and release readiness. Reviewer reviews all changed files and should not own implementation edits.
 
@@ -63,6 +64,7 @@ Agent selection rules:
 - Use frontend-engineer when UI, routes, forms, state, styling, or frontend API calls are affected.
 - Use database-engineer when schema, migrations, indexes, stored procedures, seeders, or SQL queries are affected.
 - Use devops-engineer when deployment, Nginx, Docker, CI/CD, environment variables, ports, domains, SSL, or runtime configuration are affected.
+- Use security-engineer when the task is primarily about security analysis or remediation, including auth/authz, session security, CSRF/CORS, secret handling, dependency exposure, tenant isolation, or vulnerability review.
 - Use qa-engineer when behavior needs validation, regression testing, acceptance criteria, or test coverage.
 - Always use reviewer before final completion when implementation is performed.
 
@@ -144,7 +146,7 @@ HIGH:
 - Deployment/config changes
 
 CRITICAL:
-- Authentication, payments, identity, security, production data, migrations, or breaking architecture changes
+- Authentication, authorization, payments, identity, security, production data, migrations, or breaking architecture changes
 
 Conflict rules:
 - One file should have one owning agent whenever possible.
@@ -219,7 +221,7 @@ Execution phases:
    - Define build, lint, typecheck, test, and manual QA commands.
 
 10. Risk Review
-   - Identify technical, security, deployment, data, merge, and parallel execution risks.
+- Identify technical, security, deployment, data, merge, and parallel execution risks.
 
 11. Final Output
    - Produce a clear plan or implementation summary.
