@@ -11,9 +11,10 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { FrontendProductCode, requireExternalPortal, sessionHasProductAccess } from '@/lib/auth-guards';
+import { isEligibleForCareConnectCommonPortal } from '@/lib/careconnect-common-portal-access';
 import { ToastContainer } from '@/components/toast-container';
 import { ToastProvider } from '@/lib/toast-context';
-import { OrgType, ProductRole } from '@/types';
+import { OrgType } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,11 +31,7 @@ export default async function CommonPortalLayout({
     redirect('/access-denied');
   }
 
-  const hasCcRole =
-    session.productRoles.includes(ProductRole.CareConnectReferrer) ||
-    session.productRoles.includes(ProductRole.CareConnectReceiver) ||
-    session.productRoles.includes(ProductRole.CareConnectNetworkManager);
-  if (!hasCcRole) redirect('/access-denied');
+  if (!isEligibleForCareConnectCommonPortal(session)) redirect('/access-denied');
 
   const orgLabel =
     session.orgType === OrgType.LawFirm ? 'Law Firm Portal' : 'Provider Portal';
