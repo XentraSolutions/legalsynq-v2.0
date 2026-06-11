@@ -6,7 +6,7 @@ import {
   MedicalProcedureCostsResponse,
   TaskStatusResponse,
   UserListResponse,
-  type DocumentTypeResponse,
+  type LookupData,
 } from "./lookup.types";
 import { CaseStatusResponse } from "../cases/cases.types";
 
@@ -23,7 +23,7 @@ function toQs(params: Record<string, unknown>): string {
 
 export const lookupApi = {
   getDocumentType() {
-    return apiClient.get<DocumentTypeResponse>(`${BASE}/document/type`);
+    return apiClient.get<LookupData[]>(`${BASE}/document/type`);
   },
   getTaskStatus() {
     return apiClient.get<TaskStatusResponse>(`${BASE}/task/status`);

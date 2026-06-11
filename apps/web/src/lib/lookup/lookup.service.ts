@@ -1,7 +1,6 @@
 import { lookupApi } from "./lookup.api";
 import type {
   ContactsByIdResponse,
-  DocumentTypeResponse,
   LookupResponse,
   MedicalProcedureCodesResponse,
   MedicalProcedureCostsResponse,
@@ -10,9 +9,9 @@ import type {
 } from "./lookup.types";
 
 export const lookupService = {
-  async getDocumentType(): Promise<DocumentTypeResponse> {
+  async getDocumentType(): Promise<string[]> {
     const { data } = await lookupApi.getDocumentType();
-    return data;
+    return data.map(type => type.name);
   },
   async getTaskStatus(): Promise<TaskStatusResponse> {
     const { data } = await lookupApi.getTaskStatus();
