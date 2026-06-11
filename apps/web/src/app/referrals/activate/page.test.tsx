@@ -1,0 +1,84 @@
+import { describe, expect, test, vi, beforeEach } from 'vitest';
+
+const { redirectMock, activationFormMock, headersMock } = vi.hoisted(() => ({
+  redirectMock: vi.fn((url: string) => {
+    throw new Error(`REDIRECT:${url}`);
+  }),
+  activationFormMock: vi.fn(() => null),
+  headersMock: vi.fn(async () => new Headers([
+    ['host', 'rl-liens1.legalsynq.net'],
+    ['x-forwarded-proto', 'https'],
+  ])),
+}));
+
+vi.mock('next/navigation', () => ({
+  redirect: redirectMock,
+}));
+
+vi.mock('next/headers', () => ({
+  headers: headersMock,
+}));
+
+vi.mock('./activation-form', () => ({
+  ActivationForm: activationFormMock,
+}));
+
+import ActivatePage from './page';
+
+function expectRedirectTo(action: () => Promise<unknown>, expectedUrl: string) {
+  return expect(action()).rejects.toThrow(`REDIRECT:${expectedUrl}`);
+}
+
+describe('ActivatePage', () => {
+  beforeEach(() => {
+    redirectMock.mockClear();
+    activationFormMock.mockClear();
+    headersMock.mockClear();
+    vi.unstubAllGlobals();
+  });
+
+  test('validates activation through the public referral thread endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        referralId: 'ref-123',
+        status: 'New',
+        clientName: 'Jane Doe',
+        service: 'Physical Therapy',
+        providerName: 'Demo Provider',
+        referrerName: 'Demo Firm',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await ActivatePage({
+      searchParams: Promise.resolve({ referralId: 'ref-123', token: 'abc123' }),
+    });
+
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(String(fetchMock.mock.calls[0][0])).toContain(
+      '/api/public/careconnect/api/public/referrals/thread?token=abc123',
+    );
+  });
+
+  test('rejects activation when the token resolves to a different referral', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        referralId: 'different-referral',
+        status: 'New',
+        clientName: 'Jane Doe',
+        service: 'Physical Therapy',
+        providerName: 'Demo Provider',
+        referrerName: 'Demo Firm',
+      }),
+    }));
+
+    await expectRedirectTo(
+      () => ActivatePage({
+        searchParams: Promise.resolve({ referralId: 'ref-123', token: 'abc123' }),
+      }),
+      '/referrals/accept/invalid?reason=expired-or-invalid',
+    );
+  });
+});

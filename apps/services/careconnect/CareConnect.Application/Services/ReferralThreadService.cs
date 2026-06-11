@@ -33,17 +33,20 @@ public class ReferralThreadService : IReferralThreadService
         _logger = logger;
     }
 
-    public async Task<PublicReferralThreadResponse?> GetPublicThreadAsync(string token, CancellationToken ct = default)
+    public async Task<PublicReferralAccessResult<PublicReferralThreadResponse>> GetPublicThreadAccessAsync(string token, CancellationToken ct = default)
     {
-        var referral = await GetReferralByTokenAsync(token, ct);
-        if (referral is null)
-            return null;
+        var access = await GetReferralByTokenAsync(token, ct);
+        if (access.Referral is null)
+            return PublicReferralAccessResult<PublicReferralThreadResponse>.Failure(
+                access.FailureReason ?? ReferralTokenFailureReasons.Malformed);
+
+        var referral = access.Referral;
 
         var comments = await _comments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
         var attachments = await _attachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
 
         var providerName = BuildProviderName(referral);
-        return new PublicReferralThreadResponse
+        return PublicReferralAccessResult<PublicReferralThreadResponse>.Success(new PublicReferralThreadResponse
         {
             ReferralId = referral.Id,
             TenantId = referral.TenantId,
@@ -75,7 +78,13 @@ public class ReferralThreadService : IReferralThreadService
                     FileSizeBytes = a.FileSizeBytes,
                 })
                 .ToList(),
-        };
+        });
+    }
+
+    public async Task<PublicReferralThreadResponse?> GetPublicThreadAsync(string token, CancellationToken ct = default)
+    {
+        var result = await GetPublicThreadAccessAsync(token, ct);
+        return result.Data;
     }
 
     public async Task<ReferralCommentResponse?> PostPublicCommentAsync(
@@ -85,9 +94,10 @@ public class ReferralThreadService : IReferralThreadService
         string message,
         CancellationToken ct = default)
     {
-        var referral = await GetReferralByTokenAsync(token, ct);
-        if (referral is null)
+        var access = await GetReferralByTokenAsync(token, ct);
+        if (access.Referral is null)
             return null;
+        var referral = access.Referral;
 
         var comment = new ReferralComment
         {
@@ -165,17 +175,56 @@ public class ReferralThreadService : IReferralThreadService
         return MapComment(comment);
     }
 
-    private async Task<Referral?> GetReferralByTokenAsync(string token, CancellationToken ct)
+    private async Task<TokenScopedReferralResult> GetReferralByTokenAsync(string token, CancellationToken ct)
     {
-        var tokenResult = _emailService.ValidateViewToken(token);
-        if (tokenResult is null)
-            return null;
+        var tokenValidation = _emailService.ValidateViewTokenDetailed(token);
+        if (!tokenValidation.IsValid)
+        {
+            LogPublicTokenFailure("thread", tokenValidation, null);
+            return new TokenScopedReferralResult(null, tokenValidation.FailureReason);
+        }
 
-        var referral = await _referrals.GetByIdGlobalAsync(tokenResult.ReferralId, ct);
-        if (referral is null || referral.TokenVersion != tokenResult.TokenVersion)
-            return null;
+        var referral = await _referrals.GetByIdGlobalAsync(tokenValidation.ReferralId!.Value, ct);
+        if (referral is null)
+        {
+            LogPublicTokenFailure(
+                "thread",
+                tokenValidation,
+                tokenValidation.ReferralId,
+                failureReasonOverride: ReferralTokenFailureReasons.ReferralNotFound);
+            return new TokenScopedReferralResult(null, ReferralTokenFailureReasons.ReferralNotFound);
+        }
 
-        return referral;
+        if (referral.TokenVersion != tokenValidation.TokenVersion)
+        {
+            LogPublicTokenFailure(
+                "thread",
+                tokenValidation,
+                referral.Id,
+                currentReferralTokenVersion: referral.TokenVersion,
+                failureReasonOverride: ReferralTokenFailureReasons.Revoked);
+            return new TokenScopedReferralResult(null, ReferralTokenFailureReasons.Revoked);
+        }
+
+        return new TokenScopedReferralResult(referral, null);
+    }
+
+    private void LogPublicTokenFailure(
+        string surface,
+        ReferralTokenValidationOutcome tokenValidation,
+        Guid? requestedReferralId,
+        int? currentReferralTokenVersion = null,
+        string? failureReasonOverride = null)
+    {
+        var failureReason = failureReasonOverride ?? tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed;
+        _logger.LogWarning(
+            "Public referral token rejected on surface {Surface}. FailureReason={FailureReason} RequestedReferralId={RequestedReferralId} TokenReferralId={TokenReferralId} TokenVersion={TokenVersion} CurrentReferralTokenVersion={CurrentReferralTokenVersion}",
+            surface,
+            failureReason,
+            requestedReferralId,
+            tokenValidation.ReferralId,
+            tokenValidation.TokenVersion,
+            currentReferralTokenVersion);
     }
 
     private async Task<Referral?> LoadAuthenticatedReferralAsync(
@@ -300,4 +349,5 @@ public class ReferralThreadService : IReferralThreadService
     }
 
     private sealed record AuthenticatedCommentParticipant(Referral Referral, string SenderType);
+    private sealed record TokenScopedReferralResult(Referral? Referral, string? FailureReason);
 }

@@ -32,6 +32,7 @@ public interface IDocumentServiceClient
     /// Returns the redeem URL string, or null if the document is not accessible.
     /// </summary>
     Task<DocumentSignedUrlResult?> GetSignedUrlAsync(
+        Guid              tenantId,
         string            documentId,
         bool              isDownload = false,
         CancellationToken ct         = default);

@@ -1,6 +1,6 @@
 'use server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
+import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
 
 export interface TokenActionResult {
   success: boolean;
@@ -13,15 +13,11 @@ export async function acceptReferralByToken(
   token:       string,
 ): Promise<TokenActionResult> {
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/referrals/${referralId}/accept-by-token`,
-      {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ token }),
-        cache:   'no-store',
-      },
-    );
+    const resp = await fetchPublicCareConnect(`/api/referrals/${referralId}/accept-by-token`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ token }),
+    });
     if (resp.status === 409) return { success: false, error: 'This referral has already been responded to.' };
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({}));
@@ -39,15 +35,11 @@ export async function declineReferralByToken(
   token:       string,
 ): Promise<TokenActionResult> {
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/referrals/${referralId}/decline-by-token`,
-      {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ token }),
-        cache:   'no-store',
-      },
-    );
+    const resp = await fetchPublicCareConnect(`/api/referrals/${referralId}/decline-by-token`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ token }),
+    });
     if (resp.status === 409) return { success: false, error: 'This referral has already been responded to.' };
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({}));
@@ -89,15 +81,11 @@ export async function postComment(
   }
 
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/public/referrals/thread/comments?token=${encodeURIComponent(token)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ senderType, senderName: senderName.trim(), message: message.trim() }),
-        cache: 'no-store',
-      },
-    );
+    const resp = await fetchPublicCareConnect(`/api/public/referrals/thread/comments?token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ senderType, senderName: senderName.trim(), message: message.trim() }),
+    });
 
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({}));

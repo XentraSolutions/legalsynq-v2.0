@@ -58,7 +58,7 @@ public class DocumentServiceClientTests
             userId: null,
             legacyToken: "legacy-token");
 
-        var result = await sut.GetSignedUrlAsync("doc-123", false);
+        var result = await sut.GetSignedUrlAsync(tenantId, "doc-123", false);
 
         Assert.NotNull(result);
         Assert.Equal("Bearer legacy-token", handler.AuthorizationHeader);
@@ -82,10 +82,31 @@ public class DocumentServiceClientTests
             legacyToken: "legacy-token",
             publicBaseUrl: "/api/documents");
 
-        var result = await sut.GetSignedUrlAsync("doc-123", false);
+        var result = await sut.GetSignedUrlAsync(tenantId, "doc-123", false);
 
         Assert.NotNull(result);
         Assert.Equal("/api/documents/access/token-123", result!.RedeemUrl);
+    }
+
+    [Fact]
+    public async Task GetSignedUrlAsync_MintsDocumentsServiceToken_FromExplicitTenantId_WhenRequestContextHasNoTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        var handler = new CapturingHandler("""
+{"data":{"redeemUrl":"https://example.test/file","expiresInSeconds":300}}
+""");
+        var issuer = new Mock<IServiceTokenIssuer>();
+        issuer.SetupGet(x => x.IsConfigured).Returns(true);
+        issuer.Setup(x => x.IssueToken(tenantId.ToString(), null, "documents-service"))
+            .Returns("minted-jwt");
+
+        var sut = CreateSut(handler, issuer.Object, tenantId: null, userId: null);
+
+        var result = await sut.GetSignedUrlAsync(tenantId, "doc-123", false);
+
+        Assert.NotNull(result);
+        Assert.Equal("Bearer minted-jwt", handler.AuthorizationHeader);
+        issuer.VerifyAll();
     }
 
     private static DocumentServiceClient CreateSut(

@@ -223,8 +223,8 @@ public class ReferralThreadServiceTests
         }.ToDomain(referral.ReceivingOrganizationId));
 
         var emailService = new Mock<IReferralEmailService>();
-        emailService.Setup(e => e.ValidateViewToken("valid-token"))
-            .Returns(new CareConnect.Application.DTOs.ViewTokenValidationResult(referral.Id, referral.TokenVersion));
+        emailService.Setup(e => e.ValidateViewTokenDetailed("valid-token"))
+            .Returns(CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
         emailService.Setup(e => e.SendCommentNotificationAsync(referral, It.IsAny<ReferralComment>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -286,7 +286,7 @@ public class ReferralThreadServiceTests
             .ReturnsAsync([]);
 
         emailService ??= Mock.Of<IReferralEmailService>(e =>
-            e.ValidateViewToken(It.IsAny<string>()) == null);
+            e.ValidateViewTokenDetailed(It.IsAny<string>()) == CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Failure(CareConnect.Application.DTOs.ReferralTokenFailureReasons.Malformed));
         scopeFactory ??= BuildScopeFactory(emailService);
 
         return new ReferralThreadService(

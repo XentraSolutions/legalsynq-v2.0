@@ -139,6 +139,7 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
     }
 
     public async Task<DocumentSignedUrlResult?> GetSignedUrlAsync(
+        Guid              tenantId,
         string            documentId,
         bool              isDownload = false,
         CancellationToken ct         = default)
@@ -157,7 +158,7 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, path);
-            ApplyDocumentsAuthorization(request, _requestContext.TenantId);
+            ApplyDocumentsAuthorization(request, tenantId);
             response = await client.SendAsync(request, ct);
         }
         catch (Exception ex)

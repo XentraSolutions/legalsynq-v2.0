@@ -13,6 +13,7 @@ public class ReferralViewTokenRouteResponse
 {
     public string  RouteType  { get; init; } = "invalid";
     public Guid?   ReferralId { get; init; }
+    public string? FailureReason { get; init; }
     /// <summary>Tenant code for active-tenant providers (used to build the login redirect URL).</summary>
     public string? TenantCode { get; init; }
 }

@@ -514,11 +514,14 @@ public static class ReferralEndpoints
             if (string.IsNullOrWhiteSpace(token))
                 return Results.BadRequest(new { error = "token is required." });
 
-            var summary = await service.GetPublicSummaryAsync(id, token, ct);
-            if (summary is null)
-                return Results.Unauthorized();
+            var result = await service.GetPublicSummaryAccessAsync(id, token, ct);
+            if (result.Data is not null)
+                return Results.Ok(result.Data);
 
-            return Results.Ok(summary);
+            if (result.FailureReason == CareConnect.Application.DTOs.ReferralTokenFailureReasons.ReferralNotFound)
+                return Results.Json(new { reason = result.FailureReason }, statusCode: StatusCodes.Status404NotFound);
+
+            return Results.Json(new { reason = result.FailureReason }, statusCode: StatusCodes.Status401Unauthorized);
         });
         // Note: no .RequireAuthorization — intentionally public, token-gated
 
@@ -582,15 +585,20 @@ public static class ReferralEndpoints
                 return Results.BadRequest(new { error = "token is required." });
 
             // Reuse GetPublicSummaryAsync to validate the token — null means invalid/expired.
-            var summary = await service.GetPublicSummaryAsync(id, token, ct);
-            if (summary is null)
-                return Results.Unauthorized();
+            var summaryResult = await service.GetPublicSummaryAccessAsync(id, token, ct);
+            if (summaryResult.Data is null)
+            {
+                if (summaryResult.FailureReason == CareConnect.Application.DTOs.ReferralTokenFailureReasons.ReferralNotFound)
+                    return Results.Json(new { reason = summaryResult.FailureReason }, statusCode: StatusCodes.Status404NotFound);
+
+                return Results.Json(new { reason = summaryResult.FailureReason }, statusCode: StatusCodes.Status401Unauthorized);
+            }
 
             try
             {
                 // isAdmin=true bypasses scope enforcement — safe because token is already HMAC-validated.
                 var result = await attachmentSvc.GetSignedUrlAsync(
-                    summary.TenantId,
+                    summaryResult.Data.TenantId,
                     id,
                     attachmentId,
                     callerOrgId:   null,

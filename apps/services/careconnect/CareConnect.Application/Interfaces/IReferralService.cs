@@ -46,6 +46,7 @@ public interface IReferralService
     Task<List<ReferralAuditEventResponse>> GetAuditTimelineAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false);
 
     // LSCC-008: Provider activation funnel — public, token-gated
+    Task<PublicReferralAccessResult<ReferralPublicSummaryResponse>> GetPublicSummaryAccessAsync(Guid referralId, string token, CancellationToken ct = default);
     /// <summary>Returns limited referral context for the public activation landing page. Returns null when the token is invalid/revoked.</summary>
     Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(Guid referralId, string token, CancellationToken ct = default);
     /// <summary>

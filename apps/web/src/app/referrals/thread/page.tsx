@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import { ThreadClient } from './thread-client';
+import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../lib/public-referral-error';
+import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
 
 export const dynamic = 'force-dynamic';
-
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 interface Props {
   searchParams: Promise<{ token?: string }>;
@@ -18,24 +18,24 @@ export default async function ReferralThreadPage({ searchParams }: Props) {
   }
 
   let threadData = null;
+  let failureReason: string | null = null;
 
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
-      { cache: 'no-store' },
+    const resp = await fetchPublicCareConnect(
+      `/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
     );
 
     if (resp.ok) {
       threadData = await resp.json();
-    } else if (resp.status === 404) {
-      redirect('/referrals/accept/invalid?reason=expired-or-invalid');
+    } else {
+      failureReason = await readPublicReferralFailureReason(resp);
     }
   } catch {
     threadData = null;
   }
 
   if (!threadData) {
-    redirect('/referrals/accept/invalid?reason=expired-or-invalid');
+    redirect(`/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`);
   }
 
   return <ThreadClient token={token} data={threadData} />;

@@ -31,7 +31,7 @@ public class AutoProvisionService : IAutoProvisionService
     private readonly IActivationRequestService     _activationRequests;
     private readonly IAuditEventClient             _auditClient;
     private readonly ILogger<AutoProvisionService> _logger;
-    private readonly string                        _appBaseUrl;
+    private readonly ReferralRuntimeOptions        _options;
     private readonly IHttpContextAccessor          _httpContextAccessor;
 
     public AutoProvisionService(
@@ -54,7 +54,7 @@ public class AutoProvisionService : IAutoProvisionService
         _activationRequests  = activationRequests;
         _auditClient         = auditClient;
         _logger              = logger;
-        _appBaseUrl          = (configuration["AppBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+        _options             = ReferralRuntimeOptions.FromConfiguration(configuration);
         _httpContextAccessor = httpContextAccessor;
     }
 
@@ -68,9 +68,14 @@ public class AutoProvisionService : IAutoProvisionService
         CancellationToken ct = default)
     {
         // Step 1: Validate token and load referral
-        var tokenResult = _emailService.ValidateViewToken(token);
-        if (tokenResult is null || tokenResult.ReferralId != referralId)
+        var tokenValidation = _emailService.ValidateViewTokenDetailed(token);
+        if (!tokenValidation.IsValid || tokenValidation.ReferralId != referralId)
         {
+            LogPublicTokenFailure(
+                "auto-provision",
+                tokenValidation,
+                referralId,
+                failureReasonOverride: !tokenValidation.IsValid ? null : ReferralTokenFailureReasons.ReferralMismatch);
             _logger.LogWarning(
                 "LSCC-010 Auto-provision: invalid token for referral {ReferralId}.", referralId);
             return AutoProvisionResult.Fallback("Invalid activation token.");
@@ -83,8 +88,14 @@ public class AutoProvisionService : IAutoProvisionService
             return AutoProvisionResult.Fallback("Referral not found.");
         }
 
-        if (tokenResult.TokenVersion != referral.TokenVersion)
+        if (tokenValidation.TokenVersion != referral.TokenVersion)
         {
+            LogPublicTokenFailure(
+                "auto-provision",
+                tokenValidation,
+                referralId,
+                currentReferralTokenVersion: referral.TokenVersion,
+                failureReasonOverride: ReferralTokenFailureReasons.Revoked);
             _logger.LogWarning(
                 "LSCC-010 Auto-provision: token version mismatch for referral {ReferralId}.", referralId);
             return AutoProvisionResult.Fallback("Activation token has been revoked.");
@@ -290,8 +301,26 @@ public class AutoProvisionService : IAutoProvisionService
 
     private string BuildLoginUrl(Guid referralId)
     {
-        var returnTo = Uri.EscapeDataString($"/careconnect/referrals/{referralId}");
-        return $"{_appBaseUrl}/login?returnTo={returnTo}&reason=activation-complete";
+        var returnTo = Uri.EscapeDataString($"/provider/referrals/{referralId}");
+        return $"{_options.AppBaseUrl}/login?returnTo={returnTo}&reason=activation-complete";
+    }
+
+    private void LogPublicTokenFailure(
+        string surface,
+        ReferralTokenValidationOutcome tokenValidation,
+        Guid? requestedReferralId,
+        int? currentReferralTokenVersion = null,
+        string? failureReasonOverride = null)
+    {
+        var failureReason = failureReasonOverride ?? tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed;
+        _logger.LogWarning(
+            "Public referral token rejected on surface {Surface}. FailureReason={FailureReason} RequestedReferralId={RequestedReferralId} TokenReferralId={TokenReferralId} TokenVersion={TokenVersion} CurrentReferralTokenVersion={CurrentReferralTokenVersion}",
+            surface,
+            failureReason,
+            requestedReferralId,
+            tokenValidation.ReferralId,
+            tokenValidation.TokenVersion,
+            currentReferralTokenVersion);
     }
 
     private static string? BuildClientName(Domain.Referral referral)

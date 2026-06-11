@@ -153,7 +153,7 @@ public class ReferralAttachmentService : IReferralAttachmentService
 
         EnforceScope(attachment, referral, callerOrgId, callerOrgType, isAdmin);
 
-        var result = await _documents.GetSignedUrlAsync(attachment.ExternalDocumentId, isDownload, ct);
+        var result = await _documents.GetSignedUrlAsync(tenantId, attachment.ExternalDocumentId, isDownload, ct);
         if (result is null) return null;
 
         return new SignedUrlResponse

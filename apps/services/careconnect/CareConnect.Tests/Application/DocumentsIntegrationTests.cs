@@ -285,7 +285,7 @@ public class DocumentsIntegrationTests
 
         var (svc, docClient) = BuildAttachmentService(referral, [attachment]);
 
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/doc", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -312,7 +312,7 @@ public class DocumentsIntegrationTests
 
         var (svc, docClient) = BuildAttachmentService(referral, [attachment]);
 
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/shared-doc", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -380,7 +380,7 @@ public class DocumentsIntegrationTests
 
         var (svc, docClient) = BuildAttachmentService(referral, [attachment]);
 
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/prov-doc", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -950,7 +950,7 @@ public class DocumentsIntegrationTests
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, documentId, AttachmentScope.Shared);
 
         var (svc, docClient) = BuildAppointmentAttachmentService(appointment, [attachment]);
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/appt-shared", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -996,7 +996,7 @@ public class DocumentsIntegrationTests
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, documentId, AttachmentScope.ProviderSpecific);
 
         var (svc, docClient) = BuildAppointmentAttachmentService(appointment, [attachment]);
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/appt-prov", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -1042,7 +1042,7 @@ public class DocumentsIntegrationTests
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, documentId, AttachmentScope.ProviderSpecific);
 
         var (svc, docClient) = BuildAppointmentAttachmentService(appointment, [attachment]);
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/appt-lawfirm", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -1067,7 +1067,7 @@ public class DocumentsIntegrationTests
         var attachment = CreateAttachment(attachmentId, tenantId, referral.Id, documentId, AttachmentScope.ProviderSpecific);
 
         var (svc, docClient) = BuildAttachmentService(referral, [attachment]);
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/ref-lawfirm", 300));
 
         var result = await svc.GetSignedUrlAsync(

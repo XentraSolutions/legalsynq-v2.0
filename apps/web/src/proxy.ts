@@ -53,6 +53,10 @@ const PUBLIC_PATHS = [
   '/api/identity/api/tenants/current/branding',
   // Read-source-aware branding endpoint (B06: replaces identity-only call)
   '/api/tenant-branding',
+  // Documents access-token redemption must remain public so token-gated
+  // referral links can open attachments without a platform session cookie.
+  '/api/documents/access/',
+  '/documents/access/',
   // LSCC-005: Public referral token routes — no session required
   '/referrals/view',
   '/referrals/accept',

@@ -4,10 +4,9 @@
  * Server component — fetches referral context from the backend before rendering.
  * No authentication required; the view token is the proof-of-identity.
  *
- * LSCC-01-002-01: New email links are now routed directly to login via
- * /referrals/view → /login?returnTo=... This page is retained as a safe
- * handler for legacy links (old emails pointing to /referrals/accept/{id}).
- * Direct token-based acceptance is no longer available here.
+ * LSCC-01-002-01: Email links should open the referral details page first.
+ * This route remains only for direct activation links. Invalid or expired
+ * legacy links should fail here instead of being forwarded to the thread page.
  *
  * Routing:
  *   referralId === 'invalid'
@@ -26,8 +25,8 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ActivationLanding } from './activation-landing';
-
-const GATEWAY_URL  = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
+import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../../lib/public-referral-error';
+import { fetchPublicCareConnect } from '../../lib/public-referral-proxy';
 const INVALID_ID   = 'invalid';
 
 interface PageProps {
@@ -65,6 +64,7 @@ interface PublicSummary {
 function InvalidScreen({ reason }: { reason: string }) {
   const isRevoked = reason === 'revoked';
   const isMissing = reason === 'missing-token';
+  const isNotFound = reason === 'referral-not-found';
 
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -88,7 +88,8 @@ function InvalidScreen({ reason }: { reason: string }) {
           <h1 className="text-xl font-semibold text-gray-900 mb-2">
             {isMissing  && 'Link Missing'}
             {isRevoked  && 'Link Revoked'}
-            {!isMissing && !isRevoked && 'Link Expired or Invalid'}
+            {isNotFound && 'Referral Not Found'}
+            {!isMissing && !isRevoked && !isNotFound && 'Link Expired or Invalid'}
           </h1>
 
           <p className="text-sm text-gray-500 leading-relaxed mb-6">
@@ -98,7 +99,11 @@ function InvalidScreen({ reason }: { reason: string }) {
               'A new link may have been sent to you — please check your inbox, ' +
               'or contact the referring party to request a fresh invitation.'
             )}
-            {!isMissing && !isRevoked && (
+            {isNotFound && (
+              'This referral is no longer available. It may have been removed or replaced. ' +
+              'Please contact the referring party to request an updated referral link.'
+            )}
+            {!isMissing && !isRevoked && !isNotFound && (
               'This referral link has expired or is no longer valid. ' +
               'Links are valid for 30 days from the date the referral was sent. ' +
               'Please contact the referring party to request a new link.'
@@ -138,7 +143,6 @@ function InvalidScreen({ reason }: { reason: string }) {
 
 function AlreadyAcceptedScreen({ summary }: { summary: PublicSummary }) {
   const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
-  // CC2-INT-B05: land providers in the Common Portal after login.
   const loginUrl   = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${summary.referralId}`)}&reason=referral-view`;
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -191,22 +195,23 @@ export default async function ReferralAcceptPage({ params, searchParams }: PageP
     redirect('/referrals/accept/invalid?reason=missing-token');
   }
 
-  // Fetch limited public summary — token is validated server-side
   let summary: PublicSummary | null = null;
+  let failureReason: string | null = null;
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/referrals/${referralId}/public-summary?token=${encodeURIComponent(token)}`,
-      { cache: 'no-store' },
+    const resp = await fetchPublicCareConnect(
+      `/api/referrals/${referralId}/public-summary?token=${encodeURIComponent(token)}`,
     );
     if (resp.ok) {
       summary = await resp.json();
+    } else {
+      failureReason = await readPublicReferralFailureReason(resp);
     }
   } catch {
     // network error — fall through to invalid
   }
 
   if (!summary) {
-    redirect('/referrals/accept/invalid?reason=expired-or-invalid');
+    redirect(`/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`);
   }
 
   if (summary.isAlreadyAccepted) {

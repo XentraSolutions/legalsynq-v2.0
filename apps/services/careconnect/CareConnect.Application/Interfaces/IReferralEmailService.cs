@@ -35,6 +35,12 @@ public interface IReferralEmailService
     /// IMPORTANT: The caller must also verify that result.TokenVersion matches the referral's
     /// current TokenVersion to detect revoked tokens.
     /// </summary>
+    ReferralTokenValidationOutcome ValidateViewTokenDetailed(string token);
+
+    /// <summary>
+    /// Legacy compatibility shim. Prefer <see cref="ValidateViewTokenDetailed"/> for new logic
+    /// so callers can distinguish malformed, expired, and revoked tokens.
+    /// </summary>
     ViewTokenValidationResult? ValidateViewToken(string token);
 
     /// <summary>

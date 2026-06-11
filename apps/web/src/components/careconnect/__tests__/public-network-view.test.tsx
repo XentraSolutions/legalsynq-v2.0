@@ -137,6 +137,10 @@ describe('PublicNetworkView', () => {
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse({ userId: 'user-1' });
+      }
+
       if (url.includes('/api/careconnect/api/treatment-types')) {
         return jsonResponse([]);
       }
@@ -193,6 +197,10 @@ describe('PublicNetworkView', () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse({ userId: 'user-1' });
+      }
 
       if (url.includes('/api/careconnect/api/treatment-types')) {
         return jsonResponse([]);

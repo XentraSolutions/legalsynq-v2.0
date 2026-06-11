@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PublicAttachmentLink } from './public-attachment-link';
 
 /**
  * LSCC-01-002-01: Public direct acceptance removed.
@@ -55,7 +56,7 @@ function formatFileSize(bytes: number): string {
 
 export function ActivationLanding({ summary, token, referralId }: ActivationLandingProps) {
   const activateUrl = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}`;
-  const loginUrl    = `/login?returnTo=${encodeURIComponent(`/careconnect/referrals/${referralId}`)}&reason=referral-view`;
+  const loginUrl    = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${referralId}`)}&reason=referral-view`;
 
   const hasProviderContact = summary.providerPhone || summary.providerEmail;
   const hasProviderAddress = summary.providerAddressLine1 || summary.providerCity;
@@ -173,30 +174,15 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
               </h2>
               <div className="space-y-2">
                 {summary.attachments.map(att => {
-                  const downloadUrl =
-                    `/api/public/careconnect/api/referrals/${referralId}/public-attachments/${att.id}/url` +
-                    `?token=${encodeURIComponent(token)}&download=true`;
                   return (
-                    <a
+                    <PublicAttachmentLink
                       key={att.id}
-                      href={downloadUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 hover:border-primary/40 hover:bg-primary/5 transition-colors group"
-                    >
-                      <svg className="w-5 h-5 text-gray-400 group-hover:text-primary shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-gray-900 truncate font-medium">{att.fileName}</p>
-                        <p className="text-xs text-gray-400">{formatFileSize(att.fileSizeBytes)}</p>
-                      </div>
-                      <svg className="w-4 h-4 text-gray-400 group-hover:text-primary shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                    </a>
+                      attachmentId={att.id}
+                      fileName={att.fileName}
+                      fileSizeLabel={formatFileSize(att.fileSizeBytes)}
+                      referralId={referralId}
+                      token={token}
+                    />
                   );
                 })}
               </div>

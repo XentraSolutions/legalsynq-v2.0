@@ -19,10 +19,14 @@ public static class ReferralThreadEndpoints
             IReferralThreadService threadService,
             CancellationToken   ct) =>
         {
-            var thread = await threadService.GetPublicThreadAsync(token, ct);
-            if (thread is null)
-                return Results.Problem(statusCode: 404, detail: "Token is invalid or expired.");
-            return Results.Ok(thread);
+            var result = await threadService.GetPublicThreadAccessAsync(token, ct);
+            if (result.Data is not null)
+                return Results.Ok(result.Data);
+
+            if (result.FailureReason == CareConnect.Application.DTOs.ReferralTokenFailureReasons.ReferralNotFound)
+                return Results.Json(new { reason = result.FailureReason }, statusCode: StatusCodes.Status404NotFound);
+
+            return Results.Json(new { reason = result.FailureReason }, statusCode: StatusCodes.Status401Unauthorized);
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── POST /api/public/referrals/thread/comments?token=... ────────────

@@ -1,6 +1,8 @@
 import { redirect }                 from 'next/navigation';
 import { FirmStatusClient }         from './firm-status-client';
 import { createEnrollmentToken }    from '@/app/enroll/actions';
+import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../lib/public-referral-error';
+import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
 import {
   ReferrerPortalAccessStatuses,
   type ReferrerPortalAccessStatusValue,
@@ -33,24 +35,24 @@ export default async function FirmStatusPage({ searchParams }: Props) {
   }
 
   let threadData = null;
+  let failureReason: string | null = null;
 
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
-      { cache: 'no-store' },
+    const resp = await fetchPublicCareConnect(
+      `/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
     );
 
     if (resp.ok) {
       threadData = await resp.json();
-    } else if (resp.status === 404) {
-      redirect('/referrals/accept/invalid?reason=expired-or-invalid');
+    } else {
+      failureReason = await readPublicReferralFailureReason(resp);
     }
   } catch {
     threadData = null;
   }
 
   if (!threadData) {
-    redirect('/referrals/accept/invalid?reason=expired-or-invalid');
+    redirect(`/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`);
   }
 
   // CC-PORTAL-CHECK: tenant-aware access status for the referrer email.

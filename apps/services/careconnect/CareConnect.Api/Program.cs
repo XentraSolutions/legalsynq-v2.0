@@ -9,6 +9,7 @@ using BuildingBlocks.FlowClient;
 using CareConnect.Api.Endpoints;
 using CareConnect.Api.Middleware;
 using CareConnect.Api.Options;
+using CareConnect.Application.DTOs;
 using CareConnect.Infrastructure;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -196,6 +197,14 @@ if (!builder.Environment.IsDevelopment())
 }
 
 var app = builder.Build();
+
+var referralRuntimeOptions = ReferralRuntimeOptions.FromConfiguration(builder.Configuration);
+app.Logger.LogInformation(
+    "Referral token configuration loaded. SecretConfigured={SecretConfigured} UsingDevFallbackSecret={UsingDevFallbackSecret} AppBaseUrl={AppBaseUrl} AppBaseDomainConfigured={AppBaseDomainConfigured}",
+    !string.IsNullOrWhiteSpace(builder.Configuration["ReferralToken:Secret"]),
+    referralRuntimeOptions.UsingDevelopmentFallbackSecret,
+    referralRuntimeOptions.AppBaseUrl,
+    !string.IsNullOrWhiteSpace(referralRuntimeOptions.AppBaseDomain));
 
 // Auto-migrate — apply pending EF Core migrations on startup in all environments.
 // CareConnect uses MySQL (RDS) and the __EFMigrationsHistory table tracks which

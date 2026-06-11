@@ -488,30 +488,55 @@ public class ReferralService : IReferralService
         string token,
         CancellationToken ct = default)
     {
-        var tokenResult = _emailService.ValidateViewToken(token);
-        if (tokenResult is null)
+        var tokenValidation = _emailService.ValidateViewTokenDetailed(token);
+        if (!tokenValidation.IsValid)
         {
-            // Emit audit for invalid/malformed token access
-            EmitInvalidTokenAudit(token, "malformed-or-expired", null);
-            return new ReferralViewTokenRouteResponse { RouteType = "invalid" };
+            LogPublicTokenFailure("view", tokenValidation, null);
+            EmitInvalidTokenAudit(token, tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed, tokenValidation.ReferralId);
+            return new ReferralViewTokenRouteResponse
+            {
+                RouteType = "invalid",
+                FailureReason = tokenValidation.FailureReason,
+            };
         }
 
-        var referral = await _referrals.GetByIdGlobalAsync(tokenResult.ReferralId, ct);
+        var referral = await _referrals.GetByIdGlobalAsync(tokenValidation.ReferralId!.Value, ct);
         if (referral is null)
         {
-            EmitInvalidTokenAudit(token, "referral-not-found", tokenResult.ReferralId);
-            return new ReferralViewTokenRouteResponse { RouteType = "notfound" };
+            LogPublicTokenFailure(
+                "view",
+                tokenValidation,
+                tokenValidation.ReferralId,
+                failureReasonOverride: ReferralTokenFailureReasons.ReferralNotFound);
+            EmitInvalidTokenAudit(token, ReferralTokenFailureReasons.ReferralNotFound, tokenValidation.ReferralId);
+            return new ReferralViewTokenRouteResponse
+            {
+                RouteType = "notfound",
+                ReferralId = tokenValidation.ReferralId,
+                FailureReason = ReferralTokenFailureReasons.ReferralNotFound,
+            };
         }
 
         // LSCC-005-01: Version check — rejects revoked tokens
-        if (tokenResult.TokenVersion != referral.TokenVersion)
+        if (tokenValidation.TokenVersion != referral.TokenVersion)
         {
             _logger.LogWarning(
                 "Referral view token version mismatch for referral {ReferralId}: " +
                 "token has version {TokenVersion}, referral has version {ReferralVersion}. Token revoked.",
-                referral.Id, tokenResult.TokenVersion, referral.TokenVersion);
-            EmitInvalidTokenAudit(token, "revoked", tokenResult.ReferralId);
-            return new ReferralViewTokenRouteResponse { RouteType = "invalid" };
+                referral.Id, tokenValidation.TokenVersion, referral.TokenVersion);
+            LogPublicTokenFailure(
+                "view",
+                tokenValidation,
+                referral.Id,
+                currentReferralTokenVersion: referral.TokenVersion,
+                failureReasonOverride: ReferralTokenFailureReasons.Revoked);
+            EmitInvalidTokenAudit(token, ReferralTokenFailureReasons.Revoked, tokenValidation.ReferralId);
+            return new ReferralViewTokenRouteResponse
+            {
+                RouteType = "invalid",
+                ReferralId = referral.Id,
+                FailureReason = ReferralTokenFailureReasons.Revoked,
+            };
         }
 
         var provider = referral.Provider;
@@ -950,6 +975,24 @@ public class ReferralService : IReferralService
         });
     }
 
+    private void LogPublicTokenFailure(
+        string surface,
+        ReferralTokenValidationOutcome tokenValidation,
+        Guid? requestedReferralId,
+        int? currentReferralTokenVersion = null,
+        string? failureReasonOverride = null)
+    {
+        var failureReason = failureReasonOverride ?? tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed;
+        _logger.LogWarning(
+            "Public referral token rejected on surface {Surface}. FailureReason={FailureReason} RequestedReferralId={RequestedReferralId} TokenReferralId={TokenReferralId} TokenVersion={TokenVersion} CurrentReferralTokenVersion={CurrentReferralTokenVersion}",
+            surface,
+            failureReason,
+            requestedReferralId,
+            tokenValidation.ReferralId,
+            tokenValidation.TokenVersion,
+            currentReferralTokenVersion);
+    }
+
     private static void ValidateQuery(GetReferralsQuery q)
     {
         var errors = new Dictionary<string, string[]>();
@@ -1202,22 +1245,54 @@ public class ReferralService : IReferralService
     /// Only fields already present in the provider notification email are exposed.
     /// Returns null when the token is invalid, revoked, or the referral cannot be found.
     /// </summary>
-    public async Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(
+    public async Task<PublicReferralAccessResult<ReferralPublicSummaryResponse>> GetPublicSummaryAccessAsync(
         Guid referralId,
         string token,
         CancellationToken ct = default)
     {
-        var tokenResult = _emailService.ValidateViewToken(token);
-        if (tokenResult is null)                          return null;
-        if (tokenResult.ReferralId != referralId)         return null;
+        var tokenValidation = _emailService.ValidateViewTokenDetailed(token);
+        if (!tokenValidation.IsValid)
+        {
+            LogPublicTokenFailure("summary", tokenValidation, referralId);
+            return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Failure(
+                tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed);
+        }
+
+        if (tokenValidation.ReferralId != referralId)
+        {
+            LogPublicTokenFailure(
+                "summary",
+                tokenValidation,
+                referralId,
+                failureReasonOverride: ReferralTokenFailureReasons.ReferralMismatch);
+            return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Failure(ReferralTokenFailureReasons.ReferralMismatch);
+        }
 
         var referral = await _referrals.GetByIdGlobalAsync(referralId, ct);
-        if (referral is null)                             return null;
-        if (tokenResult.TokenVersion != referral.TokenVersion) return null;
+        if (referral is null)
+        {
+            LogPublicTokenFailure(
+                "summary",
+                tokenValidation,
+                referralId,
+                failureReasonOverride: ReferralTokenFailureReasons.ReferralNotFound);
+            return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Failure(ReferralTokenFailureReasons.ReferralNotFound);
+        }
+
+        if (tokenValidation.TokenVersion != referral.TokenVersion)
+        {
+            LogPublicTokenFailure(
+                "summary",
+                tokenValidation,
+                referralId,
+                currentReferralTokenVersion: referral.TokenVersion,
+                failureReasonOverride: ReferralTokenFailureReasons.Revoked);
+            return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Failure(ReferralTokenFailureReasons.Revoked);
+        }
 
         var attachments = await _referralAttachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
 
-        return new ReferralPublicSummaryResponse
+        return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Success(new ReferralPublicSummaryResponse
         {
             ReferralId            = referral.Id,
             TenantId              = referral.TenantId,
@@ -1236,7 +1311,16 @@ public class ReferralService : IReferralService
             Attachments           = attachments
                 .Select(a => new PublicAttachmentInfo(a.Id, a.FileName, a.ContentType, a.FileSizeBytes))
                 .ToList(),
-        };
+        });
+    }
+
+    public async Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(
+        Guid referralId,
+        string token,
+        CancellationToken ct = default)
+    {
+        var result = await GetPublicSummaryAccessAsync(referralId, token, ct);
+        return result.Data;
     }
 
     /// <summary>

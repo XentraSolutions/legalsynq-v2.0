@@ -6,7 +6,7 @@
  *
  * Flow:
  *   /referrals/activate?referralId=...&token=...
- *     → validates token via public-summary endpoint
+ *     → validates token via the same public thread endpoint used by the referral page
  *     → shows referral context + ActivationForm (email + name capture)
  *     → on submit: emits ActivationStarted funnel event, shows confirmation
  *
@@ -19,11 +19,10 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ActivationForm } from './activation-form';
+import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../lib/public-referral-error';
+import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
 
 export const dynamic = 'force-dynamic';
-
-
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 interface PageProps {
   searchParams: Promise<{ referralId?: string; token?: string }>;
@@ -40,6 +39,30 @@ interface PublicSummary {
   isAlreadyAccepted: boolean;
 }
 
+interface PublicThreadData {
+  referralId:    string;
+  status:        string;
+  clientName:    string;
+  service:       string;
+  providerName:  string;
+  referrerName:  string | null;
+}
+
+function toPublicSummary(data: PublicThreadData): PublicSummary {
+  const [clientFirstName = '', ...lastNameParts] = data.clientName.trim().split(/\s+/).filter(Boolean);
+
+  return {
+    referralId: data.referralId,
+    clientFirstName,
+    clientLastName: lastNameParts.join(' '),
+    referrerName: data.referrerName ?? '',
+    providerName: data.providerName,
+    requestedService: data.service,
+    status: data.status,
+    isAlreadyAccepted: data.status === 'Accepted',
+  };
+}
+
 export default async function ActivatePage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const referralId = sp.referralId?.trim() ?? '';
@@ -50,23 +73,32 @@ export default async function ActivatePage({ searchParams }: PageProps) {
   }
 
   let summary: PublicSummary | null = null;
+  let failureReason: string | null = null;
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/referrals/${referralId}/public-summary?token=${encodeURIComponent(token)}`,
-      { cache: 'no-store' },
+    const resp = await fetchPublicCareConnect(
+      `/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
     );
-    if (resp.ok) summary = await resp.json();
+    if (resp.ok) {
+      const threadData = await resp.json() as PublicThreadData;
+      if (threadData.referralId === referralId) {
+        summary = toPublicSummary(threadData);
+      } else {
+        failureReason = 'referral_mismatch';
+      }
+    } else {
+      failureReason = await readPublicReferralFailureReason(resp);
+    }
   } catch {
     // fall through
   }
 
   if (!summary) {
-    redirect('/referrals/accept/invalid?reason=expired-or-invalid');
+    redirect(`/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`);
   }
 
   // If already accepted, send them to the accepted state screen
   if (summary.isAlreadyAccepted) {
-    redirect(`/referrals/accept/${referralId}?token=${encodeURIComponent(token)}`);
+    redirect(`/referrals/thread?token=${encodeURIComponent(token)}`);
   }
 
   const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
@@ -80,7 +112,7 @@ export default async function ActivatePage({ searchParams }: PageProps) {
         {/* Header */}
         <div>
           <Link
-            href={`/referrals/accept/${referralId}?token=${encodeURIComponent(token)}`}
+            href={`/referrals/thread?token=${encodeURIComponent(token)}`}
             className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
           >
             ← Back to referral
