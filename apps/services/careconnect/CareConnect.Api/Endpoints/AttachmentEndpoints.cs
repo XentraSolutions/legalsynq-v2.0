@@ -105,16 +105,19 @@ public static class AttachmentEndpoints
                 tenantId,
                 referralId,
                 ctx.UserId,
+                ctx.OrgId,
+                ctx.Email,
+                isAdmin: ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase),
                 stream,
                 file.FileName,
-                file.ContentType,
+                file.ContentType ?? "application/octet-stream",
                 file.Length,
                 uploadRequest,
                 ct);
 
             return Results.Created($"/api/referrals/{referralId}/attachments/{result.Id}", result);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
         .DisableAntiforgery();
 

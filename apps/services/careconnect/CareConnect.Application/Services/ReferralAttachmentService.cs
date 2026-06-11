@@ -1,4 +1,5 @@
 using BuildingBlocks.Exceptions;
+using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
@@ -32,15 +33,8 @@ public class ReferralAttachmentService : IReferralAttachmentService
         var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
 
-        if (!isAdmin)
-        {
-            var isParticipant =
-                (callerOrgId.HasValue && referral.ReferringOrganizationId == callerOrgId) ||
-                (callerOrgId.HasValue && referral.ReceivingOrganizationId  == callerOrgId);
-
-            if (!isParticipant)
-                throw new NotFoundException($"Referral '{referralId}' was not found.");
-        }
+        if (!CanAccessReferral(referral, callerOrgId, callerEmail: null, isAdmin))
+            throw new NotFoundException($"Referral '{referralId}' was not found.");
 
         var rows = await _attachments.GetByReferralAsync(tenantId, referralId, ct);
         return rows.Select(ToResponse).ToList();
@@ -82,15 +76,22 @@ public class ReferralAttachmentService : IReferralAttachmentService
         Guid              tenantId,
         Guid              referralId,
         Guid?             userId,
+        Guid?             callerOrgId,
+        string?           callerEmail,
+        bool              isAdmin,
         Stream            fileContent,
         string            fileName,
         string            contentType,
         long              fileSizeBytes,
         UploadAttachmentRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool              bypassAccessCheck = false)
     {
         var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        if (!bypassAccessCheck && !CanAccessReferral(referral, callerOrgId, callerEmail, isAdmin))
+            throw new NotFoundException($"Referral '{referralId}' was not found.");
 
         var uploadResult = await _documents.UploadAsync(
             fileContent,
@@ -160,6 +161,21 @@ public class ReferralAttachmentService : IReferralAttachmentService
             Url              = result.RedeemUrl,
             ExpiresInSeconds = result.ExpiresInSeconds,
         };
+    }
+
+    private static bool CanAccessReferral(
+        Referral referral,
+        Guid?    callerOrgId,
+        string?  callerEmail,
+        bool     isAdmin)
+    {
+        if (isAdmin) return true;
+        if (CareConnectParticipantHelper.IsReferralParticipant(referral, callerOrgId)) return true;
+
+        return !string.IsNullOrWhiteSpace(callerEmail)
+            && referral.ReferringOrganizationId == null
+            && !string.IsNullOrWhiteSpace(referral.ReferrerEmail)
+            && string.Equals(referral.ReferrerEmail, callerEmail, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void EnforceScope(

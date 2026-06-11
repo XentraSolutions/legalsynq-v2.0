@@ -524,6 +524,49 @@ const EMPTY_FORM: ReferralForm = {
 
 type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error';
 
+interface CreatedReferralUploadTarget {
+  referralId: string;
+  providerId: string;
+}
+
+function extractApiErrorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string')
+    return (err as { message: string }).message;
+  if (err && typeof err === 'object' && 'detail' in err && typeof (err as { detail: unknown }).detail === 'string')
+    return (err as { detail: string }).detail;
+  if (err && typeof err === 'object' && 'title' in err && typeof (err as { title: unknown }).title === 'string')
+    return (err as { title: string }).title;
+  return fallback;
+}
+
+function toCreatedReferralUploadTarget(
+  value: unknown,
+  fallbackProviderId: string,
+): CreatedReferralUploadTarget {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Referral created, but the server returned an unexpected response.');
+  }
+
+  const referralId =
+    'referralId' in value && typeof (value as { referralId?: unknown }).referralId === 'string'
+      ? (value as { referralId: string }).referralId
+      : 'id' in value && typeof (value as { id?: unknown }).id === 'string'
+        ? (value as { id: string }).id
+        : null;
+
+  const providerId =
+    'providerId' in value && typeof (value as { providerId?: unknown }).providerId === 'string'
+      ? (value as { providerId: string }).providerId
+      : fallbackProviderId;
+
+  if (!referralId) {
+    throw new Error('Referral created, but the response did not include a referral id.');
+  }
+
+  return { referralId, providerId };
+}
+
 function ReferralPanel({
   providers, tenantId, loginUrl, referrerScopeSignature, onClearSelection, prefillLawFirm,
 }: {
@@ -734,12 +777,13 @@ function ReferralPanel({
           try { body = await res.json(); } catch { throw new Error('Server error'); }
           throw body;
         }
-        return res.json() as Promise<{ referralId: string; providerId: string }>;
+        const body = await res.json() as unknown;
+        return toCreatedReferralUploadTarget(body, payload.providerId);
       }));
 
-      await Promise.allSettled(responses.map(r => {
+      await Promise.all(responses.map(async (r) => {
         const fileForProvider = providerFiles[r.providerId] ?? null;
-        if (!fileForProvider) return Promise.resolve();
+        if (!fileForProvider) return;
         const fd = new FormData();
         fd.append('file', fileForProvider);
         const uploadEndpoint = isAuthenticated
@@ -747,11 +791,18 @@ function ReferralPanel({
           : `/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`;
         const uploadHeaders: Record<string, string> = {};
         if (!isAuthenticated) uploadHeaders['X-Tenant-Id'] = tenantId;
-        return fetch(uploadEndpoint, {
+        const uploadRes = await fetch(uploadEndpoint, {
           method:  'POST',
           headers: uploadHeaders,
           body:    fd,
         });
+        if (!uploadRes.ok) {
+          let body: unknown;
+          try { body = await uploadRes.json(); } catch { throw new Error('Document upload failed after the referral was created.'); }
+          throw new Error(
+            `Referral created, but the document upload failed: ${extractApiErrorMessage(body, 'The uploaded document could not be attached.')}`
+          );
+        }
       }));
 
       setState('success');
@@ -775,16 +826,7 @@ function ReferralPanel({
         : {};
       // Extract the most useful message: prefer 'message', fall back to ProblemDetails
       // 'detail' or 'title', then a generic fallback.
-      const msg =
-        err instanceof Error
-          ? err.message
-          : err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
-            ? (err as { message: string }).message
-            : err && typeof err === 'object' && 'detail' in err && typeof (err as { detail: unknown }).detail === 'string'
-              ? (err as { detail: string }).detail
-              : err && typeof err === 'object' && 'title' in err && typeof (err as { title: unknown }).title === 'string'
-                ? (err as { title: string }).title
-                : 'Something went wrong. Please try again.';
+      const msg = extractApiErrorMessage(err);
       if (Object.keys(apiErrors).length > 0) { setErrors(apiErrors); }
       setErrMsg(msg);
       setState('error');

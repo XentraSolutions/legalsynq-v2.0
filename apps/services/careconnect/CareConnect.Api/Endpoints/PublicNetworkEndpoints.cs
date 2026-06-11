@@ -338,12 +338,16 @@ public static class PublicNetworkEndpoints
                     tenantId.Value,
                     referralId,
                     userId: null,
+                    callerOrgId: null,
+                    callerEmail: null,
+                    isAdmin: false,
                     stream,
                     file.FileName,
-                    file.ContentType,
+                    file.ContentType ?? "application/octet-stream",
                     file.Length,
                     uploadReq,
-                    ct);
+                    ct,
+                    bypassAccessCheck: true);
 
                 logger.LogInformation(
                     "Public referral document uploaded: ReferralId={ReferralId} AttachmentId={AttachmentId} File={FileName}",

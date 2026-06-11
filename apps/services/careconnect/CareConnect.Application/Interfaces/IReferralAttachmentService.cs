@@ -16,12 +16,16 @@ public interface IReferralAttachmentService
         Guid              tenantId,
         Guid              referralId,
         Guid?             userId,
+        Guid?             callerOrgId,
+        string?           callerEmail,
+        bool              isAdmin,
         Stream            fileContent,
         string            fileName,
         string            contentType,
         long              fileSizeBytes,
         UploadAttachmentRequest request,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool              bypassAccessCheck = false);
 
     /// <summary>
     /// CC2-INT-B03: Enforces scope rules then returns a short-lived signed URL for document access.

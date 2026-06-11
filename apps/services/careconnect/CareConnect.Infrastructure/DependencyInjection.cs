@@ -78,7 +78,8 @@ public static class DependencyInjection
         services.AddDbContext<CareConnectDbContext>(options =>
             options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
         services.AddDbContextFactory<CareConnectDbContext>(options =>
-            options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
+            options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))),
+            ServiceLifetime.Scoped);
 
         services.AddScoped<IProviderRepository, ProviderRepository>();
         services.AddScoped<IReferralRepository, ReferralRepository>();
