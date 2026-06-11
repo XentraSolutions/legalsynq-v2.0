@@ -35,6 +35,8 @@ Documents.Infrastructure/ DbContext (DocsDb), S3 adapter, ClamAV adapter, EF mig
 | `GET` | `/api/documents/{id}/versions` | Bearer | Version history |
 | `GET` | `/public/logos/{id}` | Anonymous | Public tenant logo |
 
+Authenticated Documents endpoints accept either a standard Identity user JWT or a shared platform service JWT. The preferred service-token audience is `documents-service`.
+
 ## Storage
 
 AWS S3 (configured via `AWS_S3_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY` secrets).

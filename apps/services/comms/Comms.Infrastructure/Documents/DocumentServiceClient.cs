@@ -1,4 +1,6 @@
 using System.Text.Json;
+using BuildingBlocks.Authentication.ServiceTokens;
+using BuildingBlocks.Context;
 using Comms.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -6,14 +8,21 @@ namespace Comms.Infrastructure.Documents;
 
 public sealed class DocumentServiceClient : IDocumentServiceClient
 {
+    private const string DocumentsServiceAudience = "documents-service";
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IServiceTokenIssuer _serviceTokenIssuer;
+    private readonly ICurrentRequestContext _requestContext;
     private readonly ILogger<DocumentServiceClient> _logger;
 
     public DocumentServiceClient(
         IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ICurrentRequestContext requestContext,
         ILogger<DocumentServiceClient> logger)
     {
         _httpClientFactory = httpClientFactory;
+        _serviceTokenIssuer = serviceTokenIssuer;
+        _requestContext = requestContext;
         _logger = logger;
     }
 
@@ -23,7 +32,9 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
         try
         {
             var client = _httpClientFactory.CreateClient("DocumentsService");
-            var response = await client.GetAsync($"/documents/{documentId}", ct);
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/documents/{documentId}");
+            ApplyDocumentsAuthorization(request, expectedTenantId);
+            var response = await client.SendAsync(request, ct);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -66,6 +77,26 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
             _logger.LogWarning(ex,
                 "Failed to validate document {DocumentId} with Documents service", documentId);
             return new DocumentValidationResult(false, null);
+        }
+    }
+
+    private void ApplyDocumentsAuthorization(HttpRequestMessage request, Guid tenantId)
+    {
+        if (!_serviceTokenIssuer.IsConfigured)
+            return;
+
+        try
+        {
+            var token = _serviceTokenIssuer.IssueToken(
+                tenantId.ToString(),
+                _requestContext.UserId?.ToString(),
+                DocumentsServiceAudience);
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to mint Documents service token for tenant {TenantId}", tenantId);
         }
     }
 }

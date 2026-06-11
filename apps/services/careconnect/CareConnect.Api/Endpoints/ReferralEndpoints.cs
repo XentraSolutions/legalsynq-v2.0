@@ -573,7 +573,7 @@ public static class ReferralEndpoints
             Guid                      id,
             Guid                      attachmentId,
             [FromQuery] string        token,
-            [FromQuery] bool          download,
+            [FromQuery] bool?         download,
             IReferralService          service,
             IReferralAttachmentService attachmentSvc,
             CancellationToken         ct) =>
@@ -596,7 +596,7 @@ public static class ReferralEndpoints
                     callerOrgId:   null,
                     callerOrgType: null,
                     isAdmin:       true,
-                    isDownload:    download,
+                    isDownload:    download ?? false,
                     ct:            ct);
 
                 if (result is null)

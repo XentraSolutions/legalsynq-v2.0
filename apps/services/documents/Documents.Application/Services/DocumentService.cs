@@ -554,6 +554,10 @@ public sealed class DocumentService
         ["DocManager"]   = new[] { "read", "write", "delete" },
         ["TenantAdmin"]  = new[] { "read", "write", "delete" },
         ["PlatformAdmin"] = new[] { "read", "write", "delete", "admin" },
+        // Service tokens are tenant-scoped and must be able to perform normal
+        // document CRUD operations on behalf of their caller, but they do not
+        // receive admin-only capabilities such as cross-tenant overrides.
+        ["service"] = new[] { "read", "write", "delete" },
     };
 
     private static void AssertPermission(Domain.ValueObjects.Principal principal, string action)

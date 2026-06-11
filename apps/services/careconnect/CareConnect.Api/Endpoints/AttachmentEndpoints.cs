@@ -126,7 +126,7 @@ public static class AttachmentEndpoints
         app.MapGet("/api/referrals/{referralId:guid}/attachments/{attachmentId:guid}/url", async (
             Guid referralId,
             Guid attachmentId,
-            [FromQuery] bool download,
+            [FromQuery] bool? download,
             IReferralAttachmentService service,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
@@ -143,7 +143,7 @@ public static class AttachmentEndpoints
                     callerOrgId:   ctx.OrgId,
                     callerOrgType: ctx.OrgType,
                     isAdmin:       isAdmin,
-                    isDownload:    download,
+                    isDownload:    download ?? false,
                     ct:            ct);
 
                 if (result is null)
@@ -239,7 +239,7 @@ public static class AttachmentEndpoints
         app.MapGet("/api/appointments/{appointmentId:guid}/attachments/{attachmentId:guid}/url", async (
             Guid appointmentId,
             Guid attachmentId,
-            [FromQuery] bool download,
+            [FromQuery] bool? download,
             IAppointmentAttachmentService service,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
@@ -256,7 +256,7 @@ public static class AttachmentEndpoints
                     callerOrgId:   ctx.OrgId,
                     callerOrgType: ctx.OrgType,
                     isAdmin:       isAdmin,
-                    isDownload:    download,
+                    isDownload:    download ?? false,
                     ct:            ct);
 
                 if (result is null)

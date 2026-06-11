@@ -37,14 +37,20 @@ async function request<T>(
   options: RequestOptions = {},
 ): Promise<ApiResponse<T>> {
   const url = `${GATEWAY_PREFIX}${path}`;
+  const method = options.method ?? 'GET';
+  const headers: Record<string, string> = {
+    ...options.headers,
+  };
+  const hasJsonBody = options.body !== undefined && !['GET', 'HEAD'].includes(method);
+
+  if (hasJsonBody) {
+    headers['Content-Type'] = headers['Content-Type'] ?? 'application/json';
+  }
 
   const res = await fetch(url, {
-    method:      options.method ?? 'GET',
+    method,
     credentials: 'include',   // send HttpOnly session cookie automatically
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
