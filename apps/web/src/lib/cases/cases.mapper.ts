@@ -7,26 +7,30 @@ import type {
   PaginatedResultDto,
   PaginationMeta,
   UpdateCaseRequestDto,
-} from './cases.types';
+} from "./cases.types";
 
 const CASE_STATUS_LABELS: Record<string, string> = {
-  PreDemand: 'Pre-Demand',
-  DemandSent: 'Demand Sent',
-  InNegotiation: 'In Negotiation',
-  CaseSettled: 'Case Settled',
-  Closed: 'Closed',
+  PreDemand: "Pre-Demand",
+  DemandSent: "Demand Sent",
+  InNegotiation: "In Negotiation",
+  CaseSettled: "Case Settled",
+  Closed: "Closed",
 };
 
 function safeString(val: string | null | undefined): string {
-  return val ?? '';
+  return val ?? "";
 }
 
 function formatDateField(val: string | null | undefined): string {
-  if (!val) return '';
+  if (!val) return "";
   try {
     const d = new Date(val);
     if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   } catch {
     return val;
   }
@@ -36,7 +40,9 @@ export function mapCaseToListItem(dto: CaseResponseDto): CaseListItem {
   return {
     id: dto.id,
     caseNumber: dto.caseNumber,
-    clientName: dto.clientDisplayName || `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
+    clientName:
+      dto.clientDisplayName ||
+      `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
     title: safeString(dto.title || dto.externalReference),
     status: dto.status,
     statusLabel: CASE_STATUS_LABELS[dto.status] ?? dto.status,
@@ -59,7 +65,9 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     caseNumber: dto.caseNumber,
     externalReference: safeString(dto.externalReference),
     title: safeString(dto.title),
-    clientName: dto.clientDisplayName || `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
+    clientName:
+      dto.clientDisplayName ||
+      `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
     clientFirstName: dto.clientFirstName,
     clientLastName: dto.clientLastName,
     status: dto.status,
@@ -93,7 +101,9 @@ export function mapLienToListItem(dto: LienResponseDto): CaseLienItem {
   };
 }
 
-export function mapDtoToUpdateRequest(dto: CaseResponseDto): UpdateCaseRequestDto {
+export function mapDtoToUpdateRequest(
+  dto: CaseResponseDto,
+): UpdateCaseRequestDto {
   return {
     clientFirstName: dto.clientFirstName,
     clientLastName: dto.clientLastName,
@@ -115,7 +125,9 @@ export function mapDtoToUpdateRequest(dto: CaseResponseDto): UpdateCaseRequestDt
   };
 }
 
-export function mapPagination<T>(result: PaginatedResultDto<T>): PaginationMeta {
+export function mapPagination<T>(
+  result: PaginatedResultDto<T>,
+): PaginationMeta {
   return {
     page: result.page,
     pageSize: result.pageSize,

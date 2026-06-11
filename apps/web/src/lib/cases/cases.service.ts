@@ -1,11 +1,12 @@
-import { casesApi } from './cases.api';
+import { lookupApi } from "../lookup/lookup.api";
+import { casesApi } from "./cases.api";
 import {
   mapCaseToListItem,
   mapCaseToDetail,
   mapLienToListItem,
   mapPagination,
   mapDtoToUpdateRequest,
-} from './cases.mapper';
+} from "./cases.mapper";
 import type {
   CasesQuery,
   CaseListItem,
@@ -14,7 +15,7 @@ import type {
   PaginationMeta,
   CreateCaseRequestDto,
   UpdateCaseRequestDto,
-} from './cases.types';
+} from "./cases.types";
 
 export interface CaseListResult {
   items: CaseListItem[];
@@ -28,9 +29,9 @@ export interface CaseLiensResult {
 
 export const casesService = {
   async getCases(query: CasesQuery = {}): Promise<CaseListResult> {
-    const { data } = await casesApi.list(query);
+    const { data } = await casesApi.listBySearch(query);
     return {
-      items: data.items.map(mapCaseToListItem),
+      items: data.data.map(mapCaseToListItem),
       pagination: mapPagination(data),
     };
   },
@@ -45,12 +46,18 @@ export const casesService = {
     return mapCaseToDetail(data);
   },
 
-  async updateCase(caseId: string, request: UpdateCaseRequestDto): Promise<CaseDetail> {
+  async updateCase(
+    caseId: string,
+    request: UpdateCaseRequestDto,
+  ): Promise<CaseDetail> {
     const { data } = await casesApi.update(caseId, request);
     return mapCaseToDetail(data);
   },
 
-  async updateCaseStatus(caseId: string, newStatus: string): Promise<CaseDetail> {
+  async updateCaseStatus(
+    caseId: string,
+    newStatus: string,
+  ): Promise<CaseDetail> {
     const { data: freshDto } = await casesApi.getById(caseId);
     const request = mapDtoToUpdateRequest(freshDto);
     request.status = newStatus;
@@ -63,5 +70,14 @@ export const casesService = {
       items: data.items.map(mapLienToListItem),
       pagination: mapPagination(data),
     };
+  },
+
+  async getCaseUpdates(caseId: string): Promise<any> {
+    const { data } = await casesApi.getCaseUpdates(caseId);
+    return data;
+  },
+  async getCaseStatus(): Promise<any> {
+    const { data } = await lookupApi.getCaseStatus();
+    return data.sort((a, b) => a.sortOrder - b.sortOrder);
   },
 };

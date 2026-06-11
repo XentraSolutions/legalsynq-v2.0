@@ -71,10 +71,15 @@ export interface UpdateCaseRequestDto {
 }
 
 export interface CasesQuery {
-  search?: string;
-  status?: string;
   page?: number;
-  pageSize?: number;
+  limit?: number;
+  lawFirmId?: string | null;
+  accidentTypeId?: string | null;
+  statusId?: number | string;
+  caseManagerId?: string | null;
+  keyword?: string | null;
+  sortBy?: string | null;
+  sortDirection?: string | null;
 }
 
 export interface LienResponseDto {
@@ -147,6 +152,44 @@ export interface CaseLienItem {
   lienType: string;
   status: string;
   originalAmount: number;
+}
+
+export interface CaseUpdatesItem {
+  id: string;
+  timestamp: string;
+  action: string;
+  description: string;
+  updatedBy: string;
+}
+
+export interface CaseUpdatesDto {
+  id: string;
+  timestamp: string;
+  action: string;
+  description: string;
+  updatedBy: string;
+}
+
+export interface CaseStatusResponse {
+  category: string;
+  code: string;
+  description: string;
+  id: string;
+  isActive: boolean;
+  isSystem: boolean;
+  name: string;
+  sortOrder: number;
+}
+export interface SearchMeta {
+  page: number;
+  limit: number;
+  lawFirmId: string | null;
+  accidentTypeId: string | null;
+  statusId: number;
+  caseManagerId: string | null;
+  keyword: string | null;
+  sortBy: string | null;
+  sortDirection: string | null;
 }
 
 export interface PaginationMeta {
