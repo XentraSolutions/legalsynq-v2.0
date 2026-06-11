@@ -1049,9 +1049,7 @@ function DetailsTab({
           </table>
         </div>
         <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-          <p className="text-xs text-gray-400">
-            Showing {d.updates?.length} entries
-          </p>
+          <p className="text-xs text-gray-400">Showing {u?.length} entries</p>
         </div>
       </CollapsibleSection>
     </div>
