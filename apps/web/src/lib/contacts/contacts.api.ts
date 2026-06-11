@@ -1,19 +1,22 @@
-import { apiClient } from '@/lib/api-client';
+import { apiClient } from "@/lib/api-client";
 import type {
   ContactResponseDto,
   PaginatedResultDto,
   CreateContactRequestDto,
   UpdateContactRequestDto,
   ContactsQuery,
-} from './contacts.types';
+  ExportResponse,
+} from "./contacts.types";
 
-const BASE = '/lien/api/liens/contacts';
+const BASE = "/lien/api/liens/contacts";
 
 function toQs(params: Record<string, unknown>): string {
   const pairs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
-  return pairs.length ? `?${pairs.join('&')}` : '';
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(
+      ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
+    );
+  return pairs.length ? `?${pairs.join("&")}` : "";
 }
 
 export const contactsApi = {
@@ -41,5 +44,11 @@ export const contactsApi = {
 
   reactivate(id: string) {
     return apiClient.put<ContactResponseDto>(`${BASE}/${id}/reactivate`, {});
+  },
+
+  export(contactType: string) {
+    return apiClient.post<ExportResponse>(`${BASE}/export-csv`, {
+      ContactType: contactType,
+    });
   },
 };

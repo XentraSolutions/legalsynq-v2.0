@@ -1,9 +1,9 @@
-import { contactsApi } from './contacts.api';
+import { contactsApi } from "./contacts.api";
 import {
   mapContactToListItem,
   mapContactToDetail,
   mapContactPagination,
-} from './contacts.mapper';
+} from "./contacts.mapper";
 import type {
   ContactsQuery,
   ContactListItem,
@@ -11,7 +11,8 @@ import type {
   PaginationMeta,
   CreateContactRequestDto,
   UpdateContactRequestDto,
-} from './contacts.types';
+  ExportResponse,
+} from "./contacts.types";
 
 export interface ContactListResult {
   items: ContactListItem[];
@@ -32,12 +33,17 @@ export const contactsService = {
     return mapContactToDetail(data);
   },
 
-  async createContact(request: CreateContactRequestDto): Promise<ContactDetail> {
+  async createContact(
+    request: CreateContactRequestDto,
+  ): Promise<ContactDetail> {
     const { data } = await contactsApi.create(request);
     return mapContactToDetail(data);
   },
 
-  async updateContact(id: string, request: UpdateContactRequestDto): Promise<ContactDetail> {
+  async updateContact(
+    id: string,
+    request: UpdateContactRequestDto,
+  ): Promise<ContactDetail> {
     const { data } = await contactsApi.update(id, request);
     return mapContactToDetail(data);
   },
@@ -50,5 +56,9 @@ export const contactsService = {
   async reactivateContact(id: string): Promise<ContactDetail> {
     const { data } = await contactsApi.reactivate(id);
     return mapContactToDetail(data);
+  },
+
+  async exportContacts(contactType: string): Promise<ExportResponse> {
+    return await contactsApi.export(contactType);
   },
 };

@@ -62,8 +62,8 @@ export interface UpdateContactRequestDto {
 }
 
 export interface ContactsQuery {
-  search?: string;
-  contactType?: string;
+  keyword?: string;
+  ContactType?: string;
   isActive?: boolean;
   page?: number;
   pageSize?: number;
@@ -92,6 +92,10 @@ export interface ContactDetail extends ContactListItem {
   postalCode: string;
   notes: string;
   updatedAt: string;
+}
+
+export interface ExportResponse {
+  data: string;
 }
 
 export interface PaginationMeta {
