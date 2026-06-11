@@ -74,6 +74,14 @@ export interface ReferralHistoryItem {
   notes?:          string;
 }
 
+export interface ReferralComment {
+  id:         string;
+  senderType: string;
+  senderName: string;
+  message:    string;
+  createdAt:  string;
+}
+
 // ── Referral ──────────────────────────────────────────────────────────────────
 
 export const ReferrerPortalAccessStatuses = {
@@ -124,6 +132,7 @@ export interface ReferralSummary {
   referringOrganizationId?: string;
   receivingOrganizationId?:  string;
   organizationRelationshipId?: string;
+  /** Backend supplies the tenant name for the Network column, or '-' when unavailable. */
   networkName?: string | null;
 }
 
@@ -176,6 +185,7 @@ export interface ReferralDetail extends ReferralSummary {
 }
 
 export interface CreateReferralRequest {
+  tenantId?:       string;
   providerId:       string;
   clientFirstName:  string;
   clientLastName:   string;
@@ -186,6 +196,7 @@ export interface CreateReferralRequest {
   requestedService: string;
   urgency:          string;
   notes?:           string;
+  referrerScopeSignature?: string;
   /** LSCC-005: referrer identity for the notification email */
   referrerEmail?:   string;
   referrerName?:    string;
@@ -201,6 +212,10 @@ export interface ReferralSearchParams {
   createdTo?:   string;
   page?:        number;
   pageSize?:    number;
+}
+
+export interface CreateReferralCommentRequest {
+  message: string;
 }
 
 // ── Appointment ───────────────────────────────────────────────────────────────
@@ -494,6 +509,9 @@ export interface BlockedProviderLogPage {
 export interface AdminReferralItem {
   id:                      string;
   tenantId:                string;
+  /** Backend may supply either tenantName or networkName for the Network column. */
+  tenantName?:             string | null;
+  networkName?:            string | null;
   status:                  string;
   urgency:                 string;
   requestedService:        string;
@@ -519,6 +537,9 @@ export interface AdminReferralPage {
 /** One referral row in the network manager's referral monitor. */
 export interface NetworkReferralItem {
   id:                       string;
+  /** Backend may supply either tenantName or networkName for the Network column. */
+  tenantName?:              string | null;
+  networkName?:             string | null;
   status:                   string;
   urgency:                  string;
   clientFirstName:          string;

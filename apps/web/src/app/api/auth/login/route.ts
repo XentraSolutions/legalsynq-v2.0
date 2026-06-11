@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { normalizeCareConnectPortalHost } from '@/lib/careconnect-login-url';
 
 const GATEWAY_URL             = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 const IS_PROD                 = process.env.NODE_ENV === 'production';
@@ -6,7 +7,7 @@ const IS_PROD                 = process.env.NODE_ENV === 'production';
 // from the user's email — no tenant code or subdomain lookup required.
 // Matches CC_COMMON_PORTAL_HOSTNAME in middleware.ts.
 const CC_COMMON_PORTAL_HOSTNAME =
-  (process.env.CC_COMMON_PORTAL_HOSTNAME ?? '').trim().toLowerCase();
+  normalizeCareConnectPortalHost(process.env.CC_COMMON_PORTAL_HOSTNAME);
 
 interface RateLimitEntry {
   count: number;
@@ -16,6 +17,7 @@ interface RateLimitEntry {
 const loginRateLimit  = new Map<string, RateLimitEntry>();
 const LOGIN_LIMIT     = 20;
 const LOGIN_WINDOW    = 5 * 60 * 1000;
+const CARECONNECT_PORTAL_RESTRICTED_TITLE = 'CareConnectPortalRoleRestricted';
 
 function checkLoginRateLimit(ip: string): boolean {
   const now   = Date.now();
@@ -171,7 +173,15 @@ export async function POST(request: NextRequest) {
   if (!identityRes.ok) {
     const errBody = await identityRes.json().catch(() => ({}));
     const upstreamMessage = errBody.detail ?? errBody.title ?? null;
+    const upstreamTitle = errBody.title ?? null;
     console.log(`[login] Identity returned ${identityRes.status}: ${JSON.stringify(errBody)}`);
+
+    if (isCommonPortalHost && upstreamTitle === CARECONNECT_PORTAL_RESTRICTED_TITLE) {
+      return NextResponse.json(
+        { message: upstreamMessage ?? 'This account cannot sign in to the CareConnect portal.' },
+        { status: 403 },
+      );
+    }
 
     const isVerifying = typeof upstreamMessage === 'string' && upstreamMessage.includes('verifying DNS configuration');
     if (isVerifying) {

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Identity.Api.Helpers;
 using Identity.Application;
 using Identity.Application.DTOs;
+using Identity.Application.Exceptions;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
@@ -46,6 +47,15 @@ public static class AuthEndpoints
             catch (UnauthorizedAccessException)
             {
                 return Results.Problem("Invalid credentials.", statusCode: 401);
+            }
+            catch (CareConnectPortalRoleRestrictedException ex)
+            {
+                return Results.Json(new
+                {
+                    title = "CareConnectPortalRoleRestricted",
+                    detail = ex.Message,
+                    status = 403,
+                }, statusCode: 403);
             }
             catch (InvalidOperationException ex)
             {

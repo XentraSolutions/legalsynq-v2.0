@@ -5,6 +5,7 @@ using System.Text;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
+using CareConnect.Domain;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -298,4 +299,125 @@ public class ReferralEmailServiceTests
         Assert.Equal(id, res!.ReferralId);
         Assert.Equal(1, res.TokenVersion);
     }
+
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_SerializesNotificationUpdates()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReferralToken:Secret"] = TestSecret,
+                ["AppBaseUrl"]           = TestBaseUrl,
+            })
+            .Build();
+
+        var notifications = new Mock<INotificationRepository>(MockBehavior.Strict);
+        var producer = new Mock<INotificationsProducer>(MockBehavior.Strict);
+        var tenantClient = new Mock<ITenantServiceClient>(MockBehavior.Strict);
+        var subdomainCache = new Mock<ITenantSubdomainCache>(MockBehavior.Strict);
+
+        var submitCount = 0;
+        var allSubmissionsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        producer
+            .Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(async (
+                Guid _,
+                string _,
+                string _,
+                string _,
+                string _,
+                string? _,
+                string? _,
+                CancellationToken _) =>
+            {
+                if (Interlocked.Increment(ref submitCount) == 2)
+                    allSubmissionsStarted.TrySetResult();
+
+                await allSubmissionsStarted.Task;
+            });
+
+        notifications
+            .Setup(n => n.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var activeUpdates = 0;
+        var overlappingUpdatesDetected = 0;
+
+        notifications
+            .Setup(n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(async (CareConnectNotification _, CancellationToken _) =>
+            {
+                var current = Interlocked.Increment(ref activeUpdates);
+                if (current > 1)
+                    Interlocked.Exchange(ref overlappingUpdatesDetected, 1);
+
+                await Task.Delay(25);
+                Interlocked.Decrement(ref activeUpdates);
+            });
+
+        var service = new ReferralEmailService(
+            notifications.Object,
+            producer.Object,
+            config,
+            tenantClient.Object,
+            subdomainCache.Object,
+            NullLogger<ReferralEmailService>.Instance);
+
+        await service.SendNewReferralNotificationAsync(
+            BuildReferral(referrerEmail: "referrer@example.com"),
+            BuildProvider(),
+            CancellationToken.None);
+
+        Assert.Equal(0, overlappingUpdatesDetected);
+        notifications.Verify(
+            n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+    }
+
+    private static Referral BuildReferral(string? referrerEmail = null)
+        => Referral.Create(
+            tenantId:                   Guid.CreateVersion7(),
+            referringOrganizationId:    null,
+            receivingOrganizationId:    null,
+            providerId:                 Guid.CreateVersion7(),
+            subjectPartyId:             null,
+            subjectNameSnapshot:        null,
+            subjectDobSnapshot:         null,
+            clientFirstName:            "Jane",
+            clientLastName:             "Doe",
+            clientDob:                  null,
+            clientPhone:                "555-000-0001",
+            clientEmail:                "client@example.com",
+            caseNumber:                 null,
+            requestedService:           "Physical Therapy",
+            urgency:                    Referral.ValidUrgencies.Normal,
+            notes:                      null,
+            createdByUserId:            null,
+            organizationRelationshipId: null,
+            referrerEmail:              referrerEmail,
+            referrerName:               "Referrer");
+
+    private static Provider BuildProvider(string email = "provider@clinic.com")
+        => Provider.Create(
+            tenantId:           Guid.CreateVersion7(),
+            name:               "Test Clinic",
+            organizationName:   "Test Clinic LLC",
+            email:              email,
+            phone:              "555-000-9999",
+            addressLine1:       "123 Main St",
+            city:               "Las Vegas",
+            state:              "NV",
+            postalCode:         "89101",
+            isActive:           true,
+            acceptingReferrals: true,
+            createdByUserId:    null);
 }

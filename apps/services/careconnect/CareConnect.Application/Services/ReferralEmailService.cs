@@ -39,6 +39,7 @@ public class ReferralEmailService : IReferralEmailService
     private readonly ILogger<ReferralEmailService> _logger;
     private readonly ITenantServiceClient          _tenantClient;
     private readonly ITenantSubdomainCache         _subdomainCache;
+    private readonly SemaphoreSlim _notificationUpdateLock = new(1, 1);
     private readonly string _tokenSecret;
     private readonly string _appBaseUrl;
     private readonly string _appBaseDomain;
@@ -677,7 +678,7 @@ public class ReferralEmailService : IReferralEmailService
                         "RetryNotificationAsync: provider {ProviderId} has no email. Clearing retry for notification {Id}.",
                         provider.Id, notification.Id);
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
@@ -692,7 +693,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(provider.Email))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 subject   = $"Referral accepted — {referral.ClientFirstName} {referral.ClientLastName}";
@@ -706,7 +707,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(toAddress))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var retryAcceptToken  = GenerateViewToken(referral.Id, referral.TokenVersion);
@@ -722,7 +723,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(toAddress))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 subject = $"Your case has been accepted — {provider.OrganizationName ?? provider.Name}";
@@ -734,7 +735,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(provider.Email))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 subject   = $"Referral declined — {referral.ClientFirstName} {referral.ClientLastName}";
@@ -748,7 +749,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(toAddress))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var retryRejectToken  = GenerateViewToken(referral.Id, referral.TokenVersion);
@@ -762,7 +763,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(provider.Email))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 subject   = $"Referral cancelled — {referral.ClientFirstName} {referral.ClientLastName}";
@@ -776,7 +777,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(toAddress))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var retryCancelToken  = GenerateViewToken(referral.Id, referral.TokenVersion);
@@ -790,7 +791,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(provider.Email))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
@@ -805,7 +806,7 @@ public class ReferralEmailService : IReferralEmailService
                     "RetryNotificationAsync: unsupported type '{Type}' for notification {Id}. Clearing retry.",
                     notification.NotificationType, notification.Id);
                 notification.ClearRetrySchedule();
-                await _notifications.UpdateAsync(notification, ct);
+                await UpdateNotificationAsync(notification, ct);
                 return;
         }
 
@@ -920,7 +921,7 @@ public class ReferralEmailService : IReferralEmailService
                 ct:            ct);
 
             notification.MarkSent();
-            await _notifications.UpdateAsync(notification, ct);
+            await UpdateNotificationAsync(notification, ct);
         }
         catch (Exception ex)
         {
@@ -930,13 +931,26 @@ public class ReferralEmailService : IReferralEmailService
                 notification.Id, eventKey, toAddress);
             // LSCC-005-02: pass nextRetryAfterUtc so the retry worker knows when to re-submit
             notification.MarkFailed(ex.Message, nextRetryAfterUtcOnFailure);
-            try { await _notifications.UpdateAsync(notification, ct); }
+            try { await UpdateNotificationAsync(notification, ct); }
             catch (Exception saveEx)
             {
                 _logger.LogError(saveEx,
                     "Also failed to persist failure state for notification {NotificationId}.",
                     notification.Id);
             }
+        }
+    }
+
+    private async Task UpdateNotificationAsync(CareConnectNotification notification, CancellationToken ct)
+    {
+        await _notificationUpdateLock.WaitAsync(ct);
+        try
+        {
+            await _notifications.UpdateAsync(notification, ct);
+        }
+        finally
+        {
+            _notificationUpdateLock.Release();
         }
     }
 

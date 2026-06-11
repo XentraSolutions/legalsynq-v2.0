@@ -8,6 +8,7 @@ import type {
   AvailabilitySearchParams,
   ReferralSummary,
   ReferralDetail,
+  ReferralComment,
   ActivationRequestSummary,
   ActivationRequestDetail,
   ReferralSearchParams,
@@ -90,6 +91,9 @@ export const careConnectServerApi = {
 
     getById: (id: string) =>
       serverApi.get<ReferralDetail>(`/careconnect/api/referrals/${id}`),
+
+    getComments: (id: string) =>
+      serverApi.get<ReferralComment[]>(`/careconnect/api/referrals/${id}/comments`),
   },
 
   appointments: {

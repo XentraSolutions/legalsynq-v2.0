@@ -36,6 +36,8 @@ interface PublicNetworkViewProps {
   detail:          PublicNetworkDetail;
   tenantCode:      string;
   tenantId:        string;
+  loginUrl:        string;
+  referrerScopeSignature?: string;
   /** When provided, the law firm section is hidden and pre-filled (authenticated referrer flow). */
   prefillLawFirm?: PrefillLawFirm;
 }
@@ -44,7 +46,14 @@ type ViewMode = 'split' | 'list' | 'map';
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 
-export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm }: PublicNetworkViewProps) {
+export function PublicNetworkView({
+  detail,
+  tenantCode,
+  tenantId,
+  loginUrl,
+  referrerScopeSignature,
+  prefillLawFirm,
+}: PublicNetworkViewProps) {
   const [search,      setSearch]      = useState('');
   const [viewMode,    setViewMode]    = useState<ViewMode>('split');
   const [showAll,     setShowAll]     = useState(false);
@@ -357,6 +366,8 @@ export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm
         <ReferralPanel
           providers={selectedProviders}
           tenantId={tenantId}
+          loginUrl={loginUrl}
+          referrerScopeSignature={referrerScopeSignature}
           onClearSelection={() => setSelectedIds(new Set())}
           prefillLawFirm={prefillLawFirm}
         />
@@ -514,10 +525,12 @@ const EMPTY_FORM: ReferralForm = {
 type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error';
 
 function ReferralPanel({
-  providers, tenantId, onClearSelection, prefillLawFirm,
+  providers, tenantId, loginUrl, referrerScopeSignature, onClearSelection, prefillLawFirm,
 }: {
   providers:        PublicProviderItem[];
   tenantId:         string;
+  loginUrl:         string;
+  referrerScopeSignature?: string;
   onClearSelection: () => void;
   prefillLawFirm?:  PrefillLawFirm;
 }) {
@@ -636,6 +649,12 @@ function ReferralPanel({
 
   // Called from confirmation modal — actually sends the referral
   const confirmAndSend = useCallback(async () => {
+    if (prefillLawFirm && !referrerScopeSignature) {
+      setErrMsg('Your CareConnect tenant selection could not be verified. Please return to Available Networks and retry.');
+      setState('error');
+      return;
+    }
+
     setState('submitting');
 
     const [firstName, ...rest] = form.patientName.trim().split(' ');
@@ -683,6 +702,7 @@ function ReferralPanel({
           ].filter(Boolean).join('\n') || undefined;
 
           const authBody = {
+            tenantId,
             providerId:       payload.providerId,
             clientFirstName:  payload.patientFirstName,
             clientLastName:   payload.patientLastName,
@@ -692,6 +712,7 @@ function ReferralPanel({
             requestedService: payload.serviceType ?? 'General Referral',
             urgency:          'Normal',
             notes:            authNotes,
+            referrerScopeSignature,
             referrerEmail:    payload.senderEmail,
             referrerName:     payload.senderName,
           };
@@ -1152,6 +1173,7 @@ function ReferralPanel({
           providerFiles={providerFiles}
           state={state}
           tenantId={tenantId}
+          loginUrl={loginUrl}
           hasPortalAccess={hasPortalAccess}
           prefillLawFirm={prefillLawFirm}
           enrollToken={enrollToken}
@@ -1183,7 +1205,7 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ReferralConfirmModal({
-  form, providers, treatmentTypes, providerFiles, state, tenantId, hasPortalAccess, prefillLawFirm, enrollToken, onConfirm, onBack, onClose,
+  form, providers, treatmentTypes, providerFiles, state, tenantId, loginUrl, hasPortalAccess, prefillLawFirm, enrollToken, onConfirm, onBack, onClose,
 }: {
   form:             ReferralForm;
   providers:        PublicProviderItem[];
@@ -1191,6 +1213,7 @@ function ReferralConfirmModal({
   providerFiles:    Record<string, File | null>;
   state:            PanelState;
   tenantId:         string;
+  loginUrl:         string;
   hasPortalAccess:  boolean;
   prefillLawFirm?:  PrefillLawFirm;
   enrollToken:      string | null;
@@ -1271,7 +1294,7 @@ function ReferralConfirmModal({
                           all your cases in one place.
                         </p>
                         <a
-                          href="/login"
+                          href={loginUrl}
                           className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
                         >
                           <i className="ri-login-circle-line" />
