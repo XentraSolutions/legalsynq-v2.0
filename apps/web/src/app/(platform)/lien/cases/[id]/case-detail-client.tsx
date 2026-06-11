@@ -28,6 +28,7 @@ import {
 } from "@/lib/liens/lien-case-notes.service";
 import { emailToDisplayName, isNoteOwner } from "@/lib/liens/note-utils";
 import { CaseUpdatesItem } from "@/lib/cases/cases.types";
+import { lookupService } from "@/lib/lookup";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -70,6 +71,8 @@ export function CaseDetailClient({ id }: { id: string }) {
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [caseUpdates, setCaseUpdates] = useState<any | null>(null);
 
+  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
+
   const [relatedLiens, setRelatedLiens] = useState<CaseLienItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,9 +107,27 @@ export function CaseDetailClient({ id }: { id: string }) {
     }
   }, [id]);
 
+  const fetchDocumentTypes = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const types = await lookupService.getDocumentType();
+      setDocumentTypes(types);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.isNotFound ? "Document types not found." : err.message);
+      } else {
+        setError("Failed to document types");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     fetchCase();
-  }, [fetchCase]);
+    fetchDocumentTypes();
+  }, [fetchCase, fetchDocumentTypes]);
 
   const canEdit = ra.can("case:edit");
 
@@ -135,6 +156,8 @@ export function CaseDetailClient({ id }: { id: string }) {
   }
 
   const d = caseDetail;
+
+  const docType = documentTypes;
 
   const advanceStatus = () => {
     const idx = STATUSES.indexOf(d.status);
@@ -272,6 +295,7 @@ export function CaseDetailClient({ id }: { id: string }) {
         )}
         {activeTab === "documents" && (
           <DocumentsTab
+            docTypes={docType}
             caseDetail={d}
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
@@ -1504,7 +1528,7 @@ function LiensTab({
       onModeChange={onPanelModeChange}
     />
   );
-}
+} 
 
 /* TEMP: visual fallback data for UI review only */
 const TEMP_DOCUMENT_TYPES = [
@@ -1579,10 +1603,12 @@ const TEMP_LIEN_DOCUMENTS = [
 ];
 
 function DocumentsTab({
+  docTypes,
   caseDetail,
   panelMode,
   onPanelModeChange,
 }: {
+  docTypes: any;
   caseDetail: CaseDetail;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
@@ -1628,7 +1654,7 @@ function DocumentsTab({
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
               >
                 <option value="">Select document type...</option>
-                {TEMP_DOCUMENT_TYPES.map((t) => (
+                {docTypes.map((t: string) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
