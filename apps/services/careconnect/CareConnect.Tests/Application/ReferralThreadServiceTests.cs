@@ -55,6 +55,46 @@ public class ReferralThreadServiceTests
     }
 
     [Fact]
+    public async Task GetPublicThreadAccessAsync_ReturnsProviderPrefillFields()
+    {
+        var referral = BuildReferral(referringOrganizationId: null);
+        var provider = new ProviderStub
+        {
+            Name = "Dr. Gray",
+            OrganizationName = "Gray Clinic",
+            Email = "intake@gray.example",
+            AccessStage = ProviderAccessStage.Url,
+        }.ToDomain(null);
+        SetProvider(referral, provider);
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data);
+        Assert.Equal(provider.Id, result.Data!.ProviderId);
+        Assert.Equal("Gray Clinic", result.Data.ProviderName);
+        Assert.Equal("intake@gray.example", result.Data.ProviderEmail);
+        Assert.Equal("555-0101", result.Data.ProviderPhone);
+        Assert.Equal("123 Main", result.Data.ProviderAddressLine1);
+        Assert.Equal("Las Vegas", result.Data.ProviderCity);
+        Assert.Equal("NV", result.Data.ProviderState);
+        Assert.Equal("89101", result.Data.ProviderPostalCode);
+    }
+
+    [Fact]
     public async Task GetAuthenticatedCommentsAsync_ReturnsComments_ForPublicReferrerEmailMatch()
     {
         var referral = BuildReferral(referringOrganizationId: null);

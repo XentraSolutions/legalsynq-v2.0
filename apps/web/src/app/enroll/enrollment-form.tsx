@@ -97,8 +97,8 @@ export function EnrollmentForm({
   const [agreeTerms,   setAgreeTerms]   = useState(false);
 
   // Fields locked when pre-filled from a signed referral token — should not be edited.
-  const companyNameLocked = !!authenticatedOrgPrefill?.companyName || (!!referralPrefill?.companyName && !prefill);
-  const emailLocked       = !!authenticatedOrgPrefill?.email       || (!!referralPrefill?.email && !prefill);
+  const companyNameLocked = !!initialCompanyName.trim();
+  const emailLocked       = !!initialEmail.trim();
   const phoneLocked       = !!initialPhone;
   const firstNameLocked   = !!initialFirstName;
   const lastNameLocked    = !!initialLastName;

@@ -18,7 +18,8 @@
 
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ActivationForm } from './activation-form';
+import { EnrollmentForm } from '@/app/enroll/enrollment-form';
+import type { EnrollmentPrefill } from '@/app/enroll/actions';
 import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../lib/public-referral-error';
 import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
 
@@ -28,38 +29,34 @@ interface PageProps {
   searchParams: Promise<{ referralId?: string; token?: string }>;
 }
 
-interface PublicSummary {
-  referralId:       string;
-  clientFirstName:  string;
-  clientLastName:   string;
-  referrerName:     string;
-  providerName:     string;
-  requestedService: string;
-  status:           string;
-  isAlreadyAccepted: boolean;
-}
-
 interface PublicThreadData {
   referralId:    string;
+  tenantId:      string;
+  providerId:    string;
   status:        string;
   clientName:    string;
   service:       string;
   providerName:  string;
+  providerEmail?: string;
+  providerPhone?: string;
+  providerAddressLine1?: string;
+  providerCity?: string;
+  providerState?: string;
+  providerPostalCode?: string;
   referrerName:  string | null;
 }
 
-function toPublicSummary(data: PublicThreadData): PublicSummary {
-  const [clientFirstName = '', ...lastNameParts] = data.clientName.trim().split(/\s+/).filter(Boolean);
-
+function toEnrollmentPrefill(data: PublicThreadData): EnrollmentPrefill {
   return {
-    referralId: data.referralId,
-    clientFirstName,
-    clientLastName: lastNameParts.join(' '),
-    referrerName: data.referrerName ?? '',
-    providerName: data.providerName,
-    requestedService: data.service,
-    status: data.status,
-    isAlreadyAccepted: data.status === 'Accepted',
+    providerId: data.providerId,
+    companyName: data.providerName,
+    companyType: 'Provider',
+    email: data.providerEmail ?? '',
+    phone: data.providerPhone ?? '',
+    addressLine1: data.providerAddressLine1 ?? '',
+    city: data.providerCity ?? '',
+    state: data.providerState ?? '',
+    postalCode: data.providerPostalCode ?? '',
   };
 }
 
@@ -72,16 +69,16 @@ export default async function ActivatePage({ searchParams }: PageProps) {
     redirect('/referrals/accept/invalid?reason=missing-token');
   }
 
-  let summary: PublicSummary | null = null;
+  let threadData: PublicThreadData | null = null;
   let failureReason: string | null = null;
   try {
     const resp = await fetchPublicCareConnect(
       `/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
     );
     if (resp.ok) {
-      const threadData = await resp.json() as PublicThreadData;
-      if (threadData.referralId === referralId) {
-        summary = toPublicSummary(threadData);
+      const data = await resp.json() as PublicThreadData;
+      if (data.referralId === referralId) {
+        threadData = data;
       } else {
         failureReason = 'referral_mismatch';
       }
@@ -92,25 +89,22 @@ export default async function ActivatePage({ searchParams }: PageProps) {
     // fall through
   }
 
-  if (!summary) {
+  if (!threadData) {
     redirect(`/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`);
   }
 
   // If already accepted, send them to the accepted state screen
-  if (summary.isAlreadyAccepted) {
+  if (threadData.status === 'Accepted') {
     redirect(`/referrals/thread?token=${encodeURIComponent(token)}`);
   }
 
-  const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
-  // CC2-INT-B05: land providers in the Common Portal after login, not the Tenant Portal.
+  const prefill = toEnrollmentPrefill(threadData);
   const loginUrl   = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${referralId}`)}&reason=referral-view`;
 
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="max-w-lg w-full space-y-4">
-
-        {/* Header */}
-        <div>
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+      <div className="max-w-2xl mx-auto px-4 py-12">
+        <div className="mb-6">
           <Link
             href={`/referrals/thread?token=${encodeURIComponent(token)}`}
             className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
@@ -119,41 +113,26 @@ export default async function ActivatePage({ searchParams }: PageProps) {
           </Link>
         </div>
 
-        {/* Referral context banner */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 px-6 py-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Referral context</p>
-          <div className="flex flex-wrap gap-x-6 gap-y-1">
-            {clientName && (
-              <span className="text-sm text-gray-700">
-                <span className="font-medium">Client:</span> {clientName}
-              </span>
-            )}
-            {summary.referrerName && (
-              <span className="text-sm text-gray-700">
-                <span className="font-medium">Referred by:</span> {summary.referrerName}
-              </span>
-            )}
-            {summary.requestedService && (
-              <span className="text-sm text-gray-700">
-                <span className="font-medium">Service:</span> {summary.requestedService}
-              </span>
-            )}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 mb-4">
+            <i className="ri-shield-check-line text-2xl text-blue-600" />
           </div>
-        </div>
-
-        {/* Page heading */}
-        <div className="text-center">
-          <h1 className="text-xl font-semibold text-gray-900">Activate your CareConnect account</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Enter your details below and we&apos;ll get your account set up.
+          <h1 className="text-3xl font-bold text-gray-900">Get Full Portal Access</h1>
+          <p className="mt-2 text-gray-500 max-w-md mx-auto">
+            Set up your CareConnect account to manage referrals, appointments, and
+            communications — all in one place.
           </p>
         </div>
 
-        {/* Activation form */}
-        <ActivationForm summary={summary} token={token} referralId={referralId} />
+        <EnrollmentForm
+          prefill={prefill}
+          providerId={threadData.providerId}
+          tenantId={threadData.tenantId}
+          referralPrefill={null}
+          isFirmEnrollment={false}
+        />
 
-        {/* Already have access */}
-        <p className="text-center text-xs text-gray-400 pb-4">
+        <p className="text-center text-xs text-gray-400 mt-6">
           Already have platform access?{' '}
           <Link href={loginUrl} className="text-primary hover:underline">
             Log in to accept this referral

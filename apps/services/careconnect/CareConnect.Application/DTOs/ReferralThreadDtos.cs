@@ -26,6 +26,7 @@ public class PublicReferralThreadResponse
 {
     public Guid ReferralId { get; init; }
     public Guid TenantId { get; init; }
+    public Guid ProviderId { get; init; }
     public string Status { get; init; } = string.Empty;
     public string ClientName { get; init; } = string.Empty;
     public string? ClientPhone { get; init; }
@@ -36,6 +37,12 @@ public class PublicReferralThreadResponse
     public string? Urgency { get; init; }
     public string? Notes { get; init; }
     public string ProviderName { get; init; } = string.Empty;
+    public string ProviderEmail { get; init; } = string.Empty;
+    public string ProviderPhone { get; init; } = string.Empty;
+    public string ProviderAddressLine1 { get; init; } = string.Empty;
+    public string ProviderCity { get; init; } = string.Empty;
+    public string ProviderState { get; init; } = string.Empty;
+    public string ProviderPostalCode { get; init; } = string.Empty;
     public string? ReferrerName { get; init; }
     public string? ReferrerEmail { get; init; }
     public DateTime CreatedAt { get; init; }
