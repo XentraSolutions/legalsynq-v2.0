@@ -146,7 +146,11 @@ export function LoginForm() {
       {/* Email */}
       <Field label="Email address">
         <input
-          type="email"
+          type="text"
+          inputMode="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           required
           value={email}
           onChange={e => setEmail(e.target.value)}

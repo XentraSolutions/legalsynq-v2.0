@@ -296,7 +296,8 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            var requiredPermission = ReferralWorkflowRules.RequiredPermissionFor(request.Status);
+            // Null status = treatment-type-only update; apply the fallback ReferralUpdateStatus permission.
+            var requiredPermission = ReferralWorkflowRules.RequiredPermissionFor(request.Status ?? string.Empty);
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredPermission, ct);
 
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
@@ -316,6 +317,14 @@ public static class ReferralEndpoints
                      string.Equals(existing.ReferrerEmail, ctx.Email, StringComparison.OrdinalIgnoreCase));
                 if (!isParticipant)
                     return Results.NotFound();
+            }
+
+            // TreatmentTypeId may only be set by the Receiver (provider org) or a PlatformAdmin.
+            if (request.TreatmentTypeId.HasValue && !ctx.IsPlatformAdmin)
+            {
+                var isReceiverOrg = ctx.OrgId.HasValue && existing.ReceivingOrganizationId == ctx.OrgId;
+                if (!isReceiverOrg)
+                    return Results.Forbid();
             }
 
             var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct, bypassTenantScope: bypassTenant, actorName: ctx.Name ?? ctx.Email);
@@ -667,6 +676,41 @@ public static class ReferralEndpoints
             catch (InvalidOperationException ex)
             {
                 return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
+            }
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+
+        // PATCH /api/referrals/{id}/treatment-type-by-token
+        // Public, view-token gated. Sets/clears the treatment type from the provider thread page.
+        group.MapPatch("/{id:guid}/treatment-type-by-token", async (
+            Guid                                   id,
+            [FromBody] UpdateTreatmentTypeByTokenRequest request,
+            IReferralService                       referralService,
+            CancellationToken                      ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+            try
+            {
+                var result = await referralService.UpdateTreatmentTypeByTokenAsync(
+                    id, request.Token, request.TreatmentTypeId, ct);
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized");
+            }
+            catch (NotFoundException ex)
+            {
+                return Results.NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
+            }
+            catch (ValidationException ex)
+            {
+                return Results.UnprocessableEntity(new { errors = ex.Errors });
             }
         });
         // Note: no .RequireAuthorization — intentionally public, token-gated

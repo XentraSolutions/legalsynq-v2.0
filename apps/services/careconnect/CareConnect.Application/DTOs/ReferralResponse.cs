@@ -12,7 +12,7 @@ public class ReferralResponse
     public string ClientPhone { get; set; } = string.Empty;
     public string ClientEmail { get; set; } = string.Empty;
     public string? CaseNumber { get; set; }
-    public string RequestedService { get; set; } = string.Empty;
+    public string? RequestedService { get; set; }
     public string Urgency { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? Notes { get; set; }
@@ -37,4 +37,8 @@ public class ReferralResponse
     public string? ProviderEmailStatus   { get; set; }
     public int     ProviderEmailAttempts { get; set; }
     public string? ProviderEmailFailureReason { get; set; }
+
+    // Type of Treatment — set by Receiver after creation.
+    public Guid?   TreatmentTypeId   { get; set; }
+    public string? TreatmentTypeName { get; set; }
 }

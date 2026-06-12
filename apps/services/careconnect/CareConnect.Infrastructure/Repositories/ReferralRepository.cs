@@ -4,6 +4,7 @@ using CareConnect.Application.Repositories;
 using CareConnect.Domain;
 using CareConnect.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace CareConnect.Infrastructure.Repositories;
 
@@ -161,6 +162,21 @@ public class ReferralRepository : IReferralRepository
             .Where(r => r.TenantId == tenantId && r.ReferralId == referralId)
             .OrderBy(r => r.ReassignedAtUtc)
             .ToListAsync(ct);
+    }
+
+    public async Task<string?> GetTreatmentTypeNameAsync(Guid id, CancellationToken ct = default)
+    {
+        var conn = _db.Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open)
+            await ((System.Data.Common.DbConnection)conn).OpenAsync(ct);
+        await using var cmd = ((System.Data.Common.DbConnection)conn).CreateCommand();
+        cmd.CommandText = "SELECT `Name` FROM `cc_TreatmentTypes` WHERE `Id` = @id AND `IsActive` = 1 LIMIT 1";
+        var param = cmd.CreateParameter();
+        param.ParameterName = "@id";
+        param.Value = id.ToString();
+        cmd.Parameters.Add(param);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is string s ? s : null;
     }
 
     public async Task<Dictionary<Guid, string>> GetProviderNetworkNamesAsync(IEnumerable<Guid> providerIds, CancellationToken ct = default)

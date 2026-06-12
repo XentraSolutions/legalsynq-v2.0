@@ -70,6 +70,8 @@ public class ReferralService : IReferralService
         var (items, totalCount) = await _referrals.SearchAsync(tenantId, query, ct);
         var tenantDisplayNames = await ReferralTenantNameResolver.ResolveForReferralsAsync(items, _tenantClient, ct);
 
+        // TreatmentTypeName is intentionally not resolved here — doing so would require
+        // one extra DB round-trip per referral (N+1). Name is only populated in GetByIdAsync.
         var responses = items.Select(r =>
         {
             var resp = ToResponse(r);
@@ -99,7 +101,10 @@ public class ReferralService : IReferralService
         var effectiveTenantId = referral.TenantId;
         // LSCC-005-01: load latest notification for email status display
         var latestNotif = await _notificationRepo.GetLatestByReferralAsync(effectiveTenantId, id, ct: ct);
-        return ToResponse(referral, latestNotif);
+        var treatmentTypeName = referral.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(referral.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(referral, latestNotif, treatmentTypeName);
     }
 
     public async Task MarkAsOpenedAsync(Guid id, CancellationToken ct = default)
@@ -257,7 +262,11 @@ public class ReferralService : IReferralService
 
         ReferralStatusHistory? history = null;
 
-        if (referral.Status != request.Status)
+        // Null status = no status change intended (e.g. treatment-type-only update).
+        // Resolve the effective target status: use the request value when provided, otherwise keep the current.
+        var effectiveStatus = request.Status ?? referral.Status;
+
+        if (request.Status is not null && referral.Status != request.Status)
         {
             ReferralWorkflowRules.ValidateTransition(referral.Status, request.Status);
 
@@ -272,7 +281,23 @@ public class ReferralService : IReferralService
 
         bool statusChanged = history is not null;
 
-        referral.Update(request.RequestedService, request.Urgency, request.Status, request.Notes, userId);
+        bool clearTreatment = request.TreatmentTypeId == Guid.Empty;
+        Guid? setTreatmentTypeId = clearTreatment ? null : request.TreatmentTypeId;
+        if (setTreatmentTypeId.HasValue)
+        {
+            var exists = await _referrals.GetTreatmentTypeNameAsync(setTreatmentTypeId.Value, ct);
+            if (exists is null)
+                throw new ValidationException("Validation failed.", new Dictionary<string, string[]>
+                    { ["treatmentTypeId"] = new[] { "The specified treatment type does not exist or is inactive." } });
+        }
+
+        // Null fields mean "no change" — preserve existing values unless ClearNotes is explicitly set.
+        var effectiveRequestedService = request.RequestedService ?? referral.RequestedService;
+        var effectiveNotes            = request.ClearNotes ? null : (request.Notes ?? referral.Notes);
+
+        referral.Update(effectiveRequestedService, request.Urgency, effectiveStatus, effectiveNotes, userId,
+            treatmentTypeId: setTreatmentTypeId,
+            clearTreatmentType: clearTreatment);
         await _referrals.UpdateAsync(referral, history, ct: ct);
 
         if (statusChanged)
@@ -344,9 +369,10 @@ public class ReferralService : IReferralService
                 : $"Referral {referral.Id} updated.",
             After       = JsonSerializer.Serialize(new
             {
-                status = request.Status,
+                status = effectiveStatus,
                 requestedService = request.RequestedService,
                 urgency = request.Urgency,
+                treatmentTypeId = request.TreatmentTypeId,
                 statusChanged,
             }),
             CorrelationId  = _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString(),
@@ -358,7 +384,10 @@ public class ReferralService : IReferralService
         var loaded = bypassTenantScope
             ? await _referrals.GetByIdGlobalAsync(referral.Id, ct)
             : await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
-        return ToResponse(loaded!);
+        var updatedTreatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: updatedTreatmentName);
     }
 
     /// <summary>
@@ -465,7 +494,10 @@ public class ReferralService : IReferralService
         });
 
         var reloaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
-        return ToResponse(reloaded!);
+        var treatmentName = reloaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(reloaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(reloaded!, treatmentTypeName: treatmentName);
     }
 
     public async Task<List<ReferralStatusHistoryResponse>> GetHistoryAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false)
@@ -707,7 +739,10 @@ public class ReferralService : IReferralService
         });
 
         var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
-        return ToResponse(loaded!);
+        var treatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: treatmentName);
     }
 
     public async Task<ReferralResponse> DeclineByTokenAsync(
@@ -794,7 +829,74 @@ public class ReferralService : IReferralService
         });
 
         var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
-        return ToResponse(loaded!);
+        var treatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: treatmentName);
+    }
+
+    public async Task<ReferralResponse> UpdateTreatmentTypeByTokenAsync(
+        Guid referralId,
+        string token,
+        Guid? treatmentTypeId,
+        CancellationToken ct = default)
+    {
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)
+        {
+            EmitInvalidTokenAudit(token, "malformed-or-expired", null);
+            throw new UnauthorizedAccessException("Invalid or expired view token.");
+        }
+
+        if (tokenResult.ReferralId != referralId)
+            throw new UnauthorizedAccessException("Token does not match the requested referral.");
+
+        var referral = await _referrals.GetByIdGlobalAsync(referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        if (tokenResult.TokenVersion != referral.TokenVersion)
+        {
+            _logger.LogWarning(
+                "Treatment-type update attempt with revoked token for referral {ReferralId}.",
+                referral.Id);
+            EmitInvalidTokenAudit(token, "revoked", referralId);
+            throw new UnauthorizedAccessException("This referral link has been revoked. Please contact the referring party for a new link.");
+        }
+
+        var terminalStatuses = new[] { Referral.ValidStatuses.Completed, Referral.ValidStatuses.Cancelled, Referral.ValidStatuses.Declined };
+        if (terminalStatuses.Contains(referral.Status))
+            throw new InvalidOperationException($"Treatment type cannot be changed on a referral in '{referral.Status}' status.");
+
+        bool clearTreatment = treatmentTypeId == Guid.Empty || treatmentTypeId == null;
+        Guid? setTreatmentTypeId = clearTreatment ? null : treatmentTypeId;
+
+        if (setTreatmentTypeId.HasValue)
+        {
+            var exists = await _referrals.GetTreatmentTypeNameAsync(setTreatmentTypeId.Value, ct);
+            if (exists is null)
+                throw new ValidationException("Validation failed.", new Dictionary<string, string[]>
+                    { ["treatmentTypeId"] = new[] { "The specified treatment type does not exist or is inactive." } });
+        }
+
+        referral.Update(
+            requestedService:   referral.RequestedService,
+            urgency:            referral.Urgency,
+            status:             referral.Status,
+            notes:              referral.Notes,
+            updatedByUserId:    null,
+            treatmentTypeId:    setTreatmentTypeId,
+            clearTreatmentType: clearTreatment);
+        await _referrals.UpdateAsync(referral, ct: ct);
+
+        _logger.LogInformation(
+            "Treatment type updated via public token for referral {ReferralId}. TreatmentTypeId={TreatmentTypeId}",
+            referral.Id, setTreatmentTypeId);
+
+        var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
+        var treatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: treatmentName);
     }
 
     // ── LSCC-005-01: Hardening methods ───────────────────────────────────────
@@ -1029,9 +1131,6 @@ public class ReferralService : IReferralService
             !Regex.IsMatch(r.ClientEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
             errors["clientEmail"] = new[] { "ClientEmail format is invalid." };
 
-        if (string.IsNullOrWhiteSpace(r.RequestedService))
-            errors["requestedService"] = new[] { "RequestedService is required." };
-
         if (!Referral.ValidUrgencies.All.Contains(r.Urgency))
             errors["urgency"] = new[] { $"Urgency must be one of: {string.Join(", ", Referral.ValidUrgencies.All)}." };
 
@@ -1043,20 +1142,17 @@ public class ReferralService : IReferralService
     {
         var errors = new Dictionary<string, string[]>();
 
-        if (string.IsNullOrWhiteSpace(r.RequestedService))
-            errors["requestedService"] = new[] { "RequestedService is required." };
-
         if (!Referral.ValidUrgencies.All.Contains(r.Urgency))
             errors["urgency"] = new[] { $"Urgency must be one of: {string.Join(", ", Referral.ValidUrgencies.All)}." };
 
-        if (!Referral.ValidStatuses.All.Contains(r.Status))
+        if (r.Status is not null && !Referral.ValidStatuses.All.Contains(r.Status))
             errors["status"] = new[] { $"Status must be one of: {string.Join(", ", Referral.ValidStatuses.All)}." };
 
         if (errors.Count > 0)
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
-    private static ReferralResponse ToResponse(Referral r, CareConnectNotification? latestNotif = null) => new()
+    private static ReferralResponse ToResponse(Referral r, CareConnectNotification? latestNotif = null, string? treatmentTypeName = null) => new()
     {
         Id = r.Id,
         TenantId = r.TenantId,
@@ -1085,6 +1181,9 @@ public class ReferralService : IReferralService
         ProviderEmailStatus   = latestNotif?.Status,
         ProviderEmailAttempts = latestNotif?.AttemptCount ?? 0,
         ProviderEmailFailureReason = latestNotif?.FailureReason,
+        // Type of Treatment
+        TreatmentTypeId   = r.TreatmentTypeId,
+        TreatmentTypeName = treatmentTypeName,
     };
 
     private static ReferralStatusHistoryResponse ToHistoryResponse(ReferralStatusHistory h) => new()

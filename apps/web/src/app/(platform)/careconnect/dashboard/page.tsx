@@ -89,7 +89,7 @@ function ReferralRows({ referrals }: { referrals: ReferralSummary[] }) {
                 {r.clientFirstName} {r.clientLastName}
               </p>
               <p className="text-xs text-gray-400 mt-0.5 truncate">
-                {r.providerName} · {r.requestedService}
+                {r.providerName}{r.requestedService ? ` · ${r.requestedService}` : ''}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">

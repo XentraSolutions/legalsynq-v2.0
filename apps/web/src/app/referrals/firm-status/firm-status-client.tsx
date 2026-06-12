@@ -13,17 +13,19 @@ interface Comment {
 }
 
 interface ThreadData {
-  referralId:    string;
-  tenantId:      string;
-  status:        string;
-  clientName:    string;
-  service:       string;
-  providerName:  string;
-  referrerName:  string | null;
-  referrerEmail: string | null;
-  notes:         string | null;
-  createdAt:     string;
-  comments:      Comment[];
+  referralId:         string;
+  tenantId:           string;
+  status:             string;
+  clientName:         string;
+  service:            string;
+  providerName:       string;
+  referrerName:       string | null;
+  referrerEmail:      string | null;
+  notes:              string | null;
+  treatmentTypeId?:   string;
+  treatmentTypeName?: string;
+  createdAt:          string;
+  comments:           Comment[];
 }
 
 interface Props {
@@ -220,6 +222,12 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             <FieldBlock label="Provider"  value={data.providerName} />
             <FieldBlock label="Submitted" value={formatDate(data.createdAt)} />
           </div>
+          {(data.treatmentTypeName || data.treatmentTypeId) && (
+            <div style={{ marginTop: 12 }}>
+              <p style={{ margin: '0 0 2px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Type of Treatment</p>
+              <p style={{ margin: 0, fontSize: 14, color: '#0f172a', fontWeight: 500 }}>{data.treatmentTypeName ?? '—'}</p>
+            </div>
+          )}
         </div>
 
         {/* Portal CTA — login prompt if already active, linking/enrollment panel otherwise */}

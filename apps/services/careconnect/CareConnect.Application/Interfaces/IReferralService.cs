@@ -33,6 +33,7 @@ public interface IReferralService
     Task<ReferralViewTokenRouteResponse> ResolveViewTokenAsync(string token, CancellationToken ct = default);
     Task<ReferralResponse> AcceptByTokenAsync(Guid referralId, string token, CancellationToken ct = default);
     Task<ReferralResponse> DeclineByTokenAsync(Guid referralId, string token, CancellationToken ct = default);
+    Task<ReferralResponse> UpdateTreatmentTypeByTokenAsync(Guid referralId, string token, Guid? treatmentTypeId, CancellationToken ct = default);
 
     // LSCC-005-01: Hardening — resend, revoke, notification history
     /// <inheritdoc cref="GetByIdAsync"/>

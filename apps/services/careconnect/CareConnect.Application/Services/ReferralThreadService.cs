@@ -44,6 +44,9 @@ public class ReferralThreadService : IReferralThreadService
 
         var comments = await _comments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
         var attachments = await _attachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
+        var treatmentTypeName = referral.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(referral.TreatmentTypeId.Value, ct)
+            : null;
 
         var providerName = BuildProviderName(referral);
         return PublicReferralAccessResult<PublicReferralThreadResponse>.Success(new PublicReferralThreadResponse
@@ -72,6 +75,8 @@ public class ReferralThreadService : IReferralThreadService
             ReferrerName = referral.ReferrerName,
             ReferrerEmail = referral.ReferrerEmail,
             CreatedAt = referral.CreatedAtUtc,
+            TreatmentTypeId   = referral.TreatmentTypeId,
+            TreatmentTypeName = treatmentTypeName,
             ProviderHasAccount = referral.Provider is not null &&
                                  ProviderAccessStage.IsAtLeast(referral.Provider.AccessStage, ProviderAccessStage.CommonPortal),
             Comments = comments.Select(MapComment).ToList(),

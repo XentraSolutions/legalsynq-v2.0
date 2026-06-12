@@ -121,19 +121,22 @@ export interface ReferralSummary {
   clientDob?:       string;
   clientPhone:      string;
   clientEmail:      string;
-  caseNumber?:      string;
-  requestedService: string;
-  urgency:          string;
-  status:           string;
-  notes?:           string;
-  createdAtUtc:     string;
-  updatedAtUtc:     string;
+  caseNumber?:       string;
+  requestedService?: string;
+  urgency:           string;
+  status:            string;
+  notes?:            string;
+  createdAtUtc:      string;
+  updatedAtUtc:      string;
   // LSCC-005-01: org context
   referringOrganizationId?: string;
   receivingOrganizationId?:  string;
   organizationRelationshipId?: string;
   /** Backend supplies the tenant name for the Network column, or '-' when unavailable. */
   networkName?: string | null;
+  // Type of Treatment — set by Receiver after creation.
+  treatmentTypeId?:   string;
+  treatmentTypeName?: string;
 }
 
 // LSCC-005-01 / LSCC-005-02: notification delivery record
@@ -192,14 +195,14 @@ export interface CreateReferralRequest {
   clientDob?:       string;
   clientPhone:      string;
   clientEmail:      string;
-  caseNumber?:      string;
-  requestedService: string;
-  urgency:          string;
-  notes?:           string;
+  caseNumber?:       string;
+  requestedService?: string;
+  urgency:           string;
+  notes?:            string;
   referrerScopeSignature?: string;
   /** LSCC-005: referrer identity for the notification email */
-  referrerEmail?:   string;
-  referrerName?:    string;
+  referrerEmail?:    string;
+  referrerName?:     string;
 }
 
 export interface ReferralSearchParams {

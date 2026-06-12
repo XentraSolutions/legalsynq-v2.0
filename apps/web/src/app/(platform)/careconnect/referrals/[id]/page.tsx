@@ -122,8 +122,8 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
               Appointment scheduling is decoupled from referral status.
               Referrers can book via the provider availability page at any time. */}
 
-          {/* 3. Referral details — body only (header rendered above) */}
-          <ReferralDetailPanel referral={referral} hideHeader />
+          {/* 3. Referral details — body only (header rendered above). Treatment type editing is inline. */}
+          <ReferralDetailPanel referral={referral} hideHeader isReceiver={isReceiverOfReferral} />
 
           {/* 3b. Documents — CC2-INT-B03 */}
           <AttachmentPanel

@@ -47,6 +47,8 @@ public class PublicReferralThreadResponse
     public string? ReferrerEmail { get; init; }
     public DateTime CreatedAt { get; init; }
     public bool ProviderHasAccount { get; init; }
+    public Guid?   TreatmentTypeId   { get; init; }
+    public string? TreatmentTypeName { get; init; }
     public IReadOnlyList<ReferralCommentResponse> Comments { get; init; } = [];
     public IReadOnlyList<ReferralThreadAttachmentResponse> Attachments { get; init; } = [];
 }

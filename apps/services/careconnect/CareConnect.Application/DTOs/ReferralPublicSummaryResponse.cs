@@ -18,7 +18,7 @@ public class ReferralPublicSummaryResponse
     public string ReferrerName     { get; init; } = "";
     /// <summary>Provider practice or individual name.</summary>
     public string ProviderName     { get; init; } = "";
-    public string RequestedService { get; init; } = "";
+    public string? RequestedService { get; init; }
     public string Status           { get; init; } = "";
 
     // ── Provider contact details ──────────────────────────────────────────

@@ -85,8 +85,8 @@ export const careConnectApi = {
     postComment: (id: string, body: CreateReferralCommentRequest) =>
       apiClient.post<ReferralComment>(`/careconnect/api/referrals/${id}/comments`, body),
 
-    /** PUT /api/referrals/{id} — update status (Accept / Decline / Cancel / etc.) */
-    update: (id: string, body: { requestedService: string; urgency: string; status: string; notes?: string }) =>
+    /** PUT /api/referrals/{id} — update status, fields, or treatment type. Omit status for treatment-type-only updates. */
+    update: (id: string, body: { requestedService?: string; urgency: string; status?: string; notes?: string; treatmentTypeId?: string | null }) =>
       apiClient.put<ReferralDetail>(`/careconnect/api/referrals/${id}`, body),
 
     /** GET /api/referrals/{id}/history — status change audit log */

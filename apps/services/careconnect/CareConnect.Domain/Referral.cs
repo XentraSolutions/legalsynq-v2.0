@@ -82,10 +82,12 @@ public class Referral : AuditableEntity
 
     // ── Referral detail ──────────────────────────────────────────────────
     public string? CaseNumber { get; private set; }
-    public string RequestedService { get; private set; } = string.Empty;
+    public string? RequestedService { get; private set; }
     public string Urgency { get; private set; } = string.Empty;
     public string Status { get; private set; } = ValidStatuses.New;
     public string? Notes { get; private set; }
+    // ── Type of Treatment (set by Receiver after creation) ───────────────
+    public Guid? TreatmentTypeId { get; private set; }
 
     // ── Referrer contact (stored at creation for email notifications) ─────
     // "Pending" status in LSCC-005 spec ≡ "New" status in this domain model.
@@ -123,7 +125,7 @@ public class Referral : AuditableEntity
         string clientPhone,
         string clientEmail,
         string? caseNumber,
-        string requestedService,
+        string? requestedService,
         string urgency,
         string? notes,
         Guid? createdByUserId,
@@ -149,7 +151,7 @@ public class Referral : AuditableEntity
             ClientPhone                = clientPhone.Trim(),
             ClientEmail                = clientEmail.Trim(),
             CaseNumber                 = caseNumber?.Trim(),
-            RequestedService           = requestedService.Trim(),
+            RequestedService           = requestedService?.Trim(),
             Urgency                    = urgency,
             Status                     = ValidStatuses.New,
             Notes                      = notes?.Trim(),
@@ -217,12 +219,15 @@ public class Referral : AuditableEntity
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    public void Update(string requestedService, string urgency, string status, string? notes, Guid? updatedByUserId)
+    public void Update(string? requestedService, string urgency, string status, string? notes, Guid? updatedByUserId,
+        Guid? treatmentTypeId = null, bool clearTreatmentType = false)
     {
-        RequestedService = requestedService.Trim();
+        RequestedService = requestedService?.Trim();
         Urgency          = urgency;
         Status           = status;
         Notes            = notes?.Trim();
+        if (treatmentTypeId.HasValue)   TreatmentTypeId = treatmentTypeId.Value;
+        else if (clearTreatmentType)    TreatmentTypeId = null;
         UpdatedByUserId  = updatedByUserId;
         UpdatedAtUtc     = DateTime.UtcNow;
     }

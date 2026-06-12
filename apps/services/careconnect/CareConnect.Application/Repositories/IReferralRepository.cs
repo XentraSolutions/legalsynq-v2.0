@@ -19,4 +19,6 @@ public interface IReferralRepository
     Task<List<ReferralProviderReassignment>> GetProviderReassignmentsByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
     /// <summary>Returns a map of ProviderId → first network name for the given provider IDs.</summary>
     Task<Dictionary<Guid, string>> GetProviderNetworkNamesAsync(IEnumerable<Guid> providerIds, CancellationToken ct = default);
+    /// <summary>Looks up the display name of a treatment type by ID. Returns null when not found.</summary>
+    Task<string?> GetTreatmentTypeNameAsync(Guid id, CancellationToken ct = default);
 }

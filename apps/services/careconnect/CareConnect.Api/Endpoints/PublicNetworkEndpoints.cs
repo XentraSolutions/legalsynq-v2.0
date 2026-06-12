@@ -550,7 +550,7 @@ public static class PublicNetworkEndpoints
                                             ? req.PatientDateOfBirth.Value.ToDateTime(TimeOnly.MinValue)
                                             : null,
                 RequestedService        = string.IsNullOrWhiteSpace(req.ServiceType)
-                                            ? "General Referral"
+                                            ? null
                                             : req.ServiceType.Trim(),
                 Urgency                 = Referral.ValidUrgencies.Normal,
                 Notes                   = notesParts.Count > 0 ? string.Join("\n", notesParts) : null,

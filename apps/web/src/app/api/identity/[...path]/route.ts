@@ -86,12 +86,37 @@ function forbidden(reason: string): NextResponse {
   );
 }
 
+/**
+ * Auth paths that must go through their dedicated BFF routes — never through
+ * this generic proxy.  The dedicated routes own rate-limiting, tenant
+ * resolution, cookie issuance, whitespace guards, and session management.
+ * Blocking them here prevents the proxy from being used as a side-door that
+ * bypasses those controls.
+ */
+const BLOCKED_AUTH_PATHS = new Set([
+  'api/auth/login',
+  'api/auth/logout',
+  'api/auth/forgot-password',
+  'api/auth/reset-password',
+  'api/auth/accept-invite',
+  'api/auth/change-password',
+  'api/auth/password-reset/confirm',
+]);
+
 async function proxy(request: NextRequest, { params }: RouteContext): Promise<NextResponse> {
   const cookieStore = await cookies();
   const token = cookieStore.get('platform_session')?.value;
 
   const { path: pathSegments } = await params;
   const joinedPath = pathSegments.join('/');
+
+  if (BLOCKED_AUTH_PATHS.has(joinedPath)) {
+    return NextResponse.json(
+      { message: 'Use the dedicated BFF route for this operation.' },
+      { status: 404 },
+    );
+  }
+
   const gatewayPath = `/identity/${joinedPath}`;
   const qs = request.nextUrl.searchParams.toString();
   const url = `${GATEWAY_URL}${gatewayPath}${qs ? `?${qs}` : ''}`;

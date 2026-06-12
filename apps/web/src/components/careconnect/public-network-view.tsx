@@ -493,13 +493,6 @@ const ProviderCard = forwardRef<
 
 // ── Referral panel ────────────────────────────────────────────────────────────
 
-interface TreatmentType {
-  id:           string;
-  name:         string;
-  category:     string | null;
-  displayOrder: number;
-}
-
 interface ReferralForm {
   patientName:          string;
   patientPhone:         string;
@@ -507,7 +500,6 @@ interface ReferralForm {
   patientAddress:       string;
   patientDob:           string;   // YYYY-MM-DD
   patientDateOfAccident: string;  // YYYY-MM-DD
-  treatmentTypeId:      string;
   notes:                string;
   firmName:             string;
   contactName:          string;
@@ -518,7 +510,7 @@ interface ReferralForm {
 const EMPTY_FORM: ReferralForm = {
   patientName: '', patientPhone: '', patientEmail: '',
   patientAddress: '', patientDob: '', patientDateOfAccident: '',
-  treatmentTypeId: '', notes: '',
+  notes: '',
   firmName: '', contactName: '', email: '', phone: '',
 };
 
@@ -586,7 +578,6 @@ function ReferralPanel({
   const [errorMsg,       setErrMsg]        = useState('');
   const [fieldErrors,    setErrors]        = useState<Record<string, string>>({});
   const [providerFiles,  setProviderFiles] = useState<Record<string, File | null>>({});
-  const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
   const [hasPortalAccess, setHasPortalAccess] = useState(false);
   const [enrollToken,    setEnrollToken]   = useState<string | null>(null);
 
@@ -609,19 +600,6 @@ function ReferralPanel({
   const [addrSuggestions, setAddrSuggestions] = useState<Array<{ displayName: string; addressLine1: string; city: string; state: string; postalCode: string }>>([]);
   const [showAddrSugg,    setShowAddrSugg]    = useState(false);
   const addrDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const url     = prefillLawFirm
-      ? '/api/careconnect/api/treatment-types'
-      : '/api/public/careconnect/api/public/treatment-types';
-    const headers: HeadersInit = prefillLawFirm
-      ? {}
-      : { 'X-Tenant-Id': tenantId };
-    fetch(url, { headers })
-      .then(r => r.ok ? r.json() : null)
-      .then((data: TreatmentType[] | null) => { if (data) setTreatmentTypes(data); })
-      .catch(() => {});
-  }, [tenantId]);
 
   const update = useCallback((field: keyof ReferralForm, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -703,9 +681,6 @@ function ReferralPanel({
     const [firstName, ...rest] = form.patientName.trim().split(' ');
     const lastName = rest.join(' ') || firstName;
 
-    const selectedTreatment = treatmentTypes.find(t => t.id === form.treatmentTypeId);
-    const serviceTypeName   = selectedTreatment?.name.trim() || undefined;
-
     const payloads: PublicReferralRequest[] = providers.map(p => ({
       providerId:             p.id,
       senderName:             form.contactName.trim() || form.firmName.trim(),
@@ -717,7 +692,6 @@ function ReferralPanel({
       patientDateOfBirth:     form.patientDob || undefined,
       patientDateOfAccident:  form.patientDateOfAccident || undefined,
       patientAddress:         form.patientAddress.trim() || undefined,
-      serviceType:            serviceTypeName,
       notes:                  [
         form.notes,
         form.phone    ? `Firm phone: ${form.phone}` : '',
@@ -831,7 +805,7 @@ function ReferralPanel({
       setErrMsg(msg);
       setState('error');
     }
-  }, [form, providers, tenantId, treatmentTypes, providerFiles]);
+  }, [form, providers, tenantId, providerFiles]);
 
   const hasProviders = providers.length > 0;
 
@@ -901,7 +875,7 @@ function ReferralPanel({
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Patient details</p>
-                  <p className="text-xs text-gray-400">Name, phone, and treatment type</p>
+                  <p className="text-xs text-gray-400">Name and phone</p>
                 </div>
               </div>
               <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
@@ -1090,19 +1064,6 @@ function ReferralPanel({
                     />
                   </PanelField>
                 </div>
-                <PanelField label="Treatment type" hint="optional">
-                  <select
-                    value={form.treatmentTypeId}
-                    onChange={e => update('treatmentTypeId', e.target.value)}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(false)}
-                  >
-                    <option value="">— Select type —</option>
-                    {treatmentTypes.map(t => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </PanelField>
                 <PanelField label="Notes" hint="optional">
                   <textarea
                     rows={3} value={form.notes}
@@ -1211,7 +1172,6 @@ function ReferralPanel({
         <ReferralConfirmModal
           form={form}
           providers={providers}
-          treatmentTypes={treatmentTypes}
           providerFiles={providerFiles}
           state={state}
           tenantId={tenantId}
@@ -1247,11 +1207,10 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ReferralConfirmModal({
-  form, providers, treatmentTypes, providerFiles, state, tenantId, loginUrl, hasPortalAccess, prefillLawFirm, enrollToken, onConfirm, onBack, onClose,
+  form, providers, providerFiles, state, tenantId, loginUrl, hasPortalAccess, prefillLawFirm, enrollToken, onConfirm, onBack, onClose,
 }: {
   form:             ReferralForm;
   providers:        PublicProviderItem[];
-  treatmentTypes:   TreatmentType[];
   providerFiles:    Record<string, File | null>;
   state:            PanelState;
   tenantId:         string;
@@ -1263,7 +1222,6 @@ function ReferralConfirmModal({
   onBack:           () => void;
   onClose:          () => void;
 }) {
-  const treatment = treatmentTypes.find(t => t.id === form.treatmentTypeId);
   const isSending = state === 'submitting';
   const isSent    = state === 'success';
 
@@ -1434,7 +1392,6 @@ function ReferralConfirmModal({
                   <ConfirmRow label="Date of birth"    value={fmtDate(form.patientDob)}             />
                   <ConfirmRow label="Date of accident" value={fmtDate(form.patientDateOfAccident)}  />
                   <ConfirmRow label="Address"          value={form.patientAddress}                  />
-                  <ConfirmRow label="Treatment type"   value={treatment?.name}                      />
                 </div>
               </div>
 

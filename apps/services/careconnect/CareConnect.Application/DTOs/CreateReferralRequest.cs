@@ -15,7 +15,7 @@ public class CreateReferralRequest
     public string ClientPhone { get; set; } = string.Empty;
     public string ClientEmail { get; set; } = string.Empty;
     public string? CaseNumber { get; set; }
-    public string RequestedService { get; set; } = string.Empty;
+    public string? RequestedService { get; set; }
     public string Urgency { get; set; } = string.Empty;
     public string? Notes { get; set; }
 
