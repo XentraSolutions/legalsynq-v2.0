@@ -2,7 +2,7 @@ export interface SettlementGenericResponse {
   message: string
 }
 
-export interface LienReductionData {
+interface LienReductionData {
   liensId: string
   reductionAmount: string
 }
@@ -33,8 +33,21 @@ export interface DeletePaymentRequest {
   paymentId: string
 }
 
-export interface GetSettlementHistoryResponse {
-  date: string,
-  description: string,
+interface HistoryData {
+  id: string
+  tenantId: string
+  caseId: string
+  lienId: string
+  paymentNumber: number
+  amount: number
+  status: string
+  date: string
+  note: string
   user: string
+}
+
+export interface GetSettlementHistoryResponse {
+  settlements: HistoryData[]
+  reductions: HistoryData[]
+  payments: HistoryData[]
 }

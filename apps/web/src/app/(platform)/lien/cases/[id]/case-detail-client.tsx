@@ -29,6 +29,8 @@ import {
 import { emailToDisplayName, isNoteOwner } from "@/lib/liens/note-utils";
 import { CaseUpdatesItem } from "@/lib/cases/cases.types";
 import { lookupService } from "@/lib/lookup";
+import { GetSettlementHistoryResponse } from "@/lib/settlement/settlement.types";
+import { settlementService } from "@/lib/settlement";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -72,6 +74,8 @@ export function CaseDetailClient({ id }: { id: string }) {
   const [caseUpdates, setCaseUpdates] = useState<any | null>(null);
 
   const [documentTypes, setDocumentTypes] = useState<string[]>([]);
+
+  const [history, setHistory] = useState<any>();
 
   const [relatedLiens, setRelatedLiens] = useState<CaseLienItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,17 +121,35 @@ export function CaseDetailClient({ id }: { id: string }) {
       if (err instanceof ApiError) {
         setError(err.isNotFound ? "Document types not found." : err.message);
       } else {
-        setError("Failed to document types");
+        setError("Failed to load document types");
       }
     } finally {
       setLoading(false);
     }
   }, [id]);
 
+  const fetchHistory = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const history = await settlementService.getSettlementHistory(id);
+      setHistory(history);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.isNotFound ? "History not found." : err.message);
+      } else {
+        setError("Failed to load history");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [id])
+
   useEffect(() => {
     fetchCase();
     fetchDocumentTypes();
-  }, [fetchCase, fetchDocumentTypes]);
+    fetchHistory();
+  }, [fetchCase, fetchDocumentTypes, fetchHistory]);
 
   const canEdit = ra.can("case:edit");
 
@@ -304,6 +326,7 @@ export function CaseDetailClient({ id }: { id: string }) {
         {activeTab === "servicing" && (
           <ServicingTab
             caseDetail={d}
+            history={history}
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
           />
@@ -1608,7 +1631,7 @@ function DocumentsTab({
   panelMode,
   onPanelModeChange,
 }: {
-  docTypes: any;
+  docTypes: string[];
   caseDetail: CaseDetail;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
@@ -2092,10 +2115,12 @@ const SERVICING_SUB_TABS: {
 
 function ServicingTab({
   caseDetail,
+  history,
   panelMode,
   onPanelModeChange,
 }: {
   caseDetail: CaseDetail;
+  history: GetSettlementHistoryResponse;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
 }) {
@@ -2598,7 +2623,7 @@ function ServicingTab({
 
       {subTab === "history" && (
         <CollapsibleSection title="Servicing History" icon="ri-history-line">
-          {TEMP_SERVICING_HISTORY.length === 0 ? (
+          {history.settlements.length === 0 ? (
             <div className="text-center py-8">
               <i className="ri-history-line text-2xl text-gray-300" />
               <p className="text-sm text-gray-400 mt-2">No history records</p>
@@ -2621,19 +2646,19 @@ function ServicingTab({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {TEMP_SERVICING_HISTORY.map((h) => (
+                    {history.settlements.map((h) => (
                       <tr
                         key={h.id}
                         className="hover:bg-gray-50/50 transition-colors"
                       >
                         <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                          {h.timestamp}
+                          {h.date}
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-600">
-                          {h.description}
+                          {h.note}
                         </td>
                         <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">
-                          {h.updatedBy}
+                          {h.user}
                         </td>
                       </tr>
                     ))}
@@ -2642,7 +2667,7 @@ function ServicingTab({
               </div>
               <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
                 <p className="text-xs text-gray-400">
-                  Showing {TEMP_SERVICING_HISTORY.length} entries
+                  Showing {history.settlements.length} entries
                 </p>
               </div>
             </>
