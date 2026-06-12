@@ -2655,7 +2655,7 @@ function ServicingTab({
                           {h.date}
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-600">
-                          {h.description}
+                          {h.note}
                         </td>
                         <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">
                           {h.user}

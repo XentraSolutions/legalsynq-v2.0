@@ -35,8 +35,14 @@ export interface DeletePaymentRequest {
 
 interface HistoryData {
   id: string
+  tenantId: string
+  caseId: string
+  lienId: string
+  paymentNumber: number
+  amount: number
+  status: string
   date: string
-  description: string
+  note: string
   user: string
 }
 
