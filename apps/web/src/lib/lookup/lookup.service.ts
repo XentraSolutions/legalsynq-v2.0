@@ -11,7 +11,7 @@ import type {
 export const lookupService = {
   async getDocumentType(): Promise<string[]> {
     const { data } = await lookupApi.getDocumentType();
-    return data.map(type => type.name);
+    return data.map((type) => type.name);
   },
   async getTaskStatus(): Promise<TaskStatusResponse> {
     const { data } = await lookupApi.getTaskStatus();
@@ -76,6 +76,41 @@ export const lookupService = {
 
   async getStates(): Promise<{ items: unknown }> {
     const { data } = await lookupApi.getStates();
+    return {
+      items: data,
+    };
+  },
+
+  async getLiensStatus(): Promise<{ items: unknown }> {
+    const { data } = await lookupApi.getLiensStatus();
+    return {
+      items: data,
+    };
+  },
+
+  async getCaseManagers(): Promise<{ items: unknown }> {
+    const { data } = await lookupApi.getCaseManagers();
+    return {
+      items: data,
+    };
+  },
+
+  async getMedicalFacility(): Promise<{ items: unknown }> {
+    const { data } = await lookupApi.getMedicalFacility();
+    return {
+      items: data,
+    };
+  },
+
+  async getMedicalProviders(): Promise<{ items: unknown }> {
+    const { data } = await lookupApi.getMedicalProviders();
+    return {
+      items: data,
+    };
+  },
+
+  async getFundingCompany(): Promise<{ items: unknown }> {
+    const { data } = await lookupApi.getFundingCompany();
     return {
       items: data,
     };

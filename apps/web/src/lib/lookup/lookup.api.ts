@@ -72,7 +72,23 @@ export const lookupApi = {
     return apiClient.get<unknown[]>(`${BASE}/states`);
   },
 
-  lookupLiensStatus(id: string) {
+  getLiensStatus() {
     return apiClient.get<unknown[]>(`${BASE}/liens/status`);
+  },
+
+  getFundingCompany() {
+    return apiClient.get<unknown[]>(`${BASE}/contact/funding-company`);
+  },
+
+  getCaseManagers() {
+    return apiClient.get<unknown[]>(`/liens/contact/casemanagers`);
+  },
+
+  getMedicalProviders() {
+    return apiClient.get<unknown[]>(`${BASE}/contact/medical-provider`);
+  },
+
+  getMedicalFacility() {
+    return apiClient.get<unknown[]>(`${BASE}/facility`);
   },
 };
