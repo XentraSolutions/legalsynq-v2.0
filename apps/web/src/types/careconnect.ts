@@ -522,6 +522,7 @@ export interface AdminReferralItem {
   providerEmail:           string | null;
   referringOrganizationId: string | null;
   receivingOrganizationId: string | null;
+  referringOrganizationName?: string | null;
   referrerName:            string | null;
   referrerEmail:           string | null;
   createdAtUtc:            string;

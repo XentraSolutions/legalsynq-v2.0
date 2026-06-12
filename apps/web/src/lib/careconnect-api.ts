@@ -119,6 +119,19 @@ export const careConnectApi = {
       apiClient.get<ReferralAuditEvent[]>(`/careconnect/api/referrals/${id}/audit`),
   },
 
+  adminReferrals: {
+    getHistory: (id: string) =>
+      apiClient.get<ReferralHistoryItem[]>(`/careconnect/api/admin/referrals/${id}/history`),
+
+    listAttachments: (referralId: string) =>
+      apiClient.get<AttachmentSummary[]>(`/careconnect/api/admin/referrals/${referralId}/attachments`),
+
+    getAttachmentSignedUrl: (referralId: string, attachmentId: string, download = false) =>
+      apiClient.get<SignedUrlResponse>(
+        `/careconnect/api/admin/referrals/${referralId}/attachments/${attachmentId}/url${download ? '?download=true' : ''}`,
+      ),
+  },
+
   appointments: {
     create: (body: CreateAppointmentRequest) =>
       apiClient.post<AppointmentDetail>('/careconnect/api/appointments', body),

@@ -18,6 +18,8 @@ interface AttachmentPanelProps {
   entityType: 'referral' | 'appointment';
   entityId:   string;
   canUpload?: boolean;
+  readOnly?: boolean;
+  adminReferralView?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -130,7 +132,13 @@ function FilterBar({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function AttachmentPanel({ entityType, entityId, canUpload = false }: AttachmentPanelProps) {
+export function AttachmentPanel({
+  entityType,
+  entityId,
+  canUpload = false,
+  readOnly = false,
+  adminReferralView = false,
+}: AttachmentPanelProps) {
   const [attachments, setAttachments]     = useState<AttachmentSummary[]>([]);
   const [loadError,   setLoadError]       = useState<string | null>(null);
   const [uploading,   setUploading]       = useState(false);
@@ -153,9 +161,11 @@ export function AttachmentPanel({ entityType, entityId, canUpload = false }: Att
   const apiList = useCallback(
     () =>
       entityType === 'referral'
-        ? careConnectApi.referralAttachments.list(entityId)
+        ? adminReferralView
+          ? careConnectApi.adminReferrals.listAttachments(entityId)
+          : careConnectApi.referralAttachments.list(entityId)
         : careConnectApi.appointmentAttachments.list(entityId),
-    [entityType, entityId],
+    [adminReferralView, entityType, entityId],
   );
 
   const apiUpload = useCallback(
@@ -169,9 +179,11 @@ export function AttachmentPanel({ entityType, entityId, canUpload = false }: Att
   const apiGetSignedUrl = useCallback(
     (attachmentId: string) =>
       entityType === 'referral'
-        ? careConnectApi.referralAttachments.getSignedUrl(entityId, attachmentId)
+        ? adminReferralView
+          ? careConnectApi.adminReferrals.getAttachmentSignedUrl(entityId, attachmentId)
+          : careConnectApi.referralAttachments.getSignedUrl(entityId, attachmentId)
         : careConnectApi.appointmentAttachments.getSignedUrl(entityId, attachmentId),
-    [entityType, entityId],
+    [adminReferralView, entityType, entityId],
   );
 
   // ── Load attachments on mount ───────────────────────────────────────────────
@@ -306,7 +318,11 @@ export function AttachmentPanel({ entityType, entityId, canUpload = false }: Att
         </h3>
 
         {/* Upload trigger — admins only */}
-        {canUpload ? (
+        {readOnly ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded bg-gray-50 text-gray-500">
+            View only
+          </span>
+        ) : canUpload ? (
           <div>
             <input
               ref={fileInputRef}

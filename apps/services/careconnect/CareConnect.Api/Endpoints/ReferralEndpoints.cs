@@ -138,7 +138,7 @@ public static class ReferralEndpoints
             var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
             var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
 
-            if (!ctx.IsPlatformAdmin)
+            if (!CareConnectParticipantHelper.IsAdmin(ctx))
             {
                 var isParticipant =
                     (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
@@ -176,7 +176,7 @@ public static class ReferralEndpoints
 
             // Participant check — mirrors GET /{id:guid} to prevent cross-tenant data access.
             var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
-            if (!ctx.IsPlatformAdmin)
+            if (!CareConnectParticipantHelper.IsAdmin(ctx))
             {
                 var isParticipant =
                     (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||

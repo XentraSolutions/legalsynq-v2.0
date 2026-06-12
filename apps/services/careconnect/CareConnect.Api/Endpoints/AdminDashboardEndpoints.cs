@@ -11,7 +11,9 @@
 // BLK-GOV-02: Uses AdminTenantScope helpers — replaces fragile inline ternaries.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using BuildingBlocks.Exceptions;
 using CareConnect.Application.Cache;
+using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
@@ -39,6 +41,22 @@ public static class AdminDashboardEndpoints
 
         routes
             .MapGet("/api/admin/referrals", GetAdminReferralsAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
+            .MapGet("/api/admin/referrals/{id:guid}", GetAdminReferralByIdAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
+            .MapGet("/api/admin/referrals/{id:guid}/history", GetAdminReferralHistoryAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
+            .MapGet("/api/admin/referrals/{referralId:guid}/attachments", GetAdminReferralAttachmentsAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
+            .MapGet("/api/admin/referrals/{referralId:guid}/attachments/{attachmentId:guid}/url", GetAdminReferralAttachmentSignedUrlAsync)
             .RequireAuthorization(Policies.PlatformOrTenantAdmin);
 
         return routes;
@@ -211,6 +229,7 @@ public static class AdminDashboardEndpoints
     private static async Task<IResult> GetAdminReferralsAsync(
         CareConnectDbContext    db,
         ITenantServiceClient    tenantClient,
+        IIdentityOrganizationService identityOrganizationService,
         ICurrentRequestContext  ctx,
         HttpContext             http,
         [FromQuery] int      page     = 1,
@@ -272,6 +291,23 @@ public static class AdminDashboardEndpoints
             tenantClient,
             ct);
 
+        var referringOrgIds = items
+            .Select(x => x.referringOrganizationId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        var referringOrgNameTasks = referringOrgIds.ToDictionary(
+            id => id,
+            id => identityOrganizationService.GetOrganizationNameAsync(id, ct));
+
+        await Task.WhenAll(referringOrgNameTasks.Values);
+
+        var referringOrgNames = referringOrgNameTasks.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.Result);
+
         var resultItems = items.Select(x => new
         {
             x.id,
@@ -284,6 +320,9 @@ public static class AdminDashboardEndpoints
             x.providerEmail,
             x.referringOrganizationId,
             x.receivingOrganizationId,
+            referringOrganizationName = x.referringOrganizationId.HasValue
+                ? referringOrgNames.GetValueOrDefault(x.referringOrganizationId.Value)
+                : null,
             x.referrerName,
             x.referrerEmail,
             x.createdAtUtc,
@@ -297,5 +336,145 @@ public static class AdminDashboardEndpoints
             page,
             pageSize,
         });
+    }
+
+    private static async Task<IResult> GetAdminReferralByIdAsync(
+        Guid                    id,
+        IReferralService        referralService,
+        ICurrentRequestContext  ctx,
+        HttpContext             http,
+        CancellationToken       ct)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        var effectiveTenantId = scope.TenantId ?? Guid.Empty;
+
+        try
+        {
+            var referral = await referralService.GetByIdAsync(
+                effectiveTenantId,
+                id,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            return Results.Ok(referral);
+        }
+        catch (NotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    private static async Task<IResult> GetAdminReferralHistoryAsync(
+        Guid                    id,
+        IReferralService        referralService,
+        ICurrentRequestContext  ctx,
+        HttpContext             http,
+        CancellationToken       ct)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        try
+        {
+            var referral = await referralService.GetByIdAsync(
+                scope.TenantId ?? Guid.Empty,
+                id,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            var history = await referralService.GetHistoryAsync(
+                referral.TenantId,
+                id,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            return Results.Ok(history);
+        }
+        catch (NotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    private static async Task<IResult> GetAdminReferralAttachmentsAsync(
+        Guid                        referralId,
+        IReferralService            referralService,
+        IReferralAttachmentService  attachmentService,
+        ICurrentRequestContext      ctx,
+        HttpContext                 http,
+        CancellationToken           ct)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        try
+        {
+            var referral = await referralService.GetByIdAsync(
+                scope.TenantId ?? Guid.Empty,
+                referralId,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            var attachments = await attachmentService.GetByReferralAsync(
+                referral.TenantId,
+                referralId,
+                ctx.OrgId,
+                isAdmin: true,
+                ct);
+
+            return Results.Ok(attachments);
+        }
+        catch (NotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    private static async Task<IResult> GetAdminReferralAttachmentSignedUrlAsync(
+        Guid                        referralId,
+        Guid                        attachmentId,
+        [FromQuery] bool?           download,
+        IReferralService            referralService,
+        IReferralAttachmentService  attachmentService,
+        ICurrentRequestContext      ctx,
+        HttpContext                 http,
+        CancellationToken           ct)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        try
+        {
+            var referral = await referralService.GetByIdAsync(
+                scope.TenantId ?? Guid.Empty,
+                referralId,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            var result = await attachmentService.GetSignedUrlAsync(
+                referral.TenantId,
+                referralId,
+                attachmentId,
+                callerOrgId: ctx.OrgId,
+                callerOrgType: ctx.OrgType,
+                isAdmin: true,
+                isDownload: download ?? false,
+                ct: ct);
+
+            if (result is null)
+                return Results.Problem("The document is not currently accessible.", statusCode: 503);
+
+            return Results.Ok(result);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Results.Forbid();
+        }
+        catch (NotFoundException)
+        {
+            return Results.NotFound();
+        }
     }
 }

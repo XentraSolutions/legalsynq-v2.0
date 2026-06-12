@@ -9,7 +9,8 @@ import { ServerApiError } from '@/lib/server-api-client';
 import { ReferralListTable } from '@/components/careconnect/referral-list-table';
 import { ReferralQueueToolbar } from '@/components/careconnect/referral-queue-toolbar';
 import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
-import type { NetworkReferralItem } from '@/types/careconnect';
+import { formatTimestamp } from '@/lib/format-date';
+import type { AdminReferralItem, AdminReferralPage, NetworkReferralItem } from '@/types/careconnect';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,26 +30,34 @@ interface ReferralsPageProps {
 // ── Status badge colours ───────────────────────────────────────────────────────
 
 const STATUS_BADGE: Record<string, string> = {
-  New:        'bg-blue-100 text-blue-800',
-  NewOpened:  'bg-blue-50 text-blue-600',
-  Accepted:   'bg-indigo-100 text-indigo-800',
-  InProgress: 'bg-yellow-100 text-yellow-800',
-  Completed:  'bg-green-100 text-green-800',
-  Declined:   'bg-red-100 text-red-800',
-  Cancelled:  'bg-gray-100 text-gray-500',
+  New:        'bg-blue-50 text-blue-700 border-blue-200',
+  NewOpened:  'bg-sky-50 text-sky-700 border-sky-200',
+  Accepted:   'bg-teal-50 text-teal-700 border-teal-200',
+  InProgress: 'bg-amber-50 text-amber-700 border-amber-200',
+  Completed:  'bg-green-50 text-green-700 border-green-200',
+  Declined:   'bg-red-50 text-red-700 border-red-200',
+  Cancelled:  'bg-gray-50 text-gray-600 border-gray-200',
 };
 
 const URGENCY_BADGE: Record<string, string> = {
-  Emergency: 'bg-red-100 text-red-800',
-  Urgent:    'bg-orange-100 text-orange-800',
-  Normal:    'bg-gray-100 text-gray-600',
-  Low:       'bg-gray-50 text-gray-400',
+  Emergency: 'bg-red-50 text-red-700 border-red-200',
+  Urgent:    'bg-orange-50 text-orange-700 border-orange-200',
+  Normal:    'bg-blue-50 text-blue-600 border-blue-200',
+  Low:       'bg-gray-50 text-gray-600 border-gray-200',
 };
+
+function rowHighlight(status: string): string {
+  if (status === 'New')        return 'bg-blue-50/40 hover:bg-blue-50 border-l-4 border-l-blue-400';
+  if (status === 'NewOpened')  return 'bg-sky-50/40 hover:bg-sky-50 border-l-4 border-l-sky-400';
+  if (status === 'Accepted')   return 'hover:bg-gray-50 border-l-4 border-l-teal-400';
+  if (status === 'InProgress') return 'bg-amber-50/30 hover:bg-amber-50/60 border-l-4 border-l-amber-400';
+  return 'hover:bg-gray-50 border-l-4 border-l-transparent';
+}
 
 function StatusBadge({ status }: { status: string }) {
   const cls = STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-700';
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
       {status === 'NewOpened' ? 'Opened' : status}
     </span>
   );
@@ -57,7 +66,7 @@ function StatusBadge({ status }: { status: string }) {
 function UrgencyBadge({ urgency }: { urgency: string }) {
   const cls = URGENCY_BADGE[urgency] ?? 'bg-gray-100 text-gray-600';
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
       {urgency}
     </span>
   );
@@ -75,6 +84,10 @@ function normalizeNetworkDisplay(value?: string | null): string | null {
 }
 
 function getNetworkDisplay(item: NetworkReferralItem): string | null {
+  return normalizeNetworkDisplay(item.networkName) ?? normalizeNetworkDisplay(item.tenantName);
+}
+
+function getAdminNetworkDisplay(item: AdminReferralItem): string | null {
   return normalizeNetworkDisplay(item.networkName) ?? normalizeNetworkDisplay(item.tenantName);
 }
 
@@ -295,6 +308,181 @@ async function NetworkReferralsView({
   );
 }
 
+async function TenantAdminReadOnlyReferralsView({
+  sessionTenantId,
+  status,
+}: {
+  sessionTenantId: string;
+  status?: string;
+}) {
+  let data: AdminReferralPage | null = null;
+  let fetchError: string | null = null;
+
+  try {
+    data = await careConnectServerApi.adminDashboard.getReferrals({
+      page: 1,
+      pageSize: 200,
+      status: status || undefined,
+      tenantId: sessionTenantId,
+    });
+  } catch (err) {
+    fetchError = err instanceof ServerApiError ? err.message : 'Failed to load tenant referrals.';
+  }
+
+  const items = data?.items ?? [];
+  const showNetworkColumn = items.some((item) => 'networkName' in item || 'tenantName' in item);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/careconnect/referrals"
+          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+            !status
+              ? 'bg-primary text-white border-primary'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+          }`}
+        >
+          All
+        </Link>
+        {ALL_STATUSES.map((s) => (
+          <Link
+            key={s}
+            href={`/careconnect/referrals?status=${s}`}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              status === s
+                ? 'bg-primary text-white border-primary'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+            }`}
+          >
+            {s}
+          </Link>
+        ))}
+      </div>
+
+      {fetchError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+          Unable to load tenant referrals. {fetchError}
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-100">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Referral</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Referrer</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Provider</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Service</th>
+                  {showNetworkColumn && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Network</th>
+                  )}
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Urgency</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Created</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {items.map((item) => {
+                  const networkDisplay = getAdminNetworkDisplay(item);
+                  return (
+                    <tr key={item.id} className={`transition-colors ${rowHighlight(item.status)}`}>
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-gray-900">{item.id.slice(0, 8)}…</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-gray-800 max-w-[180px] truncate" title={item.referringOrganizationName ?? item.referrerName ?? item.referrerEmail ?? '—'}>
+                          {item.referringOrganizationName ?? item.referrerName ?? '—'}
+                        </div>
+                        {item.referrerEmail && (
+                          <div className="text-xs text-gray-500 max-w-[180px] truncate" title={item.referrerEmail}>
+                            {item.referrerEmail}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-gray-800 max-w-[180px] truncate" title={item.providerName ?? '—'}>
+                          {item.providerName ?? '—'}
+                        </div>
+                        {item.providerEmail && (
+                          <div className="text-xs text-gray-500 max-w-[180px] truncate" title={item.providerEmail}>
+                            {item.providerEmail}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-gray-700 max-w-[160px] truncate" title={item.requestedService}>
+                          {item.requestedService}
+                        </div>
+                      </td>
+                      {showNetworkColumn && (
+                        <td className="px-4 py-3">
+                          {networkDisplay ? (
+                            <div className="text-sm text-gray-800 max-w-[160px] truncate" title={networkDisplay}>
+                              {networkDisplay}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
+                      )}
+                      <td className="px-4 py-3">
+                        <StatusBadge status={item.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <UrgencyBadge urgency={item.urgency} />
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const ts = formatTimestamp(item.createdAtUtc);
+                          return (
+                            <>
+                              <p className="text-xs text-gray-500">{ts.date}</p>
+                              <p className="text-[11px] text-gray-400">{ts.time}</p>
+                            </>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/careconnect/referrals/${item.id}`}
+                          className="text-xs font-medium px-2.5 py-1 border border-gray-200 text-gray-700 rounded hover:bg-gray-50 transition-colors whitespace-nowrap"
+                        >
+                          View
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {data && items.length === 0 && !fetchError && (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="w-14 h-14 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h3 className="text-base font-semibold text-gray-900 mb-1">
+            {status ? `No ${status} referrals` : 'No referrals yet'}
+          </h3>
+          <p className="text-sm text-gray-500">
+            Referrals tied to your tenant will appear here when law firms send cases to providers.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default async function ReferralsPage({ searchParams }: ReferralsPageProps) {
@@ -304,11 +492,38 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
   const isReferrer        = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver        = session.productRoles.includes(ProductRole.CareConnectReceiver);
   const isNetworkManager  = session.productRoles.includes(ProductRole.CareConnectNetworkManager);
+  const isTenantAdminView = session.isTenantAdmin && !session.isPlatformAdmin;
 
   // LSCC-01-002-02: Enforce the admin-controlled access model.
-  if (!isReferrer && !isReceiver && !isNetworkManager) {
+  if (!isReferrer && !isReceiver && !isNetworkManager && !isTenantAdminView) {
     const readiness = checkCareConnectReceiverAccess(session);
     return <ReferralAccessBlocked reason={readiness.reason} />;
+  }
+
+  if (isTenantAdminView) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Referrals</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              View referral activity between referrers and receivers.
+            </p>
+          </div>
+        </div>
+
+        <TenantAdminReadOnlyReferralsView
+          sessionTenantId={session.tenantId}
+          status={searchParamsData.status || undefined}
+        />
+
+        <div className="pt-1">
+          <Link href="/careconnect/dashboard" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+            ← Back to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   // ── Network manager view ───────────────────────────────────────────────────

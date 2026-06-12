@@ -173,6 +173,9 @@ export const careConnectServerApi = {
       serverApi.get<AdminReferralPage>(
         `/careconnect/api/admin/referrals${toQs(params as Record<string, unknown>)}`,
       ),
+
+    getReferralById: (id: string) =>
+      serverApi.get<ReferralDetail>(`/careconnect/api/admin/referrals/${id}`),
   },
 
   // LSCC-01-005: Referral performance metrics (admin-only, server-side)

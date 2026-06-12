@@ -25,6 +25,9 @@ vi.mock('@/lib/careconnect-server-api', () => ({
       getById: vi.fn(),
       getComments: vi.fn(),
     },
+    adminDashboard: {
+      getReferralById: vi.fn(),
+    },
   },
 }));
 
@@ -58,7 +61,7 @@ vi.mock('@/components/careconnect/referral-status-actions', () => ({
 }));
 
 vi.mock('@/components/careconnect/referral-timeline', () => ({
-  ReferralTimeline: () => <div>Timeline</div>,
+  ReferralTimeline: ({ adminView }: { adminView?: boolean }) => <div>Timeline:{String(!!adminView)}</div>,
 }));
 
 vi.mock('@/components/careconnect/referral-audit-timeline', () => ({
@@ -70,7 +73,13 @@ vi.mock('@/components/careconnect/referral-access-blocked', () => ({
 }));
 
 vi.mock('@/components/careconnect/attachment-panel', () => ({
-  AttachmentPanel: () => <div>Attachment panel</div>,
+  AttachmentPanel: ({
+    readOnly,
+    adminReferralView,
+  }: {
+    readOnly?: boolean;
+    adminReferralView?: boolean;
+  }) => <div>Attachment panel:{String(!!readOnly)}:{String(!!adminReferralView)}</div>,
 }));
 
 vi.mock('@/components/careconnect/referral-message-thread', () => ({
@@ -78,14 +87,17 @@ vi.mock('@/components/careconnect/referral-message-thread', () => ({
     referralId,
     initialComments,
     initialError,
+    readOnly,
   }: {
     referralId: string;
     initialComments: Array<{ message: string }>;
     initialError?: string | null;
+    readOnly?: boolean;
   }) => (
     <div>
       <div>MessageThread:{referralId}</div>
       <div>MessageCount:{initialComments.length}</div>
+      <div>MessageReadOnly:{String(!!readOnly)}</div>
       {initialComments.map((comment) => (
         <div key={comment.message}>{comment.message}</div>
       ))}
@@ -140,6 +152,7 @@ describe('CareConnect referral detail page', () => {
     vi.clearAllMocks();
     vi.mocked(requireOrg).mockResolvedValue(SESSION);
     vi.mocked(careConnectServerApi.referrals.getById).mockResolvedValue(REFERRAL as Awaited<ReturnType<typeof careConnectServerApi.referrals.getById>>);
+    vi.mocked(careConnectServerApi.adminDashboard.getReferralById).mockResolvedValue(REFERRAL as Awaited<ReturnType<typeof careConnectServerApi.adminDashboard.getReferralById>>);
     vi.mocked(careConnectServerApi.referrals.getComments).mockResolvedValue(COMMENTS);
   });
 
@@ -185,5 +198,30 @@ describe('CareConnect referral detail page', () => {
     expect(screen.getByText('MessageThread:ref-123')).toBeInTheDocument();
     expect(screen.getByText('MessageCount:0')).toBeInTheDocument();
     expect(screen.queryByText('MessageError:HTTP 403')).not.toBeInTheDocument();
+  });
+
+  test('renders tenant-admin-only access in read-only mode', async () => {
+    vi.mocked(requireOrg).mockResolvedValue({
+      ...SESSION,
+      isTenantAdmin: true,
+      systemRoles: ['TenantAdmin'],
+      productRoles: [],
+    });
+
+    const page = await ReferralDetailPage({
+      params: Promise.resolve({ id: 'ref-123' }),
+      searchParams: Promise.resolve({}),
+    });
+
+    render(page);
+
+    expect(screen.getByText('Tenant Admin view only. Referral updates, uploads, and messages are disabled.')).toBeInTheDocument();
+    expect(screen.queryByText('Status actions')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delivery card')).not.toBeInTheDocument();
+    expect(screen.getByText('Attachment panel:true:true')).toBeInTheDocument();
+    expect(screen.queryByText('MessageThread:ref-123')).not.toBeInTheDocument();
+    expect(screen.getByText('Timeline:true')).toBeInTheDocument();
+    expect(careConnectServerApi.referrals.getComments).not.toHaveBeenCalled();
+    expect(careConnectServerApi.adminDashboard.getReferralById).toHaveBeenCalledWith('ref-123');
   });
 });

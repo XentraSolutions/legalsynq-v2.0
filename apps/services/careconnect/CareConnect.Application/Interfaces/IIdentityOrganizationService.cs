@@ -130,6 +130,15 @@ public interface IIdentityOrganizationService
     Task<bool> CheckAnyTenantOwnerEmailAsync(
         string            email,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves an Identity organization name by organization ID.
+    ///
+    /// Returns null when the organization is not found or Identity is unavailable.
+    /// </summary>
+    Task<string?> GetOrganizationNameAsync(
+        Guid              orgId,
+        CancellationToken ct = default);
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────

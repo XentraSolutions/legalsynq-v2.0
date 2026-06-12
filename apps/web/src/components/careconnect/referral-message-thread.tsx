@@ -11,12 +11,14 @@ interface ReferralMessageThreadProps {
   referralId: string;
   initialComments: ReferralComment[];
   initialError?: string | null;
+  readOnly?: boolean;
 }
 
 export function ReferralMessageThread({
   referralId,
   initialComments,
   initialError = null,
+  readOnly = false,
 }: ReferralMessageThreadProps) {
   const historyRef = useRef<HTMLDivElement | null>(null);
   const [comments, setComments] = useState(initialComments);
@@ -88,7 +90,9 @@ export function ReferralMessageThread({
       >
         {comments.length === 0 ? (
           <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500 md:min-h-[12rem]">
-            No messages yet. Start the conversation with the referring party below.
+            {readOnly
+              ? 'No messages yet.'
+              : 'No messages yet. Start the conversation with the referring party below.'}
           </div>
         ) : (
           <div className="space-y-3">
@@ -99,12 +103,18 @@ export function ReferralMessageThread({
         )}
       </div>
 
-      <ReferralMessageComposer
-        message={message}
-        onChange={setMessage}
-        onSubmit={handleSubmit}
-        isSubmitting={isSubmitting}
-      />
+      {readOnly ? (
+        <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
+          Tenant Admin view only. Messaging is disabled on this referral.
+        </div>
+      ) : (
+        <ReferralMessageComposer
+          message={message}
+          onChange={setMessage}
+          onSubmit={handleSubmit}
+          isSubmitting={isSubmitting}
+        />
+      )}
     </div>
   );
 }

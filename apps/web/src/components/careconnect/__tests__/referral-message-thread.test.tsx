@@ -96,6 +96,20 @@ describe('ReferralMessageThread', () => {
     expect(screen.getByText('No messages yet. Start the conversation with the referring party below.')).toBeInTheDocument();
   });
 
+  test('hides the composer in read-only mode', () => {
+    render(
+      <ReferralMessageThread
+        referralId="ref-1"
+        initialComments={[]}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByText('No messages yet.')).toBeInTheDocument();
+    expect(screen.getByText('Tenant Admin view only. Messaging is disabled on this referral.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send Message' })).not.toBeInTheDocument();
+  });
+
   test('shows validation for blank message', async () => {
     const user = userEvent.setup();
     render(<ReferralMessageThread referralId="ref-1" initialComments={[]} />);

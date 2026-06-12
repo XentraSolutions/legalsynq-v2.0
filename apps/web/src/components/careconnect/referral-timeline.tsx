@@ -6,6 +6,7 @@ import type { ReferralHistoryItem } from '@/types/careconnect';
 
 interface ReferralTimelineProps {
   referralId: string;
+  adminView?: boolean;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -30,15 +31,19 @@ function formatDateTime(iso: string): string {
   });
 }
 
-export function ReferralTimeline({ referralId }: ReferralTimelineProps) {
+export function ReferralTimeline({ referralId, adminView = false }: ReferralTimelineProps) {
   const [history, setHistory] = useState<ReferralHistoryItem[] | null>(null);
   const [error,   setError]   = useState(false);
 
   useEffect(() => {
-    careConnectApi.referrals.getHistory(referralId)
+    const request = adminView
+      ? careConnectApi.adminReferrals.getHistory(referralId)
+      : careConnectApi.referrals.getHistory(referralId);
+
+    request
       .then(({ data }) => setHistory(data))
       .catch(() => setError(true));
-  }, [referralId]);
+  }, [adminView, referralId]);
 
   if (error) {
     return <p className="text-xs text-red-400">Could not load activity history.</p>;

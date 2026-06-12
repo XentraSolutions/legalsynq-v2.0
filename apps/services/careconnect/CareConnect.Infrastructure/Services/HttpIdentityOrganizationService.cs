@@ -497,6 +497,46 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         }
     }
 
+    public async Task<string?> GetOrganizationNameAsync(
+        Guid              orgId,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled || orgId == Guid.Empty)
+            return null;
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync(
+                $"api/admin/organizations/{orgId}", cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var result = await response.Content.ReadFromJsonAsync<OrganizationLookupResponse>(
+                cancellationToken: cts.Token);
+
+            return string.IsNullOrWhiteSpace(result?.Name)
+                ? null
+                : result.Name.Trim();
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "Identity organization lookup timed out for org {OrgId}.", orgId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Identity organization lookup failed for org {OrgId}.", orgId);
+            return null;
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildIdentityClient()
@@ -581,6 +621,12 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
     {
         [JsonPropertyName("isTenantOwner")]
         public bool IsTenantOwner { get; set; }
+    }
+
+    private sealed class OrganizationLookupResponse
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
     }
 
     private sealed class ErrorCodeResponse
