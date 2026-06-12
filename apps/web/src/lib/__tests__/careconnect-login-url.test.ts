@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildCareConnectLoginUrl,
+  buildCareConnectReferralLoginUrl,
   buildCareConnectPortalLoginUrl,
   normalizeCareConnectPortalHost,
 } from '../careconnect-login-url.ts';
@@ -40,6 +41,18 @@ test('accepts a full portal origin without duplicating the scheme', () => {
   assert.equal(
     url,
     'https://careconnect-qa.legalsynq.com/login?returnTo=%2Fcareconnect%2Fdashboard&reason=referral-portal',
+  );
+});
+
+test('builds a CareConnect referral login URL for provider referral deep links', () => {
+  const url = buildCareConnectReferralLoginUrl(
+    'careconnect-demo.legalsynq.com',
+    '/provider/referrals/11111111-1111-1111-1111-111111111111',
+  );
+
+  assert.equal(
+    url,
+    'https://careconnect-demo.legalsynq.com/login?returnTo=%2Fprovider%2Freferrals%2F11111111-1111-1111-1111-111111111111&reason=referral-view',
   );
 });
 

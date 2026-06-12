@@ -3,6 +3,7 @@ import { FirmStatusClient }         from './firm-status-client';
 import { createEnrollmentToken }    from '@/app/enroll/actions';
 import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../lib/public-referral-error';
 import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
+import { buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
 import {
   ReferrerPortalAccessStatuses,
   type ReferrerPortalAccessStatusValue,
@@ -93,5 +94,10 @@ export default async function FirmStatusPage({ searchParams }: Props) {
     ...(referrerPhone            ? { phone:   referrerPhone                      } : {}),
   }).catch((err) => { console.error('[firm-status] createEnrollmentToken failed:', err); return null; });
 
-  return <FirmStatusClient token={token} data={threadData} portalAccessStatus={portalAccessStatus} loginUrl="/login" enrollToken={enrollToken} />;
+  const loginUrl = buildCareConnectReferralLoginUrl(
+    process.env.CC_COMMON_PORTAL_HOSTNAME,
+    `/careconnect/referrals/${threadData.referralId as string}`,
+  );
+
+  return <FirmStatusClient token={token} data={threadData} portalAccessStatus={portalAccessStatus} loginUrl={loginUrl} enrollToken={enrollToken} />;
 }

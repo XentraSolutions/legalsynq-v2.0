@@ -15,9 +15,10 @@ interface ReferralPublicSummary {
 }
 
 interface ActivationFormProps {
-  summary:    ReferralPublicSummary;
-  token:      string;
-  referralId: string;
+  summary:          ReferralPublicSummary;
+  token:            string;
+  referralId:       string;
+  fallbackLoginUrl: string;
 }
 
 type ProvisionOutcome = 'provisioned' | 'alreadyActive' | 'fallback';
@@ -28,7 +29,7 @@ interface ProvisionState {
   name:     string;
 }
 
-export function ActivationForm({ summary, token, referralId }: ActivationFormProps) {
+export function ActivationForm({ summary, token, referralId, fallbackLoginUrl }: ActivationFormProps) {
   const [name,     setName]     = useState('');
   const [email,    setEmail]    = useState('');
   const [status,   setStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
@@ -37,10 +38,6 @@ export function ActivationForm({ summary, token, referralId }: ActivationFormPro
   const [, startTransition]    = useTransition();
 
   const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
-
-  // CC2-INT-B05: land providers in the Common Portal after login, not the Tenant Portal.
-  // Fallback login URL used if the auto-provision endpoint does not return one.
-  const fallbackLoginUrl = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${referralId}`)}&reason=referral-view`;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

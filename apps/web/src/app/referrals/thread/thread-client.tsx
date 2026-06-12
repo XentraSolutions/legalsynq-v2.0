@@ -44,8 +44,9 @@ interface ThreadData {
 }
 
 interface Props {
-  token: string;
-  data:  ThreadData;
+  token:    string;
+  data:     ThreadData;
+  loginUrl: string;
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -112,7 +113,7 @@ const s: Record<string, React.CSSProperties> = {
 
 type ActionState = 'idle' | 'accepting' | 'declining' | 'accepted' | 'declined' | 'error';
 
-export function ThreadClient({ token, data }: Props) {
+export function ThreadClient({ token, data, loginUrl }: Props) {
   const [comments,      setComments]  = useState<Comment[]>(data.comments);
   const [senderName,    setSenderName] = useState('');
   const [message,       setMessage]   = useState('');
@@ -204,7 +205,6 @@ export function ThreadClient({ token, data }: Props) {
   const referralId   = data.referralId;
   const loginReturnTo = encodeURIComponent(`/provider/referrals/${referralId}`);
   const activateUrl  = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}`;
-  const loginUrl     = `/login?returnTo=${loginReturnTo}&reason=referral-view`;
 
   const handleAccept = () => {
     setActionError('');

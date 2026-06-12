@@ -76,6 +76,17 @@ export function buildCareConnectLoginUrl(portalHostname?: string | null): string
   });
 }
 
+export function buildCareConnectReferralLoginUrl(
+  portalHostname: string | null | undefined,
+  returnTo: string,
+  reason = 'referral-view',
+): string {
+  return buildCareConnectPortalLoginUrl(portalHostname, {
+    returnTo,
+    reason,
+  });
+}
+
 export function getCareConnectLoginUrlFromEnv(): string {
   return buildCareConnectLoginUrl(process.env.CC_COMMON_PORTAL_HOSTNAME);
 }

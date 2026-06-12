@@ -22,6 +22,7 @@ import { EnrollmentForm } from '@/app/enroll/enrollment-form';
 import type { EnrollmentPrefill } from '@/app/enroll/actions';
 import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../lib/public-referral-error';
 import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
+import { buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,7 +100,10 @@ export default async function ActivatePage({ searchParams }: PageProps) {
   }
 
   const prefill = toEnrollmentPrefill(threadData);
-  const loginUrl   = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${referralId}`)}&reason=referral-view`;
+  const loginUrl = buildCareConnectReferralLoginUrl(
+    process.env.CC_COMMON_PORTAL_HOSTNAME,
+    `/provider/referrals/${referralId}`,
+  );
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">

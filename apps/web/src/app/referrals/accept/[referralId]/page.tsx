@@ -27,6 +27,7 @@ import Link from 'next/link';
 import { ActivationLanding } from './activation-landing';
 import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../../lib/public-referral-error';
 import { fetchPublicCareConnect } from '../../lib/public-referral-proxy';
+import { buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
 const INVALID_ID   = 'invalid';
 
 interface PageProps {
@@ -61,7 +62,7 @@ interface PublicSummary {
 
 // ── Static screen components (no interactivity needed) ────────────────────────
 
-function InvalidScreen({ reason }: { reason: string }) {
+function InvalidScreen({ reason, loginUrl }: { reason: string; loginUrl: string }) {
   const isRevoked = reason === 'revoked';
   const isMissing = reason === 'missing-token';
   const isNotFound = reason === 'referral-not-found';
@@ -125,7 +126,7 @@ function InvalidScreen({ reason }: { reason: string }) {
                 <span className="font-semibold text-gray-400 shrink-0">3.</span>
                 <span>
                   If you are an existing platform user, you can{' '}
-                  <Link href="/login" className="text-primary hover:underline">log in</Link>
+                  <Link href={loginUrl} className="text-primary hover:underline">log in</Link>
                   {' '}to view referrals sent to your organisation.
                 </span>
               </li>
@@ -141,9 +142,8 @@ function InvalidScreen({ reason }: { reason: string }) {
   );
 }
 
-function AlreadyAcceptedScreen({ summary }: { summary: PublicSummary }) {
+function AlreadyAcceptedScreen({ summary, loginUrl }: { summary: PublicSummary; loginUrl: string }) {
   const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
-  const loginUrl   = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${summary.referralId}`)}&reason=referral-view`;
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -188,7 +188,11 @@ export default async function ReferralAcceptPage({ params, searchParams }: PageP
 
   // Static invalid route (e.g. /referrals/accept/invalid?reason=...)
   if (referralId === INVALID_ID) {
-    return <InvalidScreen reason={reason} />;
+    const loginUrl = buildCareConnectReferralLoginUrl(
+      process.env.CC_COMMON_PORTAL_HOSTNAME,
+      '/provider/dashboard',
+    );
+    return <InvalidScreen reason={reason} loginUrl={loginUrl} />;
   }
 
   if (!token) {
@@ -215,7 +219,11 @@ export default async function ReferralAcceptPage({ params, searchParams }: PageP
   }
 
   if (summary.isAlreadyAccepted) {
-    return <AlreadyAcceptedScreen summary={summary} />;
+    const loginUrl = buildCareConnectReferralLoginUrl(
+      process.env.CC_COMMON_PORTAL_HOSTNAME,
+      `/provider/referrals/${summary.referralId}`,
+    );
+    return <AlreadyAcceptedScreen summary={summary} loginUrl={loginUrl} />;
   }
 
   return <ActivationLanding summary={summary} token={token} referralId={referralId} />;

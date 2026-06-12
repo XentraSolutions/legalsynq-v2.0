@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { ThreadClient } from './thread-client';
 import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../lib/public-referral-error';
 import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
+import { buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,5 +39,10 @@ export default async function ReferralThreadPage({ searchParams }: Props) {
     redirect(`/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`);
   }
 
-  return <ThreadClient token={token} data={threadData} />;
+  const loginUrl = buildCareConnectReferralLoginUrl(
+    process.env.CC_COMMON_PORTAL_HOSTNAME,
+    `/provider/referrals/${threadData.referralId}`,
+  );
+
+  return <ThreadClient token={token} data={threadData} loginUrl={loginUrl} />;
 }

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { PublicAttachmentLink } from './public-attachment-link';
+import { buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
 
 /**
  * LSCC-01-002-01: Public direct acceptance removed.
@@ -56,7 +57,10 @@ function formatFileSize(bytes: number): string {
 
 export function ActivationLanding({ summary, token, referralId }: ActivationLandingProps) {
   const activateUrl = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}`;
-  const loginUrl    = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${referralId}`)}&reason=referral-view`;
+  const loginUrl = buildCareConnectReferralLoginUrl(
+    process.env.CC_COMMON_PORTAL_HOSTNAME,
+    `/provider/referrals/${referralId}`,
+  );
 
   const hasProviderContact = summary.providerPhone || summary.providerEmail;
   const hasProviderAddress = summary.providerAddressLine1 || summary.providerCity;
