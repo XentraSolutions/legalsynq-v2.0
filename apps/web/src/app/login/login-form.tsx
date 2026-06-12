@@ -80,7 +80,7 @@ export function LoginForm() {
 
     setLoading(true);
     try {
-      const body: Record<string, string> = { email, password };
+      const body: Record<string, string> = { email: email.trim(), password };
       if (showTenantField && tenantCode) body.tenantCode = tenantCode;
 
       const res = await fetch('/api/auth/login', {
