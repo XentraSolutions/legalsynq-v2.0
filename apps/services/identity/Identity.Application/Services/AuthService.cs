@@ -58,7 +58,7 @@ public class AuthService : IAuthService
         // Canonical audit helpers — used when a login failure must be emitted before re-throwing.
         // fire-and-observe: never awaited, never allowed to gate the primary auth response.
         var tenantCodeNorm  = (request.TenantCode ?? string.Empty).ToLowerInvariant().Trim();
-        var emailNorm       = request.Email.ToLowerInvariant();
+        var emailNorm       = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
 
         // AUTH-CC01: Common-portal email-based tenant resolution.
         // When the portal cannot resolve a tenant from the subdomain (e.g. the common portal

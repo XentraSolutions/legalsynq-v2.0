@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
 
   const outgoingBody = JSON.stringify({
     tenantCode: resolveByEmail ? null : resolvedTenantCode,
-    email,
+    email: email.trim(),
     password,
     subdomain: rawSubdomain,
     tenantId: resolvedTenantId,
