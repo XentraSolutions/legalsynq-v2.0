@@ -88,11 +88,11 @@ public class AuthLoginTenantResolutionTests
     }
 
     [Theory]
-    [InlineData(" user@example.com")]           // leading space
-    [InlineData("user@example.com ")]           // trailing space
-    [InlineData("  user@example.com  ")]        // both ends
-    [InlineData("\tuser@example.com")]          // tab
-    public async Task Login_WithWhitespacePaddedEmail_NormalizesAndSucceeds(string emailWithSpaces)
+    [InlineData(" user@example.com")]
+    [InlineData("user@example.com ")]
+    [InlineData("  user@example.com  ")]
+    [InlineData("\tuser@example.com")]
+    public async Task Login_WithWhitespacePaddedEmail_ThrowsUnauthorized(string emailWithSpaces)
     {
         using var factory = BuildFactory();
         var seeded = await SeedActiveUserAsync(factory);
@@ -100,12 +100,11 @@ public class AuthLoginTenantResolutionTests
         using var scope = factory.Services.CreateScope();
         var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
 
-        var response = await authService.LoginAsync(new LoginRequest(
-            Email: emailWithSpaces,
-            Password: seeded.Password,
-            TenantCode: seeded.TenantCode));
-
-        Assert.Equal(seeded.TenantId, response.User.TenantId);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: emailWithSpaces,
+                Password: seeded.Password,
+                TenantCode: seeded.TenantCode)));
     }
 
     [Theory]
@@ -129,22 +128,18 @@ public class AuthLoginTenantResolutionTests
     [InlineData(" multi.tenant@example.com")]
     [InlineData("multi.tenant@example.com ")]
     [InlineData("  multi.tenant@example.com  ")]
-    public async Task Login_WithWhitespacePaddedEmail_OnCommonPortal_NormalizesAndSucceeds(string emailWithSpaces)
+    public async Task Login_WithWhitespacePaddedEmail_OnCommonPortal_ThrowsUnauthorized(string emailWithSpaces)
     {
-        // The ResolveByEmail path normalizes via emailNorm before the GetByEmailAsync call.
-        // Padding should resolve to the seeded CareConnect user, not throw.
         using var factory = BuildFactory();
-        var seeded = await SeedMultiTenantCareConnectUserAsync(factory);
 
         using var scope = factory.Services.CreateScope();
         var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
 
-        var response = await authService.LoginAsync(new LoginRequest(
-            Email: emailWithSpaces,
-            Password: seeded.Password,
-            ResolveByEmail: true));
-
-        Assert.Equal(seeded.CareConnectTenantId, response.User.TenantId);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: emailWithSpaces,
+                Password: "Password123!",
+                ResolveByEmail: true)));
     }
 
     private static async Task<(Guid TenantId, string TenantCode, string Email, string Password)> SeedActiveUserAsync(
