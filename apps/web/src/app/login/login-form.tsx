@@ -78,9 +78,14 @@ export function LoginForm() {
     e.preventDefault();
     setError(null);
 
+    if (email !== email.trim()) {
+      setError('Invalid credentials.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const body: Record<string, string> = { email: email.trim(), password };
+      const body: Record<string, string> = { email, password };
       if (showTenantField && tenantCode) body.tenantCode = tenantCode;
 
       const res = await fetch('/api/auth/login', {
