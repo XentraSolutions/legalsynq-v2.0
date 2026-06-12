@@ -63,13 +63,13 @@ export default function ContactsPage() {
   const fetchContacts = useCallback(async () => {
     try {
       setLoading(true);
-      const [result, contactTypesRes] = await Promise.allSettled([
+      const [contactTypesRes, result] = await Promise.allSettled([
+        await lookupService.getContactTypes(),
         await contactsService.getContacts({
           keyword: search || undefined,
           ContactType: typeFilter || undefined,
           pageSize: 100,
         }),
-        await lookupService.getContactTypes(),
       ]);
       if (result.status == "fulfilled") {
         setContacts(result.value.items);
