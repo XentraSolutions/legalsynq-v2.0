@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireOrg } from '@/lib/auth-guards';
+import { requireAdmin } from '@/lib/auth-guards';
 import {
 
   notificationsServerApi,
@@ -89,7 +89,7 @@ function fmtDate(iso: string): string {
 // ── Overview overview ─────────────────────────────────────────────────────────
 
 export default async function NotificationsPage() {
-  const session = await requireOrg();
+  const session = await requireAdmin();
   const { tenantId } = session;
 
   // Fetch stats + last 10 notifications in parallel.

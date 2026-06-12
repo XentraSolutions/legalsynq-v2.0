@@ -223,9 +223,9 @@ export function orgTypeLabel(orgType: string | undefined): string {
 export const GLOBAL_BOTTOM_NAV: NavSection = {
   heading: 'ACCOUNT',
   items: [
-    { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line'                       },
-    { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line'                  },
-    { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line'                    },
+    { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line',                adminOnly: true },
+    { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line',           adminOnly: true },
+    { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line',             adminOnly: true },
     { href: '/support',                         label: 'Support',         icon: 'ri-customer-service-2-line', adminOnly: true },
     { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-shield-user-line',        adminOnly: true },
   ],
