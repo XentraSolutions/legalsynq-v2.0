@@ -77,6 +77,7 @@ export function LoginForm() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
     setLoading(true);
     try {
       const body: Record<string, string> = { email, password };

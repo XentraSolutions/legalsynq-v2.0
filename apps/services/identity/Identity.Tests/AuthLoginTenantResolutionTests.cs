@@ -87,6 +87,68 @@ public class AuthLoginTenantResolutionTests
         Assert.Contains("SYNQ_CARECONNECT:CARECONNECT_REFERRER", response.User.ProductRoles ?? []);
     }
 
+    [Theory]
+    [InlineData(" user@example.com")]
+    [InlineData("user@example.com ")]
+    [InlineData("  user@example.com  ")]
+    public async Task Login_WithWhitespaceInEmail_ThrowsUnauthorized(string emailWithSpaces)
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedActiveUserAsync(factory);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: emailWithSpaces,
+                Password: seeded.Password,
+                TenantCode: seeded.TenantCode)));
+    }
+
+    private static async Task<(Guid TenantId, string TenantCode, string Email, string Password)> SeedActiveUserAsync(
+        WebApplicationFactory<Program> factory)
+    {
+        const string password = "Password123!";
+        const string email = "user@example.com";
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+
+        var tenant = Tenant.Rehydrate(
+            Guid.CreateVersion7(),
+            $"active-{Guid.CreateVersion7():N}",
+            displayName: "Active Tenant",
+            status: ProvisioningStatus.Active.ToString());
+        db.Tenants.Add(tenant);
+
+        var role = Role.Create(
+            tenant.Id,
+            "TenantAdmin",
+            description: "Test tenant admin role",
+            isSystemRole: true,
+            scope: RoleScopes.Tenant);
+        db.Roles.Add(role);
+
+        var user = User.Create(
+            tenant.Id,
+            email,
+            passwordHasher.Hash(password),
+            "Test",
+            "User");
+        db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, tenant.Id));
+        db.ScopedRoleAssignments.Add(ScopedRoleAssignment.Create(
+            user.Id,
+            role.Id,
+            ScopedRoleAssignment.ScopeTypes.Global,
+            tenantId: tenant.Id));
+
+        await db.SaveChangesAsync();
+        return (tenant.Id, tenant.Code, email, password);
+    }
+
     private static async Task<(Guid TenantId, string TenantCode, string Email, string Password)> SeedPendingTenantLoginUserAsync(
         WebApplicationFactory<Program> factory)
     {
