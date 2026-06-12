@@ -11,9 +11,12 @@ import {
   type ReactNode,
 } from 'react';
 import type { PlatformSession } from '@/types';
+import { LookupResponse } from '@/lib/lookup/lookup.types';
+import { lookupService } from '@/lib/lookup';
 
 interface SessionContextValue {
   session:       PlatformSession | null;
+  lookup: LookupResponse | null;
   isLoading:     boolean;
   refresh:       () => Promise<void>;
   clearSession:  () => void;
@@ -82,6 +85,7 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
   // isLoading starts false when we already have data; true only on a cold client load.
   const seeded = initialSession ? deserializeSession(initialSession) : null;
   const [session,   setSession]   = useState<PlatformSession | null>(seeded);
+  const [lookup,   setLookup]   = useState<LookupResponse | null>(null);
   const [isLoading, setIsLoading] = useState(initialSession == null);
   const [showWarning, setShowWarning] = useState(false);
   const [countdown,   setCountdown]   = useState(WARNING_LEAD_SECONDS);
@@ -258,6 +262,7 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
 
   const clearSession = useCallback(() => {
     setSession(null);
+    setLookup(null);
     sessionRef.current = null;
   }, []);
 
@@ -329,9 +334,18 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     };
   }, [session, resetIdleTimer]);
 
+  useEffect(() => {
+    if (!session || lookup) return;
+
+    void (async () => {
+      const data = await lookupService.getLookupAll();
+      setLookup(data)
+    })();
+  }, [session, lookup])
+
   const ctxValue = useMemo(
-    () => ({ session, isLoading, refresh: fetchSession, clearSession }),
-    [session, isLoading, fetchSession, clearSession],
+    () => ({ session, lookup, isLoading, refresh: fetchSession, clearSession }),
+    [session, lookup, isLoading, fetchSession, clearSession],
   );
 
   return (

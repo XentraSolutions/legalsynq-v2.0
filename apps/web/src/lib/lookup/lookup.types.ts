@@ -29,17 +29,20 @@ export interface LookupData {
 }
 
 export interface LookupResponse {
-  states: LookupData | []
-  liensStatus: LookupData | []
-  accidentType: LookupData | []
-  contactType: LookupData | []
-  caseStatus: LookupData | []
-  medicalStatus: LookupData | []
-  currentAttr: LookupData | []
-  settlementStatus: LookupData | []
-  settlementType: LookupData | []
-  taskPriority: LookupData | []
-  contactLawfirmRole: LookupData | []
+  AccidentType: LookupData[] | []
+  CaseStatus: LookupData[] | []
+  ContactType: LookupData[] | []
+  CurrentAttributes: LookupData[] | []
+  DocumentCategory: LookupData[] | []
+  LiensStatus: LookupData[] | []
+  LienType: LookupData[] | []
+  MedicalStatus: LookupData[] | []
+  ProcedureCode: LookupData[] | []
+  ServicingPriority: LookupData[] | []
+  ServicingStatus: LookupData[] | []
+  SettlementStatus: LookupData[] | []
+  SettlementType: LookupData[] | []
+  State: LookupData[] | []
 }
 
 export interface ContactsByIdResponse extends LookupGenericResponse {}

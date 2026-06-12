@@ -31,6 +31,7 @@ import { CaseUpdatesItem } from "@/lib/cases/cases.types";
 import { lookupService } from "@/lib/lookup";
 import { GetSettlementHistoryResponse } from "@/lib/settlement/settlement.types";
 import { settlementService } from "@/lib/settlement";
+import { useSessionContext } from "@/providers/session-provider";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -507,6 +508,8 @@ function DetailsTab({
   const [tSaving, setTSaving] = useState(false);
   const [tErrors, setTErrors] = useState<Record<string, string>>({});
 
+  const { lookup } = useSessionContext()
+
   const resetPlaintiffForm = useCallback(() => {
     setPFirstName(d.clientFirstName);
     setPLastName(d.clientLastName);
@@ -844,9 +847,9 @@ function DetailsTab({
                     onChange={(e) => setTStatus(e.target.value)}
                     className={`${inputCls} appearance-none cursor-pointer`}
                   >
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_LABELS[s] || s}
+                    {lookup?.CaseStatus.map((s) => (
+                      <option key={s.id} value={s.code}>
+                        {s.name}
                       </option>
                     ))}
                   </select>
@@ -2161,6 +2164,8 @@ function ServicingTab({
     0,
   );
 
+  const { lookup } = useSessionContext()
+
   const leftContent = (
     <div className="space-y-4">
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -2203,9 +2208,9 @@ function ServicingTab({
                   onChange={(e) => setCaseStatus(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
                 >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s] || s}
+                  {lookup?.CaseStatus.map((s) => (
+                    <option key={s.id} value={s.code}>
+                      {s.name}
                     </option>
                   ))}
                 </select>
