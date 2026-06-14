@@ -86,4 +86,40 @@ describe('FirmStatusPage', () => {
       }),
     });
   });
+
+  test('includes the firm name in the enrollment token claims when present in referral notes', async () => {
+    const threadData = {
+      referralId: 'ref-123',
+      tenantId: 'tenant-1',
+      referrerEmail: 'lawyer@example.com',
+      referrerName: 'Lawyer User',
+      notes: 'Firm: Demo Law Group\nFirm phone: 555-0102',
+      status: 'New',
+      clientName: 'Jane Doe',
+      service: 'General Referral',
+      providerName: 'Demo Provider',
+      createdAt: '2026-06-11T00:00:00Z',
+      comments: [],
+    };
+
+    fetchPublicCareConnectMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => threadData,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: ReferrerPortalAccessStatuses.NoAccount }),
+      });
+
+    await FirmStatusPage({ searchParams: Promise.resolve({ token: 'abc123' }) });
+
+    expect(createEnrollmentTokenMock).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1',
+      email: 'lawyer@example.com',
+      firm: 'Demo Law Group',
+      contact: 'Lawyer User',
+      phone: '555-0102',
+    }));
+  });
 });

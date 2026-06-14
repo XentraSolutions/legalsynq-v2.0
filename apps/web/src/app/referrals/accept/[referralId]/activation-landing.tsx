@@ -57,7 +57,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export function ActivationLanding({ summary, token, referralId }: ActivationLandingProps) {
-  const activateUrl = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}`;
+  const activateUrl = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}&companyName=${encodeURIComponent(summary.providerName)}`;
   const loginUrl = buildCareConnectReferralLoginUrl(
     process.env.CC_COMMON_PORTAL_HOSTNAME,
     `/provider/referrals/${referralId}`,

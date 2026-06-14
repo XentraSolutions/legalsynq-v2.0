@@ -205,7 +205,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const isActionable = (liveStatus === 'New' || liveStatus === 'NewOpened') && actionState !== 'accepted' && actionState !== 'declined';
   const referralId   = data.referralId;
   const loginReturnTo = encodeURIComponent(`/provider/referrals/${referralId}`);
-  const activateUrl  = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}`;
+  const activateUrl  = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}&companyName=${encodeURIComponent(data.providerName)}`;
 
   const handleAccept = () => {
     setActionError('');

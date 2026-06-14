@@ -27,7 +27,7 @@ import { buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  searchParams: Promise<{ referralId?: string; token?: string }>;
+  searchParams: Promise<{ referralId?: string; token?: string; companyName?: string }>;
 }
 
 interface PublicThreadData {
@@ -48,10 +48,12 @@ interface PublicThreadData {
   referrerName:  string | null;
 }
 
-function toEnrollmentPrefill(data: PublicThreadData): EnrollmentPrefill {
+function toEnrollmentPrefill(data: PublicThreadData, fallbackCompanyName?: string): EnrollmentPrefill {
+  const companyName = data.providerName.trim() || fallbackCompanyName?.trim() || '';
+
   return {
     providerId: data.providerId,
-    companyName: data.providerName,
+    companyName,
     companyType: 'Provider',
     email: data.providerEmail ?? '',
     phone: data.providerPhone ?? '',
@@ -66,6 +68,7 @@ export default async function ActivatePage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const referralId = sp.referralId?.trim() ?? '';
   const token      = sp.token?.trim() ?? '';
+  const companyName = sp.companyName?.trim() ?? '';
 
   if (!referralId || !token) {
     redirect('/referrals/accept/invalid?reason=missing-token');
@@ -100,7 +103,7 @@ export default async function ActivatePage({ searchParams }: PageProps) {
     redirect(`/referrals/thread?token=${encodeURIComponent(token)}`);
   }
 
-  const prefill = toEnrollmentPrefill(threadData);
+  const prefill = toEnrollmentPrefill(threadData, companyName);
   const loginUrl = buildCareConnectReferralLoginUrl(
     process.env.CC_COMMON_PORTAL_HOSTNAME,
     `/provider/referrals/${referralId}`,

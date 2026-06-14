@@ -6,7 +6,7 @@ import {
   buildCareConnectReferralLoginUrl,
   buildCareConnectPortalLoginUrl,
   normalizeCareConnectPortalHost,
-} from '../careconnect-login-url.ts';
+} from '../careconnect-login-url';
 
 test('builds an https CareConnect login URL when a shared portal host is configured', () => {
   const url = buildCareConnectLoginUrl('careconnect-demo.legalsynq.com');

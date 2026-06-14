@@ -143,4 +143,40 @@ describe('ActivatePage', () => {
       '/referrals/accept/invalid?reason=expired-or-invalid',
     );
   });
+
+  test('uses the CTA companyName fallback when the fetched provider name is blank', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        referralId: 'ref-123',
+        tenantId: 'tenant-123',
+        providerId: 'provider-123',
+        status: 'New',
+        providerHasAccount: false,
+        clientName: 'Jane Doe',
+        service: 'Physical Therapy',
+        providerName: '',
+        providerEmail: 'provider@example.com',
+        providerPhone: '555-0101',
+        providerAddressLine1: '123 Main',
+        providerCity: 'Las Vegas',
+        providerState: 'NV',
+        providerPostalCode: '89101',
+        referrerName: 'Demo Firm',
+      }),
+    }));
+
+    const result = await ActivatePage({
+      searchParams: Promise.resolve({ referralId: 'ref-123', token: 'abc123', companyName: 'Demo Provider Group' }),
+    });
+
+    const enrollmentForm = findElementByType(result, enrollmentFormMock);
+    expect(enrollmentForm?.props).toEqual(
+      expect.objectContaining({
+        prefill: expect.objectContaining({
+          companyName: 'Demo Provider Group',
+        }),
+      }),
+    );
+  });
 });

@@ -15,6 +15,22 @@ interface Props {
   searchParams: Promise<{ token?: string }>;
 }
 
+function extractFirmName(notes: string | null): string | null {
+  if (!notes) return null;
+
+  for (const line of notes.split('\n')) {
+    const trimmed = line.trim();
+    if (
+      trimmed.toLowerCase().startsWith('firm:')
+      && !trimmed.toLowerCase().startsWith('firm phone:')
+    ) {
+      return trimmed.slice('firm:'.length).trim() || null;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Law firm referral status page.
  * Reachable only via a secure HMAC-signed token from the referral confirmation email.
@@ -75,6 +91,7 @@ export default async function FirmStatusPage({ searchParams }: Props) {
 
   // Extract "Firm phone: xxx" embedded by public-network-view in the referral notes.
   const notes = threadData.notes as string | null;
+  const firmName = extractFirmName(notes);
   const referrerPhone = notes?.split('\n')
     .find(l => l.trim().toLowerCase().startsWith('firm phone:'))
     ?.slice('firm phone:'.length).trim() ?? null;
@@ -82,6 +99,7 @@ export default async function FirmStatusPage({ searchParams }: Props) {
   const enrollToken = await createEnrollmentToken({
     tenantId: threadData.tenantId as string,
     ...(threadData.referrerEmail ? { email:   threadData.referrerEmail as string } : {}),
+    ...(firmName                 ? { firm:    firmName                        } : {}),
     ...(threadData.referrerName  ? { contact: threadData.referrerName  as string } : {}),
     ...(referrerPhone            ? { phone:   referrerPhone                      } : {}),
   }).catch((err) => { console.error('[firm-status] createEnrollmentToken failed:', err); return null; });
