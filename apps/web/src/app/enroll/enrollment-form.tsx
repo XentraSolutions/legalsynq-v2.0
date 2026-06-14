@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, type FormEvent } from 'react';
 import { sendOtp, registerEnrollment, registerFirmEnrollment, type EnrollmentPrefill } from './actions';
+import { formatPhoneInput, formatPhoneDisplay, stripPhone } from '@/lib/phone';
 import { useRouter } from 'next/navigation';
 
 // ── Address suggestion (from /api/geocode/address) ────────────────────────────
@@ -72,10 +73,7 @@ export function EnrollmentForm({
     ?? prefill?.email
     ?? referralPrefill?.email
     ?? '';
-  const initialPhone = authenticatedOrgPrefill?.phone
-    ?? prefill?.phone
-    ?? referralPrefill?.phone
-    ?? '';
+  const initialPhone = formatPhoneInput(authenticatedOrgPrefill?.phone ?? prefill?.phone ?? referralPrefill?.phone ?? '');
 
   const [companyName,  setCompanyName]  = useState(initialCompanyName);
   const [email,        setEmail]        = useState(initialEmail);
@@ -225,7 +223,7 @@ export function EnrollmentForm({
         password,
         firstName:    firstName.trim(),
         lastName:     lastName.trim() || undefined,
-        phone:        phone.trim() || undefined,
+        phone:        stripPhone(phone) || undefined,
         addressLine1: addressLine1.trim() || undefined,
         city:         city.trim() || undefined,
         state:        state.trim() || undefined,
@@ -240,7 +238,7 @@ export function EnrollmentForm({
         password,
         firstName:    firstName.trim(),
         lastName:     lastName.trim() || undefined,
-        phone:        phone.trim() || undefined,
+        phone:        stripPhone(phone) || undefined,
         addressLine1: addressLine1.trim() || undefined,
         city:         city.trim() || undefined,
         state:        state.trim() || undefined,
@@ -373,7 +371,7 @@ export function EnrollmentForm({
             <input
               type="tel"
               value={phone}
-              onChange={e => !phoneLocked && setPhone(e.target.value)}
+              onChange={e => !phoneLocked && setPhone(formatPhoneInput(e.target.value))}
               placeholder="(555) 000-0000"
               disabled={phoneLocked}
               className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -467,7 +465,7 @@ export function EnrollmentForm({
               <input
                 type="text"
                 value={postalCode}
-                onChange={e => !postalCodeLocked && setPostalCode(e.target.value)}
+                onChange={e => { if (!postalCodeLocked) setPostalCode(e.target.value.replace(/[^\d-]/g, '').slice(0, 10)); }}
                 placeholder="90210"
                 maxLength={10}
                 disabled={postalCodeLocked}
