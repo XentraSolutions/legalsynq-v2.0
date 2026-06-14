@@ -374,12 +374,13 @@ public static class PublicNetworkEndpoints
         // checks whether the law firm's email already has active portal access in
         // this tenant.
         //
-        // Response: { hasPortalAccess: bool }
-        //   true  → show "Login to CareConnect to view your referrals"
-        //   false → show the default enrollment CTA
+        // Response: { hasPortalAccess: bool, status: string }
+        //   active_in_tenant           → login CTA
+        //   existing_user_other_tenant → link-account CTA
+        //   no_account                 → default enrollment CTA
         //
         // Delegates the tenant-aware user lookup to the Identity service. Any
-        // infrastructure failure → hasPortalAccess = false (safe default).
+        // infrastructure failure → no_account / hasPortalAccess = false (safe default).
         app.MapGet("/api/public/referrer-status", async (
             string?                    email,
             HttpContext                 http,
@@ -392,10 +393,18 @@ public static class PublicNetworkEndpoints
                 return Results.StatusCode(403);
 
             if (string.IsNullOrWhiteSpace(email))
-                return Results.Ok(new { hasPortalAccess = false });
+                return Results.Ok(new
+                {
+                    hasPortalAccess = false,
+                    status = ReferrerPortalAccessStatuses.NoAccount,
+                });
 
             var status = await identityOrgs.GetReferrerPortalAccessStatusAsync(tenantId.Value, email.Trim(), ct);
-            return Results.Ok(new { hasPortalAccess = status == ReferrerPortalAccessStatuses.ActiveInTenant });
+            return Results.Ok(new
+            {
+                hasPortalAccess = status == ReferrerPortalAccessStatuses.ActiveInTenant,
+                status,
+            });
         })
         .AllowAnonymous()
         .RequireRateLimiting("referrer-status-limit");

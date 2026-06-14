@@ -181,7 +181,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
         title: 'See all your referrals in one place',
         description: 'Create a CareConnect portal account to track all referral statuses, view full patient records, communicate with providers, and generate reports.',
         primaryLabel: 'Get full portal access',
-        secondaryLabel: 'Already have access? Log in',
+        secondaryLabel: null,
         accent: '#1e3a8a',
         bg: '#fff',
         border: '#1a56db',
@@ -259,11 +259,20 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
                   </p>
                 )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 160 }}>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column' as const,
+                gap: 8,
+                minWidth: 160,
+                alignItems: portalCta.secondaryLabel ? 'stretch' : 'center',
+                justifyContent: 'center',
+              }}>
                 <a href={enrollUrl} style={{ ...s.btnPrimary, background: portalCta.border }}>{portalCta.primaryLabel}</a>
-                <a href={loginUrl} style={{ ...s.btnOutline, color: portalCta.border, borderColor: portalCta.border, fontSize: 12, padding: '7px 16px' }}>
-                  {portalCta.secondaryLabel}
-                </a>
+                {portalCta.secondaryLabel && (
+                  <a href={loginUrl} style={{ ...s.btnOutline, color: portalCta.border, borderColor: portalCta.border, fontSize: 12, padding: '7px 16px' }}>
+                    {portalCta.secondaryLabel}
+                  </a>
+                )}
               </div>
             </div>
           </div>

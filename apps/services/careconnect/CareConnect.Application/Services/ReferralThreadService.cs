@@ -77,8 +77,7 @@ public class ReferralThreadService : IReferralThreadService
             CreatedAt = referral.CreatedAtUtc,
             TreatmentTypeId   = referral.TreatmentTypeId,
             TreatmentTypeName = treatmentTypeName,
-            ProviderHasAccount = referral.Provider is not null &&
-                                 ProviderAccessStage.IsAtLeast(referral.Provider.AccessStage, ProviderAccessStage.CommonPortal),
+            ProviderHasAccount = ProviderHasPortalAccount(referral.Provider),
             Comments = comments.Select(MapComment).ToList(),
             Attachments = attachments
                 .OrderBy(a => a.CreatedAtUtc)
@@ -334,6 +333,12 @@ public class ReferralThreadService : IReferralThreadService
             ? referral.Provider.Name
             : referral.Provider.OrganizationName;
     }
+
+    private static bool ProviderHasPortalAccount(Provider? provider) =>
+        provider is not null && (
+            ProviderAccessStage.IsAtLeast(provider.AccessStage, ProviderAccessStage.CommonPortal) ||
+            provider.OrganizationId.HasValue ||
+            provider.IdentityUserId.HasValue);
 
     private static bool IsAuthenticatedParticipant(Referral referral, Guid? callerOrganizationId, string? callerEmail)
     {

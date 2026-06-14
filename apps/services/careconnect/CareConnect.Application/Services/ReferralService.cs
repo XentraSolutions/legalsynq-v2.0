@@ -1407,6 +1407,7 @@ public class ReferralService : IReferralService
             ProviderCity          = referral.Provider?.City          ?? "",
             ProviderState         = referral.Provider?.State         ?? "",
             ProviderPostalCode    = referral.Provider?.PostalCode    ?? "",
+            ProviderHasAccount    = ProviderHasPortalAccount(referral.Provider),
             Attachments           = attachments
                 .Select(a => new PublicAttachmentInfo(a.Id, a.FileName, a.ContentType, a.FileSizeBytes))
                 .ToList(),
@@ -1421,6 +1422,12 @@ public class ReferralService : IReferralService
         var result = await GetPublicSummaryAccessAsync(referralId, token, ct);
         return result.Data;
     }
+
+    private static bool ProviderHasPortalAccount(Provider? provider) =>
+        provider is not null && (
+            ProviderAccessStage.IsAtLeast(provider.AccessStage, ProviderAccessStage.CommonPortal) ||
+            provider.OrganizationId.HasValue ||
+            provider.IdentityUserId.HasValue);
 
     /// <summary>
     /// Emits a provider activation funnel tracking event.

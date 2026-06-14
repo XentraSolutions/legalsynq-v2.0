@@ -11,9 +11,6 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-const GATEWAY_URL          = process.env.GATEWAY_URL          ?? 'http://127.0.0.1:5010';
-const PROVISIONING_TOKEN   = process.env.IdentityService__ProvisioningToken ?? '';
-
 interface Props {
   searchParams: Promise<{ token?: string }>;
 }
@@ -60,15 +57,10 @@ export default async function FirmStatusPage({ searchParams }: Props) {
   // Failure → safe default (no_account) so the enrollment CTA is shown instead.
   let portalAccessStatus: ReferrerPortalAccessStatusValue = ReferrerPortalAccessStatuses.NoAccount;
   const referrerEmail = threadData.referrerEmail as string | null;
-  const referralTenantId = threadData.tenantId as string | null;
-  if (referrerEmail && referralTenantId) {
+  if (referrerEmail) {
     try {
-      const checkResp = await fetch(
-        `${GATEWAY_URL}/identity/api/internal/users/portal-access?tenantId=${encodeURIComponent(referralTenantId)}&email=${encodeURIComponent(referrerEmail)}`,
-        {
-          cache:   'no-store',
-          headers: { 'X-Provisioning-Token': PROVISIONING_TOKEN },
-        },
+      const checkResp = await fetchPublicCareConnect(
+        `/api/public/referrer-status?email=${encodeURIComponent(referrerEmail)}`,
       );
       if (checkResp.ok) {
         const checkData = await checkResp.json() as { status?: string };

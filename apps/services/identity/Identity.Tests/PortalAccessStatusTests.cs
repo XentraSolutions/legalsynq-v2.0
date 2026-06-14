@@ -75,7 +75,7 @@ public class PortalAccessStatusTests
     }
 
     [Fact]
-    public async Task PortalAccess_ReturnsActiveInTenant_WhenEmailAlreadyHasTenantLawFirmAccess()
+    public async Task PortalAccess_ReturnsActiveInTenant_WhenEmailAlreadyHasTenantCareConnectReferrerAccess()
     {
         using var factory = BuildFactory();
         var targetTenantId = await SeedActiveTenantReferrerAsync(factory, "active@example.com");
@@ -88,6 +88,22 @@ public class PortalAccessStatusTests
         var body = await response.Content.ReadFromJsonAsync<PortalAccessStatusResponse>();
         Assert.NotNull(body);
         Assert.Equal("active_in_tenant", body.Status);
+    }
+
+    [Fact]
+    public async Task PortalAccess_ReturnsNoAccount_WhenUserHasTenantMembershipButNoPortalReadyCareConnectAccess()
+    {
+        using var factory = BuildFactory();
+        var tenantId = await SeedTenantMemberWithoutCareConnectReferrerAccessAsync(factory, "member@example.com");
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync(
+            $"/api/internal/users/portal-access?tenantId={tenantId}&email=member@example.com");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<PortalAccessStatusResponse>();
+        Assert.NotNull(body);
+        Assert.Equal("no_account", body.Status);
     }
 
     [Fact]
@@ -290,6 +306,7 @@ public class PortalAccessStatusTests
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        await EnsureCareConnectProductSeededAsync(db);
 
         var homeTenant = Tenant.Create("Home Tenant", $"home-{Guid.CreateVersion7():N}");
         var targetTenant = Tenant.Create("Target Tenant", $"target-{Guid.CreateVersion7():N}");
@@ -306,6 +323,7 @@ public class PortalAccessStatusTests
         var homeMembership = UserOrganizationMembership.Create(user.Id, homeOrg.Id, MemberRole.Member);
         homeMembership.SetPrimary();
         db.UserOrganizationMemberships.Add(homeMembership);
+        GrantCareConnectReferrerAccess(db, homeTenant.Id, user.Id);
 
         await db.SaveChangesAsync();
         return targetTenant.Id;
@@ -315,6 +333,7 @@ public class PortalAccessStatusTests
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        await EnsureCareConnectProductSeededAsync(db);
 
         var tenant = Tenant.Create("Active Tenant", $"active-{Guid.CreateVersion7():N}");
         db.Tenants.Add(tenant);
@@ -323,6 +342,31 @@ public class PortalAccessStatusTests
         db.Organizations.Add(org);
 
         var user = User.Create(tenant.Id, email, "password-hash", "Active", "User");
+        db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, tenant.Id));
+
+        var membership = UserOrganizationMembership.Create(user.Id, org.Id, MemberRole.Member);
+        membership.SetPrimary();
+        db.UserOrganizationMemberships.Add(membership);
+        GrantCareConnectReferrerAccess(db, tenant.Id, user.Id);
+
+        await db.SaveChangesAsync();
+        return tenant.Id;
+    }
+
+    private static async Task<Guid> SeedTenantMemberWithoutCareConnectReferrerAccessAsync(WebApplicationFactory<Program> factory, string email)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        await EnsureCareConnectProductSeededAsync(db);
+
+        var tenant = Tenant.Create("Member Tenant", $"member-{Guid.CreateVersion7():N}");
+        db.Tenants.Add(tenant);
+
+        var org = Organization.Create(tenant.Id, "Member Firm", OrgType.LawFirm, displayName: "Member Firm");
+        db.Organizations.Add(org);
+
+        var user = User.Create(tenant.Id, email, "password-hash", "Member", "User");
         db.Users.Add(user);
         db.UserTenants.Add(UserTenant.Create(user.Id, tenant.Id));
 
@@ -354,5 +398,17 @@ public class PortalAccessStatusTests
         typeof(User)
             .GetProperty(nameof(User.Email))!
             .SetValue(user, email);
+    }
+
+    private static void GrantCareConnectReferrerAccess(IdentityDbContext db, Guid tenantId, Guid userId)
+    {
+        var product = db.Products.Local.Single(p => p.Code == CareConnectProductCode);
+        db.Set<TenantProduct>().Add(TenantProduct.Create(tenantId, product.Id));
+        db.UserProductAccessRecords.Add(UserProductAccess.Create(tenantId, userId, CareConnectProductCode));
+        db.UserRoleAssignments.Add(UserRoleAssignment.Create(
+            tenantId,
+            userId,
+            "CARECONNECT_REFERRER",
+            CareConnectProductCode));
     }
 }

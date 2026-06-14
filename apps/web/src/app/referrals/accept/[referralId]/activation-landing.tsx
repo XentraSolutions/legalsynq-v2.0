@@ -40,6 +40,7 @@ interface ReferralPublicSummary {
   requestedService:    string;
   status:              string;
   isAlreadyAccepted:   boolean;
+  providerHasAccount?: boolean;
   attachments:         PublicAttachmentInfo[];
 }
 
@@ -199,8 +200,9 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
           <div>
             <h2 className="text-sm font-semibold text-gray-900 mb-1">Log in to view and accept this referral</h2>
             <p className="text-sm text-gray-500 leading-relaxed">
-              Accepting a referral requires platform access. Log in if you already have a CareConnect account,
-              or activate your account to get started.
+              {summary.providerHasAccount
+                ? 'Accepting a referral requires platform access. Log in if you already have a CareConnect account, or activate your account to get started.'
+                : 'Accepting a referral requires platform access. Activate your account to get started.'}
             </p>
           </div>
 
@@ -229,11 +231,13 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
           </Link>
 
           {/* Secondary CTA — existing platform users */}
-          <div className="text-center">
-            <Link href={loginUrl} className="text-sm text-primary hover:underline font-medium">
-              Already have an account? Log in
-            </Link>
-          </div>
+          {summary.providerHasAccount && (
+            <div className="text-center">
+              <Link href={loginUrl} className="text-sm text-primary hover:underline font-medium">
+                Already have an account? Log in
+              </Link>
+            </div>
+          )}
         </div>
 
       </div>

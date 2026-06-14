@@ -32,6 +32,7 @@ public class ReferralPublicSummaryResponse
     // ── Shared attachments (uploaded at referral creation time) ──────────
     /// <summary>List of shared-scope attachment stubs; download URLs are fetched on demand.</summary>
     public List<PublicAttachmentInfo> Attachments { get; init; } = [];
+    public bool ProviderHasAccount { get; init; }
 
     /// <summary>True when the referral is no longer in "New" status (already actioned).</summary>
     public bool IsAlreadyAccepted => Status is not ("New" or "");

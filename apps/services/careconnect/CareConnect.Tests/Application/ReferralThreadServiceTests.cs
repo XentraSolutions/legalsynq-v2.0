@@ -95,6 +95,39 @@ public class ReferralThreadServiceTests
     }
 
     [Fact]
+    public async Task GetPublicThreadAccessAsync_TreatsLegacyOrgLinkedProviderAsHavingAccount()
+    {
+        var referral = BuildReferral(referringOrganizationId: null);
+        var provider = new ProviderStub
+        {
+            Name = "Dr. Gray",
+            OrganizationName = "Gray Clinic",
+            Email = "intake@gray.example",
+            AccessStage = ProviderAccessStage.Url,
+        }.ToDomain(Guid.CreateVersion7());
+        SetProvider(referral, provider);
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data);
+        Assert.True(result.Data!.ProviderHasAccount);
+    }
+
+    [Fact]
     public async Task GetAuthenticatedCommentsAsync_ReturnsComments_ForPublicReferrerEmailMatch()
     {
         var referral = BuildReferral(referringOrganizationId: null);
@@ -341,7 +374,7 @@ public class ReferralThreadServiceTests
         var scopeFactory = BuildScopeFactory(emailService.Object);
         var sut = BuildService(repo, commentsRepo, emailService.Object, scopeFactory);
 
-        var result = await sut.PostPublicCommentAsync("valid-token", "referrer", "Sarah", "Checking status.");
+        var result = await sut.PostPublicCommentAsync("valid-token", "referrer", "Checking status.");
         await Task.Delay(50);
 
         Assert.NotNull(result);

@@ -44,6 +44,7 @@ interface PublicThreadData {
   providerCity?: string;
   providerState?: string;
   providerPostalCode?: string;
+  providerHasAccount?: boolean;
   referrerName:  string | null;
 }
 
@@ -136,12 +137,14 @@ export default async function ActivatePage({ searchParams }: PageProps) {
           isFirmEnrollment={false}
         />
 
-        <p className="text-center text-xs text-gray-400 mt-6">
-          Already have platform access?{' '}
-          <Link href={loginUrl} className="text-primary hover:underline">
-            Log in to accept this referral
-          </Link>
-        </p>
+        {threadData.providerHasAccount && (
+          <p className="text-center text-xs text-gray-400 mt-6">
+            Already have platform access?{' '}
+            <Link href={loginUrl} className="text-primary hover:underline">
+              Log in to accept this referral
+            </Link>
+          </p>
+        )}
 
       </div>
     </main>

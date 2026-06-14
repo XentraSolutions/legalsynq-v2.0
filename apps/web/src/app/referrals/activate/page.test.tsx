@@ -47,6 +47,20 @@ function findElementByType(node: unknown, type: unknown): { props?: Record<strin
   return null;
 }
 
+function treeContainsText(node: unknown, text: string): boolean {
+  if (typeof node === 'string') return node.includes(text);
+  if (!node || typeof node !== 'object') return false;
+
+  const element = node as { props?: { children?: unknown } };
+  const children = element.props?.children;
+
+  if (Array.isArray(children)) {
+    return children.some(child => treeContainsText(child, text));
+  }
+
+  return treeContainsText(children, text);
+}
+
 describe('ActivatePage', () => {
   beforeEach(() => {
     redirectMock.mockClear();
@@ -63,6 +77,7 @@ describe('ActivatePage', () => {
         tenantId: 'tenant-123',
         providerId: 'provider-123',
         status: 'New',
+        providerHasAccount: false,
         clientName: 'Jane Doe',
         service: 'Physical Therapy',
         providerName: 'Demo Provider',
@@ -103,6 +118,7 @@ describe('ActivatePage', () => {
         },
       }),
     );
+    expect(treeContainsText(result, 'Already have platform access?')).toBe(false);
   });
 
   test('rejects activation when the token resolves to a different referral', async () => {
