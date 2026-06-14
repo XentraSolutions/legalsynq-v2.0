@@ -41,16 +41,12 @@ public static class ReferralThreadEndpoints
                 (req.SenderType != "referrer" && req.SenderType != "provider"))
                 return Results.BadRequest(new { error = "senderType must be 'referrer' or 'provider'." });
 
-            if (string.IsNullOrWhiteSpace(req.SenderName) || req.SenderName.Length > 200)
-                return Results.BadRequest(new { error = "senderName is required and must be 200 characters or fewer." });
-
             if (string.IsNullOrWhiteSpace(req.Message) || req.Message.Length > 4000)
                 return Results.BadRequest(new { error = "message is required and must be 4000 characters or fewer." });
 
             var comment = await threadService.PostPublicCommentAsync(
                 token,
                 req.SenderType,
-                req.SenderName,
                 req.Message,
                 ct);
             if (comment is null)
@@ -67,5 +63,5 @@ public static class ReferralThreadEndpoints
         }).AllowAnonymous().RequireRateLimiting("public-referral-limit");
     }
 
-    private sealed record PostCommentRequest(string SenderType, string SenderName, string Message);
+    private sealed record PostCommentRequest(string SenderType, string Message);
 }

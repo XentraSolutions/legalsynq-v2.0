@@ -114,13 +114,14 @@ const s: Record<string, React.CSSProperties> = {
 type ActionState = 'idle' | 'accepting' | 'declining' | 'accepted' | 'declined' | 'error';
 
 export function ThreadClient({ token, data, loginUrl }: Props) {
-  const [comments,      setComments]  = useState<Comment[]>(data.comments);
-  const [senderName,    setSenderName] = useState('');
-  const [message,       setMessage]   = useState('');
+  const [comments,  setComments] = useState<Comment[]>(data.comments);
+  const [message,   setMessage]  = useState('');
   const [formError,     setFormError] = useState('');
   const [sent,          setSent]      = useState(false);
   const [isPending,     startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
 
   const [actionState,   setActionState]  = useState<ActionState>('idle');
   const [actionError,   setActionError]  = useState('');
@@ -241,7 +242,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
     setFormError('');
     setSent(false);
     startTransition(async () => {
-      const result = await postComment(token, 'provider', senderName, message);
+      const result = await postComment(token, 'provider', message);
       if (!result.success) { setFormError(result.error ?? 'An error occurred.'); return; }
       if (result.comment) setComments(prev => [...prev, result.comment!]);
       setMessage('');
@@ -542,16 +543,16 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
         {/* Message thread */}
         <div style={s.card}>
           <h2 style={s.cardTitle}>Messages</h2>
-          {comments.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 14, color: '#94a3b8', fontStyle: 'italic' }}>
-              No messages yet. Send the first message below.
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {comments.map(c => <CommentBubble key={c.id} comment={c} />)}
-            </div>
-          )}
-          <div ref={bottomRef} />
+          <div style={{ height: 420, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {comments.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 14, color: '#94a3b8', fontStyle: 'italic' }}>
+                No messages yet. Send the first message below.
+              </p>
+            ) : (
+              comments.map(c => <CommentBubble key={c.id} comment={c} />)
+            )}
+            <div ref={bottomRef} />
+          </div>
         </div>
 
         {/* Send message form — provider side only */}
@@ -568,18 +569,6 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
             </div>
           )}
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Your Name *</label>
-              <input
-                style={s.input}
-                type="text"
-                value={senderName}
-                onChange={e => setSenderName(e.target.value)}
-                placeholder="e.g. Dr. Jane Smith"
-                maxLength={200}
-                required
-              />
-            </div>
             <div style={{ marginBottom: 18 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Message *</label>
               <textarea

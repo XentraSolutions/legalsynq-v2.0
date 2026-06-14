@@ -102,7 +102,6 @@ public class ReferralThreadService : IReferralThreadService
     public async Task<ReferralCommentResponse?> PostPublicCommentAsync(
         string token,
         string senderType,
-        string senderName,
         string message,
         CancellationToken ct = default)
     {
@@ -111,13 +110,17 @@ public class ReferralThreadService : IReferralThreadService
             return null;
         var referral = access.Referral;
 
+        var resolvedSenderName = senderType == "provider"
+            ? referral.Provider?.Name ?? "Provider"
+            : referral.ReferrerName ?? "Referrer";
+
         var comment = new ReferralComment
         {
             Id = Guid.CreateVersion7(),
             TenantId = referral.TenantId,
             ReferralId = referral.Id,
             SenderType = senderType.Trim(),
-            SenderName = senderName.Trim(),
+            SenderName = resolvedSenderName,
             Message = message.Trim(),
             CreatedAt = DateTime.UtcNow,
         };

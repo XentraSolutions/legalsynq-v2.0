@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useRef } from 'react';
+import { useState, useEffect, useTransition, useRef } from 'react';
 import { postReferrerComment } from './actions';
 import { ReferrerPortalAccessStatuses, type ReferrerPortalAccessStatusValue } from '@/types/careconnect';
 
@@ -154,13 +154,14 @@ function StatusTracker({ status }: { status: string }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, enrollToken }: Props) {
-  const [comments,  setComments]  = useState<Comment[]>(data.comments);
-  const [senderName, setSenderName] = useState(data.referrerName ?? '');
-  const [message,   setMessage]   = useState('');
+  const [comments,  setComments] = useState<Comment[]>(data.comments);
+  const [message,   setMessage]  = useState('');
   const [formError, setFormError] = useState('');
   const [sent,      setSent]      = useState(false);
   const [isPending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
 
   const enrollUrl = enrollToken ? `/enroll?token=${enrollToken}` : '/enroll';
   const hasPortalAccess = portalAccessStatus === ReferrerPortalAccessStatuses.ActiveInTenant;
@@ -192,7 +193,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
     setFormError('');
     setSent(false);
     startTransition(async () => {
-      const result = await postReferrerComment(token, senderName, message);
+      const result = await postReferrerComment(token, message);
       if (!result.success) { setFormError(result.error ?? 'An error occurred.'); return; }
       if (result.comment) setComments(prev => [...prev, result.comment!]);
       setMessage('');
@@ -271,16 +272,16 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
         {/* Message thread */}
         <div style={s.card}>
           <h2 style={s.cardTitle}>Messages</h2>
-          {comments.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 14, color: '#94a3b8', fontStyle: 'italic' }}>
-              No messages yet. Use the form below to send a message to the provider.
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {comments.map(c => <CommentBubble key={c.id} comment={c} />)}
-            </div>
-          )}
-          <div ref={bottomRef} />
+          <div style={{ height: 420, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {comments.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 14, color: '#94a3b8', fontStyle: 'italic' }}>
+                No messages yet. Use the form below to send a message to the provider.
+              </p>
+            ) : (
+              comments.map(c => <CommentBubble key={c.id} comment={c} />)
+            )}
+            <div ref={bottomRef} />
+          </div>
         </div>
 
         {/* Send message form — referrer side */}
@@ -297,18 +298,6 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             </div>
           )}
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Your Name *</label>
-              <input
-                style={s.input}
-                type="text"
-                value={senderName}
-                onChange={e => setSenderName(e.target.value)}
-                placeholder="e.g. Sarah Johnson"
-                maxLength={200}
-                required
-              />
-            </div>
             <div style={{ marginBottom: 18 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Message *</label>
               <textarea
@@ -347,8 +336,9 @@ function FieldBlock({ label, value }: { label: string; value: string }) {
 
 function CommentBubble({ comment }: { comment: Comment }) {
   const isProvider = comment.senderType === 'provider';
+  const isSelf = !isProvider;
   return (
-    <div style={{ display: 'flex', flexDirection: isProvider ? 'row-reverse' : 'row', gap: 10, alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', flexDirection: isSelf ? 'row-reverse' : 'row', gap: 10, alignItems: 'flex-start' }}>
       <div style={{
         width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
         background: isProvider ? '#dbeafe' : '#fef3c7',
@@ -359,14 +349,14 @@ function CommentBubble({ comment }: { comment: Comment }) {
         {comment.senderName.charAt(0).toUpperCase()}
       </div>
       <div style={{ maxWidth: '80%' }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isProvider ? 'row-reverse' : 'row', marginBottom: 4 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isSelf ? 'row-reverse' : 'row', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
           <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt)}</span>
         </div>
         <div style={{
-          background: isProvider ? '#eff6ff' : '#fafaf9',
-          border: `1px solid ${isProvider ? '#bfdbfe' : '#e7e5e4'}`,
-          borderRadius: isProvider ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
+          background: isProvider ? '#eff6ff' : '#fef3c7',
+          border: `1px solid ${isProvider ? '#bfdbfe' : '#fde68a'}`,
+          borderRadius: isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
           padding: '10px 14px',
         }}>
           <p style={{ margin: 0, fontSize: 14, color: '#111827', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{comment.message}</p>

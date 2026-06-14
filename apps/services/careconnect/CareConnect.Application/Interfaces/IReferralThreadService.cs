@@ -9,7 +9,6 @@ public interface IReferralThreadService
     Task<ReferralCommentResponse?> PostPublicCommentAsync(
         string token,
         string senderType,
-        string senderName,
         string message,
         CancellationToken ct = default);
 

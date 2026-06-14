@@ -97,14 +97,10 @@ export interface PostCommentResult {
 export async function postComment(
   token: string,
   senderType: string,
-  senderName: string,
   message: string,
 ): Promise<PostCommentResult> {
   if (!senderType || (senderType !== 'referrer' && senderType !== 'provider')) {
     return { success: false, error: 'Please select your role.' };
-  }
-  if (!senderName?.trim()) {
-    return { success: false, error: 'Please enter your name.' };
   }
   if (!message?.trim() || message.length > 4000) {
     return { success: false, error: 'Message is required and must be under 4000 characters.' };
@@ -114,7 +110,7 @@ export async function postComment(
     const resp = await fetchPublicCareConnect(`/api/public/referrals/thread/comments?token=${encodeURIComponent(token)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ senderType, senderName: senderName.trim(), message: message.trim() }),
+      body: JSON.stringify({ senderType, message: message.trim() }),
     });
 
     if (!resp.ok) {

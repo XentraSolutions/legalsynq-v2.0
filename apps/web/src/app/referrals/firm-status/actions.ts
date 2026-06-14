@@ -15,13 +15,9 @@ export interface PostCommentResult {
 }
 
 export async function postReferrerComment(
-  token:      string,
-  senderName: string,
-  message:    string,
+  token:   string,
+  message: string,
 ): Promise<PostCommentResult> {
-  if (!senderName?.trim()) {
-    return { success: false, error: 'Please enter your name.' };
-  }
   if (!message?.trim() || message.length > 4000) {
     return { success: false, error: 'Message is required and must be under 4000 characters.' };
   }
@@ -32,7 +28,7 @@ export async function postReferrerComment(
       {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ senderType: 'referrer', senderName: senderName.trim(), message: message.trim() }),
+        body:    JSON.stringify({ senderType: 'referrer', message: message.trim() }),
         cache:   'no-store',
       },
     );
