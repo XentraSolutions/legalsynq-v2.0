@@ -156,6 +156,10 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "First name is required." });
             if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out var normalizedPhone))
                 return Results.BadRequest(new { message = "Phone number must be 10 digits." });
+            if (!PostalCodeHelper.IsValidOptionalUsZip(body.PostalCode))
+                return Results.BadRequest(new { message = "ZIP code must be 5 digits or 5+4 format." });
+            if (!ValidateAddressSelectionToken(body.AddressSelectionToken, body.AddressLine1, body.City, body.State, body.PostalCode, config))
+                return Results.BadRequest(new { message = "ZIP code must match the selected address." });
 
             // ── Load provider ────────────────────────────────────────────────
 
@@ -340,6 +344,10 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "First name is required." });
             if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out _))
                 return Results.BadRequest(new { message = "Phone number must be 10 digits." });
+            if (!PostalCodeHelper.IsValidOptionalUsZip(body.PostalCode))
+                return Results.BadRequest(new { message = "ZIP code must be 5 digits or 5+4 format." });
+            if (!ValidateAddressSelectionToken(body.AddressSelectionToken, body.AddressLine1, body.City, body.State, body.PostalCode, config))
+                return Results.BadRequest(new { message = "ZIP code must match the selected address." });
 
             // ── CC-OWNER-CHECK: Block all tenant owners from self-enrolling ──
             var isAnyOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(body.Email.Trim(), ct);
@@ -510,6 +518,23 @@ public static class EnrollmentEndpoints
         catch { return false; }
     }
 
+    private static bool ValidateAddressSelectionToken(
+        string? addressSelectionToken,
+        string? addressLine1,
+        string? city,
+        string? state,
+        string? postalCode,
+        IConfiguration config)
+    {
+        if (string.IsNullOrWhiteSpace(addressSelectionToken))
+            return true;
+
+        var secret = config["PublicTrustBoundary:InternalRequestSecret"];
+        var claims = AddressSelectionTokenHelper.Decode(addressSelectionToken, secret);
+        return claims is not null
+            && AddressSelectionTokenHelper.MatchesAddress(claims, addressLine1, city, state, postalCode);
+    }
+
     // ── OTP email template ─────────────────────────────────────────────────────
 
     private static string BuildOtpEmailHtml(string email, string code) => $"""
@@ -560,6 +585,7 @@ public static class EnrollmentEndpoints
         string? City         = null,
         string? State        = null,
         string? PostalCode   = null,
+        string? AddressSelectionToken = null,
         string? OtpCode      = null);
 
     public record FirmEnrollmentRegisterRequest(
@@ -573,5 +599,6 @@ public static class EnrollmentEndpoints
         string? AddressLine1 = null,
         string? City         = null,
         string? State        = null,
-        string? PostalCode   = null);
+        string? PostalCode   = null,
+        string? AddressSelectionToken = null);
 }

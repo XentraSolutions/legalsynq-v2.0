@@ -100,6 +100,7 @@ export interface RegisterPayload {
   city?:        string;
   state?:       string;
   postalCode?:  string;
+  addressSelectionToken?: string;
   otpCode?:     string;
   tenantId:     string;
 }
@@ -116,6 +117,7 @@ export interface FirmRegisterPayload {
   city?:        string;
   state?:       string;
   postalCode?:  string;
+  addressSelectionToken?: string;
 }
 
 export async function registerFirmEnrollment(payload: FirmRegisterPayload): Promise<RegisterResult> {

@@ -13,6 +13,7 @@ interface AddressSuggestion {
   city:         string;
   state:        string;
   postalCode:   string;
+  addressSelectionToken: string;
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -118,6 +119,8 @@ export function EnrollmentForm({
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions,    setShowSuggestions]    = useState(false);
   const [addressLoading,     setAddressLoading]     = useState(false);
+  const [addressSelectionToken, setAddressSelectionToken] = useState<string | null>(null);
+  const [selectedPostalCode, setSelectedPostalCode] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Password visibility
@@ -129,6 +132,14 @@ export function EnrollmentForm({
   const [submitError, setSubmitError] = useState('');
   const hasPhoneValue = phone.trim().length > 0;
   const hasInvalidPhone = hasPhoneValue && !isValidPhone(phone);
+  const hasPostalCodeValue = postalCode.trim().length > 0;
+  const hasInvalidPostalCode = hasPostalCodeValue && !isValidUsZipCode(postalCode);
+  const hasAutoFilledZipMismatch = !!addressSelectionToken && postalCode.trim() !== (selectedPostalCode ?? '');
+
+  const clearSelectedAddress = useCallback(() => {
+    setAddressSelectionToken(null);
+    setSelectedPostalCode(null);
+  }, []);
 
   // ── Address autocomplete ─────────────────────────────────────────────────
 
@@ -157,6 +168,8 @@ export function EnrollmentForm({
     setCity(s.city);
     setState(s.state);
     setPostalCode(s.postalCode);
+    setAddressSelectionToken(s.addressSelectionToken || null);
+    setSelectedPostalCode(s.postalCode);
     setAddressSuggestions([]);
     setShowSuggestions(false);
   };
@@ -196,6 +209,8 @@ export function EnrollmentForm({
     if (!companyName.trim()) return 'Company name is required.';
     if (!email.trim())       return 'Email is required.';
     if (hasInvalidPhone)     return 'Phone number must be 10 digits.';
+    if (hasInvalidPostalCode) return 'ZIP code must be 5 digits or 5+4 format.';
+    if (hasAutoFilledZipMismatch) return 'ZIP code must match the selected address.';
     if (!firstName.trim())   return 'First name is required.';
     if (!password)           return 'Password is required.';
     if (password.length < 8) return 'Password must be at least 8 characters.';
@@ -231,6 +246,7 @@ export function EnrollmentForm({
         city:         city.trim() || undefined,
         state:        state.trim() || undefined,
         postalCode:   postalCode.trim() || undefined,
+        addressSelectionToken: addressSelectionToken ?? undefined,
       });
     } else if (providerId && tenantId) {
       // Provider self-enrollment from network directory
@@ -246,6 +262,7 @@ export function EnrollmentForm({
         city:         city.trim() || undefined,
         state:        state.trim() || undefined,
         postalCode:   postalCode.trim() || undefined,
+        addressSelectionToken: addressSelectionToken ?? undefined,
         otpCode:      emailChanged ? otpCode.trim() : undefined,
         tenantId,
       });
@@ -404,7 +421,11 @@ export function EnrollmentForm({
             <input
               type="text"
               value={addressLine1}
-              onChange={e => !addressLine1Locked && handleAddressInput(e.target.value)}
+              onChange={e => {
+                if (addressLine1Locked) return;
+                clearSelectedAddress();
+                handleAddressInput(e.target.value);
+              }}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
               onFocus={() => !addressLine1Locked && addressSuggestions.length > 0 && setShowSuggestions(true)}
               placeholder="123 Main St"
@@ -442,7 +463,11 @@ export function EnrollmentForm({
               <input
                 type="text"
                 value={city}
-                onChange={e => !cityLocked && setCity(e.target.value)}
+                onChange={e => {
+                  if (cityLocked) return;
+                  clearSelectedAddress();
+                  setCity(e.target.value);
+                }}
                 placeholder="City"
                 disabled={cityLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -457,7 +482,11 @@ export function EnrollmentForm({
               <input
                 type="text"
                 value={state}
-                onChange={e => !stateLocked && setState(e.target.value)}
+                onChange={e => {
+                  if (stateLocked) return;
+                  clearSelectedAddress();
+                  setState(e.target.value);
+                }}
                 placeholder="CA"
                 maxLength={2}
                 disabled={stateLocked}
@@ -477,12 +506,21 @@ export function EnrollmentForm({
                 placeholder="90210"
                 maxLength={10}
                 disabled={postalCodeLocked}
-                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
                   postalCodeLocked
                     ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                    : 'border-gray-300'
+                    : hasInvalidPostalCode || hasAutoFilledZipMismatch
+                      ? 'border-red-300 focus:ring-red-400'
+                      : 'border-gray-300 focus:ring-blue-500'
                 }`}
               />
+              {(hasInvalidPostalCode || hasAutoFilledZipMismatch) && (
+                <p className="text-xs text-red-500 mt-1">
+                  {hasAutoFilledZipMismatch
+                    ? 'ZIP code must match the selected address.'
+                    : 'ZIP code must be 5 digits or 5+4 format.'}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -635,4 +673,8 @@ export function EnrollmentForm({
       </button>
     </form>
   );
+}
+
+function isValidUsZipCode(value: string): boolean {
+  return /^\d{5}(-\d{4})?$/.test(value.trim());
 }
