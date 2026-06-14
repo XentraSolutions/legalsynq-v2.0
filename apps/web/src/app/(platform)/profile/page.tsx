@@ -4,6 +4,7 @@ import { AvatarUpload } from '@/components/avatar/AvatarUpload';
 import { PhoneEditor } from '@/components/profile/PhoneEditor';
 import { CopyableValue } from '@/components/profile/CopyableValue';
 import { getServerPortalConfig } from '@/lib/portal';
+import { isEligibleForCareConnectCommonPortal } from '@/lib/careconnect-common-portal-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +19,9 @@ export default async function ProfilePage() {
   const hdrs = await headers();
   const rawHost = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '';
   const portalConfig = getServerPortalConfig(rawHost);
-  const isCareConnectPortal = portalConfig?.productId === 'careconnect';
   const session = await requireOrg();
+  const isCareConnectPortal = portalConfig?.productId === 'careconnect';
+  const hideActivityActions = isEligibleForCareConnectCommonPortal(session);
 
   const initials = (session.orgName?.slice(0, 2) ?? session.email?.slice(0, 2) ?? '??').toUpperCase();
 
@@ -127,13 +129,15 @@ export default async function ProfilePage() {
             <i className="ri-settings-3-line text-sm" />
             Account Settings
           </a>
-          <a
-            href="/activity?actorId=me"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors"
-          >
-            <i className="ri-history-line text-sm" />
-            My Activity
-          </a>
+          {!hideActivityActions && (
+            <a
+              href="/activity?actorId=me"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors"
+            >
+              <i className="ri-history-line text-sm" />
+              My Activity
+            </a>
+          )}
         </div>
 
       </div>

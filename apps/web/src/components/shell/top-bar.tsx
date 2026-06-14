@@ -7,6 +7,7 @@ import { useSession } from '@/hooks/use-session';
 import { useProduct } from '@/contexts/product-context';
 import { orgTypeLabel, PRODUCT_CODE_TO_NAV_KEY } from '@/lib/nav';
 import { getClientPortalConfig, type PortalConfig } from '@/lib/portal';
+import { isEligibleForCareConnectCommonPortal } from '@/lib/careconnect-common-portal-access';
 import { useTenantBranding } from '@/providers/tenant-branding-provider';
 import { NotificationBell } from '@/components/shell/notification-bell';
 
@@ -224,6 +225,7 @@ interface UserMenuProps {
 function UserMenu({ session, clearSession }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const hideActivityLog = isEligibleForCareConnectCommonPortal(session);
 
   useEffect(() => {
     if (!open) return;
@@ -312,7 +314,9 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
           <div className="py-1.5">
             <ProfileMenuItem href="/profile"  icon="ri-user-3-line"     label="Profile"           onClick={() => setOpen(false)} />
             <ProfileMenuItem href="/settings" icon="ri-settings-3-line"  label="Account Settings" onClick={() => setOpen(false)} />
-            <ProfileMenuItem href="/activity" icon="ri-history-line"     label="Activity Log"      onClick={() => setOpen(false)} />
+            {!hideActivityLog && (
+              <ProfileMenuItem href="/activity" icon="ri-history-line" label="Activity Log" onClick={() => setOpen(false)} />
+            )}
           </div>
 
           <div className="border-t border-gray-100" />
