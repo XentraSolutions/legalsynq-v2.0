@@ -23,23 +23,31 @@ export function ReferralCommentBubble({ comment }: ReferralCommentBubbleProps) {
   const isProvider = comment.senderType === 'provider';
 
   return (
-    <div
-      className={`rounded-lg border px-4 py-3 ${
-        isProvider
-          ? 'border-blue-200 bg-blue-50'
-          : 'border-gray-200 bg-gray-50'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-gray-900">{comment.senderName}</p>
-          <p className="text-xs uppercase tracking-wide text-gray-500">
-            {isProvider ? 'Provider' : 'Referrer'}
-          </p>
-        </div>
-        <p className="text-xs text-gray-500 whitespace-nowrap">{formatDate(comment.createdAt)}</p>
+    <div className={`flex items-start gap-2.5 ${isProvider ? 'flex-row-reverse' : 'flex-row'}`}>
+      {/* Avatar */}
+      <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold ${
+        isProvider ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+      }`}>
+        {comment.senderName.charAt(0).toUpperCase()}
       </div>
-      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">{comment.message}</p>
+
+      {/* Bubble */}
+      <div className="max-w-[80%]">
+        <div className={`flex items-baseline gap-2 mb-1 ${isProvider ? 'flex-row-reverse' : 'flex-row'}`}>
+          <span className="text-xs font-semibold text-gray-700">{comment.senderName}</span>
+          <span className="text-xs text-gray-400 whitespace-nowrap">{formatDate(comment.createdAt)}</span>
+        </div>
+        <div
+          className={`px-3 py-2.5 text-sm leading-relaxed text-gray-900 whitespace-pre-wrap ${
+            isProvider
+              ? 'bg-blue-50 border border-blue-200'
+              : 'bg-amber-50 border border-amber-200'
+          }`}
+          style={{ borderRadius: isProvider ? '12px 4px 12px 12px' : '4px 12px 12px 12px' }}
+        >
+          {comment.message}
+        </div>
+      </div>
     </div>
   );
 }

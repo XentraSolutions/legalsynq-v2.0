@@ -86,20 +86,18 @@ export function ReferralMessageThread({
       <div
         ref={historyRef}
         data-testid="referral-message-history"
-        className="md:max-h-[28rem] md:overflow-y-auto md:pr-2"
+        className="h-[26rem] overflow-y-auto flex flex-col gap-3"
       >
         {comments.length === 0 ? (
-          <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500 md:min-h-[12rem]">
+          <p className="text-sm text-gray-500 italic">
             {readOnly
               ? 'No messages yet.'
               : 'No messages yet. Start the conversation with the referring party below.'}
-          </div>
+          </p>
         ) : (
-          <div className="space-y-3">
-            {comments.map((comment) => (
-              <ReferralCommentBubble key={comment.id} comment={comment} />
-            ))}
-          </div>
+          comments.map((comment) => (
+            <ReferralCommentBubble key={comment.id} comment={comment} />
+          ))
         )}
       </div>
 
