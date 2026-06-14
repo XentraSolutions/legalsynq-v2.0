@@ -1,6 +1,7 @@
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
+using CareConnect.Application.Helpers;
 using CareConnect.Domain;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
@@ -153,6 +154,8 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "Password must be at least 8 characters." });
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
+            if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out var normalizedPhone))
+                return Results.BadRequest(new { message = "Phone number must be 10 digits." });
 
             // ── Load provider ────────────────────────────────────────────────
 
@@ -203,7 +206,7 @@ public static class EnrollmentEndpoints
                 name:             provider.Name,
                 organizationName: companyName,
                 email:            body.Email.Trim(),
-                phone:            body.Phone?.Trim() ?? provider.Phone,
+                phone:            normalizedPhone ?? provider.Phone,
                 addressLine1:     body.AddressLine1?.Trim() ?? provider.AddressLine1,
                 city:             body.City?.Trim() ?? provider.City,
                 state:            body.State?.Trim() ?? provider.State,
@@ -335,6 +338,8 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "Password must be at least 8 characters." });
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
+            if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out _))
+                return Results.BadRequest(new { message = "Phone number must be 10 digits." });
 
             // ── CC-OWNER-CHECK: Block all tenant owners from self-enrolling ──
             var isAnyOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(body.Email.Trim(), ct);

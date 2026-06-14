@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, type FormEvent } from 'react';
 import { sendOtp, registerEnrollment, registerFirmEnrollment, type EnrollmentPrefill } from './actions';
-import { formatPhoneInput, formatPhoneDisplay, stripPhone } from '@/lib/phone';
+import { formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
 import { useRouter } from 'next/navigation';
 
 // ── Address suggestion (from /api/geocode/address) ────────────────────────────
@@ -127,6 +127,8 @@ export function EnrollmentForm({
   // Submission
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const hasPhoneValue = phone.trim().length > 0;
+  const hasInvalidPhone = hasPhoneValue && !isValidPhone(phone);
 
   // ── Address autocomplete ─────────────────────────────────────────────────
 
@@ -193,6 +195,7 @@ export function EnrollmentForm({
   function validate(): string | null {
     if (!companyName.trim()) return 'Company name is required.';
     if (!email.trim())       return 'Email is required.';
+    if (hasInvalidPhone)     return 'Phone number must be 10 digits.';
     if (!firstName.trim())   return 'First name is required.';
     if (!password)           return 'Password is required.';
     if (password.length < 8) return 'Password must be at least 8 characters.';
@@ -374,12 +377,17 @@ export function EnrollmentForm({
               onChange={e => !phoneLocked && setPhone(formatPhoneInput(e.target.value))}
               placeholder="(555) 000-0000"
               disabled={phoneLocked}
-              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
                 phoneLocked
                   ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                  : 'border-gray-300'
+                  : hasInvalidPhone
+                    ? 'border-red-300 focus:ring-red-400'
+                    : 'border-gray-300 focus:ring-blue-500'
               }`}
             />
+            {hasInvalidPhone && (
+              <p className="text-xs text-red-500 mt-1">Phone number must be 10 digits.</p>
+            )}
           </div>
         </div>
       </div>

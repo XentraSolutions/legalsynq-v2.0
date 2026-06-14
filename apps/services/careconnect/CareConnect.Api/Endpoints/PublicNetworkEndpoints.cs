@@ -36,6 +36,8 @@ namespace CareConnect.Api.Endpoints;
 // Direct-to-service requests bypassing the gateway → rejected at Layer 1 (no gateway secret).
 public static class PublicNetworkEndpoints
 {
+    private const string DefaultPublicReferralService = "General Referral";
+
     public static void MapPublicNetworkEndpoints(this WebApplication app)
     {
         // All public routes share the /api/public/network prefix.
@@ -559,7 +561,7 @@ public static class PublicNetworkEndpoints
                                             ? req.PatientDateOfBirth.Value.ToDateTime(TimeOnly.MinValue)
                                             : null,
                 RequestedService        = string.IsNullOrWhiteSpace(req.ServiceType)
-                                            ? null
+                                            ? DefaultPublicReferralService
                                             : req.ServiceType.Trim(),
                 Urgency                 = Referral.ValidUrgencies.Normal,
                 Notes                   = notesParts.Count > 0 ? string.Join("\n", notesParts) : null,

@@ -692,6 +692,7 @@ function ReferralPanel({
       patientDateOfBirth:     form.patientDob || undefined,
       patientDateOfAccident:  form.patientDateOfAccident || undefined,
       patientAddress:         form.patientAddress.trim() || undefined,
+      serviceType:            'General Referral',
       notes:                  [
         form.notes,
         form.phone    ? `Firm phone: ${form.phone}` : '',
