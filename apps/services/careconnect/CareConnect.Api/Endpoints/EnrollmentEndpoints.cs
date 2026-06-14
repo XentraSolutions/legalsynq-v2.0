@@ -254,6 +254,7 @@ public static class EnrollmentEndpoints
                 body.Password,
                 body.FirstName.Trim(),
                 body.LastName?.Trim(),
+                ResolveIdentityEnrollmentPhone(normalizedPhone, provider.Phone),
                 ct);
 
             if (registerResult is { IsOwnerBlocked: true })
@@ -342,7 +343,7 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "Password must be at least 8 characters." });
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
-            if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out _))
+            if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out var normalizedPhone))
                 return Results.BadRequest(new { message = "Phone number must be 10 digits." });
             if (!PostalCodeHelper.IsValidOptionalUsZip(body.PostalCode))
                 return Results.BadRequest(new { message = "ZIP code must be 5 digits or 5+4 format." });
@@ -388,6 +389,7 @@ public static class EnrollmentEndpoints
                 body.Password,
                 body.FirstName.Trim(),
                 body.LastName?.Trim(),
+                ResolveIdentityEnrollmentPhone(normalizedPhone, null),
                 ct);
 
             if (registerResult is { IsOwnerBlocked: true })
@@ -516,6 +518,28 @@ public static class EnrollmentEndpoints
             return addr.Address == email.Trim();
         }
         catch { return false; }
+    }
+
+    internal static string? ResolveIdentityEnrollmentPhone(string? normalizedPhone, string? fallbackPhone)
+    {
+        static string? ToIdentityPhone(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+
+            var trimmed = raw.Trim();
+            if (trimmed.StartsWith('+'))
+                return trimmed;
+
+            var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+            return digits.Length == 10
+                ? $"+1{digits}"
+                : digits.Length == 11 && digits.StartsWith('1')
+                    ? $"+{digits}"
+                    : trimmed;
+        }
+
+        return ToIdentityPhone(normalizedPhone) ?? ToIdentityPhone(fallbackPhone);
     }
 
     private static bool ValidateAddressSelectionToken(

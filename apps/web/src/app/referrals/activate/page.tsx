@@ -10,6 +10,10 @@
  *     → shows referral context + ActivationForm (email + name capture)
  *     → on submit: emits ActivationStarted funnel event, shows confirmation
  *
+ * This page remains valid after a referral has already been accepted. Providers
+ * may still need to activate a portal account so they can log in and manage the
+ * accepted referral from the dashboard.
+ *
  * Deferred step (documented in LSCC-008 report):
  *   Automated tenant provisioning is not yet implemented.
  *   The activation form records intent and an admin will provision the account manually.
@@ -96,11 +100,6 @@ export default async function ActivatePage({ searchParams }: PageProps) {
 
   if (!threadData) {
     redirect(`/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`);
-  }
-
-  // If already accepted, send them to the accepted state screen
-  if (threadData.status === 'Accepted') {
-    redirect(`/referrals/thread?token=${encodeURIComponent(token)}`);
   }
 
   const prefill = toEnrollmentPrefill(threadData, companyName);

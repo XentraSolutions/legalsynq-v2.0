@@ -8355,6 +8355,9 @@ public static partial class AdminEndpointsLscc010
             return Results.BadRequest(new { error = "tenantId is required for global organization self-registration." });
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
+        var (phoneOk, normalisedPhone, phoneError) = PhoneNumber.TryNormalise(body.Phone);
+        if (!phoneOk)
+            return Results.BadRequest(new { error = phoneError });
 
         // ── Owner guard: tenant owners may not enroll as providers ─────────────
         var tenantOwnerUserIdSr = await db.Tenants
@@ -8387,11 +8390,12 @@ public static partial class AdminEndpointsLscc010
         // ── Multi-tenant: global email lookup ─────────────────────────────────
         var existingUser = await db.Users
             .Where(u => u.Email.Trim().ToLower() == emailLower)
-            .Select(u => new { u.Id, u.PasswordHash })
             .FirstOrDefaultAsync(ct);
 
         if (existingUser is not null)
         {
+            existingUser.SetPhone(normalisedPhone);
+
             // Check if already in the target tenant (via UserTenants row).
             var alreadyInTenant = await db.UserTenants.AnyAsync(
                     ut => ut.UserId == existingUser.Id && ut.TenantId == targetTenantId.Value && ut.IsActive, ct);
@@ -8474,6 +8478,7 @@ public static partial class AdminEndpointsLscc010
         var lastName = string.IsNullOrWhiteSpace(body.LastName) ? "User" : body.LastName.Trim();
         var hash     = passwordHasher.Hash(body.Password);
         var user     = User.Create(targetTenantId.Value, emailLower, hash, body.FirstName.Trim(), lastName);
+        user.SetPhone(normalisedPhone);
         // User.Create produces an active user by default — no Deactivate() call here.
         db.Users.Add(user);
 
@@ -8683,7 +8688,8 @@ public static partial class AdminEndpointsLscc010
         string  Email,
         string  Password,
         string  FirstName,
-        string? LastName = null);
+        string? LastName = null,
+        string? Phone = null);
 
     public record SelfRegisterUserResponse(
         Guid UserId,

@@ -69,6 +69,7 @@ public interface IIdentityOrganizationService
         string            password,
         string            firstName,
         string?           lastName,
+        string?           phone,
         CancellationToken ct = default);
 
     // ── CC2-ENROLL-FIRM: Law firm self-enrollment — org creation ─────────────
