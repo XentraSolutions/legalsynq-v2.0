@@ -8475,7 +8475,7 @@ public static partial class AdminEndpointsLscc010
         }
 
         // ── New user: standard self-registration path ─────────────────────────
-        var lastName = string.IsNullOrWhiteSpace(body.LastName) ? "User" : body.LastName.Trim();
+        var lastName = body.LastName?.Trim() ?? string.Empty;
         var hash     = passwordHasher.Hash(body.Password);
         var user     = User.Create(targetTenantId.Value, emailLower, hash, body.FirstName.Trim(), lastName);
         user.SetPhone(normalisedPhone);

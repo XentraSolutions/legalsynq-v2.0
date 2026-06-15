@@ -44,6 +44,14 @@ interface PublicNetworkViewProps {
 
 type ViewMode = 'split' | 'list' | 'map';
 
+function splitPersonName(value: string): { firstName: string; lastName: string } {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? '',
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export function PublicNetworkView({
@@ -678,8 +686,7 @@ function ReferralPanel({
 
     setState('submitting');
 
-    const [firstName, ...rest] = form.patientName.trim().split(' ');
-    const lastName = rest.join(' ') || firstName;
+    const { firstName, lastName } = splitPersonName(form.patientName);
 
     const payloads: PublicReferralRequest[] = providers.map(p => ({
       providerId:             p.id,

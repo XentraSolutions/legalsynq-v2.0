@@ -305,6 +305,69 @@ public class PortalAccessStatusTests
     }
 
     [Fact]
+    public async Task SelfRegister_AllowsMissingLastName_ForNewUser()
+    {
+        using var factory = BuildFactory();
+        Guid targetOrgId;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            await EnsureCareConnectProductSeededAsync(db);
+
+            var targetTenant = Tenant.Create("Target Tenant", $"target-{Guid.CreateVersion7():N}");
+            db.Tenants.Add(targetTenant);
+
+            var targetOrg = Organization.Create(targetTenant.Id, "Target Firm", OrgType.LawFirm, displayName: "Target Firm");
+            db.Organizations.Add(targetOrg);
+
+            await db.SaveChangesAsync();
+
+            targetOrgId = targetOrg.Id;
+        }
+
+        using var invokeScope = factory.Services.CreateScope();
+        var invokeDb = invokeScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        var invokePasswordHasher = invokeScope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        var provisioningEngine = invokeScope.ServiceProvider.GetRequiredService<IProductProvisioningService>();
+        var userProductAccessService = invokeScope.ServiceProvider.GetRequiredService<IUserProductAccessService>();
+        var auditClient = invokeScope.ServiceProvider.GetRequiredService<IAuditEventClient>();
+        var loggerFactory = invokeScope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+
+        var result = await AdminEndpointsLscc010.SelfRegisterUser(
+            targetOrgId,
+            new AdminEndpointsLscc010.SelfRegisterUserRequest(
+                TenantId: null,
+                Email: "single.name@example.com",
+                Password: "SingleName123!",
+                FirstName: "Prince",
+                LastName: null,
+                Phone: "+15550123456"),
+            invokeDb,
+            invokePasswordHasher,
+            provisioningEngine,
+            userProductAccessService,
+            auditClient,
+            loggerFactory,
+            CancellationToken.None);
+
+        var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status201Created, statusResult.StatusCode);
+
+        var valueResult = Assert.IsAssignableFrom<IValueHttpResult>(result);
+        var body = Assert.IsType<AdminEndpointsLscc010.SelfRegisterUserResponse>(valueResult.Value);
+        Assert.True(body.IsNew);
+
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+        var savedUser = await verifyDb.Users.SingleAsync(u => u.Id == body.UserId);
+        Assert.Equal("Prince", savedUser.FirstName);
+        Assert.Equal(string.Empty, savedUser.LastName);
+        Assert.Equal("+15550123456", savedUser.Phone);
+    }
+
+    [Fact]
     public async Task SelfRegister_UpdatesPhone_ForExistingUserAlreadyInTenant()
     {
         using var factory = BuildFactory();
