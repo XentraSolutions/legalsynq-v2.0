@@ -99,6 +99,22 @@ public static class SettingEndpoints
             return Results.Ok(new MapProviderResponse(result.SettingValue));
         });
 
+        var publicGroup = app.MapGroup("/api/v1/public/tenants/{tenantId:guid}/settings");
+
+        publicGroup.MapGet("/map-provider", async (
+            Guid tenantId,
+            ISettingService service,
+            CancellationToken ct) =>
+        {
+            var setting = await service.GetByKeyAsync(tenantId, MapProviderKey, MapProviderProduct, ct);
+            var value = setting?.SettingValue is "osm" or "google"
+                ? setting.SettingValue
+                : "google";
+
+            return Results.Ok(new MapProviderResponse(value));
+        })
+        .AllowAnonymous();
+
         return app;
     }
 
