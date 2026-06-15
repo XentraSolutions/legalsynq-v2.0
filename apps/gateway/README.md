@@ -41,3 +41,14 @@ Gateway.Api/
 - All downstream services independently validate JWTs — the gateway is not a single point of auth enforcement.
 - Internal service-to-service calls (e.g. Identity → Notifications, Tenant → Identity) bypass the gateway and use direct HTTP with service tokens or provisioning secrets.
 - For `systemd` deployments that use `EnvironmentFile=`, keep YARP cluster and destination override keys underscore-only, for example `ReverseProxy__Clusters__identity_cluster__Destinations__identity_primary__Address`.
+
+## Required header rules — CareConnect common portal (AUTH-CC01)
+
+The CareConnect forgot-password flow relies on two headers being trustworthy when they reach the BFF and Identity service. The reverse proxy **must** enforce these rules before traffic reaches the Next.js BFF:
+
+| Header | Rule | Reason |
+|---|---|---|
+| `x-forwarded-host` | Strip from external requests; set to the actual incoming hostname | BFF uses this to detect `CC_COMMON_PORTAL_HOSTNAME` and set `resolveByEmail=true`. Spoofing it from outside would bypass tenant resolution. |
+| `X-Ls-Internal-Source` | Strip from external requests; never set on external traffic | Identity requires this header to accept `resolveByEmail=true`. The BFF always adds it for its own internal calls. External callers must not be able to inject it. |
+
+Without these rules in place, an external caller could spoof either header and trigger cross-tenant email-based user lookup.

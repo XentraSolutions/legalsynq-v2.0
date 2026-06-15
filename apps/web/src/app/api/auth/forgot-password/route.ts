@@ -1,6 +1,19 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { normalizeCareConnectPortalHost } from '@/lib/careconnect-login-url';
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
+// AUTH-CC01: When the request arrives on this hostname, always resolve the tenant
+// from the user's email — no tenant code or subdomain lookup required.
+// Matches CC_COMMON_PORTAL_HOSTNAME in middleware.ts.
+const CC_COMMON_PORTAL_HOSTNAME = normalizeCareConnectPortalHost(process.env.CC_COMMON_PORTAL_HOSTNAME);
+
+if (!CC_COMMON_PORTAL_HOSTNAME && process.env.NODE_ENV !== 'test') {
+  console.warn(
+    '[forgot-password] CC_COMMON_PORTAL_HOSTNAME is not set — ' +
+    'CareConnect common-portal forgot-password will not work. ' +
+    'Set CC_COMMON_PORTAL_HOSTNAME in the environment.',
+  );
+}
 
 interface RateLimitEntry {
   count: number;
@@ -62,21 +75,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email is required' }, { status: 400 });
   }
 
+  const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
+  const incomingHost = rawHost.split(':')[0].toLowerCase();
   const rawSubdomain = extractRawSubdomain(request);
-  const tenantCode = explicitTenantCode?.trim() || rawSubdomain;
 
-  if (!tenantCode) {
+  // AUTH-CC01: If the request is arriving on the configured common portal hostname,
+  // skip all tenant-code resolution and tell Identity to resolve by email.
+  // SECURITY: isCommonPortalHost is derived from x-forwarded-host / host headers.
+  // This is safe only if the reverse proxy strips or overwrites these headers before
+  // forwarding — do not deploy without proxy-level header enforcement.
+  const isCommonPortalHost =
+    !!CC_COMMON_PORTAL_HOSTNAME && incomingHost === CC_COMMON_PORTAL_HOSTNAME;
+
+  const tenantCode = isCommonPortalHost
+    ? ''                                       // no tenant code on common portal path
+    : (explicitTenantCode?.trim() || rawSubdomain);
+
+  if (!isCommonPortalHost && !tenantCode) {
     return NextResponse.json(
       { message: 'Tenant could not be resolved.' },
       { status: 400 },
     );
   }
 
-  // AUTH-B01: resolve the real TenantId from the Tenant service so Identity can
-  // use it as a fallback when its local code/subdomain lookup misses.
+  // AUTH-B01: Resolve tenant from the Tenant service so Identity can use
+  // tenantId as a fallback when code/subdomain lookup misses. Skipped on the
+  // common portal path (resolveByEmail=true) since Identity handles the lookup.
   let resolvedTenantId: string | null = null;
-  let resolvedTenantCode: string = tenantCode;
-  if (rawSubdomain) {
+  let resolvedTenantCode: string = tenantCode ?? '';
+  const resolveByEmail = isCommonPortalHost;
+
+  if (!isCommonPortalHost && rawSubdomain) {
     try {
       const tenantRes = await fetch(
         `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-subdomain/${encodeURIComponent(rawSubdomain)}`,
@@ -98,12 +127,19 @@ export async function POST(request: NextRequest) {
   try {
     identityRes = await fetch(`${GATEWAY_URL}/identity/api/auth/forgot-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Identifies this as a trusted BFF call — Identity requires this header
+        // to accept ResolveByEmail=true. Must be stripped from external traffic
+        // by the reverse proxy before forwarding.
+        'X-Ls-Internal-Source': 'bff-forgot-password',
+      },
       body: JSON.stringify({
-        tenantCode: resolvedTenantCode,
+        tenantCode: resolveByEmail ? '' : resolvedTenantCode,
         email,
         subdomain: rawSubdomain,
         tenantId: resolvedTenantId,
+        resolveByEmail,
       }),
     });
   } catch (err) {

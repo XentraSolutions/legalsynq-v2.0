@@ -80,3 +80,14 @@ NEXT_PUBLIC_ENV=development
 NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ
 GATEWAY_URL=http://127.0.0.1:5010
 ```
+
+### CareConnect common portal (AUTH-CC01)
+
+Two additional env vars are required when hosting the CareConnect common portal on a separate hostname (e.g. `careconnect.legalsynq.com`):
+
+| Variable | Example | Purpose |
+|---|---|---|
+| `CC_COMMON_PORTAL_HOSTNAME` | `careconnect.legalsynq.com` | Hostname the BFF uses to detect a common-portal request and set `resolveByEmail=true`. Must match the hostname the reverse proxy routes to this Next.js instance. |
+| `NotificationsService__CareConnectPortalBaseUrl` | `https://careconnect.legalsynq.com` | Identity service config. The base URL used to build password-reset links for CC users. Set in `Identity.Api/appsettings.json` or as an environment override. |
+
+If `CC_COMMON_PORTAL_HOSTNAME` is unset, the CC forgot-password path is silently disabled (a startup warning is logged). See `apps/gateway/README.md` for the required proxy header-stripping rules.

@@ -2,19 +2,18 @@
 
 import { useState, useEffect, type FormEvent } from 'react';
 
-export function ForgotPasswordForm() {
+export function ForgotPasswordForm({ isPortal }: { isPortal?: boolean }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  // Hide the tenant code field whenever a subdomain is present in the URL —
-  // the BFF resolves the tenant from the Host header on any *.legalsynq.com domain
-  // (including the common portal careconnect-demo.legalsynq.com).
+  // isPortal is set server-side by page.tsx; fall back to client-side hostname
+  // heuristic when the prop is absent (e.g. form rendered standalone).
   const hasTenantSubdomain = mounted && (() => {
     const host = window.location.hostname;
     const parts = host.split('.');
     return parts.length >= 3 && !host.startsWith('localhost');
   })();
-  const showTenantField = mounted && !hasTenantSubdomain;
+  const showTenantField = !isPortal && mounted && !hasTenantSubdomain;
 
   const [email, setEmail] = useState('');
   const [tenantCode, setTenantCode] = useState(process.env.NEXT_PUBLIC_TENANT_CODE ?? '');
