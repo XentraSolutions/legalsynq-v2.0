@@ -245,7 +245,7 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
               <button
                 onClick={() => { if (canCancel) setShowCancelConfirm(true); }}
                 disabled={!!loading || !canCancel}
-                className="text-sm text-gray-500 hover:text-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="bg-gray-600 px-4 py-2 rounded-md text-sm text-white hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Cancel Referral
               </button>
