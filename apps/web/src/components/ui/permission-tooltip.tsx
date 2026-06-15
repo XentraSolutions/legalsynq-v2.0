@@ -67,7 +67,7 @@ export function PermissionTooltip({
         aria-hidden={!show}
         className={[
           'pointer-events-none',
-          'absolute bottom-full left-1/2 -translate-x-1/2 mb-2',
+          'absolute left-full top-1/2 -translate-y-1/2 mb-2',
           'w-max max-w-[220px] px-2.5 py-1.5 rounded-md shadow-sm',
           'text-xs text-white bg-gray-800 text-center whitespace-normal leading-snug',
           'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
@@ -78,7 +78,7 @@ export function PermissionTooltip({
         {/* Downward arrow */}
         <span
           aria-hidden="true"
-          className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"
+          className="absolute right-full top-1/2 -translate-y-1/2 h-0 w-0 border-y-4 border-r-4 border-y-transparent border-r-gray-800"
         />
       </span>
     </span>
