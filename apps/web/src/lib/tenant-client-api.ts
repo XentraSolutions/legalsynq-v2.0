@@ -138,6 +138,9 @@ export const tenantClientApi = {
   upsertMapProviderSetting: (tenantId: string, value: 'google' | 'osm') =>
     apiClient.put<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/map-provider`, { value }),
 
+  updateTimezoneSetting: (tenantId: string, value: string) =>
+    apiClient.put<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/timezone`, { value }),
+
   // ── LS-ID-TNT-013: Permission management (tenant-level) ──────────────────
 
   getRolePermissions: (roleId: string) =>

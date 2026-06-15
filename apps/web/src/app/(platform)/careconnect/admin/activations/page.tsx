@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'short', day: 'numeric',
+    year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC',
   });
 }
 

@@ -239,7 +239,7 @@ export default function CCTaskGovernancePage() {
                 <> · Updated by <strong>{settings.lastUpdatedByName}</strong></>
               )}
               {settings.lastUpdatedAt && (
-                <> · {new Date(settings.lastUpdatedAt).toLocaleDateString()}</>
+                <> · {new Date(settings.lastUpdatedAt).toLocaleDateString('en-US', { timeZone: 'UTC' })}</>
               )}
             </p>
             <p>Tenant: <span className="font-mono">{settings.tenantId}</span></p>

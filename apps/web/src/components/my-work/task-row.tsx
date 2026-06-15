@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ApiError } from '@/lib/api-client';
 import { tasksApi, type MyTask } from '@/lib/tasks';
 import { useToast } from '@/lib/toast-context';
+import { useTimezone } from '@/lib/use-timezone';
 import { TaskStatusBadge } from './status-badge';
 import { TaskPriorityBadge } from './priority-badge';
 import { SlaBadge } from './sla-badge';
@@ -43,10 +44,13 @@ export interface TaskRowProps {
 
 type ActionKind = 'start' | 'complete' | 'cancel';
 
-function fmtDate(iso: string | null | undefined): string {
+function fmtDate(iso: string | null | undefined, timezone: string): string {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZone: timezone,
+    });
   } catch {
     return iso;
   }
@@ -82,6 +86,7 @@ function friendlyError(err: ApiError, kind: ActionKind): string {
 
 export function TaskRow({ task, onChanged, onOpen }: TaskRowProps) {
   const toast = useToast();
+  const timezone = useTimezone();
   const [busy, setBusy] = useState<ActionKind | null>(null);
 
   async function run(kind: ActionKind, e?: React.MouseEvent) {
@@ -198,24 +203,24 @@ export function TaskRow({ task, onChanged, onOpen }: TaskRowProps) {
             </div>
             <div className="truncate">
               <dt className="inline font-medium text-gray-600">Created:</dt>{' '}
-              <dd className="inline">{fmtDate(task.createdAt)}</dd>
+              <dd className="inline">{fmtDate(task.createdAt, timezone)}</dd>
             </div>
             {task.dueAt && (
               <div className="truncate">
                 <dt className="inline font-medium text-gray-600">Due:</dt>{' '}
-                <dd className="inline">{fmtDate(task.dueAt)}</dd>
+                <dd className="inline">{fmtDate(task.dueAt, timezone)}</dd>
               </div>
             )}
             {task.startedAt && (
               <div className="truncate">
                 <dt className="inline font-medium text-gray-600">Started:</dt>{' '}
-                <dd className="inline">{fmtDate(task.startedAt)}</dd>
+                <dd className="inline">{fmtDate(task.startedAt, timezone)}</dd>
               </div>
             )}
             {task.completedAt && (
               <div className="truncate">
                 <dt className="inline font-medium text-gray-600">Completed:</dt>{' '}
-                <dd className="inline">{fmtDate(task.completedAt)}</dd>
+                <dd className="inline">{fmtDate(task.completedAt, timezone)}</dd>
               </div>
             )}
           </dl>

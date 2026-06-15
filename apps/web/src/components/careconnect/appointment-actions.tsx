@@ -10,6 +10,7 @@ import { PermissionCodes } from '@/lib/permission-codes';
 import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
 import { PermissionTooltip } from '@/components/ui/permission-tooltip';
 import { DisabledReasons } from '@/lib/disabled-reasons';
+import { useTimezone } from '@/lib/use-timezone';
 import { AvailabilityList } from './availability-list';
 import type { AppointmentDetail, AvailabilitySlot, ProviderAvailabilityResponse } from '@/types/careconnect';
 
@@ -29,10 +30,11 @@ function addDays(d: Date, n: number): Date {
   return r;
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, timezone: string): string {
   return new Date(iso).toLocaleString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true,
+    timeZone: timezone,
   });
 }
 
@@ -58,6 +60,7 @@ function formatDateTime(iso: string): string {
 export function AppointmentActions({ appointment, isReceiver, isReferrer: _isReferrer }: AppointmentActionsProps) {
   const router = useRouter();
   const { show: showToast } = useToast();
+  const timezone = useTimezone();
 
   // LS-ID-TNT-015-001: Permission checks (UX layer only; backend enforces authoritatively).
   const canApptUpdatePerm = usePermission(PermissionCodes.CC.AppointmentUpdate);
@@ -321,7 +324,7 @@ export function AppointmentActions({ appointment, isReceiver, isReferrer: _isRef
                   <p className="text-sm text-gray-500 mt-0.5">
                     {appointment.clientFirstName} {appointment.clientLastName}
                     {' · '}
-                    <span className="text-gray-400 line-through">{formatDateTime(appointment.scheduledAtUtc)}</span>
+                    <span className="text-gray-400 line-through">{formatDateTime(appointment.scheduledAtUtc, timezone)}</span>
                   </p>
                 </div>
                 <button
@@ -349,6 +352,7 @@ export function AppointmentActions({ appointment, isReceiver, isReferrer: _isRef
                     slots={availability.slots}
                     selectedSlotId={selectedSlot?.id ?? null}
                     onSelectSlot={setSelectedSlot}
+                    timezone={timezone}
                   />
                 ) : (
                   <p className="text-sm text-gray-400 text-center py-8">No availability found.</p>
@@ -357,7 +361,7 @@ export function AppointmentActions({ appointment, isReceiver, isReferrer: _isRef
                 {/* Selected slot preview */}
                 {selectedSlot && (
                   <div className="bg-blue-50 border border-blue-200 rounded-md px-3 py-2 text-sm text-blue-700">
-                    New time: <strong>{formatDateTime(selectedSlot.startUtc)}</strong>
+                    New time: <strong>{formatDateTime(selectedSlot.startUtc, timezone)}</strong>
                     {selectedSlot.serviceType ? ` · ${selectedSlot.serviceType}` : ''}
                   </div>
                 )}

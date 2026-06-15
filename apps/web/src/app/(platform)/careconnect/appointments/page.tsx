@@ -5,6 +5,7 @@ import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { AppointmentListTable } from '@/components/careconnect/appointment-list-table';
 import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
+import { tenantServerApi } from '@/lib/tenant-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,9 @@ interface AppointmentsPageProps {
 export default async function AppointmentsPage({ searchParams }: AppointmentsPageProps) {
   const searchParamsData = await searchParams;
   const session = await requireOrg();
+
+  const tzResult = await tenantServerApi.getTimezoneSetting(session.tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
@@ -127,6 +131,7 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
           totalCount={result.totalCount}
           page={result.page}
           pageSize={result.pageSize}
+          timezone={tenantTimezone}
         />
       )}
     </div>

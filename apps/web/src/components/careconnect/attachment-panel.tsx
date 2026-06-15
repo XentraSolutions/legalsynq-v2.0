@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
+import { useTimezone } from '@/lib/use-timezone';
 import type { AttachmentSummary } from '@/types/careconnect';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -30,11 +31,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, timezone: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day:   'numeric',
-    year:  'numeric',
+    month:    'short',
+    day:      'numeric',
+    year:     'numeric',
+    timeZone: timezone,
   });
 }
 
@@ -139,6 +141,7 @@ export function AttachmentPanel({
   readOnly = false,
   adminReferralView = false,
 }: AttachmentPanelProps) {
+  const timezone = useTimezone();
   const [attachments, setAttachments]     = useState<AttachmentSummary[]>([]);
   const [loadError,   setLoadError]       = useState<string | null>(null);
   const [uploading,   setUploading]       = useState(false);
@@ -395,7 +398,7 @@ export function AttachmentPanel({
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">{a.fileName}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {formatBytes(a.fileSizeBytes)} · {formatDate(a.createdAtUtc)}
+                    {formatBytes(a.fileSizeBytes)} · {formatDate(a.createdAtUtc, timezone)}
                     {a.scope && (
                       <span
                         className={[

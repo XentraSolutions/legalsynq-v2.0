@@ -1,6 +1,7 @@
 import { requireTenantAdmin } from '@/lib/tenant-auth-guard';
 import { tenantServerApi, ServerApiError } from '@/lib/tenant-api';
 import { TenantMapProviderCard } from './TenantMapProviderCard';
+import { TenantTimezoneCard } from './TenantTimezoneCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,16 +10,23 @@ export default async function TenantSettingsPage() {
   const session = await requireTenantAdmin();
 
   let currentProvider: 'google' | 'osm' = 'google';
+  let currentTimezone = 'America/Los_Angeles';
   let fetchError: string | null = null;
 
   try {
-    const setting = await tenantServerApi.getMapProviderSetting(session.tenantId);
-    if (setting.value === 'osm' || setting.value === 'google') {
-      currentProvider = setting.value;
+    const [mapSetting, tzSetting] = await Promise.all([
+      tenantServerApi.getMapProviderSetting(session.tenantId),
+      tenantServerApi.getTimezoneSetting(session.tenantId),
+    ]);
+    if (mapSetting.value === 'osm' || mapSetting.value === 'google') {
+      currentProvider = mapSetting.value;
+    }
+    if (tzSetting.value) {
+      currentTimezone = tzSetting.value;
     }
   } catch (err) {
     fetchError = err instanceof ServerApiError && err.isForbidden
-      ? 'You do not have permission to view map settings.'
+      ? 'You do not have permission to view these settings.'
       : null;
   }
 
@@ -46,6 +54,11 @@ export default async function TenantSettingsPage() {
             </div>
           </div>
         )}
+
+        <TenantTimezoneCard
+          tenantId={session.tenantId}
+          initialTimezone={currentTimezone}
+        />
 
         <TenantMapProviderCard
           tenantId={session.tenantId}

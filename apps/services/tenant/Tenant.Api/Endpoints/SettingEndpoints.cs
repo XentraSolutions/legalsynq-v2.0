@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BuildingBlocks.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Tenant.Application;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 
@@ -10,6 +11,7 @@ public static class SettingEndpoints
 {
     private const string MapProviderKey     = "careconnect.map-provider";
     private const string MapProviderProduct = "careconnect";
+    private const string TimezoneDefault    = TenantDefaults.Timezone;
 
     public static WebApplication MapSettingEndpoints(this WebApplication app)
     {
@@ -115,6 +117,51 @@ public static class SettingEndpoints
         })
         .AllowAnonymous();
 
+        // ── TenantAdmin: timezone setting ─────────────────────────────────────
+        // GET  /api/tenants/{tenantId}/settings/timezone  — read current value
+        // PUT  /api/tenants/{tenantId}/settings/timezone  — write IANA timezone
+
+        var tzGroup = app.MapGroup("/api/tenants/{tenantId:guid}/settings/timezone")
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        tzGroup.MapGet("/", async (
+            Guid tenantId,
+            ClaimsPrincipal user,
+            ITenantService tenantService,
+            CancellationToken ct) =>
+        {
+            var scopeError = EnforceTenantScope(user, tenantId);
+            if (scopeError is not null) return scopeError;
+
+            var timezone = await tenantService.GetTimezoneAsync(tenantId, ct);
+            return Results.Ok(new TimezoneResponse(timezone ?? TimezoneDefault));
+        });
+
+        tzGroup.MapPut("/", async (
+            Guid tenantId,
+            ClaimsPrincipal user,
+            [FromBody] SetTimezoneRequest request,
+            ITenantService tenantService,
+            CancellationToken ct) =>
+        {
+            var scopeError = EnforceTenantScope(user, tenantId);
+            if (scopeError is not null) return scopeError;
+
+            var updated = await tenantService.UpdateTimezoneAsync(tenantId, request.Value, ct);
+            return Results.Ok(new TimezoneResponse(updated));
+        });
+
+        // Public (anonymous): allows CareConnect public portal to read tenant timezone
+        publicGroup.MapGet("/timezone", async (
+            Guid tenantId,
+            ITenantService tenantService,
+            CancellationToken ct) =>
+        {
+            var timezone = await tenantService.GetTimezoneAsync(tenantId, ct);
+            return Results.Ok(new TimezoneResponse(timezone ?? TimezoneDefault));
+        })
+        .AllowAnonymous();
+
         return app;
     }
 
@@ -133,3 +180,5 @@ public static class SettingEndpoints
 
 public record MapProviderResponse(string Value);
 public record SetMapProviderRequest(string Value);
+public record TimezoneResponse(string Value);
+public record SetTimezoneRequest(string Value);

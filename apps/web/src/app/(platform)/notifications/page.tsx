@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/auth-guards';
+import { tenantServerApi } from '@/lib/tenant-api';
 import {
 
   notificationsServerApi,
@@ -72,14 +73,15 @@ function ChannelBadge({ channel }: { channel: string }) {
 
 // ── Date formatter ────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string, timezone: string): string {
   try {
     return new Date(iso).toLocaleString('en-US', {
-      month: 'short',
-      day:   'numeric',
-      year:  'numeric',
-      hour:  'numeric',
-      minute: '2-digit',
+      month:    'short',
+      day:      'numeric',
+      year:     'numeric',
+      hour:     'numeric',
+      minute:   '2-digit',
+      timeZone: timezone,
     });
   } catch {
     return iso;
@@ -91,6 +93,9 @@ function fmtDate(iso: string): string {
 export default async function NotificationsPage() {
   const session = await requireAdmin();
   const { tenantId } = session;
+
+  const tzResult = await tenantServerApi.getTimezoneSetting(tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
 
   // Fetch stats + last 10 notifications in parallel.
   let stats: NotifStats | null = null;
@@ -282,7 +287,7 @@ export default async function NotificationsPage() {
                     )}
                   </td>
                   <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
-                    {fmtDate(n.createdAt)}
+                    {fmtDate(n.createdAt, tenantTimezone)}
                   </td>
                 </tr>
               ))}

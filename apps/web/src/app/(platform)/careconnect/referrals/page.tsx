@@ -6,6 +6,7 @@ import { checkCareConnectReceiverAccess } from '@/lib/careconnect-access';
 import { ReferralAccessBlocked } from '@/components/careconnect/referral-access-blocked';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
+import { tenantServerApi } from '@/lib/tenant-api';
 import { ReferralListTable } from '@/components/careconnect/referral-list-table';
 import { ReferralQueueToolbar } from '@/components/careconnect/referral-queue-toolbar';
 import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
@@ -72,9 +73,9 @@ function UrgencyBadge({ urgency }: { urgency: string }) {
   );
 }
 
-function formatDate(iso: string) {
+function formatDate(iso: string, timezone: string) {
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
+    month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone,
   });
 }
 
@@ -96,9 +97,11 @@ function getAdminNetworkDisplay(item: AdminReferralItem): string | null {
 function NetworkReferralRow({
   item,
   showNetworkColumn,
+  timezone,
 }: {
   item: NetworkReferralItem;
   showNetworkColumn: boolean;
+  timezone: string;
 }) {
   const clientName     = [item.clientFirstName, item.clientLastName].filter(Boolean).join(' ') || '—';
   const providerDisplay = item.providerOrganizationName ?? item.providerName ?? '—';
@@ -152,7 +155,7 @@ function NetworkReferralRow({
         <UrgencyBadge urgency={item.urgency} />
       </td>
       <td className="px-4 py-3">
-        <span className="text-xs text-gray-400">{formatDate(item.createdAtUtc)}</span>
+        <span className="text-xs text-gray-400">{formatDate(item.createdAtUtc, timezone)}</span>
       </td>
       <td className="px-4 py-3 text-right">
         <Link
@@ -173,9 +176,11 @@ const ALL_STATUSES = ['New', 'Accepted', 'InProgress', 'Completed', 'Declined', 
 async function NetworkReferralsView({
   status,
   search,
+  timezone,
 }: {
   status?: string;
   search?: string;
+  timezone: string;
 }) {
   let data = null;
   let fetchError: string | null = null;
@@ -262,7 +267,7 @@ async function NetworkReferralsView({
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {data.items.map((item) => (
-                  <NetworkReferralRow key={item.id} item={item} showNetworkColumn={showNetworkColumn} />
+                  <NetworkReferralRow key={item.id} item={item} showNetworkColumn={showNetworkColumn} timezone={timezone} />
                 ))}
               </tbody>
             </table>
@@ -311,9 +316,11 @@ async function NetworkReferralsView({
 async function TenantAdminReadOnlyReferralsView({
   sessionTenantId,
   status,
+  timezone,
 }: {
   sessionTenantId: string;
   status?: string;
+  timezone: string;
 }) {
   let data: AdminReferralPage | null = null;
   let fetchError: string | null = null;
@@ -437,7 +444,7 @@ async function TenantAdminReadOnlyReferralsView({
                       </td>
                       <td className="px-4 py-3">
                         {(() => {
-                          const ts = formatTimestamp(item.createdAtUtc);
+                          const ts = formatTimestamp(item.createdAtUtc, timezone);
                           return (
                             <>
                               <p className="text-xs text-gray-500">{ts.date}</p>
@@ -494,6 +501,12 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
   const isNetworkManager  = session.productRoles.includes(ProductRole.CareConnectNetworkManager);
   const isTenantAdminView = session.isTenantAdmin && !session.isPlatformAdmin;
 
+  let tenantTimezone = 'America/Los_Angeles';
+  try {
+    const tzSetting = await tenantServerApi.getTimezoneSetting(session.tenantId);
+    if (tzSetting.value) tenantTimezone = tzSetting.value;
+  } catch { /* fall back to default */ }
+
   // LSCC-01-002-02: Enforce the admin-controlled access model.
   if (!isReferrer && !isReceiver && !isNetworkManager && !isTenantAdminView) {
     const readiness = checkCareConnectReceiverAccess(session);
@@ -515,6 +528,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
         <TenantAdminReadOnlyReferralsView
           sessionTenantId={session.tenantId}
           status={searchParamsData.status || undefined}
+          timezone={tenantTimezone}
         />
 
         <div className="pt-1">
@@ -558,6 +572,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
         <NetworkReferralsView
           status={searchParamsData.status || undefined}
           search={searchText}
+          timezone={tenantTimezone}
         />
 
         <div className="pt-1">
@@ -683,6 +698,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
           isReceiver={isReceiver}
           orgId={session.orgId}
           currentQs={currentQs}
+          timezone={tenantTimezone}
         />
       )}
 

@@ -47,11 +47,11 @@ const STATUS_CONFIG: Record<StatusKey, { label: string; color: string; bg: strin
   Cancelled:  { label: 'Cancelled',                  color: '#374151', bg: '#f9fafb', border: '#d1d5db', step: -1 },
 };
 
-function formatDate(iso: string) {
+function formatDate(iso: string, timezone: string) {
   try {
     return new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true,
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone,
     });
   } catch { return iso; }
 }
@@ -154,6 +154,7 @@ function StatusTracker({ status }: { status: string }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, enrollToken }: Props) {
+  const [timezone] = useState(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } });
   const [comments,  setComments] = useState<Comment[]>(data.comments);
   const [message,   setMessage]  = useState('');
   const [formError, setFormError] = useState('');
@@ -221,7 +222,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             <FieldBlock label="Patient"   value={data.clientName} />
             <FieldBlock label="Service"   value={data.service} />
             <FieldBlock label="Provider"  value={data.providerName} />
-            <FieldBlock label="Submitted" value={formatDate(data.createdAt)} />
+            <FieldBlock label="Submitted" value={formatDate(data.createdAt, timezone)} />
           </div>
           {(data.treatmentTypeName || data.treatmentTypeId) && (
             <div style={{ marginTop: 12 }}>
@@ -360,7 +361,7 @@ function CommentBubble({ comment }: { comment: Comment }) {
       <div style={{ maxWidth: '80%' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isSelf ? 'row-reverse' : 'row', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt)}</span>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt, timezone)}</span>
         </div>
         <div style={{
           background: isProvider ? '#eff6ff' : '#fef3c7',

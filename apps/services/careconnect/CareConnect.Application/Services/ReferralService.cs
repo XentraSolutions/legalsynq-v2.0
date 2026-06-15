@@ -1160,7 +1160,7 @@ public class ReferralService : IReferralService
         ProviderName = r.Provider?.Name ?? string.Empty,
         ClientFirstName = r.ClientFirstName,
         ClientLastName = r.ClientLastName,
-        ClientDob = r.ClientDob,
+        ClientDob = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null,
         ClientPhone = r.ClientPhone,
         ClientEmail = r.ClientEmail,
         CaseNumber = r.CaseNumber,

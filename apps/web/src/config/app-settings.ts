@@ -13,13 +13,15 @@ export interface Appearance {
 
 export interface CareConnectSettings {
   requireAvailabilityCheck: boolean;
-  /** Set by TenantAdmin in the Tenant Portal → stored in TenantSetting DB. */
+  /** Set by TenantAdmin in the Tenant Portal → stored on Tenant record in DB. */
   defaultMapProvider: 'osm' | 'google';
 }
 
 export interface AppSettings {
-  appearance: Appearance;
+  appearance:  Appearance;
   careConnect: CareConnectSettings;
+  /** IANA timezone for date/time display. Sourced from Tenant.TimeZone in DB. */
+  timezone:    string;
 }
 
 // ── Global defaults ────────────────────────────────────────────────────────────
@@ -35,4 +37,5 @@ export const GLOBAL_DEFAULTS: AppSettings = {
     requireAvailabilityCheck: false,
     defaultMapProvider: 'google',
   },
+  timezone: 'America/Los_Angeles',
 };

@@ -9,6 +9,7 @@ import { Sidebar } from './sidebar';
 interface AppShellProps {
   children:            ReactNode;
   initialMapProvider?: 'osm' | 'google';
+  initialTimezone?:    string;
 }
 
 /**
@@ -18,9 +19,9 @@ interface AppShellProps {
  *   [navy top bar — full width: logo + product switcher + user]
  *   [light sidebar: product nav]  [gray-50 main content]
  */
-export function AppShell({ children, initialMapProvider }: AppShellProps) {
+export function AppShell({ children, initialMapProvider, initialTimezone }: AppShellProps) {
   return (
-    <SettingsProvider initialMapProvider={initialMapProvider}>
+    <SettingsProvider initialMapProvider={initialMapProvider} initialTimezone={initialTimezone}>
       <ProductProvider>
         <div className="flex flex-col h-screen overflow-hidden">
           <TopBar />

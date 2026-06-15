@@ -10,6 +10,7 @@ import { PermissionTooltip } from '@/components/ui/permission-tooltip';
 import { DisabledReasons } from '@/lib/disabled-reasons';
 import type { AvailabilitySlot, CreateAppointmentRequest, ReferralDetail } from '@/types/careconnect';
 import { formatPhoneDisplay, formatPhoneInput, stripPhone } from '@/lib/phone';
+import { useTimezone } from '@/lib/use-timezone';
 
 interface BookingPanelProps {
   providerId:   string;
@@ -19,14 +20,15 @@ interface BookingPanelProps {
   onClose:      () => void;
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, timezone: string): string {
   return new Date(iso).toLocaleString('en-US', {
-    weekday: 'short',
-    month:   'short',
-    day:     'numeric',
-    hour:    'numeric',
-    minute:  '2-digit',
-    hour12:  true,
+    weekday:  'short',
+    month:    'short',
+    day:      'numeric',
+    hour:     'numeric',
+    minute:   '2-digit',
+    hour12:   true,
+    timeZone: timezone,
   });
 }
 
@@ -47,6 +49,7 @@ export function BookingPanel({
   onClose,
 }: BookingPanelProps) {
   const router = useRouter();
+  const timezone = useTimezone();
 
   // LS-ID-TNT-015-001: Permission check (UX layer only; backend enforces authoritatively).
   const canBookPerm = usePermission(PermissionCodes.CC.AppointmentCreate);
@@ -138,7 +141,7 @@ export function BookingPanel({
               <h2 className="text-base font-semibold text-gray-900">Book Appointment</h2>
               <p className="text-sm text-gray-500 mt-0.5">{providerName}</p>
               <p className="text-sm font-medium text-primary mt-1">
-                {formatDateTime(slot.startUtc)}
+                {formatDateTime(slot.startUtc, timezone)}
                 {' '}({slot.durationMinutes} min)
               </p>
             </div>

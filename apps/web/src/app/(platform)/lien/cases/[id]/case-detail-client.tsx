@@ -17,6 +17,7 @@ import { useCaseWorkflows } from '@/hooks/use-case-workflows';
 import { workflowApi, type WorkflowInstanceDetail } from '@/lib/workflow';
 import { lienCaseNotesService, type CaseNoteResponse, type CaseNoteCategory } from '@/lib/liens/lien-case-notes.service';
 import { emailToDisplayName, isNoteOwner } from '@/lib/liens/note-utils';
+import { useTimezone } from '@/lib/use-timezone';
 
 const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
@@ -40,6 +41,7 @@ function formatCurrency(amount: number | null): string {
 export function CaseDetailClient({ id }: { id: string }) {
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
+  const timezone = useTimezone();
 
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [relatedLiens, setRelatedLiens] = useState<CaseLienItem[]>([]);
@@ -1618,7 +1620,7 @@ const NOTE_CATEGORY_COLORS: Record<string, string> = {
   'follow-up': 'bg-amber-50 text-amber-600 border-amber-200',
 };
 
-function formatNoteDate(iso: string): string {
+function formatNoteDate(iso: string, timezone: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   const now = new Date();
@@ -1632,13 +1634,13 @@ function formatNoteDate(iso: string): string {
   if (diffHrs < 24) return `${diffHrs}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
 
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone });
 }
 
-function formatNoteTimestamp(iso: string): string {
+function formatNoteTimestamp(iso: string, timezone: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone });
 }
 
 function getInitials(name: string): string {
@@ -1971,7 +1973,7 @@ function NotesTab({ caseId }: { caseId: string }) {
                       {showDateSeparator && noteDateStr && (
                         <div className="flex items-center gap-3 py-2 pl-[30px]">
                           <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-                            {noteDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                            {noteDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: timezone })}
                           </span>
                           <div className="flex-1 h-px bg-gray-100" />
                         </div>
@@ -2040,13 +2042,13 @@ function NotesTab({ caseId }: { caseId: string }) {
                                 {note.isEdited && (
                                   <span
                                     className="text-[10px] text-gray-400 italic"
-                                    title={note.updatedAtUtc ? `Edited ${formatNoteTimestamp(note.updatedAtUtc)}` : 'Edited'}
+                                    title={note.updatedAtUtc ? `Edited ${formatNoteTimestamp(note.updatedAtUtc, timezone)}` : 'Edited'}
                                   >
                                     edited
                                   </span>
                                 )}
-                                <span className="text-[11px] text-gray-400 ml-auto" title={formatNoteTimestamp(note.createdAtUtc)}>
-                                  {formatNoteDate(note.createdAtUtc)}
+                                <span className="text-[11px] text-gray-400 ml-auto" title={formatNoteTimestamp(note.createdAtUtc, timezone)}>
+                                  {formatNoteDate(note.createdAtUtc, timezone)}
                                 </span>
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button

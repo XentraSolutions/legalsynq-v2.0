@@ -13,6 +13,7 @@ interface ReferralListTableProps {
   isReceiver: boolean;
   orgId?:     string;
   currentQs?: string;
+  timezone?:  string;
 }
 
 function rowHighlight(status: string): string {
@@ -37,6 +38,7 @@ export function ReferralListTable({
   isReceiver,
   orgId,
   currentQs = '',
+  timezone = 'UTC',
 }: ReferralListTableProps) {
   if (referrals.length === 0) {
     return (
@@ -118,7 +120,7 @@ export function ReferralListTable({
 
                 {/* Created */}
                 <td className="px-4 py-3 whitespace-nowrap hidden lg:table-cell">
-                  {(() => { const ts = formatTimestamp(r.createdAtUtc); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
+                  {(() => { const ts = formatTimestamp(r.createdAtUtc, timezone); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
                 </td>
 
                 {/* Quick actions */}

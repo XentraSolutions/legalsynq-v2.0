@@ -7,6 +7,7 @@ import { ProductTypeBadge } from '@/components/notifications/product-type-badge'
 import { BrandingEmptyState } from '@/components/notifications/branding-empty-state';
 import { TenantBrandingForm } from '@/components/notifications/tenant-branding-form';
 import { BrandingPreviewCard } from '@/components/notifications/branding-preview-card';
+import { useTimezone } from '@/lib/use-timezone';
 
 interface BrandingListClientProps {
   records: TenantBranding[];
@@ -16,10 +17,10 @@ interface BrandingListClientProps {
   productTypeLabels: Record<ProductType, string>;
 }
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string, timezone: string): string {
   try {
     return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
+      month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone,
     });
   } catch { return iso; }
 }
@@ -32,6 +33,7 @@ export function BrandingListClient({
   productTypeLabels,
 }: BrandingListClientProps) {
   const router = useRouter();
+  const timezone = useTimezone();
   const [showCreate, setShowCreate] = useState(false);
   const [editRecord, setEditRecord] = useState<TenantBranding | null>(null);
   const [previewRecord, setPreviewRecord] = useState<TenantBranding | null>(null);
@@ -153,7 +155,7 @@ export function BrandingListClient({
               )}
               <div>
                 <dt className="text-xs text-gray-400 font-medium">Last Updated</dt>
-                <dd className="text-gray-700 mt-0.5">{fmtDate(previewRecord.updatedAt)}</dd>
+                <dd className="text-gray-700 mt-0.5">{fmtDate(previewRecord.updatedAt, timezone)}</dd>
               </div>
             </dl>
 
@@ -273,7 +275,7 @@ export function BrandingListClient({
                     {r.supportEmail || <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
-                    {fmtDate(r.updatedAt)}
+                    {fmtDate(r.updatedAt, timezone)}
                   </td>
                   <td className="px-5 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">

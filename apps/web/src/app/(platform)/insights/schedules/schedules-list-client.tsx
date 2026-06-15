@@ -10,10 +10,12 @@ import { PermissionCodes } from '@/lib/permission-codes';
 import { PermissionTooltip } from '@/components/ui/permission-tooltip';
 import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
 import { DisabledReasons } from '@/lib/disabled-reasons';
+import { useTimezone } from '@/lib/use-timezone';
 
 export function SchedulesListClient() {
   const router = useRouter();
   const { session } = useSessionContext();
+  const timezone = useTimezone();
   const [schedules, setSchedules] = useState<ScheduleDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -157,7 +159,7 @@ export function SchedulesListClient() {
                     <td className="px-4 py-3 text-gray-600">{s.deliveryMethod}</td>
                     <td className="px-4 py-3 text-gray-600">
                       {s.nextRunAtUtc
-                        ? new Date(s.nextRunAtUtc).toLocaleString()
+                        ? new Date(s.nextRunAtUtc).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: timezone })
                         : '—'}
                     </td>
                     <td className="px-4 py-3">

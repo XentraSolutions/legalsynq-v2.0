@@ -7,15 +7,17 @@ const SettingsContext = createContext<AppSettings>(GLOBAL_DEFAULTS);
 
 /**
  * Provides app settings to the React tree.
- * `initialMapProvider` is fetched server-side from the Tenant Service and
- * passed down from the platform layout — no client-side fetch needed.
+ * `initialMapProvider` and `initialTimezone` are fetched server-side from the
+ * Tenant Service and passed down from the platform layout — no client-side fetch.
  */
 export function SettingsProvider({
   children,
   initialMapProvider,
+  initialTimezone,
 }: {
   children:            ReactNode;
   initialMapProvider?: 'osm' | 'google';
+  initialTimezone?:    string;
 }) {
   const settings = useMemo<AppSettings>(() => ({
     ...GLOBAL_DEFAULTS,
@@ -23,7 +25,8 @@ export function SettingsProvider({
       ...GLOBAL_DEFAULTS.careConnect,
       defaultMapProvider: initialMapProvider ?? GLOBAL_DEFAULTS.careConnect.defaultMapProvider,
     },
-  }), [initialMapProvider]);
+    timezone: initialTimezone ?? GLOBAL_DEFAULTS.timezone,
+  }), [initialMapProvider, initialTimezone]);
 
   return (
     <SettingsContext.Provider value={settings}>

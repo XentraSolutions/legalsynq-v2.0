@@ -59,11 +59,11 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
   InProgress: { label: 'In Progress',               color: '#5b21b6', bg: '#f5f3ff', border: '#c4b5fd' },
 };
 
-function formatDate(iso: string) {
+function formatDate(iso: string, timezone: string) {
   try {
     return new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true,
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone,
     });
   } catch { return iso; }
 }
@@ -114,6 +114,7 @@ const s: Record<string, React.CSSProperties> = {
 type ActionState = 'idle' | 'accepting' | 'declining' | 'accepted' | 'declined' | 'error';
 
 export function ThreadClient({ token, data, loginUrl }: Props) {
+  const [timezone] = useState(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } });
   const [comments,  setComments] = useState<Comment[]>(data.comments);
   const [message,   setMessage]  = useState('');
   const [formError,     setFormError] = useState('');
@@ -305,7 +306,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
           {/* Referral meta */}
           <div style={s.grid2}>
             <FieldBlock label="Service"   value={data.service} />
-            <FieldBlock label="Submitted" value={formatDate(data.createdAt)} />
+            <FieldBlock label="Submitted" value={formatDate(data.createdAt, timezone)} />
             {data.urgency && <FieldBlock label="Urgency" value={data.urgency} />}
             {data.caseNumber && <FieldBlock label="Case #" value={data.caseNumber} />}
           </div>
@@ -621,7 +622,7 @@ function CommentBubble({ comment }: { comment: Comment }) {
       <div style={{ maxWidth: '80%' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isProvider ? 'row-reverse' : 'row', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt)}</span>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt, timezone)}</span>
         </div>
         <div style={{
           background: isProvider ? '#eff6ff' : '#fafaf9',

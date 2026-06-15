@@ -7,6 +7,7 @@ import type { ReferralHistoryItem } from '@/types/careconnect';
 interface ReferralTimelineProps {
   referralId: string;
   adminView?: boolean;
+  timezone?:  string;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -20,20 +21,26 @@ const STATUS_DOT: Record<string, string> = {
   Cancelled: 'bg-gray-500',
 };
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, timezone: string): string {
   return new Date(iso).toLocaleString('en-US', {
-    month:   'short',
-    day:     'numeric',
-    year:    'numeric',
-    hour:    'numeric',
-    minute:  '2-digit',
-    hour12:  true,
+    month:    'short',
+    day:      'numeric',
+    year:     'numeric',
+    hour:     'numeric',
+    minute:   '2-digit',
+    hour12:   true,
+    timeZone: timezone,
   });
 }
 
-export function ReferralTimeline({ referralId, adminView = false }: ReferralTimelineProps) {
+export function ReferralTimeline({ referralId, adminView = false, timezone }: ReferralTimelineProps) {
   const [history, setHistory] = useState<ReferralHistoryItem[] | null>(null);
   const [error,   setError]   = useState(false);
+  const [browserTz] = useState<string>(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
+    catch { return 'UTC'; }
+  });
+  const resolvedTimezone = timezone ?? browserTz;
 
   useEffect(() => {
     const request = adminView
@@ -90,7 +97,7 @@ export function ReferralTimeline({ referralId, adminView = false }: ReferralTime
               }
             </p>
             <p className="text-xs text-gray-400 mt-0.5">
-              {formatDateTime(item.changedAtUtc)}
+              {formatDateTime(item.changedAtUtc, resolvedTimezone)}
             </p>
             {item.notes && (
               <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{item.notes}</p>

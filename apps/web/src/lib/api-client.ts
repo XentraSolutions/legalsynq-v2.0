@@ -1,4 +1,5 @@
 import type { ApiResponse } from '@/types';
+import { normalizeUtcTimestamps } from '@/lib/normalize-utc';
 
 // In production the Next.js server proxies /api/* → gateway via next.config rewrites.
 // In dev the same rewrite points to http://localhost:5000.
@@ -91,7 +92,7 @@ async function request<T>(
   // that would otherwise surface a raw SyntaxError to the caller.
   let data: T;
   try {
-    data = await res.json();
+    data = normalizeUtcTimestamps(await res.json());
   } catch {
     throw new ApiError(res.status, 'Unexpected server response. Please try again.', correlationId);
   }
@@ -137,7 +138,7 @@ async function requestForm<T>(
     return { data: undefined as T, correlationId, status: res.status };
   }
 
-  const data: T = await res.json();
+  const data: T = normalizeUtcTimestamps(await res.json());
   return { data, correlationId, status: res.status };
 }
 

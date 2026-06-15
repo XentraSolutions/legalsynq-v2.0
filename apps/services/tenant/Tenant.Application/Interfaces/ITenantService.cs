@@ -30,4 +30,16 @@ public interface ITenantService
     /// updates it if it does. Idempotent and safe to call multiple times.
     /// </summary>
     Task UpsertFromSyncAsync(TenantSyncRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves the effective timezone for a tenant from the canonical Tenant row,
+    /// then compatible settings rows, then the application default.
+    /// </summary>
+    Task<string> GetTimezoneAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates only the IANA timezone for a tenant.
+    /// Accepts any value resolvable by TimeZoneInfo.FindSystemTimeZoneById.
+    /// </summary>
+    Task<string> UpdateTimezoneAsync(Guid tenantId, string timezone, CancellationToken ct = default);
 }
