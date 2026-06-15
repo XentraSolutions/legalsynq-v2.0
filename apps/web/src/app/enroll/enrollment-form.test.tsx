@@ -64,6 +64,33 @@ describe('EnrollmentForm', () => {
     expect(screen.getByDisplayValue('provider@example.com')).toBeDisabled();
   });
 
+  test('prefills first and last name from enrollment prefill data', () => {
+    render(
+      <EnrollmentForm
+        prefill={{
+          providerId: 'provider-123',
+          companyName: 'Demo Provider',
+          companyType: 'Provider',
+          email: 'provider@example.com',
+          phone: '555-0101',
+          firstName: 'Ralph',
+          lastName: 'Lopez',
+          addressLine1: '123 Main',
+          city: 'Las Vegas',
+          state: 'NV',
+          postalCode: '89101',
+        }}
+        providerId="provider-123"
+        tenantId="tenant-123"
+        referralPrefill={null}
+        isFirmEnrollment={false}
+      />,
+    );
+
+    expect(screen.getByDisplayValue('Ralph')).toBeDisabled();
+    expect(screen.getByDisplayValue('Lopez')).toBeDisabled();
+  });
+
   test('blocks submit when phone number is not 10 digits', async () => {
     const user = userEvent.setup();
 

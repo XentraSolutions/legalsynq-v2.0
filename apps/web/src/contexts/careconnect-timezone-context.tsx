@@ -1,25 +1,24 @@
 'use client';
 
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 const CareConnectTimezoneContext = createContext<string>('UTC');
 
 /**
- * Detects and provides the browser's local IANA timezone to CareConnect
- * common-portal and public-portal pages.
- *
- * Detection uses a lazy useState initializer — runs once on the client, never
- * causes a hydration mismatch (server renders UTC, client rehydrates with the
- * detected value on first mount).
+ * Provides a browser-local IANA timezone to CareConnect common/public portal
+ * pages. The initial render uses 'UTC' to keep SSR and hydration deterministic,
+ * then updates after mount to the browser timezone when available.
  */
 export function CareConnectTimezoneProvider({ children }: { children: ReactNode }) {
-  const [timezone] = useState<string>(() => {
+  const [timezone, setTimezone] = useState<string>('UTC');
+
+  useEffect(() => {
     try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
     } catch {
-      return 'UTC';
+      setTimezone('UTC');
     }
-  });
+  }, []);
 
   return (
     <CareConnectTimezoneContext.Provider value={timezone}>

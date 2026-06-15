@@ -56,6 +56,14 @@ function formatDate(iso: string, timezone: string) {
   } catch { return iso; }
 }
 
+function resolveBrowserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
 const s: Record<string, React.CSSProperties> = {
   page:       { minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui,-apple-system,sans-serif', color: '#111827' },
   header:     { background: '#0f172a', padding: '20px 24px', color: '#fff' },
@@ -154,7 +162,7 @@ function StatusTracker({ status }: { status: string }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, enrollToken }: Props) {
-  const [timezone] = useState(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } });
+  const [timezone, setTimezone] = useState('UTC');
   const [comments,  setComments] = useState<Comment[]>(data.comments);
   const [message,   setMessage]  = useState('');
   const [formError, setFormError] = useState('');
@@ -188,6 +196,10 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
         border: '#1a56db',
         note: null,
       };
+
+  useEffect(() => {
+    setTimezone(resolveBrowserTimezone());
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -288,7 +300,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
                 No messages yet. Use the form below to send a message to the provider.
               </p>
             ) : (
-              comments.map(c => <CommentBubble key={c.id} comment={c} />)
+              comments.map(c => <CommentBubble key={c.id} comment={c} timezone={timezone} />)
             )}
             <div ref={bottomRef} />
           </div>
@@ -344,7 +356,7 @@ function FieldBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CommentBubble({ comment }: { comment: Comment }) {
+function CommentBubble({ comment, timezone }: { comment: Comment; timezone: string }) {
   const isProvider = comment.senderType === 'provider';
   const isSelf = !isProvider;
   return (

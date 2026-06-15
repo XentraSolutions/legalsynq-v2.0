@@ -87,8 +87,8 @@ export function EnrollmentForm({
   const [city,         setCity]         = useState(initialCity);
   const [state,        setState]        = useState(initialState);
   const [postalCode,   setPostalCode]   = useState(initialPostalCode);
-  const initialFirstName = referralPrefill?.firstName ?? '';
-  const initialLastName  = referralPrefill?.lastName  ?? '';
+  const initialFirstName = prefill?.firstName ?? referralPrefill?.firstName ?? '';
+  const initialLastName  = prefill?.lastName  ?? referralPrefill?.lastName  ?? '';
   const [firstName,    setFirstName]    = useState(initialFirstName);
   const [lastName,     setLastName]     = useState(initialLastName);
   const [password,     setPassword]     = useState('');

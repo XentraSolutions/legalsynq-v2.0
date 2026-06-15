@@ -12,15 +12,18 @@ namespace CareConnect.Application.Services;
 public class ProviderService : IProviderService
 {
     private readonly IProviderRepository _providers;
+    private readonly IReferralRepository _referrals;
     private readonly IAppointmentSlotRepository _slots;
     private readonly ILogger<ProviderService> _logger;
 
     public ProviderService(
         IProviderRepository providers,
+        IReferralRepository referrals,
         IAppointmentSlotRepository slots,
         ILogger<ProviderService> logger)
     {
         _providers = providers;
+        _referrals = referrals;
         _slots     = slots;
         _logger    = logger;
     }
@@ -379,6 +382,7 @@ public class ProviderService : IProviderService
 
         provider.LinkOrganization(organizationId);
         await _providers.UpdateAsync(provider, ct);
+        await _referrals.BackfillReceivingOrganizationAsync(tenantId, providerId, organizationId, ct);
 
         var loaded = await _providers.GetByIdAsync(tenantId, providerId, ct);
         return ToResponse(loaded!);
@@ -396,6 +400,7 @@ public class ProviderService : IProviderService
 
         provider.LinkOrganization(organizationId);
         await _providers.UpdateAsync(provider, ct);
+        await _referrals.BackfillReceivingOrganizationAsync(provider.TenantId, providerId, organizationId, ct);
 
         var loaded = await _providers.GetByIdCrossAsync(providerId, ct);
         return ToResponse(loaded!);

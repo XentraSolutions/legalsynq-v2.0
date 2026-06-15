@@ -140,6 +140,39 @@ public class ReferralRepository : IReferralRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public Task<int> BackfillReferringOrganizationByEmailAsync(
+        Guid tenantId,
+        string referrerEmail,
+        Guid organizationId,
+        CancellationToken ct = default)
+    {
+        var emailLower = referrerEmail.Trim().ToLowerInvariant();
+
+        return _db.Referrals
+            .Where(r => r.TenantId == tenantId
+                     && r.ReferringOrganizationId == null
+                     && r.ReferrerEmail != null
+                     && r.ReferrerEmail.ToLower() == emailLower)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(r => r.ReferringOrganizationId, organizationId),
+                ct);
+    }
+
+    public Task<int> BackfillReceivingOrganizationAsync(
+        Guid tenantId,
+        Guid providerId,
+        Guid organizationId,
+        CancellationToken ct = default)
+    {
+        return _db.Referrals
+            .Where(r => r.TenantId == tenantId
+                     && r.ProviderId == providerId
+                     && r.ReceivingOrganizationId != organizationId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(r => r.ReceivingOrganizationId, organizationId),
+                ct);
+    }
+
     public async Task<List<ReferralStatusHistory>> GetHistoryByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
     {
         return await _db.ReferralStatusHistories

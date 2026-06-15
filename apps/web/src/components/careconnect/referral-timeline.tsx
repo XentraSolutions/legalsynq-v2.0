@@ -33,14 +33,23 @@ function formatDateTime(iso: string, timezone: string): string {
   });
 }
 
+function resolveBrowserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
 export function ReferralTimeline({ referralId, adminView = false, timezone }: ReferralTimelineProps) {
   const [history, setHistory] = useState<ReferralHistoryItem[] | null>(null);
   const [error,   setError]   = useState(false);
-  const [browserTz] = useState<string>(() => {
-    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
-    catch { return 'UTC'; }
-  });
+  const [browserTz, setBrowserTz] = useState<string>('UTC');
   const resolvedTimezone = timezone ?? browserTz;
+
+  useEffect(() => {
+    setBrowserTz(resolveBrowserTimezone());
+  }, []);
 
   useEffect(() => {
     const request = adminView

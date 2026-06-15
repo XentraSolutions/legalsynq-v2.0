@@ -5,6 +5,10 @@ import { OrgType, ProductRole }                         from '@/types';
 
 export const dynamic = 'force-dynamic';
 
+function coalesceName(primary?: string, fallback?: string): string {
+  return primary?.trim() || fallback?.trim() || '';
+}
+
 interface AuthenticatedOrgPrefill {
   companyName: string;
   companyType: string;
@@ -61,8 +65,8 @@ export default async function EnrollPage({ searchParams }: PageProps) {
           companyName:  existingEnrollmentPrefill.companyName,
           email:        existingEnrollmentPrefill.email,
           phone:        existingEnrollmentPrefill.phone,
-          firstName:    existingEnrollmentPrefill.firstName,
-          lastName:     existingEnrollmentPrefill.lastName,
+          firstName:    coalesceName(existingEnrollmentPrefill.firstName, refFirst),
+          lastName:     coalesceName(existingEnrollmentPrefill.lastName, refLast),
           addressLine1: existingEnrollmentPrefill.addressLine1,
           city:         existingEnrollmentPrefill.city,
           state:        existingEnrollmentPrefill.state,

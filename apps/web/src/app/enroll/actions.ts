@@ -32,6 +32,8 @@ export interface EnrollmentPrefill {
   companyType:  string;
   email:        string;
   phone:        string;
+  firstName?:   string;
+  lastName?:    string;
   addressLine1: string;
   city:         string;
   state:        string;

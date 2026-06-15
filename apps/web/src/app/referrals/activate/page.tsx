@@ -52,8 +52,39 @@ interface PublicThreadData {
   referrerName:  string | null;
 }
 
+function splitName(value: string | null | undefined): { firstName: string; lastName: string } {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return { firstName: '', lastName: '' };
+
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  return {
+    firstName: toDisplayCase(parts[0] ?? ''),
+    lastName: toDisplayCase(parts.slice(1).join(' ')),
+  };
+}
+
+function toDisplayCase(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function deriveNameFromEmail(email: string | undefined): { firstName: string; lastName: string } {
+  const local = email?.split('@')[0] ?? '';
+  const normalized = local
+    .replace(/\+.*/, '')
+    .replace(/[._-]+/g, ' ')
+    .replace(/\d+/g, ' ')
+    .trim();
+
+  return splitName(normalized);
+}
+
 function toEnrollmentPrefill(data: PublicThreadData, fallbackCompanyName?: string): EnrollmentPrefill {
   const companyName = data.providerName.trim() || fallbackCompanyName?.trim() || '';
+  const providerContact = deriveNameFromEmail(data.providerEmail);
 
   return {
     providerId: data.providerId,
@@ -61,6 +92,8 @@ function toEnrollmentPrefill(data: PublicThreadData, fallbackCompanyName?: strin
     companyType: 'Provider',
     email: data.providerEmail ?? '',
     phone: data.providerPhone ?? '',
+    firstName: providerContact.firstName,
+    lastName: providerContact.lastName,
     addressLine1: data.providerAddressLine1 ?? '',
     city: data.providerCity ?? '',
     state: data.providerState ?? '',

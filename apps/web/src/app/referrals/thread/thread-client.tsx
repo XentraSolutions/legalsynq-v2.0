@@ -68,6 +68,14 @@ function formatDate(iso: string, timezone: string) {
   } catch { return iso; }
 }
 
+function resolveBrowserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
 function formatBytes(b: number) {
   if (b < 1024)      return `${b} B`;
   if (b < 1048576)   return `${(b / 1024).toFixed(1)} KB`;
@@ -114,7 +122,7 @@ const s: Record<string, React.CSSProperties> = {
 type ActionState = 'idle' | 'accepting' | 'declining' | 'accepted' | 'declined' | 'error';
 
 export function ThreadClient({ token, data, loginUrl }: Props) {
-  const [timezone] = useState(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } });
+  const [timezone, setTimezone] = useState('UTC');
   const [comments,  setComments] = useState<Comment[]>(data.comments);
   const [message,   setMessage]  = useState('');
   const [formError,     setFormError] = useState('');
@@ -143,6 +151,10 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const [treatmentError,    setTreatmentError]    = useState<string | null>(null);
   const [liveTreatmentName, setLiveTreatmentName] = useState<string | undefined>(data.treatmentTypeName);
   const canEditTreatment = !TERMINAL_STATUSES_TT.includes(liveStatus);
+
+  useEffect(() => {
+    setTimezone(resolveBrowserTimezone());
+  }, []);
 
   const openAttachment = useCallback(async (attachmentId: string, forDownload: boolean) => {
     const key = forDownload ? 'download' : 'view';
@@ -550,7 +562,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
                 No messages yet. Send the first message below.
               </p>
             ) : (
-              comments.map(c => <CommentBubble key={c.id} comment={c} />)
+              comments.map(c => <CommentBubble key={c.id} comment={c} timezone={timezone} />)
             )}
             <div ref={bottomRef} />
           </div>
@@ -606,7 +618,7 @@ function FieldBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CommentBubble({ comment }: { comment: Comment }) {
+function CommentBubble({ comment, timezone }: { comment: Comment; timezone: string }) {
   const isProvider = comment.senderType === 'provider';
   return (
     <div style={{ display: 'flex', flexDirection: isProvider ? 'row-reverse' : 'row', gap: 10, alignItems: 'flex-start' }}>

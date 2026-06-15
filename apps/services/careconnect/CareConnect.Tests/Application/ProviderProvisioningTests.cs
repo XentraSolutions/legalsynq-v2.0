@@ -38,12 +38,13 @@ public class ProviderProvisioningTests
             createdByUserId:    null);
     }
 
-    private static (ProviderService sut, Mock<IProviderRepository> repoMock)
+    private static (ProviderService sut, Mock<IProviderRepository> repoMock, Mock<IReferralRepository> referralRepoMock)
     BuildSut(Provider? returnedProvider)
     {
-        var repoMock  = new Mock<IProviderRepository>();
-        var slotsMock = new Mock<IAppointmentSlotRepository>();
-        var logger    = NullLogger<ProviderService>.Instance;
+        var repoMock        = new Mock<IProviderRepository>();
+        var referralRepoMock = new Mock<IReferralRepository>();
+        var slotsMock       = new Mock<IAppointmentSlotRepository>();
+        var logger          = NullLogger<ProviderService>.Instance;
 
         repoMock
             .Setup(r => r.GetByIdCrossAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -53,14 +54,22 @@ public class ProviderProvisioningTests
             .Setup(r => r.UpdateAsync(It.IsAny<Provider>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var sut = new ProviderService(repoMock.Object, slotsMock.Object, logger);
-        return (sut, repoMock);
+        referralRepoMock
+            .Setup(r => r.BackfillReceivingOrganizationAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var sut = new ProviderService(repoMock.Object, referralRepoMock.Object, slotsMock.Object, logger);
+        return (sut, repoMock, referralRepoMock);
     }
 
     [Fact]
     public async Task ActivateForCareConnectAsync_ProviderNotFound_ThrowsNotFoundException()
     {
-        var (sut, _) = BuildSut(returnedProvider: null);
+        var (sut, _, _) = BuildSut(returnedProvider: null);
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => sut.ActivateForCareConnectAsync(Guid.CreateVersion7()));
@@ -70,7 +79,7 @@ public class ProviderProvisioningTests
     public async Task ActivateForCareConnectAsync_AlreadyActive_ReturnsAlreadyActiveTrue()
     {
         var provider    = BuildProvider(isActive: true, acceptingReferrals: true);
-        var (sut, repo) = BuildSut(provider);
+        var (sut, repo, _) = BuildSut(provider);
 
         var result = await sut.ActivateForCareConnectAsync(provider.Id);
 
@@ -82,7 +91,7 @@ public class ProviderProvisioningTests
     public async Task ActivateForCareConnectAsync_InactiveProvider_CallsUpdate()
     {
         var provider    = BuildProvider(isActive: false, acceptingReferrals: false);
-        var (sut, repo) = BuildSut(provider);
+        var (sut, repo, _) = BuildSut(provider);
 
         var result = await sut.ActivateForCareConnectAsync(provider.Id);
 
@@ -94,7 +103,7 @@ public class ProviderProvisioningTests
     public async Task ActivateForCareConnectAsync_InactiveProvider_ResultIsActive()
     {
         var provider = BuildProvider(isActive: false, acceptingReferrals: false);
-        var (sut, _) = BuildSut(provider);
+        var (sut, _, _) = BuildSut(provider);
 
         var result = await sut.ActivateForCareConnectAsync(provider.Id);
 
@@ -106,12 +115,33 @@ public class ProviderProvisioningTests
     public async Task ActivateForCareConnectAsync_ActiveNotAccepting_CallsUpdate()
     {
         var provider    = BuildProvider(isActive: true, acceptingReferrals: false);
-        var (sut, repo) = BuildSut(provider);
+        var (sut, repo, _) = BuildSut(provider);
 
         var result = await sut.ActivateForCareConnectAsync(provider.Id);
 
         Assert.False(result.AlreadyActive);
         repo.Verify(r => r.UpdateAsync(provider, It.IsAny<CancellationToken>()), Times.Once);
         Assert.True(result.AcceptingReferrals);
+    }
+
+    [Fact]
+    public async Task LinkOrganizationAsync_BackfillsExistingReferrals()
+    {
+        var provider = BuildProvider(isActive: true, acceptingReferrals: true);
+        var tenantId = provider.TenantId;
+        var orgId    = Guid.CreateVersion7();
+        var (sut, repo, referralRepo) = BuildSut(provider);
+
+        repo.Setup(r => r.GetByIdAsync(tenantId, provider.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(provider);
+
+        var result = await sut.LinkOrganizationAsync(tenantId, provider.Id, orgId);
+
+        referralRepo.Verify(r => r.BackfillReceivingOrganizationAsync(
+            tenantId,
+            provider.Id,
+            orgId,
+            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(orgId, result.OrganizationId);
     }
 }

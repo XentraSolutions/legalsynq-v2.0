@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSettings } from '@/contexts/settings-context';
 
 /**
@@ -12,22 +12,23 @@ export function useTimezone(): string {
 }
 
 /**
- * Returns the browser's local IANA timezone, detected once on mount.
- * Falls back to 'UTC' if the Intl API is unavailable.
+ * Returns a browser-local IANA timezone for client-only/external portal UI.
+ * The initial render uses 'UTC' so SSR and hydration stay deterministic,
+ * then updates after mount to the browser timezone when available.
  *
  * Use in unauthenticated or external-portal routes (CareConnect common portal,
  * public network pages) where no tenant context is available.
- *
- * Initialized lazily via useState initializer so it runs only once and never
- * causes a hydration mismatch — the value is stable after the first render.
  */
 export function useBrowserTimezone(): string {
-  const [tz] = useState<string>(() => {
+  const [tz, setTz] = useState<string>('UTC');
+
+  useEffect(() => {
     try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
     } catch {
-      return 'UTC';
+      setTz('UTC');
     }
-  });
+  }, []);
+
   return tz;
 }
