@@ -130,6 +130,14 @@ export const tenantClientApi = {
   simulateAuthorization: (body: SimulationRequest) =>
     apiClient.post<SimulationResult>('/identity/api/admin/authorization/simulate', body),
 
+  // ── Map provider setting (TenantAdmin) ──────────────────────────────────
+
+  getMapProviderSetting: (tenantId: string) =>
+    apiClient.get<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/map-provider`),
+
+  upsertMapProviderSetting: (tenantId: string, value: 'google' | 'osm') =>
+    apiClient.put<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/map-provider`, { value }),
+
   // ── LS-ID-TNT-013: Permission management (tenant-level) ──────────────────
 
   getRolePermissions: (roleId: string) =>

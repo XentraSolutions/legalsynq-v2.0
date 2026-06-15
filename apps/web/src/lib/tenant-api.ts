@@ -97,6 +97,9 @@ export const tenantServerApi = {
       `/flow/api/v1/admin/analytics/workflows?window=${encodeURIComponent(window)}`
     ),
 
+  getMapProviderSetting: (tenantId: string) =>
+    serverApi.get<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/map-provider`),
+
   getCareConnectAccessCode: (tenantId: string) =>
     serverApi.get<CareConnectAccessCodeMetadata>(
       `/tenant/api/tenants/${tenantId}/careconnect/public-network/access-code/`

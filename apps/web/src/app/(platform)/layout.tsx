@@ -1,4 +1,5 @@
 import { requireOrg } from '@/lib/auth-guards';
+import { tenantServerApi } from '@/lib/tenant-api';
 import { AppShell } from '@/components/shell/app-shell';
 import { ToastProvider } from '@/lib/toast-context';
 import { ToastContainer } from '@/components/toast-container';
@@ -12,11 +13,21 @@ export const dynamic = 'force-dynamic';
  * Renders the shared AppShell (TopBar + Sidebar) and the global toast system.
  */
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
-  await requireOrg();
+  const session = await requireOrg();
+
+  let initialMapProvider: 'google' | 'osm' = 'google';
+  try {
+    const setting = await tenantServerApi.getMapProviderSetting(session.tenantId);
+    if (setting.value === 'osm' || setting.value === 'google') {
+      initialMapProvider = setting.value;
+    }
+  } catch {
+    // Fall back to global default — non-fatal
+  }
 
   return (
     <ToastProvider>
-      <AppShell>
+      <AppShell initialMapProvider={initialMapProvider}>
         {children}
       </AppShell>
       <ToastContainer />
