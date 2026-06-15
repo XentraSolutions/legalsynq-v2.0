@@ -5,6 +5,7 @@ import type {
   CreateCaseRequestDto,
   UpdateCaseRequestDto,
   CasesQuery,
+  DashboardStats,
 } from "./cases.types";
 
 const BASE = "/lien/api/liens/cases";
@@ -61,4 +62,8 @@ export const casesApi = {
   getCaseLiens(id: string) {
     return apiClient.post<CaseResponseDto>(`${BASE}/liens/v3`, {});
   },
+
+  getDashboardStats() {
+    return apiClient.get<DashboardStats>(`${BASE}/dashboard/piechart`)
+  }
 };

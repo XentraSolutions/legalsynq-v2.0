@@ -16,6 +16,8 @@ import {
 } from '@/lib/unified-activity';
 import { useProviderMode } from '@/hooks/use-provider-mode';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { casesService } from '@/lib/cases';
+import { DashboardStats } from '@/lib/cases/cases.types';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +54,7 @@ export default function LienDashboardPage() {
   const [recentActivity, setRecentActivity] = useState<UnifiedActivityItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>();
 
   const loadActivity = useCallback(async () => {
     setActivityLoading(true);
@@ -67,6 +70,17 @@ export default function LienDashboardPage() {
   }, [isSellMode]);
 
   useEffect(() => { loadActivity(); }, [loadActivity]);
+
+  useEffect(() => {
+    const getDashboardStats = async () => {
+      try { 
+        const stats = await casesService.getDashboardStats();
+        setDashboardStats(stats);
+      } catch (error) {}
+    }
+
+    getDashboardStats()
+  }, []);
 
   const pendingTasks = servicing.filter((s) => s.status !== 'Completed');
   const overdueTasks = pendingTasks.filter((s) => new Date(s.dueDate) < new Date());
@@ -95,33 +109,33 @@ export default function LienDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="Total Liens" value={liens.length} change={`${liens.filter((l) => l.status === 'Draft').length} draft`} changeType="neutral" icon="ri-stack-line" iconColor="text-indigo-600" href="/lien/liens" />
-        <KpiCard title="Active Cases" value={cases.filter((c) => c.status !== 'Closed').length} change={`${cases.length} total`} changeType="neutral" icon="ri-folder-open-line" iconColor="text-blue-600" href="/lien/cases" />
+        <KpiCard title="Total Liens" value={dashboardStats?.totalLiens ?? 0} change={`${dashboardStats?.lienStatus?.find((ls) => ls.label === 'Draft')?.value ?? 0} draft`} changeType="neutral" icon="ri-stack-line" iconColor="text-indigo-600" href="/lien/liens" />
+        <KpiCard title="Active Cases" value={dashboardStats?.totalActiveCases ?? 0} change={`${dashboardStats?.totalCases ?? 0} total`} changeType="neutral" icon="ri-folder-open-line" iconColor="text-blue-600" href="/lien/cases" />
         <KpiCard title="Pending Tasks" value={pendingTasks.length} change={overdueTasks.length > 0 ? `${overdueTasks.length} overdue` : 'All on track'} changeType={overdueTasks.length > 0 ? 'down' : 'up'} icon="ri-task-line" iconColor="text-amber-600" href="/lien/servicing" />
-        <KpiCard title="Monthly Volume" value={formatCurrency(liens.reduce((s, l) => s + l.originalAmount, 0))} change="All liens" changeType="neutral" icon="ri-money-dollar-circle-line" iconColor="text-emerald-600" />
+        <KpiCard title="Monthly Volume" value={formatCurrency(dashboardStats?.totalLienValue ?? 0)} change="All liens" changeType="neutral" icon="ri-money-dollar-circle-line" iconColor="text-emerald-600" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <StatCard
           title="Total Liens"
-          total={liens.length}
+          total={dashboardStats?.totalLiens ?? 0}
           segments={[
-            { label: 'Draft', value: liens.filter((l) => l.status === 'Draft').length, color: '#94a3b8' },
-            { label: 'Offered', value: liens.filter((l) => l.status === 'Offered').length, color: '#4f46e5' },
-            { label: 'Sold', value: liens.filter((l) => l.status === 'Sold').length, color: '#10b981' },
-            { label: 'Withdrawn', value: liens.filter((l) => l.status === 'Withdrawn').length, color: '#f59e0b' },
+            { label: 'Draft', value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Draft')?.value ?? 0, color: '#94a3b8' },
+            { label: 'Offered', value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Offered')?.value ?? 0, color: '#4f46e5' },
+            { label: 'Sold', value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Sold')?.value ?? 0, color: '#10b981' },
+            { label: 'Withdrawn', value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Withdrawn')?.value ?? 0, color: '#f59e0b' },
           ]}
           href="/lien/liens"
         />
         <StatCard
           title="Total Cases"
-          total={cases.length}
+          total={dashboardStats?.totalCases ?? 0}
           segments={[
-            { label: 'Pre-Demand', value: cases.filter((c) => c.status === 'PreDemand').length, color: '#f472b6' },
-            { label: 'Demand Sent', value: cases.filter((c) => c.status === 'DemandSent').length, color: '#6366f1' },
-            { label: 'In Negotiation', value: cases.filter((c) => c.status === 'InNegotiation').length, color: '#3b82f6' },
-            { label: 'Settled', value: cases.filter((c) => c.status === 'CaseSettled').length, color: '#10b981' },
-            { label: 'Closed', value: cases.filter((c) => c.status === 'Closed').length, color: '#94a3b8' },
+            { label: 'Pre-Demand', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'PreDemand')?.value ?? 0, color: '#f472b6' },
+            { label: 'Demand Sent', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'DemandSent')?.value ?? 0, color: '#6366f1' },
+            { label: 'In Negotiation', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'InNegotiation')?.value ?? 0, color: '#3b82f6' },
+            { label: 'Settled', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'CaseSettled')?.value ?? 0, color: '#10b981' },
+            { label: 'Closed', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'Closed')?.value ?? 0, color: '#94a3b8' },
           ]}
           href="/lien/cases"
         />

@@ -15,6 +15,7 @@ import type {
   PaginationMeta,
   CreateCaseRequestDto,
   UpdateCaseRequestDto,
+  DashboardStats,
 } from "./cases.types";
 
 export interface CaseListResult {
@@ -80,4 +81,8 @@ export const casesService = {
     const { data } = await lookupApi.getCaseStatus();
     return data.sort((a, b) => a.sortOrder - b.sortOrder);
   },
+  async getDashboardStats(): Promise<DashboardStats> {
+    const { data } = await casesApi.getDashboardStats();
+    return data.data;
+  }
 };

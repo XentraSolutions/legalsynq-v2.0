@@ -198,3 +198,17 @@ export interface PaginationMeta {
   totalCount: number;
   totalPages: number;
 }
+
+export interface DashboardStats {
+  totalActiveCases: number
+  totalCases: number
+  totalLienValue: number
+  totalLiens: number
+  caseStatus: StatusData[]
+  lienStatus: StatusData[]
+}
+
+interface StatusData {
+  label: string
+  value: number
+}
