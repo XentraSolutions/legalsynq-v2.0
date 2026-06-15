@@ -1,11 +1,13 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLienStore } from '@/stores/lien-store';
 import { formatCurrency } from '@/lib/lien-utils';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { useProviderMode } from '@/hooks/use-provider-mode';
+import { DashboardStats } from '@/lib/cases/cases.types';
+import { casesService } from '@/lib/cases';
 
 export const dynamic = 'force-dynamic';
 
@@ -130,6 +132,18 @@ export default function LienHomePage() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>();
+
+  useEffect(() => {
+    const getDashboardStats = async () => {
+      try {
+        const stats = await casesService.getDashboardStats();
+        setDashboardStats(stats);
+      } catch (error) { }
+    }
+
+    getDashboardStats()
+  }, []);
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between">
@@ -149,16 +163,16 @@ export default function LienHomePage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricTile
           label="Active Cases"
-          value={activeCases.length}
-          sub={`${cases.length} total`}
+          value={dashboardStats?.totalActiveCases ?? 0}
+          sub={`${dashboardStats?.totalCases ?? 0} total`}
           icon="ri-folder-open-line"
           color="text-blue-500"
           href="/lien/cases"
         />
         <MetricTile
           label="Total Liens"
-          value={liens.length}
-          sub={`${liens.filter((l) => l.status === 'Draft').length} drafts`}
+          value={dashboardStats?.totalLiens ?? 0}
+          sub={`${dashboardStats?.lienStatus?.find((ls) => ls.label === 'Draft')?.value ?? 0} drafts`}
           icon="ri-stack-line"
           color="text-indigo-500"
           href="/lien/liens"
@@ -173,7 +187,7 @@ export default function LienHomePage() {
         />
         <MetricTile
           label="Total Volume"
-          value={formatCurrency(totalVolume)}
+          value={formatCurrency(dashboardStats?.totalLienValue ?? 0)}
           sub="Across all liens"
           icon="ri-money-dollar-circle-line"
           color="text-emerald-500"
