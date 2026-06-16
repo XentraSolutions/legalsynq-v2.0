@@ -59,6 +59,7 @@ export const contactsService = {
   },
 
   async exportContacts(contactType: string): Promise<ExportResponse> {
-    return await contactsApi.export(contactType);
+    const { data } = await contactsApi.export(contactType);
+    return data;
   },
 };
