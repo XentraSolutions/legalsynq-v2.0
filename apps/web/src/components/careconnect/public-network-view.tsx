@@ -45,14 +45,6 @@ interface PublicNetworkViewProps {
 
 type ViewMode = 'split' | 'list' | 'map';
 
-function splitPersonName(value: string): { firstName: string; lastName: string } {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  return {
-    firstName: parts[0] ?? '',
-    lastName: parts.slice(1).join(' '),
-  };
-}
-
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export function PublicNetworkView({
@@ -503,7 +495,8 @@ const ProviderCard = forwardRef<
 // ── Referral panel ────────────────────────────────────────────────────────────
 
 interface ReferralForm {
-  patientName:          string;
+  patientFirstName:     string;
+  patientLastName:      string;
   patientPhone:         string;
   patientEmail:         string;
   patientAddress:       string;
@@ -518,7 +511,7 @@ interface ReferralForm {
 }
 
 const EMPTY_FORM: ReferralForm = {
-  patientName: '', patientPhone: '', patientEmail: '',
+  patientFirstName: '', patientLastName: '', patientPhone: '', patientEmail: '',
   patientAddress: '', patientDob: '', patientDateOfAccident: '',
   urgency: 'Normal',
   notes: '',
@@ -643,7 +636,8 @@ function ReferralPanel({
 
   const validate = useCallback((): Record<string, string> => {
     const errs: Record<string, string> = {};
-    if (!form.patientName.trim()) errs['patientName'] = 'Patient name is required.';
+    if (!form.patientFirstName.trim()) errs['patientFirstName'] = 'Patient first name is required.';
+    if (!form.patientLastName.trim()) errs['patientLastName'] = 'Patient last name is required.';
     if (!form.patientPhone.trim()) errs['patientPhone'] = 'Patient phone is required.';
     else if (!isValidPhone(form.patientPhone)) errs['patientPhone'] = 'Enter a valid 10-digit phone number.';
     if (form.patientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patientEmail.trim()))
@@ -689,14 +683,12 @@ function ReferralPanel({
 
     setState('submitting');
 
-    const { firstName, lastName } = splitPersonName(form.patientName);
-
     const payloads: PublicReferralRequest[] = providers.map(p => ({
       providerId:             p.id,
       senderName:             form.contactName.trim() || form.firmName.trim(),
       senderEmail:            form.email.trim(),
-      patientFirstName:       firstName,
-      patientLastName:        lastName,
+      patientFirstName:       form.patientFirstName.trim(),
+      patientLastName:        form.patientLastName.trim(),
       patientPhone:           stripPhone(form.patientPhone),
       patientEmail:           form.patientEmail.trim() || undefined,
       patientDateOfBirth:     form.patientDob || undefined,
@@ -999,18 +991,29 @@ function ReferralPanel({
               icon="ri-user-heart-line" avatarBg="bg-teal-500"
               title="Patient"
               subtitle="Who is being referred"
-              hasError={!!(fieldErrors['patientName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail'])}
+              hasError={!!(fieldErrors['patientFirstName'] || fieldErrors['patientLastName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail'])}
             >
               <div className="px-5 pb-4 space-y-3">
-                <PanelField label="Patient name" required error={fieldErrors['patientName']}>
-                  <input
-                    type="text" required value={form.patientName}
-                    placeholder="Jane Doe"
-                    onChange={e => update('patientName', e.target.value)}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(!!fieldErrors['patientName'])}
-                  />
-                </PanelField>
+                <div className="grid grid-cols-2 gap-3">
+                  <PanelField label="First name" required error={fieldErrors['patientFirstName']}>
+                    <input
+                      type="text" required value={form.patientFirstName}
+                      placeholder="Jane"
+                      onChange={e => update('patientFirstName', e.target.value)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(!!fieldErrors['patientFirstName'])}
+                    />
+                  </PanelField>
+                  <PanelField label="Last name" required error={fieldErrors['patientLastName']}>
+                    <input
+                      type="text" required value={form.patientLastName}
+                      placeholder="Doe"
+                      onChange={e => update('patientLastName', e.target.value)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(!!fieldErrors['patientLastName'])}
+                    />
+                  </PanelField>
+                </div>
                 <PanelField label="Patient phone" required error={fieldErrors['patientPhone']}>
                   <input
                     type="tel" required value={form.patientPhone}
@@ -1157,7 +1160,7 @@ function ReferralPanel({
 
             {/* Validation summary */}
             {Object.keys(fieldErrors).length > 0 && state !== 'submitting' && (() => {
-              const hasPatientErr = !!(fieldErrors['patientName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail']);
+              const hasPatientErr = !!(fieldErrors['patientFirstName'] || fieldErrors['patientLastName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail']);
               const hasFirmErr    = !!(fieldErrors['firmName']    || fieldErrors['email']);
               const sections = [hasPatientErr && 'Patient', hasFirmErr && 'Law firm'].filter(Boolean).join(' and ');
               return (
@@ -1408,7 +1411,7 @@ function ReferralConfirmModal({
                   <i className="ri-user-heart-line" /> Patient
                 </p>
                 <div className="space-y-1.5 pl-1">
-                  <ConfirmRow label="Name"             value={form.patientName}                     />
+                  <ConfirmRow label="Name"             value={`${form.patientFirstName} ${form.patientLastName}`.trim()} />
                   <ConfirmRow label="Phone"            value={form.patientPhone}                    />
                   <ConfirmRow label="Email"            value={form.patientEmail}                    />
                   <ConfirmRow label="Date of birth"    value={fmtDate(form.patientDob)}             />
