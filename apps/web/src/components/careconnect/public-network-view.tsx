@@ -494,6 +494,20 @@ const ProviderCard = forwardRef<
 
 // ── Referral panel ────────────────────────────────────────────────────────────
 
+const SERVICE_TYPES = [
+  'General Referral',
+  'Consultation',
+  'Initial Service',
+  'Diagnostic Service',
+  'Laboratory Service',
+  'Imaging/Radiology',
+  'Emergency Service',
+  'Home Health Service',
+  'Specialist Referral',
+  'Telehealth Service',
+  'Follow-up Service',
+];
+
 interface ReferralForm {
   patientFirstName:     string;
   patientLastName:      string;
@@ -503,6 +517,8 @@ interface ReferralForm {
   patientDob:           string;   // YYYY-MM-DD
   patientDateOfAccident: string;  // YYYY-MM-DD
   urgency:              ReferralUrgencyValue;
+  serviceType:          string;
+  treatmentTypeId:      string;
   notes:                string;
   firmName:             string;
   contactFirstName:     string;
@@ -515,6 +531,8 @@ const EMPTY_FORM: ReferralForm = {
   patientFirstName: '', patientLastName: '', patientPhone: '', patientEmail: '',
   patientAddress: '', patientDob: '', patientDateOfAccident: '',
   urgency: 'Normal',
+  serviceType: 'General Referral',
+  treatmentTypeId: '',
   notes: '',
   firmName: '', contactFirstName: '', contactLastName: '', email: '', phone: '',
 };
@@ -585,6 +603,18 @@ function ReferralPanel({
   const [providerFiles,  setProviderFiles] = useState<Record<string, File | null>>({});
   const [hasPortalAccess, setHasPortalAccess] = useState(false);
   const [enrollToken,    setEnrollToken]   = useState<string | null>(null);
+  const [treatmentTypes, setTreatmentTypes] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    const endpoint = prefillLawFirm
+      ? '/api/careconnect/api/treatment-types'
+      : `/api/public/careconnect/api/public/treatment-types`;
+    fetch(endpoint, prefillLawFirm ? {} : { headers: { 'X-Tenant-Id': tenantId } })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { id: string; name: string }[]) => setTreatmentTypes(data))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Pre-generate a signed enrollment token when the referral succeeds so the
   // "Activate your free account" CTA never carries raw PII in the URL.
@@ -697,8 +727,9 @@ function ReferralPanel({
       patientDateOfBirth:     form.patientDob || undefined,
       patientDateOfAccident:  form.patientDateOfAccident || undefined,
       patientAddress:         form.patientAddress.trim() || undefined,
-      serviceType:            'General Referral',
+      serviceType:            form.serviceType || 'General Referral',
       urgency:                form.urgency,
+      treatmentTypeId:        form.treatmentTypeId || undefined,
       notes:                  [
         form.notes,
         form.phone    ? `Firm phone: ${form.phone}` : '',
@@ -733,8 +764,9 @@ function ReferralPanel({
             clientPhone:      payload.patientPhone,
             clientEmail:      payload.patientEmail ?? '',
             clientDob:        payload.patientDateOfBirth,
-            requestedService: payload.serviceType ?? 'General Referral',
+            requestedService: payload.serviceType || 'General Referral',
             urgency:          payload.urgency ?? 'Normal',
+            treatmentTypeId:  form.treatmentTypeId || undefined,
             notes:            authNotes,
             referrerScopeSignature,
             referrerEmail:    payload.senderEmail,
@@ -1101,6 +1133,27 @@ function ReferralPanel({
                     className={panelInputCls(false)}
                   >
                     {URGENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </PanelField>
+                <PanelField label="Type of service">
+                  <select
+                    value={form.serviceType}
+                    onChange={e => update('serviceType', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  >
+                    {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </PanelField>
+                <PanelField label="Type of treatment" hint="optional">
+                  <select
+                    value={form.treatmentTypeId}
+                    onChange={e => update('treatmentTypeId', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  >
+                    <option value="">None</option>
+                    {treatmentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </PanelField>
                 <PanelField label="Notes" hint="optional">

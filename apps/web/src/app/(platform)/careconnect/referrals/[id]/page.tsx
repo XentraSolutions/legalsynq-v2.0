@@ -136,7 +136,7 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
               Referrers can book via the provider availability page at any time. */}
 
           {/* 3. Referral details — body only (header rendered above). Treatment type editing is inline. */}
-          <ReferralDetailPanel referral={referral} hideHeader isReceiver={isReceiverOfReferral} timezone={tenantTimezone} />
+          <ReferralDetailPanel referral={referral} hideHeader timezone={tenantTimezone} />
 
           {/* 3b. Documents — CC2-INT-B03 */}
           <AttachmentPanel

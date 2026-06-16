@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition, useRef, useCallback } from 'react';
-import { postComment, acceptReferralByToken, declineReferralByToken, updateTreatmentTypeByToken } from './actions';
+import { postComment, acceptReferralByToken, declineReferralByToken } from './actions';
 
 interface Comment {
   id:         string;
@@ -140,17 +140,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const [attLoading, setAttLoading] = useState<Record<string, 'view' | 'download' | null>>({});
   const [attError,   setAttError]   = useState<Record<string, string | null>>({});
 
-  // Treatment type editing
-  const TERMINAL_STATUSES_TT = ['Completed', 'Cancelled', 'Declined'];
-  const [treatmentTypes,    setTreatmentTypes]    = useState<{ id: string; name: string }[]>([]);
-  const [ttLoading,         setTtLoading]         = useState(false);
-  const [editingTreatment,  setEditingTreatment]  = useState(false);
-  const [liveTreatmentId,   setLiveTreatmentId]   = useState<string | undefined>(data.treatmentTypeId);
-  const [selectedTreatment, setSelectedTreatment] = useState(data.treatmentTypeId ?? '');
-  const [treatmentSaving,   setTreatmentSaving]   = useState(false);
-  const [treatmentError,    setTreatmentError]    = useState<string | null>(null);
-  const [liveTreatmentName, setLiveTreatmentName] = useState<string | undefined>(data.treatmentTypeName);
-  const canEditTreatment = !TERMINAL_STATUSES_TT.includes(liveStatus);
+  const [liveTreatmentName] = useState<string | undefined>(data.treatmentTypeName);
 
   useEffect(() => {
     setTimezone(resolveBrowserTimezone());
@@ -181,37 +171,6 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
       setAttLoading(prev => ({ ...prev, [attachmentId]: null }));
     }
   }, [data.referralId, token]);
-
-  useEffect(() => {
-    if (!canEditTreatment) return;
-    setTtLoading(true);
-    fetch('/api/public/careconnect/api/public/treatment-types')
-      .then(r => r.ok ? r.json() : [])
-      .then((list: { id: string; name: string }[]) => setTreatmentTypes(list))
-      .catch(() => {})
-      .finally(() => setTtLoading(false));
-  }, [canEditTreatment]);
-
-  const handleTreatmentSave = () => {
-    setTreatmentError(null);
-    setTreatmentSaving(true);
-    startTransition(async () => {
-      const result = await updateTreatmentTypeByToken(
-        referralId,
-        token,
-        selectedTreatment === '' ? null : selectedTreatment,
-      );
-      if (!result.success) {
-        setTreatmentError(result.error ?? 'Update failed. Please try again.');
-      } else {
-        const savedName = treatmentTypes.find(t => t.id === selectedTreatment)?.name;
-        setLiveTreatmentName(savedName);
-        setLiveTreatmentId(selectedTreatment === '' ? undefined : selectedTreatment);
-        setEditingTreatment(false);
-      }
-      setTreatmentSaving(false);
-    });
-  };
 
   const st = STATUS_MAP[liveStatus] ?? { label: liveStatus, color: '#374151', bg: '#f9fafb', border: '#d1d5db' };
 
@@ -323,62 +282,12 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
           </div>
 
           {/* Type of Treatment */}
-          <div style={{ marginTop: 14 }}>
-            <p style={s.fieldLabel}>Type of Treatment</p>
-            {treatmentError && (
-              <p style={{ margin: '2px 0 4px', fontSize: 12, color: '#dc2626' }}>{treatmentError}</p>
-            )}
-            {!editingTreatment ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <p style={{ ...s.fieldVal, margin: 0 }}>
-                  {liveTreatmentName ?? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Not set</span>}
-                </p>
-                {canEditTreatment && (
-                  <button
-                    onClick={() => { setSelectedTreatment(liveTreatmentId ?? ''); setEditingTreatment(true); }}
-                    disabled={ttLoading}
-                    style={{ fontSize: 12, color: '#1a56db', background: 'none', border: 'none',
-                             cursor: ttLoading ? 'wait' : 'pointer', textDecoration: 'underline', padding: 0 }}
-                  >
-                    {ttLoading ? 'Loading…' : (liveTreatmentName ? 'Change' : 'Set')}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div style={{ marginTop: 6 }}>
-                <select
-                  value={selectedTreatment}
-                  onChange={e => setSelectedTreatment(e.target.value)}
-                  disabled={treatmentSaving}
-                  style={{ ...s.input, marginBottom: 8 }}
-                >
-                  <option value="">— None / Clear —</option>
-                  {treatmentTypes.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    onClick={handleTreatmentSave}
-                    disabled={treatmentSaving}
-                    style={{ ...s.btnPrimary, flex: 'none', width: 'auto', padding: '8px 16px',
-                             fontSize: 13, opacity: treatmentSaving ? 0.7 : 1,
-                             cursor: treatmentSaving ? 'not-allowed' : 'pointer' }}
-                  >
-                    {treatmentSaving ? 'Saving…' : 'Save'}
-                  </button>
-                  <button
-                    onClick={() => { setEditingTreatment(false); setTreatmentError(null); }}
-                    disabled={treatmentSaving}
-                    style={{ fontSize: 13, color: '#6b7280', background: 'none', border: 'none',
-                             cursor: 'pointer', padding: '8px 0' }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          {liveTreatmentName && (
+            <div style={{ marginTop: 14 }}>
+              <p style={s.fieldLabel}>Type of Treatment</p>
+              <p style={{ ...s.fieldVal, margin: 0 }}>{liveTreatmentName}</p>
+            </div>
+          )}
 
           {/* Notes */}
           {data.notes && (

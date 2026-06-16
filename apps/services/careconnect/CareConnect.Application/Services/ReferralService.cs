@@ -178,9 +178,15 @@ public class ReferralService : IReferralService
             referrerEmail: request.ReferrerEmail,
             referrerName:  request.ReferrerName,
             referrerFirstName: request.ReferrerFirstName,
-            referrerLastName:  request.ReferrerLastName);
+            referrerLastName:  request.ReferrerLastName,
+            treatmentTypeId: request.TreatmentTypeId);
 
         await _referrals.AddAsync(referral, ct);
+
+        // Resolve treatment type name now (before the background scope) so the email includes it.
+        var treatmentTypeName = request.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(request.TreatmentTypeId.Value, ct)
+            : null;
 
         // LSCC-005: Fire provider email notifications (fire-and-observe — never gates creation).
         // Only "New referral received" is sent on creation. The provider-assigned email is
@@ -193,7 +199,7 @@ public class ReferralService : IReferralService
         {
             using var scope    = scopeFactory.CreateScope();
             var       emailSvc = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
-            try { await emailSvc.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None); }
+            try { await emailSvc.SendNewReferralNotificationAsync(referral, provider, treatmentTypeName, CancellationToken.None); }
             catch (Exception ex)
             {
                 logger.LogWarning(ex,

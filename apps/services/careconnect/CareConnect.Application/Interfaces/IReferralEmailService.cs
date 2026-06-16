@@ -50,8 +50,14 @@ public interface IReferralEmailService
     /// Also covers TOKEN_GENERATED event since a signed token is included in the email.
     /// </summary>
     Task SendNewReferralNotificationAsync(
-        Referral referral,
-        Provider provider,
+        Referral          referral,
+        Provider          provider,
+        CancellationToken ct = default);
+
+    Task SendNewReferralNotificationAsync(
+        Referral          referral,
+        Provider          provider,
+        string?           treatmentTypeName,
         CancellationToken ct = default);
 
     /// <summary>

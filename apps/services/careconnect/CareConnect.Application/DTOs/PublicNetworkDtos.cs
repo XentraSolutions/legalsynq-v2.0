@@ -121,6 +121,9 @@ public sealed class PublicReferralRequest
     /// (Low, Normal, Urgent, Emergency). Falls back to "Normal" when omitted or invalid.
     /// </summary>
     public string? Urgency { get; set; }
+
+    /// <summary>Treatment type ID selected from the treatment types list (optional).</summary>
+    public Guid? TreatmentTypeId { get; set; }
 }
 
 /// <summary>

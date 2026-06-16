@@ -242,6 +242,7 @@ export interface PublicReferralRequest {
   serviceType?:          string;
   notes?:                string;
   urgency?:              string;
+  treatmentTypeId?:      string;
 }
 
 export interface PublicReferralResponse {

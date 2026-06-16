@@ -52,36 +52,6 @@ export async function declineReferralByToken(
   }
 }
 
-export interface UpdateTreatmentTypeResult {
-  success: boolean;
-  error?:  string;
-}
-
-export async function updateTreatmentTypeByToken(
-  referralId:      string,
-  token:           string,
-  treatmentTypeId: string | null,
-): Promise<UpdateTreatmentTypeResult> {
-  try {
-    const resp = await fetchPublicCareConnect(
-      `/api/referrals/${referralId}/treatment-type-by-token`,
-      {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ token, treatmentTypeId }),
-      },
-    );
-    if (resp.status === 409) return { success: false, error: 'This referral cannot be updated in its current status.' };
-    if (!resp.ok) {
-      const body = await resp.json().catch(() => ({}));
-      return { success: false, error: (body as { detail?: string }).detail ?? 'Could not update treatment type. Please try again.' };
-    }
-    return { success: true };
-  } catch {
-    return { success: false, error: 'Network error. Please check your connection and try again.' };
-  }
-}
-
 export interface PostCommentResult {
   success: boolean;
   error?: string;

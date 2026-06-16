@@ -1,13 +1,11 @@
 import type { ReferralDetail } from '@/types/careconnect';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { formatPhoneDisplay } from '@/lib/phone';
-import { ReferralTreatmentField } from './referral-treatment-field';
 import { formatDateOnly } from '@/lib/format-date';
 
 interface ReferralDetailPanelProps {
   referral:    ReferralDetail;
   hideHeader?: boolean;
-  isReceiver?: boolean;
   timezone?:   string;
 }
 
@@ -50,7 +48,7 @@ function formatDateOnlyField(iso: string | undefined): string {
   });
 }
 
-export function ReferralDetailPanel({ referral, hideHeader = false, isReceiver = false, timezone = 'America/Los_Angeles' }: ReferralDetailPanelProps) {
+export function ReferralDetailPanel({ referral, hideHeader = false, timezone = 'America/Los_Angeles' }: ReferralDetailPanelProps) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg">
       {/* Header — omitted when used alongside ReferralPageHeader */}
@@ -75,17 +73,10 @@ export function ReferralDetailPanel({ referral, hideHeader = false, isReceiver =
       <div className="px-6 py-5 space-y-0">
         {/* Referral */}
         <Section title="Referral">
-          <Field label="Provider"           value={referral.providerName} />
+          <Field label="Provider"            value={referral.providerName} />
           <Field label="Requested service"  value={referral.requestedService} />
-          <ReferralTreatmentField
-            referralId={referral.id}
-            treatmentTypeId={referral.treatmentTypeId}
-            treatmentTypeName={referral.treatmentTypeName}
-            urgency={referral.urgency}
-            status={referral.status}
-            isReceiver={isReceiver}
-          />
           <Field label="Urgency"            value={<UrgencyBadge urgency={referral.urgency} />} />
+          <Field label="Type of treatment"  value={referral.treatmentTypeName ?? '—'} />
           <Field label="Status"             value={<StatusBadge status={referral.status} />} />
           <Field label="Created"            value={formatDate(referral.createdAtUtc, timezone)} />
           <Field label="Last updated"       value={formatDate(referral.updatedAtUtc, timezone)} />

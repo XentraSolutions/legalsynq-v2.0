@@ -86,7 +86,6 @@ public class Referral : AuditableEntity
     public string Urgency { get; private set; } = string.Empty;
     public string Status { get; private set; } = ValidStatuses.New;
     public string? Notes { get; private set; }
-    // ── Type of Treatment (set by Receiver after creation) ───────────────
     public Guid? TreatmentTypeId { get; private set; }
 
     // ── Referrer contact (stored at creation for email notifications) ─────
@@ -135,7 +134,8 @@ public class Referral : AuditableEntity
         string? referrerEmail = null,
         string? referrerName = null,
         string? referrerFirstName = null,
-        string? referrerLastName = null)
+        string? referrerLastName = null,
+        Guid? treatmentTypeId = null)
     {
         var now = DateTime.UtcNow;
 
@@ -170,6 +170,7 @@ public class Referral : AuditableEntity
             Urgency                    = urgency,
             Status                     = ValidStatuses.New,
             Notes                      = notes?.Trim(),
+            TreatmentTypeId            = treatmentTypeId,
             ReferrerEmail              = referrerEmail?.Trim(),
             ReferrerName               = computedReferrerName,
             ReferrerFirstName          = referrerFirstName?.Trim(),

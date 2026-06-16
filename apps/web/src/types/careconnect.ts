@@ -141,7 +141,7 @@ export interface ReferralSummary {
   organizationRelationshipId?: string;
   /** Backend supplies the tenant name for the Network column, or '-' when unavailable. */
   networkName?: string | null;
-  // Type of Treatment — set by Receiver after creation.
+  // Type of Treatment — set by Referrer at creation.
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
 }
@@ -205,6 +205,7 @@ export interface CreateReferralRequest {
   caseNumber?:       string;
   requestedService?: string;
   urgency:           string;
+  treatmentTypeId?:  string;
   notes?:            string;
   referrerScopeSignature?: string;
   /** LSCC-005: referrer identity for the notification email */

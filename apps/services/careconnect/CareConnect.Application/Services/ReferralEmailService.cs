@@ -203,9 +203,16 @@ public class ReferralEmailService : IReferralEmailService
 
     // ── Email dispatch ────────────────────────────────────────────────────────
 
+    public Task SendNewReferralNotificationAsync(
+        Referral          referral,
+        Provider          provider,
+        CancellationToken ct = default)
+        => SendNewReferralNotificationAsync(referral, provider, null, ct);
+
     public async Task SendNewReferralNotificationAsync(
-        Referral referral,
-        Provider provider,
+        Referral          referral,
+        Provider          provider,
+        string?           treatmentTypeName,
         CancellationToken ct = default)
     {
         var token = GenerateViewToken(referral.Id, referral.TokenVersion);
@@ -224,7 +231,7 @@ public class ReferralEmailService : IReferralEmailService
         {
             var dedupeKey = $"referral:{referral.Id}:created:provider";
             var subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
-            var body      = BuildNewReferralEmailHtml(referral, provider, providerEntryLink);
+            var body      = BuildNewReferralEmailHtml(referral, provider, providerEntryLink, treatmentTypeName);
 
             var notification = CareConnectNotification.Create(
                 tenantId:          referral.TenantId,
@@ -261,7 +268,7 @@ public class ReferralEmailService : IReferralEmailService
         {
             var refDedupeKey = $"referral:{referral.Id}:created:referrer";
             var refSubject   = $"Referral submitted — {referral.ClientFirstName} {referral.ClientLastName}";
-            var refBody      = BuildReferrerSubmissionHtml(referral, provider, firmStatusLink);
+            var refBody      = BuildReferrerSubmissionHtml(referral, provider, firmStatusLink, treatmentTypeName);
 
             var refNotif = CareConnectNotification.Create(
                 tenantId:          referral.TenantId,
@@ -1062,7 +1069,7 @@ public class ReferralEmailService : IReferralEmailService
 
     // ── Template builders ─────────────────────────────────────────────────────
 
-    private static string BuildNewReferralEmailHtml(Referral r, Provider p, string entryLink)
+    private static string BuildNewReferralEmailHtml(Referral r, Provider p, string entryLink, string? treatmentTypeName = null)
     {
         var provName       = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var firmName       = ExtractFirmName(r.Notes);
@@ -1073,12 +1080,13 @@ public class ReferralEmailService : IReferralEmailService
         var introCopy      = "Use the button below to review this referral in CareConnect.";
 
         var clientRows =
-            Row("Full Name",     $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
-            Row("Phone",         string.IsNullOrWhiteSpace(r.ClientPhone) ? null : r.ClientPhone) +
-            Row("Date of Birth", clientDob) +
-            Row("Service",       r.RequestedService) +
-            Row("Case #",        r.CaseNumber) +
-            Row("Urgency",       r.Urgency);
+            Row("Full Name",         $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Phone",             string.IsNullOrWhiteSpace(r.ClientPhone) ? null : r.ClientPhone) +
+            Row("Date of Birth",     clientDob) +
+            Row("Service",           r.RequestedService) +
+            Row("Case #",            r.CaseNumber) +
+            Row("Urgency",           r.Urgency) +
+            Row("Type of Treatment", treatmentTypeName);
 
         var referrerRows =
             Row("Name",     r.ReferrerName) +
@@ -1121,7 +1129,7 @@ public class ReferralEmailService : IReferralEmailService
         return Wrap($"{provName} \u2013 Referral Request", body, footer);
     }
 
-    private static string BuildReferrerSubmissionHtml(Referral r, Provider p, string viewLink)
+    private static string BuildReferrerSubmissionHtml(Referral r, Provider p, string viewLink, string? treatmentTypeName = null)
     {
         var provName   = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var greeting   = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
@@ -1129,9 +1137,11 @@ public class ReferralEmailService : IReferralEmailService
         var cleanNotes = CleanNotes(r.Notes);
 
         var patientRows =
-            Row("Full Name", $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
-            Row("Service",   r.RequestedService) +
-            Row("Notes",     cleanNotes);
+            Row("Full Name",         $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service",           r.RequestedService) +
+            Row("Urgency",           r.Urgency) +
+            Row("Type of Treatment", treatmentTypeName) +
+            Row("Notes",             cleanNotes);
 
         var providerRows =
             Row("Provider", provName, bold: true) +

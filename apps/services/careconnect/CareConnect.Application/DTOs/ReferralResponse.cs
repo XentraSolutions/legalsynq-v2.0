@@ -38,7 +38,7 @@ public class ReferralResponse
     public int     ProviderEmailAttempts { get; set; }
     public string? ProviderEmailFailureReason { get; set; }
 
-    // Type of Treatment — set by Receiver after creation.
+    // Type of Treatment — set by Referrer at creation.
     public Guid?   TreatmentTypeId   { get; set; }
     public string? TreatmentTypeName { get; set; }
 }

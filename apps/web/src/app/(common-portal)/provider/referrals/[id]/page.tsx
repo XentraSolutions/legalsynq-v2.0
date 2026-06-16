@@ -100,8 +100,7 @@ export default async function ProviderReferralDetailPage({ params }: Props) {
 
           {/* Core detail panels */}
           <div className="space-y-4">
-            {/* isReceiver=true — providers are always receivers. Treatment type editing is inline. */}
-            <ReferralDetailPanel referral={referral} isReceiver={true} />
+            <ReferralDetailPanel referral={referral} />
 
             {/* Accept / Decline actions — providers are always receivers, never referrers */}
             <ReferralStatusActions referral={referral} isReceiver={true} isReferrer={false} />

@@ -566,6 +566,7 @@ public static class PublicNetworkEndpoints
                 Urgency                 = !string.IsNullOrWhiteSpace(req.Urgency) && Referral.ValidUrgencies.All.Contains(req.Urgency)
                                             ? req.Urgency
                                             : Referral.ValidUrgencies.Normal,
+                TreatmentTypeId         = req.TreatmentTypeId,
                 Notes                   = notesParts.Count > 0 ? string.Join("\n", notesParts) : null,
                 ReferrerFirstName       = req.SenderFirstName.Trim(),
                 ReferrerLastName        = req.SenderLastName?.Trim(),
