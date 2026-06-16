@@ -37,6 +37,8 @@ public class PublicReferralThreadResponse
     public string? Urgency { get; init; }
     public string? Notes { get; init; }
     public string ProviderName { get; init; } = string.Empty;
+    public string? ProviderFirstName { get; init; }
+    public string? ProviderLastName { get; init; }
     public string ProviderEmail { get; init; } = string.Empty;
     public string ProviderPhone { get; init; } = string.Empty;
     public string ProviderAddressLine1 { get; init; } = string.Empty;
@@ -44,6 +46,8 @@ public class PublicReferralThreadResponse
     public string ProviderState { get; init; } = string.Empty;
     public string ProviderPostalCode { get; init; } = string.Empty;
     public string? ReferrerName { get; init; }
+    public string? ReferrerFirstName { get; init; }
+    public string? ReferrerLastName { get; init; }
     public string? ReferrerEmail { get; init; }
     public DateTime CreatedAt { get; init; }
     public bool ProviderHasAccount { get; init; }

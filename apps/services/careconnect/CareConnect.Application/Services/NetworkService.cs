@@ -165,7 +165,9 @@ public class NetworkService : INetworkService
             // TenantId = registering tenant (audit/tracking, not ownership)
             provider = Provider.Create(
                 tenantId:          tenantId,
-                name:              np.Name,
+                name:              $"{np.FirstName} {np.LastName}".Trim(),
+                firstName:         np.FirstName,
+                lastName:          np.LastName,
                 organizationName:  np.OrganizationName,
                 email:             np.Email,
                 phone:             np.Phone,
@@ -315,8 +317,10 @@ public class NetworkService : INetworkService
     private static void ValidateNewProvider(NewProviderData np)
     {
         var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(np.Name))
-            errors["name"] = ["Provider name is required."];
+        if (string.IsNullOrWhiteSpace(np.FirstName))
+            errors["firstName"] = ["Provider first name is required."];
+        if (string.IsNullOrWhiteSpace(np.LastName))
+            errors["lastName"] = ["Provider last name is required."];
         if (string.IsNullOrWhiteSpace(np.Email))
             errors["email"] = ["Provider email is required."];
         if (string.IsNullOrWhiteSpace(np.Phone))

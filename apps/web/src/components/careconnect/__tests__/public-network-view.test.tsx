@@ -108,7 +108,8 @@ describe('PublicNetworkView', () => {
 
     await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
     await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
-    await user.type(screen.getByPlaceholderText('Jane Doe'), 'Jane Doe');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
     const phoneInputs = screen.getAllByPlaceholderText('(555) 555-5555');
     expect(phoneInputs).toHaveLength(2);
 
@@ -167,7 +168,8 @@ describe('PublicNetworkView', () => {
 
     await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
     await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
-    await user.type(screen.getByPlaceholderText('Jane Doe'), 'Jane Doe');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
     await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
@@ -186,7 +188,128 @@ describe('PublicNetworkView', () => {
     );
   });
 
-  test('public referral flow keeps lastName empty when patientName has a single token', async () => {
+  test('public referral flow sends split contact first/last name as senderFirstName/senderLastName', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrals')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          senderFirstName?: string;
+          senderLastName?: string;
+        };
+        expect(body.senderFirstName).toBe('Pat');
+        expect(body.senderLastName).toBe('Paralegal');
+        return jsonResponse({ referralId: 'ref-1', providerId: 'provider-1' });
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrer-status')) {
+        return jsonResponse({ hasPortalAccess: false });
+      }
+
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const { container } = render(
+      <PublicNetworkView
+        detail={DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select provider' }));
+
+    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
+    await user.type(screen.getByPlaceholderText('John'), 'Pat');
+    await user.type(screen.getAllByPlaceholderText('Doe')[0], 'Paralegal');
+    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
+    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
+    fireEvent.change(dateInputs[1], { target: { value: '2024-01-15' } });
+
+    await user.click(screen.getByRole('button', { name: 'Send Referral' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm & Send' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/public/careconnect/api/public/referrals',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
+  test('public referral flow falls back senderFirstName to the firm name when contact name is left blank', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrals')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          senderFirstName?: string;
+          senderLastName?: string;
+        };
+        expect(body.senderFirstName).toBe('Acme Injury Law');
+        expect(body.senderLastName).toBeUndefined();
+        return jsonResponse({ referralId: 'ref-1', providerId: 'provider-1' });
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrer-status')) {
+        return jsonResponse({ hasPortalAccess: false });
+      }
+
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const { container } = render(
+      <PublicNetworkView
+        detail={DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select provider' }));
+
+    // Contact first/last name left blank — senderFirstName should fall back to the firm name.
+    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
+    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
+    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
+    fireEvent.change(dateInputs[1], { target: { value: '2024-01-15' } });
+
+    await user.click(screen.getByRole('button', { name: 'Send Referral' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm & Send' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/public/careconnect/api/public/referrals',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
+  test('public referral flow sends patient first/last name as separate fields', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -201,7 +324,7 @@ describe('PublicNetworkView', () => {
           patientLastName?: string;
         };
         expect(body.patientFirstName).toBe('Prince');
-        expect(body.patientLastName).toBe('');
+        expect(body.patientLastName).toBe('Rogers');
         return jsonResponse({ referralId: 'ref-1', providerId: 'provider-1' });
       }
 
@@ -226,7 +349,8 @@ describe('PublicNetworkView', () => {
 
     await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
     await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
-    await user.type(screen.getByPlaceholderText('Jane Doe'), 'Prince');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Prince');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Rogers');
     await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
@@ -285,7 +409,8 @@ describe('PublicNetworkView', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Select provider' }));
-    await user.type(screen.getByPlaceholderText('Jane Doe'), 'Jane Doe');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Doe'), 'Doe');
     await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[0], '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
@@ -344,7 +469,8 @@ describe('PublicNetworkView', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Select provider' }));
-    await user.type(screen.getByPlaceholderText('Jane Doe'), 'Jane Doe');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Doe'), 'Doe');
     await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[0], '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');

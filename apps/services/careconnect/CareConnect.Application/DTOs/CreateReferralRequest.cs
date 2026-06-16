@@ -29,6 +29,8 @@ public class CreateReferralRequest
     // Pre-filled from session on the frontend; optional for backward compatibility.
     public string? ReferrerEmail { get; set; }
     public string? ReferrerName  { get; set; }
+    public string? ReferrerFirstName { get; set; }
+    public string? ReferrerLastName  { get; set; }
 
     /// <summary>
     /// HMAC signature proving the authenticated user selected the supplied

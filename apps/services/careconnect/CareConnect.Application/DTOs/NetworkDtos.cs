@@ -91,7 +91,8 @@ public sealed record AddProviderToNetworkRequest(
     NewProviderData?       NewProvider);
 
 public sealed record NewProviderData(
-    string  Name,
+    string  FirstName,
+    string  LastName,
     string? OrganizationName,
     string  Email,
     string  Phone,

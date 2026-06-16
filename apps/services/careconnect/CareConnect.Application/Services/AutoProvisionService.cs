@@ -65,8 +65,21 @@ public class AutoProvisionService : IAutoProvisionService
         string            token,
         string?           requesterName,
         string?           requesterEmail,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string?           requesterFirstName = null,
+        string?           requesterLastName = null)
     {
+        // requesterFirstName/requesterLastName (new split-field input) take precedence;
+        // requesterName stays as a computed display fallback for the LSCC-009 admin queue
+        // and any caller that still only supplies a single string.
+        var hasSplitRequesterName = !string.IsNullOrWhiteSpace(requesterFirstName) || !string.IsNullOrWhiteSpace(requesterLastName);
+        if (hasSplitRequesterName)
+        {
+            requesterName = string.Join(" ", new[] { requesterFirstName, requesterLastName }
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p!.Trim()));
+        }
+
         // Step 1: Validate token and load referral
         var tokenValidation = _emailService.ValidateViewTokenDetailed(token);
         if (!tokenValidation.IsValid || tokenValidation.ReferralId != referralId)
@@ -176,7 +189,7 @@ public class AutoProvisionService : IAutoProvisionService
         // and the activation request will still exist in the LSCC-009 queue. A platform
         // admin can resend the invitation from Identity. We never block the provision.
         var (invitationSent, userAlreadyExisted, identityUserId) = await TryInviteProviderUserAsync(
-            orgId.Value, requesterEmail, requesterName, ct);
+            orgId.Value, requesterEmail, requesterName, ct, requesterFirstName, requesterLastName);
 
         // CC2-INT-B06-02: Transition to COMMON_PORTAL stage.
         // EF identity resolution means `provider` is the same tracked entity that
@@ -257,7 +270,9 @@ public class AutoProvisionService : IAutoProvisionService
         Guid              orgId,
         string?           email,
         string?           requesterName,
-        CancellationToken ct)
+        CancellationToken ct,
+        string?           requesterFirstName = null,
+        string?           requesterLastName = null)
     {
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -268,14 +283,27 @@ public class AutoProvisionService : IAutoProvisionService
 
         try
         {
-            // Split requesterName into first/last (best-effort)
-            var firstName = "Provider";
-            var lastName  = default(string?);
-            if (!string.IsNullOrWhiteSpace(requesterName))
+            // Prefer the explicit firstName/lastName fields supplied by the caller — avoids
+            // the ambiguity of guessing where a single full name string should be split
+            // (e.g. "Mary Jane Watson" or multi-word last names). Only fall back to the
+            // best-effort single-space split when the caller only has one combined string.
+            string firstName;
+            string? lastName;
+            if (!string.IsNullOrWhiteSpace(requesterFirstName) || !string.IsNullOrWhiteSpace(requesterLastName))
             {
-                var parts = requesterName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-                firstName = parts[0];
-                lastName  = parts.Length > 1 ? parts[1] : null;
+                firstName = string.IsNullOrWhiteSpace(requesterFirstName) ? "Provider" : requesterFirstName.Trim();
+                lastName  = string.IsNullOrWhiteSpace(requesterLastName) ? null : requesterLastName.Trim();
+            }
+            else
+            {
+                firstName = "Provider";
+                lastName  = null;
+                if (!string.IsNullOrWhiteSpace(requesterName))
+                {
+                    var parts = requesterName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                    firstName = parts[0];
+                    lastName  = parts.Length > 1 ? parts[1] : null;
+                }
             }
 
             var result = await _identityOrgs.InviteProviderUserAsync(orgId, email, firstName, lastName, ct);

@@ -577,7 +577,9 @@ public static class ReferralEndpoints
                 return Results.BadRequest(new { error = "token is required." });
 
             var result = await provisioner.ProvisionAsync(
-                id, request.Token, request.RequesterName, request.RequesterEmail, ct);
+                id, request.Token, request.RequesterName, request.RequesterEmail, ct,
+                requesterFirstName: request.RequesterFirstName,
+                requesterLastName:  request.RequesterLastName);
 
             return Results.Ok(result);
         });

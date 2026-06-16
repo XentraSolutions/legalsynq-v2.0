@@ -96,12 +96,22 @@ export default async function FirmStatusPage({ searchParams }: Props) {
     .find(l => l.trim().toLowerCase().startsWith('firm phone:'))
     ?.slice('firm phone:'.length).trim() ?? null;
 
+  // Prefer the split ReferrerFirstName/ReferrerLastName fields (no full-name slicing
+  // ambiguity); fall back to the legacy single ReferrerName for referrals created
+  // before the split existed (e.g. via the authenticated/JWT path).
+  const hasSplitReferrerName = !!(threadData.referrerFirstName || threadData.referrerLastName);
+
   const enrollToken = await createEnrollmentToken({
     tenantId: threadData.tenantId as string,
-    ...(threadData.referrerEmail ? { email:   threadData.referrerEmail as string } : {}),
-    ...(firmName                 ? { firm:    firmName                        } : {}),
-    ...(threadData.referrerName  ? { contact: threadData.referrerName  as string } : {}),
-    ...(referrerPhone            ? { phone:   referrerPhone                      } : {}),
+    ...(threadData.referrerEmail ? { email: threadData.referrerEmail as string } : {}),
+    ...(firmName                 ? { firm:  firmName                          } : {}),
+    ...(hasSplitReferrerName
+      ? {
+          ...(threadData.referrerFirstName ? { contactFirstName: threadData.referrerFirstName as string } : {}),
+          ...(threadData.referrerLastName  ? { contactLastName:  threadData.referrerLastName  as string } : {}),
+        }
+      : (threadData.referrerName ? { contact: threadData.referrerName as string } : {})),
+    ...(referrerPhone ? { phone: referrerPhone } : {}),
   }).catch((err) => { console.error('[firm-status] createEnrollmentToken failed:', err); return null; });
 
   const loginUrl = buildCareConnectReferralLoginUrl(

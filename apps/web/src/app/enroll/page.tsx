@@ -55,10 +55,16 @@ export default async function EnrollPage({ searchParams }: PageProps) {
       : null;
 
   // Referral prefill from decoded token only (no raw URL params accepted for PII).
-  const contact = (claims?.contact ?? '').trim();
-  const parts    = contact.split(/\s+/).filter(Boolean);
-  const refFirst = parts[0] ?? '';
-  const refLast  = parts.slice(1).join(' ');
+  // Prefer the split contactFirstName/contactLastName claims (no full-name slicing
+  // ambiguity); fall back to splitting the legacy single `contact` claim only for
+  // tokens issued before the split existed.
+  let refFirst = (claims?.contactFirstName ?? '').trim();
+  let refLast  = (claims?.contactLastName ?? '').trim();
+  if (!refFirst && !refLast && claims?.contact) {
+    const parts = claims.contact.trim().split(/\s+/).filter(Boolean);
+    refFirst = parts[0] ?? '';
+    refLast  = parts.slice(1).join(' ');
+  }
   const referralPrefill = claims ? (
     existingEnrollmentPrefill
       ? {

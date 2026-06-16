@@ -10,16 +10,17 @@ export interface AutoProvisionResult {
 }
 
 export async function autoProvision(
-  referralId:     string,
-  token:          string,
-  requesterName:  string,
-  requesterEmail: string,
+  referralId:         string,
+  token:              string,
+  requesterFirstName: string,
+  requesterLastName:  string,
+  requesterEmail:     string,
 ): Promise<AutoProvisionResult> {
   try {
     const resp = await fetchPublicCareConnect(`/api/referrals/${referralId}/auto-provision`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ token, requesterName, requesterEmail }),
+      body:    JSON.stringify({ token, requesterFirstName, requesterLastName, requesterEmail }),
     });
 
     if (!resp.ok) {

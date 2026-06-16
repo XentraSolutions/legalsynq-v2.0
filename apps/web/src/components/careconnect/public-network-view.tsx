@@ -505,7 +505,8 @@ interface ReferralForm {
   urgency:              ReferralUrgencyValue;
   notes:                string;
   firmName:             string;
-  contactName:          string;
+  contactFirstName:     string;
+  contactLastName:      string;
   email:                string;
   phone:                string;
 }
@@ -515,7 +516,7 @@ const EMPTY_FORM: ReferralForm = {
   patientAddress: '', patientDob: '', patientDateOfAccident: '',
   urgency: 'Normal',
   notes: '',
-  firmName: '', contactName: '', email: '', phone: '',
+  firmName: '', contactFirstName: '', contactLastName: '', email: '', phone: '',
 };
 
 type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error';
@@ -575,7 +576,7 @@ function ReferralPanel({
 }) {
   const [form,           setForm]          = useState<ReferralForm>(() =>
     prefillLawFirm
-      ? { ...EMPTY_FORM, firmName: prefillLawFirm.firmName, email: prefillLawFirm.email, contactName: prefillLawFirm.contactName ?? '' }
+      ? { ...EMPTY_FORM, firmName: prefillLawFirm.firmName, email: prefillLawFirm.email, contactFirstName: prefillLawFirm.contactName ?? '' }
       : EMPTY_FORM
   );
   const [state,          setState]         = useState<PanelState>('form');
@@ -595,7 +596,8 @@ function ReferralPanel({
       ...(form.email       ? { email:   form.email }       : {}),
       ...(form.firmName    ? { firm:    form.firmName }    : {}),
       ...(form.phone       ? { phone:   form.phone }       : {}),
-      ...(form.contactName ? { contact: form.contactName } : {}),
+      ...(form.contactFirstName.trim() ? { contactFirstName: form.contactFirstName.trim() } : {}),
+      ...(form.contactLastName.trim()  ? { contactLastName:  form.contactLastName.trim() }  : {}),
     }).then(t => setEnrollToken(t)).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]); // form values are stable once state === 'success'
@@ -657,7 +659,7 @@ function ReferralPanel({
       // senderName:"" and a server-side validation failure. Use a form-level error
       // key (_form) so the message surfaces as a banner — there is no contactName
       // input rendered in prefill mode for the user to correct.
-      const senderName = form.contactName.trim() || form.firmName.trim();
+      const senderName = [form.contactFirstName.trim(), form.contactLastName.trim()].filter(Boolean).join(' ') || form.firmName.trim();
       if (!senderName) errs['_form'] = 'Unable to submit: your firm name could not be loaded. Please refresh the page or sign out and sign back in.';
     }
     return errs;
@@ -685,7 +687,8 @@ function ReferralPanel({
 
     const payloads: PublicReferralRequest[] = providers.map(p => ({
       providerId:             p.id,
-      senderName:             form.contactName.trim() || form.firmName.trim(),
+      senderFirstName:        form.contactFirstName.trim() || form.firmName.trim(),
+      senderLastName:         form.contactFirstName.trim() ? (form.contactLastName.trim() || undefined) : undefined,
       senderEmail:            form.email.trim(),
       patientFirstName:       form.patientFirstName.trim(),
       patientLastName:        form.patientLastName.trim(),
@@ -735,7 +738,7 @@ function ReferralPanel({
             notes:            authNotes,
             referrerScopeSignature,
             referrerEmail:    payload.senderEmail,
-            referrerName:     payload.senderName,
+            referrerName:     [form.contactFirstName.trim(), form.contactLastName.trim()].filter(Boolean).join(' ') || form.firmName.trim(),
           };
           res = await fetch('/api/careconnect/api/referrals', {
             method:  'POST',
@@ -955,15 +958,26 @@ function ReferralPanel({
                       className={panelInputCls(!!fieldErrors['firmName'])}
                     />
                   </PanelField>
-                  <PanelField label="Contact name">
-                    <input
-                      type="text" value={form.contactName}
-                      placeholder="Paralegal or attorney"
-                      onChange={e => update('contactName', e.target.value)}
-                      disabled={state === 'submitting'}
-                      className={panelInputCls(false)}
-                    />
-                  </PanelField>
+                  <div className="grid grid-cols-2 gap-3">
+                    <PanelField label="Contact first name">
+                      <input
+                        type="text" value={form.contactFirstName}
+                        placeholder="John"
+                        onChange={e => update('contactFirstName', e.target.value)}
+                        disabled={state === 'submitting'}
+                        className={panelInputCls(false)}
+                      />
+                    </PanelField>
+                    <PanelField label="Contact last name">
+                      <input
+                        type="text" value={form.contactLastName}
+                        placeholder="Doe"
+                        onChange={e => update('contactLastName', e.target.value)}
+                        disabled={state === 'submitting'}
+                        className={panelInputCls(false)}
+                      />
+                    </PanelField>
+                  </div>
                   <PanelField label="Email" required error={fieldErrors['email']}>
                     <input
                       type="email" required value={form.email}
@@ -995,7 +1009,7 @@ function ReferralPanel({
             >
               <div className="px-5 pb-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <PanelField label="First name" required error={fieldErrors['patientFirstName']}>
+                  <PanelField label="Patient First name" required error={fieldErrors['patientFirstName']}>
                     <input
                       type="text" required value={form.patientFirstName}
                       placeholder="Jane"
@@ -1004,7 +1018,7 @@ function ReferralPanel({
                       className={panelInputCls(!!fieldErrors['patientFirstName'])}
                     />
                   </PanelField>
-                  <PanelField label="Last name" required error={fieldErrors['patientLastName']}>
+                  <PanelField label="Patient Last name" required error={fieldErrors['patientLastName']}>
                     <input
                       type="text" required value={form.patientLastName}
                       placeholder="Doe"
@@ -1398,7 +1412,7 @@ function ReferralConfirmModal({
                   </p>
                   <div className="space-y-1.5 pl-1">
                     <ConfirmRow label="Firm name"    value={form.firmName}    />
-                    <ConfirmRow label="Contact name" value={form.contactName} />
+                    <ConfirmRow label="Contact name" value={`${form.contactFirstName} ${form.contactLastName}`.trim()} />
                     <ConfirmRow label="Email"        value={form.email}       />
                     <ConfirmRow label="Phone"        value={form.phone}       />
                   </div>

@@ -48,7 +48,7 @@ const PROVIDER_TYPES = [
 ] as const;
 
 const EMPTY_FORM = {
-  name: '', organizationName: '', email: '', phone: '',
+  firstName: '', lastName: '', organizationName: '', email: '', phone: '',
   addressLine1: '', city: '', state: '', postalCode: '',
   npi: '', isActive: true, acceptingReferrals: true,
   categoryCodes: [] as string[],
@@ -140,7 +140,8 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
     try {
       const { data } = await careConnectApi.networks.addProvider(network.id, {
         newProvider: {
-          name:                newForm.name.trim(),
+          firstName:           newForm.firstName.trim(),
+          lastName:            newForm.lastName.trim(),
           organizationName:    newForm.organizationName.trim() || undefined,
           email:               newForm.email.trim(),
           phone:               stripPhone(newForm.phone),
@@ -330,13 +331,23 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">First name *</label>
                 <input
                   required
-                  value={newForm.name}
-                  onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))}
+                  value={newForm.firstName}
+                  onChange={e => setNewForm(f => ({ ...f, firstName: e.target.value }))}
                   className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                  placeholder="Dr. Jane Smith"
+                  placeholder="Jane"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Last name *</label>
+                <input
+                  required
+                  value={newForm.lastName}
+                  onChange={e => setNewForm(f => ({ ...f, lastName: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                  placeholder="Smith"
                 />
               </div>
               <div>

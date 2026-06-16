@@ -93,6 +93,8 @@ public class Referral : AuditableEntity
     // "Pending" status in LSCC-005 spec ≡ "New" status in this domain model.
     public string? ReferrerEmail { get; private set; }
     public string? ReferrerName  { get; private set; }
+    public string? ReferrerFirstName { get; private set; }
+    public string? ReferrerLastName  { get; private set; }
 
     // ── LSCC-005-01: Token versioning for revocation ─────────────────────
     // Incrementing this value invalidates all previously issued view tokens.
@@ -131,9 +133,22 @@ public class Referral : AuditableEntity
         Guid? createdByUserId,
         Guid? organizationRelationshipId = null,
         string? referrerEmail = null,
-        string? referrerName = null)
+        string? referrerName = null,
+        string? referrerFirstName = null,
+        string? referrerLastName = null)
     {
         var now = DateTime.UtcNow;
+
+        // referrerFirstName/referrerLastName (public referral path) take precedence over the
+        // legacy single referrerName field (authenticated/JWT path) — when supplied, ReferrerName
+        // is computed from them so every existing reader keeps seeing the same single string.
+        var hasSplitReferrerName = !string.IsNullOrWhiteSpace(referrerFirstName) || !string.IsNullOrWhiteSpace(referrerLastName);
+        var computedReferrerName = hasSplitReferrerName
+            ? string.Join(" ", new[] { referrerFirstName, referrerLastName }
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p!.Trim()))
+            : referrerName?.Trim();
+
         return new Referral
         {
             Id                         = Guid.CreateVersion7(),
@@ -156,7 +171,9 @@ public class Referral : AuditableEntity
             Status                     = ValidStatuses.New,
             Notes                      = notes?.Trim(),
             ReferrerEmail              = referrerEmail?.Trim(),
-            ReferrerName               = referrerName?.Trim(),
+            ReferrerName               = computedReferrerName,
+            ReferrerFirstName          = referrerFirstName?.Trim(),
+            ReferrerLastName           = referrerLastName?.Trim(),
             TokenVersion               = 1,
             CreatedByUserId            = createdByUserId,
             UpdatedByUserId            = createdByUserId,

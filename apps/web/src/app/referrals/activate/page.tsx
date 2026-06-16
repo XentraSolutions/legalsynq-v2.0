@@ -42,6 +42,8 @@ interface PublicThreadData {
   clientName:    string;
   service:       string;
   providerName:  string;
+  providerFirstName?: string | null;
+  providerLastName?:  string | null;
   providerEmail?: string;
   providerPhone?: string;
   providerAddressLine1?: string;
@@ -84,7 +86,15 @@ function deriveNameFromEmail(email: string | undefined): { firstName: string; la
 
 function toEnrollmentPrefill(data: PublicThreadData, fallbackCompanyName?: string): EnrollmentPrefill {
   const companyName = data.providerName.trim() || fallbackCompanyName?.trim() || '';
-  const providerContact = deriveNameFromEmail(data.providerEmail);
+
+  // Prefer the provider's actual stored First/Last name (captured directly when the
+  // provider record was created) over guessing from the email address — only fall
+  // back to the email-derived heuristic for providers created before that split existed.
+  const storedFirstName = data.providerFirstName?.trim() ?? '';
+  const storedLastName  = data.providerLastName?.trim() ?? '';
+  const providerContact = storedFirstName || storedLastName
+    ? { firstName: storedFirstName, lastName: storedLastName }
+    : deriveNameFromEmail(data.providerEmail);
 
   return {
     providerId: data.providerId,

@@ -176,7 +176,9 @@ public class ReferralService : IReferralService
             userId,
             organizationRelationshipId: orgRelationshipId,
             referrerEmail: request.ReferrerEmail,
-            referrerName:  request.ReferrerName);
+            referrerName:  request.ReferrerName,
+            referrerFirstName: request.ReferrerFirstName,
+            referrerLastName:  request.ReferrerLastName);
 
         await _referrals.AddAsync(referral, ct);
 

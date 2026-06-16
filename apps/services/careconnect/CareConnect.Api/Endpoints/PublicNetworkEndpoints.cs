@@ -567,7 +567,8 @@ public static class PublicNetworkEndpoints
                                             ? req.Urgency
                                             : Referral.ValidUrgencies.Normal,
                 Notes                   = notesParts.Count > 0 ? string.Join("\n", notesParts) : null,
-                ReferrerName            = req.SenderName.Trim(),
+                ReferrerFirstName       = req.SenderFirstName.Trim(),
+                ReferrerLastName        = req.SenderLastName?.Trim(),
                 ReferrerEmail           = req.SenderEmail.Trim(),
                 ReferringOrganizationId = null,   // public — no org context
                 ReceivingOrganizationId = null,
@@ -755,10 +756,13 @@ public static class PublicNetworkEndpoints
         if (req.ProviderId == Guid.Empty)
             errors["providerId"] = "A valid provider ID is required.";
 
-        if (string.IsNullOrWhiteSpace(req.SenderName) || req.SenderName.Trim().Length < 2)
-            errors["senderName"] = "Your name is required (minimum 2 characters).";
-        else if (req.SenderName.Length > 200)
-            errors["senderName"] = "Name must not exceed 200 characters.";
+        if (string.IsNullOrWhiteSpace(req.SenderFirstName))
+            errors["senderFirstName"] = "Your first name is required.";
+        else if (req.SenderFirstName.Length > 100)
+            errors["senderFirstName"] = "First name must not exceed 100 characters.";
+
+        if (!string.IsNullOrWhiteSpace(req.SenderLastName) && req.SenderLastName.Length > 100)
+            errors["senderLastName"] = "Last name must not exceed 100 characters.";
 
         if (string.IsNullOrWhiteSpace(req.SenderEmail))
             errors["senderEmail"] = "Your email address is required.";

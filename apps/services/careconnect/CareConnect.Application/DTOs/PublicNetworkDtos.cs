@@ -77,8 +77,11 @@ public sealed class PublicReferralRequest
     /// <summary>Target provider (from the public directory card).</summary>
     public Guid ProviderId { get; set; }
 
-    /// <summary>Name of the person submitting the referral (law firm staff).</summary>
-    public string SenderName { get; set; } = string.Empty;
+    /// <summary>First name of the person submitting the referral (law firm staff).</summary>
+    public string SenderFirstName { get; set; } = string.Empty;
+
+    /// <summary>Last name of the person submitting the referral (optional).</summary>
+    public string? SenderLastName { get; set; }
 
     /// <summary>Email of the person submitting (used for confirmation).</summary>
     public string SenderEmail { get; set; } = string.Empty;

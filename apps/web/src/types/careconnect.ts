@@ -632,7 +632,8 @@ export interface ProviderSearchResult {
 export interface AddProviderToNetworkRequest {
   existingProviderId?: string;
   newProvider?: {
-    name:                string;
+    firstName:           string;
+    lastName:            string;
     organizationName?:   string;
     email:               string;
     phone:               string;

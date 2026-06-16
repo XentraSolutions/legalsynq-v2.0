@@ -229,7 +229,8 @@ export async function fetchPublicNetworkDetail(
 
 export interface PublicReferralRequest {
   providerId:            string;
-  senderName:            string;
+  senderFirstName:       string;
+  senderLastName?:       string;
   senderEmail:           string;
   patientFirstName:      string;
   patientLastName:       string;

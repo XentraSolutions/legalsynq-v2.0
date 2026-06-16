@@ -176,7 +176,10 @@ export interface EnrollmentClaims {
   email?:   string;
   firm?:    string;
   phone?:   string;
+  /** @deprecated Use contactFirstName/contactLastName instead — kept for tokens issued before the split. */
   contact?: string;
+  contactFirstName?: string;
+  contactLastName?:  string;
   exp:      number;
 }
 
