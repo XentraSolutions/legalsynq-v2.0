@@ -134,7 +134,8 @@ export function EnrollmentForm({
   const hasInvalidPhone = hasPhoneValue && !isValidPhone(phone);
   const hasPostalCodeValue = postalCode.trim().length > 0;
   const hasInvalidPostalCode = hasPostalCodeValue && !isValidUsZipCode(postalCode);
-  const hasAutoFilledZipMismatch = !!addressSelectionToken && postalCode.trim() !== (selectedPostalCode ?? '');
+  const hasAutoFilledZipMismatch = !!addressSelectionToken &&
+    postalCode.trim().slice(0, 5) !== (selectedPostalCode ?? '').slice(0, 5);
 
   const clearSelectedAddress = useCallback(() => {
     setAddressSelectionToken(null);
