@@ -60,7 +60,7 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
   const activateUrl = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}&companyName=${encodeURIComponent(summary.providerName)}`;
   const loginUrl = buildCareConnectReferralLoginUrl(
     process.env.CC_COMMON_PORTAL_HOSTNAME,
-    `/provider/referrals/${referralId}`,
+    `/careconnect/referrals/${referralId}`,
   );
 
   const hasProviderContact = summary.providerPhone || summary.providerEmail;

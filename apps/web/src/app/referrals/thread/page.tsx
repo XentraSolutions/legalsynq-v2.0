@@ -41,7 +41,7 @@ export default async function ReferralThreadPage({ searchParams }: Props) {
 
   const loginUrl = buildCareConnectReferralLoginUrl(
     process.env.CC_COMMON_PORTAL_HOSTNAME,
-    `/provider/referrals/${threadData.referralId}`,
+    `/careconnect/referrals/${threadData.referralId}`,
   );
 
   return <ThreadClient token={token} data={threadData} loginUrl={loginUrl} />;

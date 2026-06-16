@@ -138,7 +138,7 @@ export default async function ActivatePage({ searchParams }: PageProps) {
   const prefill = toEnrollmentPrefill(threadData, companyName);
   const loginUrl = buildCareConnectReferralLoginUrl(
     process.env.CC_COMMON_PORTAL_HOSTNAME,
-    `/provider/referrals/${referralId}`,
+    `/careconnect/referrals/${referralId}`,
   );
 
   return (

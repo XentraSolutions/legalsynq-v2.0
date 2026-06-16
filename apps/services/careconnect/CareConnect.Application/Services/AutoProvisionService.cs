@@ -301,7 +301,7 @@ public class AutoProvisionService : IAutoProvisionService
 
     private string BuildLoginUrl(Guid referralId)
     {
-        var returnTo = Uri.EscapeDataString($"/provider/referrals/{referralId}");
+        var returnTo = Uri.EscapeDataString($"/careconnect/referrals/{referralId}");
         return $"{_options.AppBaseUrl}/login?returnTo={returnTo}&reason=activation-complete";
     }
 
