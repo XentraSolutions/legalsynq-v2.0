@@ -16,18 +16,26 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   const session = await requireOrg();
 
   let initialMapProvider: 'google' | 'osm' = 'google';
+  let initialTimezone: string | undefined;
+
   try {
-    const setting = await tenantServerApi.getMapProviderSetting(session.tenantId);
-    if (setting.value === 'osm' || setting.value === 'google') {
-      initialMapProvider = setting.value;
+    const [mapSetting, tzSetting] = await Promise.all([
+      tenantServerApi.getMapProviderSetting(session.tenantId),
+      tenantServerApi.getTimezoneSetting(session.tenantId),
+    ]);
+    if (mapSetting.value === 'osm' || mapSetting.value === 'google') {
+      initialMapProvider = mapSetting.value;
+    }
+    if (tzSetting.value) {
+      initialTimezone = tzSetting.value;
     }
   } catch {
-    // Fall back to global default — non-fatal
+    // Fall back to global defaults — non-fatal
   }
 
   return (
     <ToastProvider>
-      <AppShell initialMapProvider={initialMapProvider}>
+      <AppShell initialMapProvider={initialMapProvider} initialTimezone={initialTimezone}>
         {children}
       </AppShell>
       <ToastContainer />

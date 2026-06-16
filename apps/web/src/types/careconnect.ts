@@ -111,6 +111,13 @@ export const ReferralUrgency = {
 } as const;
 export type ReferralUrgencyValue = typeof ReferralUrgency[keyof typeof ReferralUrgency];
 
+export const URGENCY_OPTIONS: { value: ReferralUrgencyValue; label: string }[] = [
+  { value: 'Low',       label: 'Low'       },
+  { value: 'Normal',    label: 'Normal'    },
+  { value: 'Urgent',    label: 'Urgent'    },
+  { value: 'Emergency', label: 'Emergency' },
+];
+
 export interface ReferralSummary {
   id:               string;
   tenantId:         string;

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ApiError } from '@/lib/api-client';
 import { tasksApi, type MyTask } from '@/lib/tasks';
 import { useToast } from '@/lib/toast-context';
+import { useTimezone } from '@/lib/use-timezone';
 import { TaskStatusBadge } from './status-badge';
 import { TaskPriorityBadge } from './priority-badge';
 import { SlaBadge } from './sla-badge';
@@ -33,10 +34,13 @@ export interface QueueTaskRowProps {
   queueKind: 'role' | 'org';
 }
 
-function fmtDate(iso: string | null | undefined): string {
+function fmtDate(iso: string | null | undefined, timezone: string): string {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZone: timezone,
+    });
   } catch {
     return iso;
   }
@@ -62,6 +66,7 @@ function friendlyClaimError(err: ApiError): string {
 
 export function QueueTaskRow({ task, onChanged, onOpen, queueKind }: QueueTaskRowProps) {
   const toast = useToast();
+  const timezone = useTimezone();
   const [busy, setBusy] = useState(false);
 
   async function handleClaim(e: React.MouseEvent) {
@@ -149,18 +154,18 @@ export function QueueTaskRow({ task, onChanged, onOpen, queueKind }: QueueTaskRo
             )}
             <div className="truncate">
               <dt className="inline font-medium text-gray-600">Created:</dt>{' '}
-              <dd className="inline">{fmtDate(task.createdAt)}</dd>
+              <dd className="inline">{fmtDate(task.createdAt, timezone)}</dd>
             </div>
             {task.assignedAt && (
               <div className="truncate">
                 <dt className="inline font-medium text-gray-600">Queued:</dt>{' '}
-                <dd className="inline">{fmtDate(task.assignedAt)}</dd>
+                <dd className="inline">{fmtDate(task.assignedAt, timezone)}</dd>
               </div>
             )}
             {task.dueAt && (
               <div className="truncate">
                 <dt className="inline font-medium text-gray-600">Due:</dt>{' '}
-                <dd className="inline">{fmtDate(task.dueAt)}</dd>
+                <dd className="inline">{fmtDate(task.dueAt, timezone)}</dd>
               </div>
             )}
           </dl>

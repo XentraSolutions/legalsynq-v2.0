@@ -27,7 +27,7 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
             var isAdmin = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin);
 
             // BLK-PERF-01: Clamp page size to protect against unbounded result-set queries.
@@ -60,8 +60,14 @@ public static class ReferralEndpoints
             }
             else
             {
-                query.ReferringOrgId = ctx.OrgId;
-                query.TenantIds      = GetReferrerTenantScope(ctx);
+                // Cross-tenant referrer match — mirrors the provider's CrossTenantReceiver
+                // branch above. Matches purely on ReferringOrgId/ReferrerEmail instead of
+                // gating on TenantId first, so the firm's list stays correct even if a
+                // referral's TenantId ever drifts from the firm's session tenant (e.g. a
+                // stale/conflicting Tenant-service record used to resolve the public
+                // submission endpoint's tenant).
+                query.CrossTenantReferrer = true;
+                query.ReferringOrgId      = ctx.OrgId;
                 // CC-REFERRER-EMAIL: also surface public referrals submitted before the
                 // law firm activated their portal (those have ReferrerEmail set but no
                 // ReferringOrganizationId).
@@ -134,7 +140,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
             var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
             var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
 
@@ -171,7 +177,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
             var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 
             // Participant check — mirrors GET /{id:guid} to prevent cross-tenant data access.
@@ -208,7 +214,7 @@ public static class ReferralEndpoints
                 id,
                 ctx.OrgId,
                 ctx.Email,
-                useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)),
+                useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)),
                 bypassParticipantCheck: CareConnectParticipantHelper.IsAdmin(ctx),
                 ct);
 
@@ -248,7 +254,7 @@ public static class ReferralEndpoints
                 ctx.Email,
                 senderName,
                 request.Message,
-                useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)),
+                useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)),
                 ct);
 
             return comment is null
@@ -300,7 +306,7 @@ public static class ReferralEndpoints
             var requiredPermission = ReferralWorkflowRules.RequiredPermissionFor(request.Status ?? string.Empty);
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredPermission, ct);
 
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
             var bypassTenant = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 
             // Participant check — verify caller is a participant before mutating the referral.
@@ -344,7 +350,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
             var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 
             // Participant check — mirrors GET /{id:guid} to prevent cross-tenant data access.
@@ -387,7 +393,7 @@ public static class ReferralEndpoints
                     tenantId,
                     id,
                     ct,
-                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)));
+                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)));
                 return Results.Ok(referral);
             }
             catch (NotFoundException)
@@ -449,7 +455,7 @@ public static class ReferralEndpoints
                     tenantId,
                     id,
                     ct,
-                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)));
+                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)));
                 return Results.Ok(referral);
             }
             catch (NotFoundException)
@@ -478,7 +484,7 @@ public static class ReferralEndpoints
                     tenantId,
                     id,
                     ct,
-                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase)));
+                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)));
                 return Results.Ok(timeline);
             }
             catch (NotFoundException)

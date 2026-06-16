@@ -272,6 +272,55 @@ public sealed class HttpTenantServiceClient : ITenantServiceClient
         }
     }
 
+    // ── GET /api/v1/public/tenants/{id}/settings/timezone ───────────────────
+
+    public async Task<string?> GetTimezoneAsync(
+        Guid              tenantId,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+        {
+            _logger.LogDebug("BLK-CC-01 GetTimezone skipped (BaseUrl not configured) for tenant '{TenantId}'.", tenantId);
+            return null;
+        }
+
+        try
+        {
+            using var client = BuildClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync(
+                $"api/v1/public/tenants/{tenantId}/settings/timezone", cts.Token);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "BLK-CC-01 GetTimezone returned HTTP {Status} for tenant '{TenantId}'.",
+                    (int)response.StatusCode, tenantId);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<TimezoneResponse>(
+                cancellationToken: cts.Token);
+
+            return string.IsNullOrWhiteSpace(result?.Value) ? null : result.Value;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("BLK-CC-01 GetTimezone timed out for tenant '{TenantId}'.", tenantId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "BLK-CC-01 GetTimezone failed for tenant '{TenantId}'.", tenantId);
+            return null;
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildClient()
@@ -325,5 +374,11 @@ public sealed class HttpTenantServiceClient : ITenantServiceClient
     {
         [JsonPropertyName("displayName")]
         public string? DisplayName { get; set; }
+    }
+
+    private sealed class TimezoneResponse
+    {
+        [JsonPropertyName("value")]
+        public string? Value { get; set; }
     }
 }

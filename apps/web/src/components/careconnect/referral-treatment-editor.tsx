@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
+import { useToast } from '@/lib/toast-context';
 import type { ReferralDetail } from '@/types/careconnect';
 
 interface TreatmentType {
@@ -20,6 +21,7 @@ const TERMINAL_STATUSES = ['Completed', 'Cancelled', 'Declined'];
 
 export function ReferralTreatmentEditor({ referral, isReceiver }: ReferralTreatmentEditorProps) {
   const router = useRouter();
+  const { show: showToast } = useToast();
 
   const [treatmentTypes,      setTreatmentTypes]      = useState<TreatmentType[]>([]);
   const [typesLoading,        setTypesLoading]        = useState(false);
@@ -56,13 +58,16 @@ export function ReferralTreatmentEditor({ referral, isReceiver }: ReferralTreatm
         treatmentTypeId,
       });
       setEditing(false);
+      showToast('Treatment type updated.', 'success');
       router.refresh();
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isUnauthorized) { router.push('/login'); return; }
         setError(err.message);
+        showToast(err.message, 'error');
       } else {
         setError('Failed to update. Please try again.');
+        showToast('Failed to update treatment type.', 'error');
       }
     } finally {
       setLoading(false);

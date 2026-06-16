@@ -8,7 +8,7 @@ public class ReferralResponse
     public string ProviderName { get; set; } = string.Empty;
     public string ClientFirstName { get; set; } = string.Empty;
     public string ClientLastName { get; set; } = string.Empty;
-    public DateTime? ClientDob { get; set; }
+    public string? ClientDob { get; set; }
     public string ClientPhone { get; set; } = string.Empty;
     public string ClientEmail { get; set; } = string.Empty;
     public string? CaseNumber { get; set; }

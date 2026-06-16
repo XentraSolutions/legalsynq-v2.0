@@ -6,7 +6,7 @@ import { normalizeCareConnectPortalHost } from './lib/careconnect-login-url';
  *
  * Rules:
  *  1. Common portal hostname (CC_COMMON_PORTAL_HOSTNAME):
- *     - Root / → redirect to /provider/dashboard (common portal home).
+ *     - Root / → redirect to /careconnect/dashboard (common portal home).
  *     - All other paths follow the same public/protected logic below.
  *  2. Public routes (/login, /portal, static assets) — always allowed through.
  *  3. Protected routes — require the platform_session cookie to exist.
@@ -89,7 +89,7 @@ export function proxy(request: NextRequest) {
     if (incomingHost === CC_COMMON_PORTAL_HOSTNAME) {
       // Root → common portal dashboard
       if (pathname === '/') {
-        return NextResponse.redirect(new URL('/provider/dashboard', request.url));
+        return NextResponse.redirect(new URL('/careconnect/dashboard', request.url));
       }
       // /provider/* routes are served from the (common-portal) route group.
       // requireExternalPortal() inside those pages handles auth, so we let

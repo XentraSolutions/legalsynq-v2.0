@@ -36,7 +36,7 @@ const URGENCY_BADGE: Record<string, string> = {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
+    month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
   });
 }
 

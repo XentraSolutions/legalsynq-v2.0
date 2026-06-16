@@ -15,6 +15,7 @@ import {
   computeProviderPerformance,
 } from '@/lib/careconnect-metrics';
 import { formatShortTimestamp } from '@/lib/format-date';
+import { tenantServerApi } from '@/lib/tenant-api';
 import type { ReferralSummary, AppointmentSummary } from '@/types/careconnect';
 
 export const dynamic = 'force-dynamic';
@@ -29,11 +30,11 @@ interface DashboardPageProps {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, timezone: string): string {
   return new Date(iso).toLocaleString('en-US', {
     month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true,
-    timeZone: 'America/New_York',
+    timeZone: timezone,
   });
 }
 
@@ -74,7 +75,7 @@ function EmptyRow({ message }: { message: string }) {
   return <div className="px-5 py-8 text-center"><p className="text-sm text-gray-400">{message}</p></div>;
 }
 
-function ReferralRows({ referrals }: { referrals: ReferralSummary[] }) {
+function ReferralRows({ referrals, timezone }: { referrals: ReferralSummary[]; timezone: string }) {
   if (referrals.length === 0) return <EmptyRow message="No active referrals." />;
   return (
     <ul className="divide-y divide-gray-50">
@@ -96,7 +97,7 @@ function ReferralRows({ referrals }: { referrals: ReferralSummary[] }) {
               <UrgencyBadge urgency={r.urgency} />
               <StatusBadge status={r.status} />
               <span className="text-xs text-gray-300 hidden sm:inline">
-                {formatShortTimestamp(r.createdAtUtc)}
+                {formatShortTimestamp(r.createdAtUtc, timezone)}
               </span>
             </div>
           </Link>
@@ -106,7 +107,7 @@ function ReferralRows({ referrals }: { referrals: ReferralSummary[] }) {
   );
 }
 
-function AppointmentRows({ appointments }: { appointments: AppointmentSummary[] }) {
+function AppointmentRows({ appointments, timezone }: { appointments: AppointmentSummary[]; timezone: string }) {
   if (appointments.length === 0) return <EmptyRow message="No upcoming appointments." />;
   return (
     <ul className="divide-y divide-gray-50">
@@ -127,7 +128,7 @@ function AppointmentRows({ appointments }: { appointments: AppointmentSummary[] 
             <div className="flex items-center gap-2 shrink-0">
               <StatusBadge status={a.status} />
               <span className="text-xs text-gray-500 whitespace-nowrap">
-                {formatDateTime(a.scheduledAtUtc)}
+                {formatDateTime(a.scheduledAtUtc, timezone)}
               </span>
             </div>
           </Link>
@@ -179,6 +180,11 @@ function QuickAction({ href, icon, label, desc }: {
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const searchParamsData = await searchParams;
   const session = await requireOrg();
+
+  const tenantTimezoneResult = await tenantServerApi
+    .getTimezoneSetting(session.tenantId)
+    .catch(() => null);
+  const tenantTimezone = tenantTimezoneResult?.value ?? 'America/Los_Angeles';
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
@@ -343,11 +349,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               : "Incoming referrals and today's appointment schedule."}
           </p>
         </div>
-        {showReferrerView ? (
-          <Link href="/careconnect/providers" className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0">
-            Find Providers
-          </Link>
-        ) : (
+        {!showReferrerView && (
           <Link href="/careconnect/referrals?from=dashboard" className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0">
             Referral Inbox
           </Link>
@@ -397,19 +399,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         {showReferrerView ? (
           <>
             <SectionCard title="Active Referrals"      viewAllHref="/careconnect/referrals?from=dashboard"           viewAllLabel="View all">
-              <ReferralRows referrals={referrals} />
+              <ReferralRows referrals={referrals} timezone={tenantTimezone} />
             </SectionCard>
             <SectionCard title="Upcoming Appointments" viewAllHref="/careconnect/appointments"                        viewAllLabel="View all">
-              <AppointmentRows appointments={appointments} />
+              <AppointmentRows appointments={appointments} timezone={tenantTimezone} />
             </SectionCard>
           </>
         ) : (
           <>
             <SectionCard title="Pending Referrals"     viewAllHref="/careconnect/referrals?from=dashboard&status=New" viewAllLabel="View all">
-              <ReferralRows referrals={referrals} />
+              <ReferralRows referrals={referrals} timezone={tenantTimezone} />
             </SectionCard>
             <SectionCard title="Today's Appointments"  viewAllHref="/careconnect/appointments"                        viewAllLabel="View all">
-              <AppointmentRows appointments={appointments} />
+              <AppointmentRows appointments={appointments} timezone={tenantTimezone} />
             </SectionCard>
           </>
         )}
@@ -468,7 +470,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {showReferrerView ? (
           <>
-            <QuickAction href="/careconnect/providers"               icon="ri-search-line"       label="Find Providers"  desc="Search by name, specialty, or location" />
             <QuickAction href="/careconnect/referrals?from=dashboard" icon="ri-file-list-3-line"  label="All Referrals"   desc="Track the status of every referral" />
             <QuickAction href="/careconnect/appointments"            icon="ri-calendar-2-line"   label="Appointments"    desc="View and manage your appointments" />
           </>

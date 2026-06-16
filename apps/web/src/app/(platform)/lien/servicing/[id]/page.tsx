@@ -9,15 +9,16 @@ import { ConfirmDialog } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { useTimezone } from '@/lib/use-timezone';
 import { servicingService } from '@/lib/servicing';
 import type { ServicingDetail } from '@/lib/servicing';
 
-function formatDate(val: string): string {
+function formatDate(val: string, timezone: string): string {
   if (!val) return '\u2014';
   try {
     const d = new Date(val);
     if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone });
   } catch {
     return val;
   }
@@ -29,6 +30,7 @@ export default function ServicingDetailPage() {
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
+  const timezone = useTimezone();
 
   const [item, setItem] = useState<ServicingDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,7 +130,7 @@ export default function ServicingDetailPage() {
               <div><span className="text-xs text-gray-400 block">Status</span><StatusBadge status={item.status} /></div>
               <div><span className="text-xs text-gray-400 block">Priority</span><PriorityBadge priority={item.priority} /></div>
               <div><span className="text-xs text-gray-400 block">Assigned To</span><span className="text-sm text-gray-700">{item.assignedTo}</span></div>
-              <div><span className="text-xs text-gray-400 block">Due Date</span><span className="text-sm text-gray-700">{formatDate(item.dueDate)}</span></div>
+              <div><span className="text-xs text-gray-400 block">Due Date</span><span className="text-sm text-gray-700">{formatDate(item.dueDate, timezone)}</span></div>
               <div className="col-span-2"><span className="text-xs text-gray-400 block">Description</span><p className="text-sm text-gray-700 whitespace-pre-wrap">{item.description}</p></div>
             </div>
           </div>

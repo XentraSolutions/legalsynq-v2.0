@@ -325,6 +325,7 @@ public static class EnrollmentEndpoints
             IConfiguration           config,
             FirmEnrollmentRegisterRequest body,
             IIdentityOrganizationService identityOrgs,
+            IReferralRepository      referrals,
             IAuditEventClient         auditClient,
             ILoggerFactory            loggerFactory,
             CancellationToken         ct) =>
@@ -410,6 +411,12 @@ public static class EnrollmentEndpoints
                     "CC2-ENROLL-FIRM Identity user registration failed for firm '{CompanyName}'.", body.CompanyName);
                 return Results.Problem("Account setup could not complete. Please try again or contact support.");
             }
+
+            await referrals.BackfillReferringOrganizationByEmailAsync(
+                firmTenantId,
+                body.Email.Trim(),
+                orgId.Value,
+                ct);
 
             _ = auditClient.IngestAsync(new LegalSynq.AuditClient.DTOs.IngestAuditEventRequest
             {

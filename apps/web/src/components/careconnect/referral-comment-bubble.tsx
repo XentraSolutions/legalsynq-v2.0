@@ -1,18 +1,22 @@
+'use client';
+
 import type { ReferralComment } from '@/types/careconnect';
+import { useTimezone } from '@/lib/use-timezone';
 
 interface ReferralCommentBubbleProps {
   comment: ReferralComment;
 }
 
-function formatDate(iso: string) {
+function formatDate(iso: string, timezone: string) {
   try {
     return new Date(iso).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
+      month:    'short',
+      day:      'numeric',
+      year:     'numeric',
+      hour:     'numeric',
+      minute:   '2-digit',
+      hour12:   true,
+      timeZone: timezone,
     });
   } catch {
     return iso;
@@ -20,6 +24,7 @@ function formatDate(iso: string) {
 }
 
 export function ReferralCommentBubble({ comment }: ReferralCommentBubbleProps) {
+  const timezone = useTimezone();
   const isProvider = comment.senderType === 'provider';
 
   return (
@@ -35,7 +40,7 @@ export function ReferralCommentBubble({ comment }: ReferralCommentBubbleProps) {
       <div className="max-w-[80%]">
         <div className={`flex items-baseline gap-2 mb-1 ${isProvider ? 'flex-row-reverse' : 'flex-row'}`}>
           <span className="text-xs font-semibold text-gray-700">{comment.senderName}</span>
-          <span className="text-xs text-gray-400 whitespace-nowrap">{formatDate(comment.createdAt)}</span>
+          <span className="text-xs text-gray-400 whitespace-nowrap">{formatDate(comment.createdAt, timezone)}</span>
         </div>
         <div
           className={`px-3 py-2.5 text-sm leading-relaxed text-gray-900 whitespace-pre-wrap ${

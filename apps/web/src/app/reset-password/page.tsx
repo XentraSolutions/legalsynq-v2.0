@@ -1,13 +1,22 @@
-'use client';
-
 import { Suspense } from 'react';
+import { headers } from 'next/headers';
 import Image from 'next/image';
 import { ResetPasswordForm } from './reset-password-form';
+import { buildCareConnectLoginUrl, isCareConnectCommonPortalHost } from '@/lib/careconnect-login-url';
 
 export const dynamic = 'force-dynamic';
 
+export default async function ResetPasswordPage() {
+  const hdrs    = await headers();
+  // SECURITY: x-forwarded-host is trusted here for login-redirect selection only
+  // (CareConnect common portal vs default /login). The reverse proxy must strip
+  // or overwrite this header from external traffic before forwarding — same
+  // requirement as proxy.ts and the forgot-password/login BFF routes.
+  const rawHost = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '';
+  const loginHref = isCareConnectCommonPortalHost(rawHost)
+    ? buildCareConnectLoginUrl(process.env.CC_COMMON_PORTAL_HOSTNAME)
+    : '/login';
 
-export default function ResetPasswordPage() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
 
@@ -83,7 +92,7 @@ export default function ResetPasswordPage() {
           </div>
 
           <Suspense fallback={null}>
-            <ResetPasswordForm />
+            <ResetPasswordForm loginHref={loginHref} />
           </Suspense>
         </div>
       </div>

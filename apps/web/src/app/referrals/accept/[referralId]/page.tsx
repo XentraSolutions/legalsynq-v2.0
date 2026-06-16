@@ -27,7 +27,7 @@ import Link from 'next/link';
 import { ActivationLanding } from './activation-landing';
 import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../../lib/public-referral-error';
 import { fetchPublicCareConnect } from '../../lib/public-referral-proxy';
-import { buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
+import { buildCareConnectLoginUrl, buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
 const INVALID_ID   = 'invalid';
 
 interface PageProps {
@@ -188,10 +188,7 @@ export default async function ReferralAcceptPage({ params, searchParams }: PageP
 
   // Static invalid route (e.g. /referrals/accept/invalid?reason=...)
   if (referralId === INVALID_ID) {
-    const loginUrl = buildCareConnectReferralLoginUrl(
-      process.env.CC_COMMON_PORTAL_HOSTNAME,
-      '/provider/dashboard',
-    );
+    const loginUrl = buildCareConnectLoginUrl(process.env.CC_COMMON_PORTAL_HOSTNAME);
     return <InvalidScreen reason={reason} loginUrl={loginUrl} />;
   }
 
@@ -221,7 +218,7 @@ export default async function ReferralAcceptPage({ params, searchParams }: PageP
   if (summary.isAlreadyAccepted) {
     const loginUrl = buildCareConnectReferralLoginUrl(
       process.env.CC_COMMON_PORTAL_HOSTNAME,
-      `/provider/referrals/${summary.referralId}`,
+      `/careconnect/referrals/${summary.referralId}`,
     );
     return <AlreadyAcceptedScreen summary={summary} loginUrl={loginUrl} />;
   }

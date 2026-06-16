@@ -6,6 +6,7 @@ import {
   buildCareConnectReferralLoginUrl,
   buildCareConnectPortalLoginUrl,
   normalizeCareConnectPortalHost,
+  isCareConnectCommonPortalHost,
 } from '../careconnect-login-url';
 
 test('builds an https CareConnect login URL when a shared portal host is configured', () => {
@@ -66,4 +67,39 @@ test('normalizes a configured full origin to just the host for hostname comparis
   const host = normalizeCareConnectPortalHost('https://careconnect-qa.legalsynq.com');
 
   assert.equal(host, 'careconnect-qa.legalsynq.com');
+});
+
+test('isCareConnectCommonPortalHost matches the configured common portal hostname', () => {
+  assert.equal(
+    isCareConnectCommonPortalHost('careconnect.legalsynq.com', 'careconnect.legalsynq.com'),
+    true,
+  );
+});
+
+test('isCareConnectCommonPortalHost matches case-insensitively and ignores the port', () => {
+  assert.equal(
+    isCareConnectCommonPortalHost('CareConnect.LegalSynq.com:443', 'careconnect.legalsynq.com'),
+    true,
+  );
+});
+
+test('isCareConnectCommonPortalHost returns false for an unrelated tenant subdomain', () => {
+  assert.equal(
+    isCareConnectCommonPortalHost('acme-law.legalsynq.com', 'careconnect.legalsynq.com'),
+    false,
+  );
+});
+
+test('isCareConnectCommonPortalHost returns false when no common portal hostname is configured', () => {
+  assert.equal(
+    isCareConnectCommonPortalHost('careconnect.legalsynq.com', ''),
+    false,
+  );
+});
+
+test('isCareConnectCommonPortalHost uses the first entry of a comma-separated forwarded-host chain', () => {
+  assert.equal(
+    isCareConnectCommonPortalHost('careconnect.legalsynq.com, evil.example.com', 'careconnect.legalsynq.com'),
+    true,
+  );
 });

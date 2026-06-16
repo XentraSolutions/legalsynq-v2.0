@@ -5,6 +5,10 @@ import { OrgType, ProductRole }                         from '@/types';
 
 export const dynamic = 'force-dynamic';
 
+function coalesceName(primary?: string, fallback?: string): string {
+  return primary?.trim() || fallback?.trim() || '';
+}
+
 interface AuthenticatedOrgPrefill {
   companyName: string;
   companyType: string;
@@ -61,8 +65,8 @@ export default async function EnrollPage({ searchParams }: PageProps) {
           companyName:  existingEnrollmentPrefill.companyName,
           email:        existingEnrollmentPrefill.email,
           phone:        existingEnrollmentPrefill.phone,
-          firstName:    existingEnrollmentPrefill.firstName,
-          lastName:     existingEnrollmentPrefill.lastName,
+          firstName:    coalesceName(existingEnrollmentPrefill.firstName, refFirst),
+          lastName:     coalesceName(existingEnrollmentPrefill.lastName, refLast),
           addressLine1: existingEnrollmentPrefill.addressLine1,
           city:         existingEnrollmentPrefill.city,
           state:        existingEnrollmentPrefill.state,
@@ -101,6 +105,27 @@ export default async function EnrollPage({ searchParams }: PageProps) {
           phone:       session.phone ?? '',
         }
       : null;
+
+  // This is a token-gated enrollment form — not a self-serve signup page.
+  // The provider flow only counts as valid if the backend actually found a matching
+  // provider/tenant prefill record — id+tenantId alone are unauthenticated user input.
+  const hasValidAccess = !!(providerId && tenantId && prefill) || !!claims || !!authenticatedOrgPrefill;
+  if (!hasValidAccess) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
+        <div className="max-w-md mx-auto px-4 py-12 text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-100 mb-4">
+            <i className="ri-error-warning-line text-2xl text-red-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">Invalid or Expired Link</h1>
+          <p className="mt-2 text-gray-500">
+            This enrollment link is invalid or has expired. Please request a new link or sign in to your account.
+          </p>
+          <a href="/login" className="inline-block mt-6 text-blue-600 hover:underline">Sign in</a>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">

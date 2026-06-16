@@ -100,6 +100,9 @@ export const tenantServerApi = {
   getMapProviderSetting: (tenantId: string) =>
     serverApi.get<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/map-provider`),
 
+  getTimezoneSetting: (tenantId: string) =>
+    serverApi.get<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/timezone`),
+
   getCareConnectAccessCode: (tenantId: string) =>
     serverApi.get<CareConnectAccessCodeMetadata>(
       `/tenant/api/tenants/${tenantId}/careconnect/public-network/access-code/`

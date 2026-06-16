@@ -14,6 +14,7 @@ import { FrontendProductCode, requireExternalPortal, sessionHasProductAccess } f
 import { isEligibleForCareConnectCommonPortal } from '@/lib/careconnect-common-portal-access';
 import { ToastContainer } from '@/components/toast-container';
 import { ToastProvider } from '@/lib/toast-context';
+import { CareConnectTimezoneProvider } from '@/contexts/careconnect-timezone-context';
 import { OrgType } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,7 @@ export default async function CommonPortalLayout({
     session.orgType === OrgType.LawFirm ? 'Law Firm Portal' : 'Provider Portal';
 
   return (
+    <CareConnectTimezoneProvider>
     <ToastProvider>
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {/* Top navigation bar */}
@@ -102,5 +104,6 @@ export default async function CommonPortalLayout({
       </div>
       <ToastContainer />
     </ToastProvider>
+    </CareConnectTimezoneProvider>
   );
 }

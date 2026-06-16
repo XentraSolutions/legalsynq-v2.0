@@ -111,6 +111,8 @@ describe('ActivatePage', () => {
           companyType: 'Provider',
           email: 'provider@example.com',
           phone: '555-0101',
+          firstName: 'Provider',
+          lastName: '',
           addressLine1: '123 Main',
           city: 'Las Vegas',
           state: 'NV',
@@ -175,6 +177,43 @@ describe('ActivatePage', () => {
       expect.objectContaining({
         prefill: expect.objectContaining({
           companyName: 'Demo Provider Group',
+        }),
+      }),
+    );
+  });
+
+  test('derives first and last name prefill from the provider email when available', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        referralId: 'ref-123',
+        tenantId: 'tenant-123',
+        providerId: 'provider-123',
+        status: 'New',
+        providerHasAccount: false,
+        clientName: 'Jane Doe',
+        service: 'Physical Therapy',
+        providerName: 'Demo Provider',
+        providerEmail: 'ralph.lopez+12@xentragroup.com',
+        providerPhone: '555-0101',
+        providerAddressLine1: '123 Main',
+        providerCity: 'Las Vegas',
+        providerState: 'NV',
+        providerPostalCode: '89101',
+        referrerName: 'Demo Firm',
+      }),
+    }));
+
+    const result = await ActivatePage({
+      searchParams: Promise.resolve({ referralId: 'ref-123', token: 'abc123' }),
+    });
+
+    const enrollmentForm = findElementByType(result, enrollmentFormMock);
+    expect(enrollmentForm?.props).toEqual(
+      expect.objectContaining({
+        prefill: expect.objectContaining({
+          firstName: 'Ralph',
+          lastName: 'Lopez',
         }),
       }),
     );

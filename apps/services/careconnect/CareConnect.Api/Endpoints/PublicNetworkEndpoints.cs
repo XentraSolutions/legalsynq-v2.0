@@ -563,7 +563,9 @@ public static class PublicNetworkEndpoints
                 RequestedService        = string.IsNullOrWhiteSpace(req.ServiceType)
                                             ? DefaultPublicReferralService
                                             : req.ServiceType.Trim(),
-                Urgency                 = Referral.ValidUrgencies.Normal,
+                Urgency                 = !string.IsNullOrWhiteSpace(req.Urgency) && Referral.ValidUrgencies.All.Contains(req.Urgency)
+                                            ? req.Urgency
+                                            : Referral.ValidUrgencies.Normal,
                 Notes                   = notesParts.Count > 0 ? string.Join("\n", notesParts) : null,
                 ReferrerName            = req.SenderName.Trim(),
                 ReferrerEmail           = req.SenderEmail.Trim(),

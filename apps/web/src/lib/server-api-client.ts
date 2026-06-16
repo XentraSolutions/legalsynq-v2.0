@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { normalizeUtcTimestamps } from '@/lib/normalize-utc';
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 
@@ -57,7 +58,7 @@ async function serverRequest<T>(
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  return normalizeUtcTimestamps(await res.json()) as T;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

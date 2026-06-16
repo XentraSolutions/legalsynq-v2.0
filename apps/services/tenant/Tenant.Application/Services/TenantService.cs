@@ -18,17 +18,23 @@ namespace Tenant.Application.Services;
 public class TenantService : ITenantService
 {
     private readonly ITenantRepository           _repository;
+    private readonly ISettingRepository          _settings;
     private readonly ICommerceLifecycleNotifier  _commerceNotifier;
     private readonly ILogger<TenantService>      _logger;
 
-    private const string HostPlatformKey = "legalsynq";
+    private const string HostPlatformKey        = "legalsynq";
+    private const string DefaultTimezone        = TenantDefaults.Timezone;
+    private const string TimezoneSettingKey     = TenantDefaults.TimezoneSettingKey;
+    private const string LegacyTimezoneSettingKey = TenantDefaults.LegacyTimezoneSettingKey;
 
     public TenantService(
         ITenantRepository          repository,
+        ISettingRepository         settings,
         ICommerceLifecycleNotifier commerceNotifier,
         ILogger<TenantService>     logger)
     {
         _repository       = repository;
+        _settings         = settings;
         _commerceNotifier = commerceNotifier;
         _logger           = logger;
     }
@@ -108,7 +114,8 @@ public class TenantService : ITenantService
         var tenant = Domain.Tenant.Create(
             code:        code,
             displayName: request.TenantName.Trim(),
-            subdomain:   subdomain);
+            subdomain:   subdomain,
+            timeZone:    DefaultTimezone);
 
         if (request.OwnerUserId.HasValue)
             tenant.SetOwner(request.OwnerUserId.Value);
@@ -193,7 +200,7 @@ public class TenantService : ITenantService
             request.Subdomain,
             request.Description,
             request.WebsiteUrl,
-            request.TimeZone,
+            request.TimeZone ?? DefaultTimezone,
             request.Locale,
             request.SupportEmail,
             request.SupportPhone,
@@ -305,6 +312,22 @@ public class TenantService : ITenantService
             }), ct);
     }
 
+    public async Task<string> GetTimezoneAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var tenant = await _repository.GetByIdAsync(tenantId, ct)
+            ?? throw new NotFoundException($"Tenant '{tenantId}' was not found.");
+
+        if (!string.IsNullOrWhiteSpace(tenant.TimeZone))
+            return tenant.TimeZone;
+
+        var setting = await _settings.GetByKeyAsync(tenantId, TimezoneSettingKey, productKey: null, ct)
+                   ?? await _settings.GetByKeyAsync(tenantId, LegacyTimezoneSettingKey, productKey: null, ct);
+
+        return string.IsNullOrWhiteSpace(setting?.SettingValue)
+            ? DefaultTimezone
+            : setting.SettingValue;
+    }
+
     /// <summary>
     /// TENANT-B07 — Idempotent upsert from an Identity dual-write sync event.
     ///
@@ -317,6 +340,60 @@ public class TenantService : ITenantService
     /// are left unchanged on update or left null on create — they will be populated
     /// by the migration execute endpoint or a subsequent operator update.
     /// </summary>
+    public async Task<string> UpdateTimezoneAsync(Guid tenantId, string timezone, CancellationToken ct = default)
+    {
+        var tenant = await _repository.GetByIdAsync(tenantId, ct)
+            ?? throw new NotFoundException($"Tenant '{tenantId}' was not found.");
+
+        try { TimeZoneInfo.FindSystemTimeZoneById(timezone); }
+        catch (TimeZoneNotFoundException)
+        {
+            throw new ValidationException(
+                $"'{timezone}' is not a recognized IANA or Windows timezone identifier.",
+                new Dictionary<string, string[]> { ["timezone"] = [$"'{timezone}' is not a valid timezone."] });
+        }
+
+        tenant.UpdateProfile(
+            tenant.DisplayName,
+            tenant.LegalName,
+            tenant.Description,
+            tenant.WebsiteUrl,
+            timezone,
+            tenant.Locale,
+            tenant.SupportEmail,
+            tenant.SupportPhone);
+
+        await _repository.UpdateAsync(tenant, ct);
+        await UpsertTimezoneSettingAsync(tenantId, timezone, ct);
+        return timezone;
+    }
+
+    private async Task UpsertTimezoneSettingAsync(Guid tenantId, string timezone, CancellationToken ct)
+    {
+        var canonicalSetting = await _settings.GetByKeyAsync(tenantId, TimezoneSettingKey, productKey: null, ct);
+        if (canonicalSetting is null)
+        {
+            canonicalSetting = TenantSetting.Create(
+                tenantId,
+                TimezoneSettingKey,
+                timezone,
+                SettingValueType.String);
+            await _settings.AddAsync(canonicalSetting, ct);
+        }
+        else
+        {
+            canonicalSetting.UpdateValue(timezone, SettingValueType.String);
+            await _settings.UpdateAsync(canonicalSetting, ct);
+        }
+
+        var legacySetting = await _settings.GetByKeyAsync(tenantId, LegacyTimezoneSettingKey, productKey: null, ct);
+        if (legacySetting is not null)
+        {
+            legacySetting.UpdateValue(timezone, SettingValueType.String);
+            await _settings.UpdateAsync(legacySetting, ct);
+        }
+    }
+
     public async Task UpsertFromSyncAsync(TenantSyncRequest request, CancellationToken ct = default)
     {
         var existing = await _repository.GetByIdAsync(request.TenantId, ct);

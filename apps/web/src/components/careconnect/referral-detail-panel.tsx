@@ -2,11 +2,13 @@ import type { ReferralDetail } from '@/types/careconnect';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { formatPhoneDisplay } from '@/lib/phone';
 import { ReferralTreatmentField } from './referral-treatment-field';
+import { formatDateOnly } from '@/lib/format-date';
 
 interface ReferralDetailPanelProps {
   referral:    ReferralDetail;
   hideHeader?: boolean;
   isReceiver?: boolean;
+  timezone?:   string;
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -29,16 +31,26 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function formatDate(iso: string | undefined): string {
+function formatDate(iso: string | undefined, timezone: string): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'long',
-    day:   'numeric',
-    year:  'numeric',
+    month:    'long',
+    day:      'numeric',
+    year:     'numeric',
+    timeZone: timezone,
   });
 }
 
-export function ReferralDetailPanel({ referral, hideHeader = false, isReceiver = false }: ReferralDetailPanelProps) {
+function formatDateOnlyField(iso: string | undefined): string {
+  if (!iso) return '—';
+  return formatDateOnly(iso, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+export function ReferralDetailPanel({ referral, hideHeader = false, isReceiver = false, timezone = 'America/Los_Angeles' }: ReferralDetailPanelProps) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg">
       {/* Header — omitted when used alongside ReferralPageHeader */}
@@ -75,14 +87,14 @@ export function ReferralDetailPanel({ referral, hideHeader = false, isReceiver =
           />
           <Field label="Urgency"            value={<UrgencyBadge urgency={referral.urgency} />} />
           <Field label="Status"             value={<StatusBadge status={referral.status} />} />
-          <Field label="Created"            value={formatDate(referral.createdAtUtc)} />
-          <Field label="Last updated"       value={formatDate(referral.updatedAtUtc)} />
+          <Field label="Created"            value={formatDate(referral.createdAtUtc, timezone)} />
+          <Field label="Last updated"       value={formatDate(referral.updatedAtUtc, timezone)} />
         </Section>
 
         {/* Client / Subject party */}
         <Section title="Client">
           <Field label="Name"  value={`${referral.clientFirstName} ${referral.clientLastName}`} />
-          <Field label="DOB"   value={referral.clientDob ? formatDate(referral.clientDob) : undefined} />
+          <Field label="DOB"   value={referral.clientDob ? formatDateOnlyField(referral.clientDob) : undefined} />
           <Field label="Phone" value={formatPhoneDisplay(referral.clientPhone)} />
           <Field label="Email" value={referral.clientEmail} />
         </Section>

@@ -28,12 +28,13 @@ public class ReferralAttachmentService : IReferralAttachmentService
         Guid referralId,
         Guid? callerOrgId,
         bool isAdmin,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? callerEmail = null)
     {
         var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
 
-        if (!CanAccessReferral(referral, callerOrgId, callerEmail: null, isAdmin))
+        if (!CanAccessReferral(referral, callerOrgId, callerEmail, isAdmin))
             throw new NotFoundException($"Referral '{referralId}' was not found.");
 
         var rows = await _attachments.GetByReferralAsync(tenantId, referralId, ct);

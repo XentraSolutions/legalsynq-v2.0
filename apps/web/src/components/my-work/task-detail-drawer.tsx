@@ -6,6 +6,7 @@ import { tasksApi, type MyTask } from '@/lib/tasks';
 import { timelineApi, type TimelineEvent } from '@/lib/timeline';
 import { Timeline } from '@/components/timeline/timeline';
 import { useToast } from '@/lib/toast-context';
+import { useTimezone } from '@/lib/use-timezone';
 import { TaskPriorityBadge } from './priority-badge';
 import { ReassignModal } from './reassign-modal';
 import { SlaBadge } from './sla-badge';
@@ -37,10 +38,13 @@ export interface TaskDetailDrawerProps {
   onTaskMutated: () => void;
 }
 
-function fmtDate(iso: string | null | undefined): string {
+function fmtDate(iso: string | null | undefined, timezone: string): string {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZone: timezone,
+    });
   } catch {
     return iso;
   }
@@ -74,6 +78,7 @@ export function TaskDetailDrawer({
   onTaskMutated,
 }: TaskDetailDrawerProps) {
   const toast = useToast();
+  const timezone = useTimezone();
   const [task, setTask] = useState<MyTask | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +225,7 @@ export function TaskDetailDrawer({
                 {task.assignmentMode === 'OrgQueue' && (
                   <Field label="Org" value={task.assignedOrgId ?? '—'} mono />
                 )}
-                <Field label="Assigned at" value={fmtDate(task.assignedAt)} />
+                <Field label="Assigned at" value={fmtDate(task.assignedAt, timezone)} />
                 {task.assignedBy && <Field label="Assigned by" value={task.assignedBy} mono />}
                 {task.assignmentReason && (
                   <Field label="Reason" value={task.assignmentReason} />
@@ -235,10 +240,10 @@ export function TaskDetailDrawer({
               </Section>
 
               <Section title="Timeline">
-                <Field label="Created" value={fmtDate(task.createdAt)} />
-                {task.startedAt && <Field label="Started" value={fmtDate(task.startedAt)} />}
-                {task.completedAt && <Field label="Completed" value={fmtDate(task.completedAt)} />}
-                {task.cancelledAt && <Field label="Cancelled" value={fmtDate(task.cancelledAt)} />}
+                <Field label="Created" value={fmtDate(task.createdAt, timezone)} />
+                {task.startedAt && <Field label="Started" value={fmtDate(task.startedAt, timezone)} />}
+                {task.completedAt && <Field label="Completed" value={fmtDate(task.completedAt, timezone)} />}
+                {task.cancelledAt && <Field label="Cancelled" value={fmtDate(task.cancelledAt, timezone)} />}
               </Section>
 
               {/* LS-FLOW-E16 — unified history sourced from the audit
@@ -254,9 +259,9 @@ export function TaskDetailDrawer({
               {task.dueAt && (
                 <Section title="SLA">
                   <Field label="Status" value={task.slaStatus ?? 'OnTrack'} />
-                  <Field label="Due"    value={fmtDate(task.dueAt)} />
+                  <Field label="Due"    value={fmtDate(task.dueAt, timezone)} />
                   {task.slaBreachedAt && (
-                    <Field label="Breached at" value={fmtDate(task.slaBreachedAt)} />
+                    <Field label="Breached at" value={fmtDate(task.slaBreachedAt, timezone)} />
                   )}
                 </Section>
               )}

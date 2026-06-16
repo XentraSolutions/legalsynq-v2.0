@@ -39,7 +39,7 @@ function fmtTta(hours: number | null) {
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
+    month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
   });
 }
 

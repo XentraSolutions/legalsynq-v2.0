@@ -52,7 +52,7 @@ public static class AttachmentEndpoints
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var isAdmin  = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
 
-            var result = await service.GetByReferralAsync(tenantId, referralId, ctx.OrgId, isAdmin, ct);
+            var result = await service.GetByReferralAsync(tenantId, referralId, ctx.OrgId, isAdmin, ct, ctx.Email);
             return Results.Ok(result);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)

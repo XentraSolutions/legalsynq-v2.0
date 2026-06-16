@@ -59,13 +59,21 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
   InProgress: { label: 'In Progress',               color: '#5b21b6', bg: '#f5f3ff', border: '#c4b5fd' },
 };
 
-function formatDate(iso: string) {
+function formatDate(iso: string, timezone: string) {
   try {
     return new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true,
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone,
     });
   } catch { return iso; }
+}
+
+function resolveBrowserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
 }
 
 function formatBytes(b: number) {
@@ -114,6 +122,7 @@ const s: Record<string, React.CSSProperties> = {
 type ActionState = 'idle' | 'accepting' | 'declining' | 'accepted' | 'declined' | 'error';
 
 export function ThreadClient({ token, data, loginUrl }: Props) {
+  const [timezone, setTimezone] = useState('UTC');
   const [comments,  setComments] = useState<Comment[]>(data.comments);
   const [message,   setMessage]  = useState('');
   const [formError,     setFormError] = useState('');
@@ -142,6 +151,10 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const [treatmentError,    setTreatmentError]    = useState<string | null>(null);
   const [liveTreatmentName, setLiveTreatmentName] = useState<string | undefined>(data.treatmentTypeName);
   const canEditTreatment = !TERMINAL_STATUSES_TT.includes(liveStatus);
+
+  useEffect(() => {
+    setTimezone(resolveBrowserTimezone());
+  }, []);
 
   const openAttachment = useCallback(async (attachmentId: string, forDownload: boolean) => {
     const key = forDownload ? 'download' : 'view';
@@ -204,7 +217,6 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
 
   const isActionable = (liveStatus === 'New' || liveStatus === 'NewOpened') && actionState !== 'accepted' && actionState !== 'declined';
   const referralId   = data.referralId;
-  const loginReturnTo = encodeURIComponent(`/provider/referrals/${referralId}`);
   const activateUrl  = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}&companyName=${encodeURIComponent(data.providerName)}`;
 
   const handleAccept = () => {
@@ -305,7 +317,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
           {/* Referral meta */}
           <div style={s.grid2}>
             <FieldBlock label="Service"   value={data.service} />
-            <FieldBlock label="Submitted" value={formatDate(data.createdAt)} />
+            <FieldBlock label="Submitted" value={formatDate(data.createdAt, timezone)} />
             {data.urgency && <FieldBlock label="Urgency" value={data.urgency} />}
             {data.caseNumber && <FieldBlock label="Case #" value={data.caseNumber} />}
           </div>
@@ -549,7 +561,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
                 No messages yet. Send the first message below.
               </p>
             ) : (
-              comments.map(c => <CommentBubble key={c.id} comment={c} />)
+              comments.map(c => <CommentBubble key={c.id} comment={c} timezone={timezone} />)
             )}
             <div ref={bottomRef} />
           </div>
@@ -605,7 +617,7 @@ function FieldBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CommentBubble({ comment }: { comment: Comment }) {
+function CommentBubble({ comment, timezone }: { comment: Comment; timezone: string }) {
   const isProvider = comment.senderType === 'provider';
   return (
     <div style={{ display: 'flex', flexDirection: isProvider ? 'row-reverse' : 'row', gap: 10, alignItems: 'flex-start' }}>
@@ -621,7 +633,7 @@ function CommentBubble({ comment }: { comment: Comment }) {
       <div style={{ maxWidth: '80%' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isProvider ? 'row-reverse' : 'row', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt)}</span>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt, timezone)}</span>
         </div>
         <div style={{
           background: isProvider ? '#eff6ff' : '#fafaf9',

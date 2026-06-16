@@ -1,7 +1,8 @@
 import type { AppointmentStatusHistoryItem } from '@/types/careconnect';
 
 interface AppointmentTimelineProps {
-  history: AppointmentStatusHistoryItem[];
+  history:  AppointmentStatusHistoryItem[];
+  timezone: string;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -12,18 +13,19 @@ const STATUS_DOT: Record<string, string> = {
   NoShow:     'bg-orange-400',
 };
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, timezone: string): string {
   return new Date(iso).toLocaleString('en-US', {
-    month:   'short',
-    day:     'numeric',
-    year:    'numeric',
-    hour:    'numeric',
-    minute:  '2-digit',
-    hour12:  true,
+    month:    'short',
+    day:      'numeric',
+    year:     'numeric',
+    hour:     'numeric',
+    minute:   '2-digit',
+    hour12:   true,
+    timeZone: timezone,
   });
 }
 
-export function AppointmentTimeline({ history }: AppointmentTimelineProps) {
+export function AppointmentTimeline({ history, timezone }: AppointmentTimelineProps) {
   if (history.length === 0) {
     return (
       <p className="text-sm text-gray-400">No status history available.</p>
@@ -48,7 +50,7 @@ export function AppointmentTimeline({ history }: AppointmentTimelineProps) {
           <div>
             <p className="text-sm font-medium text-gray-900">{item.status}</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              {formatDateTime(item.changedAtUtc)}
+              {formatDateTime(item.changedAtUtc, timezone)}
               {item.changedByName ? ` · ${item.changedByName}` : ''}
             </p>
             {item.notes && (

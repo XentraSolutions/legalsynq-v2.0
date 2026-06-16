@@ -15,6 +15,7 @@ import { BulkResultBanner } from '@/components/lien/bulk-result-banner';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { useSelectionState } from '@/hooks/use-selection-state';
+import { useTimezone } from '@/lib/use-timezone';
 import { servicingService } from '@/lib/servicing';
 import type { ServicingListItem, PaginationMeta } from '@/lib/servicing';
 import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
@@ -22,12 +23,12 @@ import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/
 export const dynamic = 'force-dynamic';
 
 
-function formatDate(val: string): string {
+function formatDate(val: string, timezone: string): string {
   if (!val) return '\u2014';
   try {
     const d = new Date(val);
     if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone });
   } catch {
     return val;
   }
@@ -50,6 +51,7 @@ export default function ServicingPage() {
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
   const selection = useSelectionState();
+  const timezone = useTimezone();
 
   const [items, setItems] = useState<ServicingListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
@@ -207,7 +209,7 @@ export default function ServicingPage() {
                       <td className="px-4 py-3 text-sm text-gray-500">{s.assignedTo}</td>
                       <td className="px-4 py-3"><PriorityBadge priority={s.priority} /></td>
                       <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
-                      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(s.dueDate)}</td>
+                      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(s.dueDate, timezone)}</td>
                       <td className="px-4 py-3 text-right">
                         <ActionMenu items={[
                           { label: 'View Details', icon: 'ri-eye-line', onClick: () => router.push(`/lien/servicing/${s.id}`) },

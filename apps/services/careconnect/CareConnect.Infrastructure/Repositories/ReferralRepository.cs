@@ -31,6 +31,21 @@ public class ReferralRepository : IReferralRepository
                 .AsNoTracking()
                 .Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
         }
+        else if (query.CrossTenantReferrer &&
+                 (query.ReferringOrgId.HasValue || !string.IsNullOrWhiteSpace(query.ReferrerEmail)))
+        {
+            // Mirrors the CrossTenantReceiver branch above: match on org/email identity
+            // rather than gating on TenantId first, so the result is immune to any
+            // tenant-ID drift between the Tenant service and Identity.
+            var referrerEmailLower = query.ReferrerEmail?.Trim().ToLower();
+            q = _db.Referrals
+                .AsNoTracking()
+                .Where(r =>
+                    (query.ReferringOrgId.HasValue && r.ReferringOrganizationId == query.ReferringOrgId.Value) ||
+                    (!string.IsNullOrWhiteSpace(referrerEmailLower) && r.ReferrerEmail != null &&
+                     r.ReferringOrganizationId == null &&
+                     r.ReferrerEmail.ToLower() == referrerEmailLower));
+        }
         else if (scopedTenantIds is { Count: > 0 })
         {
             q = _db.Referrals
@@ -77,7 +92,9 @@ public class ReferralRepository : IReferralRepository
         // CC-REFERRER-EMAIL: include referrals by org ID, and also any publicly-submitted
         // referrals (ReferringOrganizationId IS NULL) whose ReferrerEmail matches the
         // caller's email — covering referrals sent before the law firm activated their portal.
-        if (query.ReferringOrgId.HasValue || !string.IsNullOrWhiteSpace(query.ReferrerEmail))
+        // Skipped when CrossTenantReferrer already applied this exact filter above.
+        if (!query.CrossTenantReferrer &&
+            (query.ReferringOrgId.HasValue || !string.IsNullOrWhiteSpace(query.ReferrerEmail)))
         {
             var emailLower = query.ReferrerEmail?.Trim().ToLower();
             q = q.Where(r =>
@@ -138,6 +155,39 @@ public class ReferralRepository : IReferralRepository
             await _db.ReferralProviderReassignments.AddAsync(providerReassignment, ct);
 
         await _db.SaveChangesAsync(ct);
+    }
+
+    public Task<int> BackfillReferringOrganizationByEmailAsync(
+        Guid tenantId,
+        string referrerEmail,
+        Guid organizationId,
+        CancellationToken ct = default)
+    {
+        var emailLower = referrerEmail.Trim().ToLowerInvariant();
+
+        return _db.Referrals
+            .Where(r => r.TenantId == tenantId
+                     && r.ReferringOrganizationId == null
+                     && r.ReferrerEmail != null
+                     && r.ReferrerEmail.ToLower() == emailLower)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(r => r.ReferringOrganizationId, organizationId),
+                ct);
+    }
+
+    public Task<int> BackfillReceivingOrganizationAsync(
+        Guid tenantId,
+        Guid providerId,
+        Guid organizationId,
+        CancellationToken ct = default)
+    {
+        return _db.Referrals
+            .Where(r => r.TenantId == tenantId
+                     && r.ProviderId == providerId
+                     && r.ReceivingOrganizationId != organizationId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(r => r.ReceivingOrganizationId, organizationId),
+                ct);
     }
 
     public async Task<List<ReferralStatusHistory>> GetHistoryByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)

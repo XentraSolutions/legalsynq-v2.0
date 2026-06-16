@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, type FormEvent } from 'react';
 import { sendOtp, registerEnrollment, registerFirmEnrollment, type EnrollmentPrefill } from './actions';
 import { formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
+import { isValidUsZipCode } from '@/lib/address';
 import { useRouter } from 'next/navigation';
 
 // ── Address suggestion (from /api/geocode/address) ────────────────────────────
@@ -87,8 +88,8 @@ export function EnrollmentForm({
   const [city,         setCity]         = useState(initialCity);
   const [state,        setState]        = useState(initialState);
   const [postalCode,   setPostalCode]   = useState(initialPostalCode);
-  const initialFirstName = referralPrefill?.firstName ?? '';
-  const initialLastName  = referralPrefill?.lastName  ?? '';
+  const initialFirstName = prefill?.firstName ?? referralPrefill?.firstName ?? '';
+  const initialLastName  = prefill?.lastName  ?? referralPrefill?.lastName  ?? '';
   const [firstName,    setFirstName]    = useState(initialFirstName);
   const [lastName,     setLastName]     = useState(initialLastName);
   const [password,     setPassword]     = useState('');
@@ -134,7 +135,8 @@ export function EnrollmentForm({
   const hasInvalidPhone = hasPhoneValue && !isValidPhone(phone);
   const hasPostalCodeValue = postalCode.trim().length > 0;
   const hasInvalidPostalCode = hasPostalCodeValue && !isValidUsZipCode(postalCode);
-  const hasAutoFilledZipMismatch = !!addressSelectionToken && postalCode.trim() !== (selectedPostalCode ?? '');
+  const hasAutoFilledZipMismatch = !!addressSelectionToken &&
+    postalCode.trim().slice(0, 5) !== (selectedPostalCode ?? '').slice(0, 5);
 
   const clearSelectedAddress = useCallback(() => {
     setAddressSelectionToken(null);
@@ -673,8 +675,4 @@ export function EnrollmentForm({
       </button>
     </form>
   );
-}
-
-function isValidUsZipCode(value: string): boolean {
-  return /^\d{5}(-\d{4})?$/.test(value.trim());
 }

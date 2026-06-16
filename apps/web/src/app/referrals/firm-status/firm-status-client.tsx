@@ -47,13 +47,21 @@ const STATUS_CONFIG: Record<StatusKey, { label: string; color: string; bg: strin
   Cancelled:  { label: 'Cancelled',                  color: '#374151', bg: '#f9fafb', border: '#d1d5db', step: -1 },
 };
 
-function formatDate(iso: string) {
+function formatDate(iso: string, timezone: string) {
   try {
     return new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true,
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone,
     });
   } catch { return iso; }
+}
+
+function resolveBrowserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
 }
 
 const s: Record<string, React.CSSProperties> = {
@@ -154,6 +162,7 @@ function StatusTracker({ status }: { status: string }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, enrollToken }: Props) {
+  const [timezone, setTimezone] = useState('UTC');
   const [comments,  setComments] = useState<Comment[]>(data.comments);
   const [message,   setMessage]  = useState('');
   const [formError, setFormError] = useState('');
@@ -163,7 +172,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
 
   useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
 
-  const enrollUrl = enrollToken ? `/enroll?token=${enrollToken}` : '/enroll';
+  const enrollUrl = enrollToken ? `/enroll?token=${enrollToken}` : '#';
   const hasPortalAccess = portalAccessStatus === ReferrerPortalAccessStatuses.ActiveInTenant;
   const isExistingCrossTenantUser = portalAccessStatus === ReferrerPortalAccessStatuses.ExistingUserOtherTenant;
   const portalCta = isExistingCrossTenantUser
@@ -187,6 +196,10 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
         border: '#1a56db',
         note: null,
       };
+
+  useEffect(() => {
+    setTimezone(resolveBrowserTimezone());
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -221,7 +234,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             <FieldBlock label="Patient"   value={data.clientName} />
             <FieldBlock label="Service"   value={data.service} />
             <FieldBlock label="Provider"  value={data.providerName} />
-            <FieldBlock label="Submitted" value={formatDate(data.createdAt)} />
+            <FieldBlock label="Submitted" value={formatDate(data.createdAt, timezone)} />
           </div>
           {(data.treatmentTypeName || data.treatmentTypeId) && (
             <div style={{ marginTop: 12 }}>
@@ -267,7 +280,13 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
                 alignItems: portalCta.secondaryLabel ? 'stretch' : 'center',
                 justifyContent: 'center',
               }}>
-                <a href={enrollUrl} style={{ ...s.btnPrimary, background: portalCta.border }}>{portalCta.primaryLabel}</a>
+                <a
+                  href={enrollUrl}
+                  onClick={!enrollToken ? (e: React.MouseEvent) => e.preventDefault() : undefined}
+                  style={{ ...s.btnPrimary, background: portalCta.border }}
+                >
+                  {portalCta.primaryLabel}
+                </a>
                 {portalCta.secondaryLabel && (
                   <a href={loginUrl} style={{ ...s.btnOutline, color: portalCta.border, borderColor: portalCta.border, fontSize: 12, padding: '7px 16px' }}>
                     {portalCta.secondaryLabel}
@@ -287,7 +306,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
                 No messages yet. Use the form below to send a message to the provider.
               </p>
             ) : (
-              comments.map(c => <CommentBubble key={c.id} comment={c} />)
+              comments.map(c => <CommentBubble key={c.id} comment={c} timezone={timezone} />)
             )}
             <div ref={bottomRef} />
           </div>
@@ -343,7 +362,7 @@ function FieldBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CommentBubble({ comment }: { comment: Comment }) {
+function CommentBubble({ comment, timezone }: { comment: Comment; timezone: string }) {
   const isProvider = comment.senderType === 'provider';
   const isSelf = !isProvider;
   return (
@@ -360,7 +379,7 @@ function CommentBubble({ comment }: { comment: Comment }) {
       <div style={{ maxWidth: '80%' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isSelf ? 'row-reverse' : 'row', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt)}</span>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt, timezone)}</span>
         </div>
         <div style={{
           background: isProvider ? '#eff6ff' : '#fef3c7',

@@ -1,6 +1,7 @@
 'use client';
 
 import type { WorkflowTaskSlaStatus } from '@/lib/tasks';
+import { useTimezone } from '@/lib/use-timezone';
 
 /**
  * LS-FLOW-E10.3 (task slice) — visual chip for the task SLA classification.
@@ -52,6 +53,7 @@ function fmtRelative(now: Date, target: Date): string {
 }
 
 export function SlaBadge({ status, dueAt, compact }: SlaBadgeProps) {
+  const timezone = useTimezone();
   if (!status || !dueAt) return null;
 
   const style = STYLES[status] ?? STYLES.OnTrack;
@@ -74,7 +76,7 @@ export function SlaBadge({ status, dueAt, compact }: SlaBadgeProps) {
         'inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full border ' +
         style.cls
       }
-      title={dueAt ? `Due ${new Date(dueAt).toLocaleString()}` : undefined}
+      title={dueAt ? `Due ${new Date(dueAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: timezone })}` : undefined}
     >
       {!compact && (
         <span

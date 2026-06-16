@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { tenantClientApi, ApiError } from '@/lib/tenant-client-api';
+import { useTimezone } from '@/lib/use-timezone';
 import type { TenantGroup, TenantUser, GroupMember, GroupProductAccess, GroupRoleAssignment } from '@/types/tenant';
 
 interface Props {
@@ -89,6 +90,7 @@ const AVAILABLE_PRODUCTS = [
 
 export function GroupDetailClient({ group, members, products, roles, allUsers, allRoles, tenantId }: Props) {
   const router = useRouter();
+  const timezone = useTimezone();
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [loading, setLoading] = useState(false);
   const [confirm, setConfirm] = useState<{ title: string; description: string; action: () => Promise<void>; label?: string } | null>(null);
@@ -266,7 +268,7 @@ export function GroupDetailClient({ group, members, products, roles, allUsers, a
           </div>
           <div>
             <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">Created</p>
-            <p className="text-sm text-gray-900">{new Date(group.createdAtUtc).toLocaleDateString()}</p>
+            <p className="text-sm text-gray-900">{new Date(group.createdAtUtc).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone })}</p>
           </div>
         </div>
       </SectionCard>

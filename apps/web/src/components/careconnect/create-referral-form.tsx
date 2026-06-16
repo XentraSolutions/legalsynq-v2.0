@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import type { CreateReferralRequest, ReferralUrgencyValue } from '@/types/careconnect';
+import { URGENCY_OPTIONS } from '@/types/careconnect';
 import { formatPhoneInput, stripPhone, isValidPhone } from '@/lib/phone';
 
 interface CreateReferralFormProps {
@@ -17,13 +18,6 @@ interface CreateReferralFormProps {
   referrerEmail?: string;
   referrerName?:  string;
 }
-
-const URGENCY_OPTIONS: { value: ReferralUrgencyValue; label: string }[] = [
-  { value: 'Low',       label: 'Low'       },
-  { value: 'Normal',    label: 'Normal'    },
-  { value: 'Urgent',    label: 'Urgent'    },
-  { value: 'Emergency', label: 'Emergency' },
-];
 
 const SERVICES = [
   'Physical Therapy',

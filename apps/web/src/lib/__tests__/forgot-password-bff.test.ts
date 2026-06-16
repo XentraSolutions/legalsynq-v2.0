@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // Set module-level env vars before any dynamic import so the route picks them up.
 process.env.CC_COMMON_PORTAL_HOSTNAME = 'careconnect.example.com';
 process.env.GATEWAY_URL               = 'http://identity-test:5000';
-process.env.NODE_ENV                  = 'test'; // suppress console.warn
+(process.env as Record<string, string>).NODE_ENV = 'test'; // suppress console.warn
 
 // ── Shared fetch stub infrastructure ─────────────────────────────────────────
 
@@ -60,7 +60,7 @@ function makeThrowingFetch(err: Error): typeof fetch {
 let POST: (req: Request) => Promise<Response>;
 
 before(async () => {
-  ({ POST } = await import('../../app/api/auth/forgot-password/route.js') as {
+  ({ POST } = await import('../../app/api/auth/forgot-password/route.js') as unknown as {
     POST: (req: Request) => Promise<Response>;
   });
 });

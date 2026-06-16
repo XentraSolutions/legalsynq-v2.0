@@ -15,6 +15,7 @@ import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-t
 import { ReferralAccessBlocked } from '@/components/careconnect/referral-access-blocked';
 import { AttachmentPanel } from '@/components/careconnect/attachment-panel';
 import { ReferralMessageThread } from '@/components/careconnect/referral-message-thread';
+import { tenantServerApi } from '@/lib/tenant-api';
 import type { ReferralComment } from '@/types/careconnect';
 
 interface ReferralDetailPageProps {
@@ -31,6 +32,9 @@ interface ReferralDetailPageProps {
 export default async function ReferralDetailPage({ params, searchParams }: ReferralDetailPageProps) {
   const { id } = await params;
   const session = await requireOrg();
+
+  const tzResult = await tenantServerApi.getTimezoneSetting(session.tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
 
   const hasReferrerRole = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const hasReceiverRole = session.productRoles.includes(ProductRole.CareConnectReceiver);
@@ -115,14 +119,8 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
         const isReceiverOfReferral = hasReceiverRole && !!session.orgId
           && referral.receivingOrganizationId === session.orgId;
         return <>
-          {isTenantAdminView && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-              Tenant Admin view only. Referral updates, uploads, and messages are disabled.
-            </div>
-          )}
-
           {/* 1. Header — identity + prominent status */}
-          <ReferralPageHeader referral={referral} />
+          <ReferralPageHeader referral={referral} timezone={tenantTimezone} />
 
           {/* 2. Primary action area */}
           {!isTenantAdminView && (
@@ -138,7 +136,7 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
               Referrers can book via the provider availability page at any time. */}
 
           {/* 3. Referral details — body only (header rendered above). Treatment type editing is inline. */}
-          <ReferralDetailPanel referral={referral} hideHeader isReceiver={isReceiverOfReferral} />
+          <ReferralDetailPanel referral={referral} hideHeader isReceiver={isReceiverOfReferral} timezone={tenantTimezone} />
 
           {/* 3b. Documents — CC2-INT-B03 */}
           <AttachmentPanel
@@ -168,7 +166,7 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
               Activity
             </h3>
-            <ReferralTimeline referralId={referral.id} adminView={isTenantAdminView} />
+            <ReferralTimeline referralId={referral.id} adminView={isTenantAdminView} timezone={tenantTimezone} />
           </div>
         </>;
       })()}

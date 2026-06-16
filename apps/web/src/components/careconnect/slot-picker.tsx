@@ -4,17 +4,19 @@ interface SlotPickerProps {
   slot:       AvailabilitySlot;
   selected:   boolean;
   onSelect:   (slot: AvailabilitySlot) => void;
+  timezone:   string;
 }
 
-function formatTime(iso: string): string {
+function formatTime(iso: string, timezone: string): string {
   return new Date(iso).toLocaleTimeString('en-US', {
-    hour:   'numeric',
-    minute: '2-digit',
-    hour12: true,
+    hour:     'numeric',
+    minute:   '2-digit',
+    hour12:   true,
+    timeZone: timezone,
   });
 }
 
-export function SlotPicker({ slot, selected, onSelect }: SlotPickerProps) {
+export function SlotPicker({ slot, selected, onSelect, timezone }: SlotPickerProps) {
   const available = slot.isAvailable;
 
   return (
@@ -32,7 +34,7 @@ export function SlotPicker({ slot, selected, onSelect }: SlotPickerProps) {
       ].join(' ')}
     >
       <span className="font-medium">
-        {formatTime(slot.startUtc)} – {formatTime(slot.endUtc)}
+        {formatTime(slot.startUtc, timezone)} – {formatTime(slot.endUtc, timezone)}
       </span>
       {slot.serviceType && (
         <span className={`ml-2 text-xs ${selected ? 'text-blue-100' : 'text-gray-400'}`}>
