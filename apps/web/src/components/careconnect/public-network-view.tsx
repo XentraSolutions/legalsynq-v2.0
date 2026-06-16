@@ -20,6 +20,7 @@ import type {
   PublicReferralRequest,
 } from '@/lib/public-network-api';
 import type { NumberedMarker } from './public-network-map';
+import { URGENCY_OPTIONS, type ReferralUrgencyValue } from '@/types/careconnect';
 
 const PublicNetworkMap = dynamic(
   () => import('./public-network-map').then(m => m.PublicNetworkMap),
@@ -508,6 +509,7 @@ interface ReferralForm {
   patientAddress:       string;
   patientDob:           string;   // YYYY-MM-DD
   patientDateOfAccident: string;  // YYYY-MM-DD
+  urgency:              ReferralUrgencyValue;
   notes:                string;
   firmName:             string;
   contactName:          string;
@@ -518,6 +520,7 @@ interface ReferralForm {
 const EMPTY_FORM: ReferralForm = {
   patientName: '', patientPhone: '', patientEmail: '',
   patientAddress: '', patientDob: '', patientDateOfAccident: '',
+  urgency: 'Normal',
   notes: '',
   firmName: '', contactName: '', email: '', phone: '',
 };
@@ -700,6 +703,7 @@ function ReferralPanel({
       patientDateOfAccident:  form.patientDateOfAccident || undefined,
       patientAddress:         form.patientAddress.trim() || undefined,
       serviceType:            'General Referral',
+      urgency:                form.urgency,
       notes:                  [
         form.notes,
         form.phone    ? `Firm phone: ${form.phone}` : '',
@@ -735,7 +739,7 @@ function ReferralPanel({
             clientEmail:      payload.patientEmail ?? '',
             clientDob:        payload.patientDateOfBirth,
             requestedService: payload.serviceType ?? 'General Referral',
-            urgency:          'Normal',
+            urgency:          payload.urgency ?? 'Normal',
             notes:            authNotes,
             referrerScopeSignature,
             referrerEmail:    payload.senderEmail,
@@ -1072,10 +1076,20 @@ function ReferralPanel({
                     />
                   </PanelField>
                 </div>
+                <PanelField label="Urgency">
+                  <select
+                    value={form.urgency}
+                    onChange={e => update('urgency', e.target.value as ReferralUrgencyValue)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  >
+                    {URGENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </PanelField>
                 <PanelField label="Notes" hint="optional">
                   <textarea
                     rows={3} value={form.notes}
-                    placeholder="Background, urgency, prior treatment…"
+                    placeholder="Background, prior treatment…"
                     onChange={e => update('notes', e.target.value)}
                     disabled={state === 'submitting'}
                     className={panelInputCls(false) + ' resize-none'}

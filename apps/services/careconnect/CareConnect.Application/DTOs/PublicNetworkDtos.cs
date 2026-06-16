@@ -112,6 +112,12 @@ public sealed class PublicReferralRequest
 
     /// <summary>Additional case notes (optional).</summary>
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Urgency level (optional). Must be one of <c>Referral.ValidUrgencies.All</c>
+    /// (Low, Normal, Urgent, Emergency). Falls back to "Normal" when omitted or invalid.
+    /// </summary>
+    public string? Urgency { get; set; }
 }
 
 /// <summary>

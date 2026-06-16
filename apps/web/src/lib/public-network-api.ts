@@ -240,6 +240,7 @@ export interface PublicReferralRequest {
   patientAddress?:       string;
   serviceType?:          string;
   notes?:                string;
+  urgency?:              string;
 }
 
 export interface PublicReferralResponse {
