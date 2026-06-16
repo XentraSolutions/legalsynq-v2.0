@@ -348,6 +348,48 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
+    public async Task GetByReferralAsync_SelfRegisteredNoOrgReferral_ReferrerEmailMatch_CanListAttachments()
+    {
+        // Bug repro: a referral submitted publicly (no referring org) is only accessible
+        // via the referrer-email fallback in CanAccessReferral. GetByReferralAsync must be
+        // given the caller's email — omitting it (as the GET /attachments endpoint used to)
+        // makes every such referral appear "not found" when its Documents tab is opened.
+        var tenantId   = Guid.CreateVersion7();
+        var referral   = Referral.Create(
+            tenantId:                  tenantId,
+            referringOrganizationId:   null,
+            receivingOrganizationId:   Guid.CreateVersion7(),
+            providerId:                Guid.CreateVersion7(),
+            subjectPartyId:            null,
+            subjectNameSnapshot:       null,
+            subjectDobSnapshot:        null,
+            clientFirstName:           "Jane",
+            clientLastName:            "Doe",
+            clientDob:                 null,
+            clientPhone:               "555-0001",
+            clientEmail:               "jane@example.com",
+            caseNumber:                null,
+            requestedService:          "Counselling",
+            urgency:                   Referral.ValidUrgencies.Normal,
+            notes:                     null,
+            createdByUserId:           null,
+            organizationRelationshipId: null,
+            referrerEmail:             "referrer@example.com",
+            referrerName:              "Self Referrer");
+
+        var (svc, _) = BuildAttachmentService(referral, []);
+
+        var result = await svc.GetByReferralAsync(
+            tenantId,
+            referral.Id,
+            callerOrgId: null,
+            isAdmin: false,
+            callerEmail: "referrer@example.com");
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
     public async Task GetSignedUrlAsync_SharedDoc_NonParticipant_ThrowsUnauthorized()
     {
         var tenantId     = Guid.CreateVersion7();
