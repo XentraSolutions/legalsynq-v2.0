@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, type FormEvent } from 'react';
 import { sendOtp, registerEnrollment, registerFirmEnrollment, type EnrollmentPrefill } from './actions';
 import { formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
+import { isValidUsZipCode } from '@/lib/address';
 import { useRouter } from 'next/navigation';
 
 // ── Address suggestion (from /api/geocode/address) ────────────────────────────
@@ -674,8 +675,4 @@ export function EnrollmentForm({
       </button>
     </form>
   );
-}
-
-function isValidUsZipCode(value: string): boolean {
-  return /^\d{5}(-\d{4})?$/.test(value.trim());
 }

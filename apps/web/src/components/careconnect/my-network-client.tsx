@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic';
 
 import { careConnectApi }    from '@/lib/careconnect-api';
 import { AccessStageBadge }  from '@/components/careconnect/status-badge';
-import { formatPhoneDisplay, formatPhoneInput, stripPhone } from '@/lib/phone';
+import { formatPhoneDisplay, formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
+import { isValidUsZipCode } from '@/lib/address';
 import type {
   NetworkDetail,
   NetworkProviderItem,
@@ -75,7 +76,13 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   const [addrOpen,        setAddrOpen]        = useState(false);
   const [geoLat,          setGeoLat]          = useState<number | null>(null);
   const [geoLng,          setGeoLng]          = useState<number | null>(null);
+  const [selectedPostalCode, setSelectedPostalCode] = useState<string | null>(null);
   const addrDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const hasInvalidPhone = newForm.phone.trim().length > 0 && !isValidPhone(newForm.phone);
+  const hasInvalidPostalCode = newForm.postalCode.trim().length > 0 && !isValidUsZipCode(newForm.postalCode);
+  const hasZipMismatch = !!selectedPostalCode &&
+    newForm.postalCode.trim().slice(0, 5) !== selectedPostalCode.slice(0, 5);
 
   useEffect(() => {
     setNetworkUrl(window.location.origin + '/careconnect/network');
@@ -176,6 +183,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     setNewForm(f => ({ ...f, addressLine1: value }));
     setGeoLat(null);
     setGeoLng(null);
+    setSelectedPostalCode(null);
     if (addrDebounce.current) clearTimeout(addrDebounce.current);
     if (value.trim().length < 3) {
       setAddrSuggestions([]);
@@ -207,6 +215,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     }));
     setGeoLat(s.latitude);
     setGeoLng(s.longitude);
+    setSelectedPostalCode(s.postalCode);
     setAddrSuggestions([]);
     setAddrOpen(false);
   }
@@ -222,6 +231,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     setCreateError(null);
     setGeoLat(null);
     setGeoLng(null);
+    setSelectedPostalCode(null);
     setPanelMode('search');
   }
 
@@ -233,6 +243,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     setSearchError(null);
     setGeoLat(null);
     setGeoLng(null);
+    setSelectedPostalCode(null);
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -292,6 +303,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!network) return;
+    if (hasInvalidPhone || hasInvalidPostalCode || hasZipMismatch) return;
     setCreating(true);
     setCreateError(null);
     try {
@@ -751,8 +763,15 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                       value={newForm.phone}
                       onChange={e => setNewForm(f => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
                       placeholder="(555) 555-5555"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                      className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
+                        hasInvalidPhone
+                          ? 'border-red-300 focus:border-red-400'
+                          : 'border-gray-300 focus:border-blue-500'
+                      }`}
                     />
+                    {hasInvalidPhone && (
+                      <p className="text-xs text-red-500 mt-1">Phone number must be 10 digits.</p>
+                    )}
                   </div>
                   <div className="relative">
                     <label className="block text-xs font-medium text-gray-600 mb-1">Address *</label>
@@ -814,8 +833,19 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                         value={newForm.postalCode}
                         onChange={e => setNewForm(f => ({ ...f, postalCode: e.target.value }))}
                         placeholder="60601"
-                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                        className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
+                          hasInvalidPostalCode || hasZipMismatch
+                            ? 'border-red-300 focus:border-red-400'
+                            : 'border-gray-300 focus:border-blue-500'
+                        }`}
                       />
+                      {(hasInvalidPostalCode || hasZipMismatch) && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {hasZipMismatch
+                            ? 'ZIP code must match the selected address.'
+                            : 'ZIP code must be 5 digits or 5+4 format.'}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
