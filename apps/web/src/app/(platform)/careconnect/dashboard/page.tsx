@@ -349,11 +349,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               : "Incoming referrals and today's appointment schedule."}
           </p>
         </div>
-        {showReferrerView ? (
-          <Link href="/careconnect/providers" className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0">
-            Find Providers
-          </Link>
-        ) : (
+        {!showReferrerView && (
           <Link href="/careconnect/referrals?from=dashboard" className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0">
             Referral Inbox
           </Link>
@@ -474,7 +470,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {showReferrerView ? (
           <>
-            <QuickAction href="/careconnect/providers"               icon="ri-search-line"       label="Find Providers"  desc="Search by name, specialty, or location" />
             <QuickAction href="/careconnect/referrals?from=dashboard" icon="ri-file-list-3-line"  label="All Referrals"   desc="Track the status of every referral" />
             <QuickAction href="/careconnect/appointments"            icon="ri-calendar-2-line"   label="Appointments"    desc="View and manage your appointments" />
           </>

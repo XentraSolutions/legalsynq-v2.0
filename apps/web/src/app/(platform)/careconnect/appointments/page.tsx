@@ -71,14 +71,6 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{heading}</h1>
 
-        {isReferrer && (
-          <Link
-            href="/careconnect/providers"
-            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
-          >
-            Book Appointment
-          </Link>
-        )}
       </div>
 
       {/* Active date filter indicator */}

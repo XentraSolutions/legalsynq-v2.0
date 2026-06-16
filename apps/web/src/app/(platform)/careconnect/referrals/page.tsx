@@ -636,7 +636,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
         </div>
         {isReferrer && (
           <Link
-            href="/careconnect/providers"
+            href="/careconnect/browse-networks"
             className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0"
           >
             + New Referral
