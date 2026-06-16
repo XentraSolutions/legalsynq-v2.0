@@ -113,6 +113,7 @@ function SuppressionAwarenessPanel({ notification }: { notification: NotifDetail
 }
 
 function ContactHealthCard({ notification }: { notification: NotifDetail }) {
+  const timezone = useTimezone();
   const [health, setHealth] = useState<ContactHealth | null>(null);
   const [suppressions, setSuppressions] = useState<ContactSuppression[]>([]);
   const [loading, setLoading] = useState(false);

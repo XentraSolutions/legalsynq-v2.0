@@ -355,7 +355,7 @@ function FailureReasonPanel({ notification }: { notification: NotifDetail }) {
   );
 }
 
-function EventTimeline({ events }: { events: NotifEvent[] }) {
+function EventTimeline({ events, tenantTimezone }: { events: NotifEvent[]; tenantTimezone: string }) {
   if (events.length === 0) return null;
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5">
@@ -395,7 +395,7 @@ function EventTimeline({ events }: { events: NotifEvent[] }) {
   );
 }
 
-function IssuesList({ issues }: { issues: NotifIssue[] }) {
+function IssuesList({ issues, tenantTimezone }: { issues: NotifIssue[]; tenantTimezone: string }) {
   if (issues.length === 0) return null;
 
   const severityCls: Record<string, string> = {
@@ -610,7 +610,7 @@ export default async function NotificationDetailPage({
 
       <ContentPreview notification={notification} />
 
-      {events.length > 0 && <EventTimeline events={events} />}
+      {events.length > 0 && <EventTimeline events={events} tenantTimezone={tenantTimezone} />}
 
       {eventsUnavailable && (
         <div className="bg-gray-50 rounded-lg border border-gray-200 p-5 text-center">
@@ -619,7 +619,7 @@ export default async function NotificationDetailPage({
         </div>
       )}
 
-      {issues.length > 0 && <IssuesList issues={issues} />}
+      {issues.length > 0 && <IssuesList issues={issues} tenantTimezone={tenantTimezone} />}
 
       {issuesUnavailable && (
         <div className="bg-gray-50 rounded-lg border border-gray-200 p-5 text-center">

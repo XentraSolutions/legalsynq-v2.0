@@ -402,6 +402,7 @@ function GlobalTabContent({
   pending: boolean;
   productType: ProductType;
 }) {
+  const timezone = useTimezone();
   return (
     <div className="space-y-4">
       <div className="rounded-md bg-gray-50 border border-gray-200 px-4 py-2.5">
@@ -588,6 +589,7 @@ function OverrideTabContent({
   pending: boolean;
   setShowEditor: (v: boolean) => void;
 }) {
+  const timezone = useTimezone();
   if (!override) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 py-16 text-center">

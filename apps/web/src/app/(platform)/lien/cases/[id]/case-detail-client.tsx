@@ -1665,6 +1665,7 @@ function avatarColor(name: string): string {
 function NotesTab({ caseId }: { caseId: string }) {
   const addToast = useLienStore((s) => s.addToast);
   const { session } = useSession();
+  const timezone = useTimezone();
 
   const [notes, setNotes] = useState<CaseNoteResponse[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
