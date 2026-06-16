@@ -1,6 +1,9 @@
 import { apiClient } from "@/lib/api-client";
 import {
+  AccidentTypeResponse,
   ContactsByIdResponse,
+  LawFirmListResponse,
+  LookupGenericResponse,
   LookupResponse,
   MedicalProcedureCodesResponse,
   MedicalProcedureCostsResponse,
@@ -53,42 +56,48 @@ export const lookupApi = {
   },
 
   getLawfirm() {
-    return apiClient.get<unknown[]>(`${BASE}/contact/lawfirm`);
+    return apiClient.get<LawFirmListResponse[]>(`${BASE}/contact/lawfirm`);
   },
 
   getContacts() {
-    return apiClient.get<unknown[]>(`${BASE}/contact`);
+    return apiClient.get<LookupGenericResponse[]>(`${BASE}/contact`);
   },
 
   getAccidentType() {
-    return apiClient.get<unknown[]>(`${BASE}/accident/type`);
+    return apiClient.get<AccidentTypeResponse[]>(`${BASE}/accident/type`);
   },
 
   getContactTypes() {
-    return apiClient.get<unknown[]>(`${BASE}/contact/type`);
+    return apiClient.get<LookupGenericResponse[]>(`${BASE}/contact/type`);
   },
 
   getStates() {
-    return apiClient.get<unknown[]>(`${BASE}/states`);
+    return apiClient.get<LookupGenericResponse[]>(`${BASE}/states`);
   },
 
   getLiensStatus() {
-    return apiClient.get<unknown[]>(`${BASE}/liens/status`);
+    return apiClient.get<LookupGenericResponse[]>(`${BASE}/liens/status`);
   },
 
   getFundingCompany() {
-    return apiClient.get<unknown[]>(`${BASE}/contact/funding-company`);
+    return apiClient.get<LookupGenericResponse[]>(
+      `${BASE}/contact/funding-company`,
+    );
   },
 
   getCaseManagers() {
-    return apiClient.get<unknown[]>(`/liens/contact/casemanagers`);
+    return apiClient.get<LookupGenericResponse[]>(
+      `/liens/contact/casemanagers`,
+    );
   },
 
   getMedicalProviders() {
-    return apiClient.get<unknown[]>(`${BASE}/contact/medical-provider`);
+    return apiClient.get<LookupGenericResponse[]>(
+      `${BASE}/contact/medical-provider`,
+    );
   },
 
   getMedicalFacility() {
-    return apiClient.get<unknown[]>(`${BASE}/facility`);
+    return apiClient.get<LookupGenericResponse[]>(`${BASE}/facility`);
   },
 };

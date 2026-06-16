@@ -1,6 +1,10 @@
+import { CaseStatusResponse } from "../cases/cases.types";
 import { lookupApi } from "./lookup.api";
 import type {
+  AccidentTypeResponse,
   ContactsByIdResponse,
+  LawFirmListResponse,
+  LookupGenericResponse,
   LookupResponse,
   MedicalProcedureCodesResponse,
   MedicalProcedureCostsResponse,
@@ -40,13 +44,13 @@ export const lookupService = {
     return data;
   },
 
-  async getCaseStatus(): Promise<{ items: unknown }> {
+  async getCaseStatus(): Promise<{ items: CaseStatusResponse[] }> {
     const { data } = await lookupApi.getCaseStatus();
     return {
       items: data,
     };
   },
-  async getLawfirm(): Promise<{ items: unknown }> {
+  async getLawfirm(): Promise<{ items: LawFirmListResponse[] }> {
     const { data } = await lookupApi.getLawfirm();
     return {
       items: data,
@@ -60,56 +64,56 @@ export const lookupService = {
     };
   },
 
-  async getAccidentType(): Promise<{ items: unknown }> {
+  async getAccidentType(): Promise<{ items: AccidentTypeResponse[] }> {
     const { data } = await lookupApi.getAccidentType();
     return {
       items: data,
     };
   },
 
-  async getContactTypes(): Promise<{ items: unknown }> {
+  async getContactTypes(): Promise<{ items: LookupGenericResponse[] }> {
     const { data } = await lookupApi.getContactTypes();
     return {
       items: data,
     };
   },
 
-  async getStates(): Promise<{ items: unknown }> {
+  async getStates(): Promise<{ items: LookupGenericResponse[] }> {
     const { data } = await lookupApi.getStates();
     return {
       items: data,
     };
   },
 
-  async getLiensStatus(): Promise<{ items: unknown }> {
+  async getLiensStatus(): Promise<{ items: LookupGenericResponse[] }> {
     const { data } = await lookupApi.getLiensStatus();
     return {
       items: data,
     };
   },
 
-  async getCaseManagers(): Promise<{ items: unknown }> {
+  async getCaseManagers(): Promise<{ items: LookupGenericResponse[] }> {
     const { data } = await lookupApi.getCaseManagers();
     return {
       items: data,
     };
   },
 
-  async getMedicalFacility(): Promise<{ items: unknown }> {
+  async getMedicalFacility(): Promise<{ items: LookupGenericResponse[] }> {
     const { data } = await lookupApi.getMedicalFacility();
     return {
       items: data,
     };
   },
 
-  async getMedicalProviders(): Promise<{ items: unknown }> {
+  async getMedicalProviders(): Promise<{ items: LookupGenericResponse[] }> {
     const { data } = await lookupApi.getMedicalProviders();
     return {
       items: data,
     };
   },
 
-  async getFundingCompany(): Promise<{ items: unknown }> {
+  async getFundingCompany(): Promise<{ items: LookupGenericResponse[] }> {
     const { data } = await lookupApi.getFundingCompany();
     return {
       items: data,
