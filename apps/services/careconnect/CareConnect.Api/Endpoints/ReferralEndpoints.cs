@@ -60,8 +60,14 @@ public static class ReferralEndpoints
             }
             else
             {
-                query.ReferringOrgId = ctx.OrgId;
-                query.TenantIds      = GetReferrerTenantScope(ctx);
+                // Cross-tenant referrer match — mirrors the provider's CrossTenantReceiver
+                // branch above. Matches purely on ReferringOrgId/ReferrerEmail instead of
+                // gating on TenantId first, so the firm's list stays correct even if a
+                // referral's TenantId ever drifts from the firm's session tenant (e.g. a
+                // stale/conflicting Tenant-service record used to resolve the public
+                // submission endpoint's tenant).
+                query.CrossTenantReferrer = true;
+                query.ReferringOrgId      = ctx.OrgId;
                 // CC-REFERRER-EMAIL: also surface public referrals submitted before the
                 // law firm activated their portal (those have ReferrerEmail set but no
                 // ReferringOrganizationId).
