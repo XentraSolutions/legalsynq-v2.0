@@ -90,3 +90,21 @@ export function buildCareConnectReferralLoginUrl(
 export function getCareConnectLoginUrlFromEnv(): string {
   return buildCareConnectLoginUrl(process.env.CC_COMMON_PORTAL_HOSTNAME);
 }
+
+/**
+ * Returns true when `rawHost` (a raw `host` / `x-forwarded-host` header value)
+ * matches the configured CareConnect common-portal hostname
+ * (`CC_COMMON_PORTAL_HOSTNAME` — the shared Provider/Law-Firm portal).
+ *
+ * Mirrors the comparison already duplicated in proxy.ts and the login/
+ * forgot-password BFF routes — use this instead of re-deriving it.
+ */
+export function isCareConnectCommonPortalHost(rawHost: string, commonPortalHostnameOverride?: string | null): boolean {
+  const commonPortalHostname = normalizeCareConnectPortalHost(
+    commonPortalHostnameOverride ?? process.env.CC_COMMON_PORTAL_HOSTNAME,
+  );
+  if (!commonPortalHostname) return false;
+
+  const incomingHost = (rawHost.split(',')[0] ?? '').trim().split(':')[0].toLowerCase();
+  return incomingHost === commonPortalHostname;
+}

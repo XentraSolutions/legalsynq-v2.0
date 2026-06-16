@@ -3,7 +3,12 @@
 import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-export function ResetPasswordForm() {
+interface ResetPasswordFormProps {
+  /** Where "Sign in" / "Back to sign in" should point — CareConnect login URL on the common portal host, `/login` otherwise. */
+  loginHref: string;
+}
+
+export function ResetPasswordForm({ loginHref }: ResetPasswordFormProps) {
   const searchParams = useSearchParams();
   const token = searchParams?.get('token');
 
@@ -44,7 +49,7 @@ export function ResetPasswordForm() {
           </p>
         </div>
         <a
-          href="/login"
+          href={loginHref}
           className="w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-opacity"
           style={{ backgroundColor: '#f97316' }}
         >
@@ -155,7 +160,7 @@ export function ResetPasswordForm() {
 
       <p className="text-center text-xs text-gray-400">
         <a
-          href="/login"
+          href={loginHref}
           className="text-gray-600 hover:text-gray-900 underline underline-offset-2 transition-colors"
         >
           Back to sign in
