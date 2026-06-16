@@ -172,7 +172,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
 
   useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
 
-  const enrollUrl = enrollToken ? `/enroll?token=${enrollToken}` : '/enroll';
+  const enrollUrl = enrollToken ? `/enroll?token=${enrollToken}` : '#';
   const hasPortalAccess = portalAccessStatus === ReferrerPortalAccessStatuses.ActiveInTenant;
   const isExistingCrossTenantUser = portalAccessStatus === ReferrerPortalAccessStatuses.ExistingUserOtherTenant;
   const portalCta = isExistingCrossTenantUser
@@ -280,7 +280,13 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
                 alignItems: portalCta.secondaryLabel ? 'stretch' : 'center',
                 justifyContent: 'center',
               }}>
-                <a href={enrollUrl} style={{ ...s.btnPrimary, background: portalCta.border }}>{portalCta.primaryLabel}</a>
+                <a
+                  href={enrollUrl}
+                  onClick={!enrollToken ? (e: React.MouseEvent) => e.preventDefault() : undefined}
+                  style={{ ...s.btnPrimary, background: portalCta.border }}
+                >
+                  {portalCta.primaryLabel}
+                </a>
                 {portalCta.secondaryLabel && (
                   <a href={loginUrl} style={{ ...s.btnOutline, color: portalCta.border, borderColor: portalCta.border, fontSize: 12, padding: '7px 16px' }}>
                     {portalCta.secondaryLabel}
