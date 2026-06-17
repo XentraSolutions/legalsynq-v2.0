@@ -31,10 +31,12 @@ interface ThreadData {
   service:            string;
   urgency:            string | null;
   notes:              string | null;
+  dateOfAccident?:    string;
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
   providerName:       string;
   // Law firm / referrer
+  referrerFirmName?:   string | null;
   referrerName:        string | null;
   referrerEmail:       string | null;
   createdAt:           string;
@@ -279,15 +281,9 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
             <FieldBlock label="Submitted" value={formatDate(data.createdAt, timezone)} />
             {data.urgency && <FieldBlock label="Urgency" value={data.urgency} />}
             {data.caseNumber && <FieldBlock label="Case #" value={data.caseNumber} />}
+            <FieldBlock label="Type of Treatment" value={liveTreatmentName ?? '—'} />
+            <FieldBlock label="Date of Accident" value={data.dateOfAccident ?? '—'} />
           </div>
-
-          {/* Type of Treatment */}
-          {liveTreatmentName && (
-            <div style={{ marginTop: 14 }}>
-              <p style={s.fieldLabel}>Type of Treatment</p>
-              <p style={{ ...s.fieldVal, margin: 0 }}>{liveTreatmentName}</p>
-            </div>
-          )}
 
           {/* Notes */}
           {data.notes && (
@@ -315,6 +311,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
           {/* Referring law firm */}
           <p style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referring Law Firm</p>
           <div style={s.grid2}>
+            {data.referrerFirmName && <FieldBlock label="Law Firm" value={data.referrerFirmName} />}
             <FieldBlock label="Contact Name"  value={data.referrerName ?? '—'} />
             {data.referrerEmail && <FieldBlock label="Email" value={data.referrerEmail} />}
           </div>

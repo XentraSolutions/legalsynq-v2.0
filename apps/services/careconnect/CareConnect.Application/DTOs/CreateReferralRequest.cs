@@ -18,6 +18,7 @@ public class CreateReferralRequest
     public string? RequestedService { get; set; }
     public string Urgency { get; set; } = string.Empty;
     public Guid? TreatmentTypeId { get; set; }
+    public DateOnly? DateOfAccident { get; set; }
     public string? Notes { get; set; }
 
     // Phase C: optional multi-org context.

@@ -48,6 +48,9 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
   const [clientPhone,      setClientPhone]      = useState('');
   const [clientEmail,      setClientEmail]      = useState('');
 
+  // Accident / case details
+  const [dateOfAccident,  setDateOfAccident]  = useState('');
+
   // Referral details
   const [caseNumber,      setCaseNumber]      = useState('');
   const [urgency,         setUrgency]         = useState<ReferralUrgencyValue>('Normal');
@@ -75,6 +78,8 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
     if (!clientPhone.trim())      errs.clientPhone = 'Phone is required';
     else if (!isValidPhone(clientPhone)) errs.clientPhone = 'Enter a valid 10-digit phone number';
     if (!clientEmail.trim())     errs.clientEmail = 'Email is required';
+    if (!dateOfAccident)         errs.dateOfAccident = 'Date of accident is required';
+    else if (new Date(dateOfAccident) > new Date()) errs.dateOfAccident = 'Date of accident cannot be in the future';
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -94,6 +99,7 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
       clientPhone:      stripPhone(clientPhone),
       clientEmail:      clientEmail.trim(),
       caseNumber:       caseNumber.trim() || undefined,
+      dateOfAccident:   dateOfAccident || undefined,
       requestedService: serviceType || undefined,
       urgency,
       treatmentTypeId:  treatmentTypeId || undefined,
@@ -203,6 +209,19 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                     onChange={e => setClientDob(e.target.value)}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date of accident <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={dateOfAccident}
+                    onChange={e => { setDateOfAccident(e.target.value); setFieldErrors(fe => ({ ...fe, dateOfAccident: '' })); }}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <InputError field="dateOfAccident" />
                 </div>
 
                 <div>

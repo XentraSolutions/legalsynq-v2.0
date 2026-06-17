@@ -86,6 +86,7 @@ public class Referral : AuditableEntity
     public string Urgency { get; private set; } = string.Empty;
     public string Status { get; private set; } = ValidStatuses.New;
     public string? Notes { get; private set; }
+    public DateOnly? DateOfAccident { get; private set; }
     public Guid? TreatmentTypeId { get; private set; }
 
     // ── Referrer contact (stored at creation for email notifications) ─────
@@ -135,7 +136,8 @@ public class Referral : AuditableEntity
         string? referrerName = null,
         string? referrerFirstName = null,
         string? referrerLastName = null,
-        Guid? treatmentTypeId = null)
+        Guid? treatmentTypeId = null,
+        DateOnly? dateOfAccident = null)
     {
         var now = DateTime.UtcNow;
 
@@ -170,6 +172,7 @@ public class Referral : AuditableEntity
             Urgency                    = urgency,
             Status                     = ValidStatuses.New,
             Notes                      = notes?.Trim(),
+            DateOfAccident             = dateOfAccident,
             TreatmentTypeId            = treatmentTypeId,
             ReferrerEmail              = referrerEmail?.Trim(),
             ReferrerName               = computedReferrerName,
@@ -238,12 +241,14 @@ public class Referral : AuditableEntity
     }
 
     public void Update(string? requestedService, string urgency, string status, string? notes, Guid? updatedByUserId,
-        Guid? treatmentTypeId = null, bool clearTreatmentType = false)
+        Guid? treatmentTypeId = null, bool clearTreatmentType = false, DateOnly? dateOfAccident = null, bool clearDateOfAccident = false)
     {
         RequestedService = requestedService?.Trim();
         Urgency          = urgency;
         Status           = status;
         Notes            = notes?.Trim();
+        if (dateOfAccident.HasValue)     DateOfAccident = dateOfAccident.Value;
+        else if (clearDateOfAccident)    DateOfAccident = null;
         if (treatmentTypeId.HasValue)   TreatmentTypeId = treatmentTypeId.Value;
         else if (clearTreatmentType)    TreatmentTypeId = null;
         UpdatedByUserId  = updatedByUserId;

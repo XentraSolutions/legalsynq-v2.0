@@ -76,6 +76,7 @@ export function ReferralDetailPanel({ referral, hideHeader = false, timezone = '
           <Field label="Provider"            value={referral.providerName} />
           <Field label="Requested service"  value={referral.requestedService} />
           <Field label="Urgency"            value={<UrgencyBadge urgency={referral.urgency} />} />
+          <Field label="Date of accident"   value={referral.dateOfAccident ? formatDateOnlyField(referral.dateOfAccident) : undefined} />
           <Field label="Type of treatment"  value={referral.treatmentTypeName ?? '—'} />
           <Field label="Status"             value={<StatusBadge status={referral.status} />} />
           <Field label="Created"            value={formatDate(referral.createdAtUtc, timezone)} />

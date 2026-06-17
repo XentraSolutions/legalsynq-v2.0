@@ -133,6 +133,7 @@ export interface ReferralSummary {
   urgency:           string;
   status:            string;
   notes?:            string;
+  dateOfAccident?:   string;
   createdAtUtc:      string;
   updatedAtUtc:      string;
   // LSCC-005-01: org context
@@ -206,6 +207,7 @@ export interface CreateReferralRequest {
   requestedService?: string;
   urgency:           string;
   treatmentTypeId?:  string;
+  dateOfAccident?:   string;
   notes?:            string;
   referrerScopeSignature?: string;
   /** LSCC-005: referrer identity for the notification email */

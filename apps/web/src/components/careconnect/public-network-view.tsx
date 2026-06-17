@@ -730,11 +730,7 @@ function ReferralPanel({
       serviceType:            form.serviceType || 'General Referral',
       urgency:                form.urgency,
       treatmentTypeId:        form.treatmentTypeId || undefined,
-      notes:                  [
-        form.notes,
-        form.phone    ? `Firm phone: ${form.phone}` : '',
-        form.firmName ? `Firm: ${form.firmName}`   : '',
-      ].filter(Boolean).join('\n') || undefined,
+      notes:                  form.notes.trim() || undefined,
     }));
 
     // Authenticated users (prefillLawFirm present) submit through the auth endpoint —
@@ -746,15 +742,7 @@ function ReferralPanel({
       const responses = await Promise.all(payloads.map(async payload => {
         let res: Response;
         if (isAuthenticated) {
-          // Mirror the notes assembly done by the public C# handler so that
-          // patientAddress and patientDateOfAccident are not lost on the auth path.
-          const authNotes = [
-            form.notes,
-            form.patientAddress.trim()  ? `Patient Address: ${form.patientAddress.trim()}`  : '',
-            form.patientDateOfAccident  ? `Date of Accident: ${form.patientDateOfAccident}`  : '',
-            form.phone                  ? `Firm phone: ${form.phone}`                        : '',
-            form.firmName               ? `Firm: ${form.firmName}`                           : '',
-          ].filter(Boolean).join('\n') || undefined;
+          const authNotes = form.notes.trim() || undefined;
 
           const authBody = {
             tenantId,
@@ -767,6 +755,7 @@ function ReferralPanel({
             requestedService: payload.serviceType || 'General Referral',
             urgency:          payload.urgency ?? 'Normal',
             treatmentTypeId:  form.treatmentTypeId || undefined,
+            dateOfAccident:   form.patientDateOfAccident || undefined,
             notes:            authNotes,
             referrerScopeSignature,
             referrerEmail:    payload.senderEmail,

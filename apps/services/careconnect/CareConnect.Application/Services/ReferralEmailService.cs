@@ -1015,7 +1015,8 @@ public class ReferralEmailService : IReferralEmailService
         if (string.IsNullOrWhiteSpace(notes)) return null;
         var cleaned = string.Join('\n', notes.Split('\n')
             .Where(l => !l.TrimStart().StartsWith("Firm:", StringComparison.OrdinalIgnoreCase) &&
-                        !l.TrimStart().StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase)))
+                        !l.TrimStart().StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase) &&
+                        !l.TrimStart().StartsWith("Date of Accident:", StringComparison.OrdinalIgnoreCase)))
             .Trim();
         return string.IsNullOrEmpty(cleaned) ? null : cleaned;
     }
@@ -1086,6 +1087,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Service",           r.RequestedService) +
             Row("Case #",            r.CaseNumber) +
             Row("Urgency",           r.Urgency) +
+            Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd")) +
             Row("Type of Treatment", treatmentTypeName);
 
         var referrerRows =
@@ -1140,6 +1142,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Full Name",         $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",           r.RequestedService) +
             Row("Urgency",           r.Urgency) +
+            Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd")) +
             Row("Type of Treatment", treatmentTypeName) +
             Row("Notes",             cleanNotes);
 
@@ -1184,7 +1187,8 @@ public class ReferralEmailService : IReferralEmailService
             Row("Date of Birth", clientDob) +
             Row("Service",       r.RequestedService) +
             Row("Case #",        r.CaseNumber) +
-            Row("Urgency",       r.Urgency);
+            Row("Urgency",           r.Urgency) +
+            Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd"));
 
         var referrerRows =
             Row("Name",     r.ReferrerName) +

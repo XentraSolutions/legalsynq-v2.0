@@ -18,10 +18,12 @@ interface ThreadData {
   status:             string;
   clientName:         string;
   service:            string;
+  urgency?:           string;
   providerName:       string;
   referrerName:       string | null;
   referrerEmail:      string | null;
   notes:              string | null;
+  dateOfAccident?:    string;
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
   createdAt:          string;
@@ -235,13 +237,10 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             <FieldBlock label="Service"   value={data.service} />
             <FieldBlock label="Provider"  value={data.providerName} />
             <FieldBlock label="Submitted" value={formatDate(data.createdAt, timezone)} />
+            <FieldBlock label="Urgency" value={data.urgency ?? '—'} />
+            <FieldBlock label="Type of Treatment" value={data.treatmentTypeName ?? '—'} />
+            <FieldBlock label="Date of Accident" value={data.dateOfAccident ?? '—'} />
           </div>
-          {(data.treatmentTypeName || data.treatmentTypeId) && (
-            <div style={{ marginTop: 12 }}>
-              <p style={{ margin: '0 0 2px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Type of Treatment</p>
-              <p style={{ margin: 0, fontSize: 14, color: '#0f172a', fontWeight: 500 }}>{data.treatmentTypeName ?? '—'}</p>
-            </div>
-          )}
         </div>
 
         {/* Portal CTA — login prompt if already active, linking/enrollment panel otherwise */}

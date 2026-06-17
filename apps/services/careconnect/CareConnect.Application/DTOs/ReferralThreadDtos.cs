@@ -45,12 +45,14 @@ public class PublicReferralThreadResponse
     public string ProviderCity { get; init; } = string.Empty;
     public string ProviderState { get; init; } = string.Empty;
     public string ProviderPostalCode { get; init; } = string.Empty;
+    public string? ReferrerFirmName { get; init; }
     public string? ReferrerName { get; init; }
     public string? ReferrerFirstName { get; init; }
     public string? ReferrerLastName { get; init; }
     public string? ReferrerEmail { get; init; }
     public DateTime CreatedAt { get; init; }
     public bool ProviderHasAccount { get; init; }
+    public string? DateOfAccident { get; init; }
     public Guid?   TreatmentTypeId   { get; init; }
     public string? TreatmentTypeName { get; init; }
     public IReadOnlyList<ReferralCommentResponse> Comments { get; init; } = [];

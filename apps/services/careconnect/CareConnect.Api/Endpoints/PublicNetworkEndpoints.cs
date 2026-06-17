@@ -541,15 +541,6 @@ public static class PublicNetworkEndpoints
 
             // Map to the internal CreateReferralRequest.
             // ReferrerName/ReferrerEmail drive the signed-token email notification flow.
-            // Assemble structured notes: user-supplied notes + address + dates of accident.
-            var notesParts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(req.Notes))
-                notesParts.Add(req.Notes.Trim());
-            if (!string.IsNullOrWhiteSpace(req.PatientAddress))
-                notesParts.Add($"Patient Address: {req.PatientAddress.Trim()}");
-            if (req.PatientDateOfAccident.HasValue)
-                notesParts.Add($"Date of Accident: {req.PatientDateOfAccident.Value:yyyy-MM-dd}");
-
             var createReq = new CreateReferralRequest
             {
                 ProviderId              = req.ProviderId,
@@ -567,7 +558,8 @@ public static class PublicNetworkEndpoints
                                             ? req.Urgency
                                             : Referral.ValidUrgencies.Normal,
                 TreatmentTypeId         = req.TreatmentTypeId,
-                Notes                   = notesParts.Count > 0 ? string.Join("\n", notesParts) : null,
+                DateOfAccident          = req.PatientDateOfAccident,
+                Notes                   = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
                 ReferrerFirstName       = req.SenderFirstName.Trim(),
                 ReferrerLastName        = req.SenderLastName?.Trim(),
                 ReferrerEmail           = req.SenderEmail.Trim(),

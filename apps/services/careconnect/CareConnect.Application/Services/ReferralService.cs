@@ -179,7 +179,8 @@ public class ReferralService : IReferralService
             referrerName:  request.ReferrerName,
             referrerFirstName: request.ReferrerFirstName,
             referrerLastName:  request.ReferrerLastName,
-            treatmentTypeId: request.TreatmentTypeId);
+            treatmentTypeId: request.TreatmentTypeId,
+            dateOfAccident: request.DateOfAccident);
 
         await _referrals.AddAsync(referral, ct);
 
@@ -1176,6 +1177,7 @@ public class ReferralService : IReferralService
         Urgency = r.Urgency,
         Status = r.Status,
         Notes = r.Notes,
+        DateOfAccident = r.DateOfAccident?.ToString("yyyy-MM-dd"),
         CreatedAtUtc = r.CreatedAtUtc,
         UpdatedAtUtc = r.UpdatedAtUtc,
         // Phase 5: expose org context fields resolved at creation time

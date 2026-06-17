@@ -14,6 +14,7 @@ public class ReferralThreadService : IReferralThreadService
     private readonly IReferralCommentRepository _comments;
     private readonly IReferralAttachmentRepository _attachments;
     private readonly IReferralEmailService _emailService;
+    private readonly IIdentityOrganizationService _identityOrgService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ReferralThreadService> _logger;
 
@@ -22,6 +23,7 @@ public class ReferralThreadService : IReferralThreadService
         IReferralCommentRepository comments,
         IReferralAttachmentRepository attachments,
         IReferralEmailService emailService,
+        IIdentityOrganizationService identityOrgService,
         IServiceScopeFactory scopeFactory,
         ILogger<ReferralThreadService> logger)
     {
@@ -29,6 +31,7 @@ public class ReferralThreadService : IReferralThreadService
         _comments = comments;
         _attachments = attachments;
         _emailService = emailService;
+        _identityOrgService = identityOrgService;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -49,6 +52,7 @@ public class ReferralThreadService : IReferralThreadService
             : null;
 
         var providerName = BuildProviderName(referral);
+        var referrerFirmName = await ResolveReferrerFirmNameAsync(referral, ct);
         return PublicReferralAccessResult<PublicReferralThreadResponse>.Success(new PublicReferralThreadResponse
         {
             ReferralId = referral.Id,
@@ -65,6 +69,7 @@ public class ReferralThreadService : IReferralThreadService
             Service = referral.RequestedService,
             Urgency = referral.Urgency,
             Notes = referral.Notes,
+            DateOfAccident = referral.DateOfAccident?.ToString("yyyy-MM-dd"),
             ProviderName = providerName,
             ProviderFirstName = referral.Provider?.FirstName,
             ProviderLastName = referral.Provider?.LastName,
@@ -74,6 +79,7 @@ public class ReferralThreadService : IReferralThreadService
             ProviderCity = referral.Provider?.City ?? string.Empty,
             ProviderState = referral.Provider?.State ?? string.Empty,
             ProviderPostalCode = referral.Provider?.PostalCode ?? string.Empty,
+            ReferrerFirmName = referrerFirmName,
             ReferrerName = referral.ReferrerName,
             ReferrerFirstName = referral.ReferrerFirstName,
             ReferrerLastName = referral.ReferrerLastName,
@@ -327,6 +333,35 @@ public class ReferralThreadService : IReferralThreadService
         Message = comment.Message,
         CreatedAt = comment.CreatedAt,
     };
+
+    private async Task<string?> ResolveReferrerFirmNameAsync(Referral referral, CancellationToken ct)
+    {
+        if (referral.ReferringOrganizationId.HasValue)
+        {
+            try
+            {
+                var orgName = await _identityOrgService.GetOrganizationNameAsync(referral.ReferringOrganizationId.Value, ct);
+                if (!string.IsNullOrWhiteSpace(orgName))
+                    return orgName;
+            }
+            catch { /* non-fatal — fall through to notes extraction */ }
+        }
+
+        return ExtractFirmName(referral.Notes);
+    }
+
+    private static string? ExtractFirmName(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes)) return null;
+        foreach (var line in notes.Split('\n'))
+        {
+            var t = line.Trim();
+            if (t.StartsWith("Firm:", StringComparison.OrdinalIgnoreCase) &&
+                !t.StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase))
+                return t["Firm:".Length..].Trim();
+        }
+        return null;
+    }
 
     private static string BuildProviderName(Referral referral)
     {

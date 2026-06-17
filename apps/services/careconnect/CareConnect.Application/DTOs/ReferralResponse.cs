@@ -38,6 +38,9 @@ public class ReferralResponse
     public int     ProviderEmailAttempts { get; set; }
     public string? ProviderEmailFailureReason { get; set; }
 
+    // Date of Accident — standalone field (previously embedded in Notes).
+    public string? DateOfAccident { get; set; }
+
     // Type of Treatment — set by Referrer at creation.
     public Guid?   TreatmentTypeId   { get; set; }
     public string? TreatmentTypeName { get; set; }
