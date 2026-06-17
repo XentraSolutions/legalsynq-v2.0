@@ -40,19 +40,25 @@ export interface EnrollmentPrefill {
   postalCode:   string;
 }
 
+export interface EnrollmentPrefillResult {
+  status: 'ok' | 'already_enrolled' | 'not_found';
+  data: EnrollmentPrefill | null;
+}
+
 export async function fetchEnrollmentPrefill(
   providerId: string,
   tenantId: string,
-): Promise<EnrollmentPrefill | null> {
+): Promise<EnrollmentPrefillResult> {
   try {
     const res = await fetch(
       `${GATEWAY_URL}/careconnect/api/public/enrollment/prefill/${providerId}`,
       { headers: publicHeaders(tenantId), cache: 'no-store' },
     );
-    if (!res.ok) return null;
-    return await res.json() as EnrollmentPrefill;
+    if (res.status === 409) return { status: 'already_enrolled', data: null };
+    if (!res.ok) return { status: 'not_found', data: null };
+    return { status: 'ok', data: await res.json() as EnrollmentPrefill };
   } catch {
-    return null;
+    return { status: 'not_found', data: null };
   }
 }
 
@@ -230,6 +236,31 @@ export async function fetchExistingEnrollmentPrefill(
     };
   } catch {
     return null;
+  }
+}
+
+export type PortalAccessStatus = 'active_in_tenant' | 'existing_user_other_tenant' | 'no_account';
+
+export async function checkPortalAccessStatus(
+  tenantId: string,
+  email: string,
+): Promise<PortalAccessStatus> {
+  const provisioningToken = process.env.IdentityService__ProvisioningToken ?? '';
+  try {
+    const res = await fetch(
+      `${IDENTITY_INTERNAL_URL}/api/internal/users/portal-access?tenantId=${encodeURIComponent(tenantId)}&email=${encodeURIComponent(email)}`,
+      {
+        cache: 'no-store',
+        headers: provisioningToken ? { 'X-Provisioning-Token': provisioningToken } : {},
+      },
+    );
+    if (!res.ok) return 'no_account';
+    const data = await res.json() as { status?: string };
+    const status = data.status;
+    if (status === 'active_in_tenant' || status === 'existing_user_other_tenant') return status;
+    return 'no_account';
+  } catch {
+    return 'no_account';
   }
 }
 

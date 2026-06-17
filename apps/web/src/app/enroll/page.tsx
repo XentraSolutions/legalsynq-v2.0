@@ -1,5 +1,6 @@
-import { fetchEnrollmentPrefill, decodeEnrollmentToken, fetchExistingEnrollmentPrefill } from './actions';
+import { fetchEnrollmentPrefill, decodeEnrollmentToken, fetchExistingEnrollmentPrefill, checkPortalAccessStatus } from './actions';
 import { EnrollmentForm }                               from './enrollment-form';
+import { buildCareConnectPortalLoginUrl }               from '@/lib/careconnect-login-url';
 import { getServerSession }                             from '@/lib/session';
 import { OrgType, ProductRole }                         from '@/types';
 
@@ -31,10 +32,13 @@ export default async function EnrollPage({ searchParams }: PageProps) {
   const session = await getServerSession();
 
   let prefill = null;
+  let providerAlreadyEnrolled = false;
 
   if (providerId && tenantId) {
     try {
-      prefill = await fetchEnrollmentPrefill(providerId, tenantId);
+      const prefillResult = await fetchEnrollmentPrefill(providerId, tenantId);
+      prefill = prefillResult.data;
+      providerAlreadyEnrolled = prefillResult.status === 'already_enrolled';
     } catch {
       // prefill stays null — form shows empty
     }
@@ -111,6 +115,38 @@ export default async function EnrollPage({ searchParams }: PageProps) {
           phone:       session.phone ?? '',
         }
       : null;
+
+  // Check if the user from the firm/referral token is already actively enrolled.
+  const firmAlreadyEnrolled =
+    isFirmEnrollment && claims?.email && effectiveTenantId
+      ? (await checkPortalAccessStatus(effectiveTenantId, claims.email)) === 'active_in_tenant'
+      : false;
+
+  const alreadyEnrolled = providerAlreadyEnrolled || firmAlreadyEnrolled;
+
+  if (alreadyEnrolled) {
+    const portalLoginUrl = buildCareConnectPortalLoginUrl(process.env.CC_COMMON_PORTAL_HOSTNAME);
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
+        <div className="max-w-md mx-auto px-4 py-12 text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 mb-4">
+            <i className="ri-shield-check-line text-2xl text-blue-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">Account Already Created</h1>
+          <p className="mt-2 text-gray-500">
+            An account with this email address has already been set up.
+            You can sign in to access your portal.
+          </p>
+          <a
+            href={portalLoginUrl}
+            className="inline-block mt-6 px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors"
+          >
+            Sign In to Your Portal
+          </a>
+        </div>
+      </main>
+    );
+  }
 
   // This is a token-gated enrollment form — not a self-serve signup page.
   // The provider flow only counts as valid if the backend actually found a matching

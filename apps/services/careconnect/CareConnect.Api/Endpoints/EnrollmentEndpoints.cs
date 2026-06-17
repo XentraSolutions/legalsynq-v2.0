@@ -365,6 +365,21 @@ public static class EnrollmentEndpoints
                 });
             }
 
+            // ── DUPLICATE-CHECK: Block re-enrollment if user is already active ──
+            var portalStatus = await identityOrgs.GetReferrerPortalAccessStatusAsync(
+                tenantId.Value, body.Email.Trim(), ct);
+            if (portalStatus == ReferrerPortalAccessStatuses.ActiveInTenant)
+            {
+                logger.LogInformation(
+                    "CC2-ENROLL-FIRM Duplicate enrollment blocked — email {Email} is already active in tenant.",
+                    body.Email.Trim());
+                return Results.Conflict(new
+                {
+                    message = "An account with this email address has already been created.",
+                    code    = "ALREADY_ENROLLED",
+                });
+            }
+
             // Always use the HMAC-validated tenantId from the trust boundary — never the body value.
             // The body.TenantId was previously preferred here but is user-supplied and bypasses
             // the HMAC guarantee. Both values originate from the same URL param so they are
