@@ -65,8 +65,8 @@ export function CreateCaseForm({
     try {
       const request: CreateCaseRequestDto = {
         caseNumber: form.caseNumber.trim(),
-        clientFirstName: form.clientFirstName.trim(),
-        clientLastName: form.clientLastName.trim(),
+        firstname: form.clientFirstName.trim(),
+        lastname: form.clientLastName.trim(),
         externalReference: form.externalReference.trim(),
         title: form.title.trim() || undefined,
         clientDob: formatDate(form.clientDob) || undefined,

@@ -6,6 +6,11 @@ import type {
   UpdateCaseRequestDto,
   CasesQuery,
   DashboardStats,
+  CasePaginatedParams,
+  CasePaginatedResult,
+  CaseLiensApiResponse,
+  CasesFilters,
+  ExportResponse,
 } from "./cases.types";
 
 const BASE = "/lien/api/liens/cases";
@@ -24,7 +29,7 @@ export const casesApi = {
   },
 
   listBySearch(request: CasesQuery) {
-    return apiClient.post<CaseResponseDto[]>(`${BASE}/v3`, request);
+    return apiClient.post<CasePaginatedResult>(`${BASE}/v3`, request);
   },
 
   getById(id: string) {
@@ -38,24 +43,43 @@ export const casesApi = {
   },
 
   create(request: CreateCaseRequestDto) {
-    return apiClient.post<CaseResponseDto>("${BASE}", request);
+    return apiClient.post<CaseResponseDto>(`${BASE}/create`, request);
   },
 
   update(id: string, request: UpdateCaseRequestDto) {
     return apiClient.put<CaseResponseDto>(`${BASE}/${id}`, request);
   },
 
-  listLiensByCase(caseId: string) {
-    return apiClient.get<any[]>(`${BASE}/liens-updates/${caseId}`);
+  listLiensByCase(request: CasePaginatedParams) {
+    return apiClient.post<CaseLiensApiResponse>(
+      `/lien/api/liens/cases/liens/v3`,
+      request,
+    );
+  },
+  listLiensUpdatesByCase(request: CasePaginatedParams) {
+    return apiClient.post<PaginatedResultDto<unknown>>(
+      `${BASE}/liens-updates/`,
+      request,
+    );
   },
 
-  listLiensUpdates(caseId: string) {
-    return apiClient.get<any[]>(`${BASE}/liens-updates/${caseId}`);
+  listLiensUpdates(request: CasePaginatedParams) {
+    return apiClient.post<PaginatedResultDto<unknown>>(
+      `${BASE}/liens-updates/v3`,
+      request,
+    );
   },
 
-  getCaseUpdates(caseId: string) {
-    return apiClient.get<PaginatedResultDto<any>>(
-      `${BASE}/case-updates/${caseId}`,
+  getCaseUpdates(request: CasePaginatedParams) {
+    return apiClient.post<PaginatedResultDto<unknown>>(
+      `${BASE}/case-updates/v3`,
+      request,
+    );
+  },
+
+  getCaseUpdatesv1(id: string) {
+    return apiClient.get<PaginatedResultDto<unknown>>(
+      `${BASE}/case-updates/${id}`,
     );
   },
 
@@ -64,6 +88,9 @@ export const casesApi = {
   },
 
   getDashboardStats() {
-    return apiClient.get<DashboardStats>(`${BASE}/dashboard/piechart`)
-  }
+    return apiClient.get<DashboardStats>(`${BASE}/dashboard/piechart`);
+  },
+  export(request: CasesFilters) {
+    return apiClient.post<ExportResponse>(`${BASE}/generate-csv`, request);
+  },
 };

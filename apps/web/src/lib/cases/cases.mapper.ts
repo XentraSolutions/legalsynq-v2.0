@@ -39,6 +39,7 @@ function formatDateField(val: string | null | undefined): string {
 export function mapCaseToListItem(dto: CaseResponseDto): CaseListItem {
   return {
     id: dto.id,
+    caseId: dto.id,
     caseNumber: dto.caseNumber,
     clientName:
       dto.clientDisplayName ||

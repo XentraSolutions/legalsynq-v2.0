@@ -68,6 +68,8 @@ function formatCurrency(amount: number | null): string {
 }
 
 export function CaseDetailClient({ id }: { id: string }) {
+  const { lookup } = useSessionContext();
+
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
 
@@ -85,6 +87,11 @@ export function CaseDetailClient({ id }: { id: string }) {
 
   const [activeTab, setActiveTab] = useState<TabKey>("details");
   const [panelMode, setPanelMode] = useState<PanelMode>("split");
+  const [confirmAction, setConfirmAction] = useState<{
+    id: string;
+    status: string;
+    name: string;
+  } | null>(null);
 
   const fetchCase = useCallback(async () => {
     setLoading(true);
@@ -97,9 +104,8 @@ export function CaseDetailClient({ id }: { id: string }) {
           pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
         })),
       ]);
-      const updates = await casesService.getCaseUpdates(id);
       setCaseDetail(detail);
-      setCaseUpdates(updates);
+      // setCaseUpdates(updates ?? []);
       setRelatedLiens(liensResult.items);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -110,6 +116,15 @@ export function CaseDetailClient({ id }: { id: string }) {
     } finally {
       setLoading(false);
     }
+  }, [id]);
+
+  const fetchCaseUpdates = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const updates = await casesService.getCaseUpdates(id);
+      setCaseUpdates(updates ?? []);
+    } catch (err) {}
   }, [id]);
 
   const fetchDocumentTypes = useCallback(async () => {
@@ -144,13 +159,14 @@ export function CaseDetailClient({ id }: { id: string }) {
     } finally {
       setLoading(false);
     }
-  }, [id])
+  }, [id]);
 
   useEffect(() => {
     fetchCase();
     fetchDocumentTypes();
     fetchHistory();
-  }, [fetchCase, fetchDocumentTypes, fetchHistory]);
+    fetchCaseUpdates();
+  }, [fetchCase, fetchDocumentTypes, fetchHistory, fetchCaseUpdates]);
 
   const canEdit = ra.can("case:edit");
 
@@ -182,27 +198,44 @@ export function CaseDetailClient({ id }: { id: string }) {
 
   const docType = documentTypes;
 
-  const advanceStatus = () => {
-    const idx = STATUSES.indexOf(d.status);
-    if (idx < STATUSES.length - 1) setConfirmStatus(STATUSES[idx + 1]);
+  const handleAdvanceStatus = async () => {
+    const status = lookup?.CaseStatus;
+    const currentStatus = status?.find((s) => s.code === caseDetail.status);
+
+    if (!currentStatus) return;
+
+    const nextStatus = status?.find(
+      (s) => s.sortOrder === currentStatus.sortOrder + 1,
+    );
+
+    if (nextStatus) {
+      setConfirmAction({
+        id: caseDetail.id,
+        status: nextStatus.code,
+        name: nextStatus.name,
+      });
+      setConfirmStatus(nextStatus?.sortOrder.toString());
+    }
   };
 
   const confirmStatusChange = async () => {
-    if (!confirmStatus) return;
+    if (!confirmAction) return;
     try {
-      const updated = await casesService.updateCaseStatus(d.id, confirmStatus);
-      setCaseDetail(updated);
+      const response = await casesService.updateCaseStatus(
+        confirmAction.id,
+        confirmAction.status,
+      );
       addToast({
         type: "success",
         title: "Status Updated",
-        description: `Case moved to ${STATUS_LABELS[confirmStatus]}`,
+        description: `Case moved to ${response.status}`,
       });
-      setConfirmStatus(null);
+      setConfirmAction(null);
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Failed to update status";
       addToast({ type: "error", title: "Update Failed", description: message });
-      setConfirmStatus(null);
+      setConfirmAction(null);
     }
   };
 
@@ -257,7 +290,7 @@ export function CaseDetailClient({ id }: { id: string }) {
                 {canEdit ? (
                   <div className="flex items-end">
                     <button
-                      onClick={advanceStatus}
+                      onClick={handleAdvanceStatus}
                       disabled={d.status === "Closed"}
                       className="text-sm font-medium px-4 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors whitespace-nowrap"
                     >
@@ -310,6 +343,7 @@ export function CaseDetailClient({ id }: { id: string }) {
         )}
         {activeTab === "liens" && (
           <LiensTab
+            caseId={id}
             liens={relatedLiens}
             caseDetail={d}
             panelMode={panelMode}
@@ -342,7 +376,7 @@ export function CaseDetailClient({ id }: { id: string }) {
           onClose={() => setConfirmStatus(null)}
           onConfirm={confirmStatusChange}
           title="Advance Case Status"
-          description={`Move ${d.caseNumber} to "${STATUS_LABELS[confirmStatus]}"?`}
+          description={`Move ${d.caseNumber} to ${confirmAction?.name}?`}
           confirmLabel="Advance"
         />
       )}
@@ -508,7 +542,7 @@ function DetailsTab({
   const [tSaving, setTSaving] = useState(false);
   const [tErrors, setTErrors] = useState<Record<string, string>>({});
 
-  const { lookup } = useSessionContext()
+  const { lookup } = useSessionContext();
 
   const resetPlaintiffForm = useCallback(() => {
     setPFirstName(d.clientFirstName);
@@ -1073,7 +1107,7 @@ function DetailsTab({
                   </td>
                 </tr>
               )}
-              {u?.length > 0 &&
+              {u?.length > 0 ? (
                 u?.map((u) => (
                   <tr
                     key={u.id}
@@ -1094,7 +1128,14 @@ function DetailsTab({
                       {u.updatedBy}
                     </td>
                   </tr>
-                ))}
+                ))
+              ) : (
+                <tr className="hover:bg-gray-50/50 transition-colors">
+                  <td className="pr-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                    No updates found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -1132,17 +1173,6 @@ function DetailsTab({
       <CollapsibleSection title="Contacts" icon="ri-contacts-line">
         {/* TEMP: visual fallback data for UI review only */}
         <div className="space-y-2">
-          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <i className="ri-user-line text-sm text-primary" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm text-gray-700 font-medium truncate">
-                Sarah Mitchell
-              </p>
-              <p className="text-xs text-gray-400">Case Manager</p>
-            </div>
-          </div>
           <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
             <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
               <i className="ri-building-line text-sm text-blue-500" />
@@ -1251,37 +1281,47 @@ const TEMP_LIEN_UPDATES = [
 ];
 
 function LiensTab({
+  caseId,
   liens,
   caseDetail,
   panelMode,
   onPanelModeChange,
 }: {
+  caseId: string;
   liens: CaseLienItem[];
   caseDetail: CaseDetail;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [liensUpdates, setLiensUpdates] = useState<any>();
 
+  const fetchData = useCallback(async () => {
+    const liensUpdates = casesService.getCaseLiensUpdates(caseId);
+    setLiensUpdates(liensUpdates);
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
   /* TEMP: visual fallback data for UI review only */
   const usingFallback = liens.length === 0;
-  const displayLiens = !usingFallback
-    ? liens.map((l) => {
-        const extras = TEMP_LIEN_EXTRAS[l.id] || {
-          facility: "---",
-          serviceDate: "---",
-          purchaseDate: "---",
-          purchaseAmount: 0,
-        };
-        return {
-          ...l,
-          facility: extras.facility,
-          serviceDate: extras.serviceDate,
-          purchaseDate: extras.purchaseDate,
-          purchaseAmount: extras.purchaseAmount,
-        };
-      })
-    : TEMP_LIEN_FALLBACK_ROWS;
+  const displayLiens = liens.map((l) => {
+    const extras = TEMP_LIEN_EXTRAS[l.id] || {
+      facility: "---",
+      serviceDate: "---",
+      purchaseDate: "---",
+      purchaseAmount: 0,
+    };
+    return {
+      ...l,
+      facility: extras.facility,
+      serviceDate: extras.serviceDate,
+      purchaseDate: extras.purchaseDate,
+      purchaseAmount: extras.purchaseAmount,
+    };
+  });
+  // : TEMP_LIEN_FALLBACK_ROWS;
 
   const filtered = displayLiens.filter((l) => {
     if (!search.trim()) return true;
@@ -1306,15 +1346,6 @@ function LiensTab({
   const leftContent = (
     <div className="space-y-4">
       <CollapsibleSection title="Liens" icon="ri-stack-line">
-        {usingFallback && (
-          <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
-            <p className="text-xs text-amber-700">
-              <i className="ri-information-line mr-1" />
-              Sample data shown for UI review. No liens are linked to this case
-              yet.
-            </p>
-          </div>
-        )}
         <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1">
             <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
@@ -1460,36 +1491,44 @@ function LiensTab({
             </thead>
             <tbody className="divide-y divide-gray-50">
               {/* TEMP: visual fallback data for UI review only */}
-              {TEMP_LIEN_UPDATES.map((u) => (
-                <tr
-                  key={u.id}
-                  className="hover:bg-gray-50/50 transition-colors"
-                >
+              {liensUpdates && liensUpdates.length > 0 ? (
+                liensUpdates.map((u) => (
+                  <tr
+                    key={u.id}
+                    className="hover:bg-gray-50/50 transition-colors"
+                  >
+                    <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                      {u.timestamp}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs font-mono text-primary">
+                      {u.lienId}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
+                        {u.action}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-sm text-gray-600">
+                      {u.description}
+                    </td>
+                    <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">
+                      {u.updatedBy}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="hover:bg-gray-50/50 transition-colors">
                   <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                    {u.timestamp}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs font-mono text-primary">
-                    {u.lienId}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
-                      {u.action}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-sm text-gray-600">
-                    {u.description}
-                  </td>
-                  <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">
-                    {u.updatedBy}
+                    No updates found.
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
         <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
           <p className="text-xs text-gray-400">
-            Showing {TEMP_LIEN_UPDATES.length} entries
+            Showing {liens.length} entries
           </p>
         </div>
       </CollapsibleSection>
@@ -1520,17 +1559,6 @@ function LiensTab({
         {/* TEMP: visual fallback data for UI review only */}
         <div className="space-y-2">
           <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <i className="ri-user-line text-sm text-primary" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm text-gray-700 font-medium truncate">
-                Sarah Mitchell
-              </p>
-              <p className="text-xs text-gray-400">Case Manager</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
             <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
               <i className="ri-building-line text-sm text-blue-500" />
             </div>
@@ -1554,7 +1582,7 @@ function LiensTab({
       onModeChange={onPanelModeChange}
     />
   );
-} 
+}
 
 /* TEMP: visual fallback data for UI review only */
 const TEMP_DOCUMENT_TYPES = [
@@ -1747,11 +1775,11 @@ function DocumentsTab({
         ) : (
           <>
             <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
-              <p className="text-xs text-amber-700">
+              {/* <p className="text-xs text-amber-700">
                 <i className="ri-information-line mr-1" />
                 Sample data shown for UI review. Real documents will load from
                 the API.
-              </p>
+              </p> */}
             </div>
             <div className="overflow-x-auto -mx-5 px-5">
               <table className="min-w-full text-sm">
@@ -2164,7 +2192,7 @@ function ServicingTab({
     0,
   );
 
-  const { lookup } = useSessionContext()
+  const { lookup } = useSessionContext();
 
   const leftContent = (
     <div className="space-y-4">

@@ -26,7 +26,7 @@ export interface CaseResponseDto {
 }
 
 export interface PaginatedResultDto<T> {
-  items: T[];
+  items?: T[];
   page: number;
   pageSize: number;
   totalCount: number;
@@ -34,8 +34,8 @@ export interface PaginatedResultDto<T> {
 
 export interface CreateCaseRequestDto {
   caseNumber: string;
-  clientFirstName: string;
-  clientLastName: string;
+  firstname: string;
+  lastname: string;
   externalReference?: string;
   title?: string;
   clientDob?: string;
@@ -101,6 +101,7 @@ export interface LienResponseDto {
 
 export interface CaseListItem {
   id: string;
+  caseId: string;
   caseNumber: string;
   clientName: string;
   title: string;
@@ -200,15 +201,60 @@ export interface PaginationMeta {
 }
 
 export interface DashboardStats {
-  totalActiveCases: number
-  totalCases: number
-  totalLienValue: number
-  totalLiens: number
-  caseStatus: StatusData[]
-  lienStatus: StatusData[]
+  totalActiveCases: number;
+  totalCases: number;
+  totalLienValue: number;
+  totalLiens: number;
+  caseStatus: StatusData[];
+  lienStatus: StatusData[];
 }
 
 interface StatusData {
-  label: string
-  value: number
+  label: string;
+  value: number;
+}
+export interface CasePaginatedParams {
+  CaseId: string;
+  page: number;
+  limit: number;
+}
+
+export interface CasePaginatedResult {
+  data: CaseResponseDto[];
+  pagination?: PaginationMeta;
+  limit: number;
+  page: number;
+  totalCount: number;
+}
+
+export interface CaseListResult {
+  items: CaseListItem[];
+  pagination: PaginationMeta;
+}
+
+export interface CaseLiensResult {
+  items: CaseLienItem[];
+  pagination?: PaginationMeta;
+}
+
+export interface PaginatedWithLimitResultDto<T> {
+  items: T[];
+  page: number;
+  limit: number;
+  totalCount: number;
+}
+
+export type CaseLiensApiResponse = PaginatedWithLimitResultDto<LienResponseDto>;
+
+export interface CasesFilters {
+  caseId: string | null;
+  keyword: string;
+  lawFirmId: string | null;
+  accidentTypeId: string | null;
+  statusId: string | null;
+  caseManagerId: string | null;
+}
+
+export interface ExportResponse {
+  data: Array<{ base64: string; export_format: string; filename: string }>;
 }

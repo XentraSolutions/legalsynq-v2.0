@@ -16,24 +16,26 @@ import type {
   CreateCaseRequestDto,
   UpdateCaseRequestDto,
   DashboardStats,
+  CaseListResult,
+  CaseLiensResult,
+  CasePaginatedParams,
+  CasesFilters,
+  ExportResponse,
 } from "./cases.types";
-
-export interface CaseListResult {
-  items: CaseListItem[];
-  pagination: PaginationMeta;
-}
-
-export interface CaseLiensResult {
-  items: CaseLienItem[];
-  pagination: PaginationMeta;
-}
 
 export const casesService = {
   async getCases(query: CasesQuery = {}): Promise<CaseListResult> {
     const { data } = await casesApi.listBySearch(query);
+    const pagination = {
+      page: data.page,
+      pageSize: data.limit,
+      totalCount: data.totalCount,
+    };
     return {
       items: data.data.map(mapCaseToListItem),
-      pagination: mapPagination(data),
+      pagination: mapPagination({
+        ...pagination,
+      }),
     };
   },
 
@@ -66,17 +68,36 @@ export const casesService = {
   },
 
   async getCaseLiens(caseId: string): Promise<CaseLiensResult> {
-    const { data } = await casesApi.listLiensByCase(caseId);
+    const { data } = await casesApi.listLiensByCase({
+      CaseId: caseId,
+      page: 1,
+      limit: 10,
+    });
+
     return {
       items: data.items.map(mapLienToListItem),
-      pagination: mapPagination(data),
+      pagination: mapPagination({ ...data, pageSize: data.limit }),
     };
   },
 
   async getCaseUpdates(caseId: string): Promise<any> {
-    const { data } = await casesApi.getCaseUpdates(caseId);
+    const { data } = await casesApi.getCaseUpdates({
+      CaseId: caseId,
+      page: 1,
+      limit: 10,
+    });
     return data;
   },
+
+  async getCaseLiensUpdates(caseId: string): Promise<any> {
+    const { data } = await casesApi.listLiensUpdates({
+      CaseId: caseId,
+      page: 1,
+      limit: 10,
+    });
+    return data;
+  },
+
   async getCaseStatus(): Promise<any> {
     const { data } = await lookupApi.getCaseStatus();
     return data.sort((a, b) => a.sortOrder - b.sortOrder);
@@ -84,5 +105,10 @@ export const casesService = {
   async getDashboardStats(): Promise<DashboardStats> {
     const { data } = await casesApi.getDashboardStats();
     return data.data;
-  }
+  },
+
+  async exportCases(request: CasesFilters): Promise<ExportResponse> {
+    const { data } = await casesApi.export(request);
+    return data;
+  },
 };

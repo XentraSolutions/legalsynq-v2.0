@@ -27,6 +27,7 @@ import {
 } from "@/lib/bulk-operations";
 import { ApiError } from "@/lib/api-client";
 import { CasesFilter } from "./components/cases-filter";
+import { CasesQuery, CaseStatusResponse } from "@/lib/cases/cases.types";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,7 @@ export default function CasesPage() {
   const selection = useSelectionState();
 
   const [cases, setCases] = useState<CaseListItem[]>([]);
-  const [status, setStatus] = useState<any>();
+  const [status, setStatus] = useState<Array<CaseStatusResponse>>();
 
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
@@ -77,11 +78,18 @@ export default function CasesPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [params, setParams] = useState({
+    accidentTypeId: null,
+    caseManagerId: null,
+    lawFirmId: null,
+    statusId: null,
+  });
   const [showCreate, setShowCreate] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     id: string;
     status: string;
+    name: string;
   } | null>(null);
   const [actionOpen, setActionOpen] = useState(false);
 
@@ -99,42 +107,49 @@ export default function CasesPage() {
     return `CASE-${year}-${paddedCount}`;
   }, [showCreate, pagination]);
 
-  const fetchCases = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await casesService.getCases({
-        keyword: search || undefined,
-        // statusId: statusFilter || undefined,
-        page: pagination.page,
-        limit: 20,
-        sortBy: "",
-      });
-      setCases(result.items);
+  const fetchCases = useCallback(
+    async (params?: CasesQuery) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await casesService.getCases({
+          keyword: search || "",
+          page: pagination.page,
+          limit: 20,
+          sortBy: "createdAt",
+          sortDirection: "desc",
+          accidentTypeId: params?.accidentTypeId?.toString(),
+          caseManagerId: params?.caseManagerId?.toString(),
+          lawFirmId: params?.lawFirmId?.toString(),
+          statusId: statusFilter || params?.statusId,
+        });
+        setCases(result.items);
 
-      setPagination((prev) => ({
-        ...prev,
-        totalCount: result.pagination.totalCount,
-        totalPages: result.pagination.totalPages,
-      }));
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setCases([]);
+        setPagination((prev) => ({
+          ...prev,
+          totalCount: result.pagination.totalCount,
+          totalPages: result.pagination.totalPages,
+        }));
+      } catch (err) {
+        if (err instanceof ApiError) {
+          setCases([]);
 
-        setError(err.message);
-      } else {
-        setError("Failed to load cases");
+          setError(err.message);
+        } else {
+          setError("Failed to load cases");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    search,
-    statusFilter,
-    pagination.page,
-    pagination.totalCount,
-    pagination.totalPages,
-  ]);
+    },
+    [
+      search,
+      statusFilter,
+      pagination.page,
+      pagination.totalCount,
+      pagination.totalPages,
+    ],
+  );
 
   const lookupCaseStatus = useCallback(async () => {
     try {
@@ -148,6 +163,21 @@ export default function CasesPage() {
     }
   }, []);
 
+  const exportCases = async () => {
+    const response = await casesService.exportCases({
+      caseId: null,
+      keyword: search,
+      ...params,
+    });
+
+    const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
+    const link = document.createElement("a");
+    link.href = src;
+    link.download = response.data[0]?.filename;
+    link.click();
+    link.remove();
+  };
+
   useEffect(() => {
     fetchCases();
     lookupCaseStatus();
@@ -156,28 +186,39 @@ export default function CasesPage() {
   const canEdit = ra.can("case:edit");
 
   const handleAdvanceStatus = async (caseItem: CaseListItem) => {
-    const idx = STATUSES.indexOf(caseItem.status);
-    if (idx < STATUSES.length - 1) {
-      setConfirmAction({ id: caseItem.id, status: STATUSES[idx + 1] });
+    const currentStatus = status?.find((s) => s.code === caseItem.status);
+
+    if (!currentStatus) return;
+
+    const nextStatus = status?.find(
+      (s) => s.sortOrder === currentStatus.sortOrder + 1,
+    );
+
+    if (nextStatus) {
+      setConfirmAction({
+        id: caseItem.id,
+        status: nextStatus.code,
+        name: nextStatus.name,
+      });
     }
   };
 
   const handleChangeStatusFilter = async (statusName: string) => {
-    const filtered = status.find((s) => s.code == statusName);
-    setStatusFilter(filtered.id);
+    const filtered = status?.find((s) => s.code == statusName);
+    setStatusFilter(filtered?.code ?? "");
   };
 
   const confirmStatusChange = async () => {
     if (!confirmAction) return;
     try {
-      await casesService.updateCaseStatus(
+      const response = await casesService.updateCaseStatus(
         confirmAction.id,
         confirmAction.status,
       );
       addToast({
         type: "success",
         title: "Status Updated",
-        description: `Case moved to ${STATUS_LABELS[confirmAction.status]}`,
+        description: `Case moved to ${response.status}`,
       });
       setConfirmAction(null);
       fetchCases();
@@ -194,9 +235,9 @@ export default function CasesPage() {
     fetchCases();
   };
 
-  const handleCasesFilter = () => {
+  const handleCasesFilter = (e: any) => {
     setShowFilter(false);
-    fetchCases();
+    fetchCases(e);
   };
 
   const handleBulkAction = (actionKey: string) => {
@@ -271,6 +312,7 @@ export default function CasesPage() {
                 <button
                   onClick={() => {
                     setActionOpen(false);
+                    exportCases();
                   }}
                   className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
                 >
@@ -311,7 +353,7 @@ export default function CasesPage() {
           <i className="ri-error-warning-line text-red-500 text-sm" />
           <p className="text-sm text-red-700">{error}</p>
           <button
-            onClick={fetchCases}
+            onClick={() => fetchCases()}
             className="ml-auto text-sm text-red-600 hover:underline font-medium"
           >
             Retry
@@ -525,7 +567,7 @@ export default function CasesPage() {
           onClose={() => setConfirmAction(null)}
           onConfirm={confirmStatusChange}
           title="Change Case Status"
-          description={`Move this case to "${STATUS_LABELS[confirmAction.status]}"?`}
+          description={`Move this case to ${confirmAction.name}?`}
           confirmLabel="Update Status"
         />
       )}
