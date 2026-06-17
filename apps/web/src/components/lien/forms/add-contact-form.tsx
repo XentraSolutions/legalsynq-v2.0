@@ -9,9 +9,21 @@ import { contactsService } from "@/lib/contacts";
 interface AddContactFormProps {
   open: boolean;
   data: {
+    id: "";
+    firstName: "";
+    lastName: "";
+    contactType: "";
+    organization: "";
+    email: "";
+    phone: "";
+    city: "";
+    state: "";
+    addressLine1: "";
+    postalCode: "";
     contactTypes: Array<Record<string, string>>;
     states: Array<Record<string, string>>;
   };
+  mode: "create" | "edit" | undefined;
   onClose: () => void;
   onCreated?: () => void;
 }
@@ -21,18 +33,25 @@ export function AddContactForm({
   data,
   onClose,
   onCreated,
+  mode = "create",
 }: AddContactFormProps) {
   const addToast = useLienStore((s) => s.addToast);
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    contactType: "",
-    organization: "",
-    email: "",
-    phone: "",
-    city: "",
-    state: "",
-  });
+  const [form, setForm] = useState(
+    mode == "create"
+      ? {
+          firstName: "",
+          lastName: "",
+          contactType: "",
+          organization: "",
+          email: "",
+          phone: "",
+          city: "",
+          state: "",
+          addressLine1: "",
+          postalCode: "",
+        }
+      : data,
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -51,29 +70,58 @@ export function AddContactForm({
     if (!validate()) return;
     try {
       setSubmitting(true);
-      await contactsService.createContact({
-        firstName: form.firstName,
-        lastName: form.lastName,
-        contactType: form.contactType,
-        organization: form.organization || undefined,
-        email: form.email || undefined,
-        phone: form.phone || undefined,
-        city: form.city || undefined,
-        state: form.state || undefined,
-      });
-      addToast({
-        type: "success",
-        title: "Contact Created",
-        description: `${form.firstName} ${form.lastName}`,
-      });
+      if (mode == "create") {
+        await contactsService.createContact({
+          firstName: form.firstName,
+          lastName: form.lastName,
+          contactType: form.contactType,
+          organization: form.organization || undefined,
+          email: form.email || undefined,
+          phone: form.phone || undefined,
+          city: form.city || undefined,
+          state: form.state || undefined,
+          addressLine1: form.addressLine1 || undefined,
+          postalCode: form.postalCode || undefined,
+          title: "",
+          fax: form.phone || undefined,
+          website: "",
+          notes: "",
+        });
+        addToast({
+          type: "success",
+          title: "Contact Created",
+          description: `${form.firstName} ${form.lastName}`,
+        });
+      } else {
+        await contactsService.updateContact(data?.id, {
+          firstName: form.firstName,
+          lastName: form.lastName,
+          contactType: form.contactType,
+          organization: form.organization || undefined,
+          email: form.email || undefined,
+          phone: form.phone || undefined,
+          city: form.city || undefined,
+          state: form.state || undefined,
+          addressLine1: form.addressLine1 || undefined,
+          postalCode: form.postalCode || undefined,
+        });
+        addToast({
+          type: "success",
+          title: "Contact Updated",
+          description: `${form.firstName} ${form.lastName}`,
+        });
+      }
+
       resetAndClose();
       onCreated?.();
     } catch (err) {
       addToast({
         type: "error",
-        title: "Create Failed",
+        title: mode == "create" ? "Create Failed" : "Update Failed.",
         description:
-          err instanceof Error ? err.message : "Failed to create contact",
+          err instanceof Error
+            ? err.message
+            : `Failed to ${mode == "create" ? "Create" : "Update"} contact`,
       });
     } finally {
       setSubmitting(false);
@@ -90,6 +138,8 @@ export function AddContactForm({
       phone: "",
       city: "",
       state: "",
+      addressLine1: "",
+      postalCode: "",
     });
     setErrors({});
     onClose();
@@ -100,8 +150,16 @@ export function AddContactForm({
       open={open}
       onClose={resetAndClose}
       onSubmit={handleSubmit}
-      title="Add Contact"
-      submitLabel={submitting ? "Creating..." : "Add Contact"}
+      title={mode == "create" ? "Add Contact" : "Edit Contact"}
+      submitLabel={
+        submitting
+          ? mode === "create"
+            ? "Creating..."
+            : "Updating..."
+          : mode === "create"
+            ? "Create Contact"
+            : "Edit Contact"
+      }
     >
       <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -207,6 +265,20 @@ export function AddContactForm({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
+              Address
+            </label>
+            <input
+              type="text"
+              value={form.addressLine1}
+              onChange={(e) =>
+                setForm({ ...form, addressLine1: e.target.value })
+              }
+              placeholder="Address"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               City
             </label>
             <input
@@ -217,6 +289,8 @@ export function AddContactForm({
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               State
@@ -234,14 +308,27 @@ export function AddContactForm({
                   </option>
                 ))}
             </select>
-            {/* <input
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Zip Code
+            </label>
+            <input
+              type="text"
+              value={form.postalCode}
+              onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
+              placeholder="Zip Code"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+          </div>
+          <div></div>
+          {/* <input
               type="text"
               value={form.state}
               onChange={(e) => setForm({ ...form, state: e.target.value })}
               placeholder="e.g. NV"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             /> */}
-          </div>
         </div>
       </div>
     </FormModal>
