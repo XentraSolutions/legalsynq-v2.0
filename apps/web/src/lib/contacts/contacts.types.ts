@@ -71,6 +71,8 @@ export interface ContactsQuery {
 
 export interface ContactListItem {
   id: string;
+  firstName: string;
+  lastName: string;
   contactType: string;
   displayName: string;
   organization: string;

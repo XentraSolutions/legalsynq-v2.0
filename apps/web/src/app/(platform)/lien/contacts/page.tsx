@@ -21,6 +21,9 @@ import {
   type BulkOperationResult,
 } from "@/lib/bulk-operations";
 import { lookupService } from "@/lib/lookup";
+import { useSessionContext } from "@/providers/session-provider";
+import { ConfirmDialog } from "@/components/lien/modal";
+import { useRouter } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -38,20 +41,26 @@ const BULK_ACTIONS: BulkActionConfig[] = [
 
 export default function ContactsPage() {
   const addToast = useLienStore((s) => s.addToast);
+  const router = useRouter();
   const ra = useRoleAccess();
   const selection = useSelectionState();
 
   const [contacts, setContacts] = useState<ContactListItem[]>([]);
+  const [contactData, setContactData] = useState<ContactListItem>();
   const [contactTypes, setContactTypes] = useState<
     Array<Record<string, string>>
   >([]);
-  const [states, setStates] = useState({});
+  const { lookup } = useSessionContext();
+  const [states, setStates] = useState(lookup?.State);
 
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState<{
+    open: boolean;
+    mode?: "create" | "edit" | undefined;
+  }>({ open: false, mode: "create" });
   const [previewId, setPreviewId] = useState<string | null>(null);
 
   const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
@@ -59,6 +68,11 @@ export default function ContactsPage() {
   const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(
     null,
   );
+  const [confirmAction, setConfirmAction] = useState<{
+    id: string;
+    action: string;
+    label: string;
+  } | null>(null);
 
   const fetchContacts = useCallback(async () => {
     try {
@@ -99,15 +113,14 @@ export default function ContactsPage() {
     : null;
   const canEdit = ra.can("contact:edit");
 
-  const showCreateForm = async () => {
-    const statesRes = await lookupService.getStates();
-    setStates(statesRes.items);
-    setShowCreate(true);
+  const showCreateForm = async (mode: "create" | "edit") => {
+    setStates(lookup?.State);
+    setShowCreate({ open: true, mode: mode });
   };
 
   const exportContacts = async () => {
     const response = await contactsService.exportContacts(typeFilter);
-    const csv = atob(response.data.data);
+    const csv = atob(response.data);
 
     const now = new Date();
     const date = now.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -142,6 +155,30 @@ export default function ContactsPage() {
     fetchContacts();
   };
 
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    try {
+      if (confirmAction.action === "delete") {
+        await contactsService.deleteContact(confirmAction.id);
+        addToast({
+          type: confirmAction.action === "cancel" ? "warning" : "success",
+          title: confirmAction.label,
+          description: `Contact has been deleted`,
+        });
+        setConfirmAction(null);
+        fetchContacts();
+      }
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Action Failed",
+        description:
+          err instanceof Error ? err.message : "Failed to update status",
+      });
+      setConfirmAction(null);
+    }
+  };
+
   const allIds = contacts?.map((c) => c.id);
 
   return (
@@ -152,7 +189,7 @@ export default function ContactsPage() {
         actions={
           ra.can("contact:create") ? (
             <button
-              onClick={showCreateForm}
+              onClick={() => showCreateForm("create")}
               className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
             >
               <i className="ri-add-line text-base" />
@@ -298,7 +335,9 @@ export default function ContactsPage() {
                             {
                               label: "View Details",
                               icon: "ri-eye-line",
-                              onClick: () => {},
+                              onClick: () => {
+                                router.push(`/lien/contacts/${c.id}`);
+                              },
                             },
                             ...(c.email
                               ? [
@@ -314,6 +353,26 @@ export default function ContactsPage() {
                                   },
                                 ]
                               : []),
+                            {
+                              label: "Edit Contact",
+                              icon: "ri-pencil-line",
+                              onClick: () => {
+                                console.log(c);
+                                setContactData(c);
+                                showCreateForm("edit");
+                              },
+                            },
+                            {
+                              label: "Delete Contact",
+                              icon: "ri-delete-bin-line",
+                              onClick: () => {
+                                setConfirmAction({
+                                  id: c.id,
+                                  action: "delete",
+                                  label: "Delete",
+                                });
+                              },
+                            },
                           ]}
                         />
                       </td>
@@ -349,12 +408,26 @@ export default function ContactsPage() {
           loading={bulkLoading}
         />
       )}
-      {showCreate && (
+      {showCreate.open && (
         <AddContactForm
-          open={showCreate}
-          data={{ contactTypes: contactTypes, states: states }}
-          onClose={() => setShowCreate(false)}
+          open={showCreate.open}
+          mode={showCreate.mode}
+          data={{ ...contactData, contactTypes: contactTypes, states: states }}
+          onClose={() => setShowCreate({ open: false })}
           onCreated={fetchContacts}
+        />
+      )}
+      {confirmAction && (
+        <ConfirmDialog
+          open
+          onClose={() => setConfirmAction(null)}
+          onConfirm={handleConfirmAction}
+          title={confirmAction.label}
+          description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this contact?`}
+          confirmLabel={confirmAction.label}
+          confirmVariant={
+            confirmAction.action === "cancel" ? "danger" : "primary"
+          }
         />
       )}
       <SideDrawer

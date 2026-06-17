@@ -31,7 +31,7 @@ export const contactsApi = {
   },
 
   create(request: CreateContactRequestDto) {
-    return apiClient.post<ContactResponseDto>(BASE, request);
+    return apiClient.post<ContactResponseDto>(`${BASE}`, request);
   },
 
   update(id: string, request: UpdateContactRequestDto) {
@@ -44,6 +44,10 @@ export const contactsApi = {
 
   reactivate(id: string) {
     return apiClient.put<ContactResponseDto>(`${BASE}/${id}/reactivate`, {});
+  },
+
+  delete(id: string) {
+    return apiClient.delete<ContactResponseDto>(`${BASE}/delete/${id}`);
   },
 
   export(contactType: string) {

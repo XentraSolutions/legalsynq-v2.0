@@ -58,6 +58,11 @@ export const contactsService = {
     return mapContactToDetail(data);
   },
 
+  async deleteContact(id: string): Promise<unknown> {
+    const { data } = await contactsApi.delete(id);
+    return data;
+  },
+
   async exportContacts(contactType: string): Promise<ExportResponse> {
     const { data } = await contactsApi.export(contactType);
     return data;

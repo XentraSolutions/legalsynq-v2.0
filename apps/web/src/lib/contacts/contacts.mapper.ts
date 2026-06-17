@@ -4,18 +4,22 @@ import type {
   ContactListItem,
   ContactDetail,
   PaginationMeta,
-} from './contacts.types';
+} from "./contacts.types";
 
 function safeString(val: string | null | undefined): string {
-  return val ?? '';
+  return val ?? "";
 }
 
 function formatDateField(val: string | null | undefined): string {
-  if (!val) return '';
+  if (!val) return "";
   try {
     const d = new Date(val);
     if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   } catch {
     return val;
   }
@@ -24,6 +28,8 @@ function formatDateField(val: string | null | undefined): string {
 export function mapContactToListItem(dto: ContactResponseDto): ContactListItem {
   return {
     id: dto.id,
+    firstName: dto.firstName,
+    lastName: dto.lastName,
     contactType: dto.contactType,
     displayName: dto.displayName,
     organization: safeString(dto.organization),
@@ -51,7 +57,9 @@ export function mapContactToDetail(dto: ContactResponseDto): ContactDetail {
   };
 }
 
-export function mapContactPagination<T>(result: PaginatedResultDto<T>): PaginationMeta {
+export function mapContactPagination<T>(
+  result: PaginatedResultDto<T>,
+): PaginationMeta {
   return {
     page: result.page,
     pageSize: result.pageSize,
