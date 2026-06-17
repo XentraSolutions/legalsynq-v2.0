@@ -499,6 +499,27 @@ public static class PublicNetworkEndpoints
                 }
             }
 
+            // CC-PORTAL-ACCOUNT-CHECK: Block public referrals from senders who already
+            // have an active CareConnect portal account on this tenant.
+            // They should log in and use the authenticated referral flow instead.
+            if (!string.IsNullOrWhiteSpace(req.SenderEmail))
+            {
+                var portalStatus = await identityOrgs.GetReferrerPortalAccessStatusAsync(
+                    tenantId.Value, req.SenderEmail.Trim(), ct);
+                if (portalStatus == ReferrerPortalAccessStatuses.ActiveInTenant)
+                {
+                    logger.LogWarning(
+                        "Public referral rejected: sender email has active portal access " +
+                        "(tenantContext={TenantId}).",
+                        tenantId.Value);
+                    return Results.Conflict(new
+                    {
+                        message = "This email address is already associated with an active CareConnect account. Please log in to submit referrals.",
+                        code    = "ACTIVE_ACCOUNT_EXISTS",
+                    });
+                }
+            }
+
             // Input validation
             var errors = ValidatePublicReferralRequest(req);
             if (errors.Count > 0)

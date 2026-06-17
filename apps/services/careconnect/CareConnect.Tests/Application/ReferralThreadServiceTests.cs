@@ -429,6 +429,7 @@ public class ReferralThreadServiceTests
             comments.Object,
             attachments.Object,
             emailService,
+            Mock.Of<IIdentityOrganizationService>(),
             scopeFactory,
             NullLogger<ReferralThreadService>.Instance);
     }

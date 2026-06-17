@@ -537,7 +537,7 @@ const EMPTY_FORM: ReferralForm = {
   firmName: '', contactFirstName: '', contactLastName: '', email: '', phone: '',
 };
 
-type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error';
+type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error' | 'account-exists';
 
 interface CreatedReferralUploadTarget {
   referralId: string;
@@ -604,6 +604,7 @@ function ReferralPanel({
   const [hasPortalAccess, setHasPortalAccess] = useState(false);
   const [enrollToken,    setEnrollToken]   = useState<string | null>(null);
   const [treatmentTypes, setTreatmentTypes] = useState<{ id: string; name: string }[]>([]);
+  const [checkingEmail,  setCheckingEmail]  = useState(false);
 
   useEffect(() => {
     const endpoint = prefillLawFirm
@@ -695,15 +696,39 @@ function ReferralPanel({
     return errs;
   }, [form, prefillLawFirm]);
 
-  // Validate then show confirmation modal
-  const handleSubmit = useCallback((e: FormEvent) => {
+  // Validate then show confirmation modal (with pre-submit portal account check)
+  const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     setErrMsg('');
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
+
+    // CC-PORTAL-ACCOUNT-CHECK: Check if the sender email already has an active
+    // portal account on this tenant. Skip for authenticated users (already logged in).
+    if (!prefillLawFirm && form.email.trim()) {
+      setCheckingEmail(true);
+      try {
+        const res = await fetch(
+          `/api/public/careconnect/api/public/referrer-status?email=${encodeURIComponent(form.email.trim())}`,
+          { headers: { 'X-Tenant-Id': tenantId } },
+        );
+        if (res.ok) {
+          const data = await res.json() as { hasPortalAccess: boolean; status: string };
+          if (data.status === 'active_in_tenant') {
+            setCheckingEmail(false);
+            setState('account-exists');
+            return;
+          }
+        }
+      } catch {
+        // Fail-open: proceed to confirm on any network error
+      }
+      setCheckingEmail(false);
+    }
+
     setState('confirm');
-  }, [validate]);
+  }, [validate, form.email, tenantId, prefillLawFirm]);
 
   // Called from confirmation modal — actually sends the referral
   const confirmAndSend = useCallback(async () => {
@@ -1234,10 +1259,12 @@ function ReferralPanel({
           <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900">
             <button
               type="submit"
-              disabled={state === 'submitting'}
+              disabled={state === 'submitting' || checkingEmail}
               className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
             >
-              {state === 'submitting' ? (
+              {checkingEmail ? (
+                <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Checking…</>
+              ) : state === 'submitting' ? (
                 <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
               ) : (
                 <><i className="ri-send-plane-line" />Send Referral{providers.length > 1 ? `s (${providers.length})` : ''}</>
@@ -1263,6 +1290,15 @@ function ReferralPanel({
           onConfirm={confirmAndSend}
           onBack={() => setState('form')}
           onClose={() => window.location.reload()}
+        />
+      )}
+
+      {/* Account exists modal — blocks referral when email is already active on this tenant */}
+      {state === 'account-exists' && (
+        <AccountExistsModal
+          email={form.email}
+          loginUrl={loginUrl}
+          onCancel={() => setState('form')}
         />
       )}
     </div>
@@ -1531,6 +1567,69 @@ function ReferralConfirmModal({
           </>
         )}
 
+      </div>
+    </div>
+  );
+}
+
+// ── Account exists modal ─────────────────────────────────────────────────────
+
+function AccountExistsModal({
+  email, loginUrl, onCancel,
+}: {
+  email:    string;
+  loginUrl: string;
+  onCancel: () => void;
+}) {
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div
+        ref={modalRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="account-exists-title"
+        aria-describedby="account-exists-desc"
+        tabIndex={-1}
+        className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl focus:outline-none"
+      >
+        <div className="px-6 pt-8 pb-6 text-center">
+          <div className="mx-auto w-14 h-14 rounded-full bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center mb-4">
+            <i className="ri-shield-check-line text-amber-500 text-3xl" />
+          </div>
+          <h2 id="account-exists-title" className="text-base font-bold text-gray-900 dark:text-white">
+            Account Already Exists
+          </h2>
+          <p id="account-exists-desc" className="text-sm text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
+            The email <strong className="text-gray-700 dark:text-gray-200">{email}</strong> is
+            already linked to an active CareConnect account for this network.
+          </p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+            Please log in to submit referrals through your portal dashboard.
+          </p>
+        </div>
+
+        <div className="px-6 pb-6 flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+          >
+            Cancel
+          </button>
+          <a
+            href={loginUrl}
+            className="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+          >
+            Login
+            <i className="ri-arrow-right-line text-sm" />
+          </a>
+        </div>
       </div>
     </div>
   );
