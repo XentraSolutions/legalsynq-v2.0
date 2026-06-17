@@ -75,10 +75,6 @@ public class JwtTokenService : IJwtTokenService
 
             claims.Add(new Claim("provider_mode", Identity.Domain.ProviderModes.Normalize(organization.ProviderMode)));
 
-            // DisplayName holds the clean user-facing org name (e.g. "Smith & Jones") and is always
-            // set to FirmName.Trim() on org creation. Name is a technical idempotency key
-            // (e.g. "Smith & Jones [firm:john@smith.com]") and should never surface to users;
-            // it is only a fallback here in case DisplayName is somehow absent on legacy rows.
             var orgDisplayName = organization.DisplayName ?? organization.Name;
             if (!string.IsNullOrWhiteSpace(orgDisplayName))
                 claims.Add(new Claim("org_name", orgDisplayName));

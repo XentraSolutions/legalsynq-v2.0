@@ -7828,12 +7828,6 @@ public static partial class AdminEndpointsLscc010
 {
     private const string CareConnectProductCode = "SYNQ_CARECONNECT";
 
-    // Deterministic org name that embeds the CareConnect provider ID for stable lookup.
-    // Format: "{ProviderName} [cc:{providerCcId:D}]"
-    // This is the idempotency key — the same provider always maps to the same org.
-    private static string OrgName(string providerName, Guid providerCcId)
-        => $"{providerName.Trim()} [cc:{providerCcId:D}]";
-
     private static async Task EnsureCareConnectUserProductAccessAsync(
         Guid tenantId,
         Guid userId,
@@ -7949,40 +7943,64 @@ public static partial class AdminEndpointsLscc010
             }
         }
 
-        var name = OrgName(body.ProviderName, body.ProviderCcId);
+        var providerNameNorm = body.ProviderName.Trim();
 
-        // Idempotency: self-enrollment uses a global provider org; legacy auto-provisioning
-        // remains tenant-scoped because its follow-up provision-user call carries only orgId.
+        // Idempotency: check both the legacy "[cc:guid]" name format and the clean name.
+        var legacyName = $"{providerNameNorm} [cc:{body.ProviderCcId:D}]";
         var orgTenantId = body.GlobalScope ? (Guid?)null : body.TenantId;
+
         var existing = await db.Organizations
             .AsNoTracking()
             .FirstOrDefaultAsync(o => o.TenantId == orgTenantId
                                    && o.OrgType   == "PROVIDER"
-                                   && o.Name      == name, ct);
+                                   && (o.Name == legacyName || o.Name == providerNameNorm), ct);
 
         if (existing is not null)
         {
-            return Results.Ok(new CreateProviderOrgResponse(existing.Id, existing.Name, IsNew: false));
+            return Results.Ok(new CreateProviderOrgResponse(existing.Id, existing.DisplayName ?? existing.Name, IsNew: false));
         }
 
-        // Create minimal PROVIDER org — no billing, no user setup, no domains
+        // Create with the clean name; fall back to a short disambiguator on
+        // unique-constraint collision (two providers in the same tenant with
+        // the same display name).
         var org = body.GlobalScope
             ? Organization.CreateGlobal(
-                name:        name,
+                name:        providerNameNorm,
                 orgType:     OrgType.Provider,
-                displayName: body.ProviderName.Trim())
+                displayName: providerNameNorm)
             : Organization.Create(
                 tenantId:    body.TenantId,
-                name:        name,
+                name:        providerNameNorm,
                 orgType:     OrgType.Provider,
-                displayName: body.ProviderName.Trim());
+                displayName: providerNameNorm);
 
         db.Organizations.Add(org);
-        await db.SaveChangesAsync(ct);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            var disambiguatedName = $"{providerNameNorm} ({body.ProviderCcId.ToString("D")[..8]})";
+            org = body.GlobalScope
+                ? Organization.CreateGlobal(
+                    name:        disambiguatedName,
+                    orgType:     OrgType.Provider,
+                    displayName: providerNameNorm)
+                : Organization.Create(
+                    tenantId:    body.TenantId,
+                    name:        disambiguatedName,
+                    orgType:     OrgType.Provider,
+                    displayName: providerNameNorm);
+            db.Organizations.Add(org);
+            await db.SaveChangesAsync(ct);
+        }
 
         return Results.Created(
             $"/api/admin/organizations/{org.Id}",
-            new CreateProviderOrgResponse(org.Id, org.Name, IsNew: true));
+            new CreateProviderOrgResponse(org.Id, org.DisplayName ?? org.Name, IsNew: true));
     }
 
     /// <summary>
@@ -8585,29 +8603,35 @@ public static partial class AdminEndpointsLscc010
             }
         }
 
-        // Idempotency key: global organization keyed by firm contact.
-        var idempotencyName = $"{body.FirmName.Trim()} [firm:{body.ContactEmail.Trim().ToLowerInvariant()}]";
+        // Idempotency: find an existing global LAW_FIRM org where the contact
+        // email already has a membership, so re-enrollment reuses the same org.
+        // Also check the legacy name format for orgs created before the normalization migration.
+        var contactEmailNorm = body.ContactEmail.Trim().ToLowerInvariant();
+        var firmNameNorm = body.FirmName.Trim();
+        var legacyFirmName = $"{firmNameNorm} [firm:{contactEmailNorm}]";
 
         var existing = await db.Organizations
             .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == null
-                                   && o.OrgType   == OrgType.LawFirm
-                                   && o.Name      == idempotencyName, ct);
+            .Where(o => o.TenantId == null
+                     && o.OrgType  == OrgType.LawFirm)
+            .Where(o => o.Name == legacyFirmName
+                     || o.Memberships.Any(m => m.User!.Email == contactEmailNorm))
+            .FirstOrDefaultAsync(ct);
 
         if (existing is not null)
-            return Results.Ok(new CreateLawFirmOrgResponse(existing.Id, existing.Name, IsNew: false));
+            return Results.Ok(new CreateLawFirmOrgResponse(existing.Id, existing.DisplayName ?? existing.Name, IsNew: false));
 
         var org = Organization.CreateGlobal(
-            name:        idempotencyName,
+            name:        firmNameNorm,
             orgType:     OrgType.LawFirm,
-            displayName: body.FirmName.Trim());
+            displayName: firmNameNorm);
 
         db.Organizations.Add(org);
         await db.SaveChangesAsync(ct);
 
         return Results.Created(
             $"/api/admin/organizations/{org.Id}",
-            new CreateLawFirmOrgResponse(org.Id, org.Name, IsNew: true));
+            new CreateLawFirmOrgResponse(org.Id, org.DisplayName ?? org.Name, IsNew: true));
     }
 
     private static async Task<UserOrganizationMembership> EnsureUserOrganizationMembershipAsync(
