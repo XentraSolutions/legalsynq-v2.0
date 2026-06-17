@@ -94,6 +94,62 @@ function getAdminNetworkDisplay(item: AdminReferralItem): string | null {
   return normalizeNetworkDisplay(item.networkName) ?? normalizeNetworkDisplay(item.tenantName);
 }
 
+function buildReferralsHref(params: {
+  status?: string;
+  search?: string;
+  page?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set('status', params.status);
+  if (params.search) qs.set('search', params.search);
+  if (params.page && params.page > 1) qs.set('page', String(params.page));
+
+  const query = qs.toString();
+  return query ? `/careconnect/referrals?${query}` : '/careconnect/referrals';
+}
+
+function ReferralsPagination({
+  page,
+  pageSize,
+  total,
+  status,
+  search,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  status?: string;
+  search?: string;
+}) {
+  if (total <= 0) return null;
+
+  return (
+    <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+      <p className="text-xs text-gray-400">
+        Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+      </p>
+      <div className="flex items-center gap-2">
+        {page > 1 && (
+          <Link
+            href={buildReferralsHref({ status, search, page: page - 1 })}
+            className="text-xs text-primary hover:underline"
+          >
+            ← Previous
+          </Link>
+        )}
+        {page * pageSize < total && (
+          <Link
+            href={buildReferralsHref({ status, search, page: page + 1 })}
+            className="text-xs text-primary hover:underline"
+          >
+            Next →
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Network referral row (flat table) ─────────────────────────────────────────
 
 function NetworkReferralRow({
@@ -178,10 +234,12 @@ const ALL_STATUSES = ['New', 'Accepted', 'InProgress', 'Completed', 'Declined', 
 async function NetworkReferralsView({
   status,
   search,
+  page,
   timezone,
 }: {
   status?: string;
   search?: string;
+  page: number;
   timezone: string;
 }) {
   let data = null;
@@ -189,8 +247,8 @@ async function NetworkReferralsView({
 
   try {
     data = await careConnectServerApi.networkReferrals.list({
-      page:     1,
-      pageSize: 200,
+      page,
+      pageSize: 20,
       status:   status || undefined,
       search:   search || undefined,
     });
@@ -198,7 +256,6 @@ async function NetworkReferralsView({
     fetchError = err instanceof ServerApiError ? err.message : 'Failed to load network referrals.';
   }
 
-  const hasMore = data ? data.total > data.items.length : false;
   const showNetworkColumn = data?.items.some((item) => 'networkName' in item || 'tenantName' in item) ?? false;
 
   return (
@@ -206,7 +263,7 @@ async function NetworkReferralsView({
       {/* Status filter pills */}
       <div className="flex flex-wrap gap-2">
         <Link
-          href="/careconnect/referrals"
+          href={buildReferralsHref({ search })}
           className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
             !status
               ? 'bg-primary text-white border-primary'
@@ -218,7 +275,7 @@ async function NetworkReferralsView({
         {ALL_STATUSES.map((s) => (
           <Link
             key={s}
-            href={`/careconnect/referrals?status=${s}${search ? `&search=${encodeURIComponent(search)}` : ''}`}
+            href={buildReferralsHref({ status: s, search })}
             className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
               status === s
                 ? 'bg-primary text-white border-primary'
@@ -274,6 +331,13 @@ async function NetworkReferralsView({
               </tbody>
             </table>
           </div>
+          <ReferralsPagination
+            page={data.page}
+            pageSize={data.pageSize}
+            total={data.total}
+            status={status}
+            search={search}
+          />
         </div>
       )}
 
@@ -296,7 +360,7 @@ async function NetworkReferralsView({
           </p>
           {(status || search) && (
             <Link
-              href="/careconnect/referrals"
+              href={buildReferralsHref({})}
               className="mt-3 inline-block text-sm text-primary hover:underline"
             >
               Clear filters
@@ -305,12 +369,6 @@ async function NetworkReferralsView({
         </div>
       )}
 
-      {/* Pagination notice */}
-      {hasMore && (
-        <p className="text-xs text-gray-400 text-center">
-          Showing first {data?.items.length} of {data?.total} referrals.
-        </p>
-      )}
     </div>
   );
 }
@@ -318,10 +376,12 @@ async function NetworkReferralsView({
 async function TenantAdminReadOnlyReferralsView({
   sessionTenantId,
   status,
+  page,
   timezone,
 }: {
   sessionTenantId: string;
   status?: string;
+  page: number;
   timezone: string;
 }) {
   let data: AdminReferralPage | null = null;
@@ -329,8 +389,8 @@ async function TenantAdminReadOnlyReferralsView({
 
   try {
     data = await careConnectServerApi.adminDashboard.getReferrals({
-      page: 1,
-      pageSize: 200,
+      page,
+      pageSize: 20,
       status: status || undefined,
       tenantId: sessionTenantId,
     });
@@ -345,7 +405,7 @@ async function TenantAdminReadOnlyReferralsView({
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
         <Link
-          href="/careconnect/referrals"
+          href={buildReferralsHref({})}
           className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
             !status
               ? 'bg-primary text-white border-primary'
@@ -357,7 +417,7 @@ async function TenantAdminReadOnlyReferralsView({
         {ALL_STATUSES.map((s) => (
           <Link
             key={s}
-            href={`/careconnect/referrals?status=${s}`}
+            href={buildReferralsHref({ status: s })}
             className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
               status === s
                 ? 'bg-primary text-white border-primary'
@@ -469,6 +529,12 @@ async function TenantAdminReadOnlyReferralsView({
               </tbody>
             </table>
           </div>
+          <ReferralsPagination
+            page={data?.page ?? page}
+            pageSize={data?.pageSize ?? 20}
+            total={data?.total ?? 0}
+            status={status}
+          />
         </div>
       )}
 
@@ -497,6 +563,7 @@ async function TenantAdminReadOnlyReferralsView({
 export default async function ReferralsPage({ searchParams }: ReferralsPageProps) {
   const searchParamsData = await searchParams;
   const session = await requireOrg();
+  const page = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
 
   const isReferrer        = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver        = session.productRoles.includes(ProductRole.CareConnectReceiver);
@@ -530,6 +597,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
         <TenantAdminReadOnlyReferralsView
           sessionTenantId={session.tenantId}
           status={searchParamsData.status || undefined}
+          page={page}
           timezone={tenantTimezone}
         />
 
@@ -574,6 +642,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
         <NetworkReferralsView
           status={searchParamsData.status || undefined}
           search={searchText}
+          page={page}
           timezone={tenantTimezone}
         />
 
@@ -587,8 +656,6 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
   }
 
   // ── Standard referrer / receiver view ─────────────────────────────────────
-
-  const page = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
 
   const createdFrom = (searchParamsData.createdFrom && isValidIsoDate(searchParamsData.createdFrom))
     ? searchParamsData.createdFrom : undefined;

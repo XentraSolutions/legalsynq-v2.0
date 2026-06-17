@@ -79,12 +79,13 @@ describe('AttachmentPanel', () => {
     );
   });
 
-  test('shows a view-only badge instead of upload controls in read-only mode', async () => {
+  test('hides upload controls in read-only mode without showing a badge', async () => {
     mockList().mockResolvedValue(ok([]));
     render(<AttachmentPanel entityType="referral" entityId="ref-1" readOnly />);
     await waitFor(() =>
-      expect(screen.getByText('View only')).toBeInTheDocument(),
+      expect(screen.getByText('No documents uploaded yet.')).toBeInTheDocument(),
     );
+    expect(screen.queryByText('View only')).not.toBeInTheDocument();
     expect(screen.queryByText('+ Upload')).not.toBeInTheDocument();
   });
 

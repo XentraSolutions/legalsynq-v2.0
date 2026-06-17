@@ -321,11 +321,7 @@ export function AttachmentPanel({
         </h3>
 
         {/* Upload trigger — admins only */}
-        {readOnly ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded bg-gray-50 text-gray-500">
-            View only
-          </span>
-        ) : canUpload ? (
+        {canUpload ? (
           <div>
             <input
               ref={fileInputRef}
@@ -346,7 +342,7 @@ export function AttachmentPanel({
               {uploading ? 'Uploading…' : '+ Upload'}
             </label>
           </div>
-        ) : (
+        ) : !readOnly ? (
           <span
             title="You don't have permission to upload documents"
             className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded bg-gray-50 text-gray-400 cursor-not-allowed select-none"
@@ -354,7 +350,7 @@ export function AttachmentPanel({
           >
             + Upload
           </span>
-        )}
+        ) : null}
       </div>
 
       {/* Upload error */}
