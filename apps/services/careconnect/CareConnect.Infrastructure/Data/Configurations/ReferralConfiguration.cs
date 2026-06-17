@@ -45,6 +45,7 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.Property(r => r.Urgency).IsRequired().HasMaxLength(20);
         builder.Property(r => r.Status).IsRequired().HasMaxLength(20);
         builder.Property(r => r.Notes).HasMaxLength(2000);
+        builder.Property(r => r.DeclineNotes).HasMaxLength(2000);
         builder.Property(r => r.CreatedAtUtc).IsRequired();
         builder.Property(r => r.UpdatedAtUtc).IsRequired();
         builder.Property(r => r.CreatedByUserId);

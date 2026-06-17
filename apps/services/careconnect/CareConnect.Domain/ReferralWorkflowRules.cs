@@ -13,7 +13,7 @@ public static class ReferralWorkflowRules
         {
             [Referral.ValidStatuses.New]        = new[] { Referral.ValidStatuses.NewOpened, Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
             [Referral.ValidStatuses.NewOpened] = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
-            [Referral.ValidStatuses.Accepted]   = new[] { Referral.ValidStatuses.InProgress, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.Accepted]   = new[] { Referral.ValidStatuses.Completed, Referral.ValidStatuses.Cancelled },
             [Referral.ValidStatuses.InProgress] = new[] { Referral.ValidStatuses.Completed, Referral.ValidStatuses.Cancelled },
             [Referral.ValidStatuses.Completed]  = Array.Empty<string>(),
             [Referral.ValidStatuses.Declined]   = Array.Empty<string>(),
@@ -66,6 +66,7 @@ public static class ReferralWorkflowRules
     public static string RequiredPermissionFor(string toStatus) => toStatus switch
     {
         Referral.ValidStatuses.Accepted   => BuildingBlocks.Authorization.PermissionCodes.ReferralAccept,
+        Referral.ValidStatuses.Completed  => BuildingBlocks.Authorization.PermissionCodes.ReferralAccept,
         Referral.ValidStatuses.Declined   => BuildingBlocks.Authorization.PermissionCodes.ReferralDecline,
         Referral.ValidStatuses.Cancelled  => BuildingBlocks.Authorization.PermissionCodes.ReferralCancel,
         Referral.ValidStatuses.InProgress => BuildingBlocks.Authorization.PermissionCodes.ReferralUpdateStatus,

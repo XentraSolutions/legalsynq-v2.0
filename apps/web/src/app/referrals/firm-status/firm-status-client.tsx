@@ -38,13 +38,15 @@ interface Props {
   enrollToken:     string | null;
 }
 
-type StatusKey = 'New' | 'NewOpened' | 'Accepted' | 'Rejected' | 'Cancelled' | 'InProgress';
+type StatusKey = 'New' | 'NewOpened' | 'Accepted' | 'Completed' | 'Declined' | 'Rejected' | 'Cancelled' | 'InProgress';
 
 const STATUS_CONFIG: Record<StatusKey, { label: string; color: string; bg: string; border: string; step: number }> = {
   New:        { label: 'Awaiting Provider Response', color: '#92400e', bg: '#fffbeb', border: '#fcd34d', step: 1 },
   NewOpened:  { label: 'Opened by Provider',         color: '#1e40af', bg: '#eff6ff', border: '#93c5fd', step: 1 },
   InProgress: { label: 'In Progress',                color: '#5b21b6', bg: '#f5f3ff', border: '#c4b5fd', step: 2 },
   Accepted:   { label: 'Accepted by Provider',       color: '#065f46', bg: '#ecfdf5', border: '#6ee7b7', step: 3 },
+  Completed:  { label: 'Completed',                  color: '#065f46', bg: '#ecfdf5', border: '#6ee7b7', step: 4 },
+  Declined:   { label: 'Declined by Provider',       color: '#991b1b', bg: '#fef2f2', border: '#fca5a5', step: -1 },
   Rejected:   { label: 'Declined by Provider',       color: '#991b1b', bg: '#fef2f2', border: '#fca5a5', step: -1 },
   Cancelled:  { label: 'Cancelled',                  color: '#374151', bg: '#f9fafb', border: '#d1d5db', step: -1 },
 };
@@ -99,12 +101,13 @@ const s: Record<string, React.CSSProperties> = {
 
 function StatusTracker({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status as StatusKey] ?? STATUS_CONFIG.New;
-  const declined = status === 'Rejected' || status === 'Cancelled';
+  const declined = status === 'Rejected' || status === 'Declined' || status === 'Cancelled';
 
   const steps = [
     { label: 'Submitted',         done: true },
     { label: 'Awaiting Response', done: cfg.step >= 2 || declined },
-    { label: declined ? cfg.label : 'Accepted', done: cfg.step >= 3 || declined },
+    { label: 'Accepted',          done: cfg.step >= 3 || declined },
+    { label: declined ? cfg.label : 'Completed', done: cfg.step >= 4 || declined },
   ];
 
   return (

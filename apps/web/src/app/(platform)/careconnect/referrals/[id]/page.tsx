@@ -158,8 +158,8 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
           {/* 4. Delivery / access controls — referrers only */}
           {!isTenantAdminView && isReferrerOfReferral && <ReferralDeliveryCard referral={referral} />}
 
-          {/* 5. Audit timeline — referrers only */}
-          {isReferrerOfReferral && <ReferralAuditTimeline referralId={referral.id} />}
+          {/* 5. Operational audit timeline */}
+          <ReferralAuditTimeline referralId={referral.id} />
 
           {/* 5b. Activity / status history — all roles */}
           <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">

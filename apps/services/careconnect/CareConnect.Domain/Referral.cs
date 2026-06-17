@@ -86,6 +86,7 @@ public class Referral : AuditableEntity
     public string Urgency { get; private set; } = string.Empty;
     public string Status { get; private set; } = ValidStatuses.New;
     public string? Notes { get; private set; }
+    public string? DeclineNotes { get; private set; }
     public DateOnly? DateOfAccident { get; private set; }
     public Guid? TreatmentTypeId { get; private set; }
 
@@ -213,9 +214,30 @@ public class Referral : AuditableEntity
     /// Transitions this referral from New/NewOpened → Declined.
     /// Used by both authenticated provider users and the public token-based decline flow.
     /// </summary>
-    public void Decline(Guid? updatedByUserId)
+    public void Decline(Guid? updatedByUserId, string? declineNotes = null)
     {
         Status          = ValidStatuses.Declined;
+        DeclineNotes    = declineNotes?.Trim();
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Transitions this referral from Accepted/InProgress → Completed.
+    /// </summary>
+    public void Complete(Guid? updatedByUserId)
+    {
+        Status          = ValidStatuses.Completed;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Transitions this referral to Cancelled from any non-terminal state.
+    /// </summary>
+    public void Cancel(Guid? updatedByUserId)
+    {
+        Status          = ValidStatuses.Cancelled;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
     }

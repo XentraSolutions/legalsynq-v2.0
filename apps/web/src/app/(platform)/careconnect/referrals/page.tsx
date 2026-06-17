@@ -52,6 +52,7 @@ function rowHighlight(status: string): string {
   if (status === 'NewOpened')  return 'bg-sky-50/40 hover:bg-sky-50 border-l-4 border-l-sky-400';
   if (status === 'Accepted')   return 'hover:bg-gray-50 border-l-4 border-l-teal-400';
   if (status === 'InProgress') return 'bg-amber-50/30 hover:bg-amber-50/60 border-l-4 border-l-amber-400';
+  if (status === 'Completed')  return 'bg-green-50/30 hover:bg-green-50/60 border-l-4 border-l-green-400';
   if (status === 'Declined')   return 'bg-red-50/30 hover:bg-red-50/60 border-l-4 border-l-red-400';
   if (status === 'Cancelled')  return 'bg-gray-50/60 hover:bg-gray-100 border-l-4 border-l-gray-400';
   return 'hover:bg-gray-50 border-l-4 border-l-transparent';

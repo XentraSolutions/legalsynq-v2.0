@@ -16,6 +16,7 @@ import { ServerApiError } from '@/lib/server-api-client';
 import { ReferralDetailPanel } from '@/components/careconnect/referral-detail-panel';
 import { ReferralStatusActions } from '@/components/careconnect/referral-status-actions';
 import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
+import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-timeline';
 import { AttachmentPanel } from '@/components/careconnect/attachment-panel';
 
 interface Props {
@@ -111,6 +112,9 @@ export default async function ProviderReferralDetailPage({ params }: Props) {
               entityId={referral.id}
               canUpload={false}
             />
+
+            {/* Operational audit timeline */}
+            <ReferralAuditTimeline referralId={referral.id} />
 
             {/* Status history timeline */}
             <ReferralTimeline referralId={referral.id} />

@@ -666,6 +666,32 @@ public static class ReferralEndpoints
         // Public, HMAC view-token gated. Declines the referral directly from the provider thread page.
         group.MapPost("/{id:guid}/decline-by-token", async (
             Guid id,
+            [FromBody] DeclineByTokenRequest request,
+            IReferralService referralService,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+            try
+            {
+                var result = await referralService.DeclineByTokenAsync(id, request.Token, ct, declineNotes: request.DeclineNotes);
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
+            }
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+
+        // POST /api/referrals/{id}/complete-by-token
+        // Public, HMAC view-token gated. Completes the referral from the provider thread page.
+        group.MapPost("/{id:guid}/complete-by-token", async (
+            Guid id,
             [FromBody] AcceptByTokenRequest request,
             IReferralService referralService,
             CancellationToken ct) =>
@@ -674,7 +700,33 @@ public static class ReferralEndpoints
                 return Results.BadRequest(new { error = "token is required." });
             try
             {
-                var result = await referralService.DeclineByTokenAsync(id, request.Token, ct);
+                var result = await referralService.CompleteByTokenAsync(id, request.Token, ct);
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
+            }
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+
+        // POST /api/referrals/{id}/cancel-by-token
+        // Public, HMAC view-token gated. Cancels the referral from the provider thread page.
+        group.MapPost("/{id:guid}/cancel-by-token", async (
+            Guid id,
+            [FromBody] AcceptByTokenRequest request,
+            IReferralService referralService,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+            try
+            {
+                var result = await referralService.CancelByTokenAsync(id, request.Token, ct);
                 return Results.Ok(result);
             }
             catch (UnauthorizedAccessException ex)

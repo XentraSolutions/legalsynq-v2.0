@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition, useRef, useCallback } from 'react';
-import { postComment, acceptReferralByToken, declineReferralByToken } from './actions';
+import { postComment, acceptReferralByToken, declineReferralByToken, completeReferralByToken, cancelReferralByToken } from './actions';
 
 interface Comment {
   id:         string;
@@ -58,6 +58,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
   Declined:   { label: 'Declined',                  color: '#991b1b', bg: '#fef2f2', border: '#fca5a5' },
   Rejected:   { label: 'Declined',                  color: '#991b1b', bg: '#fef2f2', border: '#fca5a5' },
   Cancelled:  { label: 'Cancelled',                 color: '#374151', bg: '#f9fafb', border: '#d1d5db' },
+  Completed:  { label: 'Completed',                 color: '#065f46', bg: '#ecfdf5', border: '#6ee7b7' },
   InProgress: { label: 'In Progress',               color: '#5b21b6', bg: '#f5f3ff', border: '#c4b5fd' },
 };
 
@@ -110,6 +111,14 @@ const s: Record<string, React.CSSProperties> = {
                background: '#fff', color: '#dc2626', border: '2px solid #fca5a5',
                padding: '10px 20px', borderRadius: 6, fontSize: 14, fontWeight: 700,
                cursor: 'pointer', textAlign: 'center' as const, textDecoration: 'none' },
+  btnSuccess:{ display: 'block', width: '100%', boxSizing: 'border-box' as const,
+               background: '#16a34a', color: '#fff', border: 'none',
+               padding: '11px 20px', borderRadius: 6, fontSize: 14, fontWeight: 700,
+               cursor: 'pointer', textAlign: 'center' as const, textDecoration: 'none' },
+  btnGray:   { display: 'block', width: '100%', boxSizing: 'border-box' as const,
+               background: '#fff', color: '#374151', border: '2px solid #d1d5db',
+               padding: '10px 20px', borderRadius: 6, fontSize: 14, fontWeight: 700,
+               cursor: 'pointer', textAlign: 'center' as const, textDecoration: 'none' },
   input:     { width: '100%', boxSizing: 'border-box' as const,
                padding: '9px 12px', fontSize: 14,
                border: '1px solid #d1d5db', borderRadius: 6, color: '#111827', fontFamily: 'inherit' },
@@ -121,7 +130,8 @@ const s: Record<string, React.CSSProperties> = {
                padding: '20px 24px', marginBottom: 20, color: '#fff' },
 };
 
-type ActionState = 'idle' | 'accepting' | 'declining' | 'accepted' | 'declined' | 'error';
+type ActionState = 'idle' | 'accepting' | 'declining' | 'completing' | 'cancelling'
+                 | 'accepted' | 'declined' | 'completed' | 'cancelled' | 'error';
 
 export function ThreadClient({ token, data, loginUrl }: Props) {
   const [timezone, setTimezone] = useState('UTC');
@@ -138,11 +148,17 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const [actionError,   setActionError]  = useState('');
   const [liveStatus,    setLiveStatus]   = useState(data.status);
 
-  // Per-attachment loading: attachmentId → 'view' | 'download' | null
   const [attLoading, setAttLoading] = useState<Record<string, 'view' | 'download' | null>>({});
   const [attError,   setAttError]   = useState<Record<string, string | null>>({});
 
   const [liveTreatmentName] = useState<string | undefined>(data.treatmentTypeName);
+
+  // Decline notes state
+  const [showDeclineForm, setShowDeclineForm] = useState(false);
+  const [declineNotes, setDeclineNotes] = useState('');
+
+  // Cancel confirmation state
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   useEffect(() => {
     setTimezone(resolveBrowserTimezone());
@@ -176,7 +192,13 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
 
   const st = STATUS_MAP[liveStatus] ?? { label: liveStatus, color: '#374151', bg: '#f9fafb', border: '#d1d5db' };
 
-  const isActionable = (liveStatus === 'New' || liveStatus === 'NewOpened') && actionState !== 'accepted' && actionState !== 'declined';
+  const isNewOrOpened = liveStatus === 'New' || liveStatus === 'NewOpened';
+  const isAcceptedOrInProgress = liveStatus === 'Accepted' || liveStatus === 'InProgress';
+  const isTerminal = ['Completed', 'Cancelled', 'Declined'].includes(liveStatus);
+  const hasRecentAction = ['accepted', 'declined', 'completed', 'cancelled'].includes(actionState);
+
+  const showActionCard = isNewOrOpened || isAcceptedOrInProgress || hasRecentAction || actionState === 'error';
+
   const referralId   = data.referralId;
   const activateUrl  = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}&companyName=${encodeURIComponent(data.providerName)}`;
 
@@ -199,7 +221,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
     setActionError('');
     setActionState('declining');
     startTransition(async () => {
-      const result = await declineReferralByToken(referralId, token);
+      const result = await declineReferralByToken(referralId, token, declineNotes || undefined);
       if (!result.success) {
         setActionState('error');
         setActionError(result.error ?? 'Could not decline the referral. Please try again.');
@@ -207,6 +229,36 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
       }
       setActionState('declined');
       setLiveStatus('Declined');
+    });
+  };
+
+  const handleComplete = () => {
+    setActionError('');
+    setActionState('completing');
+    startTransition(async () => {
+      const result = await completeReferralByToken(referralId, token);
+      if (!result.success) {
+        setActionState('error');
+        setActionError(result.error ?? 'Could not complete the referral. Please try again.');
+        return;
+      }
+      setActionState('completed');
+      setLiveStatus('Completed');
+    });
+  };
+
+  const handleCancel = () => {
+    setActionError('');
+    setActionState('cancelling');
+    startTransition(async () => {
+      const result = await cancelReferralByToken(referralId, token);
+      if (!result.success) {
+        setActionState('error');
+        setActionError(result.error ?? 'Could not cancel the referral. Please try again.');
+        return;
+      }
+      setActionState('cancelled');
+      setLiveStatus('Cancelled');
     });
   };
 
@@ -317,10 +369,12 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
           </div>
         </div>
 
-        {/* Accept / Decline */}
-        {(isActionable || actionState === 'accepted' || actionState === 'declined' || actionState === 'error') && (
+        {/* Action Card — status-aware */}
+        {showActionCard && (
           <div style={s.card}>
-            <h2 style={s.cardTitle}>Your Response</h2>
+            <h2 style={s.cardTitle}>
+              {isNewOrOpened ? 'Your Response' : isAcceptedOrInProgress ? 'Referral Actions' : 'Referral Status'}
+            </h2>
 
             {/* Success: accepted */}
             {actionState === 'accepted' && (
@@ -349,6 +403,30 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
               </div>
             )}
 
+            {/* Success: completed */}
+            {actionState === 'completed' && (
+              <div style={{ background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 8, padding: '14px 18px' }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#065f46' }}>
+                  Referral marked as completed.
+                </p>
+                <p style={{ margin: '6px 0 0', fontSize: 13, color: '#047857' }}>
+                  This referral has been completed. No further action is needed.
+                </p>
+              </div>
+            )}
+
+            {/* Success: cancelled */}
+            {actionState === 'cancelled' && (
+              <div style={{ background: '#f9fafb', border: '1px solid #d1d5db', borderRadius: 8, padding: '14px 18px' }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#374151' }}>
+                  Referral cancelled.
+                </p>
+                <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6b7280' }}>
+                  This referral has been cancelled. The referring party has been notified.
+                </p>
+              </div>
+            )}
+
             {/* Error banner */}
             {actionState === 'error' && actionError && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '10px 14px', marginBottom: 14 }}>
@@ -356,32 +434,117 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
               </div>
             )}
 
-            {/* Action buttons — shown while pending or idle/error */}
-            {isActionable && (
+            {/* New/NewOpened: Accept + Decline */}
+            {isNewOrOpened && !hasRecentAction && (
               <>
-                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
-                  Respond directly from this page, or log in to your provider dashboard.
-                </p>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button
-                    onClick={handleAccept}
-                    disabled={isPending}
-                    style={{ ...s.btnPrimary, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
-                  >
-                    {actionState === 'accepting' ? 'Accepting…' : 'Accept Referral'}
-                  </button>
-                  <button
-                    onClick={handleDecline}
-                    disabled={isPending}
-                    style={{ ...s.btnDanger, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
-                  >
-                    {actionState === 'declining' ? 'Declining…' : 'Decline Referral'}
-                  </button>
-                </div>
-                <p style={{ margin: '10px 0 0', fontSize: 11, color: '#9ca3af', textAlign: 'center' as const }}>
-                  Your response is securely recorded.{' '}
-                  <a href={loginUrl} style={{ color: '#6b7280', textDecoration: 'underline' }}>Log in</a> to manage from your dashboard.
-                </p>
+                {!showDeclineForm ? (
+                  <>
+                    <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+                      Respond directly from this page, or log in to your provider dashboard.
+                    </p>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        onClick={handleAccept}
+                        disabled={isPending}
+                        style={{ ...s.btnPrimary, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                      >
+                        {actionState === 'accepting' ? 'Accepting…' : 'Accept Referral'}
+                      </button>
+                      <button
+                        onClick={() => setShowDeclineForm(true)}
+                        disabled={isPending}
+                        style={{ ...s.btnDanger, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                      >
+                        Decline Referral
+                      </button>
+                    </div>
+                    <p style={{ margin: '10px 0 0', fontSize: 11, color: '#9ca3af', textAlign: 'center' as const }}>
+                      Your response is securely recorded.{' '}
+                      <a href={loginUrl} style={{ color: '#6b7280', textDecoration: 'underline' }}>Log in</a> to manage from your dashboard.
+                    </p>
+                  </>
+                ) : (
+                  <div>
+                    <p style={{ margin: '0 0 10px', fontSize: 13, color: '#6b7280' }}>
+                      Reason for declining (optional):
+                    </p>
+                    <textarea
+                      style={{ ...s.textarea, marginBottom: 12 }}
+                      value={declineNotes}
+                      onChange={e => setDeclineNotes(e.target.value)}
+                      placeholder="Let the referring party know why…"
+                      rows={3}
+                      maxLength={2000}
+                    />
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        onClick={handleDecline}
+                        disabled={isPending}
+                        style={{ ...s.btnDanger, flex: 1, background: '#dc2626', color: '#fff', border: 'none', opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                      >
+                        {actionState === 'declining' ? 'Declining…' : 'Confirm Decline'}
+                      </button>
+                      <button
+                        onClick={() => { setShowDeclineForm(false); setDeclineNotes(''); }}
+                        disabled={isPending}
+                        style={{ ...s.btnGray, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                      >
+                        Go back
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Accepted/InProgress: Completed + Cancel */}
+            {isAcceptedOrInProgress && !hasRecentAction && (
+              <>
+                {!showCancelConfirm ? (
+                  <>
+                    <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+                      This referral has been accepted. You can mark it as completed or cancel it.
+                    </p>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        onClick={handleComplete}
+                        disabled={isPending}
+                        style={{ ...s.btnSuccess, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                      >
+                        {actionState === 'completing' ? 'Completing…' : 'Mark as Completed'}
+                      </button>
+                      <button
+                        onClick={() => setShowCancelConfirm(true)}
+                        disabled={isPending}
+                        style={{ ...s.btnGray, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                      >
+                        Cancel Referral
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <p style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 600, color: '#374151' }}>
+                      Are you sure you want to cancel this referral?
+                    </p>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        onClick={handleCancel}
+                        disabled={isPending}
+                        style={{ ...s.btnDanger, flex: 1, background: '#dc2626', color: '#fff', border: 'none', opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                      >
+                        {actionState === 'cancelling' ? 'Cancelling…' : 'Yes, Cancel Referral'}
+                      </button>
+                      <button
+                        onClick={() => setShowCancelConfirm(false)}
+                        disabled={isPending}
+                        style={{ ...s.btnGray, flex: 1, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+                      >
+                        Keep Referral
+                      </button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -404,13 +567,10 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!busy) openAttachment(att.id, false); } }}
                        aria-label={`View ${att.fileName}`}
                   >
-                    {/* File icon */}
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5" style={{ flexShrink: 0 }}>
                       <path strokeLinecap="round" strokeLinejoin="round"
                         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-
-                    {/* Name + size */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {att.fileName}
@@ -421,10 +581,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
                         {loading === 'download' && <span style={{ marginLeft: 6, color: '#6b7280' }}>Downloading…</span>}
                       </p>
                     </div>
-
-                    {/* Actions: view (eye) + download */}
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                      {/* View button */}
                       <button
                         title="View document"
                         disabled={busy}
@@ -436,7 +593,6 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                       </button>
-                      {/* Download button */}
                       <button
                         title="Download document"
                         disabled={busy}

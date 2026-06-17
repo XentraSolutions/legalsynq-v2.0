@@ -133,6 +133,7 @@ export interface ReferralSummary {
   urgency:           string;
   status:            string;
   notes?:            string;
+  declineNotes?:     string;
   dateOfAccident?:   string;
   createdAtUtc:      string;
   updatedAtUtc:      string;

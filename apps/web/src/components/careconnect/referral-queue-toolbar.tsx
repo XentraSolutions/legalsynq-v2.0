@@ -13,7 +13,6 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'New',        label: 'Unopened'    },
   { value: 'NewOpened',  label: 'Opened'      },
   { value: 'Accepted',   label: 'Accepted'    },
-  { value: 'InProgress', label: 'In Progress' },
   { value: 'Declined',   label: 'Declined'    },
   { value: 'Completed',  label: 'Completed'   },
   { value: 'Cancelled',  label: 'Cancelled'   },

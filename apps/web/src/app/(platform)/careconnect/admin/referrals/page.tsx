@@ -16,11 +16,19 @@ import type { AdminReferralItem, AdminReferralPage } from '@/types/careconnect';
 export const dynamic = 'force-dynamic';
 
 
-// Referral.ValidStatuses
-const ALL_STATUSES = ['New', 'Accepted', 'InProgress', 'Completed', 'Declined', 'Cancelled'];
+// Referral.ValidStatuses — filter labels aligned across all portals
+const ALL_STATUSES: { value: string; label: string }[] = [
+  { value: 'New',       label: 'Unopened'  },
+  { value: 'NewOpened', label: 'Opened'    },
+  { value: 'Accepted',  label: 'Accepted'  },
+  { value: 'Declined',  label: 'Declined'  },
+  { value: 'Completed', label: 'Completed' },
+  { value: 'Cancelled', label: 'Cancelled' },
+];
 
 const STATUS_BADGE: Record<string, string> = {
   New:        'bg-blue-100 text-blue-800',
+  NewOpened:  'bg-sky-100 text-sky-800',
   Accepted:   'bg-indigo-100 text-indigo-800',
   InProgress: 'bg-yellow-100 text-yellow-800',
   Completed:  'bg-green-100 text-green-800',
@@ -227,15 +235,15 @@ export default async function AdminReferralMonitorPage({ searchParams }: PagePro
         </Link>
         {ALL_STATUSES.map((s) => (
           <Link
-            key={s}
-            href={`/careconnect/admin/referrals?status=${s}`}
+            key={s.value}
+            href={`/careconnect/admin/referrals?status=${s.value}`}
             className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              status === s
+              status === s.value
                 ? 'bg-gray-900 text-white border-gray-900'
                 : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
             }`}
           >
-            {s}
+            {s.label}
           </Link>
         ))}
       </div>

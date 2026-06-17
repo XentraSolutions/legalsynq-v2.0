@@ -16,6 +16,7 @@ public class ReferralResponse
     public string Urgency { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? Notes { get; set; }
+    public string? DeclineNotes { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
 
