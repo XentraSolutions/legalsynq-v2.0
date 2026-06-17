@@ -143,7 +143,7 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
             entityType="referral"
             entityId={referral.id}
             canUpload={!isTenantAdminView && (session.isPlatformAdmin || session.isTenantAdmin)}
-            readOnly={isTenantAdminView}
+            readOnly={isTenantAdminView || (!session.isPlatformAdmin && !session.isTenantAdmin)}
             adminReferralView={isTenantAdminView}
           />
 

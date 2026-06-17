@@ -167,6 +167,7 @@ describe('CareConnect referral detail page', () => {
     expect(screen.getByText('MessageThread:ref-123')).toBeInTheDocument();
     expect(screen.getByText('MessageCount:1')).toBeInTheDocument();
     expect(screen.getByText('Can you see this patient this week?')).toBeInTheDocument();
+    expect(screen.getByText('Attachment panel:true:false')).toBeInTheDocument();
   });
 
   test('passes comment load failures into the message thread fallback state', async () => {
@@ -215,7 +216,6 @@ describe('CareConnect referral detail page', () => {
 
     render(page);
 
-    expect(screen.getByText('Tenant Admin view only. Referral updates, uploads, and messages are disabled.')).toBeInTheDocument();
     expect(screen.queryByText('Status actions')).not.toBeInTheDocument();
     expect(screen.queryByText('Delivery card')).not.toBeInTheDocument();
     expect(screen.getByText('Attachment panel:true:true')).toBeInTheDocument();

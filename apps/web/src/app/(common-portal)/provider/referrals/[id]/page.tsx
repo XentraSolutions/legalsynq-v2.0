@@ -111,6 +111,7 @@ export default async function ProviderReferralDetailPage({ params }: Props) {
               entityType="referral"
               entityId={referral.id}
               canUpload={false}
+              readOnly
             />
 
             {/* Operational audit timeline */}
