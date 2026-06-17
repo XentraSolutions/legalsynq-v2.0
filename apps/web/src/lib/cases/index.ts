@@ -1,4 +1,4 @@
-export { casesService } from './cases.service';
+export { casesService } from "./cases.service";
 export type {
   CasesQuery,
   CaseListItem,
@@ -7,5 +7,4 @@ export type {
   PaginationMeta,
   CreateCaseRequestDto,
   UpdateCaseRequestDto,
-} from './cases.types';
-export type { CaseListResult, CaseLiensResult } from './cases.service';
+} from "./cases.types";
