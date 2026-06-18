@@ -156,6 +156,7 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 
 app.MapLienEndpoints();
 app.MapLienOfferEndpoints();
+app.MapSellingEndpoints();
 app.MapBillOfSaleEndpoints();
 app.MapCaseEndpoints();
 // LS-LIENS-CASE-005 — Case Notes Backend & Persistence.

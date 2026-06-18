@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<ILookupValueRepository, LookupValueRepository>();
         services.AddScoped<ILienRepository, LienRepository>();
         services.AddScoped<ILienOfferRepository, LienOfferRepository>();
+        services.AddScoped<ISellingPortfolioRepository, SellingPortfolioRepository>();
         services.AddScoped<IBillOfSaleRepository, BillOfSaleRepository>();
         services.AddScoped<IServicingItemRepository, ServicingItemRepository>();
         services.AddScoped<ILienTaskRepository, LienTaskRepository>();
@@ -58,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<ILienSaleService, LienSaleService>();
         services.AddScoped<ILienService, LienService>();
         services.AddScoped<ILienOfferService, LienOfferService>();
+        services.AddScoped<ISellingPortfolioService, SellingPortfolioService>();
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();
         services.AddScoped<IBillOfSaleDocumentQueryService, BillOfSaleDocumentQueryService>();
         services.AddScoped<ICaseService, CaseService>();

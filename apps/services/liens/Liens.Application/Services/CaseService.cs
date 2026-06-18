@@ -36,7 +36,14 @@ public sealed class CaseService : ICaseService
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        var (items, totalCount) = await _caseRepo.SearchAsync(tenantId, search, status, page, pageSize, orgId, null, null, ct);
+        var (items, totalCount) = await _caseRepo.SearchAsync(
+            tenantId,
+            search,
+            status,
+            page,
+            pageSize,
+            orgId,
+            ct: ct);
 
         return new PaginatedResult<CaseResponse>
         {
@@ -55,6 +62,9 @@ public sealed class CaseService : ICaseService
         int limit,
         string? sortBy,
         string? sortDirection,
+        Guid? lawFirmOrgId = null,
+        string? accidentTypeId = null,
+        string? caseManagerId = null,
         CancellationToken ct = default)
     {
         if (page < 1) page = 1;
@@ -67,9 +77,11 @@ public sealed class CaseService : ICaseService
             statusId,
             page,
             limit,
-            null,
+            lawFirmOrgId,
             sortBy,
             sortDirection,
+            accidentTypeId,
+            caseManagerId,
             ct);
 
         return new PaginatedResult<CaseResponse>

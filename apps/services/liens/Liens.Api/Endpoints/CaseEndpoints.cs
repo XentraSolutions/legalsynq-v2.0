@@ -3946,6 +3946,21 @@ public static class CaseEndpoints
 
         var page = filter.page < 1 ? 1 : filter.page;
         var limit = filter.limit < 1 ? 20 : filter.limit;
+        Guid? lawFirmOrgId = null;
+
+        if (!string.IsNullOrWhiteSpace(filter.lawFirmId))
+        {
+            if (!Guid.TryParse(filter.lawFirmId, out var parsedLawFirmId))
+            {
+                return Results.NotFound(new
+                {
+                    isSuccess = false,
+                    message = "No cases found.",
+                });
+            }
+
+            lawFirmOrgId = parsedLawFirmId;
+        }
 
         var result = await caseService.SearchV3Async(
             tenantId,
@@ -3955,6 +3970,9 @@ public static class CaseEndpoints
             limit,
             filter.sortBy,
             filter.sortDirection,
+            lawFirmOrgId,
+            filter.accidentTypeId,
+            filter.caseManagerId,
             ct);
 
         if (result.TotalCount == 0)

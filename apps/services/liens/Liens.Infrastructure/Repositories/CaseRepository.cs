@@ -34,6 +34,8 @@ public class CaseRepository : ICaseRepository
         Guid? orgId = null,
         string? sortBy = null,
         string? sortDirection = null,
+        string? accidentTypeId = null,
+        string? caseManagerId = null,
         CancellationToken ct = default)
     {
         var q = _db.Cases.Where(c => c.TenantId == tenantId);
@@ -71,17 +73,37 @@ public class CaseRepository : ICaseRepository
         {
             var statuses = status
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToArray();
+                .ToList();
 
-            if (statuses.Length == 1)
+            if (statuses.Count == 1)
             {
                 var single = statuses[0];
                 q = q.Where(c => c.Status == single);
             }
-            else if (statuses.Length > 1)
+            else if (statuses.Count > 1)
             {
                 q = q.Where(c => statuses.Contains(c.Status));
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(accidentTypeId))
+        {
+            var accidentTypeToken = $"accidentTypeId={accidentTypeId.Trim()}";
+            q = q.Where(c => c.Notes != null &&
+                (c.Notes == accidentTypeToken ||
+                 c.Notes.StartsWith(accidentTypeToken + ";") ||
+                 c.Notes.Contains("; " + accidentTypeToken + ";") ||
+                 c.Notes.EndsWith("; " + accidentTypeToken)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(caseManagerId))
+        {
+            var caseManagerToken = $"caseManagerId={caseManagerId.Trim()}";
+            q = q.Where(c => c.Notes != null &&
+                (c.Notes == caseManagerToken ||
+                 c.Notes.StartsWith(caseManagerToken + ";") ||
+                 c.Notes.Contains("; " + caseManagerToken + ";") ||
+                 c.Notes.EndsWith("; " + caseManagerToken)));
         }
 
         var totalCount = await q.CountAsync(ct);
