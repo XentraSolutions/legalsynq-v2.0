@@ -83,6 +83,7 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
     else if (!isValidIsoDate(dateOfAccident)) errs.dateOfAccident = 'Enter a valid date';
     else if (new Date(dateOfAccident) > new Date()) errs.dateOfAccident = 'Date of accident cannot be in the future';
     if (clientDob && !isValidIsoDate(clientDob)) errs.clientDob = 'Enter a valid date of birth';
+    else if (clientDob && new Date(clientDob) > new Date()) errs.clientDob = 'Date of birth cannot be in the future';
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -209,6 +210,7 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                   <input
                     type="date"
                     value={clientDob}
+                    max={new Date().toISOString().split('T')[0]}
                     onChange={e => { setClientDob(e.target.value); setFieldErrors(fe => ({ ...fe, clientDob: '' })); }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
@@ -222,6 +224,7 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                   <input
                     type="date"
                     value={dateOfAccident}
+                    max={new Date().toISOString().split('T')[0]}
                     onChange={e => { setDateOfAccident(e.target.value); setFieldErrors(fe => ({ ...fe, dateOfAccident: '' })); }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
