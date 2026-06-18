@@ -68,6 +68,43 @@ public class LienRepository : ILienRepository
         return (items, totalCount);
     }
 
+    public async Task<(List<Lien> PageItems, List<Lien> AllItems, int TotalCount)> SearchReportAsync(
+        Guid tenantId,
+        string? search,
+        IReadOnlyCollection<string> statuses,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        var q = _db.Liens.Where(l => l.TenantId == tenantId);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            q = q.Where(l =>
+                l.LienNumber.Contains(term) ||
+                (l.SubjectFirstName != null && l.SubjectFirstName.Contains(term)) ||
+                (l.SubjectLastName != null && l.SubjectLastName.Contains(term)) ||
+                (l.Description != null && l.Description.Contains(term)));
+        }
+
+        if (statuses.Count > 0)
+        {
+            var statusList = statuses.ToList();
+            q = q.Where(l => statusList.Contains(l.Status));
+        }
+
+        var ordered = q.OrderByDescending(l => l.CreatedAtUtc);
+        var totalCount = await ordered.CountAsync(ct);
+        var allItems = await ordered.ToListAsync(ct);
+        var pageItems = allItems
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return (pageItems, allItems, totalCount);
+    }
+
     public async Task<List<Lien>> GetByCaseIdAsync(Guid tenantId, Guid caseId, CancellationToken ct = default)
     {
         return await _db.Liens

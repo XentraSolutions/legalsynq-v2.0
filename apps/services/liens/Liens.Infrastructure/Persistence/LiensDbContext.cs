@@ -19,6 +19,10 @@ public class LiensDbContext : DbContext
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
     public DbSet<Lien> Liens => Set<Lien>();
     public DbSet<LienOffer> LienOffers => Set<LienOffer>();
+    public DbSet<SellingPortfolio> SellingPortfolios => Set<SellingPortfolio>();
+    public DbSet<SellingPortfolioLien> SellingPortfolioLiens => Set<SellingPortfolioLien>();
+    public DbSet<SellingPortfolioBuyer> SellingPortfolioBuyers => Set<SellingPortfolioBuyer>();
+    public DbSet<SellingPortfolioStatusHistory> SellingPortfolioStatusHistory => Set<SellingPortfolioStatusHistory>();
     public DbSet<BillOfSale> BillsOfSale => Set<BillOfSale>();
     public DbSet<ServicingItem> ServicingItems => Set<ServicingItem>();
     public DbSet<LienTask> LienTasks => Set<LienTask>();

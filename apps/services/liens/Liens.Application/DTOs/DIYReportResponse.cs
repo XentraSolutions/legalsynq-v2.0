@@ -11,6 +11,15 @@ public sealed class DIYReportConfigResponse
     public JsonElement Config    { get; init; }
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; init; }
+    public string   ReportId     { get; init; } = string.Empty;
+    public string   ReportName   { get; init; } = string.Empty;
+    public string?  ReportDescription { get; init; }
+    public string   ReportType   { get; init; } = "LIENS";
+    public string   CreatedAt    { get; init; } = string.Empty;
+    public string   CreatedBy    { get; init; } = string.Empty;
+    public string   UpdatedAt    { get; init; } = string.Empty;
+    public JsonElement ReportConfig { get; init; }
+    public int      ColumnCount  { get; init; }
 }
 
 public sealed class SaveDIYReportRequest

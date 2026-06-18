@@ -118,7 +118,7 @@ public static class ReportEndpoints
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
         var result = await svc.RunReportAsync(tenantId, request, ct);
-        return Results.Ok(result);
+        return Results.Ok(ToLegacyRunResponse(result));
     }
 
     private static async Task<IResult> ExportReport(
@@ -145,6 +145,85 @@ public static class ReportEndpoints
         foreach (var r in rows)
             sb.AppendLine($"{r.CaseId},{CsvEscape(r.CaseNumber)},{CsvEscape(r.ClientName)},{CsvEscape(r.Status)},{r.LienTotal}");
         return sb.ToString();
+    }
+
+    private static object ToLegacyRunResponse(DIYReportResult result)
+    {
+        var rows = result.Items.Select(r => new
+        {
+            plaintiff_first_name = r.PlaintiffFirstName,
+            plaintiff_last_name = r.PlaintiffLastName,
+            case_id = r.CaseNumber,
+            lien_id = r.LienNumber,
+            purchase_date = string.Empty,
+            purchase_amt = FormatLegacyMoney(r.PurchaseAmount),
+            billing_amt = FormatLegacyMoney(r.BillingAmount),
+            date_closed = FormatLegacyDate(r.DateClosed),
+            returned_amt = FormatLegacyMoney(r.ReturnedAmount),
+            initial_service_date = FormatLegacyDate(r.InitialServiceDate),
+            medical_facility = string.Empty,
+            lawfirm = string.Empty,
+            case_type = string.Empty,
+            case_manager = " ",
+            case_status = FormatLegacyStatus(r.CaseStatus),
+            date_of_loss = FormatLegacyDate(r.DateOfLoss),
+            id = r.CaseId?.ToString() ?? string.Empty,
+            l_id = r.LienId.ToString(),
+        }).ToList();
+
+        return new
+        {
+            isSuccess = true,
+            message = "Liens report generated.",
+            summaryTotals = new
+            {
+                totalLiens = result.SummaryTotals.TotalLiens,
+                totalPurchaseAmt = result.SummaryTotals.TotalPurchaseAmt,
+                totalBillingAmt = result.SummaryTotals.TotalBillingAmt,
+                totalAmtToSettle = result.SummaryTotals.TotalAmtToSettle,
+                totalReturnedAmt = result.SummaryTotals.TotalReturnedAmt,
+                totalGrossProfit = result.SummaryTotals.TotalGrossProfit,
+                avgRoi = result.SummaryTotals.AvgRoi,
+                totalOpenCases = result.SummaryTotals.TotalOpenCases,
+                totalClosedCases = result.SummaryTotals.TotalClosedCases,
+                totalOpenLiens = result.SummaryTotals.TotalOpenLiens,
+                totalClosedLiens = result.SummaryTotals.TotalClosedLiens,
+            },
+            data = rows,
+            page = result.Page,
+            limit = result.PageSize,
+            totalCount = result.TotalCount,
+        };
+    }
+
+    private static string FormatLegacyDate(DateOnly? value) =>
+        value.HasValue
+            ? value.Value.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty;
+
+    private static string FormatLegacyDate(DateTime? value) =>
+        value.HasValue
+            ? value.Value.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty;
+
+    private static string FormatLegacyMoney(decimal? value) =>
+        value.HasValue
+            ? value.Value.ToString("#,0.00", System.Globalization.CultureInfo.InvariantCulture)
+            : "0.00";
+
+    private static string FormatLegacyStatus(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return value switch
+        {
+            "PreDemand" => "Pre-demand",
+            "DemandSent" => "Demand Sent",
+            "InNegotiation" => "In Negotiation",
+            "CaseSettled" => "Case Settled",
+            _ => value,
+        };
     }
 
     private static string CsvEscape(string? value)

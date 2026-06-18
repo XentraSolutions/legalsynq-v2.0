@@ -56,8 +56,28 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             $"Body: {await resp.Content.ReadAsStringAsync()}");
 
         var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
-        doc!.RootElement.TryGetProperty("items", out _).Should().BeTrue();
+        doc!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("message").GetString().Should().Be("Liens report generated.");
+        doc.RootElement.TryGetProperty("summaryTotals", out var summary).Should().BeTrue();
+        summary.TryGetProperty("totalLiens", out _).Should().BeTrue();
+        doc.RootElement.TryGetProperty("data", out var data).Should().BeTrue();
+        data.ValueKind.Should().Be(JsonValueKind.Array);
+        doc.RootElement.GetProperty("page").GetInt32().Should().Be(1);
+        doc.RootElement.GetProperty("limit").GetInt32().Should().Be(10);
         doc.RootElement.TryGetProperty("totalCount", out _).Should().BeTrue();
+
+        if (data.GetArrayLength() > 0)
+        {
+            var row = data[0];
+            row.TryGetProperty("plaintiff_first_name", out _).Should().BeTrue();
+            row.TryGetProperty("plaintiff_last_name", out _).Should().BeTrue();
+            row.TryGetProperty("case_id", out _).Should().BeTrue();
+            row.TryGetProperty("lien_id", out _).Should().BeTrue();
+            row.TryGetProperty("purchase_amt", out _).Should().BeTrue();
+            row.TryGetProperty("billing_amt", out _).Should().BeTrue();
+            row.TryGetProperty("case_status", out _).Should().BeTrue();
+            row.TryGetProperty("date_of_loss", out _).Should().BeTrue();
+        }
     }
 
     // ── POST /report/diy/export ───────────────────────────────────────────────
@@ -87,13 +107,46 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var resp = await _client.PostAsJsonAsync("/report/diy/save", new
         {
             name   = "My New Report",
-            config = new { status = "Closed" },
+            config = new
+            {
+                reportType = "LIENS",
+                statusView = "ALL",
+                columns = new[]
+                {
+                    new { key = "billing_amt", label = "Billing Amt" },
+                    new { key = "case_id", label = "Case Id" },
+                },
+                page = 1,
+                limit = 50,
+            },
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await resp.Content.ReadAsStringAsync()}");
 
         var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
         doc!.RootElement.TryGetProperty("id", out _).Should().BeTrue();
+        doc.RootElement.GetProperty("reportId").GetString().Should().NotBeNullOrWhiteSpace();
+        doc.RootElement.GetProperty("reportName").GetString().Should().Be("My New Report");
+        doc.RootElement.GetProperty("reportType").GetString().Should().Be("LIENS");
+        doc.RootElement.GetProperty("createdAt").GetString().Should().MatchRegex(@"^\d{2}/\d{2}/\d{4}$");
+        doc.RootElement.GetProperty("updatedAt").GetString().Should().MatchRegex(@"^\d{2}/\d{2}/\d{4}$");
+        doc.RootElement.GetProperty("columnCount").GetInt32().Should().Be(2);
+
+        var configColumns = doc.RootElement
+            .GetProperty("config")
+            .GetProperty("columns")
+            .EnumerateArray()
+            .Select(c => c.GetProperty("key").GetString())
+            .ToList();
+        configColumns.Should().Equal("billing_amt", "case_id");
+
+        var reportConfigColumns = doc.RootElement
+            .GetProperty("reportConfig")
+            .GetProperty("columns")
+            .EnumerateArray()
+            .Select(c => c.GetString())
+            .ToList();
+        reportConfigColumns.Should().Equal("billing_amt", "case_id");
     }
 
     // ── DELETE /report/diy/{id} ───────────────────────────────────────────────
