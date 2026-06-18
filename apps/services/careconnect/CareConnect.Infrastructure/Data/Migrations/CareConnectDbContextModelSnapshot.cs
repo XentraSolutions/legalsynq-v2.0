@@ -1369,8 +1369,16 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<string>("ReferrerEmail")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("ReferrerFirmName")
+                        .HasMaxLength(250)
+                        .HasColumnType("varchar(250)");
+
                     b.Property<string>("ReferrerFirstName")
                         .HasColumnType("longtext");
+
+                    b.Property<string>("ReferrerPhone")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("ReferrerLastName")
                         .HasColumnType("longtext");

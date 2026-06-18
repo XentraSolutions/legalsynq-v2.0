@@ -87,13 +87,15 @@ describe('FirmStatusPage', () => {
     });
   });
 
-  test('includes the firm name in the enrollment token claims when present in referral notes', async () => {
+  test('includes the firm name and phone in the enrollment token claims from thread data fields', async () => {
     const threadData = {
       referralId: 'ref-123',
       tenantId: 'tenant-1',
       referrerEmail: 'lawyer@example.com',
       referrerName: 'Lawyer User',
-      notes: 'Firm: Demo Law Group\nFirm phone: 555-0102',
+      referrerFirmName: 'Demo Law Group',
+      referrerPhone: '555-0102',
+      notes: null,
       status: 'New',
       clientName: 'Jane Doe',
       service: 'General Referral',

@@ -86,6 +86,12 @@ public sealed class PublicReferralRequest
     /// <summary>Email of the person submitting (used for confirmation).</summary>
     public string SenderEmail { get; set; } = string.Empty;
 
+    /// <summary>Law firm / organization name (optional — stored for enrollment pre-fill).</summary>
+    public string? SenderFirmName { get; set; }
+
+    /// <summary>Referrer phone number (optional — stored for enrollment pre-fill).</summary>
+    public string? SenderPhone { get; set; }
+
     /// <summary>Patient first name.</summary>
     public string PatientFirstName { get; set; } = string.Empty;
 

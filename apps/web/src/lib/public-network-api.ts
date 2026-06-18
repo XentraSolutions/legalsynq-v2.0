@@ -232,6 +232,8 @@ export interface PublicReferralRequest {
   senderFirstName:       string;
   senderLastName?:       string;
   senderEmail:           string;
+  senderFirmName?:       string;
+  senderPhone?:          string;
   patientFirstName:      string;
   patientLastName:       string;
   patientPhone:          string;

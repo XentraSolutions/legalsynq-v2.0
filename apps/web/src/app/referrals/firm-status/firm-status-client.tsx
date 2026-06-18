@@ -20,8 +20,10 @@ interface ThreadData {
   service:            string;
   urgency?:           string;
   providerName:       string;
+  referrerFirmName?:  string | null;
   referrerName:       string | null;
   referrerEmail:      string | null;
+  referrerPhone?:     string | null;
   notes:              string | null;
   dateOfAccident?:    string;
   treatmentTypeId?:   string;

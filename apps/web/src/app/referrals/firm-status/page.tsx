@@ -15,22 +15,6 @@ interface Props {
   searchParams: Promise<{ token?: string }>;
 }
 
-function extractFirmName(notes: string | null): string | null {
-  if (!notes) return null;
-
-  for (const line of notes.split('\n')) {
-    const trimmed = line.trim();
-    if (
-      trimmed.toLowerCase().startsWith('firm:')
-      && !trimmed.toLowerCase().startsWith('firm phone:')
-    ) {
-      return trimmed.slice('firm:'.length).trim() || null;
-    }
-  }
-
-  return null;
-}
-
 /**
  * Law firm referral status page.
  * Reachable only via a secure HMAC-signed token from the referral confirmation email.
@@ -89,12 +73,8 @@ export default async function FirmStatusPage({ searchParams }: Props) {
     }
   }
 
-  // Extract "Firm phone: xxx" embedded by public-network-view in the referral notes.
-  const notes = threadData.notes as string | null;
-  const firmName = extractFirmName(notes);
-  const referrerPhone = notes?.split('\n')
-    .find(l => l.trim().toLowerCase().startsWith('firm phone:'))
-    ?.slice('firm phone:'.length).trim() ?? null;
+  const firmName = (threadData.referrerFirmName as string | null)?.trim() || null;
+  const referrerPhone = (threadData.referrerPhone as string | null)?.trim() || null;
 
   // Prefer the split ReferrerFirstName/ReferrerLastName fields (no full-name slicing
   // ambiguity); fall back to the legacy single ReferrerName for referrals created

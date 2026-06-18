@@ -96,6 +96,8 @@ public class Referral : AuditableEntity
     public string? ReferrerName  { get; private set; }
     public string? ReferrerFirstName { get; private set; }
     public string? ReferrerLastName  { get; private set; }
+    public string? ReferrerFirmName  { get; private set; }
+    public string? ReferrerPhone    { get; private set; }
 
     // ── LSCC-005-01: Token versioning for revocation ─────────────────────
     // Incrementing this value invalidates all previously issued view tokens.
@@ -137,6 +139,8 @@ public class Referral : AuditableEntity
         string? referrerName = null,
         string? referrerFirstName = null,
         string? referrerLastName = null,
+        string? referrerFirmName = null,
+        string? referrerPhone = null,
         Guid? treatmentTypeId = null,
         DateOnly? dateOfAccident = null)
     {
@@ -179,6 +183,8 @@ public class Referral : AuditableEntity
             ReferrerName               = computedReferrerName,
             ReferrerFirstName          = referrerFirstName?.Trim(),
             ReferrerLastName           = referrerLastName?.Trim(),
+            ReferrerFirmName           = referrerFirmName?.Trim(),
+            ReferrerPhone              = referrerPhone?.Trim(),
             TokenVersion               = 1,
             CreatedByUserId            = createdByUserId,
             UpdatedByUserId            = createdByUserId,

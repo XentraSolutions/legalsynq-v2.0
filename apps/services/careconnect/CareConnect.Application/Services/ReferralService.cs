@@ -179,6 +179,8 @@ public class ReferralService : IReferralService
             referrerName:  request.ReferrerName,
             referrerFirstName: request.ReferrerFirstName,
             referrerLastName:  request.ReferrerLastName,
+            referrerFirmName:  request.ReferrerFirmName,
+            referrerPhone:    request.ReferrerPhone,
             treatmentTypeId: request.TreatmentTypeId,
             dateOfAccident: request.DateOfAccident);
 
@@ -1683,7 +1685,7 @@ public class ReferralService : IReferralService
                     requesterName:     requesterName,
                     requesterEmail:    requesterEmail,
                     clientName:        clientName,
-                    referringFirmName: referral.ReferrerName,
+                    referringFirmName: referral.ReferrerFirmName ?? referral.ReferrerName,
                     requestedService:  referral.RequestedService,
                     ct:                ct);
             }

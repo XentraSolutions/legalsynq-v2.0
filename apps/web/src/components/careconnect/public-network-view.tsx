@@ -748,6 +748,8 @@ function ReferralPanel({
       senderFirstName:        form.contactFirstName.trim() || form.firmName.trim(),
       senderLastName:         form.contactFirstName.trim() ? (form.contactLastName.trim() || undefined) : undefined,
       senderEmail:            form.email.trim(),
+      senderFirmName:         form.firmName.trim() || undefined,
+      senderPhone:            stripPhone(form.phone) || undefined,
       patientFirstName:       form.patientFirstName.trim(),
       patientLastName:        form.patientLastName.trim(),
       patientPhone:           stripPhone(form.patientPhone),
@@ -787,6 +789,8 @@ function ReferralPanel({
             notes:            authNotes,
             referrerScopeSignature,
             referrerEmail:    payload.senderEmail,
+            referrerFirmName: form.firmName.trim() || undefined,
+            referrerPhone:    stripPhone(form.phone) || undefined,
             referrerName:     [form.contactFirstName.trim(), form.contactLastName.trim()].filter(Boolean).join(' ') || form.firmName.trim(),
           };
           res = await fetch('/api/careconnect/api/referrals', {

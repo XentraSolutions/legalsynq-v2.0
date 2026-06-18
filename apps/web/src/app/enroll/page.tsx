@@ -72,9 +72,9 @@ export default async function EnrollPage({ searchParams }: PageProps) {
   const referralPrefill = claims ? (
     existingEnrollmentPrefill
       ? {
-          companyName:  existingEnrollmentPrefill.companyName,
+          companyName:  existingEnrollmentPrefill.companyName || claims.firm || '',
           email:        existingEnrollmentPrefill.email,
-          phone:        existingEnrollmentPrefill.phone,
+          phone:        existingEnrollmentPrefill.phone || claims.phone || '',
           firstName:    coalesceName(existingEnrollmentPrefill.firstName, refFirst),
           lastName:     coalesceName(existingEnrollmentPrefill.lastName, refLast),
           addressLine1: existingEnrollmentPrefill.addressLine1,

@@ -583,6 +583,8 @@ public static class PublicNetworkEndpoints
                 Notes                   = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
                 ReferrerFirstName       = req.SenderFirstName.Trim(),
                 ReferrerLastName        = req.SenderLastName?.Trim(),
+                ReferrerFirmName        = req.SenderFirmName?.Trim(),
+                ReferrerPhone           = req.SenderPhone?.Trim(),
                 ReferrerEmail           = req.SenderEmail.Trim(),
                 ReferringOrganizationId = null,   // public — no org context
                 ReceivingOrganizationId = null,

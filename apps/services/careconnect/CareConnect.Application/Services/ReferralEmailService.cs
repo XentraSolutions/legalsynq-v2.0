@@ -995,32 +995,6 @@ public class ReferralEmailService : IReferralEmailService
 
     // ── Layout helpers ────────────────────────────────────────────────────────
 
-    /// <summary>Extracts "Firm: {name}" from the notes field, returns null if absent.</summary>
-    private static string? ExtractFirmName(string? notes)
-    {
-        if (string.IsNullOrWhiteSpace(notes)) return null;
-        foreach (var line in notes.Split('\n'))
-        {
-            var t = line.Trim();
-            if (t.StartsWith("Firm:", StringComparison.OrdinalIgnoreCase) &&
-                !t.StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase))
-                return t["Firm:".Length..].Trim();
-        }
-        return null;
-    }
-
-    /// <summary>Strips "Firm: ..." / "Firm phone: ..." meta-lines from notes for clean display.</summary>
-    private static string? CleanNotes(string? notes)
-    {
-        if (string.IsNullOrWhiteSpace(notes)) return null;
-        var cleaned = string.Join('\n', notes.Split('\n')
-            .Where(l => !l.TrimStart().StartsWith("Firm:", StringComparison.OrdinalIgnoreCase) &&
-                        !l.TrimStart().StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase) &&
-                        !l.TrimStart().StartsWith("Date of Accident:", StringComparison.OrdinalIgnoreCase)))
-            .Trim();
-        return string.IsNullOrEmpty(cleaned) ? null : cleaned;
-    }
-
     /// <summary>Single table row; skipped when value is null/empty.</summary>
     private static string Row(string label, string? value, bool bold = false)
     {
@@ -1073,8 +1047,7 @@ public class ReferralEmailService : IReferralEmailService
     private static string BuildNewReferralEmailHtml(Referral r, Provider p, string entryLink, string? treatmentTypeName = null)
     {
         var provName       = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        var firmName       = ExtractFirmName(r.Notes);
-        var cleanNotes     = CleanNotes(r.Notes);
+        var firmName       = r.ReferrerFirmName;
         var referrerLabel  = firmName ?? r.ReferrerName ?? "the referring party";
         var clientDob      = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null;
         var ctaLabel       = "View Referral";
@@ -1097,12 +1070,12 @@ public class ReferralEmailService : IReferralEmailService
                 ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
                 : null);
 
-        var notesBlock = cleanNotes is not null
+        var notesBlock = r.Notes is not null
             ? $"""
               <div style="margin-top:28px">
                 <h3 style="margin:0 0 6px;color:#1a56db;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">Notes</h3>
                 <div style="height:2px;background:linear-gradient(to right,#e05e26,#f9a825);margin-bottom:4px"></div>
-                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{cleanNotes}</p>
+                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{r.Notes}</p>
               </div>
               """
             : "";
@@ -1135,8 +1108,7 @@ public class ReferralEmailService : IReferralEmailService
     {
         var provName   = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var greeting   = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
-        var firmName   = ExtractFirmName(r.Notes);
-        var cleanNotes = CleanNotes(r.Notes);
+        var firmName   = r.ReferrerFirmName;
 
         var patientRows =
             Row("Full Name",         $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
@@ -1144,7 +1116,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Urgency",           r.Urgency) +
             Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd")) +
             Row("Type of Treatment", treatmentTypeName) +
-            Row("Notes",             cleanNotes);
+            Row("Notes",             r.Notes);
 
         var providerRows =
             Row("Provider", provName, bold: true) +
@@ -1175,8 +1147,7 @@ public class ReferralEmailService : IReferralEmailService
     private static string BuildProviderAssignedEmailHtml(Referral r, Provider p, string entryLink)
     {
         var provName      = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        var firmName      = ExtractFirmName(r.Notes);
-        var cleanNotes    = CleanNotes(r.Notes);
+        var firmName      = r.ReferrerFirmName;
         var referrerLabel = firmName ?? r.ReferrerName ?? "the referring party";
         var clientDob     = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null;
         var ctaLabel      = "View Referral";
@@ -1197,12 +1168,12 @@ public class ReferralEmailService : IReferralEmailService
                 ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
                 : null);
 
-        var notesBlock = cleanNotes is not null
+        var notesBlock = r.Notes is not null
             ? $"""
               <div style="margin-top:28px">
                 <h3 style="margin:0 0 6px;color:#1a56db;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">Notes</h3>
                 <div style="height:2px;background:linear-gradient(to right,#e05e26,#f9a825);margin-bottom:4px"></div>
-                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{cleanNotes}</p>
+                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{r.Notes}</p>
               </div>
               """
             : "";

@@ -46,6 +46,7 @@ public class PublicReferralThreadResponse
     public string ProviderState { get; init; } = string.Empty;
     public string ProviderPostalCode { get; init; } = string.Empty;
     public string? ReferrerFirmName { get; init; }
+    public string? ReferrerPhone { get; init; }
     public string? ReferrerName { get; init; }
     public string? ReferrerFirstName { get; init; }
     public string? ReferrerLastName { get; init; }

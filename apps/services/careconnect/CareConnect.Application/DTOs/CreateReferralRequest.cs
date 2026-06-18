@@ -33,6 +33,8 @@ public class CreateReferralRequest
     public string? ReferrerName  { get; set; }
     public string? ReferrerFirstName { get; set; }
     public string? ReferrerLastName  { get; set; }
+    public string? ReferrerFirmName  { get; set; }
+    public string? ReferrerPhone    { get; set; }
 
     /// <summary>
     /// HMAC signature proving the authenticated user selected the supplied

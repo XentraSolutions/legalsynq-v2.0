@@ -80,6 +80,7 @@ public class ReferralThreadService : IReferralThreadService
             ProviderState = referral.Provider?.State ?? string.Empty,
             ProviderPostalCode = referral.Provider?.PostalCode ?? string.Empty,
             ReferrerFirmName = referrerFirmName,
+            ReferrerPhone = referral.ReferrerPhone,
             ReferrerName = referral.ReferrerName,
             ReferrerFirstName = referral.ReferrerFirstName,
             ReferrerLastName = referral.ReferrerLastName,
@@ -336,6 +337,9 @@ public class ReferralThreadService : IReferralThreadService
 
     private async Task<string?> ResolveReferrerFirmNameAsync(Referral referral, CancellationToken ct)
     {
+        if (!string.IsNullOrWhiteSpace(referral.ReferrerFirmName))
+            return referral.ReferrerFirmName;
+
         if (referral.ReferringOrganizationId.HasValue)
         {
             try
@@ -344,22 +348,9 @@ public class ReferralThreadService : IReferralThreadService
                 if (!string.IsNullOrWhiteSpace(orgName))
                     return orgName;
             }
-            catch { /* non-fatal — fall through to notes extraction */ }
+            catch { /* non-fatal */ }
         }
 
-        return ExtractFirmName(referral.Notes);
-    }
-
-    private static string? ExtractFirmName(string? notes)
-    {
-        if (string.IsNullOrWhiteSpace(notes)) return null;
-        foreach (var line in notes.Split('\n'))
-        {
-            var t = line.Trim();
-            if (t.StartsWith("Firm:", StringComparison.OrdinalIgnoreCase) &&
-                !t.StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase))
-                return t["Firm:".Length..].Trim();
-        }
         return null;
     }
 
