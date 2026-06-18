@@ -607,6 +607,23 @@ function ReferralPanel({
   const [treatmentTypes, setTreatmentTypes] = useState<{ id: string; name: string }[]>([]);
   const [checkingEmail,  setCheckingEmail]  = useState(false);
 
+  const hasPhoneValue        = form.phone.trim().length > 0;
+  const hasInvalidPhone      = hasPhoneValue && !isValidPhone(form.phone);
+  const hasPatientPhoneValue = form.patientPhone.trim().length > 0;
+  const hasInvalidPatientPhone = hasPatientPhoneValue && !isValidPhone(form.patientPhone);
+
+  const canSubmit =
+    !!form.patientFirstName.trim() &&
+    !!form.patientLastName.trim() &&
+    hasPatientPhoneValue && !hasInvalidPatientPhone &&
+    !!form.patientDob && isValidIsoDate(form.patientDob) && new Date(form.patientDob) <= new Date() &&
+    !!form.patientDateOfAccident && isValidIsoDate(form.patientDateOfAccident) && new Date(form.patientDateOfAccident) <= new Date() &&
+    !hasInvalidPhone &&
+    (!form.patientEmail.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patientEmail.trim())) &&
+    (prefillLawFirm
+      ? !!([form.contactFirstName.trim(), form.contactLastName.trim()].filter(Boolean).join(' ') || form.firmName.trim())
+      : !!form.firmName.trim() && !!form.email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()));
+
   useEffect(() => {
     const endpoint = prefillLawFirm
       ? '/api/careconnect/api/treatment-types'
@@ -682,6 +699,7 @@ function ReferralPanel({
     if (!form.patientDateOfAccident) errs['patientDateOfAccident'] = 'Date of accident is required.';
     else if (!isValidIsoDate(form.patientDateOfAccident)) errs['patientDateOfAccident'] = 'Enter a valid date of accident.';
     else if (new Date(form.patientDateOfAccident) > new Date()) errs['patientDateOfAccident'] = 'Date of accident cannot be in the future.';
+    if (form.phone.trim() && !isValidPhone(form.phone)) errs['phone'] = 'Phone number must be 10 digits.';
     if (!prefillLawFirm) {
       if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
       if (!form.email.trim()) errs['email'] = 'Email is required.';
@@ -1040,13 +1058,13 @@ function ReferralPanel({
                       className={panelInputCls(!!fieldErrors['email'])}
                     />
                   </PanelField>
-                  <PanelField label="Phone">
+                  <PanelField label="Phone" error={hasInvalidPhone ? 'Phone number must be 10 digits.' : undefined}>
                     <input
                       type="tel" value={form.phone}
                       placeholder="Enter 10-digit phone number"
                       onChange={e => update('phone', formatPhoneInput(e.target.value))}
                       disabled={state === 'submitting'}
-                      className={panelInputCls(false)}
+                      className={panelInputCls(hasInvalidPhone)}
                     />
                   </PanelField>
                 </div>
@@ -1081,13 +1099,13 @@ function ReferralPanel({
                     />
                   </PanelField>
                 </div>
-                <PanelField label="Patient phone" required error={fieldErrors['patientPhone']}>
+                <PanelField label="Patient phone" required error={hasInvalidPatientPhone ? 'Phone number must be 10 digits.' : fieldErrors['patientPhone']}>
                   <input
                     type="tel" required value={form.patientPhone}
                     placeholder="Enter 10-digit phone number"
                     onChange={e => update('patientPhone', formatPhoneInput(e.target.value))}
                     disabled={state === 'submitting'}
-                    className={panelInputCls(!!fieldErrors['patientPhone'])}
+                    className={panelInputCls(hasInvalidPatientPhone || !!fieldErrors['patientPhone'])}
                   />
                 </PanelField>
                 <PanelField label="Patient email" hint="optional" error={fieldErrors['patientEmail']}>
@@ -1266,8 +1284,8 @@ function ReferralPanel({
           <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900">
             <button
               type="submit"
-              disabled={state === 'submitting' || checkingEmail}
-              className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+              disabled={state === 'submitting' || checkingEmail || !canSubmit}
+              className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {checkingEmail ? (
                 <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Checking…</>

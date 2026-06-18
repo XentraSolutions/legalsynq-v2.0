@@ -133,6 +133,18 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
     }
   }
 
+  const hasClientPhoneValue   = clientPhone.trim().length > 0;
+  const hasInvalidClientPhone = hasClientPhoneValue && !isValidPhone(clientPhone);
+
+  const canSubmit =
+    !!clientFirstName.trim() &&
+    !!clientLastName.trim() &&
+    hasClientPhoneValue && !hasInvalidClientPhone &&
+    !!clientEmail.trim() &&
+    !!dateOfAccident &&
+    (!dateOfAccident || (isValidIsoDate(dateOfAccident) && new Date(dateOfAccident) <= new Date())) &&
+    (!clientDob || (isValidIsoDate(clientDob) && new Date(clientDob) <= new Date()));
+
   function InputError({ field }: { field: string }) {
     return fieldErrors[field]
       ? <p className="mt-1 text-xs text-red-600">{fieldErrors[field]}</p>
@@ -240,8 +252,15 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                     value={clientPhone}
                     placeholder="(555) 555-5555"
                     onChange={e => { setClientPhone(formatPhoneInput(e.target.value)); setFieldErrors(fe => ({ ...fe, clientPhone: '' })); }}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                      hasInvalidClientPhone
+                        ? 'border-red-300 focus:ring-red-400'
+                        : 'border-gray-300 focus:ring-primary'
+                    }`}
                   />
+                  {hasInvalidClientPhone && (
+                    <p className="text-xs text-red-500 mt-1">Phone number must be 10 digits.</p>
+                  )}
                   <InputError field="clientPhone" />
                 </div>
 
@@ -336,8 +355,8 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
               </button>
               <button
                 type="submit"
-                disabled={loading}
-                className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-60 transition-opacity"
+                disabled={loading || !canSubmit}
+                className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
               >
                 {loading ? 'Creating…' : 'Create Referral'}
               </button>
