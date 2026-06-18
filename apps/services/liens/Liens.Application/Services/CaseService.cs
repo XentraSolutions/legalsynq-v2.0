@@ -110,8 +110,6 @@ public sealed class CaseService : ICaseService
         CreateCaseRequest request, CancellationToken ct = default)
     {
         var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(request.CaseNumber))
-            errors.Add("caseNumber", ["Case number is required."]);
         if (string.IsNullOrWhiteSpace(request.ClientFirstName))
             errors.Add("clientFirstName", ["Client first name is required."]);
         if (string.IsNullOrWhiteSpace(request.ClientLastName))
@@ -119,16 +117,20 @@ public sealed class CaseService : ICaseService
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing.", errors);
 
-        var existing = await _caseRepo.GetByCaseNumberAsync(tenantId, request.CaseNumber.Trim(), ct);
+        var caseNumber = string.IsNullOrWhiteSpace(request.CaseNumber)
+            ? await GenerateCaseNumberAsync(tenantId, ct)
+            : request.CaseNumber.Trim();
+
+        var existing = await _caseRepo.GetByCaseNumberAsync(tenantId, caseNumber, ct);
         if (existing is not null)
             throw new ConflictException(
-                $"A case with number '{request.CaseNumber.Trim()}' already exists.",
+                $"A case with number '{caseNumber}' already exists.",
                 "CASE_NUMBER_DUPLICATE");
 
         var entity = Case.Create(
             tenantId: tenantId,
             orgId: orgId,
-            caseNumber: request.CaseNumber,
+            caseNumber: caseNumber,
             clientFirstName: request.ClientFirstName,
             clientLastName: request.ClientLastName,
             createdByUserId: actingUserId,
@@ -180,6 +182,30 @@ public sealed class CaseService : ICaseService
             }, TaskContinuationOptions.OnlyOnFaulted);
 
         return MapToResponse(entity);
+    }
+
+    private async Task<string> GenerateCaseNumberAsync(Guid tenantId, CancellationToken ct)
+    {
+        var yearPrefix = DateTime.UtcNow.ToString("yy");
+        var prefix = $"{yearPrefix}-";
+        var existingCases = await _caseRepo.GetByCaseNumberPrefixAsync(tenantId, prefix, ct);
+        var maxSequence = existingCases
+            .Select(c => TryGetCaseSequence(c.CaseNumber, prefix))
+            .Where(sequence => sequence.HasValue)
+            .Select(sequence => sequence!.Value)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return $"{prefix}{maxSequence + 1:000000}";
+    }
+
+    private static int? TryGetCaseSequence(string caseNumber, string prefix)
+    {
+        if (!caseNumber.StartsWith(prefix, StringComparison.Ordinal))
+            return null;
+
+        var suffix = caseNumber[prefix.Length..];
+        return int.TryParse(suffix, out var sequence) ? sequence : null;
     }
 
     public async Task<CaseResponse> UpdateAsync(
