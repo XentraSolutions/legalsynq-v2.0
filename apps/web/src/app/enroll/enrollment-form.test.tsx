@@ -114,9 +114,9 @@ describe('EnrollmentForm', () => {
       />,
     );
 
-    await user.type(screen.getByPlaceholderText('(555) 000-0000'), '123');
-    await user.type(screen.getByPlaceholderText('First'), 'Taylor');
-    await user.type(screen.getByPlaceholderText('At least 8 characters'), 'password123');
+    await user.type(screen.getByPlaceholderText('Enter 10-digit phone number'), '123');
+    await user.type(screen.getByPlaceholderText('Enter first name'), 'Taylor');
+    await user.type(screen.getByPlaceholderText('Create password'), 'password123');
     await user.type(screen.getByPlaceholderText('Re-enter password'), 'password123');
     await user.click(screen.getByLabelText(/i agree to the/i));
     await user.click(screen.getByRole('button', { name: /activate my portal access/i }));
@@ -153,14 +153,14 @@ describe('EnrollmentForm', () => {
       />,
     );
 
-    await user.type(screen.getByPlaceholderText('123 Main St'), '885 Sample');
+    await user.type(screen.getByPlaceholderText('Enter street address'), '885 Sample');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await screen.findByText(addressSuggestion.displayName);
     await user.click(screen.getByText(addressSuggestion.displayName));
-    await user.clear(screen.getByPlaceholderText('90210'));
-    await user.type(screen.getByPlaceholderText('90210'), '30317');
-    await user.type(screen.getByPlaceholderText('First'), 'Taylor');
-    await user.type(screen.getByPlaceholderText('At least 8 characters'), 'password123');
+    await user.clear(screen.getByPlaceholderText('Enter ZIP code'));
+    await user.type(screen.getByPlaceholderText('Enter ZIP code'), '30317');
+    await user.type(screen.getByPlaceholderText('Enter first name'), 'Taylor');
+    await user.type(screen.getByPlaceholderText('Create password'), 'password123');
     await user.type(screen.getByPlaceholderText('Re-enter password'), 'password123');
     await user.click(screen.getByLabelText(/i agree to the/i));
     await user.click(screen.getByRole('button', { name: /activate my portal access/i }));
@@ -198,12 +198,12 @@ describe('EnrollmentForm', () => {
       />,
     );
 
-    await user.type(screen.getByPlaceholderText('123 Main St'), '885 Sample');
+    await user.type(screen.getByPlaceholderText('Enter street address'), '885 Sample');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await screen.findByText(addressSuggestion.displayName);
     await user.click(screen.getByText(addressSuggestion.displayName));
-    await user.type(screen.getByPlaceholderText('First'), 'Taylor');
-    await user.type(screen.getByPlaceholderText('At least 8 characters'), 'password123');
+    await user.type(screen.getByPlaceholderText('Enter first name'), 'Taylor');
+    await user.type(screen.getByPlaceholderText('Create password'), 'password123');
     await user.type(screen.getByPlaceholderText('Re-enter password'), 'password123');
     await user.click(screen.getByLabelText(/i agree to the/i));
     await user.click(screen.getByRole('button', { name: /activate my portal access/i }));
@@ -243,17 +243,109 @@ describe('EnrollmentForm', () => {
       />,
     );
 
-    await user.type(screen.getByPlaceholderText('123 Main St'), '885 Sample');
+    await user.type(screen.getByPlaceholderText('Enter street address'), '885 Sample');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await screen.findByText(addressSuggestion.displayName);
     await user.click(screen.getByText(addressSuggestion.displayName));
-    await user.clear(screen.getByPlaceholderText('90210'));
-    await user.type(screen.getByPlaceholderText('90210'), '30317');
+    await user.clear(screen.getByPlaceholderText('Enter ZIP code'));
+    await user.type(screen.getByPlaceholderText('Enter ZIP code'), '30317');
 
     expect(screen.getByText('ZIP code must match the selected address.')).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText('City'), ' East');
+    await user.type(screen.getByPlaceholderText('Enter city'), ' East');
 
     expect(screen.queryByText('ZIP code must match the selected address.')).not.toBeInTheDocument();
+  });
+
+  test('restoring the exact selected ZIP allows submit again', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [addressSuggestion],
+    } as Response);
+    registerEnrollmentMock.mockResolvedValue({ ok: true });
+
+    render(
+      <EnrollmentForm
+        prefill={{
+          providerId: 'provider-123',
+          companyName: 'Demo Provider',
+          companyType: 'Provider',
+          email: 'provider@example.com',
+          phone: '',
+          addressLine1: '',
+          city: '',
+          state: '',
+          postalCode: '',
+        }}
+        providerId="provider-123"
+        tenantId="tenant-123"
+        referralPrefill={null}
+        isFirmEnrollment={false}
+      />,
+    );
+
+    await user.type(screen.getByPlaceholderText('Enter street address'), '885 Sample');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await screen.findByText(addressSuggestion.displayName);
+    await user.click(screen.getByText(addressSuggestion.displayName));
+    await user.clear(screen.getByPlaceholderText('Enter ZIP code'));
+    await user.type(screen.getByPlaceholderText('Enter ZIP code'), '30317');
+
+    expect(screen.getByText('ZIP code must match the selected address.')).toBeInTheDocument();
+
+    await user.clear(screen.getByPlaceholderText('Enter ZIP code'));
+    await user.type(screen.getByPlaceholderText('Enter ZIP code'), addressSuggestion.postalCode);
+    await user.type(screen.getByPlaceholderText('Enter first name'), 'Taylor');
+    await user.type(screen.getByPlaceholderText('Create password'), 'password123');
+    await user.type(screen.getByPlaceholderText('Re-enter password'), 'password123');
+    await user.click(screen.getByLabelText(/i agree to the/i));
+    await user.click(screen.getByRole('button', { name: /activate my portal access/i }));
+
+    expect(screen.queryByText('ZIP code must match the selected address.')).not.toBeInTheDocument();
+    expect(registerEnrollmentMock).toHaveBeenCalledWith(expect.objectContaining({
+      postalCode: '30316',
+      addressSelectionToken: 'signed-address-token',
+    }));
+    expect(pushMock).toHaveBeenCalledWith('/enroll/welcome');
+  });
+
+  test('keeps ZIP mismatch when the entered ZIP only shares the same first five digits', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [addressSuggestion],
+    } as Response);
+
+    render(
+      <EnrollmentForm
+        prefill={{
+          providerId: 'provider-123',
+          companyName: 'Demo Provider',
+          companyType: 'Provider',
+          email: 'provider@example.com',
+          phone: '',
+          addressLine1: '',
+          city: '',
+          state: '',
+          postalCode: '',
+        }}
+        providerId="provider-123"
+        tenantId="tenant-123"
+        referralPrefill={null}
+        isFirmEnrollment={false}
+      />,
+    );
+
+    await user.type(screen.getByPlaceholderText('Enter street address'), '885 Sample');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await screen.findByText(addressSuggestion.displayName);
+    await user.click(screen.getByText(addressSuggestion.displayName));
+    await user.clear(screen.getByPlaceholderText('Enter ZIP code'));
+    await user.type(screen.getByPlaceholderText('Enter ZIP code'), '30316-1234');
+
+    expect(screen.getByText('ZIP code must match the selected address.')).toBeInTheDocument();
   });
 });

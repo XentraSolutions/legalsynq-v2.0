@@ -6,6 +6,11 @@ namespace CareConnect.Application.Helpers;
 
 public static class AddressSelectionTokenHelper
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public static AddressSelectionClaims? Decode(string? rawToken, string? secret, DateTimeOffset? now = null)
     {
         if (string.IsNullOrWhiteSpace(rawToken) || string.IsNullOrWhiteSpace(secret))
@@ -27,7 +32,8 @@ public static class AddressSelectionTokenHelper
                 return null;
 
             var claims = JsonSerializer.Deserialize<AddressSelectionClaims>(
-                Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64Url(body))));
+                Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64Url(body))),
+                JsonOptions);
             if (claims is null)
                 return null;
 

@@ -135,8 +135,8 @@ export function EnrollmentForm({
   const hasInvalidPhone = hasPhoneValue && !isValidPhone(phone);
   const hasPostalCodeValue = postalCode.trim().length > 0;
   const hasInvalidPostalCode = hasPostalCodeValue && !isValidUsZipCode(postalCode);
-  const hasAutoFilledZipMismatch = !!addressSelectionToken &&
-    postalCode.trim().slice(0, 5) !== (selectedPostalCode ?? '').slice(0, 5);
+  const matchesSelectedPostalCode = postalCode.trim() === (selectedPostalCode ?? '').trim();
+  const hasAutoFilledZipMismatch = !!addressSelectionToken && !matchesSelectedPostalCode;
 
   const clearSelectedAddress = useCallback(() => {
     setAddressSelectionToken(null);
@@ -248,7 +248,7 @@ export function EnrollmentForm({
         city:         city.trim() || undefined,
         state:        state.trim() || undefined,
         postalCode:   postalCode.trim() || undefined,
-        addressSelectionToken: addressSelectionToken ?? undefined,
+        addressSelectionToken: matchesSelectedPostalCode ? addressSelectionToken ?? undefined : undefined,
       });
     } else if (providerId && tenantId) {
       // Provider self-enrollment from network directory
@@ -264,7 +264,7 @@ export function EnrollmentForm({
         city:         city.trim() || undefined,
         state:        state.trim() || undefined,
         postalCode:   postalCode.trim() || undefined,
-        addressSelectionToken: addressSelectionToken ?? undefined,
+        addressSelectionToken: matchesSelectedPostalCode ? addressSelectionToken ?? undefined : undefined,
         otpCode:      emailChanged ? otpCode.trim() : undefined,
         tenantId,
       });
