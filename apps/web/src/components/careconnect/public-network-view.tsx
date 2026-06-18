@@ -998,7 +998,7 @@ function ReferralPanel({
                   <PanelField label="Firm name" required error={fieldErrors['firmName']}>
                     <input
                       type="text" required value={form.firmName}
-                      placeholder="Acme Injury Law"
+                      placeholder="Enter firm name"
                       onChange={e => update('firmName', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['firmName'])}
@@ -1008,7 +1008,7 @@ function ReferralPanel({
                     <PanelField label="Contact first name">
                       <input
                         type="text" value={form.contactFirstName}
-                        placeholder="John"
+                        placeholder="Enter first name"
                         onChange={e => update('contactFirstName', e.target.value)}
                         disabled={state === 'submitting'}
                         className={panelInputCls(false)}
@@ -1017,7 +1017,7 @@ function ReferralPanel({
                     <PanelField label="Contact last name">
                       <input
                         type="text" value={form.contactLastName}
-                        placeholder="Doe"
+                        placeholder="Enter last name"
                         onChange={e => update('contactLastName', e.target.value)}
                         disabled={state === 'submitting'}
                         className={panelInputCls(false)}
@@ -1027,7 +1027,7 @@ function ReferralPanel({
                   <PanelField label="Email" required error={fieldErrors['email']}>
                     <input
                       type="email" required value={form.email}
-                      placeholder="intake@firm.example"
+                      placeholder="Enter email address"
                       onChange={e => update('email', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['email'])}
@@ -1036,7 +1036,7 @@ function ReferralPanel({
                   <PanelField label="Phone">
                     <input
                       type="tel" value={form.phone}
-                      placeholder="(555) 555-5555"
+                      placeholder="Enter 10-digit phone number"
                       onChange={e => update('phone', formatPhoneInput(e.target.value))}
                       disabled={state === 'submitting'}
                       className={panelInputCls(false)}
@@ -1058,7 +1058,7 @@ function ReferralPanel({
                   <PanelField label="Patient First name" required error={fieldErrors['patientFirstName']}>
                     <input
                       type="text" required value={form.patientFirstName}
-                      placeholder="Jane"
+                      placeholder="Enter patient first name"
                       onChange={e => update('patientFirstName', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['patientFirstName'])}
@@ -1067,7 +1067,7 @@ function ReferralPanel({
                   <PanelField label="Patient Last name" required error={fieldErrors['patientLastName']}>
                     <input
                       type="text" required value={form.patientLastName}
-                      placeholder="Doe"
+                      placeholder="Enter patient last name"
                       onChange={e => update('patientLastName', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['patientLastName'])}
@@ -1077,7 +1077,7 @@ function ReferralPanel({
                 <PanelField label="Patient phone" required error={fieldErrors['patientPhone']}>
                   <input
                     type="tel" required value={form.patientPhone}
-                    placeholder="(555) 555-5555"
+                    placeholder="Enter 10-digit phone number"
                     onChange={e => update('patientPhone', formatPhoneInput(e.target.value))}
                     disabled={state === 'submitting'}
                     className={panelInputCls(!!fieldErrors['patientPhone'])}
@@ -1086,7 +1086,7 @@ function ReferralPanel({
                 <PanelField label="Patient email" hint="optional" error={fieldErrors['patientEmail']}>
                   <input
                     type="email" value={form.patientEmail}
-                    placeholder="patient@example.com"
+                    placeholder="Enter email address"
                     onChange={e => update('patientEmail', e.target.value)}
                     disabled={state === 'submitting'}
                     className={panelInputCls(!!fieldErrors['patientEmail'])}
