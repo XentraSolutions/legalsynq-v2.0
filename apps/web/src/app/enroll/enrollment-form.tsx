@@ -302,7 +302,7 @@ export function EnrollmentForm({
               type="text"
               value={companyName}
               onChange={e => !companyNameLocked && setCompanyName(e.target.value)}
-              placeholder="Your organization name"
+              placeholder="Enter company name"
               required
               disabled={companyNameLocked}
               className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -339,7 +339,7 @@ export function EnrollmentForm({
                 type="email"
                 value={email}
                 onChange={e => !emailLocked && setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder="Enter email address"
                 required
                 disabled={emailLocked}
                 className={`flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -379,7 +379,7 @@ export function EnrollmentForm({
                 maxLength={6}
                 value={otpCode}
                 onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="6-digit code"
+                placeholder="Enter 6-digit code"
                 className="w-40 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="text-xs text-gray-400 mt-1">Check your email — the code expires in 10 minutes.</p>
@@ -394,7 +394,7 @@ export function EnrollmentForm({
               type="tel"
               value={phone}
               onChange={e => !phoneLocked && setPhone(formatPhoneInput(e.target.value))}
-              placeholder="(555) 000-0000"
+              placeholder="Enter 10-digit phone number"
               disabled={phoneLocked}
               className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
                 phoneLocked
@@ -430,7 +430,7 @@ export function EnrollmentForm({
               }}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
               onFocus={() => !addressLine1Locked && addressSuggestions.length > 0 && setShowSuggestions(true)}
-              placeholder="123 Main St"
+              placeholder="Enter street address"
               autoComplete="off"
               disabled={addressLine1Locked}
               className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -470,7 +470,7 @@ export function EnrollmentForm({
                   clearSelectedAddress();
                   setCity(e.target.value);
                 }}
-                placeholder="City"
+                placeholder="Enter city"
                 disabled={cityLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   cityLocked
@@ -489,7 +489,7 @@ export function EnrollmentForm({
                   clearSelectedAddress();
                   setState(e.target.value);
                 }}
-                placeholder="CA"
+                placeholder="Enter state"
                 maxLength={2}
                 disabled={stateLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -505,7 +505,7 @@ export function EnrollmentForm({
                 type="text"
                 value={postalCode}
                 onChange={e => { if (!postalCodeLocked) setPostalCode(e.target.value.replace(/[^\d-]/g, '').slice(0, 10)); }}
-                placeholder="90210"
+                placeholder="Enter ZIP code"
                 maxLength={10}
                 disabled={postalCodeLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
@@ -543,7 +543,7 @@ export function EnrollmentForm({
                 type="text"
                 value={firstName}
                 onChange={e => !firstNameLocked && setFirstName(e.target.value)}
-                placeholder="First"
+                placeholder="Enter first name"
                 required
                 disabled={firstNameLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -559,7 +559,7 @@ export function EnrollmentForm({
                 type="text"
                 value={lastName}
                 onChange={e => !lastNameLocked && setLastName(e.target.value)}
-                placeholder="Last"
+                placeholder="Enter last name"
                 disabled={lastNameLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   lastNameLocked
@@ -581,7 +581,7 @@ export function EnrollmentForm({
                 autoComplete="new-password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
+                placeholder="Create password"
                 required
                 minLength={8}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
