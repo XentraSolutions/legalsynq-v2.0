@@ -924,7 +924,7 @@ public static class CaseEndpoints
 
         var mappedCreate = new CreateLienRequest
         {
-            LienNumber = $"LM-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
+            LienNumber = string.Empty,
             ExternalReference = request.fundingCompanyId,
             LienType = LienType.MedicalLien,
             CaseId = Guid.TryParse(request.caseId, out var createCaseId) ? createCaseId : null,
@@ -4007,9 +4007,7 @@ public static class CaseEndpoints
 
         var mappedRequest = new CreateCaseRequest
         {
-            CaseNumber = string.IsNullOrWhiteSpace(request.code)
-                ? $"CASE-{DateTime.UtcNow:yyyyMMddHHmmssfff}"
-                : request.code,
+            CaseNumber = request.code ?? string.Empty,
             ClientFirstName = request.firstname ?? string.Empty,
             ClientLastName = request.lastname ?? string.Empty,
             ExternalReference = request.externalCaseId,

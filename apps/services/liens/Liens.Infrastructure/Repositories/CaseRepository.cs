@@ -28,6 +28,13 @@ public class CaseRepository : ICaseRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<List<Case>> GetByCaseNumberPrefixAsync(Guid tenantId, string caseNumberPrefix, CancellationToken ct = default)
+    {
+        return await _db.Cases
+            .Where(c => c.TenantId == tenantId && c.CaseNumber.StartsWith(caseNumberPrefix))
+            .ToListAsync(ct);
+    }
+
     public async Task<(List<Case> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? status,
         int page, int pageSize,
