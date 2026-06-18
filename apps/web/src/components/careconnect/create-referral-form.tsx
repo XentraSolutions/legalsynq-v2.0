@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api-client';
 import type { CreateReferralRequest, ReferralUrgencyValue } from '@/types/careconnect';
 import { URGENCY_OPTIONS } from '@/types/careconnect';
 import { formatPhoneInput, stripPhone, isValidPhone } from '@/lib/phone';
+import { isValidIsoDate } from '@/lib/daterange';
 
 interface TreatmentType {
   id:   string;
@@ -79,7 +80,9 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
     else if (!isValidPhone(clientPhone)) errs.clientPhone = 'Enter a valid 10-digit phone number';
     if (!clientEmail.trim())     errs.clientEmail = 'Email is required';
     if (!dateOfAccident)         errs.dateOfAccident = 'Date of accident is required';
+    else if (!isValidIsoDate(dateOfAccident)) errs.dateOfAccident = 'Enter a valid date';
     else if (new Date(dateOfAccident) > new Date()) errs.dateOfAccident = 'Date of accident cannot be in the future';
+    if (clientDob && !isValidIsoDate(clientDob)) errs.clientDob = 'Enter a valid date of birth';
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -206,9 +209,10 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                   <input
                     type="date"
                     value={clientDob}
-                    onChange={e => setClientDob(e.target.value)}
+                    onChange={e => { setClientDob(e.target.value); setFieldErrors(fe => ({ ...fe, clientDob: '' })); }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
+                  <InputError field="clientDob" />
                 </div>
 
                 <div>

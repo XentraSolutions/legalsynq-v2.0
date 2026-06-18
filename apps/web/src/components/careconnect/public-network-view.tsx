@@ -12,6 +12,7 @@
 import { useState, useMemo, useCallback, useRef, forwardRef, useEffect, type FormEvent, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
+import { isValidIsoDate } from '@/lib/daterange';
 import { createEnrollmentToken } from '@/app/enroll/actions';
 import type {
   PublicNetworkDetail,
@@ -676,8 +677,10 @@ function ReferralPanel({
     if (form.patientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patientEmail.trim()))
       errs['patientEmail'] = 'Enter a valid email address.';
     if (!form.patientDob) errs['patientDob'] = 'Date of birth is required.';
+    else if (!isValidIsoDate(form.patientDob)) errs['patientDob'] = 'Enter a valid date of birth.';
     else if (new Date(form.patientDob) > new Date()) errs['patientDob'] = 'Date of birth cannot be in the future.';
     if (!form.patientDateOfAccident) errs['patientDateOfAccident'] = 'Date of accident is required.';
+    else if (!isValidIsoDate(form.patientDateOfAccident)) errs['patientDateOfAccident'] = 'Enter a valid date of accident.';
     else if (new Date(form.patientDateOfAccident) > new Date()) errs['patientDateOfAccident'] = 'Date of accident cannot be in the future.';
     if (!prefillLawFirm) {
       if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
