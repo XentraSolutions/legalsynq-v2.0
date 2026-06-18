@@ -32,6 +32,7 @@ import { lookupService } from "@/lib/lookup";
 import { GetSettlementHistoryResponse } from "@/lib/settlement/settlement.types";
 import { settlementService } from "@/lib/settlement";
 import { useSessionContext } from "@/providers/session-provider";
+import { CreateSettlementForm } from "@/components/lien/forms/settlement-payment-form";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -2156,6 +2157,18 @@ function ServicingTab({
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isNoRecoveryMode, setIsNoRecoveryMode] = useState(false);
+
+  const handleOpenStandardPayment = () => {
+    setIsNoRecoveryMode(false);
+    setIsPaymentModalOpen(true);
+  };
+
+  const handleOpenNoRecoverySetup = () => {
+    setIsNoRecoveryMode(true);
+    setIsPaymentModalOpen(true);
+  };
 
   /* TEMP: visual fallback data for UI review only */
   const [caseStatus, setCaseStatus] = useState(
@@ -2193,6 +2206,16 @@ function ServicingTab({
   );
 
   const { lookup } = useSessionContext();
+
+  const settlementTypeLookups = ([{ id: '1', code: '', description: 'Other', name: '' }]).map(item => ({
+    id: item.id || item.code,
+    description: item.name || item.description || ''
+  }));
+
+  const settlementStatusLookups = ([{ id: '1', code: '', description: 'Full Payment', name: '' }]).map(item => ({
+    id: item.id || item.code,
+    description: item.name || item.description || ''
+  }));
 
   const leftContent = (
     <div className="space-y-4">
@@ -2354,10 +2377,23 @@ function ServicingTab({
                 {TEMP_PAYMENT_HISTORY.length} payment
                 {TEMP_PAYMENT_HISTORY.length !== 1 ? "s" : ""} recorded
               </p>
-              <button className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
+              <button onClick={handleOpenStandardPayment} className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
                 <i className="ri-add-line text-sm" />
                 Add Payment
               </button>
+              <CreateSettlementForm
+                caseId={caseDetail.id}
+                open={isPaymentModalOpen}
+                noRecovery={isNoRecoveryMode}
+                onClose={() => setIsPaymentModalOpen(false)}
+                onCreated={() => {
+                  setIsPaymentModalOpen(false);
+                }}
+                lookups={{
+                  settlementType: settlementTypeLookups,
+                  settlementStatus: settlementStatusLookups
+                }}
+              />
             </div>
           </CollapsibleSection>
 
@@ -2461,11 +2497,11 @@ function ServicingTab({
                     <i className="ri-percent-line text-sm" />
                     Setup Reduction
                   </button>
-                  <button className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors inline-flex items-center gap-1">
+                  <button onClick={handleOpenNoRecoverySetup} className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors inline-flex items-center gap-1">
                     <i className="ri-close-circle-line text-sm" />
                     No Recovery
                   </button>
-                  <button className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
+                  <button onClick={handleOpenStandardPayment} className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
                     <i className="ri-money-dollar-circle-line text-sm" />
                     Add Payment
                   </button>

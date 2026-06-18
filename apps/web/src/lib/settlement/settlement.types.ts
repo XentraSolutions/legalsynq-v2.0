@@ -15,8 +15,20 @@ export interface CreateLienReductionRequest {
 export interface CreateLienReductionResponse extends SettlementGenericResponse {}
 
 export interface CreateLienSettlementRequest {
-  caseId: string
-  payment: string[]
+  amount: string
+  amountToSettle: string
+  checkAmount: string
+  checkDate: string
+  checkNumber: string
+  closedDate: string
+  lienId: string
+  lienStatus: string
+  netProfit: string
+  note: string
+  paymentNumber: string
+  payor: string
+  status: string
+  type: string
 }
 
 export interface CreateLienSettlementResponse extends SettlementGenericResponse {}
