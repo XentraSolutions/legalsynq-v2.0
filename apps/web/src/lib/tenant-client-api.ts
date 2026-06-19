@@ -77,6 +77,9 @@ export const tenantClientApi = {
   assignRole: (userId: string, roleId: string) =>
     apiClient.post<void>(`/identity/api/admin/users/${userId}/roles`, { roleId }),
 
+  assignMembership: (userId: string, organizationId: string, memberRole?: string) =>
+    apiClient.post<void>(`/identity/api/admin/users/${userId}/memberships`, { organizationId, memberRole }),
+
   removeRole: (userId: string, roleId: string) =>
     apiClient.delete<void>(`/identity/api/admin/users/${userId}/roles/${roleId}`),
 

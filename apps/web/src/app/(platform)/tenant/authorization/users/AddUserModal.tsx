@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal } from '@/components/lien/modal';
 import { tenantClientApi, ApiError } from '@/lib/tenant-client-api';
 import { useToast } from '@/lib/toast-context';
+import { useSession } from '@/hooks/use-session';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -58,6 +59,7 @@ function validate(form: FormState): FormErrors {
 
 export function AddUserModal({ open, tenantId, onClose, onSuccess }: AddUserModalProps) {
   const { show: showToast } = useToast();
+  const { session } = useSession();
 
   const [form,     setForm]     = useState<FormState>(EMPTY_FORM);
   const [errors,   setErrors]   = useState<FormErrors>({});
@@ -122,14 +124,41 @@ export function AddUserModal({ open, tenantId, onClose, onSuccess }: AddUserModa
         roleId:    form.roleId || undefined,
       });
 
+      const ownerProducts = session?.userProducts ?? [];
+      const ownerOrgId = session?.orgId;
+      let productWarning = false;
+
+      if (data?.userId) {
+        const ops: Promise<unknown>[] = [];
+
+        if (ownerOrgId) {
+          ops.push(tenantClientApi.assignMembership(data.userId, ownerOrgId, 'ADMIN'));
+        }
+
+        ownerProducts.forEach(code => {
+          ops.push(tenantClientApi.assignProduct(tenantId, data.userId, code));
+        });
+
+        if (ops.length > 0) {
+          const results = await Promise.allSettled(ops);
+          const failed = results.filter(r => r.status === 'rejected');
+          if (failed.length > 0) productWarning = true;
+        }
+      }
+
       if (data?.inviteToken) {
         setInviteToken(data.inviteToken);
         setInviteEmail(form.email.trim());
         setCopyLabel('Copy link');
+        if (productWarning) {
+          showToast('Some products could not be assigned automatically.', 'info');
+        }
       } else {
         showToast(
-          `Invitation sent to ${form.email.trim()}.`,
-          'success',
+          productWarning
+            ? `Invitation sent to ${form.email.trim()}, but some products could not be assigned automatically.`
+            : `Invitation sent to ${form.email.trim()}.`,
+          productWarning ? 'info' : 'success',
         );
         onSuccess();
       }

@@ -217,7 +217,8 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
     NotificationsService__BaseUrl=http://127.0.0.1:5008 \
-    NotificationsService__PortalBaseUrl=http://careconnect-demo.localhost:3000 \
+    NotificationsService__PortalBaseUrl=http://localhost:3000 \
+    NotificationsService__CareConnectPortalBaseUrl=http://careconnect-demo.localhost:3000 \
     dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \
