@@ -81,7 +81,7 @@ export function isValidIsoDate(s: string): boolean {
 
 export function hasReasonableYear(s: string): boolean {
   const y = parseInt(s.split('-')[0], 10);
-  return y >= 1900 && y <= new Date().getFullYear();
+  return y >= 1900;
 }
 
 /** Format yyyy-MM-dd for display (e.g. "Mar 1, 2026"). */
