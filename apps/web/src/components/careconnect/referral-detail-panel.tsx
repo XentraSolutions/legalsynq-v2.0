@@ -1,4 +1,7 @@
+'use client';
+
 import type { ReferralDetail } from '@/types/careconnect';
+import { useBrowserTimezone } from '@/lib/use-timezone';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { formatPhoneDisplay } from '@/lib/phone';
 import { formatDateOnly } from '@/lib/format-date';
@@ -48,7 +51,10 @@ function formatDateOnlyField(iso: string | undefined): string {
   });
 }
 
-export function ReferralDetailPanel({ referral, hideHeader = false, timezone = 'America/Los_Angeles' }: ReferralDetailPanelProps) {
+export function ReferralDetailPanel({ referral, hideHeader = false, timezone }: ReferralDetailPanelProps) {
+  const browserTimezone = useBrowserTimezone();
+  const resolvedTimezone = timezone ?? browserTimezone;
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg">
       {/* Header — omitted when used alongside ReferralPageHeader */}
@@ -79,8 +85,8 @@ export function ReferralDetailPanel({ referral, hideHeader = false, timezone = '
           <Field label="Date of accident"   value={referral.dateOfAccident ? formatDateOnlyField(referral.dateOfAccident) : undefined} />
           <Field label="Type of treatment"  value={referral.treatmentTypeName ?? '—'} />
           <Field label="Status"             value={<StatusBadge status={referral.status} />} />
-          <Field label="Created"            value={formatDate(referral.createdAtUtc, timezone)} />
-          <Field label="Last updated"       value={formatDate(referral.updatedAtUtc, timezone)} />
+          <Field label="Created"            value={formatDate(referral.createdAtUtc, resolvedTimezone)} />
+          <Field label="Last updated"       value={formatDate(referral.updatedAtUtc, resolvedTimezone)} />
         </Section>
 
         {/* Client / Subject party */}

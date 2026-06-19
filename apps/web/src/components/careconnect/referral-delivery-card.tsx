@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
-import { useTimezone } from '@/lib/use-timezone';
+import { useBrowserTimezone } from '@/lib/use-timezone';
 import type { ReferralDetail, ReferralNotification } from '@/types/careconnect';
 
 interface ReferralDeliveryCardProps {
@@ -38,7 +38,7 @@ function NotifTypePill({ type, source }: { type: string; source?: string }) {
 
 export function ReferralDeliveryCard({ referral }: ReferralDeliveryCardProps) {
   const router = useRouter();
-  const timezone = useTimezone();
+  const timezone = useBrowserTimezone();
 
   const [busy,     setBusy]     = useState(false);
   const [errorMsg, setErrorMsg] = useState('');

@@ -55,6 +55,46 @@ public class ReferralThreadServiceTests
     }
 
     [Fact]
+    public async Task GetAuthenticatedCommentsAsync_NormalizesUnspecifiedCommentTimestampToUtc()
+    {
+        var referral = BuildReferral();
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var createdAt = new DateTime(2026, 6, 1, 10, 0, 0, DateTimeKind.Unspecified);
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new ReferralComment
+                {
+                    TenantId = referral.TenantId,
+                    ReferralId = referral.Id,
+                    SenderType = "provider",
+                    SenderName = "Dr. Gray",
+                    Message = "We can take this case.",
+                    CreatedAt = createdAt,
+                },
+            ]);
+
+        var sut = BuildService(repo, commentsRepo);
+
+        var result = await sut.GetAuthenticatedCommentsAsync(
+            TenantId,
+            referral.Id,
+            ReceivingOrgId,
+            callerEmail: null,
+            useGlobalLookup: true,
+            bypassParticipantCheck: false);
+
+        Assert.NotNull(result);
+        Assert.Single(result!);
+        Assert.Equal(DateTimeKind.Utc, result[0].CreatedAtUtc.Kind);
+        Assert.Equal(createdAt, result[0].CreatedAtUtc);
+    }
+
+    [Fact]
     public async Task GetPublicThreadAccessAsync_ReturnsProviderPrefillFields()
     {
         var referral = BuildReferral(referringOrganizationId: null);

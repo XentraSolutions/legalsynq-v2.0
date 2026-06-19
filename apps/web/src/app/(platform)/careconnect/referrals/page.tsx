@@ -570,11 +570,10 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
   const isReceiver        = session.productRoles.includes(ProductRole.CareConnectReceiver);
   const isNetworkManager  = session.productRoles.includes(ProductRole.CareConnectNetworkManager);
   const isTenantAdminView = session.isTenantAdmin && !session.isPlatformAdmin;
-
-  let tenantTimezone = 'America/Los_Angeles';
+  let serverTimezone = 'America/Los_Angeles';
   try {
     const tzSetting = await tenantServerApi.getTimezoneSetting(session.tenantId);
-    if (tzSetting.value) tenantTimezone = tzSetting.value;
+    if (tzSetting.value) serverTimezone = tzSetting.value;
   } catch { /* fall back to default */ }
 
   // LSCC-01-002-02: Enforce the admin-controlled access model.
@@ -599,7 +598,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
           sessionTenantId={session.tenantId}
           status={searchParamsData.status || undefined}
           page={page}
-          timezone={tenantTimezone}
+          timezone={serverTimezone}
         />
 
         <div className="pt-1">
@@ -644,7 +643,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
           status={searchParamsData.status || undefined}
           search={searchText}
           page={page}
-          timezone={tenantTimezone}
+          timezone={serverTimezone}
         />
 
         <div className="pt-1">
@@ -768,7 +767,6 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
           isReceiver={isReceiver}
           orgId={session.orgId}
           currentQs={currentQs}
-          timezone={tenantTimezone}
         />
       )}
 

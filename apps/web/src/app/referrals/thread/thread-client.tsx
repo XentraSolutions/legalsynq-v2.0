@@ -8,7 +8,7 @@ interface Comment {
   senderType: string;
   senderName: string;
   message:    string;
-  createdAt:  string;
+  createdAtUtc: string;
 }
 
 interface Attachment {
@@ -39,7 +39,7 @@ interface ThreadData {
   referrerFirmName?:   string | null;
   referrerName:        string | null;
   referrerEmail:       string | null;
-  createdAt:           string;
+  createdAtUtc:        string;
   comments:            Comment[];
   attachments:         Attachment[];
   providerHasAccount?: boolean;
@@ -330,7 +330,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
           {/* Referral meta */}
           <div style={s.grid2}>
             <FieldBlock label="Service"   value={data.service} />
-            <FieldBlock label="Submitted" value={formatDate(data.createdAt, timezone)} />
+            <FieldBlock label="Submitted" value={formatDate(data.createdAtUtc, timezone)} />
             {data.urgency && <FieldBlock label="Urgency" value={data.urgency} />}
             {data.caseNumber && <FieldBlock label="Case #" value={data.caseNumber} />}
             <FieldBlock label="Type of Treatment" value={liveTreatmentName ?? '—'} />
@@ -695,7 +695,7 @@ function CommentBubble({ comment, timezone }: { comment: Comment; timezone: stri
       <div style={{ maxWidth: '80%' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isProvider ? 'row-reverse' : 'row', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt, timezone)}</span>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAtUtc, timezone)}</span>
         </div>
         <div style={{
           background: isProvider ? '#eff6ff' : '#fafaf9',

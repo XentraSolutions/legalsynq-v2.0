@@ -1,4 +1,7 @@
+'use client';
+
 import type { ReferralDetail } from '@/types/careconnect';
+import { useBrowserTimezone } from '@/lib/use-timezone';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 
 interface ReferralPageHeaderProps {
@@ -16,7 +19,10 @@ function formatDate(iso: string | undefined, timezone: string): string {
   });
 }
 
-export function ReferralPageHeader({ referral, timezone = 'America/Los_Angeles' }: ReferralPageHeaderProps) {
+export function ReferralPageHeader({ referral, timezone }: ReferralPageHeaderProps) {
+  const browserTimezone = useBrowserTimezone();
+  const resolvedTimezone = timezone ?? browserTimezone;
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-6 py-5">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -30,7 +36,7 @@ export function ReferralPageHeader({ referral, timezone = 'America/Los_Angeles' 
               <span className="text-sm text-gray-500">Case #{referral.caseNumber}</span>
             )}
             <span className="text-sm text-gray-500">{referral.providerName}</span>
-            <span className="text-xs text-gray-400">Created {formatDate(referral.createdAtUtc, timezone)}</span>
+            <span className="text-xs text-gray-400">Created {formatDate(referral.createdAtUtc, resolvedTimezone)}</span>
           </div>
         </div>
 

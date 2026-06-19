@@ -85,7 +85,7 @@ public class ReferralThreadService : IReferralThreadService
             ReferrerFirstName = referral.ReferrerFirstName,
             ReferrerLastName = referral.ReferrerLastName,
             ReferrerEmail = referral.ReferrerEmail,
-            CreatedAt = referral.CreatedAtUtc,
+            CreatedAtUtc = referral.CreatedAtUtc,
             TreatmentTypeId   = referral.TreatmentTypeId,
             TreatmentTypeName = treatmentTypeName,
             ProviderHasAccount = ProviderHasPortalAccount(referral.Provider),
@@ -332,8 +332,13 @@ public class ReferralThreadService : IReferralThreadService
         SenderType = comment.SenderType,
         SenderName = comment.SenderName,
         Message = comment.Message,
-        CreatedAt = comment.CreatedAt,
+        CreatedAtUtc = NormalizeUtc(comment.CreatedAt),
     };
+
+    private static DateTime NormalizeUtc(DateTime value) =>
+        value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
 
     private async Task<string?> ResolveReferrerFirmNameAsync(Referral referral, CancellationToken ct)
     {

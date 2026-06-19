@@ -36,7 +36,7 @@ describe('ThreadClient', () => {
           providerName: 'Demo Provider Group',
           referrerName: 'Demo Firm',
           referrerEmail: 'firm@example.com',
-          createdAt: '2026-06-14T17:15:00Z',
+          createdAtUtc: '2026-06-14T17:15:00Z',
           comments: [],
           attachments: [],
           providerHasAccount: false,

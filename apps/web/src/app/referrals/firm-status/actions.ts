@@ -10,7 +10,7 @@ export interface PostCommentResult {
     senderType: string;
     senderName: string;
     message:    string;
-    createdAt:  string;
+    createdAtUtc: string;
   };
 }
 

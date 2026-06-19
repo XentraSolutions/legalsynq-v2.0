@@ -1,6 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import type { ReferralSummary } from '@/types/careconnect';
 import { formatTimestamp } from '@/lib/format-date';
+import { useBrowserTimezone } from '@/lib/use-timezone';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { ReferralQuickActions } from './referral-quick-actions';
 
@@ -41,8 +44,11 @@ export function ReferralListTable({
   isReceiver,
   orgId,
   currentQs = '',
-  timezone = 'UTC',
+  timezone,
 }: ReferralListTableProps) {
+  const browserTimezone = useBrowserTimezone();
+  const resolvedTimezone = timezone ?? browserTimezone;
+
   if (referrals.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
@@ -123,7 +129,7 @@ export function ReferralListTable({
 
                 {/* Created */}
                 <td className="px-4 py-3 whitespace-nowrap hidden lg:table-cell">
-                  {(() => { const ts = formatTimestamp(r.createdAtUtc, timezone); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
+                  {(() => { const ts = formatTimestamp(r.createdAtUtc, resolvedTimezone); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
                 </td>
 
                 {/* Quick actions */}

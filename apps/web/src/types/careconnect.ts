@@ -79,7 +79,7 @@ export interface ReferralComment {
   senderType: string;
   senderName: string;
   message:    string;
-  createdAt:  string;
+  createdAtUtc: string;
 }
 
 // ── Referral ──────────────────────────────────────────────────────────────────

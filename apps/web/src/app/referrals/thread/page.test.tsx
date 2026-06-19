@@ -41,7 +41,7 @@ describe('ReferralThreadPage', () => {
       clientName: 'Jane Doe',
       service: 'Physical Therapy',
       providerName: 'Demo Provider',
-      createdAt: '2026-06-11T00:00:00Z',
+      createdAtUtc: '2026-06-11T00:00:00Z',
       comments: [],
       attachments: [],
     };

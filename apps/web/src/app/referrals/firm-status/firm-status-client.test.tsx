@@ -13,7 +13,7 @@ const baseData = {
   referrerName: 'Jane Intake',
   referrerEmail: 'jane@example.com',
   notes: null,
-  createdAt: '2026-06-11T09:57:00Z',
+  createdAtUtc: '2026-06-11T09:57:00Z',
   comments: [],
 };
 

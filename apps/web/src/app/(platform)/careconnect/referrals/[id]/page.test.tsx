@@ -143,7 +143,7 @@ const COMMENTS = [
     senderType: 'referrer',
     senderName: 'Sarah Johnson',
     message: 'Can you see this patient this week?',
-    createdAt: '2026-06-09T10:00:00Z',
+    createdAtUtc: '2026-06-09T10:00:00Z',
   },
 ];
 

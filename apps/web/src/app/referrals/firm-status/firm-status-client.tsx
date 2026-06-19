@@ -9,7 +9,7 @@ interface Comment {
   senderType: string;
   senderName: string;
   message:    string;
-  createdAt:  string;
+  createdAtUtc: string;
 }
 
 interface ThreadData {
@@ -28,7 +28,7 @@ interface ThreadData {
   dateOfAccident?:    string;
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
-  createdAt:          string;
+  createdAtUtc:       string;
   comments:           Comment[];
 }
 
@@ -241,7 +241,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             <FieldBlock label="Patient"   value={data.clientName} />
             <FieldBlock label="Service"   value={data.service} />
             <FieldBlock label="Provider"  value={data.providerName} />
-            <FieldBlock label="Submitted" value={formatDate(data.createdAt, timezone)} />
+            <FieldBlock label="Submitted" value={formatDate(data.createdAtUtc, timezone)} />
             <FieldBlock label="Urgency" value={data.urgency ?? '—'} />
             <FieldBlock label="Type of Treatment" value={data.treatmentTypeName ?? '—'} />
             <FieldBlock label="Date of Accident" value={data.dateOfAccident ?? '—'} />
@@ -383,7 +383,7 @@ function CommentBubble({ comment, timezone }: { comment: Comment; timezone: stri
       <div style={{ maxWidth: '80%' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isSelf ? 'row-reverse' : 'row', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt, timezone)}</span>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAtUtc, timezone)}</span>
         </div>
         <div style={{
           background: isProvider ? '#eff6ff' : '#fef3c7',

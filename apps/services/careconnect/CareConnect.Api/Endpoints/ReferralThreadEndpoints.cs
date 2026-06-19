@@ -58,7 +58,7 @@ public static class ReferralThreadEndpoints
                 comment.SenderType,
                 comment.SenderName,
                 comment.Message,
-                comment.CreatedAt,
+                comment.CreatedAtUtc,
             });
         }).AllowAnonymous().RequireRateLimiting("public-referral-limit");
     }

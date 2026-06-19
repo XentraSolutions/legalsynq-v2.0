@@ -6,7 +6,7 @@ public class ReferralCommentResponse
     public string SenderType { get; init; } = string.Empty;
     public string SenderName { get; init; } = string.Empty;
     public string Message { get; init; } = string.Empty;
-    public DateTime CreatedAt { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
 }
 
 public class CreateReferralCommentRequest
@@ -51,7 +51,7 @@ public class PublicReferralThreadResponse
     public string? ReferrerFirstName { get; init; }
     public string? ReferrerLastName { get; init; }
     public string? ReferrerEmail { get; init; }
-    public DateTime CreatedAt { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
     public bool ProviderHasAccount { get; init; }
     public string? DateOfAccident { get; init; }
     public Guid?   TreatmentTypeId   { get; init; }

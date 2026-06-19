@@ -18,7 +18,7 @@ const EXISTING_COMMENT = {
   senderType: 'referrer',
   senderName: 'Sarah Johnson',
   message: 'Can you see this patient this week?',
-  createdAt: '2026-06-09T10:00:00Z',
+  createdAtUtc: '2026-06-09T10:00:00Z',
 };
 
 function ok<T>(data: T) {
@@ -125,7 +125,7 @@ describe('ReferralMessageThread', () => {
       senderType: 'provider',
       senderName: 'Dr. Gray',
       message: 'Yes, we can see them Thursday.',
-      createdAt: '2026-06-09T11:00:00Z',
+      createdAtUtc: '2026-06-09T11:00:00Z',
     }));
 
     const user = userEvent.setup();
