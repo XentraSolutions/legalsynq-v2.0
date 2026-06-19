@@ -25,6 +25,7 @@ public class ReferralService : IReferralService
     private readonly INotificationService _notifications;
     private readonly INotificationRepository _notificationRepo;
     private readonly IReferralEmailService _emailService;
+    private readonly IIdentityOrganizationService _identityOrganizationService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOrganizationRelationshipResolver _relationshipResolver;
     private readonly IAuditEventClient _auditClient;
@@ -40,6 +41,7 @@ public class ReferralService : IReferralService
         INotificationService notifications,
         INotificationRepository notificationRepo,
         IReferralEmailService emailService,
+        IIdentityOrganizationService identityOrganizationService,
         IServiceScopeFactory scopeFactory,
         IOrganizationRelationshipResolver relationshipResolver,
         IAuditEventClient auditClient,
@@ -54,6 +56,7 @@ public class ReferralService : IReferralService
         _notifications        = notifications;
         _notificationRepo     = notificationRepo;
         _emailService         = emailService;
+        _identityOrganizationService = identityOrganizationService;
         _scopeFactory         = scopeFactory;
         _relationshipResolver = relationshipResolver;
         _auditClient          = auditClient;
@@ -69,6 +72,17 @@ public class ReferralService : IReferralService
 
         var (items, totalCount) = await _referrals.SearchAsync(tenantId, query, ct);
         var tenantDisplayNames = await ReferralTenantNameResolver.ResolveForReferralsAsync(items, _tenantClient, ct);
+        var referringOrgIds = items
+            .Select(r => r.ReferringOrganizationId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var referringOrgNameTasks = referringOrgIds.ToDictionary(
+            id => id,
+            id => _identityOrganizationService.GetOrganizationNameAsync(id, ct));
+
+        await Task.WhenAll(referringOrgNameTasks.Values);
 
         // TreatmentTypeName is intentionally not resolved here — doing so would require
         // one extra DB round-trip per referral (N+1). Name is only populated in GetByIdAsync.
@@ -76,6 +90,8 @@ public class ReferralService : IReferralService
         {
             var resp = ToResponse(r);
             resp.NetworkName = tenantDisplayNames.GetValueOrDefault(r.TenantId, QueueDisplayFallback);
+            if (r.ReferringOrganizationId.HasValue)
+                resp.ReferringOrganizationName = referringOrgNameTasks[r.ReferringOrganizationId.Value].Result;
             return resp;
         }).ToList();
 
@@ -104,7 +120,14 @@ public class ReferralService : IReferralService
         var treatmentTypeName = referral.TreatmentTypeId.HasValue
             ? await _referrals.GetTreatmentTypeNameAsync(referral.TreatmentTypeId.Value, ct)
             : null;
-        return ToResponse(referral, latestNotif, treatmentTypeName);
+        var response = ToResponse(referral, latestNotif, treatmentTypeName);
+        if (referral.ReferringOrganizationId.HasValue)
+        {
+            response.ReferringOrganizationName = await _identityOrganizationService.GetOrganizationNameAsync(
+                referral.ReferringOrganizationId.Value,
+                ct);
+        }
+        return response;
     }
 
     public async Task MarkAsOpenedAsync(Guid id, CancellationToken ct = default)
@@ -1362,6 +1385,7 @@ public class ReferralService : IReferralService
         OrganizationRelationshipId = r.OrganizationRelationshipId,
         // CC-REFERRER-EMAIL: surface for participant-check in endpoints
         ReferrerEmail = r.ReferrerEmail,
+        ReferrerName = r.ReferrerName,
         // LSCC-005-01: hardening fields
         TokenVersion          = r.TokenVersion,
         ProviderEmailStatus   = latestNotif?.Status,

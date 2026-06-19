@@ -96,6 +96,7 @@ public class ReferralTreatmentUpdateTests
             new Mock<INotificationService>().Object,
             notifRepo.Object,
             new Mock<IReferralEmailService>().Object,
+            new Mock<IIdentityOrganizationService>().Object,
             scopeFactory.Object,
             new Mock<IOrganizationRelationshipResolver>().Object,
             auditClient.Object,

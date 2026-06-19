@@ -146,6 +146,7 @@ public class ProviderReassignmentTests
             notifSvc.Object,
             notifRepo.Object,
             emailSvc.Object,
+            new Mock<IIdentityOrganizationService>().Object,
             scopeFactory.Object,
             relResolver.Object,
             auditClient.Object,

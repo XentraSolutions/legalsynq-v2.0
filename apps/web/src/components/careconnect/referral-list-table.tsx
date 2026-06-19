@@ -35,6 +35,11 @@ function normalizeNetworkDisplay(networkName?: string | null): string | null {
   return value && value !== '-' ? value : null;
 }
 
+function normalizeParticipantDisplay(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export function ReferralListTable({
   referrals,
   totalCount,
@@ -48,6 +53,7 @@ export function ReferralListTable({
 }: ReferralListTableProps) {
   const browserTimezone = useBrowserTimezone();
   const resolvedTimezone = timezone ?? browserTimezone;
+  const participantColumnLabel = isReceiver ? 'Referrer' : 'Provider';
 
   if (referrals.length === 0) {
     return (
@@ -65,7 +71,7 @@ export function ReferralListTable({
           <thead>
             <tr className="bg-gray-50">
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Client</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Provider</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{participantColumnLabel}</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">Service</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden lg:table-cell">Network</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Urgency</th>
@@ -77,6 +83,12 @@ export function ReferralListTable({
           <tbody className="divide-y divide-gray-100">
             {referrals.map(r => {
               const networkDisplay = normalizeNetworkDisplay(r.networkName);
+              const participantDisplay = isReceiver
+                ? normalizeParticipantDisplay(r.referringOrganizationName)
+                  ?? normalizeParticipantDisplay(r.referrerName)
+                  ?? normalizeParticipantDisplay(r.referrerEmail)
+                  ?? '—'
+                : r.providerName;
 
               return (
                 <tr key={r.id} className={`transition-colors ${rowHighlight(r.status)}`}>
@@ -90,9 +102,9 @@ export function ReferralListTable({
                   )}
                 </td>
 
-                {/* Provider */}
+                {/* Provider / Referrer */}
                 <td className="px-4 py-3">
-                  <p className="text-sm text-gray-700 truncate max-w-[160px]">{r.providerName}</p>
+                  <p className="text-sm text-gray-700 truncate max-w-[160px]">{participantDisplay}</p>
                 </td>
 
                 {/* Service */}

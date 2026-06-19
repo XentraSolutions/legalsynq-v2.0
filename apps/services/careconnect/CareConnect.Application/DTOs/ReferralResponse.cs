@@ -25,10 +25,12 @@ public class ReferralResponse
     public Guid? ReferringOrganizationId { get; set; }
     public Guid? ReceivingOrganizationId { get; set; }
     public Guid? OrganizationRelationshipId { get; set; }
+    public string? ReferringOrganizationName { get; set; }
 
     // CC-REFERRER-EMAIL: email of the referrer (set for public referrals submitted
     // before the law firm activated their portal, where ReferringOrganizationId is null).
     public string? ReferrerEmail { get; set; }
+    public string? ReferrerName { get; set; }
 
     // Network the provider belongs to (first network membership; null if provider not in any network).
     public string? NetworkName { get; set; }

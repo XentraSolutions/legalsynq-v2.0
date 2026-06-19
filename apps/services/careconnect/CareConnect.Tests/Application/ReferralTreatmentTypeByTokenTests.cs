@@ -120,6 +120,7 @@ public class ReferralTreatmentTypeByTokenTests
             new Mock<INotificationService>().Object,
             notifRepo.Object,
             emailService,
+            new Mock<IIdentityOrganizationService>().Object,
             scopeFactory.Object,
             new Mock<IOrganizationRelationshipResolver>().Object,
             auditClient.Object,

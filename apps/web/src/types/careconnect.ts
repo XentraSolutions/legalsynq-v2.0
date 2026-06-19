@@ -141,6 +141,9 @@ export interface ReferralSummary {
   referringOrganizationId?: string;
   receivingOrganizationId?:  string;
   organizationRelationshipId?: string;
+  referringOrganizationName?: string | null;
+  referrerName?: string | null;
+  referrerEmail?: string | null;
   /** Backend supplies the tenant name for the Network column, or '-' when unavailable. */
   networkName?: string | null;
   // Type of Treatment — set by Referrer at creation.
