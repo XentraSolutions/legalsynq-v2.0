@@ -44,6 +44,13 @@ public class NetworkRepository : INetworkRepository
             .ToListAsync(ct);
     }
 
+    public async Task<ProviderNetwork?> GetByIdGlobalAsync(Guid id, CancellationToken ct = default)
+    {
+        return await _db.ProviderNetworks
+            .AsNoTracking()
+            .FirstOrDefaultAsync(n => n.Id == id && !n.IsDeleted, ct);
+    }
+
     public async Task<ProviderNetwork?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         return await _db.ProviderNetworks
@@ -162,9 +169,66 @@ public class NetworkRepository : INetworkRepository
         return await _db.Providers.AsNoTracking().FirstOrDefaultAsync(p => p.Npi == trimmed, ct);
     }
 
+    public async Task<Provider?> GetProviderByTenantEmailAsync(Guid tenantId, string email, CancellationToken ct = default)
+    {
+        var trimmed = email.Trim().ToLowerInvariant();
+        return await _db.Providers.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Email == trimmed, ct);
+    }
+
     public async Task AddProviderToRegistryAsync(Provider provider, CancellationToken ct = default)
     {
         await _db.Providers.AddAsync(provider, ct);
+    }
+
+    public async Task<Dictionary<string, Provider>> GetProvidersByNpisAsync(IEnumerable<string> npis, CancellationToken ct = default)
+    {
+        var normalized = npis
+            .Where(npi => !string.IsNullOrWhiteSpace(npi))
+            .Select(npi => npi.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (normalized.Count == 0) return new Dictionary<string, Provider>(StringComparer.Ordinal);
+
+        var providers = await _db.Providers.AsNoTracking()
+            .Where(p => p.Npi != null && normalized.Contains(p.Npi))
+            .ToListAsync(ct);
+
+        return providers
+            .GroupBy(p => p.Npi!, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.OrderBy(p => p.CreatedAtUtc).First(), StringComparer.Ordinal);
+    }
+
+    public async Task<Dictionary<string, Provider>> GetProvidersByTenantEmailsAsync(
+        Guid tenantId, IEnumerable<string> emails, CancellationToken ct = default)
+    {
+        var normalized = emails
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Select(email => email.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (normalized.Count == 0) return new Dictionary<string, Provider>(StringComparer.Ordinal);
+
+        var providers = await _db.Providers.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && normalized.Contains(p.Email))
+            .ToListAsync(ct);
+
+        return providers
+            .GroupBy(p => p.Email, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.OrderBy(p => p.CreatedAtUtc).First(), StringComparer.Ordinal);
+    }
+
+    public async Task<HashSet<Guid>> GetNetworkProviderIdsAsync(Guid tenantId, Guid networkId, CancellationToken ct = default)
+    {
+        var providerIds = await _db.NetworkProviders
+            .AsNoTracking()
+            .Where(np => np.TenantId == tenantId && np.ProviderNetworkId == networkId)
+            .Select(np => np.ProviderId)
+            .ToListAsync(ct);
+
+        return providerIds.ToHashSet();
     }
 
     public async Task<bool> IsProviderInTenantNetworkAsync(Guid tenantId, Guid providerId, CancellationToken ct = default)
@@ -176,6 +240,11 @@ public class NetworkRepository : INetworkRepository
                 np.TenantId   == tenantId   &&
                 _db.ProviderNetworks.Any(n => n.Id == np.ProviderNetworkId && n.TenantId == tenantId && !n.IsDeleted),
                 ct);
+    }
+
+    public void ClearTracking()
+    {
+        _db.ChangeTracker.Clear();
     }
 
     public async Task SyncProviderCategoriesAsync(Guid providerId, List<Guid> categoryIds, CancellationToken ct = default)

@@ -5,6 +5,7 @@ using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
 using CareConnect.Infrastructure.Documents;
+using CareConnect.Infrastructure.Imports;
 using CareConnect.Infrastructure.Notifications;
 using CareConnect.Infrastructure.Repositories;
 using CareConnect.Infrastructure.Services;
@@ -185,6 +186,7 @@ public static class DependencyInjection
 
         // CC2-INT-B06: Provider network management (role-based, not orgType-based)
         services.AddScoped<INetworkRepository, NetworkRepository>();
+        services.AddScoped<IProviderImportParser, CsvProviderImportParser>();
         services.AddScoped<INetworkService, NetworkService>();
 
         return services;
