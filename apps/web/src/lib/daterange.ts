@@ -79,6 +79,11 @@ export function isValidIsoDate(s: string): boolean {
   return d.getFullYear() === y && d.getMonth() + 1 === m && d.getDate() === day;
 }
 
+export function hasReasonableYear(s: string): boolean {
+  const y = parseInt(s.split('-')[0], 10);
+  return y >= 1900 && y <= new Date().getFullYear();
+}
+
 /** Format yyyy-MM-dd for display (e.g. "Mar 1, 2026"). */
 export function formatDisplayDate(iso: string): string {
   if (!isValidIsoDate(iso)) return iso;

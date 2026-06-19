@@ -805,11 +805,15 @@ public static class PublicNetworkEndpoints
 
         if (!req.PatientDateOfBirth.HasValue)
             errors["patientDateOfBirth"] = "Patient date of birth is required.";
+        else if (req.PatientDateOfBirth.Value.Year < 1900)
+            errors["patientDateOfBirth"] = "Please enter a valid year (1900 or later).";
         else if (req.PatientDateOfBirth.Value > DateOnly.FromDateTime(DateTime.UtcNow))
             errors["patientDateOfBirth"] = "Date of birth cannot be in the future.";
 
         if (!req.PatientDateOfAccident.HasValue)
             errors["patientDateOfAccident"] = "Date of accident is required.";
+        else if (req.PatientDateOfAccident.Value.Year < 1900)
+            errors["patientDateOfAccident"] = "Please enter a valid year (1900 or later).";
         else if (req.PatientDateOfAccident.Value > DateOnly.FromDateTime(DateTime.UtcNow))
             errors["patientDateOfAccident"] = "Date of accident cannot be in the future.";
 

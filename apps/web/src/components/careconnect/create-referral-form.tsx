@@ -7,7 +7,7 @@ import { ApiError } from '@/lib/api-client';
 import type { CreateReferralRequest, ReferralUrgencyValue } from '@/types/careconnect';
 import { URGENCY_OPTIONS } from '@/types/careconnect';
 import { formatPhoneInput, stripPhone, isValidPhone } from '@/lib/phone';
-import { isValidIsoDate } from '@/lib/daterange';
+import { isValidIsoDate, hasReasonableYear } from '@/lib/daterange';
 
 interface TreatmentType {
   id:   string;
@@ -81,8 +81,10 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
     if (!clientEmail.trim())     errs.clientEmail = 'Email is required';
     if (!dateOfAccident)         errs.dateOfAccident = 'Date of accident is required';
     else if (!isValidIsoDate(dateOfAccident)) errs.dateOfAccident = 'Enter a valid date';
+    else if (!hasReasonableYear(dateOfAccident)) errs.dateOfAccident = 'Please enter a valid year (1900 or later)';
     else if (new Date(dateOfAccident) > new Date()) errs.dateOfAccident = 'Date of accident cannot be in the future';
     if (clientDob && !isValidIsoDate(clientDob)) errs.clientDob = 'Enter a valid date of birth';
+    else if (clientDob && !hasReasonableYear(clientDob)) errs.clientDob = 'Please enter a valid year (1900 or later)';
     else if (clientDob && new Date(clientDob) > new Date()) errs.clientDob = 'Date of birth cannot be in the future';
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
@@ -142,8 +144,8 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
     hasClientPhoneValue && !hasInvalidClientPhone &&
     !!clientEmail.trim() &&
     !!dateOfAccident &&
-    (!dateOfAccident || (isValidIsoDate(dateOfAccident) && new Date(dateOfAccident) <= new Date())) &&
-    (!clientDob || (isValidIsoDate(clientDob) && new Date(clientDob) <= new Date()));
+    (!dateOfAccident || (isValidIsoDate(dateOfAccident) && hasReasonableYear(dateOfAccident) && new Date(dateOfAccident) <= new Date())) &&
+    (!clientDob || (isValidIsoDate(clientDob) && hasReasonableYear(clientDob) && new Date(clientDob) <= new Date()));
 
   function InputError({ field }: { field: string }) {
     return fieldErrors[field]
@@ -222,8 +224,18 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                   <input
                     type="date"
                     value={clientDob}
+                    min="1900-01-01"
                     max={new Date().toISOString().split('T')[0]}
-                    onChange={e => { setClientDob(e.target.value); setFieldErrors(fe => ({ ...fe, clientDob: '' })); }}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setClientDob(v);
+                      if (v && isValidIsoDate(v) && !hasReasonableYear(v))
+                        setFieldErrors(fe => ({ ...fe, clientDob: 'Please enter a valid year (1900 or later)' }));
+                      else if (v && isValidIsoDate(v) && new Date(v) > new Date())
+                        setFieldErrors(fe => ({ ...fe, clientDob: 'Date of birth cannot be in the future' }));
+                      else
+                        setFieldErrors(fe => ({ ...fe, clientDob: '' }));
+                    }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   <InputError field="clientDob" />
@@ -236,8 +248,18 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                   <input
                     type="date"
                     value={dateOfAccident}
+                    min="1900-01-01"
                     max={new Date().toISOString().split('T')[0]}
-                    onChange={e => { setDateOfAccident(e.target.value); setFieldErrors(fe => ({ ...fe, dateOfAccident: '' })); }}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setDateOfAccident(v);
+                      if (v && isValidIsoDate(v) && !hasReasonableYear(v))
+                        setFieldErrors(fe => ({ ...fe, dateOfAccident: 'Please enter a valid year (1900 or later)' }));
+                      else if (v && isValidIsoDate(v) && new Date(v) > new Date())
+                        setFieldErrors(fe => ({ ...fe, dateOfAccident: 'Date of accident cannot be in the future' }));
+                      else
+                        setFieldErrors(fe => ({ ...fe, dateOfAccident: '' }));
+                    }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   <InputError field="dateOfAccident" />

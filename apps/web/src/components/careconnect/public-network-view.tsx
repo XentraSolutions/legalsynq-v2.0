@@ -12,7 +12,7 @@
 import { useState, useMemo, useCallback, useRef, forwardRef, useEffect, type FormEvent, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
-import { isValidIsoDate } from '@/lib/daterange';
+import { isValidIsoDate, hasReasonableYear } from '@/lib/daterange';
 import { createEnrollmentToken } from '@/app/enroll/actions';
 import type {
   PublicNetworkDetail,
@@ -616,8 +616,8 @@ function ReferralPanel({
     !!form.patientFirstName.trim() &&
     !!form.patientLastName.trim() &&
     hasPatientPhoneValue && !hasInvalidPatientPhone &&
-    !!form.patientDob && isValidIsoDate(form.patientDob) && new Date(form.patientDob) <= new Date() &&
-    !!form.patientDateOfAccident && isValidIsoDate(form.patientDateOfAccident) && new Date(form.patientDateOfAccident) <= new Date() &&
+    !!form.patientDob && isValidIsoDate(form.patientDob) && hasReasonableYear(form.patientDob) && new Date(form.patientDob) <= new Date() &&
+    !!form.patientDateOfAccident && isValidIsoDate(form.patientDateOfAccident) && hasReasonableYear(form.patientDateOfAccident) && new Date(form.patientDateOfAccident) <= new Date() &&
     !hasInvalidPhone &&
     (!form.patientEmail.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patientEmail.trim())) &&
     (prefillLawFirm
@@ -658,6 +658,18 @@ function ReferralPanel({
 
   const update = useCallback((field: keyof ReferralForm, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
+    const dateFields: (keyof ReferralForm)[] = ['patientDob', 'patientDateOfAccident'];
+    if (dateFields.includes(field) && value && isValidIsoDate(value)) {
+      if (!hasReasonableYear(value)) {
+        setErrors(prev => ({ ...prev, [field]: 'Please enter a valid year (1900 or later).' }));
+        return;
+      }
+      if (new Date(value) > new Date()) {
+        const label = field === 'patientDob' ? 'Date of birth' : 'Date of accident';
+        setErrors(prev => ({ ...prev, [field]: `${label} cannot be in the future.` }));
+        return;
+      }
+    }
     setErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
   }, []);
 
@@ -695,9 +707,11 @@ function ReferralPanel({
       errs['patientEmail'] = 'Enter a valid email address.';
     if (!form.patientDob) errs['patientDob'] = 'Date of birth is required.';
     else if (!isValidIsoDate(form.patientDob)) errs['patientDob'] = 'Enter a valid date of birth.';
+    else if (!hasReasonableYear(form.patientDob)) errs['patientDob'] = 'Please enter a valid year (1900 or later).';
     else if (new Date(form.patientDob) > new Date()) errs['patientDob'] = 'Date of birth cannot be in the future.';
     if (!form.patientDateOfAccident) errs['patientDateOfAccident'] = 'Date of accident is required.';
     else if (!isValidIsoDate(form.patientDateOfAccident)) errs['patientDateOfAccident'] = 'Enter a valid date of accident.';
+    else if (!hasReasonableYear(form.patientDateOfAccident)) errs['patientDateOfAccident'] = 'Please enter a valid year (1900 or later).';
     else if (new Date(form.patientDateOfAccident) > new Date()) errs['patientDateOfAccident'] = 'Date of accident cannot be in the future.';
     if (form.phone.trim() && !isValidPhone(form.phone)) errs['phone'] = 'Phone number must be 10 digits.';
     if (!prefillLawFirm) {
@@ -1148,7 +1162,7 @@ function ReferralPanel({
                   <PanelField label="Date of birth" required error={fieldErrors['patientDob']}>
                     <input
                       type="date" required value={form.patientDob}
-                      max={new Date().toISOString().split('T')[0]}
+                      min="1900-01-01" max={new Date().toISOString().split('T')[0]}
                       onChange={e => update('patientDob', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['patientDob'])}
@@ -1157,7 +1171,7 @@ function ReferralPanel({
                   <PanelField label="Date of accident" required error={fieldErrors['patientDateOfAccident']}>
                     <input
                       type="date" required value={form.patientDateOfAccident}
-                      max={new Date().toISOString().split('T')[0]}
+                      min="1900-01-01" max={new Date().toISOString().split('T')[0]}
                       onChange={e => update('patientDateOfAccident', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['patientDateOfAccident'])}
