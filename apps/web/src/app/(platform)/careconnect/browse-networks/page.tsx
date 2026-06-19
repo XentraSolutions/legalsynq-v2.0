@@ -3,6 +3,7 @@ import { requireProductRole }    from '@/lib/auth-guards';
 import { careConnectServerApi }  from '@/lib/careconnect-server-api';
 import {
   fetchPublicNetworks,
+  isProductActiveForTenant,
   type PublicNetworkSummary,
 } from '@/lib/public-network-api';
 import { ServerApiError }        from '@/lib/server-api-client';
@@ -49,13 +50,19 @@ export default async function BrowseNetworksPage() {
       }))
       .filter((item, index, arr) => arr.findIndex(x => x.tenantId === item.tenantId) === index);
 
+    // Exclude tenants whose CareConnect product entitlement is inactive.
+    const activeChecks = await Promise.all(
+      careConnectTenants.map(t => isProductActiveForTenant(t.tenantId, 'synq_careconnect')),
+    );
+    const activeTenants = careConnectTenants.filter((_, i) => activeChecks[i]);
+
     const networksByTenant = new Map(
       await Promise.all(
-        careConnectTenants.map(async tenant => [tenant.tenantId, await fetchPublicNetworks(tenant.tenantId)] as const),
+        activeTenants.map(async tenant => [tenant.tenantId, await fetchPublicNetworks(tenant.tenantId)] as const),
       ),
     );
 
-    tenantNetworkGroups = careConnectTenants
+    tenantNetworkGroups = activeTenants
       .map(tenant => ({
         ...tenant,
         networks: networksByTenant.get(tenant.tenantId) ?? [],

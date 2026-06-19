@@ -70,5 +70,18 @@ public static class ResolutionEndpoints
                 : Results.Ok(result);
         })
         .AllowAnonymous();
+
+        // ── GET /api/v1/public/resolve/{tenantId:guid}/product-active/{productKey} ─
+        group.MapGet("/{tenantId:guid}/product-active/{productKey}", async (
+            Guid                tenantId,
+            string              productKey,
+            IEntitlementService svc,
+            CancellationToken   ct) =>
+        {
+            var result = await svc.IsProductActiveAsync(tenantId, productKey, ct);
+
+            return Results.Ok(new { isActive = result });
+        })
+        .AllowAnonymous();
     }
 }

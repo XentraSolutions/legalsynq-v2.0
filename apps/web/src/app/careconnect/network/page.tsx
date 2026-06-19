@@ -7,6 +7,7 @@ import {
   resolveTenantFromCode,
   fetchPublicNetworks,
   fetchPublicNetworkDetail,
+  isProductActiveForTenant,
   type PublicNetworkDetail,
 } from '@/lib/public-network-api';
 
@@ -37,6 +38,16 @@ export default async function PublicNetworkPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <p className="text-sm text-gray-500">Network not found.</p>
+      </div>
+    );
+  }
+
+  // ── Product entitlement gate ─────────────────────────────────────────────
+  const careConnectActive = await isProductActiveForTenant(tenant.tenantId, 'synq_careconnect');
+  if (!careConnectActive) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-sm text-gray-500">This network directory is currently unavailable.</p>
       </div>
     );
   }
