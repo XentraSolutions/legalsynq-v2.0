@@ -10,6 +10,10 @@ function coalesceName(primary?: string, fallback?: string): string {
   return primary?.trim() || fallback?.trim() || '';
 }
 
+function normalizeNameForComparison(value?: string | null): string {
+  return value?.trim().replace(/\s+/g, ' ').toLowerCase() ?? '';
+}
+
 interface AuthenticatedOrgPrefill {
   companyName: string;
   companyType: string;
@@ -64,7 +68,11 @@ export default async function EnrollPage({ searchParams }: PageProps) {
   // tokens issued before the split existed.
   let refFirst = (claims?.contactFirstName ?? '').trim();
   let refLast  = (claims?.contactLastName ?? '').trim();
-  if (!refFirst && !refLast && claims?.contact) {
+  const legacyContactMatchesFirm =
+    !!claims?.contact &&
+    !!claims?.firm &&
+    normalizeNameForComparison(claims.contact) === normalizeNameForComparison(claims.firm);
+  if (!refFirst && !refLast && claims?.contact && !legacyContactMatchesFirm) {
     const parts = claims.contact.trim().split(/\s+/).filter(Boolean);
     refFirst = parts[0] ?? '';
     refLast  = parts.slice(1).join(' ');

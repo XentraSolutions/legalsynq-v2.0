@@ -124,4 +124,42 @@ describe('FirmStatusPage', () => {
       phone: '555-0102',
     }));
   });
+
+  test('omits the legacy contact claim when the referrer name is the same as the firm name', async () => {
+    const threadData = {
+      referralId: 'ref-123',
+      tenantId: 'tenant-1',
+      referrerEmail: 'lawyer@example.com',
+      referrerName: 'Fight For You Company',
+      referrerFirmName: 'Fight For You Company',
+      notes: null,
+      status: 'New',
+      clientName: 'Jane Doe',
+      service: 'General Referral',
+      providerName: 'Demo Provider',
+      createdAt: '2026-06-11T00:00:00Z',
+      comments: [],
+    };
+
+    fetchPublicCareConnectMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => threadData,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: ReferrerPortalAccessStatuses.NoAccount }),
+      });
+
+    await FirmStatusPage({ searchParams: Promise.resolve({ token: 'abc123' }) });
+
+    expect(createEnrollmentTokenMock).toHaveBeenCalledWith(expect.not.objectContaining({
+      contact: 'Fight For You Company',
+    }));
+    expect(createEnrollmentTokenMock).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1',
+      email: 'lawyer@example.com',
+      firm: 'Fight For You Company',
+    }));
+  });
 });

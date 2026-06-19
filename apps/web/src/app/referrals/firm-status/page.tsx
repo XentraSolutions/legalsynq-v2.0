@@ -15,6 +15,10 @@ interface Props {
   searchParams: Promise<{ token?: string }>;
 }
 
+function normalizeNameForComparison(value?: string | null): string {
+  return value?.trim().replace(/\s+/g, ' ').toLowerCase() ?? '';
+}
+
 /**
  * Law firm referral status page.
  * Reachable only via a secure HMAC-signed token from the referral confirmation email.
@@ -80,6 +84,10 @@ export default async function FirmStatusPage({ searchParams }: Props) {
   // ambiguity); fall back to the legacy single ReferrerName for referrals created
   // before the split existed (e.g. via the authenticated/JWT path).
   const hasSplitReferrerName = !!(threadData.referrerFirstName || threadData.referrerLastName);
+  const legacyReferrerName = (threadData.referrerName as string | null)?.trim() || null;
+  const shouldIncludeLegacyContact =
+    !!legacyReferrerName &&
+    normalizeNameForComparison(legacyReferrerName) !== normalizeNameForComparison(firmName);
 
   const enrollToken = await createEnrollmentToken({
     tenantId: threadData.tenantId as string,
@@ -90,7 +98,7 @@ export default async function FirmStatusPage({ searchParams }: Props) {
           ...(threadData.referrerFirstName ? { contactFirstName: threadData.referrerFirstName as string } : {}),
           ...(threadData.referrerLastName  ? { contactLastName:  threadData.referrerLastName  as string } : {}),
         }
-      : (threadData.referrerName ? { contact: threadData.referrerName as string } : {})),
+      : (shouldIncludeLegacyContact ? { contact: legacyReferrerName } : {})),
     ...(referrerPhone ? { phone: referrerPhone } : {}),
   }).catch((err) => { console.error('[firm-status] createEnrollmentToken failed:', err); return null; });
 
