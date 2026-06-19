@@ -36,9 +36,7 @@ function SectionHeader({ icon, title }: { icon: string; title: string }) {
 }
 
 function isTenantRelevantRole(role: AssignableRoleItem): boolean {
-  if (role.isProductRole) return true;
-  if (role.isSystemRole && (role.name === 'TenantAdmin' || role.name === 'TenantUser')) return true;
-  return false;
+  return role.name === 'TenantAdmin';
 }
 
 export function EditUserModal({ open, user, isLastAdmin = false, onClose, onSuccess }: EditUserModalProps) {
