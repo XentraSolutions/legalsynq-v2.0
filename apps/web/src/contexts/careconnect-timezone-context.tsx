@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
+import { useBrowserTimezone } from '@/lib/use-timezone';
 
 const CareConnectTimezoneContext = createContext<string>('UTC');
 
@@ -10,15 +11,7 @@ const CareConnectTimezoneContext = createContext<string>('UTC');
  * then updates after mount to the browser timezone when available.
  */
 export function CareConnectTimezoneProvider({ children }: { children: ReactNode }) {
-  const [timezone, setTimezone] = useState<string>('UTC');
-
-  useEffect(() => {
-    try {
-      setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-    } catch {
-      setTimezone('UTC');
-    }
-  }, []);
+  const timezone = useBrowserTimezone();
 
   return (
     <CareConnectTimezoneContext.Provider value={timezone}>

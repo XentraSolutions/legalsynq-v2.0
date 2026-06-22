@@ -3,6 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useSettings } from '@/contexts/settings-context';
 
+const DEFAULT_TIMEZONE = 'UTC';
+const TIMEZONE_REFRESH_INTERVAL_MS = 60_000;
+
+function resolveBrowserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TIMEZONE;
+  } catch {
+    return DEFAULT_TIMEZONE;
+  }
+}
+
 /**
  * Returns the configured IANA timezone for the current tenant.
  * Use in authenticated (platform) routes where SettingsProvider is available.
@@ -20,14 +31,34 @@ export function useTimezone(): string {
  * public network pages) where no tenant context is available.
  */
 export function useBrowserTimezone(): string {
-  const [tz, setTz] = useState<string>('UTC');
+  const [tz, setTz] = useState<string>(DEFAULT_TIMEZONE);
 
   useEffect(() => {
-    try {
-      setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-    } catch {
-      setTz('UTC');
-    }
+    const updateTimezone = () => {
+      setTz((current) => {
+        const next = resolveBrowserTimezone();
+        return current === next ? current : next;
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        updateTimezone();
+      }
+    };
+
+    updateTimezone();
+    window.addEventListener('focus', updateTimezone);
+    window.addEventListener('pageshow', updateTimezone);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const intervalId = window.setInterval(updateTimezone, TIMEZONE_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.removeEventListener('focus', updateTimezone);
+      window.removeEventListener('pageshow', updateTimezone);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   return tz;
