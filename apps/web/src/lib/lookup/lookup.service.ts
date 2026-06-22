@@ -3,25 +3,27 @@ import { lookupApi } from "./lookup.api";
 import type {
   AccidentTypeResponse,
   ContactsByIdResponse,
+  DocumentTypeResponse,
   LawFirmListResponse,
   LookupGenericResponse,
   LookupResponse,
   MedicalProcedureCodesResponse,
   MedicalProcedureCostsResponse,
+  MedicalProvidersResponse,
   TaskStatusResponse,
   UserListResponse,
 } from "./lookup.types";
 
 export const lookupService = {
-  async getDocumentType(): Promise<string[]> {
+  async getDocumentType(): Promise<DocumentTypeResponse[]> {
     const { data } = await lookupApi.getDocumentType();
-    return data.map((type) => type.name);
+    return data;
   },
   async getTaskStatus(): Promise<TaskStatusResponse> {
     const { data } = await lookupApi.getTaskStatus();
     return data;
   },
-  async getMedicalProcedureCodes(): Promise<MedicalProcedureCodesResponse> {
+  async getMedicalProcedureCodes(): Promise<MedicalProcedureCodesResponse[]> {
     const { data } = await lookupApi.getMedicalProcedureCodes();
     return data;
   },
@@ -57,7 +59,7 @@ export const lookupService = {
     };
   },
 
-  async getContacts(): Promise<{ items: unknown }> {
+  async getContacts(): Promise<{ items: LookupGenericResponse[] }> {
     const { data } = await lookupApi.getContacts();
     return {
       items: data,
@@ -106,7 +108,7 @@ export const lookupService = {
     };
   },
 
-  async getMedicalProviders(): Promise<{ items: LookupGenericResponse[] }> {
+  async getMedicalProviders(): Promise<{ items: MedicalProvidersResponse[] }> {
     const { data } = await lookupApi.getMedicalProviders();
     return {
       items: data,

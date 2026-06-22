@@ -1,9 +1,20 @@
+import { ContactResponseDto } from "../contacts/contacts.types";
+
 export interface LookupGenericResponse {
   id: string;
   name: string;
 }
 
-export interface DocumentTypeResponse extends LookupGenericResponse {}
+export interface DocumentTypeResponse extends LookupGenericResponse {
+  category: string;
+  code: string;
+  description: string;
+  id: string;
+  isActive: boolean;
+  isSystem: boolean;
+  name: string;
+  sortOrder: number;
+}
 
 export interface TaskStatusResponse extends LookupGenericResponse {}
 
@@ -18,6 +29,9 @@ export interface MedicalProcedureCostsResponse {
   facilityType: "asc" | "desc";
   total: string;
 }
+
+export interface MedicalProvidersResponse
+  extends LookupGenericResponse, ContactResponseDto {}
 
 export interface LookupData {
   category: string;

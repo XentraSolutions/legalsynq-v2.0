@@ -32,7 +32,7 @@ export const lookupApi = {
     return apiClient.get<TaskStatusResponse>(`${BASE}/task/status`);
   },
   getMedicalProcedureCodes() {
-    return apiClient.get<MedicalProcedureCodesResponse>(
+    return apiClient.get<MedicalProcedureCodesResponse[]>(
       `${BASE}/procedure/codes`,
     );
   },
