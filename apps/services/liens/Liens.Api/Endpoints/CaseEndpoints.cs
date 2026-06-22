@@ -5,6 +5,9 @@ using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
 using Liens.Domain.Enums;
+using Liens.Infrastructure.Persistence;
+using ManualMedicalCodeEntity = Liens.Domain.Entities.ManualMedicalCode;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 using System.Globalization;
 
@@ -4359,27 +4362,140 @@ public static class CaseEndpoints
         return Results.Ok(new { isSuccess = true, message = "Successfully Deleted." });
     }
 
-    // ── Manual medical codes (stubs) ─────────────────────────────────────────
-    // These require a ManualMedicalCode entity (planned for a future migration).
+    // ── Manual medical codes ─────────────────────────────────────────────────
     private sealed class ManualMedicalCodeRequest
     {
-        public Guid    LienId   { get; init; }
-        public string? Code     { get; init; }
-        public string? Name     { get; init; }
-        public decimal? Cost    { get; init; }
+        public string? id { get; init; }
+        public string? code { get; init; }
+        public string? description { get; init; }
+        public string? facilityType { get; init; }
+        public decimal cost { get; init; }
+        public decimal copay { get; init; }
+        public decimal facilityTotal { get; init; }
+        public decimal physicianTotal { get; init; }
+        public decimal total { get; init; }
     }
 
-    private static Task<IResult> CreateManualMedicalCode(
-        ManualMedicalCodeRequest _req,
-        ICurrentRequestContext _ctx,
-        CancellationToken _ct = default)
-        => Task.FromResult(Results.StatusCode(501));
+    private static async Task<IResult> CreateManualMedicalCode(
+        ManualMedicalCodeRequest req,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
 
-    private static Task<IResult> UpdateManualMedicalCode(
-        ManualMedicalCodeRequest _req,
-        ICurrentRequestContext _ctx,
-        CancellationToken _ct = default)
-        => Task.FromResult(Results.StatusCode(501));
+        if (string.IsNullOrWhiteSpace(req.code))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "Code is required.",
+            });
+        }
+
+        try
+        {
+            var manualCode = ManualMedicalCodeEntity.Create(
+                tenantId,
+                req.code,
+                req.description,
+                req.facilityType,
+                req.cost,
+                req.copay,
+                req.facilityTotal,
+                req.physicianTotal,
+                req.total,
+                userId);
+
+            db.ManualMedicalCodes.Add(manualCode);
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully Created.",
+            });
+        }
+        catch (DbUpdateException ex)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = ex.GetBaseException().Message,
+            });
+        }
+    }
+
+    private static async Task<IResult> UpdateManualMedicalCode(
+        ManualMedicalCodeRequest req,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(req.id, out var id))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "Id is required.",
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(req.code))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "Code is required.",
+            });
+        }
+
+        var manualCode = await db.ManualMedicalCodes
+            .FirstOrDefaultAsync(m => m.Id == id && m.TenantId == tenantId, ct);
+
+        if (manualCode is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Manual medical code not found.",
+            });
+        }
+
+        try
+        {
+            manualCode.Update(
+                req.code,
+                req.description,
+                req.facilityType,
+                req.cost,
+                req.copay,
+                req.facilityTotal,
+                req.physicianTotal,
+                req.total,
+                userId);
+
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully Updated.",
+            });
+        }
+        catch (DbUpdateException ex)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = ex.GetBaseException().Message,
+            });
+        }
+    }
 
     // ── Dashboard stubs ───────────────────────────────────────────────────────
     private sealed class ReportFilterRequest

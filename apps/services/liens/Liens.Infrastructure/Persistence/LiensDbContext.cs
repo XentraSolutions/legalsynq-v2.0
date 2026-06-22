@@ -16,6 +16,7 @@ public class LiensDbContext : DbContext
     public DbSet<LienSettlement>          LienSettlements          => Set<LienSettlement>();
     public DbSet<SettlementPaymentDetail> SettlementPaymentDetails => Set<SettlementPaymentDetail>();
     public DbSet<DIYReportConfig>         DIYReportConfigs         => Set<DIYReportConfig>();
+    public DbSet<ManualMedicalCode>       ManualMedicalCodes       => Set<ManualMedicalCode>();
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
     public DbSet<Lien> Liens => Set<Lien>();
     public DbSet<LienOffer> LienOffers => Set<LienOffer>();
