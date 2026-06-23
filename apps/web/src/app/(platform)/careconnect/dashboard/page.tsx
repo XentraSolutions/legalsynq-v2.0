@@ -16,10 +16,9 @@ import {
 } from '@/lib/careconnect-metrics';
 import { formatShortTimestamp } from '@/lib/format-date';
 import { tenantServerApi } from '@/lib/tenant-api';
-import type { ReferralSummary, AppointmentSummary } from '@/types/careconnect';
+import type { AppointmentSummary, ReferralSummary } from '@/types/careconnect';
 
 export const dynamic = 'force-dynamic';
-
 
 interface DashboardPageProps {
   searchParams: Promise<{
@@ -28,12 +27,29 @@ interface DashboardPageProps {
   }>;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+type AdminReferralDashboardItem = {
+  id: string;
+  tenantId: string;
+  providerId: string;
+  status: string;
+  urgency: string;
+  clientFirstName: string;
+  clientLastName: string;
+  caseNumber?: string | null;
+  requestedService: string;
+  providerName: string | null;
+  providerEmail: string | null;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+};
 
 function formatDateTime(iso: string, timezone: string): string {
   return new Date(iso).toLocaleString('en-US', {
-    month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
     timeZone: timezone,
   });
 }
@@ -41,8 +57,9 @@ function formatDateTime(iso: string, timezone: string): string {
 function isToday(iso: string): boolean {
   const d = new Date(iso);
   const now = new Date();
-  return d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  return d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
 }
 
 function isWithinDays(iso: string, days: number): boolean {
@@ -53,10 +70,30 @@ function isWithinDays(iso: string, days: number): boolean {
   return d >= now && d <= end;
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
+function mapAdminReferralToSummary(item: AdminReferralDashboardItem): ReferralSummary {
+  return {
+    id: item.id,
+    tenantId: item.tenantId,
+    providerId: item.providerId,
+    providerName: item.providerName ?? 'Unknown Provider',
+    clientFirstName: item.clientFirstName,
+    clientLastName: item.clientLastName,
+    clientPhone: '',
+    clientEmail: '',
+    caseNumber: item.caseNumber ?? undefined,
+    requestedService: item.requestedService,
+    urgency: item.urgency,
+    status: item.status,
+    createdAtUtc: item.createdAtUtc,
+    updatedAtUtc: item.updatedAtUtc,
+  };
+}
 
 function SectionCard({ title, viewAllHref, viewAllLabel, children }: {
-  title: string; viewAllHref: string; viewAllLabel: string; children: React.ReactNode;
+  title: string;
+  viewAllHref: string;
+  viewAllLabel: string;
+  children: React.ReactNode;
 }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -72,14 +109,18 @@ function SectionCard({ title, viewAllHref, viewAllLabel, children }: {
 }
 
 function EmptyRow({ message }: { message: string }) {
-  return <div className="px-5 py-8 text-center"><p className="text-sm text-gray-400">{message}</p></div>;
+  return (
+    <div className="px-5 py-8 text-center">
+      <p className="text-sm text-gray-400">{message}</p>
+    </div>
+  );
 }
 
 function ReferralRows({ referrals, timezone }: { referrals: ReferralSummary[]; timezone: string }) {
   if (referrals.length === 0) return <EmptyRow message="No active referrals." />;
   return (
     <ul className="divide-y divide-gray-50">
-      {referrals.map(r => (
+      {referrals.map((r) => (
         <li key={r.id}>
           <Link
             href={`/careconnect/referrals/${r.id}?from=dashboard`}
@@ -111,7 +152,7 @@ function AppointmentRows({ appointments, timezone }: { appointments: Appointment
   if (appointments.length === 0) return <EmptyRow message="No upcoming appointments." />;
   return (
     <ul className="divide-y divide-gray-50">
-      {appointments.map(a => (
+      {appointments.map((a) => (
         <li key={a.id}>
           <Link
             href={`/careconnect/appointments/${a.id}`}
@@ -159,7 +200,10 @@ function StatCard({ label, value, href }: { label: string; value: number | strin
 }
 
 function QuickAction({ href, icon, label, desc }: {
-  href: string; icon: string; label: string; desc: string;
+  href: string;
+  icon: string;
+  label: string;
+  desc: string;
 }) {
   return (
     <Link
@@ -175,8 +219,6 @@ function QuickAction({ href, icon, label, desc }: {
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────────
-
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const searchParamsData = await searchParams;
   const session = await requireOrg();
@@ -188,122 +230,434 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
-  const showReferrerView = isReferrer || (!isReferrer && !isReceiver);
+  const isTenantAdminView = session.isTenantAdmin && !session.isPlatformAdmin;
 
-  // ── Date range ─────────────────────────────────────────────────────────────
+  if (!isReferrer && !isReceiver && !isTenantAdminView) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-700">
+        You do not have a CareConnect role. Contact your administrator to gain access.
+      </div>
+    );
+  }
+
   const { range: analyticsRange, activePreset } = parseDateRangeParams(
     searchParamsData.analyticsFrom,
     searchParamsData.analyticsTo,
   );
 
-  // ── Operational data ───────────────────────────────────────────────────────
+  if (isTenantAdminView) {
+    const upcomingTo = new Date();
+    upcomingTo.setDate(upcomingTo.getDate() + 7);
 
-  let referrals:            ReferralSummary[]    = [];
-  let appointments:         AppointmentSummary[] = [];
+    const [
+      metricsResult,
+      activeReferralsResult,
+      scheduledAppointmentsResult,
+      confirmedAppointmentsResult,
+      rescheduledAppointmentsResult,
+      totalRefResult,
+      acceptedRefResult,
+      declinedRefResult,
+      scheduledRefResult,
+      completedRefResult,
+      totalApptResult,
+      completedApptResult,
+      cancelledApptResult,
+      noShowApptResult,
+      referralItemsResult,
+      appointmentItemsResult,
+    ] = await Promise.allSettled([
+      careConnectServerApi.adminDashboard.getMetrics(),
+      careConnectServerApi.adminDashboard.getReferrals({ pageSize: 50 }),
+      careConnectServerApi.adminAppointments.search({
+        status: 'Scheduled',
+        from: new Date().toISOString(),
+        to: upcomingTo.toISOString(),
+        pageSize: 50,
+      }),
+      careConnectServerApi.adminAppointments.search({
+        status: 'Confirmed',
+        from: new Date().toISOString(),
+        to: upcomingTo.toISOString(),
+        pageSize: 50,
+      }),
+      careConnectServerApi.adminAppointments.search({
+        status: 'Rescheduled',
+        from: new Date().toISOString(),
+        to: upcomingTo.toISOString(),
+        pageSize: 50,
+      }),
+      careConnectServerApi.adminDashboard.getReferrals({
+        pageSize: 1,
+        createdFrom: analyticsRange.from,
+        createdTo: analyticsRange.to,
+      }),
+      careConnectServerApi.adminDashboard.getReferrals({
+        status: 'Accepted',
+        pageSize: 1,
+        createdFrom: analyticsRange.from,
+        createdTo: analyticsRange.to,
+      }),
+      careConnectServerApi.adminDashboard.getReferrals({
+        status: 'Declined',
+        pageSize: 1,
+        createdFrom: analyticsRange.from,
+        createdTo: analyticsRange.to,
+      }),
+      careConnectServerApi.adminDashboard.getReferrals({
+        status: 'Scheduled',
+        pageSize: 1,
+        createdFrom: analyticsRange.from,
+        createdTo: analyticsRange.to,
+      }),
+      careConnectServerApi.adminDashboard.getReferrals({
+        status: 'Completed',
+        pageSize: 1,
+        createdFrom: analyticsRange.from,
+        createdTo: analyticsRange.to,
+      }),
+      careConnectServerApi.adminAppointments.search({
+        from: analyticsRange.from,
+        to: analyticsRange.to,
+        pageSize: 1,
+      }),
+      careConnectServerApi.adminAppointments.search({
+        status: 'Completed',
+        from: analyticsRange.from,
+        to: analyticsRange.to,
+        pageSize: 1,
+      }),
+      careConnectServerApi.adminAppointments.search({
+        status: 'Cancelled',
+        from: analyticsRange.from,
+        to: analyticsRange.to,
+        pageSize: 1,
+      }),
+      careConnectServerApi.adminAppointments.search({
+        status: 'NoShow',
+        from: analyticsRange.from,
+        to: analyticsRange.to,
+        pageSize: 1,
+      }),
+      careConnectServerApi.adminDashboard.getReferrals({
+        pageSize: 200,
+        createdFrom: analyticsRange.from,
+        createdTo: analyticsRange.to,
+      }),
+      careConnectServerApi.adminAppointments.search({
+        from: analyticsRange.from,
+        to: analyticsRange.to,
+        pageSize: 200,
+      }),
+    ]);
+
+    const hasFetchFailure = [
+      metricsResult,
+      activeReferralsResult,
+      scheduledAppointmentsResult,
+      confirmedAppointmentsResult,
+      rescheduledAppointmentsResult,
+      totalRefResult,
+      acceptedRefResult,
+      declinedRefResult,
+      scheduledRefResult,
+      completedRefResult,
+      totalApptResult,
+      completedApptResult,
+      cancelledApptResult,
+      noShowApptResult,
+      referralItemsResult,
+      appointmentItemsResult,
+    ].some((result) => result.status === 'rejected');
+
+    const dashboardMetrics = metricsResult.status === 'fulfilled' ? metricsResult.value : null;
+    const operationalReferrals = activeReferralsResult.status === 'fulfilled'
+      ? activeReferralsResult.value.items
+      : [];
+    const appointmentMap = new Map<string, AppointmentSummary>();
+    if (scheduledAppointmentsResult.status === 'fulfilled') {
+      scheduledAppointmentsResult.value.items.forEach((item) => appointmentMap.set(item.id, item));
+    }
+    if (confirmedAppointmentsResult.status === 'fulfilled') {
+      confirmedAppointmentsResult.value.items.forEach((item) => appointmentMap.set(item.id, item));
+    }
+    if (rescheduledAppointmentsResult.status === 'fulfilled') {
+      rescheduledAppointmentsResult.value.items.forEach((item) => appointmentMap.set(item.id, item));
+    }
+
+    const referrals = operationalReferrals
+      .filter((item) => !['Completed', 'Cancelled', 'Declined'].includes(item.status))
+      .slice(0, 5)
+      .map((item) => mapAdminReferralToSummary(item as AdminReferralDashboardItem));
+
+    const appointments = [...appointmentMap.values()]
+      .filter((item) => isWithinDays(item.scheduledAtUtc, 7))
+      .sort((a, b) => new Date(a.scheduledAtUtc).getTime() - new Date(b.scheduledAtUtc).getTime())
+      .slice(0, 5);
+
+    const getAdminCount = (
+      result: PromiseSettledResult<{ total: number }>,
+    ) => (result.status === 'fulfilled' ? result.value.total : 0);
+    const getPagedCount = (
+      result: PromiseSettledResult<{ totalCount: number }>,
+    ) => (result.status === 'fulfilled' ? result.value.totalCount : 0);
+
+    const funnelMetrics = computeReferralFunnel(
+      getAdminCount(totalRefResult),
+      getAdminCount(acceptedRefResult),
+      getAdminCount(declinedRefResult),
+      getAdminCount(scheduledRefResult),
+      getAdminCount(completedRefResult),
+    );
+
+    const appointmentMetrics = computeAppointmentMetrics(
+      getPagedCount(totalApptResult),
+      getPagedCount(completedApptResult),
+      getPagedCount(cancelledApptResult),
+      getPagedCount(noShowApptResult),
+    );
+
+    const referralItems = referralItemsResult.status === 'fulfilled'
+      ? referralItemsResult.value.items
+      : [];
+    const appointmentItems = appointmentItemsResult.status === 'fulfilled'
+      ? appointmentItemsResult.value.items
+      : [];
+    const isCapped =
+      (referralItemsResult.status === 'fulfilled' && referralItemsResult.value.total > 200)
+      || (appointmentItemsResult.status === 'fulfilled' && appointmentItemsResult.value.totalCount > 200);
+
+    const providerRows = computeProviderPerformance(
+      referralItems.map((item) => ({
+        providerId: item.providerId,
+        providerName: item.providerName ?? 'Unknown Provider',
+        status: item.status,
+      })),
+      appointmentItems.map((item) => ({ providerId: item.providerId, status: item.status })),
+    );
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Tenant-wide CareConnect activity across referrals and appointments.
+            </p>
+          </div>
+        </div>
+
+        {hasFetchFailure && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+            Some dashboard data could not be loaded. Showing the tenant activity that was available.
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <StatCard
+            label="Open Referrals"
+            value={dashboardMetrics?.openReferrals ?? referrals.length}
+            href="/careconnect/referrals?from=dashboard"
+          />
+          <StatCard
+            label="Upcoming (7 days)"
+            value={
+              (scheduledAppointmentsResult.status === 'fulfilled' ? scheduledAppointmentsResult.value.totalCount : 0)
+              + (confirmedAppointmentsResult.status === 'fulfilled' ? confirmedAppointmentsResult.value.totalCount : 0)
+              + (rescheduledAppointmentsResult.status === 'fulfilled' ? rescheduledAppointmentsResult.value.totalCount : 0)
+            }
+            href="/careconnect/appointments"
+          />
+          <StatCard
+            label="Completed"
+            value={getAdminCount(completedRefResult)}
+            href={`/careconnect/referrals?from=dashboard&status=Completed&createdFrom=${analyticsRange.from}&createdTo=${analyticsRange.to}`}
+          />
+          <StatCard
+            label="Declined"
+            value={getAdminCount(declinedRefResult)}
+            href={`/careconnect/referrals?from=dashboard&status=Declined&createdFrom=${analyticsRange.from}&createdTo=${analyticsRange.to}`}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SectionCard title="Active Referrals" viewAllHref="/careconnect/referrals?from=dashboard" viewAllLabel="View all">
+            <ReferralRows referrals={referrals} timezone={tenantTimezone} />
+          </SectionCard>
+          <SectionCard title="Upcoming Appointments" viewAllHref="/careconnect/appointments" viewAllLabel="View all">
+            <AppointmentRows appointments={appointments} timezone={tenantTimezone} />
+          </SectionCard>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-gray-100">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Performance Overview</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {formatDisplayDate(analyticsRange.from)} — {formatDisplayDate(analyticsRange.to)}
+              </p>
+            </div>
+            <Suspense fallback={null}>
+              <DateRangePicker
+                activePreset={activePreset}
+                currentFrom={analyticsRange.from}
+                currentTo={analyticsRange.to}
+              />
+            </Suspense>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <AnalyticsPanelCard title="Referral Funnel">
+              <ReferralFunnel
+                metrics={funnelMetrics}
+                from={analyticsRange.from}
+                to={analyticsRange.to}
+              />
+            </AnalyticsPanelCard>
+
+            <AnalyticsPanelCard title="Appointment Performance">
+              <AppointmentMetricsPanel
+                metrics={appointmentMetrics}
+                from={analyticsRange.from}
+                to={analyticsRange.to}
+              />
+            </AnalyticsPanelCard>
+          </div>
+
+          <AnalyticsPanelCard title="Provider Performance">
+            <ProviderPerformanceTable
+              rows={providerRows}
+              from={analyticsRange.from}
+              to={analyticsRange.to}
+              isCapped={isCapped}
+            />
+          </AnalyticsPanelCard>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <QuickAction
+            href="/careconnect/referrals?from=dashboard"
+            icon="ri-file-list-3-line"
+            label="Tenant Referrals"
+            desc="Review tenant-wide referral activity"
+          />
+          <QuickAction
+            href="/careconnect/appointments"
+            icon="ri-calendar-2-line"
+            label="Tenant Appointments"
+            desc="Review tenant-wide appointment activity"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const showReferrerView = isReferrer;
+
+  let referrals: ReferralSummary[] = [];
+  let appointments: AppointmentSummary[] = [];
   let completedReferralCount = 0;
-  let declinedReferralCount  = 0;
-  let acceptedReferralCount  = 0;
-  let upcomingApptCount      = 0;
+  let declinedReferralCount = 0;
+  let acceptedReferralCount = 0;
+  let upcomingApptCount = 0;
 
   if (showReferrerView) {
     const [activeRef, completedRef, declinedRef, scheduledAppt, confirmedAppt] =
       await Promise.allSettled([
         careConnectServerApi.referrals.search({ pageSize: 5 }),
         careConnectServerApi.referrals.search({ status: 'Completed', pageSize: 1 }),
-        careConnectServerApi.referrals.search({ status: 'Declined',  pageSize: 1 }),
+        careConnectServerApi.referrals.search({ status: 'Declined', pageSize: 1 }),
         careConnectServerApi.appointments.search({ status: 'Scheduled', pageSize: 20 }),
         careConnectServerApi.appointments.search({ status: 'Confirmed', pageSize: 20 }),
       ]);
 
     if (activeRef.status === 'fulfilled') {
       referrals = activeRef.value.items
-        .filter(r => !['Completed', 'Cancelled', 'Declined'].includes(r.status))
+        .filter((r) => !['Completed', 'Cancelled', 'Declined'].includes(r.status))
         .slice(0, 5);
     }
     if (completedRef.status === 'fulfilled') completedReferralCount = completedRef.value.totalCount;
-    if (declinedRef.status  === 'fulfilled') declinedReferralCount  = declinedRef.value.totalCount;
+    if (declinedRef.status === 'fulfilled') declinedReferralCount = declinedRef.value.totalCount;
 
     const apptMap = new Map<string, AppointmentSummary>();
-    if (scheduledAppt.status === 'fulfilled') scheduledAppt.value.items.forEach(a => apptMap.set(a.id, a));
-    if (confirmedAppt.status === 'fulfilled') confirmedAppt.value.items.forEach(a => apptMap.set(a.id, a));
+    if (scheduledAppt.status === 'fulfilled') scheduledAppt.value.items.forEach((a) => apptMap.set(a.id, a));
+    if (confirmedAppt.status === 'fulfilled') confirmedAppt.value.items.forEach((a) => apptMap.set(a.id, a));
     appointments = [...apptMap.values()]
-      .filter(a => isWithinDays(a.scheduledAtUtc, 7))
+      .filter((a) => isWithinDays(a.scheduledAtUtc, 7))
       .sort((a, b) => new Date(a.scheduledAtUtc).getTime() - new Date(b.scheduledAtUtc).getTime())
       .slice(0, 5);
     upcomingApptCount = apptMap.size;
-
   } else {
     const [newRef, acceptedRef, completedRef, scheduledAppt, confirmedAppt] =
       await Promise.allSettled([
-        careConnectServerApi.referrals.search({ status: 'New',       pageSize: 5 }),
-        careConnectServerApi.referrals.search({ status: 'Accepted',  pageSize: 1 }),
+        careConnectServerApi.referrals.search({ status: 'New', pageSize: 5 }),
+        careConnectServerApi.referrals.search({ status: 'Accepted', pageSize: 1 }),
         careConnectServerApi.referrals.search({ status: 'Completed', pageSize: 1 }),
         careConnectServerApi.appointments.search({ status: 'Scheduled', pageSize: 50 }),
         careConnectServerApi.appointments.search({ status: 'Confirmed', pageSize: 50 }),
       ]);
 
-    if (newRef.status      === 'fulfilled') referrals             = newRef.value.items;
+    if (newRef.status === 'fulfilled') referrals = newRef.value.items;
     if (acceptedRef.status === 'fulfilled') acceptedReferralCount = acceptedRef.value.totalCount;
-    if (completedRef.status=== 'fulfilled') completedReferralCount= completedRef.value.totalCount;
+    if (completedRef.status === 'fulfilled') completedReferralCount = completedRef.value.totalCount;
 
     const apptMap = new Map<string, AppointmentSummary>();
-    if (scheduledAppt.status === 'fulfilled') scheduledAppt.value.items.forEach(a => apptMap.set(a.id, a));
-    if (confirmedAppt.status === 'fulfilled') confirmedAppt.value.items.forEach(a => apptMap.set(a.id, a));
+    if (scheduledAppt.status === 'fulfilled') scheduledAppt.value.items.forEach((a) => apptMap.set(a.id, a));
+    if (confirmedAppt.status === 'fulfilled') confirmedAppt.value.items.forEach((a) => apptMap.set(a.id, a));
     appointments = [...apptMap.values()]
-      .filter(a => isToday(a.scheduledAtUtc))
+      .filter((a) => isToday(a.scheduledAtUtc))
       .sort((a, b) => new Date(a.scheduledAtUtc).getTime() - new Date(b.scheduledAtUtc).getTime())
       .slice(0, 5);
   }
 
-  // ── Fixed 30-day Referral Activity (LSCC-005) ──────────────────────────────
-  // Three best-effort count calls; failures render as zero gracefully.
-
-  const fixed30dTo   = new Date().toISOString().slice(0, 10);
-  const _30dAgo      = new Date(); _30dAgo.setDate(_30dAgo.getDate() - 30);
-  const fixed30dFrom = _30dAgo.toISOString().slice(0, 10);
+  const fixed30dTo = new Date().toISOString().slice(0, 10);
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const fixed30dFrom = thirtyDaysAgo.toISOString().slice(0, 10);
 
   const [ref30Total, ref30New, ref30Accepted] = showReferrerView
     ? await Promise.allSettled([
         careConnectServerApi.referrals.search({ createdFrom: fixed30dFrom, createdTo: fixed30dTo, pageSize: 1 }),
-        careConnectServerApi.referrals.search({ status: 'New',      createdFrom: fixed30dFrom, createdTo: fixed30dTo, pageSize: 1 }),
+        careConnectServerApi.referrals.search({ status: 'New', createdFrom: fixed30dFrom, createdTo: fixed30dTo, pageSize: 1 }),
         careConnectServerApi.referrals.search({ status: 'Accepted', createdFrom: fixed30dFrom, createdTo: fixed30dTo, pageSize: 1 }),
       ])
     : [null, null, null];
 
-  const activity30Total    = ref30Total    && ref30Total.status    === 'fulfilled' ? ref30Total.value.totalCount    : 0;
-  const activity30New      = ref30New      && ref30New.status      === 'fulfilled' ? ref30New.value.totalCount      : 0;
+  const activity30Total = ref30Total && ref30Total.status === 'fulfilled' ? ref30Total.value.totalCount : 0;
+  const activity30New = ref30New && ref30New.status === 'fulfilled' ? ref30New.value.totalCount : 0;
   const activity30Accepted = ref30Accepted && ref30Accepted.status === 'fulfilled' ? ref30Accepted.value.totalCount : 0;
-  const activity30Rate     = activity30Total > 0
+  const activity30Rate = activity30Total > 0
     ? Math.round((activity30Accepted / activity30Total) * 100)
     : 0;
 
-  // ── Analytics data ─────────────────────────────────────────────────────────
-  // 11 parallel best-effort calls — individual failures leave metrics at 0/empty.
-
   const [
-    totalRef, acceptedRef, declinedRef, scheduledRef, completedRef,
-    totalAppt, completedAppt, cancelledAppt, noShowAppt,
-    referralItems, appointmentItems,
+    totalRef,
+    acceptedRef,
+    declinedRef,
+    scheduledRef,
+    completedRef,
+    totalAppt,
+    completedAppt,
+    cancelledAppt,
+    noShowAppt,
+    referralItems,
+    appointmentItems,
   ] = await Promise.allSettled([
     careConnectServerApi.referrals.search({ createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
-    careConnectServerApi.referrals.search({ status: 'Accepted',  createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
-    careConnectServerApi.referrals.search({ status: 'Declined',  createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
+    careConnectServerApi.referrals.search({ status: 'Accepted', createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
+    careConnectServerApi.referrals.search({ status: 'Declined', createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
     careConnectServerApi.referrals.search({ status: 'Scheduled', createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
     careConnectServerApi.referrals.search({ status: 'Completed', createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
-
     careConnectServerApi.appointments.search({ from: analyticsRange.from, to: analyticsRange.to, pageSize: 1 }),
     careConnectServerApi.appointments.search({ status: 'Completed', from: analyticsRange.from, to: analyticsRange.to, pageSize: 1 }),
     careConnectServerApi.appointments.search({ status: 'Cancelled', from: analyticsRange.from, to: analyticsRange.to, pageSize: 1 }),
-    careConnectServerApi.appointments.search({ status: 'NoShow',    from: analyticsRange.from, to: analyticsRange.to, pageSize: 1 }),
-
+    careConnectServerApi.appointments.search({ status: 'NoShow', from: analyticsRange.from, to: analyticsRange.to, pageSize: 1 }),
     careConnectServerApi.referrals.search({ createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 200 }),
     careConnectServerApi.appointments.search({ from: analyticsRange.from, to: analyticsRange.to, pageSize: 200 }),
   ]);
 
-  // PagedResponse<any> avoids union narrowing issues when Promise.allSettled mixes response types
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getCount = (r: PromiseSettledResult<{ totalCount: number; items: any[] }>) =>
-    r.status === 'fulfilled' ? r.value.totalCount : 0;
+  const getCount = (result: PromiseSettledResult<{ totalCount: number }>) =>
+    (result.status === 'fulfilled' ? result.value.totalCount : 0);
 
   const funnelMetrics = computeReferralFunnel(
     getCount(totalRef),
@@ -320,26 +674,23 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     getCount(noShowAppt),
   );
 
-  const referralItemsList    = referralItems.status === 'fulfilled'
-    ? (referralItems.value as { items: ReferralSummary[] }).items
+  const referralItemsList = referralItems.status === 'fulfilled'
+    ? referralItems.value.items
     : ([] as ReferralSummary[]);
   const appointmentItemsList = appointmentItems.status === 'fulfilled'
-    ? (appointmentItems.value as { items: AppointmentSummary[] }).items
+    ? appointmentItems.value.items
     : ([] as AppointmentSummary[]);
-  const referralItemsCapped   = referralItems.status     === 'fulfilled' && referralItems.value.totalCount > 200;
-  const appointmentItemsCapped= appointmentItems.status  === 'fulfilled' && appointmentItems.value.totalCount > 200;
-  const isCapped              = referralItemsCapped || appointmentItemsCapped;
+  const referralItemsCapped = referralItems.status === 'fulfilled' && referralItems.value.totalCount > 200;
+  const appointmentItemsCapped = appointmentItems.status === 'fulfilled' && appointmentItems.value.totalCount > 200;
+  const isCapped = referralItemsCapped || appointmentItemsCapped;
 
   const providerRows = computeProviderPerformance(
-    referralItemsList.map(r => ({ providerId: r.providerId, providerName: r.providerName, status: r.status })),
-    appointmentItemsList.map(a => ({ providerId: a.providerId, status: a.status })),
+    referralItemsList.map((r) => ({ providerId: r.providerId, providerName: r.providerName, status: r.status })),
+    appointmentItemsList.map((a) => ({ providerId: a.providerId, status: a.status })),
   );
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
@@ -356,26 +707,24 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         )}
       </div>
 
-      {/* Stat bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {showReferrerView ? (
           <>
-            <StatCard label="Active Referrals"  value={referrals.length}       href="/careconnect/referrals?from=dashboard" />
-            <StatCard label="Upcoming (7 days)" value={upcomingApptCount}      href="/careconnect/appointments" />
-            <StatCard label="Completed"         value={completedReferralCount} href="/careconnect/referrals?from=dashboard&status=Completed" />
-            <StatCard label="Declined"          value={declinedReferralCount}  href="/careconnect/referrals?from=dashboard&status=Declined" />
+            <StatCard label="Active Referrals" value={referrals.length} href="/careconnect/referrals?from=dashboard" />
+            <StatCard label="Upcoming (7 days)" value={upcomingApptCount} href="/careconnect/appointments" />
+            <StatCard label="Completed" value={completedReferralCount} href="/careconnect/referrals?from=dashboard&status=Completed" />
+            <StatCard label="Declined" value={declinedReferralCount} href="/careconnect/referrals?from=dashboard&status=Declined" />
           </>
         ) : (
           <>
-            <StatCard label="Pending Referrals" value={referrals.length}        href="/careconnect/referrals?from=dashboard&status=New" />
-            <StatCard label="Today's Appts"     value={appointments.length}     href="/careconnect/appointments" />
-            <StatCard label="Accepted"          value={acceptedReferralCount}   href="/careconnect/referrals?from=dashboard&status=Accepted" />
-            <StatCard label="Completed"         value={completedReferralCount}  href="/careconnect/referrals?from=dashboard&status=Completed" />
+            <StatCard label="Pending Referrals" value={referrals.length} href="/careconnect/referrals?from=dashboard&status=New" />
+            <StatCard label="Today's Appts" value={appointments.length} href="/careconnect/appointments" />
+            <StatCard label="Accepted" value={acceptedReferralCount} href="/careconnect/referrals?from=dashboard&status=Accepted" />
+            <StatCard label="Completed" value={completedReferralCount} href="/careconnect/referrals?from=dashboard&status=Completed" />
           </>
         )}
       </div>
 
-      {/* ── Referral Activity (fixed 30-day window) ──────────────────────────── */}
       {showReferrerView && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -383,9 +732,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <span className="text-xs text-gray-400">Last 30 days</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard label="Total Referrals"  value={activity30Total}    href={`/careconnect/referrals?from=dashboard&createdFrom=${fixed30dFrom}&createdTo=${fixed30dTo}`} />
-            <StatCard label="Pending"          value={activity30New}      href={`/careconnect/referrals?from=dashboard&status=New&createdFrom=${fixed30dFrom}&createdTo=${fixed30dTo}`} />
-            <StatCard label="Accepted"         value={activity30Accepted} href={`/careconnect/referrals?from=dashboard&status=Accepted&createdFrom=${fixed30dFrom}&createdTo=${fixed30dTo}`} />
+            <StatCard label="Total Referrals" value={activity30Total} href={`/careconnect/referrals?from=dashboard&createdFrom=${fixed30dFrom}&createdTo=${fixed30dTo}`} />
+            <StatCard label="Pending" value={activity30New} href={`/careconnect/referrals?from=dashboard&status=New&createdFrom=${fixed30dFrom}&createdTo=${fixed30dTo}`} />
+            <StatCard label="Accepted" value={activity30Accepted} href={`/careconnect/referrals?from=dashboard&status=Accepted&createdFrom=${fixed30dFrom}&createdTo=${fixed30dTo}`} />
             <div className="bg-white border border-gray-200 rounded-lg px-4 py-4">
               <p className="text-2xl font-bold text-gray-900">{activity30Rate}%</p>
               <p className="text-xs text-gray-500 mt-1">Acceptance Rate</p>
@@ -394,32 +743,29 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </div>
       )}
 
-      {/* Operational panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {showReferrerView ? (
           <>
-            <SectionCard title="Active Referrals"      viewAllHref="/careconnect/referrals?from=dashboard"           viewAllLabel="View all">
+            <SectionCard title="Active Referrals" viewAllHref="/careconnect/referrals?from=dashboard" viewAllLabel="View all">
               <ReferralRows referrals={referrals} timezone={tenantTimezone} />
             </SectionCard>
-            <SectionCard title="Upcoming Appointments" viewAllHref="/careconnect/appointments"                        viewAllLabel="View all">
+            <SectionCard title="Upcoming Appointments" viewAllHref="/careconnect/appointments" viewAllLabel="View all">
               <AppointmentRows appointments={appointments} timezone={tenantTimezone} />
             </SectionCard>
           </>
         ) : (
           <>
-            <SectionCard title="Pending Referrals"     viewAllHref="/careconnect/referrals?from=dashboard&status=New" viewAllLabel="View all">
+            <SectionCard title="Pending Referrals" viewAllHref="/careconnect/referrals?from=dashboard&status=New" viewAllLabel="View all">
               <ReferralRows referrals={referrals} timezone={tenantTimezone} />
             </SectionCard>
-            <SectionCard title="Today's Appointments"  viewAllHref="/careconnect/appointments"                        viewAllLabel="View all">
+            <SectionCard title="Today's Appointments" viewAllHref="/careconnect/appointments" viewAllLabel="View all">
               <AppointmentRows appointments={appointments} timezone={tenantTimezone} />
             </SectionCard>
           </>
         )}
       </div>
 
-      {/* ── Performance Overview ────────────────────────────────────────────── */}
       <div className="space-y-4">
-        {/* Section header + date range picker */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-gray-100">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Performance Overview</h2>
@@ -436,7 +782,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </Suspense>
         </div>
 
-        {/* Referral funnel + appointment metrics side by side on large screens */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <AnalyticsPanelCard title="Referral Funnel">
             <ReferralFunnel
@@ -455,7 +800,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </AnalyticsPanelCard>
         </div>
 
-        {/* Provider performance table */}
         <AnalyticsPanelCard title="Provider Performance">
           <ProviderPerformanceTable
             rows={providerRows}
@@ -466,18 +810,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </AnalyticsPanelCard>
       </div>
 
-      {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {showReferrerView ? (
           <>
-            <QuickAction href="/careconnect/referrals?from=dashboard" icon="ri-file-list-3-line"  label="All Referrals"   desc="Track the status of every referral" />
-            <QuickAction href="/careconnect/appointments"            icon="ri-calendar-2-line"   label="Appointments"    desc="View and manage your appointments" />
+            <QuickAction href="/careconnect/referrals?from=dashboard" icon="ri-file-list-3-line" label="All Referrals" desc="Track the status of every referral" />
+            <QuickAction href="/careconnect/appointments" icon="ri-calendar-2-line" label="Appointments" desc="View and manage your appointments" />
           </>
         ) : (
           <>
-            <QuickAction href="/careconnect/referrals?from=dashboard" icon="ri-mail-line"           label="Referral Inbox"   desc="Review and accept incoming referrals" />
-            <QuickAction href="/careconnect/appointments"             icon="ri-calendar-check-line" label="Schedule"         desc="View today's and upcoming appointments" />
-            <QuickAction href="/careconnect/providers"                icon="ri-hospital-line"       label="Provider Network" desc="Browse providers in the network" />
+            <QuickAction href="/careconnect/referrals?from=dashboard" icon="ri-mail-line" label="Referral Inbox" desc="Review and accept incoming referrals" />
+            <QuickAction href="/careconnect/appointments" icon="ri-calendar-check-line" label="Schedule" desc="View today's and upcoming appointments" />
           </>
         )}
       </div>

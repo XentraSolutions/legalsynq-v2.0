@@ -377,11 +377,15 @@ async function NetworkReferralsView({
 async function TenantAdminReadOnlyReferralsView({
   sessionTenantId,
   status,
+  createdFrom,
+  createdTo,
   page,
   timezone,
 }: {
   sessionTenantId: string;
   status?: string;
+  createdFrom?: string;
+  createdTo?: string;
   page: number;
   timezone: string;
 }) {
@@ -394,6 +398,8 @@ async function TenantAdminReadOnlyReferralsView({
       pageSize: 20,
       status: status || undefined,
       tenantId: sessionTenantId,
+      createdFrom,
+      createdTo,
     });
   } catch (err) {
     fetchError = err instanceof ServerApiError ? err.message : 'Failed to load tenant referrals.';
@@ -565,6 +571,12 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
   const searchParamsData = await searchParams;
   const session = await requireOrg();
   const page = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
+  const adminCreatedFrom = (searchParamsData.createdFrom && isValidIsoDate(searchParamsData.createdFrom))
+    ? searchParamsData.createdFrom
+    : undefined;
+  const adminCreatedTo = (searchParamsData.createdTo && isValidIsoDate(searchParamsData.createdTo))
+    ? searchParamsData.createdTo
+    : undefined;
 
   const isReferrer        = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver        = session.productRoles.includes(ProductRole.CareConnectReceiver);
@@ -597,6 +609,8 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
         <TenantAdminReadOnlyReferralsView
           sessionTenantId={session.tenantId}
           status={searchParamsData.status || undefined}
+          createdFrom={adminCreatedFrom}
+          createdTo={adminCreatedTo}
           page={page}
           timezone={serverTimezone}
         />

@@ -18,6 +18,56 @@ public sealed class UpdateSellingPortfolioRequest
 public sealed class AddSellingPortfolioLiensRequest
 {
     public List<Guid> LienIds { get; init; } = [];
+    public List<string> LienCodes { get; init; } = [];
+    public List<string> Liens { get; init; } = [];
+}
+
+public sealed class AddSellingPortfolioLiensResponse
+{
+    public Guid PortfolioId { get; init; }
+    public int RequestedCount { get; init; }
+    public int AddedCount { get; init; }
+    public int FailedCount { get; init; }
+    public List<AddSellingPortfolioLienResult> Results { get; init; } = [];
+    public List<AddSellingPortfolioLienResult> SuccessfulAssignments { get; init; } = [];
+    public List<AddSellingPortfolioLienResult> FailedAssignments { get; init; } = [];
+    public SellingPortfolioResponse Portfolio { get; init; } = new();
+}
+
+public sealed class AddSellingPortfolioLienResult
+{
+    public string RequestedLien { get; init; } = string.Empty;
+    public Guid LienId { get; init; }
+    public string? LienCode { get; init; }
+    public bool Success { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public string? ReasonCode { get; init; }
+    public string? Message { get; init; }
+}
+
+public sealed class RemoveSellingPortfolioLiensRequest
+{
+    public List<Guid> LienIds { get; init; } = [];
+}
+
+public sealed class RemoveSellingPortfolioLiensResponse
+{
+    public Guid PortfolioId { get; init; }
+    public int RequestedCount { get; init; }
+    public int RemovedCount { get; init; }
+    public int FailedCount { get; init; }
+    public List<RemoveSellingPortfolioLienResult> Results { get; init; } = [];
+    public SellingPortfolioResponse Portfolio { get; init; } = new();
+}
+
+public sealed class RemoveSellingPortfolioLienResult
+{
+    public Guid LienId { get; init; }
+    public string? LienCode { get; init; }
+    public bool Success { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public string? ReasonCode { get; init; }
+    public string? Message { get; init; }
 }
 
 public sealed class AddSellingPortfolioBuyersRequest
@@ -29,6 +79,27 @@ public sealed class TransitionSellingPortfolioStatusRequest
 {
     public string Status { get; init; } = string.Empty;
     public string? Notes { get; init; }
+}
+
+public sealed class SendLienBuyerEmailRequest
+{
+    public Guid BuyerContactId { get; init; }
+    public string DetailsUrl { get; init; } = string.Empty;
+}
+
+public sealed class SendLienBuyerEmailResponse
+{
+    public bool Success { get; init; }
+    public Guid? NotificationId { get; init; }
+    public string NotificationStatus { get; init; } = string.Empty;
+    public Guid LienId { get; init; }
+    public string LienCode { get; init; } = string.Empty;
+    public Guid BuyerContactId { get; init; }
+    public Guid BuyerOrgId { get; init; }
+    public string BuyerName { get; init; } = string.Empty;
+    public string BuyerEmail { get; init; } = string.Empty;
+    public string Subject { get; init; } = string.Empty;
+    public string Body { get; init; } = string.Empty;
 }
 
 public sealed class SellingPortfolioResponse
