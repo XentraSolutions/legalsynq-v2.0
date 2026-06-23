@@ -44,6 +44,10 @@ public static class AdminDashboardEndpoints
             .RequireAuthorization(Policies.PlatformOrTenantAdmin);
 
         routes
+            .MapGet("/api/admin/appointments", GetAdminAppointmentsAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
             .MapGet("/api/admin/referrals/{id:guid}", GetAdminReferralByIdAsync)
             .RequireAuthorization(Policies.PlatformOrTenantAdmin);
 
@@ -222,7 +226,8 @@ public static class AdminDashboardEndpoints
     //   ?page=1&pageSize=25
     //   ?status=New|Accepted|InProgress|Completed|Declined|Cancelled
     //   ?tenantId=<guid>  (PlatformAdmin only; ignored for TenantAdmin)
-    //   ?since=<ISO-datetime>
+    //   ?since=<ISO-datetime> / ?createdFrom=<ISO-datetime>
+    //   ?createdTo=<ISO-datetime>
     //
     // BLK-GOV-02: PlatformWide scope applied; optional tenantId filter for PlatformAdmin.
     //             TenantAdmin callerTenantId override is always ignored for safety.
@@ -237,6 +242,8 @@ public static class AdminDashboardEndpoints
         [FromQuery] string?  status   = null,
         [FromQuery] Guid?    tenantId = null,
         [FromQuery] string?  since    = null,
+        [FromQuery] string?  createdFrom = null,
+        [FromQuery] string?  createdTo   = null,
         CancellationToken    ct       = default)
     {
         var scope = AdminTenantScope.PlatformWide(ctx, http);
@@ -259,8 +266,12 @@ public static class AdminDashboardEndpoints
         if (appliedTenantId.HasValue)
             query = query.Where(r => r.TenantId == appliedTenantId.Value);
 
-        if (since is not null && DateTime.TryParse(since, out var parsedSince))
-            query = query.Where(r => r.CreatedAtUtc >= parsedSince.ToUniversalTime());
+        var effectiveCreatedFrom = createdFrom ?? since;
+        if (effectiveCreatedFrom is not null && DateTime.TryParse(effectiveCreatedFrom, out var parsedCreatedFrom))
+            query = query.Where(r => r.CreatedAtUtc >= parsedCreatedFrom.ToUniversalTime());
+
+        if (createdTo is not null && DateTime.TryParse(createdTo, out var parsedCreatedTo))
+            query = query.Where(r => r.CreatedAtUtc <= parsedCreatedTo.ToUniversalTime());
 
         query = query.OrderByDescending(r => r.CreatedAtUtc);
 
@@ -272,8 +283,12 @@ public static class AdminDashboardEndpoints
             {
                 id                      = r.Id,
                 tenantId                = r.TenantId,
+                providerId              = r.ProviderId,
                 status                  = r.Status,
                 urgency                 = r.Urgency,
+                clientFirstName         = r.ClientFirstName,
+                clientLastName          = r.ClientLastName,
+                caseNumber              = r.CaseNumber,
                 requestedService        = r.RequestedService,
                 providerName            = r.Provider != null ? r.Provider.Name : null,
                 providerEmail           = r.Provider != null ? r.Provider.Email : null,
@@ -312,9 +327,13 @@ public static class AdminDashboardEndpoints
         {
             x.id,
             x.tenantId,
+            x.providerId,
             networkName = tenantDisplayNames.GetValueOrDefault(x.tenantId, ReferralTenantNameResolver.Fallback),
             x.status,
             x.urgency,
+            x.clientFirstName,
+            x.clientLastName,
+            x.caseNumber,
             x.requestedService,
             x.providerName,
             x.providerEmail,
@@ -335,6 +354,100 @@ public static class AdminDashboardEndpoints
             total,
             page,
             pageSize,
+        });
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // GET /api/admin/appointments
+    // ──────────────────────────────────────────────────────────────────────────
+    // Appointment monitor for admins. Mirrors GET /api/appointments but with
+    // tenant-admin visibility rules instead of participant-org scoping.
+    // PlatformAdmin: platform-wide view (optional ?tenantId filter).
+    // TenantAdmin: restricted to their own tenant only.
+    // Supports:
+    //   ?page=1&pageSize=25
+    //   ?status=Scheduled|Confirmed|Rescheduled|Completed|Cancelled|NoShow
+    //   ?tenantId=<guid>  (PlatformAdmin only; ignored for TenantAdmin)
+    //   ?providerId=<guid>
+    //   ?from=<ISO-datetime>
+    //   ?to=<ISO-datetime>
+    private static async Task<IResult> GetAdminAppointmentsAsync(
+        CareConnectDbContext    db,
+        ICurrentRequestContext  ctx,
+        HttpContext             http,
+        [FromQuery] int         page     = 1,
+        [FromQuery] int         pageSize = 25,
+        [FromQuery] string?     status   = null,
+        [FromQuery] Guid?       tenantId = null,
+        [FromQuery] Guid?       providerId = null,
+        [FromQuery] DateTime?   from     = null,
+        [FromQuery] DateTime?   to       = null,
+        CancellationToken       ct       = default)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = db.Appointments
+            .Include(a => a.Provider)
+            .Include(a => a.ServiceOffering)
+            .Include(a => a.Referral)
+            .AsNoTracking()
+            .AsQueryable();
+
+        var appliedTenantId = scope.IsPlatformWide ? tenantId : scope.TenantId;
+        if (appliedTenantId.HasValue)
+            query = query.Where(a => a.TenantId == appliedTenantId.Value);
+
+        var statusFilter = status;
+        if (string.Equals(statusFilter, "Pending", StringComparison.OrdinalIgnoreCase))
+            statusFilter = "Scheduled";
+
+        if (!string.IsNullOrWhiteSpace(statusFilter))
+            query = query.Where(a => a.Status == statusFilter);
+
+        if (providerId.HasValue)
+            query = query.Where(a => a.ProviderId == providerId.Value);
+
+        if (from.HasValue)
+            query = query.Where(a => a.ScheduledStartAtUtc >= from.Value.ToUniversalTime());
+
+        if (to.HasValue)
+            query = query.Where(a => a.ScheduledStartAtUtc <= to.Value.ToUniversalTime());
+
+        query = query.OrderBy(a => a.ScheduledStartAtUtc);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        var resultItems = items.Select(a => new
+        {
+            id              = a.Id,
+            referralId      = a.ReferralId,
+            providerId      = a.ProviderId,
+            providerName    = a.Provider?.Name ?? string.Empty,
+            scheduledAtUtc  = a.ScheduledStartAtUtc,
+            durationMinutes = Math.Max(0, (int)Math.Round((a.ScheduledEndAtUtc - a.ScheduledStartAtUtc).TotalMinutes)),
+            status          = a.Status,
+            serviceType     = a.ServiceOffering?.Name,
+            clientFirstName = a.Referral?.ClientFirstName ?? string.Empty,
+            clientLastName  = a.Referral?.ClientLastName ?? string.Empty,
+            caseNumber      = a.Referral?.CaseNumber,
+            createdAtUtc    = a.CreatedAtUtc,
+            updatedAtUtc    = a.UpdatedAtUtc,
+        });
+
+        return Results.Ok(new
+        {
+            items = resultItems,
+            page,
+            pageSize,
+            totalCount = total,
         });
     }
 

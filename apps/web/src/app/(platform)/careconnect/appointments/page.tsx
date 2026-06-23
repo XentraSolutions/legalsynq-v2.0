@@ -29,8 +29,9 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
+  const isTenantAdminView = session.isTenantAdmin && !session.isPlatformAdmin;
 
-  if (!isReferrer && !isReceiver) {
+  if (!isReferrer && !isReceiver && !isTenantAdminView) {
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-700">
         You do not have a CareConnect role. Contact your administrator to gain access.
@@ -48,19 +49,32 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
   let fetchError: string | null = null;
 
   try {
-    result = await careConnectServerApi.appointments.search({
-      status:     searchParamsData.status     || undefined,
-      providerId: searchParamsData.providerId || undefined,
-      from,
-      to,
-      page,
-      pageSize: 20,
-    });
+    result = isTenantAdminView
+      ? await careConnectServerApi.adminAppointments.search({
+          status:     searchParamsData.status     || undefined,
+          providerId: searchParamsData.providerId || undefined,
+          from,
+          to,
+          page,
+          pageSize: 20,
+        })
+      : await careConnectServerApi.appointments.search({
+          status:     searchParamsData.status     || undefined,
+          providerId: searchParamsData.providerId || undefined,
+          from,
+          to,
+          page,
+          pageSize: 20,
+        });
   } catch (err) {
     fetchError = err instanceof ServerApiError ? err.message : 'Failed to load appointments.';
   }
 
-  const heading = isReferrer ? 'Sent Appointments' : 'Incoming Appointments';
+  const heading = isTenantAdminView
+    ? 'Tenant Appointments'
+    : isReferrer
+    ? 'Sent Appointments'
+    : 'Incoming Appointments';
   const hasDateFilter = !!(from || to);
 
   const STATUS_FILTERS = ['', 'Pending', 'Confirmed', 'Rescheduled', 'Completed', 'Cancelled', 'NoShow'];
@@ -72,6 +86,12 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
         <h1 className="text-xl font-semibold text-gray-900">{heading}</h1>
 
       </div>
+
+      {isTenantAdminView && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+          Read-only tenant-wide appointment activity for CareConnect.
+        </div>
+      )}
 
       {/* Active date filter indicator */}
       {hasDateFilter && (
