@@ -83,6 +83,12 @@ public class SellingPortfolioRepository : ISellingPortfolioRepository
             .ToListAsync(ct);
     }
 
+    public async Task<bool> IsLienAssignedToPortfolioAsync(Guid tenantId, Guid lienId, CancellationToken ct = default)
+    {
+        return await _db.SellingPortfolioLiens
+            .AnyAsync(l => l.TenantId == tenantId && l.LienId == lienId, ct);
+    }
+
     public async Task AddAsync(SellingPortfolio entity, CancellationToken ct = default)
     {
         await _db.SellingPortfolios.AddAsync(entity, ct);

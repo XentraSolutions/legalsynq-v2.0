@@ -64,6 +64,14 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
             // Stub out IFlowInstanceResolver so no Flow HTTP calls happen.
             services.RemoveAll<IFlowInstanceResolver>();
             services.AddScoped<IFlowInstanceResolver, NoOpFlowInstanceResolver>();
+
+            services.RemoveAll<INotificationPublisher>();
+            services.AddSingleton<CapturingNotificationPublisher>();
+            services.AddSingleton<INotificationPublisher>(sp => sp.GetRequiredService<CapturingNotificationPublisher>());
+
+            services.RemoveAll<IAuditPublisher>();
+            services.AddSingleton<CapturingAuditPublisher>();
+            services.AddSingleton<IAuditPublisher>(sp => sp.GetRequiredService<CapturingAuditPublisher>());
         });
     }
 }
@@ -75,3 +83,104 @@ internal sealed class NoOpFlowInstanceResolver : IFlowInstanceResolver
         Guid caseId, CancellationToken ct = default)
         => Task.FromResult<(Guid?, string?)>((null, null));
 }
+
+internal sealed class CapturingNotificationPublisher : INotificationPublisher
+{
+    private readonly List<CapturedEmail> _emails = [];
+
+    public IReadOnlyList<CapturedEmail> Emails => _emails;
+
+    public void Clear() => _emails.Clear();
+
+    public Task PublishAsync(
+        string notificationType,
+        Guid tenantId,
+        Dictionary<string, string> data,
+        CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task<NotificationEmailSendResult> SendEmailAsync(
+        string notificationType,
+        Guid tenantId,
+        string recipientEmail,
+        string subject,
+        string body,
+        Dictionary<string, string> metadata,
+        CancellationToken ct = default)
+    {
+        var notificationId = Guid.CreateVersion7();
+        _emails.Add(new CapturedEmail(
+            notificationType,
+            tenantId,
+            recipientEmail,
+            subject,
+            body,
+            metadata,
+            notificationId));
+
+        return Task.FromResult(new NotificationEmailSendResult(
+            notificationId,
+            "sent",
+            false,
+            null,
+            null,
+            null));
+    }
+}
+
+internal sealed record CapturedEmail(
+    string NotificationType,
+    Guid TenantId,
+    string RecipientEmail,
+    string Subject,
+    string Body,
+    IReadOnlyDictionary<string, string> Metadata,
+    Guid NotificationId);
+
+internal sealed class CapturingAuditPublisher : IAuditPublisher
+{
+    private readonly List<CapturedAuditEvent> _events = [];
+
+    public IReadOnlyList<CapturedAuditEvent> Events => _events;
+
+    public void Clear() => _events.Clear();
+
+    public void Publish(
+        string eventType,
+        string action,
+        string description,
+        Guid tenantId,
+        Guid? actorUserId = null,
+        string? entityType = null,
+        string? entityId = null,
+        string? before = null,
+        string? after = null,
+        string? metadata = null)
+    {
+        _events.Add(new CapturedAuditEvent(
+            eventType,
+            action,
+            description,
+            tenantId,
+            actorUserId,
+            entityType,
+            entityId,
+            before,
+            after,
+            metadata,
+            DateTimeOffset.UtcNow));
+    }
+}
+
+internal sealed record CapturedAuditEvent(
+    string EventType,
+    string Action,
+    string Description,
+    Guid TenantId,
+    Guid? ActorUserId,
+    string? EntityType,
+    string? EntityId,
+    string? Before,
+    string? After,
+    string? Metadata,
+    DateTimeOffset OccurredAtUtc);

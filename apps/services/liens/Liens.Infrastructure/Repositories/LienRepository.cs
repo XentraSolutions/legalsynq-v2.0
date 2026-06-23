@@ -21,6 +21,13 @@ public class LienRepository : ILienRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<Lien?> GetByIdAnyTenantAsync(Guid id, CancellationToken ct = default)
+    {
+        return await _db.Liens
+            .Where(l => l.Id == id)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<Lien?> GetByLienNumberAsync(Guid tenantId, string lienNumber, CancellationToken ct = default)
     {
         return await _db.Liens
