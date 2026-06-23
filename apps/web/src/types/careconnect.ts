@@ -526,11 +526,15 @@ export interface BlockedProviderLogPage {
 export interface AdminReferralItem {
   id:                      string;
   tenantId:                string;
+  providerId:              string;
   /** Backend may supply either tenantName or networkName for the Network column. */
   tenantName?:             string | null;
   networkName?:            string | null;
   status:                  string;
   urgency:                 string;
+  clientFirstName:         string;
+  clientLastName:          string;
+  caseNumber?:             string | null;
   requestedService:        string;
   providerName:            string | null;
   providerEmail:           string | null;
