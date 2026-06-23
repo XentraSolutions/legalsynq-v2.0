@@ -35,12 +35,20 @@ public interface ISellingPortfolioService
         UpdateSellingPortfolioRequest request,
         CancellationToken ct = default);
 
-    Task<SellingPortfolioResponse> AddLiensAsync(
+    Task<AddSellingPortfolioLiensResponse> AddLiensAsync(
         Guid tenantId,
         Guid id,
         Guid sellerOrgId,
         Guid actingUserId,
         AddSellingPortfolioLiensRequest request,
+        CancellationToken ct = default);
+
+    Task<RemoveSellingPortfolioLiensResponse> RemoveLiensAsync(
+        Guid tenantId,
+        Guid id,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        RemoveSellingPortfolioLiensRequest request,
         CancellationToken ct = default);
 
     Task<SellingPortfolioResponse> AddBuyersAsync(
@@ -63,5 +71,14 @@ public interface ISellingPortfolioService
         Guid tenantId,
         Guid id,
         Guid sellerOrgId,
+        CancellationToken ct = default);
+
+    Task<SendLienBuyerEmailResponse> SendBuyerEmailAsync(
+        Guid tenantId,
+        Guid portfolioId,
+        string lienIdOrCode,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        SendLienBuyerEmailRequest request,
         CancellationToken ct = default);
 }
