@@ -33,7 +33,13 @@ public static class SellingEndpoints
         portfolios.MapPost("/{id:guid}/liens", AddLiens)
             .RequirePermission(LiensPermissions.LienOffer);
 
+        portfolios.MapPost("/{id:guid}/liens/remove", RemoveLiens)
+            .RequirePermission(LiensPermissions.LienOffer);
+
         portfolios.MapPost("/{id:guid}/buyers", AddBuyers)
+            .RequirePermission(LiensPermissions.LienOffer);
+
+        portfolios.MapPost("/{id:guid}/liens/{lienIdOrCode}/buyer-email", SendBuyerEmail)
             .RequirePermission(LiensPermissions.LienOffer);
 
         portfolios.MapPost("/{id:guid}/status", TransitionStatus)
@@ -133,6 +139,20 @@ public static class SellingEndpoints
         return Results.Ok(result);
     }
 
+    private static async Task<IResult> RemoveLiens(
+        Guid id,
+        RemoveSellingPortfolioLiensRequest request,
+        ISellingPortfolioService service,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var sellerOrgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await service.RemoveLiensAsync(tenantId, id, sellerOrgId, userId, request, ct);
+        return Results.Ok(result);
+    }
+
     private static async Task<IResult> AddBuyers(
         Guid id,
         AddSellingPortfolioBuyersRequest request,
@@ -144,6 +164,21 @@ public static class SellingEndpoints
         var sellerOrgId = RequireOrgId(ctx);
         var userId = RequireUserId(ctx);
         var result = await service.AddBuyersAsync(tenantId, id, sellerOrgId, userId, request, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> SendBuyerEmail(
+        Guid id,
+        string lienIdOrCode,
+        SendLienBuyerEmailRequest request,
+        ISellingPortfolioService service,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var sellerOrgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await service.SendBuyerEmailAsync(tenantId, id, lienIdOrCode, sellerOrgId, userId, request, ct);
         return Results.Ok(result);
     }
 

@@ -21,6 +21,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     {
         using var scope = _factory.Services.CreateScope();
         await SeedHelper.SeedAsync(scope.ServiceProvider);
+        scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().Clear();
+        scope.ServiceProvider.GetRequiredService<CapturingAuditPublisher>().Clear();
 
         _client = _factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization =
@@ -179,6 +181,314 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         reloaded.Buyers.Should().ContainSingle(b => b.BuyerOrgId == SeedHelper.FundingCompanyId);
     }
 
+    [Fact]
+    public async Task AddLiens_returns_partial_success_for_duplicate_ineligible_and_wrong_tenant_liens()
+    {
+        var portfolio = await CreatePortfolioAsync();
+        var existingLienId = portfolio.Liens[0].LienId;
+        var (_, eligibleLienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}");
+        var (_, closedLienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            status: "CLOSED");
+        var otherTenantLienId = await SeedOtherTenantLienAsync();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/liens",
+            new AddSellingPortfolioLiensRequest
+            {
+                LienIds = [existingLienId, eligibleLienId, closedLienId, otherTenantLienId],
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<AddSellingPortfolioLiensResponse>();
+        body.Should().NotBeNull();
+        body!.RequestedCount.Should().Be(4);
+        body.AddedCount.Should().Be(1);
+        body.FailedCount.Should().Be(3);
+        body.Results.Should().Contain(r => r.LienId == eligibleLienId && r.Success && r.Status == "added");
+        body.Results.Should().Contain(r => r.LienId == existingLienId && !r.Success && r.ReasonCode == "LIEN_ALREADY_ASSIGNED" && r.Message == "Lien is already assigned to a portfolio.");
+        body.Results.Should().Contain(r => r.LienId == closedLienId && !r.Success && r.ReasonCode == "LIEN_CLOSED" && r.Message == "Closed liens cannot be assigned to a portfolio.");
+        body.Results.Should().Contain(r => r.LienId == otherTenantLienId && !r.Success && r.ReasonCode == "TENANT_MISMATCH" && r.Message == "Lien tenant does not match portfolio tenant.");
+        body.Portfolio.Liens.Should().Contain(l => l.LienId == existingLienId);
+        body.Portfolio.Liens.Should().Contain(l => l.LienId == eligibleLienId);
+        body.Portfolio.Liens.Should().NotContain(l => l.LienId == closedLienId);
+        body.Portfolio.Liens.Should().NotContain(l => l.LienId == otherTenantLienId);
+
+        var reloaded = await _client.GetFromJsonAsync<SellingPortfolioResponse>(
+            $"/api/liens/selling/portfolios/{portfolio.Id}");
+        reloaded.Should().NotBeNull();
+        reloaded!.Liens.Should().Contain(l => l.LienId == eligibleLienId);
+        reloaded.Liens.Should().NotContain(l => l.LienId == closedLienId);
+        reloaded.Liens.Should().NotContain(l => l.LienId == otherTenantLienId);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var audit = verifyScope.ServiceProvider.GetRequiredService<CapturingAuditPublisher>();
+        audit.Events.Should().Contain(e => e.Action == "LIEN_PORTFOLIO_ELIGIBILITY_VALIDATION_FAILED");
+    }
+
+    [Fact]
+    public async Task AddLiens_returns_specific_messages_for_balance_and_written_off_rules()
+    {
+        var portfolio = await CreatePortfolioAsync();
+        var (_, zeroBalanceLienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            originalAmount: 0m);
+        var (_, writtenOffLienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            status: "WRITTEN_OFF");
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/liens",
+            new AddSellingPortfolioLiensRequest
+            {
+                LienIds = [zeroBalanceLienId, writtenOffLienId],
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<AddSellingPortfolioLiensResponse>();
+        body.Should().NotBeNull();
+        body!.AddedCount.Should().Be(0);
+        body.FailedCount.Should().Be(2);
+        body.Results.Should().Contain(r =>
+            r.LienId == zeroBalanceLienId &&
+            r.ReasonCode == "BALANCE_NOT_POSITIVE" &&
+            r.Message == "Lien balance must be greater than 0.");
+        body.Results.Should().Contain(r =>
+            r.LienId == writtenOffLienId &&
+            r.ReasonCode == "LIEN_WRITTEN_OFF" &&
+            r.Message == "Written-off liens cannot be assigned to a portfolio.");
+    }
+
+    [Fact]
+    public async Task AddLiens_accepts_mixed_lien_ids_and_codes_and_separates_successes_from_failures()
+    {
+        var portfolio = await CreateEmptyPortfolioAsync();
+        var firstLienNumber = $"LIEN-{Guid.NewGuid():N}";
+        var (_, firstLienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: firstLienNumber);
+        var (_, secondLienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}");
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/liens",
+            new AddSellingPortfolioLiensRequest
+            {
+                Liens = [firstLienNumber, secondLienId.ToString(), "missing-lien-code"],
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<AddSellingPortfolioLiensResponse>();
+        body.Should().NotBeNull();
+        body!.RequestedCount.Should().Be(3);
+        body.AddedCount.Should().Be(2);
+        body.FailedCount.Should().Be(1);
+        body.SuccessfulAssignments.Should().HaveCount(2);
+        body.SuccessfulAssignments.Should().Contain(r =>
+            r.RequestedLien == firstLienNumber &&
+            r.LienId == firstLienId &&
+            r.LienCode == firstLienNumber);
+        body.SuccessfulAssignments.Should().Contain(r =>
+            r.RequestedLien == secondLienId.ToString() &&
+            r.LienId == secondLienId);
+        body.FailedAssignments.Should().ContainSingle(r =>
+            r.RequestedLien == "missing-lien-code" &&
+            r.ReasonCode == "LIEN_NOT_FOUND");
+        body.Results.Should().HaveCount(3);
+        body.Portfolio.LienCount.Should().Be(2);
+        body.Portfolio.OriginalAmountTotal.Should().Be(24690m);
+    }
+
+    [Fact]
+    public async Task RemoveLiens_returns_partial_success_and_recalculates_totals()
+    {
+        var (_, firstLienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}");
+        var (_, secondLienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}");
+        var (_, thirdLienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}");
+        var missingLienId = Guid.CreateVersion7();
+
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/selling/portfolios",
+            new CreateSellingPortfolioRequest
+            {
+                PortfolioNumber = $"PORT-{Guid.NewGuid():N}"[..20],
+                Name = "Removal test portfolio",
+                LienIds = [firstLienId, secondLienId, thirdLienId],
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var portfolio = (await createResponse.Content.ReadFromJsonAsync<SellingPortfolioResponse>())!;
+        portfolio.LienCount.Should().Be(3);
+        portfolio.OriginalAmountTotal.Should().Be(37035m);
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/liens/remove",
+            new RemoveSellingPortfolioLiensRequest
+            {
+                LienIds = [firstLienId, secondLienId, missingLienId],
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<RemoveSellingPortfolioLiensResponse>();
+        body.Should().NotBeNull();
+        body!.RequestedCount.Should().Be(3);
+        body.RemovedCount.Should().Be(2);
+        body.FailedCount.Should().Be(1);
+        body.Results.Should().Contain(r => r.LienId == firstLienId && r.Success && r.Status == "removed");
+        body.Results.Should().Contain(r => r.LienId == secondLienId && r.Success && r.Status == "removed");
+        body.Results.Should().Contain(r => r.LienId == missingLienId && !r.Success && r.ReasonCode == "LIEN_NOT_IN_PORTFOLIO");
+        body.Portfolio.LienCount.Should().Be(1);
+        body.Portfolio.OriginalAmountTotal.Should().Be(12345m);
+        body.Portfolio.CurrentBalanceTotal.Should().Be(12345m);
+        body.Portfolio.OfferPriceTotal.Should().Be(0m);
+        body.Portfolio.Liens.Should().ContainSingle(l => l.LienId == thirdLienId);
+
+        var reloaded = await _client.GetFromJsonAsync<SellingPortfolioResponse>(
+            $"/api/liens/selling/portfolios/{portfolio.Id}");
+        reloaded.Should().NotBeNull();
+        reloaded!.LienCount.Should().Be(1);
+        reloaded.OriginalAmountTotal.Should().Be(12345m);
+        reloaded.Liens.Should().ContainSingle(l => l.LienId == thirdLienId);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var audit = verifyScope.ServiceProvider.GetRequiredService<CapturingAuditPublisher>();
+        var removalEvents = audit.Events.Where(e => e.Action == "LIEN_REMOVED_FROM_PORTFOLIO").ToList();
+        removalEvents.Should().HaveCount(2);
+        removalEvents.Should().OnlyContain(e =>
+            e.EventType == "liens.selling_portfolio.lien_removed" &&
+            e.TenantId == SeedHelper.TenantId &&
+            e.ActorUserId == SeedHelper.UserId &&
+            e.OccurredAtUtc != default);
+    }
+
+    [Fact]
+    public async Task RemoveLiens_rejects_published_portfolio()
+    {
+        var portfolio = await CreatePortfolioAsync();
+        var lienId = portfolio.Liens[0].LienId;
+
+        var readyResponse = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/status",
+            new TransitionSellingPortfolioStatusRequest { Status = SellingPortfolioStatus.ReadyForReview });
+        readyResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var publishResponse = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/status",
+            new TransitionSellingPortfolioStatusRequest { Status = SellingPortfolioStatus.Published });
+        publishResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/liens/remove",
+            new RemoveSellingPortfolioLiensRequest { LienIds = [lienId] });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<RemoveSellingPortfolioLiensResponse>();
+        body.Should().NotBeNull();
+        body!.RemovedCount.Should().Be(0);
+        body.FailedCount.Should().Be(1);
+        body.Results.Should().ContainSingle(r =>
+            r.LienId == lienId &&
+            !r.Success &&
+            r.ReasonCode == "PORTFOLIO_NOT_EDITABLE");
+        body.Portfolio.Status.Should().Be(SellingPortfolioStatus.Published);
+        body.Portfolio.Liens.Should().ContainSingle(l => l.LienId == lienId);
+    }
+
+    [Fact]
+    public async Task SendBuyerEmail_sends_required_subject_and_body_to_database_contact()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            dateOfIncident: new DateOnly(2026, 3, 12));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var buyerContact = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.FundingCompanyId,
+                ContactType.LienHolder,
+                "Bailey",
+                "Buyer",
+                SeedHelper.UserId,
+                email: "bailey.buyer@example.com");
+            SetId(buyerContact, buyerContactId);
+            db.Contacts.Add(buyerContact);
+            await db.SaveChangesAsync();
+        }
+
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/selling/portfolios",
+            new CreateSellingPortfolioRequest
+            {
+                PortfolioNumber = $"PORT-{Guid.NewGuid():N}"[..20],
+                Name = "Buyer email test portfolio",
+                LienIds = [lienId],
+                BuyerOrgIds = [SeedHelper.FundingCompanyId],
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var portfolio = (await createResponse.Content.ReadFromJsonAsync<SellingPortfolioResponse>())!;
+        var lienCode = portfolio.Liens[0].LienNumber;
+
+        var detailsUrl = $"https://app.legalsynq.test/lien/selling/{portfolio.Id}/liens/{lienId}";
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/liens/{lienCode}/buyer-email",
+            new SendLienBuyerEmailRequest
+            {
+                BuyerContactId = buyerContactId,
+                DetailsUrl = detailsUrl,
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<SendLienBuyerEmailResponse>();
+        body.Should().NotBeNull();
+        body!.Success.Should().BeTrue();
+        body.BuyerName.Should().Be("Bailey Buyer");
+        body.BuyerEmail.Should().Be("bailey.buyer@example.com");
+        body.Subject.Should().Be($"External Client - 2026-03-12 - {lienCode}");
+        body.Body.Should().Be(
+            $"Hi Bailey Buyer, please find the lien details at the link below:{Environment.NewLine}{Environment.NewLine}" +
+            $"{detailsUrl}{Environment.NewLine}{Environment.NewLine}" +
+            "Let me know if you have any questions. Thank you.");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().ContainSingle();
+        var email = publisher.Emails[0];
+        email.RecipientEmail.Should().Be("bailey.buyer@example.com");
+        email.Subject.Should().Be(body.Subject);
+        email.Body.Should().Be(body.Body);
+        email.Metadata["lienId"].Should().Be(lienId.ToString());
+        email.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
+    }
+
     private async Task<SellingPortfolioResponse> CreatePortfolioAsync()
     {
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
@@ -198,10 +508,26 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         return (await response.Content.ReadFromJsonAsync<SellingPortfolioResponse>())!;
     }
 
+    private async Task<SellingPortfolioResponse> CreateEmptyPortfolioAsync()
+    {
+        var response = await _client.PostAsJsonAsync("/api/liens/selling/portfolios",
+            new CreateSellingPortfolioRequest
+            {
+                PortfolioNumber = $"PORT-{Guid.NewGuid():N}"[..20],
+                Name = "Empty test portfolio",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        return (await response.Content.ReadFromJsonAsync<SellingPortfolioResponse>())!;
+    }
+
     private async Task<(Guid CaseId, Guid LienId)> SeedExternalCaseAndLienAsync(
         string caseExternalId,
         string lienExternalId,
-        string lienNumber)
+        string lienNumber,
+        DateOnly? dateOfIncident = null,
+        string? status = null,
+        decimal originalAmount = 12345m)
     {
         var caseId = Guid.CreateVersion7();
         var lienId = Guid.CreateVersion7();
@@ -216,7 +542,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             "External",
             "Client",
             SeedHelper.UserId,
-            externalReference: caseExternalId);
+            externalReference: caseExternalId,
+            dateOfIncident: dateOfIncident);
 
         SetId(caseEntity, caseId);
         db.Cases.Add(caseEntity);
@@ -226,10 +553,20 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             SeedHelper.OrgId,
             lienNumber,
             LienType.MedicalLien,
-            12345m,
+            originalAmount,
             SeedHelper.UserId,
             externalReference: lienExternalId,
             caseId: caseId);
+
+        if (status == LienStatus.Sold)
+        {
+            lien.ListForSale(100m, SeedHelper.UserId);
+            lien.MarkSold(90m, SeedHelper.FundingCompanyId, SeedHelper.UserId);
+        }
+        else if (!string.IsNullOrWhiteSpace(status))
+        {
+            SetStringProperty(lien, "Status", status);
+        }
 
         SetId(lien, lienId);
         db.Liens.Add(lien);
@@ -238,10 +575,52 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         return (caseId, lienId);
     }
 
+    private async Task<Guid> SeedOtherTenantLienAsync()
+    {
+        var otherTenantId = Guid.Parse("10000000-0000-0000-0000-000000000099");
+        var otherOrgId = Guid.Parse("30000000-0000-0000-0000-000000000099");
+        var caseId = Guid.CreateVersion7();
+        var lienId = Guid.CreateVersion7();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+        var caseEntity = Case.Create(
+            otherTenantId,
+            otherOrgId,
+            $"CASE-{Guid.NewGuid():N}"[..20],
+            "Other",
+            "Tenant",
+            SeedHelper.UserId);
+        SetId(caseEntity, caseId);
+        db.Cases.Add(caseEntity);
+
+        var lien = Lien.Create(
+            otherTenantId,
+            otherOrgId,
+            $"LIEN-{Guid.NewGuid():N}",
+            LienType.MedicalLien,
+            4000m,
+            SeedHelper.UserId,
+            caseId: caseId);
+        SetId(lien, lienId);
+        db.Liens.Add(lien);
+
+        await db.SaveChangesAsync();
+        return lienId;
+    }
+
     private static void SetId<T>(T entity, Guid id) where T : class
     {
         var prop = typeof(T).GetProperty("Id",
             System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
         prop?.SetValue(entity, id);
+    }
+
+    private static void SetStringProperty<T>(T entity, string propertyName, string value) where T : class
+    {
+        var prop = typeof(T).GetProperty(propertyName,
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        prop?.SetValue(entity, value);
     }
 }
