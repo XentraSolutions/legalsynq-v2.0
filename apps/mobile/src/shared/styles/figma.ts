@@ -34,12 +34,12 @@ export const FIGMA_TEXT = {
   bodyStrong: 'font-jakarta-semibold text-[14px] leading-[20px]',
   formLabel: 'font-jakarta-medium text-[12px] leading-[16px]',
   input: 'font-jakarta-medium text-[14px] leading-[20px]',
-  drawerName: 'font-jakarta-semibold text-[27px] leading-[33px]',
-  drawerRole: 'font-jakarta-medium text-[22px] leading-[28px]',
-  drawerHeading: 'font-jakarta-semibold text-[28px] leading-[34px]',
-  drawerItem: 'font-jakarta-semibold text-[27px] leading-[33px]',
-  drawerChoice: 'font-jakarta-medium text-[27px] leading-[33px]',
-  avatarInitials: 'font-jakarta-bold text-[18px] leading-[24px]',
+  drawerName: 'font-jakarta-semibold text-[14px]',
+  drawerRole: 'font-jakarta-medium text-[12px]',
+  drawerHeading: 'font-jakarta-semibold text-[14px]',
+  drawerItem: 'font-jakarta-semibold text-[14px]',
+  drawerChoice: 'font-jakarta-medium text-[14px]',
+  avatarInitials: 'font-jakarta-bold text-[18px]',
 } as const;
 
 export function cx(...classes: Array<string | false | null | undefined>) {

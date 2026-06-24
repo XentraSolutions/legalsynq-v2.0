@@ -55,21 +55,21 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
           <View className="flex-1 px-8 pt-4">
             <View className="flex-row items-start justify-between">
               <View className="flex-row items-center">
-                <View className="h-16 w-16 items-center justify-center rounded-full bg-[#4a423a]">
+                <View className="h-[48px] w-[48px] items-center justify-center rounded-full bg-[#4a423a]">
                   <Text className={cx(FIGMA_TEXT.avatarInitials, 'text-white')}>JD</Text>
                 </View>
                 <View className="ml-5">
                   <Text className={cx(FIGMA_TEXT.drawerName, 'text-[#202228] dark:text-white')}>John Doe</Text>
-                  <Text className={cx(FIGMA_TEXT.drawerRole, 'mt-1 text-[#777984] dark:text-[#a5a6ae]')}>Admin</Text>
+                  <Text className={cx(FIGMA_TEXT.drawerRole, 'text-[#777984] dark:text-[#a5a6ae]')}>Admin</Text>
                 </View>
               </View>
               <Pressable accessibilityRole="button" hitSlop={12} onPress={onClose}>
-                <Ionicons color={isDark ? '#a8a9b0' : '#6f737d'} name="menu-outline" size={38} />
+                <Ionicons color={isDark ? '#a8a9b0' : '#6f737d'} name="menu-outline" size={20} />
               </Pressable>
             </View>
 
             <View className="mt-10 flex-row items-center">
-              <Ionicons color={iconColor} name="people-outline" size={36} />
+              <Ionicons color={iconColor} name="people-outline" size={20} />
               <Text className={cx(FIGMA_TEXT.drawerHeading, 'ml-5 text-[#202228] dark:text-white')}>Account Type</Text>
             </View>
 
@@ -97,9 +97,9 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
                     navigation.navigate(item.route);
                   }}
                 >
-                  <Ionicons color={iconColor} name={item.icon} size={34} />
+                  <Ionicons color={iconColor} name={item.icon} size={20} />
                   <Text className={cx(FIGMA_TEXT.drawerItem, 'ml-5 flex-1 text-[#202228] dark:text-white')}>{item.label}</Text>
-                  <Ionicons color={iconColor} name="chevron-forward-outline" size={34} />
+                  <Ionicons color={iconColor} name="chevron-forward-outline" size={20} />
                 </Pressable>
               ))}
             </View>
@@ -118,8 +118,8 @@ function ModeChoice({ label, onPress, selected }: { label: string; onPress: () =
         {label}
       </Text>
       {selected ? (
-        <View className="h-9 w-9 items-center justify-center rounded-full bg-[#f97332]">
-          <Ionicons color="#111111" name="checkmark" size={22} />
+        <View className="h-[20px] w-[20px] items-center justify-center rounded-full bg-[#f97332]">
+          <Ionicons color="#111111" name="checkmark" size={13} />
         </View>
       ) : null}
     </Pressable>
