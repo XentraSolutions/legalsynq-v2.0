@@ -15,6 +15,21 @@ namespace Liens.Api.Endpoints;
 
 public static class CaseEndpoints
 {
+    private static readonly Guid LegacyFallbackDocumentTypeId =
+        Guid.Parse("00000000-0000-0000-0000-000000000001");
+    private static readonly string[] LegacyAllowedDocumentExtensions =
+    [
+        ".pdf",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".docx",
+        ".xlsx",
+        ".xls",
+        ".csv",
+    ];
+    private const long LegacyMaxDocumentUploadBytes = 50L * 1024 * 1024;
+
     private sealed class LegacyCreateCaseRequest
     {
         public string? code { get; init; }
@@ -480,6 +495,20 @@ public static class CaseEndpoints
         // under the new base path becomes POST /api/liens/cases/liens/update-medicalcode.
         group.MapPost("/liens/update-medicalcode", LiensUpdateMedica1lCodeLegacy)
             .RequirePermission(LiensPermissions.LienUpdate);
+
+        // Legacy compatibility route from previous service: POST /case/liens/upload/document
+        // under the new base path becomes POST /api/liens/cases/liens/upload/document.
+        group.MapPost("/liens/upload/document", UploadLienDocumentLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate)
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LegacyMaxDocumentUploadBytes))
+            .DisableAntiforgery();
+
+        // Legacy compatibility route from previous service: POST /case/upload/document
+        // under the new base path becomes POST /api/liens/cases/upload/document.
+        group.MapPost("/upload/document", UploadCaseDocumentLegacy)
+            .RequirePermission(LiensPermissions.CaseUpdate)
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LegacyMaxDocumentUploadBytes))
+            .DisableAntiforgery();
 
         // Legacy compatibility route from previous service: GET /case/liens/get-medicalcode/{caseId}
         // under the new base path becomes GET /api/liens/cases/liens/get-medicalcode/{caseId}.
@@ -1227,6 +1256,275 @@ public static class CaseEndpoints
                 message = ex.Message,
             });
         }
+    }
+
+    private static Task<IResult> UploadCaseDocumentLegacy(
+        HttpContext httpContext,
+        ILegacyDocumentUploadClient uploadClient,
+        IServicingItemService servicingItemService,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        return UploadDocumentLegacy(
+            requestType: "case",
+            httpContext,
+            uploadClient,
+            servicingItemService,
+            caseService,
+            lienService: null,
+            ctx,
+            ct);
+    }
+
+    private static Task<IResult> UploadLienDocumentLegacy(
+        HttpContext httpContext,
+        ILegacyDocumentUploadClient uploadClient,
+        IServicingItemService servicingItemService,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        return UploadDocumentLegacy(
+            requestType: "liens",
+            httpContext,
+            uploadClient,
+            servicingItemService,
+            caseService: null,
+            lienService,
+            ctx,
+            ct);
+    }
+
+    private static async Task<IResult> UploadDocumentLegacy(
+        string requestType,
+        HttpContext httpContext,
+        ILegacyDocumentUploadClient uploadClient,
+        IServicingItemService servicingItemService,
+        ICaseService? caseService,
+        ILienService? lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        if (!httpContext.Request.HasFormContentType)
+            return Results.BadRequest(new { isSuccess = false, message = "Missing payload" });
+
+        var form = await httpContext.Request.ReadFormAsync(ct);
+        var file = form.Files["file"];
+
+        var validation = ValidateLegacyUploadFile(file);
+        if (validation is not null)
+            return validation;
+
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var orgId = RequireOrgId(ctx);
+
+        var referenceType = string.Equals(requestType, "case", StringComparison.OrdinalIgnoreCase)
+            ? "Case"
+            : "Lien";
+        var referenceIdValue = string.Equals(requestType, "case", StringComparison.OrdinalIgnoreCase)
+            ? form["caseId"].ToString()
+            : FirstFormValue(form, "liensId", "lienId");
+
+        if (!Guid.TryParse(referenceIdValue, out var referenceId))
+        {
+            var fieldName = string.Equals(requestType, "case", StringComparison.OrdinalIgnoreCase)
+                ? "caseId"
+                : "liensId";
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = $"{fieldName} is required.",
+            });
+        }
+
+        if (caseService is not null)
+        {
+            var existingCase = await caseService.GetByIdAsync(tenantId, referenceId, ct);
+            if (existingCase is null)
+                return Results.NotFound(new { isSuccess = false, message = "Case not found." });
+        }
+
+        if (lienService is not null)
+        {
+            var existingLien = await lienService.GetByIdAsync(tenantId, referenceId, ct);
+            if (existingLien is null)
+                return Results.NotFound(new { isSuccess = false, message = "Lien not found." });
+        }
+
+        var docTypeValue = FirstFormValue(form, "DocFileTypeId", "documentTypeId", "docFileTypeId");
+        var documentTypeId = Guid.TryParse(docTypeValue, out var parsedDocumentTypeId)
+            ? parsedDocumentTypeId
+            : LegacyFallbackDocumentTypeId;
+        var title = FirstFormValue(form, "DocName", "title");
+        if (string.IsNullOrWhiteSpace(title))
+            title = Path.GetFileNameWithoutExtension(file!.FileName);
+
+        var description = FirstFormValue(form, "DocDescription", "description");
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            var extension = Path.GetExtension(file!.FileName).TrimStart('.').ToUpperInvariant();
+            description = string.IsNullOrWhiteSpace(extension) ? null : $"{extension} File";
+        }
+
+        try
+        {
+            await using var stream = file!.OpenReadStream();
+            var uploadResult = await uploadClient.UploadAsync(new LegacyDocumentUploadRequest
+            {
+                TenantId = tenantId,
+                ActingUserId = userId,
+                ReferenceId = referenceId,
+                ReferenceType = referenceType,
+                DocumentTypeId = documentTypeId,
+                Title = title,
+                Description = description,
+                Content = stream,
+                FileName = file.FileName,
+                ContentType = string.IsNullOrWhiteSpace(file.ContentType)
+                    ? "application/octet-stream"
+                    : file.ContentType,
+                Length = file.Length,
+            }, ct);
+
+            var taskType = string.Equals(requestType, "case", StringComparison.OrdinalIgnoreCase)
+                ? "LegacyCaseDocument"
+                : "LegacyLienDocument";
+            var notes = BuildLegacyDocumentNotes(
+                uploadResult,
+                file.FileName,
+                title,
+                docTypeValue,
+                documentTypeId,
+                referenceType,
+                referenceId,
+                description);
+
+            await servicingItemService.CreateAsync(
+                tenantId,
+                orgId,
+                userId,
+                new CreateServicingItemRequest
+                {
+                    TaskNumber = $"DOC-{Guid.CreateVersion7():N}"[..36],
+                    TaskType = taskType,
+                    Description = $"{referenceType} document uploaded: {title}",
+                    AssignedTo = ctx.Email ?? ctx.Name ?? userId.ToString(),
+                    AssignedToUserId = userId,
+                    CaseId = string.Equals(requestType, "case", StringComparison.OrdinalIgnoreCase)
+                        ? referenceId
+                        : null,
+                    LienId = string.Equals(requestType, "liens", StringComparison.OrdinalIgnoreCase)
+                        ? referenceId
+                        : null,
+                    Notes = notes,
+                },
+                ct);
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully uploaded document.",
+                data = new
+                {
+                    url = uploadResult.Url,
+                    documentId = uploadResult.DocumentId,
+                },
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return Results.Json(
+                new
+                {
+                    isSuccess = false,
+                    message = "An unexpected error occurred while processing the upload",
+                },
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    private static IResult? ValidateLegacyUploadFile(IFormFile? file)
+    {
+        if (file is null)
+            return Results.BadRequest(new { isSuccess = false, message = "No file uploaded" });
+
+        if (file.Length == 0)
+            return Results.BadRequest(new { isSuccess = false, message = "Empty file upload not allowed" });
+
+        if (file.Length > LegacyMaxDocumentUploadBytes)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "File size exceeds the allowed limit (50 MB)",
+            });
+        }
+
+        var fileExt = Path.GetExtension(file.FileName)?.ToLowerInvariant();
+        if (string.IsNullOrEmpty(fileExt) ||
+            !LegacyAllowedDocumentExtensions.Contains(fileExt, StringComparer.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = $"File type not allowed. Allowed types: {string.Join(", ", LegacyAllowedDocumentExtensions)}",
+            });
+        }
+
+        return null;
+    }
+
+    private static string BuildLegacyDocumentNotes(
+        LegacyDocumentUploadResult result,
+        string fileName,
+        string title,
+        string legacyDocumentTypeId,
+        Guid documentTypeId,
+        string referenceType,
+        Guid referenceId,
+        string? description)
+    {
+        return string.Join("; ", new Dictionary<string, string?>
+            {
+                ["documentId"] = result.DocumentId?.ToString(),
+                ["documentUrl"] = result.Url,
+                ["url"] = result.Url,
+                ["filename"] = title,
+                ["originalFileName"] = fileName,
+                ["typeId"] = legacyDocumentTypeId,
+                ["documentTypeId"] = documentTypeId.ToString(),
+                ["referenceType"] = referenceType,
+                ["referenceId"] = referenceId.ToString(),
+                ["description"] = description,
+            }
+            .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value))
+            .Select(kvp => $"{kvp.Key}={SanitizeLegacyNoteValue(kvp.Value!)}"));
+    }
+
+    private static string FirstFormValue(IFormCollection form, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            var value = form[key].ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+
+        return string.Empty;
+    }
+
+    private static string SanitizeLegacyNoteValue(string value)
+    {
+        return value
+            .Replace(";", ",", StringComparison.Ordinal)
+            .Replace("=", ":", StringComparison.Ordinal)
+            .Trim();
     }
 
     private static async Task<IResult> GetMedicalCodeByCaseIdLegacy(

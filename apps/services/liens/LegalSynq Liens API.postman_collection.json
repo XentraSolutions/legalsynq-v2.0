@@ -51,6 +51,10 @@
       "value": "00000000-0000-0000-0000-000000000000"
     },
     {
+      "key": "documentTypeId",
+      "value": "00000000-0000-0000-0000-000000000001"
+    },
+    {
       "key": "facilityId",
       "value": "00000000-0000-0000-0000-000000000000"
     },
@@ -1379,6 +1383,123 @@
               }
             },
             "description": "Source: apps/services/liens/Liens.Api/Endpoints/CaseEndpoints.cs"
+          },
+          "response": []
+        },
+        {
+          "name": "POST cases/upload/document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/upload/document",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "upload",
+                "document"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "caseId",
+                  "value": "{{caseId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "DocFileTypeId",
+                  "value": "{{documentTypeId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "DocName",
+                  "value": "Case Document",
+                  "type": "text"
+                },
+                {
+                  "key": "DocDescription",
+                  "value": "Legacy case document upload",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Source: apps/services/liens/Liens.Api/Endpoints/CaseEndpoints.cs\n\nLegacy-compatible multipart upload. Allowed extensions: .pdf, .jpg, .jpeg, .png, .docx, .xlsx, .xls, .csv. Maximum size: 50 MB."
+          },
+          "response": []
+        },
+        {
+          "name": "POST cases/liens/upload/document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/upload/document",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "liens",
+                "upload",
+                "document"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "liensId",
+                  "value": "{{lienId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "DocFileTypeId",
+                  "value": "{{documentTypeId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "DocName",
+                  "value": "Lien Document",
+                  "type": "text"
+                },
+                {
+                  "key": "DocDescription",
+                  "value": "Legacy lien document upload",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Source: apps/services/liens/Liens.Api/Endpoints/CaseEndpoints.cs\n\nLegacy-compatible multipart upload. Allowed extensions: .pdf, .jpg, .jpeg, .png, .docx, .xlsx, .xls, .csv. Maximum size: 50 MB."
           },
           "response": []
         },
