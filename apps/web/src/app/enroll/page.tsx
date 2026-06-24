@@ -1,8 +1,8 @@
 import { fetchEnrollmentPrefill, decodeEnrollmentToken, fetchExistingEnrollmentPrefill, checkPortalAccessStatus } from './actions';
-import { EnrollmentForm }                               from './enrollment-form';
-import { buildCareConnectPortalLoginUrl }               from '@/lib/careconnect-login-url';
-import { getServerSession }                             from '@/lib/session';
-import { OrgType, ProductRole }                         from '@/types';
+import { EnrollmentForm }                         from './enrollment-form';
+import { buildCareConnectLoginUrl }              from '@/lib/careconnect-login-url';
+import { getServerSession }                      from '@/lib/session';
+import { OrgType, ProductRole }                  from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +34,7 @@ interface PageProps {
 export default async function EnrollPage({ searchParams }: PageProps) {
   const { id: providerId, tenantId, token } = await searchParams;
   const session = await getServerSession();
+  const careConnectLoginUrl = buildCareConnectLoginUrl(process.env.CC_COMMON_PORTAL_HOSTNAME);
 
   let prefill = null;
   let providerAlreadyEnrolled = false;
@@ -133,7 +134,6 @@ export default async function EnrollPage({ searchParams }: PageProps) {
   const alreadyEnrolled = providerAlreadyEnrolled || firmAlreadyEnrolled;
 
   if (alreadyEnrolled) {
-    const portalLoginUrl = buildCareConnectPortalLoginUrl(process.env.CC_COMMON_PORTAL_HOSTNAME);
     return (
       <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
         <div className="max-w-md mx-auto px-4 py-12 text-center">
@@ -146,7 +146,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
             You can sign in to access your portal.
           </p>
           <a
-            href={portalLoginUrl}
+            href={careConnectLoginUrl}
             className="inline-block mt-6 px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors"
           >
             Sign In to Your Portal
@@ -171,7 +171,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
           <p className="mt-2 text-gray-500">
             This enrollment link is invalid or has expired. Please request a new link or sign in to your account.
           </p>
-          <a href="/login" className="inline-block mt-6 text-blue-600 hover:underline">Sign in</a>
+          <a href={careConnectLoginUrl} className="inline-block mt-6 text-blue-600 hover:underline">Sign in</a>
         </div>
       </main>
     );
@@ -204,7 +204,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
 
         <p className="text-center text-xs text-gray-400 mt-6">
           Already have an account?{' '}
-          <a href="/login" className="text-blue-600 hover:underline">Sign in</a>
+          <a href={careConnectLoginUrl} className="text-blue-600 hover:underline">Sign in</a>
         </p>
       </div>
     </main>
