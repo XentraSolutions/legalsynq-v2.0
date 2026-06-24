@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "SPECCdIoNoVAjiGMQm4ee"
+uri = "file://legalsynq-source.zip"
+type = "unspecified"
+title = "LegalSynq Source Code"
