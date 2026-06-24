@@ -1,0 +1,20 @@
+name: Build and Submit IOS App
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build_ios:
+    name: Build IOS App Binary
+    type: build # This job type creates a production build for Android
+    params:
+      platform: ios
+      profile: production
+  submit_ios_app:
+    name: Submit to App Stores
+    type: submit # This job type creates a production build for iOS
+    needs: [build_ios]
+    params:
+      platform: ios
+      profile: production

@@ -3,11 +3,8 @@ allowBuilds:
 
 overrides:
   valibot: 1.4.1
+  "@babel/types": "^7.29.0"
 
 peerDependencyRules:
   allowedVersions:
     react-native-reanimated: 4.1.7
-
-pnpm:
-  overrides:
-    "@babel/generator": "7.26.9"
