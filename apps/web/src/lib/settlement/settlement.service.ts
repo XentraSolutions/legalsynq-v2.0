@@ -14,6 +14,9 @@ export const settlementService = {
     const { data } = await settlementApi.createReduction(form)
     return data
   },
+  async createReductions(forms: CreateLienReductionRequest[]): Promise<CreateLienReductionResponse[]> {
+    return Promise.all(forms.map((form) => this.createReduction(form)))
+  },
   async updateSettlement(form: UpdateSettlementRequest): Promise<UpdateSettlementResponse> {
     const { data } = await settlementApi.updateSettlement(form)
     return data

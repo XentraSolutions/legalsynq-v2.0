@@ -56,7 +56,7 @@ export function CreateSettlementForm({
     const fetchLiens = async () => {
       setLoadingLiens(true);
       try {
-        const result = await liensService.getLien(caseId);
+        const result = await liensService.getLiens({caseId});
         setLiens(result?.items || (Array.isArray(result) ? result : []));
       } catch (err) {
       } finally {

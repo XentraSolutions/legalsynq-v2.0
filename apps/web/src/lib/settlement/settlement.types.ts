@@ -2,14 +2,12 @@ export interface SettlementGenericResponse {
   message: string
 }
 
-interface LienReductionData {
-  liensId: string
-  reductionAmount: string
-}
-
 export interface CreateLienReductionRequest {
   caseId: string
-  data: LienReductionData[]
+  lienId: string
+  reductionDate: string
+  amount: number
+  note: string
 }
 
 export interface CreateLienReductionResponse extends SettlementGenericResponse {}

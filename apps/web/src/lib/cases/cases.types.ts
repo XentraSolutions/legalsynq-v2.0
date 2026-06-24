@@ -155,6 +155,14 @@ export interface CaseLienItem {
   originalAmount: number;
 }
 
+export interface CaseLienItemMetadata {
+  facility: string;
+  closedAtUtc: string | null;
+  reductionAmount: number | null;
+  purchaseAmount: number | null;
+  paymentAmount: number | null;
+  balance: number,
+}
 export interface CaseUpdatesItem {
   id: string;
   timestamp: string;

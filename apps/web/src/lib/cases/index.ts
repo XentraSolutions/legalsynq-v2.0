@@ -4,6 +4,7 @@ export type {
   CaseListItem,
   CaseDetail,
   CaseLienItem,
+  CaseLienItemMetadata,
   PaginationMeta,
   CreateCaseRequestDto,
   UpdateCaseRequestDto,

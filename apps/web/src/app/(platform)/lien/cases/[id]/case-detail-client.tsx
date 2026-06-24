@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useLienStore } from "@/stores/lien-store";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useSession } from "@/hooks/use-session";
-import { casesService, type CaseDetail, type CaseLienItem } from "@/lib/cases";
+import { casesService, type CaseDetail, type CaseLienItem, type CaseLienItemMetadata } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { TaskPanel } from "@/components/lien/task-panel";
@@ -33,6 +33,8 @@ import { GetSettlementHistoryResponse } from "@/lib/settlement/settlement.types"
 import { settlementService } from "@/lib/settlement";
 import { useSessionContext } from "@/providers/session-provider";
 import { CreateSettlementForm } from "@/components/lien/forms/settlement-payment-form";
+import { SetupReductionForm } from "./components/setup-reduction-form";
+import { LienListItem, liensService } from "@/lib/liens";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -82,6 +84,7 @@ export function CaseDetailClient({ id }: { id: string }) {
   const [history, setHistory] = useState<any>();
 
   const [relatedLiens, setRelatedLiens] = useState<CaseLienItem[]>([]);
+  const [relatedLiensWithMetadata, setRelatedLiensWithMetadata] = useState<(CaseLienItem & CaseLienItemMetadata)[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
@@ -100,7 +103,7 @@ export function CaseDetailClient({ id }: { id: string }) {
     try {
       const [detail, liensResult] = await Promise.all([
         casesService.getCase(id),
-        casesService.getCaseLiens(id).catch(() => ({
+        liensService.getLiens({caseId: id}).catch(() => ({
           items: [],
           pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
         })),
@@ -108,6 +111,22 @@ export function CaseDetailClient({ id }: { id: string }) {
       setCaseDetail(detail);
       // setCaseUpdates(updates ?? []);
       setRelatedLiens(liensResult.items);
+      setRelatedLiensWithMetadata(
+        liensResult.items.map((lien) => {
+          const lienExtended = lien as (LienListItem & CaseLienItemMetadata);
+          // TEMP: force type while we are waiting for real / full CaseLienItem data;
+          return {
+          ...lien,
+          facility: lienExtended.facility ?? "",
+          originalAmount: lienExtended.originalAmount ?? 0,
+          reductionAmount: lienExtended.reductionAmount ?? null,
+          purchaseAmount: lienExtended.purchaseAmount ?? null,
+          paymentAmount: lienExtended.paymentAmount ?? null,
+          balance: lienExtended.originalAmount - (lienExtended.reductionAmount ?? 0) - (lienExtended.paymentAmount ?? 0),
+          closedAtUtc: lienExtended.closedAtUtc ?? null,
+        };
+      })
+      );
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.isNotFound ? "Case not found." : err.message);
@@ -363,6 +382,7 @@ export function CaseDetailClient({ id }: { id: string }) {
           <ServicingTab
             caseDetail={d}
             history={history}
+            liens={relatedLiensWithMetadata}
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
           />
@@ -2029,31 +2049,34 @@ const TEMP_SERVICING_OPEN_LIENS = [
     id: "ol-1",
     lienNumber: "LN-2026-0041",
     facility: "Tampa General Hospital",
-    billingAmount: 12500,
+    originalAmount: 12500,
     reductionAmount: null as number | null,
     paymentAmount: null as number | null,
     balance: 12500,
     status: "Open",
+    lienType: "",
   },
   {
     id: "ol-2",
     lienNumber: "LN-2026-0042",
     facility: "Clearwater Radiology",
-    billingAmount: 4200,
+    originalAmount: 4200,
     reductionAmount: null as number | null,
     paymentAmount: null as number | null,
     balance: 4200,
     status: "Open",
+    lienType: "",
   },
   {
     id: "ol-3",
     lienNumber: "LN-2026-0043",
     facility: "Bay Area Physical Therapy",
-    billingAmount: 8900,
+    originalAmount: 8900,
     reductionAmount: null as number | null,
     paymentAmount: null as number | null,
     balance: 8900,
     status: "Open",
+    lienType: "",
   },
 ];
 
@@ -2063,11 +2086,12 @@ const TEMP_SERVICING_CLOSED_LIENS = [
     id: "cl-1",
     lienNumber: "LN-2025-0891",
     facility: "Sunshine MRI Center",
-    billingAmount: 3200,
+    originalAmount: 3200,
     reductionAmount: 800,
     paymentAmount: 2400,
     balance: 0,
     status: "Closed",
+    lienType: ''
   },
 ];
 
@@ -2148,17 +2172,20 @@ const SERVICING_SUB_TABS: {
 function ServicingTab({
   caseDetail,
   history,
+  liens,
   panelMode,
   onPanelModeChange,
 }: {
   caseDetail: CaseDetail;
   history: GetSettlementHistoryResponse;
+  liens: (CaseLienItem & CaseLienItemMetadata)[];
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isNoRecoveryMode, setIsNoRecoveryMode] = useState(false);
+  const [setupReductionFormShown, showSetupReductionForm] = useState(false);
 
   const handleOpenStandardPayment = () => {
     setIsNoRecoveryMode(false);
@@ -2184,23 +2211,26 @@ function ServicingTab({
     useState("Sarah Mitchell");
   const saveDisabled = true;
 
-  const openLiensTotalBilling = TEMP_SERVICING_OPEN_LIENS.reduce(
-    (s, l) => s + l.billingAmount,
+  let openLiens = liens.filter(i => i.closedAtUtc === null);
+  let closedLiens = liens.filter(i => i.closedAtUtc !== null);
+
+  const openLiensTotalBilling = openLiens.reduce(
+    (s, l) => s + l.originalAmount,
     0,
   );
-  const openLiensTotalBalance = TEMP_SERVICING_OPEN_LIENS.reduce(
+  const openLiensTotalBalance = openLiens.reduce(
     (s, l) => s + l.balance,
     0,
   );
-  const closedLiensTotalBilling = TEMP_SERVICING_CLOSED_LIENS.reduce(
-    (s, l) => s + l.billingAmount,
+  const closedLiensTotalBilling = closedLiens.reduce(
+    (s, l) => s + l.originalAmount,
     0,
   );
-  const closedLiensTotalReduction = TEMP_SERVICING_CLOSED_LIENS.reduce(
+  const closedLiensTotalReduction = closedLiens.reduce(
     (s, l) => s + (l.reductionAmount ?? 0),
     0,
   );
-  const closedLiensTotalPayment = TEMP_SERVICING_CLOSED_LIENS.reduce(
+  const closedLiensTotalPayment = closedLiens.reduce(
     (s, l) => s + (l.paymentAmount ?? 0),
     0,
   );
@@ -2359,17 +2389,26 @@ function ServicingTab({
 
       {subTab === "settlement-details" && (
         <div className="space-y-4">
+          {/*
+            OLD PATTERN (commented out): Standalone "Reduction" CollapsibleSection
+            from the legacy UX. The new design moves "Setup Reduction" as a
+            contextual action button on the Open Liens table below, which ties
+            the reduction directly to the liens being reduced and eliminates the
+            duplicate entry point. The Open Liens table already shows per-lien
+            Reduction / Payment / Balance columns making this section redundant.
+
           <CollapsibleSection title="Reduction" icon="ri-percent-line">
             <div className="text-center py-4">
               <p className="text-sm text-gray-500 mb-3">
                 No reductions have been configured for open liens.
               </p>
-              <button className="px-4 py-2 text-sm font-medium text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5">
+              <button className="...">
                 <i className="ri-add-line text-sm" />
                 Setup Reduction
               </button>
             </div>
           </CollapsibleSection>
+          */}
 
           <CollapsibleSection title="Payments" icon="ri-bank-card-line">
             <div className="flex items-center justify-between mb-3">
@@ -2398,7 +2437,7 @@ function ServicingTab({
           </CollapsibleSection>
 
           <CollapsibleSection title="Open Liens" icon="ri-stack-line">
-            {TEMP_SERVICING_OPEN_LIENS.length === 0 ? (
+            {liens.length === 0 ? (
               <div className="text-center py-8">
                 <i className="ri-stack-line text-2xl text-gray-300" />
                 <p className="text-sm text-gray-400 mt-2">No open liens</p>
@@ -2433,7 +2472,7 @@ function ServicingTab({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {TEMP_SERVICING_OPEN_LIENS.map((l) => (
+                      {liens.map((l) => (
                         <tr
                           key={l.id}
                           className="hover:bg-gray-50/50 transition-colors"
@@ -2445,7 +2484,7 @@ function ServicingTab({
                             {l.facility}
                           </td>
                           <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">
-                            {formatCurrency(l.billingAmount)}
+                            {formatCurrency(l.originalAmount)}
                           </td>
                           <td className="px-3 py-2.5 text-sm text-gray-500 tabular-nums text-right">
                             {l.reductionAmount !== null
@@ -2472,8 +2511,8 @@ function ServicingTab({
                           colSpan={2}
                           className="pr-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide"
                         >
-                          Totals ({TEMP_SERVICING_OPEN_LIENS.length} lien
-                          {TEMP_SERVICING_OPEN_LIENS.length !== 1 ? "s" : ""})
+                          Totals ({openLiens.length} lien
+                          {openLiens.length !== 1 ? "s" : ""})
                         </td>
                         <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
                           {formatCurrency(openLiensTotalBilling)}
@@ -2493,7 +2532,10 @@ function ServicingTab({
                   </table>
                 </div>
                 <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
-                  <button className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
+                  <button
+                    onClick={() => showSetupReductionForm(true)}
+                    className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1"
+                  >
                     <i className="ri-percent-line text-sm" />
                     Setup Reduction
                   </button>
@@ -2514,7 +2556,7 @@ function ServicingTab({
             title="Closed Liens"
             icon="ri-checkbox-circle-line"
           >
-            {TEMP_SERVICING_CLOSED_LIENS.length === 0 ? (
+            {closedLiens.length === 0 ? (
               <div className="text-center py-8">
                 <i className="ri-checkbox-circle-line text-2xl text-gray-300" />
                 <p className="text-sm text-gray-400 mt-2">No closed liens</p>
@@ -2548,7 +2590,7 @@ function ServicingTab({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {TEMP_SERVICING_CLOSED_LIENS.map((l) => (
+                    {closedLiens.map((l) => (
                       <tr
                         key={l.id}
                         className="hover:bg-gray-50/50 transition-colors"
@@ -2560,7 +2602,7 @@ function ServicingTab({
                           {l.facility}
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">
-                          {formatCurrency(l.billingAmount)}
+                          {formatCurrency(l.originalAmount)}
                         </td>
                         <td className="px-3 py-2.5 text-sm text-green-600 tabular-nums text-right">
                           {formatCurrency(l.reductionAmount)}
@@ -2583,8 +2625,8 @@ function ServicingTab({
                         colSpan={2}
                         className="pr-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide"
                       >
-                        Totals ({TEMP_SERVICING_CLOSED_LIENS.length} lien
-                        {TEMP_SERVICING_CLOSED_LIENS.length !== 1 ? "s" : ""})
+                        Totals ({closedLiens.length} lien
+                        {closedLiens.length !== 1 ? "s" : ""})
                       </td>
                       <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
                         {formatCurrency(closedLiensTotalBilling)}
@@ -2797,12 +2839,21 @@ function ServicingTab({
   );
 
   return (
-    <LayoutSplit
-      left={leftContent}
-      right={rightContent}
-      mode={panelMode}
-      onModeChange={onPanelModeChange}
-    />
+    <>
+      <LayoutSplit
+        left={leftContent}
+        right={rightContent}
+        mode={panelMode}
+        onModeChange={onPanelModeChange}
+      />
+      <SetupReductionForm
+        open={setupReductionFormShown}
+        onClose={() => showSetupReductionForm(false)}
+        caseId={caseDetail.id}
+        liens={liens}
+        onSaved={() => showSetupReductionForm(false)}
+      />
+    </>
   );
 }
 
