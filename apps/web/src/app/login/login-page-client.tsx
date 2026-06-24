@@ -359,20 +359,19 @@ function LegalSynqLoginLayout({ year }: { year: number | null }) {
               &copy; {year ?? ""} LegalSynq
             </p>
             <span className="text-slate-700 text-[10px]">&bull;</span>
-            <a
-              href="/privacy-policy"
-              target="_blank"
-              className="text-[11px] text-slate-600 hover:text-slate-400 transition-colors"
+            <Link
+              href="/coming-soon"
+              className="text-[11px]  text-slate-600 hover:text-slate-400 transition-colors"
             >
               Privacy Policy
-            </a>
+            </Link>
             <span className="text-slate-700 text-[10px]">&bull;</span>
-            <a
-              href="/terms"
-              className="text-[11px] text-slate-600 hover:text-slate-400 transition-colors"
+            <Link
+              href="/coming-soon"
+              className="text-[11px]  text-slate-600 hover:text-slate-400 transition-colors"
             >
               Terms &amp; Conditions
-            </a>
+            </Link>
           </div>
         </div>
       </div>
@@ -413,12 +412,12 @@ function LegalSynqLoginLayout({ year }: { year: number | null }) {
           {/* Footer links */}
           <p className="mt-6 text-center text-xs text-gray-400">
             Need access?{" "}
-            <a
-              href="mailto:support@legalsynq.com"
+            <Link
+              href="/coming-soon"
               className="text-gray-600 hover:text-gray-900 underline underline-offset-2 transition-colors"
             >
               Contact support
-            </a>
+            </Link>
           </p>
         </div>
       </div>
