@@ -544,7 +544,7 @@ public sealed class SmsOperationalAlertEvaluator : ISmsOperationalAlertEvaluator
         var now = DateTime.UtcNow;
         var alert = new SmsOperationalAlert
         {
-            Id                    = Guid.NewGuid(),
+            Id                    = Guid.CreateVersion7(),
             AlertType             = alertType,
             Severity              = severity,
             TenantId              = tenantId,

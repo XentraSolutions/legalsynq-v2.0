@@ -28,7 +28,7 @@ public class LienWorkflowTransition : AuditableEntity
         var now = DateTime.UtcNow;
         return new LienWorkflowTransition
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             WorkflowConfigId = workflowConfigId,
             FromStageId      = fromStageId,
             ToStageId        = toStageId,

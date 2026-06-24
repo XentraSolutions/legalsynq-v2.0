@@ -23,13 +23,57 @@ var signingKey = jwtSection["SigningKey"]
 
 // LS-NOTIF-CORE-021: service token signing key (shared platform secret).
 // Preferred from FLOW_SERVICE_TOKEN_SECRET env var, then ServiceTokens:SigningKey config.
+// Fails fast at startup if neither is set — avoids silently disabling signature validation.
 var serviceTokenKey =
     Environment.GetEnvironmentVariable(ServiceTokenAuthenticationDefaults.SecretEnvVar)
     ?? builder.Configuration[$"{ServiceTokenOptions.SectionName}:SigningKey"]
-    ?? string.Empty;
+    ?? throw new InvalidOperationException(
+        $"Service token signing key is not configured. "
+        + $"Set env var '{ServiceTokenAuthenticationDefaults.SecretEnvVar}' "
+        + $"or config key '{ServiceTokenOptions.SectionName}:SigningKey'.");
+
+// LS-NOTIF-CORE-021 — two JwtBearer schemes coexist (same pattern as Flow.Api):
+//   - "Bearer"       (default): user tokens issued by Identity (iss=legalsynq-identity).
+//   - "ServiceToken"           : HS256 M2M tokens minted by ServiceTokenIssuer (iss=legalsynq-service-tokens).
+// A policy scheme ("MultiAuth") peeks at the inbound token's `iss` claim and
+// forwards to whichever bearer is appropriate, so service tokens are never
+// mistakenly validated against the user-token scheme (and vice-versa).
+const string MultiScheme = "MultiAuth";
+
+// Single source of truth for service-token accepted audiences.
+// Used by both the routing selector and the ServiceToken scheme's ValidAudiences.
+// "legalsynq-platform" remains accepted during the transition because some
+// deployed producers still mint service JWTs with the platform audience.
+string[] serviceTokenAudiences = ["notifications-service", "flow-service", "legalsynq-services", "legalsynq-platform"];
+
+// Reused across requests — avoids per-request allocations inside ForwardDefaultSelector.
+var tokenReader = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
 
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(MultiScheme)
+    .AddPolicyScheme(MultiScheme, MultiScheme, options =>
+    {
+        options.ForwardDefaultSelector = ctx =>
+        {
+            var auth = ctx.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrWhiteSpace(auth) &&
+                auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var raw = auth["Bearer ".Length..].Trim();
+                try
+                {
+                    var parsed = tokenReader.ReadJwtToken(raw);
+                    if (parsed.Issuer == ServiceTokenAuthenticationDefaults.DefaultIssuer)
+                        return ServiceTokenAuthenticationDefaults.Scheme;
+                }
+                catch
+                {
+                    // Not a parseable JWT — fall through to user scheme.
+                }
+            }
+            return JwtBearerDefaults.AuthenticationScheme;
+        };
+    })
     // ── Scheme 1: user JWTs from Identity ────────────────────────────────
     .AddJwtBearer(options =>
     {
@@ -42,7 +86,7 @@ builder.Services
             ValidateIssuerSigningKey = true,
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
             RoleClaimType            = "role",
             ClockSkew                = TimeSpan.Zero,
         };
@@ -50,7 +94,8 @@ builder.Services
     // ── Scheme 2: service-to-service JWTs (LS-NOTIF-CORE-021) ────────────
     // Accepts tokens minted by ServiceTokenIssuer from any producer service.
     // Validates: issuer=legalsynq-service-tokens, audience=notifications-service
-    // OR flow-service (for Flow's existing issuer config), subject=service:*
+    // OR flow-service / legalsynq-services / legalsynq-platform during the
+    // cross-service transition, subject=service:*
     .AddJwtBearer(ServiceTokenAuthenticationDefaults.Scheme, options =>
     {
         options.MapInboundClaims    = false;
@@ -60,16 +105,15 @@ builder.Services
             ValidateIssuer           = true,
             ValidateAudience         = true,
             ValidateLifetime         = true,
-            ValidateIssuerSigningKey = !string.IsNullOrWhiteSpace(serviceTokenKey),
+            ValidateIssuerSigningKey = true,
             RequireSignedTokens      = true,
             RequireExpirationTime    = true,
             ValidIssuer              = ServiceTokenAuthenticationDefaults.DefaultIssuer,
             // Accept notifications-service (new preferred) + flow-service
-            // (Flow's existing issuer defaults) + legalsynq-services (future).
-            ValidAudiences           = ["notifications-service", "flow-service", "legalsynq-services"],
-            IssuerSigningKey         = string.IsNullOrWhiteSpace(serviceTokenKey)
-                ? null
-                : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(serviceTokenKey)),
+            // (Flow's existing issuer defaults) + legalsynq-services (future)
+            // + legalsynq-platform (legacy deployed producer configs).
+            ValidAudiences           = serviceTokenAudiences,
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(serviceTokenKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },
             NameClaimType            = "sub",
             RoleClaimType            = "role",
             ClockSkew                = TimeSpan.FromSeconds(30),
@@ -134,9 +178,9 @@ var app = builder.Build();
 
 // ── Database startup ──────────────────────────────────────────────────────────
 
-using (var scope = app.Services.CreateScope())
+using (var startupScope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<NotificationsDbContext>();
+    var db = startupScope.ServiceProvider.GetRequiredService<NotificationsDbContext>();
 
     try
     {
@@ -149,33 +193,13 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        // If the schema already existed before EF migrations were introduced the
-        // __EFMigrationsHistory table may be empty even though InitialCreate (and
-        // AddRetryFields) have already been applied.  MigrateAsync() would then
-        // try to re-run InitialCreate, fail with "table already exists", and
-        // abort — leaving AddCategoryAndSeverity (and any future migrations) never
-        // applied.  We detect this condition and seed the history so that
-        // MigrateAsync() only executes the genuinely pending migrations.
-        await SeedMigrationHistoryIfNeededAsync(db, app.Logger);
+        await SeedNotificationsMigrationHistoryIfNeededAsync(db, app.Logger);
         await db.Database.MigrateAsync();
         app.Logger.LogInformation("Notifications database migrated successfully");
     }
     catch (Exception ex)
     {
         app.Logger.LogWarning(ex, "Could not apply Notifications database migrations on startup — schema may be out of sync.");
-    }
-
-    // Safety net: ensure columns added by AddCategoryAndSeverity actually exist
-    // in the database even if EF's history already records the migration as applied
-    // (which can happen when the migration was aborted mid-run but still committed
-    // to __EFMigrationsHistory).
-    try
-    {
-        await EnsureNotificationsSchemaColumnsAsync(db, app.Logger);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogWarning(ex, "Could not ensure notification schema columns — queries may fail");
     }
 
     try
@@ -264,437 +288,60 @@ app.MapGovernanceRuntimeEndpoints();          // LS-NOTIF-SMS-025
 
 app.Run();
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext db, ILogger logger)
+// ── Migration-history seed ───────────────────────────────────────────────────
+// ntf_Notifications (and related tables) were created before EF migration
+// tracking was introduced. On a database that already has the schema but an
+// empty __EFMigrationsHistory, MigrateAsync fails with "table already exists".
+// This function seeds the history for the three pre-tracking migrations so
+// MigrateAsync only executes genuinely pending migrations.
+static async Task SeedNotificationsMigrationHistoryIfNeededAsync(NotificationsDbContext db, ILogger logger)
 {
-    // Use raw ADO.NET so we stay in control of the SQL and avoid EF query-wrapping quirks.
-    var conn = db.Database.GetDbConnection();
-    var dbName = conn.Database;
-    var opened = false;
-
-    try
-    {
-        if (conn.State != System.Data.ConnectionState.Open)
-        {
-            await conn.OpenAsync();
-            opened = true;
-        }
-
-        // All columns that may be missing: from AddRetryFields and AddCategoryAndSeverity.
-        var columnsToAdd = new[]
-        {
-            ("RetryCount",  "int NOT NULL DEFAULT 0"),
-            ("MaxRetries",  "int NOT NULL DEFAULT 3"),
-            ("NextRetryAt", "datetime(6) NULL"),
-            ("Category",    "varchar(100) CHARACTER SET utf8mb4 NULL"),
-            ("Severity",    "varchar(50)  CHARACTER SET utf8mb4 NULL"),
-        };
-
-        foreach (var (col, colDef) in columnsToAdd)
-        {
-            // Check column existence via INFORMATION_SCHEMA.
-            using var checkCmd = conn.CreateCommand();
-            checkCmd.CommandText =
-                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
-                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_Notifications' AND COLUMN_NAME = '{col}'";
-            var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
-
-            if (count == 0)
-            {
-                using var alterCmd = conn.CreateCommand();
-                alterCmd.CommandText = $"ALTER TABLE `ntf_Notifications` ADD COLUMN `{col}` {colDef}";
-                await alterCmd.ExecuteNonQueryAsync();
-                logger.LogInformation("Added missing column ntf_Notifications.{Column}", col);
-            }
-            else
-            {
-                logger.LogDebug("Column ntf_Notifications.{Column} already exists", col);
-            }
-        }
-
-        // Also ensure the retry index exists (idempotent via INFORMATION_SCHEMA check).
-        using var idxCheckCmd = conn.CreateCommand();
-        idxCheckCmd.CommandText =
-            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS " +
-            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_Notifications' " +
-            $"AND INDEX_NAME = 'IX_Notifications_Status_NextRetryAt'";
-        var idxCount = Convert.ToInt32(await idxCheckCmd.ExecuteScalarAsync());
-        if (idxCount == 0)
-        {
-            using var idxCmd = conn.CreateCommand();
-            idxCmd.CommandText =
-                "CREATE INDEX `IX_Notifications_Status_NextRetryAt` ON `ntf_Notifications` (`Status`, `NextRetryAt`)";
-            await idxCmd.ExecuteNonQueryAsync();
-            logger.LogInformation("Created missing index IX_Notifications_Status_NextRetryAt");
-        }
-
-        // ── LS-NOTIF-SMS-006: composite index for SMS activity queries ────────
-        // Covers: WHERE Channel='sms' AND TenantId=? ORDER BY CreatedAt DESC
-        using var smsIdxCheckCmd = conn.CreateCommand();
-        smsIdxCheckCmd.CommandText =
-            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS " +
-            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_NotificationAttempts' " +
-            $"AND INDEX_NAME = 'IX_NotificationAttempts_Channel_TenantId_CreatedAt'";
-        var smsIdxCount = Convert.ToInt32(await smsIdxCheckCmd.ExecuteScalarAsync());
-        if (smsIdxCount == 0)
-        {
-            using var smsIdxCmd = conn.CreateCommand();
-            smsIdxCmd.CommandText =
-                "CREATE INDEX `IX_NotificationAttempts_Channel_TenantId_CreatedAt` " +
-                "ON `ntf_NotificationAttempts` (`Channel`, `TenantId`, `CreatedAt`)";
-            await smsIdxCmd.ExecuteNonQueryAsync();
-            logger.LogInformation("Created index IX_NotificationAttempts_Channel_TenantId_CreatedAt");
-        }
-
-        // Ensure columns exist on ntf_Templates and ntf_TemplateVersions — may be absent on DBs
-        // whose InitialCreate migration was pre-seeded without actually running DDL.
-        // TEXT / LONGTEXT columns cannot have a DEFAULT on all MySQL versions, so use NULL for those.
-        var templateColumnsToAdd = new[]
-        {
-            ("ntf_Templates",        "Scope",           "varchar(20) CHARACTER SET utf8mb4 NOT NULL DEFAULT 'tenant'"),
-            ("ntf_Templates",        "ProductType",     "varchar(50) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_Templates",        "Description",     "text CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TemplateVersions", "SubjectTemplate", "text CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TemplateVersions", "TextTemplate",    "text CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TemplateVersions", "EditorType",      "varchar(20) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TemplateVersions", "IsPublished",     "tinyint(1) NOT NULL DEFAULT 0"),
-            ("ntf_TemplateVersions", "PublishedBy",     "varchar(255) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TemplateVersions", "PublishedAt",     "datetime(6) NULL"),
-        };
-
-        foreach (var (table, col, colDef) in templateColumnsToAdd)
-        {
-            using var checkCmdT = conn.CreateCommand();
-            checkCmdT.CommandText =
-                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
-                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
-            var countT = Convert.ToInt32(await checkCmdT.ExecuteScalarAsync());
-
-            if (countT == 0)
-            {
-                using var alterCmdT = conn.CreateCommand();
-                alterCmdT.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
-                await alterCmdT.ExecuteNonQueryAsync();
-                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
-            }
-        }
-
-        // Ensure all columns exist on ntf_TenantProviderConfigs — some may be missing on DBs
-        // where the migration was pre-seeded as already-applied without actually running DDL.
-        // Note: TEXT columns cannot have DEFAULT values on all MySQL versions, so use NULL for those.
-        var providerColumnsToAdd = new[]
-        {
-            ("ntf_TenantProviderConfigs", "CredentialsJson",     "longtext CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TenantProviderConfigs", "SettingsJson",        "longtext CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TenantProviderConfigs", "ValidationStatus",    "varchar(30) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TenantProviderConfigs", "ValidationMessage",   "text CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TenantProviderConfigs", "LastValidatedAt",     "datetime(6) NULL"),
-            ("ntf_TenantProviderConfigs", "HealthStatus",        "varchar(20) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TenantProviderConfigs", "LastHealthCheckAt",   "datetime(6) NULL"),
-            ("ntf_TenantProviderConfigs", "HealthCheckLatencyMs","int NULL"),
-            ("ntf_TenantProviderConfigs", "OwnershipMode",       "varchar(20) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_TenantProviderConfigs", "Priority",            "int NULL"),
-        };
-
-        foreach (var (table, col, colDef) in providerColumnsToAdd)
-        {
-            using var checkCmd2 = conn.CreateCommand();
-            checkCmd2.CommandText =
-                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
-                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
-            var count2 = Convert.ToInt32(await checkCmd2.ExecuteScalarAsync());
-
-            if (count2 == 0)
-            {
-                using var alterCmd2 = conn.CreateCommand();
-                alterCmd2.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
-                await alterCmd2.ExecuteNonQueryAsync();
-                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
-            }
-        }
-
-        // ── LS-NOTIF-SMS-002: BlockUnknownSmsPreference on ntf_TenantContactPolicies ──
-        var contactPolicyColumnsToAdd = new[]
-        {
-            ("ntf_TenantContactPolicies", "BlockUnknownSmsPreference", "tinyint(1) NOT NULL DEFAULT 1"),
-        };
-
-        foreach (var (table, col, colDef) in contactPolicyColumnsToAdd)
-        {
-            using var checkCmd3 = conn.CreateCommand();
-            checkCmd3.CommandText =
-                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
-                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
-            var count3 = Convert.ToInt32(await checkCmd3.ExecuteScalarAsync());
-
-            if (count3 == 0)
-            {
-                using var alterCmd3 = conn.CreateCommand();
-                alterCmd3.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
-                await alterCmd3.ExecuteNonQueryAsync();
-                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
-            }
-        }
-
-        // ── LS-NOTIF-SMS-007: Reconciliation tracking columns on ntf_NotificationAttempts ──
-        var reconciliationColumnsToAdd = new[]
-        {
-            ("ntf_NotificationAttempts", "LastReconciliationOutcome",          "varchar(100) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_NotificationAttempts", "LastReconciledAt",                   "datetime(6) NULL"),
-            ("ntf_NotificationAttempts", "LastReconciliationErrorCode",        "varchar(100) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_NotificationAttempts", "LastReconciliationProviderStatus",   "varchar(100) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_NotificationAttempts", "LastReconciliationNormalizedStatus", "varchar(100) CHARACTER SET utf8mb4 NULL"),
-            ("ntf_NotificationAttempts", "ReconciliationAttemptCount",         "int NOT NULL DEFAULT 0"),
-        };
-
-        foreach (var (table, col, colDef) in reconciliationColumnsToAdd)
-        {
-            using var checkCmdR = conn.CreateCommand();
-            checkCmdR.CommandText =
-                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
-                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
-            var countR = Convert.ToInt32(await checkCmdR.ExecuteScalarAsync());
-
-            if (countR == 0)
-            {
-                using var alterCmdR = conn.CreateCommand();
-                alterCmdR.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
-                await alterCmdR.ExecuteNonQueryAsync();
-                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
-            }
-        }
-
-        // ── LS-NOTIF-SMS-007: composite index for reconciliation outcome queries ──
-        using var reconIdxCheckCmd = conn.CreateCommand();
-        reconIdxCheckCmd.CommandText =
-            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS " +
-            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_NotificationAttempts' " +
-            $"AND INDEX_NAME = 'IX_NotificationAttempts_Channel_TenantId_LastReconciliationOutcome'";
-        var reconIdxCount = Convert.ToInt32(await reconIdxCheckCmd.ExecuteScalarAsync());
-        if (reconIdxCount == 0)
-        {
-            using var reconIdxCmd = conn.CreateCommand();
-            reconIdxCmd.CommandText =
-                "CREATE INDEX `IX_NotificationAttempts_Channel_TenantId_LastReconciliationOutcome` " +
-                "ON `ntf_NotificationAttempts` (`Channel`, `TenantId`, `LastReconciliationOutcome`)";
-            await reconIdxCmd.ExecuteNonQueryAsync();
-            logger.LogInformation("Created index IX_NotificationAttempts_Channel_TenantId_LastReconciliationOutcome");
-        }
-
-        // ── LS-NOTIF-SMS-002: Ensure ntf_SmsContactPreferences table exists ──────
-        // Safety net: if the migration ran but DDL failed (or was pre-seeded), ensure the table exists.
-        using var tableCheckCmd = conn.CreateCommand();
-        tableCheckCmd.CommandText =
-            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
-            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsContactPreferences'";
-        var tableExists = Convert.ToInt32(await tableCheckCmd.ExecuteScalarAsync()) > 0;
-
-        if (!tableExists)
-        {
-            using var createTableCmd = conn.CreateCommand();
-            createTableCmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS `ntf_SmsContactPreferences` (
-                    `Id`                char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
-                    `TenantId`          char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
-                    `Phone`             varchar(50)     CHARACTER SET utf8mb4 NOT NULL,
-                    `PreferenceState`   varchar(20)     CHARACTER SET utf8mb4 NOT NULL DEFAULT 'unknown',
-                    `Source`            varchar(50)     CHARACTER SET utf8mb4 NULL,
-                    `Reason`            text            CHARACTER SET utf8mb4 NULL,
-                    `KeywordReceived`   varchar(50)     CHARACTER SET utf8mb4 NULL,
-                    `ProviderMessageId` varchar(255)    CHARACTER SET utf8mb4 NULL,
-                    `UpdatedBy`         varchar(255)    CHARACTER SET utf8mb4 NULL,
-                    `CreatedAt`         datetime(6)     NOT NULL,
-                    `UpdatedAt`         datetime(6)     NOT NULL,
-                    PRIMARY KEY (`Id`),
-                    UNIQUE KEY `UX_SmsContactPreferences_TenantId_Phone` (`TenantId`, `Phone`)
-                ) CHARACTER SET=utf8mb4;";
-            await createTableCmd.ExecuteNonQueryAsync();
-            logger.LogInformation("Created missing table ntf_SmsContactPreferences");
-        }
-
-        // ── LS-NOTIF-SMS-003: Ensure ntf_SmsPreferenceHistories table exists ────
-        using var histTableCheckCmd = conn.CreateCommand();
-        histTableCheckCmd.CommandText =
-            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
-            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsPreferenceHistories'";
-        var histTableExists = Convert.ToInt32(await histTableCheckCmd.ExecuteScalarAsync()) > 0;
-
-        if (!histTableExists)
-        {
-            using var createHistCmd = conn.CreateCommand();
-            createHistCmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS `ntf_SmsPreferenceHistories` (
-                    `Id`                char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
-                    `TenantId`          char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
-                    `Phone`             varchar(50)     CHARACTER SET utf8mb4 NOT NULL,
-                    `PreviousState`     varchar(20)     CHARACTER SET utf8mb4 NULL,
-                    `NewState`          varchar(20)     CHARACTER SET utf8mb4 NOT NULL,
-                    `Source`            varchar(50)     CHARACTER SET utf8mb4 NOT NULL,
-                    `Reason`            text            CHARACTER SET utf8mb4 NULL,
-                    `KeywordReceived`   varchar(50)     CHARACTER SET utf8mb4 NULL,
-                    `Provider`          varchar(50)     CHARACTER SET utf8mb4 NULL,
-                    `ProviderMessageId` varchar(255)    CHARACTER SET utf8mb4 NULL,
-                    `ProviderConfigId`  char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
-                    `InboundToNumber`   varchar(50)     CHARACTER SET utf8mb4 NULL,
-                    `CreatedBy`         varchar(255)    CHARACTER SET utf8mb4 NULL,
-                    `MetadataJson`      text            CHARACTER SET utf8mb4 NULL,
-                    `CreatedAt`         datetime(6)     NOT NULL,
-                    PRIMARY KEY (`Id`),
-                    KEY `IX_SmsPreferenceHistories_TenantId_Phone` (`TenantId`, `Phone`),
-                    KEY `IX_SmsPreferenceHistories_Phone` (`Phone`)
-                ) CHARACTER SET=utf8mb4;";
-            await createHistCmd.ExecuteNonQueryAsync();
-            logger.LogInformation("Created missing table ntf_SmsPreferenceHistories");
-        }
-
-        // ── LS-NOTIF-SMS-010: Ensure ntf_SmsOperationalAlerts table exists ────────
-        // Safety net: if the migration ran but DDL failed (or was pre-seeded), ensure the table exists.
-        using var alertTableCheckCmd = conn.CreateCommand();
-        alertTableCheckCmd.CommandText =
-            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
-            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsOperationalAlerts'";
-        var alertTableExists = Convert.ToInt32(await alertTableCheckCmd.ExecuteScalarAsync()) > 0;
-
-        if (!alertTableExists)
-        {
-            using var createAlertTableCmd = conn.CreateCommand();
-            createAlertTableCmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS `ntf_SmsOperationalAlerts` (
-                    `Id`                    char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
-                    `AlertType`             varchar(100)    CHARACTER SET utf8mb4 NOT NULL,
-                    `Severity`              varchar(20)     CHARACTER SET utf8mb4 NOT NULL DEFAULT 'warning',
-                    `TenantId`              char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
-                    `Provider`              varchar(100)    CHARACTER SET utf8mb4 NULL,
-                    `ProviderConfigId`      char(36)        CHARACTER SET ascii COLLATE ascii_general_ci NULL,
-                    `MetricValue`           decimal(18,6)   NOT NULL,
-                    `ThresholdValue`        decimal(18,6)   NOT NULL,
-                    `Message`               text            CHARACTER SET utf8mb4 NOT NULL,
-                    `EvaluationWindowStart` datetime(6)     NOT NULL,
-                    `EvaluationWindowEnd`   datetime(6)     NOT NULL,
-                    `Status`                varchar(20)     CHARACTER SET utf8mb4 NOT NULL DEFAULT 'active',
-                    `OccurrenceCount`       int             NOT NULL DEFAULT 1,
-                    `FirstObservedAt`       datetime(6)     NOT NULL,
-                    `LastObservedAt`        datetime(6)     NOT NULL,
-                    `ResolvedAt`            datetime(6)     NULL,
-                    `ResolvedBy`            varchar(255)    CHARACTER SET utf8mb4 NULL,
-                    `ResolutionNote`        text            CHARACTER SET utf8mb4 NULL,
-                    `SuppressedUntil`       datetime(6)     NULL,
-                    `CreatedAt`             datetime(6)     NOT NULL,
-                    `UpdatedAt`             datetime(6)     NOT NULL,
-                    PRIMARY KEY (`Id`),
-                    KEY `IX_SmsOperationalAlerts_Status_LastObservedAt` (`Status`, `LastObservedAt`),
-                    KEY `IX_SmsOperationalAlerts_AlertType_Status_Scope` (`AlertType`, `Status`, `TenantId`, `Provider`, `ProviderConfigId`),
-                    KEY `IX_SmsOperationalAlerts_TenantId_Status_CreatedAt` (`TenantId`, `Status`, `CreatedAt`)
-                ) CHARACTER SET=utf8mb4;";
-            await createAlertTableCmd.ExecuteNonQueryAsync();
-            logger.LogInformation("Created missing table ntf_SmsOperationalAlerts");
-        }
-
-        // ── LS-NOTIF-SMS-011: Ensure ntf_SmsEscalationPolicies table exists ─────
-        using var polTableCheckCmd = conn.CreateCommand();
-        polTableCheckCmd.CommandText =
-            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
-            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsEscalationPolicies'";
-        var polTableExists = Convert.ToInt32(await polTableCheckCmd.ExecuteScalarAsync()) > 0;
-
-        if (!polTableExists)
-        {
-            using var createPolCmd = conn.CreateCommand();
-            createPolCmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS `ntf_SmsEscalationPolicies` (
-                    `Id`              char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
-                    `Name`            varchar(200)   CHARACTER SET utf8mb4 NOT NULL,
-                    `Enabled`         tinyint(1)     NOT NULL DEFAULT 1,
-                    `AlertType`       varchar(100)   CHARACTER SET utf8mb4 NULL,
-                    `Severity`        varchar(20)    CHARACTER SET utf8mb4 NULL,
-                    `TenantId`        char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NULL,
-                    `Provider`        varchar(100)   CHARACTER SET utf8mb4 NULL,
-                    `ProviderConfigId` char(36)      CHARACTER SET ascii COLLATE ascii_general_ci NULL,
-                    `ChannelType`     varchar(50)    CHARACTER SET utf8mb4 NOT NULL,
-                    `Target`          text           CHARACTER SET utf8mb4 NOT NULL,
-                    `TargetDisplay`   varchar(500)   CHARACTER SET utf8mb4 NULL,
-                    `CooldownMinutes` int            NOT NULL DEFAULT 60,
-                    `RetryEnabled`    tinyint(1)     NOT NULL DEFAULT 0,
-                    `MaxRetryCount`   int            NOT NULL DEFAULT 3,
-                    `CreatedAt`       datetime(6)    NOT NULL,
-                    `UpdatedAt`       datetime(6)    NOT NULL,
-                    `CreatedBy`       varchar(255)   CHARACTER SET utf8mb4 NULL,
-                    `UpdatedBy`       varchar(255)   CHARACTER SET utf8mb4 NULL,
-                    PRIMARY KEY (`Id`),
-                    KEY `IX_SmsEscalationPolicies_Enabled_AlertType`   (`Enabled`, `AlertType`),
-                    KEY `IX_SmsEscalationPolicies_Enabled_ChannelType` (`Enabled`, `ChannelType`)
-                ) CHARACTER SET=utf8mb4;";
-            await createPolCmd.ExecuteNonQueryAsync();
-            logger.LogInformation("Created missing table ntf_SmsEscalationPolicies");
-        }
-
-        // ── LS-NOTIF-SMS-011: Ensure ntf_SmsAlertEscalations table exists ──────
-        using var escTableCheckCmd = conn.CreateCommand();
-        escTableCheckCmd.CommandText =
-            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
-            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_SmsAlertEscalations'";
-        var escTableExists = Convert.ToInt32(await escTableCheckCmd.ExecuteScalarAsync()) > 0;
-
-        if (!escTableExists)
-        {
-            using var createEscCmd = conn.CreateCommand();
-            createEscCmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS `ntf_SmsAlertEscalations` (
-                    `Id`              char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
-                    `AlertId`         char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
-                    `PolicyId`        char(36)       CHARACTER SET ascii COLLATE ascii_general_ci NULL,
-                    `ChannelType`     varchar(50)    CHARACTER SET utf8mb4 NOT NULL,
-                    `TargetMasked`    varchar(500)   CHARACTER SET utf8mb4 NULL,
-                    `Severity`        varchar(20)    CHARACTER SET utf8mb4 NOT NULL DEFAULT 'warning',
-                    `Status`          varchar(30)    CHARACTER SET utf8mb4 NOT NULL DEFAULT 'pending',
-                    `AttemptCount`    int            NOT NULL DEFAULT 0,
-                    `LastAttemptAt`   datetime(6)    NULL,
-                    `SentAt`          datetime(6)    NULL,
-                    `FailureReason`   text           CHARACTER SET utf8mb4 NULL,
-                    `NextRetryAt`     datetime(6)    NULL,
-                    `SuppressedUntil` datetime(6)    NULL,
-                    `PayloadHash`     varchar(64)    CHARACTER SET utf8mb4 NULL,
-                    `MetadataJson`    text           CHARACTER SET utf8mb4 NULL,
-                    `CreatedAt`       datetime(6)    NOT NULL,
-                    `UpdatedAt`       datetime(6)    NOT NULL,
-                    PRIMARY KEY (`Id`),
-                    KEY `IX_SmsAlertEscalations_AlertId`                    (`AlertId`),
-                    KEY `IX_SmsAlertEscalations_Status_NextRetryAt`          (`Status`, `NextRetryAt`),
-                    KEY `IX_SmsAlertEscalations_AlertId_PolicyId_PayloadHash` (`AlertId`, `PolicyId`, `PayloadHash`),
-                    KEY `IX_SmsAlertEscalations_CreatedAt`                  (`CreatedAt`)
-                ) CHARACTER SET=utf8mb4;";
-            await createEscCmd.ExecuteNonQueryAsync();
-            logger.LogInformation("Created missing table ntf_SmsAlertEscalations");
-        }
-
-        logger.LogInformation("EnsureNotificationsSchemaColumns complete");
-    }
-    finally
-    {
-        if (opened) await conn.CloseAsync();
-    }
-}
-
-static async Task SeedMigrationHistoryIfNeededAsync(NotificationsDbContext db, ILogger logger)
-{
-    // These are the migrations whose DDL was applied to the DB before EF
-    // migrations were tracking history.  If the history table exists but does
-    // not contain them we insert them so MigrateAsync skips re-running them.
     var alreadyApplied = new[]
     {
-        ("20260418043535_InitialCreate",        "8.0.2"),
-        ("20260419000001_AddRetryFields",       "8.0.2"),
-        ("20260508000001_AddSmsPreference",     "8.0.2"),
-        ("20260508000002_AddSmsPreferenceHistory",      "8.0.2"),
-        ("20260509000001_AddSmsReconciliationTracking", "8.0.2"),
-        ("20260510000001_AddSmsOperationalAlerts",      "8.0.2"),
-        ("20260510000002_AddSmsEscalation",             "8.0.2"),
+        ("20260418043535_InitialCreate",          "8.0.2"),
+        ("20260419000001_AddRetryFields",          "8.0.2"),
+        ("20260419000002_AddCategoryAndSeverity",  "8.0.2"),
     };
+
+    // Guard: only seed when the base schema already exists.
+    // On a fresh database ntf_Notifications does not exist — seeding would mark
+    // InitialCreate as applied without running it, causing MigrateAsync to skip
+    // table creation and then crash on missing tables.
+    try
+    {
+        var conn   = db.Database.GetDbConnection();
+        var opened = conn.State != System.Data.ConnectionState.Open;
+        if (opened) await conn.OpenAsync();
+        try
+        {
+            using var checkCmd = conn.CreateCommand();
+            checkCmd.CommandText =
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+                "WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = 'ntf_Notifications'";
+            var schemaParam = checkCmd.CreateParameter();
+            schemaParam.ParameterName = "@schema";
+            schemaParam.Value = conn.Database;
+            checkCmd.Parameters.Add(schemaParam);
+            var exists = Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) > 0;
+            if (!exists)
+            {
+                logger.LogInformation("Notifications: fresh database detected — skipping migration history seed");
+                return;
+            }
+        }
+        finally
+        {
+            if (opened) await conn.CloseAsync();
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Notifications: could not check for existing schema — skipping migration history seed");
+        return;
+    }
 
     try
     {
-        // Ensure the history table exists (idempotent).
         await db.Database.ExecuteSqlRawAsync(
             "CREATE TABLE IF NOT EXISTS `__EFMigrationsHistory` (" +
             "`MigrationId` varchar(150) CHARACTER SET utf8mb4 NOT NULL," +
@@ -707,12 +354,12 @@ static async Task SeedMigrationHistoryIfNeededAsync(NotificationsDbContext db, I
                 "INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`) VALUES ({0}, {1})",
                 id, ver);
             if (inserted > 0)
-                logger.LogInformation("Seeded migration history for {MigrationId}", id);
+                logger.LogInformation("Notifications: seeded migration history for {MigrationId}", id);
         }
     }
     catch (Exception ex)
     {
-        logger.LogWarning(ex, "Could not seed migration history — proceeding anyway");
+        logger.LogWarning(ex, "Notifications: could not seed migration history — proceeding anyway");
     }
 }
 
@@ -749,7 +396,7 @@ static async Task SeedPlatformSendGridProviderAsync(
 
     var config = new Notifications.Domain.TenantProviderConfig
     {
-        Id              = Guid.NewGuid(),
+        Id              = Guid.CreateVersion7(),
         TenantId        = platformId,
         Channel         = "email",
         ProviderType    = "sendgrid",
@@ -904,7 +551,7 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
         {
             var template = await templateRepo.CreateAsync(new Notifications.Domain.Template
             {
-                Id          = Guid.NewGuid(),
+                Id          = Guid.CreateVersion7(),
                 TenantId    = null,
                 TemplateKey = seed.Key,
                 Channel     = "email",
@@ -919,7 +566,7 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
 
         await versionRepo.CreateAsync(new Notifications.Domain.TemplateVersion
         {
-            Id              = Guid.NewGuid(),
+            Id              = Guid.CreateVersion7(),
             TemplateId      = templateId,
             VersionNumber   = 1,
             SubjectTemplate = seed.Subject,

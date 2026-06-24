@@ -4,7 +4,7 @@ namespace Identity.Application.Interfaces;
 /// BLK-ID-02 — Formal membership API for Identity service.
 ///
 /// Provides explicit, idempotent operations for:
-///   - Assigning a user to a tenant (updates User.TenantId + grants roles)
+///   - Assigning a user to a tenant (writes idt_UserTenants + grants roles)
 ///   - Assigning roles to a user (ScopedRoleAssignment, GLOBAL scope)
 ///
 /// Both operations are safe to call multiple times — duplicate assignments
@@ -17,7 +17,7 @@ public interface IUserMembershipService
 {
     /// <summary>
     /// Assigns an existing Identity user to the specified tenant.
-    /// Updates User.TenantId and grants any provided roles via AssignRolesAsync.
+    /// Adds an idt_UserTenants membership and grants any provided roles via AssignRolesAsync.
     /// Idempotent — safe to call if the user is already in the target tenant.
     /// </summary>
     Task<AssignTenantResult> AssignTenantAsync(AssignTenantCommand cmd, CancellationToken ct = default);

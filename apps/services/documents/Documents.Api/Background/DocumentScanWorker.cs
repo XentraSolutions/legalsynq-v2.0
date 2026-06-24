@@ -398,7 +398,7 @@ public sealed class DocumentScanWorker : BackgroundService
 
             var audit = new DocumentAudit
             {
-                Id         = Guid.NewGuid(),
+                Id         = Guid.CreateVersion7(),
                 TenantId   = job.TenantId,
                 DocumentId = job.DocumentId,
                 Event      = eventType,

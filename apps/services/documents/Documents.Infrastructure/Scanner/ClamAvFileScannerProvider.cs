@@ -144,8 +144,9 @@ public sealed class ClamAvFileScannerProvider : IFileScannerProvider
     private ScanResult ParseResponse(string response, int durationMs)
     {
         var engineLabel = $"clamav/{_opts.Host}:{_opts.Port}";
+        var normalized  = response.Replace("\0", string.Empty).Trim();
 
-        if (response.EndsWith(": OK", StringComparison.OrdinalIgnoreCase))
+        if (normalized.EndsWith("OK", StringComparison.OrdinalIgnoreCase))
         {
             return new ScanResult
             {
@@ -156,13 +157,23 @@ public sealed class ClamAvFileScannerProvider : IFileScannerProvider
             };
         }
 
-        if (response.Contains(" FOUND", StringComparison.OrdinalIgnoreCase))
+        if (normalized.Contains("FOUND", StringComparison.OrdinalIgnoreCase))
         {
-            // Format: "stream: FOUND Virus.Name" — extract threat name
-            var parts  = response.Split(' ');
-            var threat = parts.Length >= 3
-                ? string.Join(' ', parts[2..^1])   // everything between FOUND and end
-                : "Unknown";
+            // Common clamd formats:
+            //   "stream: Eicar-Test-Signature FOUND"
+            //   "stream: FOUND Eicar-Test-Signature"
+            var foundIndex = normalized.IndexOf("FOUND", StringComparison.OrdinalIgnoreCase);
+            var prefix     = foundIndex > 0 ? normalized[..foundIndex].Trim() : string.Empty;
+            var suffix     = foundIndex >= 0 ? normalized[(foundIndex + "FOUND".Length)..].Trim() : string.Empty;
+
+            var threat = suffix.Length > 0
+                ? suffix
+                : prefix.Contains(':')
+                    ? prefix[(prefix.IndexOf(':') + 1)..].Trim()
+                    : prefix;
+
+            if (string.IsNullOrWhiteSpace(threat))
+                threat = "Unknown";
 
             return new ScanResult
             {
@@ -174,7 +185,7 @@ public sealed class ClamAvFileScannerProvider : IFileScannerProvider
         }
 
         // Any other response (ERROR or unexpected) → Failed
-        _log.LogWarning("ClamAV unexpected response: {Response}", response);
+        _log.LogWarning("ClamAV unexpected response: {Response}", normalized);
         return new ScanResult
         {
             Status        = ScanStatus.Failed,

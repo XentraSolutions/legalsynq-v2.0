@@ -44,7 +44,7 @@ public class Party
         var now = DateTime.UtcNow;
         var party = new Party
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             OwnerOrganizationId = ownerOrganizationId,
             PartyType = PartyTypeValues.Individual,

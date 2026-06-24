@@ -19,7 +19,7 @@ namespace PlatformAuditEventService.Mappers;
 /// This keeps the mapper a deterministic, side-effect-free function.
 ///
 /// UUIDv7 note:
-///   The service currently passes <c>Guid.NewGuid()</c>. When a UUIDv7
+///   The service currently passes <c>Guid.CreateVersion7()</c>. When a UUIDv7
 ///   factory is available (time-ordered GUIDs, better clustered-index
 ///   locality on MySQL), only the service changes — the mapper is unaffected.
 /// </summary>

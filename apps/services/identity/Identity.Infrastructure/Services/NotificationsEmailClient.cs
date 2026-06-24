@@ -58,6 +58,20 @@ public interface INotificationsEmailClient
         string            activationLink,
         Guid              tenantId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Dispatches a tenant-access-granted notification email to an existing active user
+    /// who has been provisioned on an additional tenant. No set-password link is included
+    /// since the user already has a password. Best-effort — callers should log but not
+    /// fail on a false return value.
+    /// </summary>
+    Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantAccessGrantedEmailAsync(
+        string            toEmail,
+        string            displayName,
+        string            tenantName,
+        string            portalUrl,
+        Guid              tenantId,
+        CancellationToken ct = default);
 }
 
 public sealed class NotificationsEmailClient : INotificationsEmailClient
@@ -68,10 +82,12 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private const string PasswordResetEventKey = "identity.user.password.reset";
-    private const string InviteEventKey        = "identity.user.invite.sent";
-    private const string PasswordResetSubject  = "Reset your LegalSynq password";
-    private const string InviteSubject         = "You've been invited to LegalSynq";
+    private const string PasswordResetEventKey        = "identity.user.password.reset";
+    private const string InviteEventKey               = "identity.user.invite.sent";
+    private const string TenantAccessGrantedEventKey  = "identity.user.tenant.access.granted";
+    private const string PasswordResetSubject         = "Reset your LegalSynq password";
+    private const string InviteSubject                = "You've been invited to LegalSynq";
+    private const string TenantAccessGrantedSubject   = "You now have access to a new LegalSynq network";
 
     private readonly IHttpClientFactory                _httpClientFactory;
     private readonly NotificationsServiceOptions       _options;
@@ -153,6 +169,42 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
             ct:           ct);
     }
 
+    public Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantAccessGrantedEmailAsync(
+        string            toEmail,
+        string            displayName,
+        string            tenantName,
+        string            portalUrl,
+        Guid              tenantId,
+        CancellationToken ct = default)
+    {
+        var body = new
+        {
+            type    = TenantAccessGrantedEventKey,
+            subject = TenantAccessGrantedSubject,
+            html    = BuildTenantAccessGrantedHtmlBody(displayName, tenantName, portalUrl),
+            body    = $"You now have access to a new LegalSynq network\n\nHello {displayName},\n\nYou have been granted access to {tenantName} on LegalSynq. " +
+                      $"Sign in using your existing credentials at:\n{portalUrl}\n\nIf you weren't expecting this, please contact your administrator.",
+        };
+
+        var templateData = new Dictionary<string, string>
+        {
+            ["displayName"] = displayName,
+            ["tenantName"]  = tenantName,
+            ["portalUrl"]   = portalUrl,
+            ["subject"]     = TenantAccessGrantedSubject,
+        };
+
+        return SubmitAsync(
+            eventKey:     TenantAccessGrantedEventKey,
+            subject:      TenantAccessGrantedSubject,
+            toEmail:      toEmail,
+            tenantId:     tenantId,
+            body:         body,
+            templateData: templateData,
+            logTag:       "LS-NOTIF-CORE-024/tenant-access-granted",
+            ct:           ct);
+    }
+
     // ── Core submission ───────────────────────────────────────────────────────
 
     private async Task<(bool EmailConfigured, bool Success, string? Error)> SubmitAsync(
@@ -187,7 +239,8 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
                 ProductKey     = NotificationTaxonomy.Identity.ProductKey,
                 EventKey       = eventKey,
                 SourceSystem   = NotificationTaxonomy.Identity.SourceSystem,
-                IdempotencyKey = Guid.NewGuid().ToString("N"),
+                Subject        = subject,
+                IdempotencyKey = Guid.CreateVersion7().ToString("N"),
                 Recipient      = new NotificationsRecipient
                 {
                     Email    = toEmail,
@@ -420,4 +473,72 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
             .Replace(">",  "&gt;")
             .Replace("\"", "&quot;")
             .Replace("'",  "&#39;");
+
+    private static string BuildTenantAccessGrantedHtmlBody(string name, string tenantName, string portalUrl)
+    {
+        var safeName       = HtmlEncode(name);
+        var safeTenantName = HtmlEncode(tenantName);
+        var safePortalUrl  = HtmlEncode(portalUrl);
+
+        return $"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>You now have access to a new LegalSynq network</title>
+        </head>
+        <body style="margin:0;padding:32px 0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;">
+            <tr>
+              <td style="background:#ffffff;border-radius:12px;padding:40px;border:1px solid #e5e7eb;">
+
+                <!-- Wordmark -->
+                <p style="margin:0 0 4px;font-size:22px;font-weight:700;color:#111827;letter-spacing:-0.3px;">LegalSynq</p>
+                <hr style="border:none;border-top:1px solid #f3f4f6;margin:16px 0 28px;" />
+
+                <!-- Heading -->
+                <h1 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#111827;">New network access granted</h1>
+
+                <!-- Body text -->
+                <p style="margin:0 0 24px;font-size:15px;line-height:1.65;color:#374151;">
+                  Hello <strong>{safeName}</strong>,<br /><br />
+                  You have been granted access to <strong>{safeTenantName}</strong> on
+                  <strong>LegalSynq</strong>. Sign in with your existing credentials to get started.
+                </p>
+
+                <!-- CTA button -->
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                  <tr>
+                    <td style="border-radius:8px;background:#f97316;">
+                      <a href="{safePortalUrl}"
+                         style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:600;
+                                color:#ffffff;text-decoration:none;border-radius:8px;">
+                        Sign in to {safeTenantName}
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Plain-text link fallback -->
+                <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Or copy and paste this link into your browser:</p>
+                <p style="margin:0 0 28px;font-size:13px;color:#f97316;word-break:break-all;">
+                  <a href="{safePortalUrl}" style="color:#f97316;">{safePortalUrl}</a>
+                </p>
+
+                <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 20px;" />
+
+                <!-- Footer -->
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#9ca3af;">
+                  If you weren&rsquo;t expecting this access grant, please contact
+                  your administrator.
+                </p>
+
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+        """;
+    }
 }

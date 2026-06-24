@@ -10,6 +10,11 @@ const nextConfig = {
   // over-trace files and does not emit the workspace-root warning caused
   // by finding multiple lockfiles.
   outputFileTracingRoot: path.resolve(__dirname, '../..'),
+  // Empty turbopack config satisfies Next.js 16's requirement when a
+  // webpack() config function is also present. The actual production build
+  // uses --webpack explicitly (build-prod.sh) to keep the GCE-tuned webpack
+  // pipeline (webpackBuildWorker: false, memory cache).
+  turbopack: {},
   experimental: {
     serverActions: {
       // Next.js 14 CSRF check: the Replit dev proxy can cause origin/host

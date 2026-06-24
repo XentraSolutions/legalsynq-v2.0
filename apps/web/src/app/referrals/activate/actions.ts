@@ -1,6 +1,6 @@
 'use server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
+import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
 
 export interface AutoProvisionResult {
   success:      boolean;
@@ -10,21 +10,18 @@ export interface AutoProvisionResult {
 }
 
 export async function autoProvision(
-  referralId:     string,
-  token:          string,
-  requesterName:  string,
-  requesterEmail: string,
+  referralId:         string,
+  token:              string,
+  requesterFirstName: string,
+  requesterLastName:  string,
+  requesterEmail:     string,
 ): Promise<AutoProvisionResult> {
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/referrals/${referralId}/auto-provision`,
-      {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ token, requesterName, requesterEmail }),
-        cache:   'no-store',
-      },
-    );
+    const resp = await fetchPublicCareConnect(`/api/referrals/${referralId}/auto-provision`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ token, requesterFirstName, requesterLastName, requesterEmail }),
+    });
 
     if (!resp.ok) {
       return { success: false, error: 'Something went wrong. Please try again or contact the referring party.' };

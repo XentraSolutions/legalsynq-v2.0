@@ -15,6 +15,8 @@ namespace CareConnect.Application.Authorization;
 // LSCC-002: Shared participant-scoping logic — single definition for all CareConnect records
 public static class CareConnectParticipantHelper
 {
+    private const string CareConnectReceiverRole = "CARECONNECT_RECEIVER";
+
     // ── Admin bypass ──────────────────────────────────────────────────────────
 
     /// <summary>
@@ -23,6 +25,23 @@ public static class CareConnectParticipantHelper
     /// </summary>
     public static bool IsAdmin(ICurrentRequestContext ctx) =>
         ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Returns true when the caller should be treated as a CareConnect receiver/provider
+    /// for participant scoping. Prefer receiver product-role checks and fall back to
+    /// org-type for compatibility with older role payloads.
+    /// </summary>
+    public static bool IsReceiverContext(ICurrentRequestContext ctx)
+    {
+        if (ctx.ProductRoles.Any(role =>
+                role.Equals(CareConnectReceiverRole, StringComparison.OrdinalIgnoreCase) ||
+                role.EndsWith($":{CareConnectReceiverRole}", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return string.Equals(ctx.OrgType, OrgType.Provider, StringComparison.OrdinalIgnoreCase);
+    }
 
     // ── Referral participant checks ───────────────────────────────────────────
 

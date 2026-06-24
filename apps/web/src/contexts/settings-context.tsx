@@ -1,22 +1,32 @@
 'use client';
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { useSessionContext } from '@/providers/session-provider';
-import { resolveSettings, GLOBAL_DEFAULTS, type AppSettings } from '@/config/app-settings';
+import { GLOBAL_DEFAULTS, type AppSettings } from '@/config/app-settings';
 
 const SettingsContext = createContext<AppSettings>(GLOBAL_DEFAULTS);
 
 /**
- * Resolves global + per-tenant settings and provides them to the React tree.
- * Must be rendered inside <SessionProvider>.
+ * Provides app settings to the React tree.
+ * `initialMapProvider` and `initialTimezone` are fetched server-side from the
+ * Tenant Service and passed down from the platform layout — no client-side fetch.
  */
-export function SettingsProvider({ children }: { children: ReactNode }) {
-  const { session } = useSessionContext();
-
-  const settings = useMemo(
-    () => resolveSettings(session?.tenantCode),
-    [session?.tenantCode],
-  );
+export function SettingsProvider({
+  children,
+  initialMapProvider,
+  initialTimezone,
+}: {
+  children:            ReactNode;
+  initialMapProvider?: 'osm' | 'google';
+  initialTimezone?:    string;
+}) {
+  const settings = useMemo<AppSettings>(() => ({
+    ...GLOBAL_DEFAULTS,
+    careConnect: {
+      ...GLOBAL_DEFAULTS.careConnect,
+      defaultMapProvider: initialMapProvider ?? GLOBAL_DEFAULTS.careConnect.defaultMapProvider,
+    },
+    timezone: initialTimezone ?? GLOBAL_DEFAULTS.timezone,
+  }), [initialMapProvider, initialTimezone]);
 
   return (
     <SettingsContext.Provider value={settings}>

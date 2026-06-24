@@ -46,7 +46,7 @@ public class LienTaskGovernanceSettings : AuditableEntity
         var now = DateTime.UtcNow;
         return new LienTaskGovernanceSettings
         {
-            Id                       = Guid.NewGuid(),
+            Id                       = Guid.CreateVersion7(),
             TenantId                 = tenantId,
             ProductCode              = productCode.Trim(),
             RequireAssigneeOnCreate  = true,

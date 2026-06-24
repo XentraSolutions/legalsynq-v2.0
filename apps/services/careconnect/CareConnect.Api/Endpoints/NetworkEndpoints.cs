@@ -1,9 +1,11 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
+using BuildingBlocks.Exceptions;
 using CareConnect.Application.Cache;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
+using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
@@ -300,6 +302,95 @@ public static class NetworkEndpoints
             return Results.Ok(markers);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+
+        app.MapPost("/api/networks/{id:guid}/providers/import", async (
+            Guid id,
+            HttpRequest httpRequest,
+            INetworkService service,
+            IAuditEventClient auditClient,
+            IMemoryCache cache,
+            HttpContext http,
+            IWebHostEnvironment environment,
+            CancellationToken ct) =>
+        {
+            if (!environment.IsDevelopment())
+                return Results.Forbid();
+
+            var file = await ReadImportFileAsync(httpRequest, ct);
+
+            await using var stream = file.OpenReadStream();
+            var result = await service.ImportProvidersAsync(
+                id,
+                stream,
+                file.FileName,
+                dryRun: ParseDryRunFlag(httpRequest),
+                userId: null,
+                ct);
+
+            if (!result.DryRun)
+            {
+                foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(result.TenantId, id))
+                    cache.Remove(key);
+
+                var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
+                _ = EmitNetworkAuditAsync(auditClient,
+                    eventType: "careconnect.network.providers_imported",
+                    action: "ProvidersImported",
+                    description: $"Imported providers into network '{id}' via local import endpoint.",
+                    tenantId: result.TenantId,
+                    actorUserId: null,
+                    networkId: id,
+                    correlationId: correlationId,
+                    metadata: JsonSerializer.Serialize(new
+                    {
+                        result.TotalRows,
+                        result.ProcessedRows,
+                        result.CreatedProviders,
+                        result.ReusedByNpi,
+                        result.ReusedByEmail,
+                        result.AlreadyInNetwork,
+                        result.FailedRows
+                    }));
+            }
+
+            return Results.Ok(result);
+        })
+        .AllowAnonymous()
+        .DisableAntiforgery();
+    }
+
+    private static async Task<IFormFile> ReadImportFileAsync(HttpRequest httpRequest, CancellationToken ct)
+    {
+        if (!httpRequest.HasFormContentType)
+            throw new ValidationException("Validation failed.",
+                new() { ["file"] = ["Request must be multipart/form-data."] });
+
+        var form = await httpRequest.ReadFormAsync(ct);
+        if (form.Files.Count == 0)
+            throw new ValidationException("Validation failed.",
+                new() { ["file"] = ["No file was provided."] });
+
+        var file = form.Files[0];
+        if (file.Length == 0)
+            throw new ValidationException("Validation failed.",
+                new() { ["file"] = ["The import file is empty."] });
+
+        const long maxBytes = 5L * 1024 * 1024;
+        if (file.Length > maxBytes)
+            throw new ValidationException("Validation failed.",
+                new() { ["file"] = ["The import file exceeds the 5 MB limit."] });
+
+        if (!string.Equals(Path.GetExtension(file.FileName), ".csv", StringComparison.OrdinalIgnoreCase))
+            throw new ValidationException("Validation failed.",
+                new() { ["file"] = ["Only CSV files are supported for provider imports."] });
+
+        return file;
+    }
+
+    private static bool ParseDryRunFlag(HttpRequest httpRequest)
+    {
+        var raw = httpRequest.Form["dryRun"].FirstOrDefault();
+        return bool.TryParse(raw, out var parsed) && parsed;
     }
 
     // ── BLK-COMP-01: Shared audit helper ─────────────────────────────────────────
@@ -366,6 +457,7 @@ public static class NetworkEndpoints
     // Supports ?status=, ?search= (client name, case #, referrer, provider), ?page=, ?pageSize=.
     private static async Task<IResult> GetNetworkReferralsAsync(
         CareConnectDbContext    db,
+        ITenantServiceClient    tenantClient,
         ICurrentRequestContext  ctx,
         [FromQuery] int     page     = 1,
         [FromQuery] int     pageSize = 50,
@@ -374,6 +466,8 @@ public static class NetworkEndpoints
         CancellationToken   ct       = default)
     {
         var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+        var tenantDisplayNames = await ReferralTenantNameResolver.ResolveAsync([tenantId], tenantClient, ct);
+        var networkName = tenantDisplayNames.GetValueOrDefault(tenantId, ReferralTenantNameResolver.Fallback);
 
         page     = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
@@ -389,11 +483,16 @@ public static class NetworkEndpoints
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim().ToLower();
-            query = query.Where(r =>
-                EF.Functions.Like((r.ClientFirstName + " " + r.ClientLastName).ToLower(), "%" + s + "%") ||
-                (r.CaseNumber    != null && EF.Functions.Like(r.CaseNumber.ToLower(),    "%" + s + "%")) ||
-                (r.ReferrerName  != null && EF.Functions.Like(r.ReferrerName.ToLower(),  "%" + s + "%")) ||
-                (r.Provider      != null && EF.Functions.Like(r.Provider.Name.ToLower(), "%" + s + "%")));
+            var matchesNetworkName = networkName.Contains(s, StringComparison.OrdinalIgnoreCase);
+
+            if (!matchesNetworkName)
+            {
+                query = query.Where(r =>
+                    EF.Functions.Like((r.ClientFirstName + " " + r.ClientLastName).ToLower(), "%" + s + "%") ||
+                    (r.CaseNumber    != null && EF.Functions.Like(r.CaseNumber.ToLower(),    "%" + s + "%")) ||
+                    (r.ReferrerName  != null && EF.Functions.Like(r.ReferrerName.ToLower(),  "%" + s + "%")) ||
+                    (r.Provider      != null && EF.Functions.Like(r.Provider.Name.ToLower(), "%" + s + "%")));
+            }
         }
 
         query = query.OrderByDescending(r => r.CreatedAtUtc);
@@ -416,6 +515,7 @@ public static class NetworkEndpoints
                 referringOrganizationId = r.ReferringOrganizationId,
                 referrerName            = r.ReferrerName,
                 referrerEmail           = r.ReferrerEmail,
+                networkName,
                 createdAtUtc            = r.CreatedAtUtc,
                 updatedAtUtc            = r.UpdatedAtUtc,
             })

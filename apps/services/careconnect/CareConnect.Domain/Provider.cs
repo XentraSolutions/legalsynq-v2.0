@@ -54,6 +54,8 @@ public class Provider : AuditableEntity
     public Guid    Id                { get; private set; }
     public Guid    TenantId          { get; private set; }
     public string  Name              { get; private set; } = string.Empty;
+    public string? FirstName         { get; private set; }
+    public string? LastName          { get; private set; }
     public string? OrganizationName  { get; private set; }
     public string  Email             { get; private set; } = string.Empty;
     public string  Phone             { get; private set; } = string.Empty;
@@ -248,13 +250,27 @@ public class Provider : AuditableEntity
         double? latitude       = null,
         double? longitude      = null,
         string? geoPointSource = null,
-        string? npi            = null)
+        string? npi            = null,
+        string? firstName      = null,
+        string? lastName       = null)
     {
+        // firstName/lastName (tenant-portal creation path) take precedence over the
+        // legacy single name parameter — when supplied, Name is computed from them so
+        // every existing reader keeps seeing the same single display string.
+        var hasSplitName = !string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName);
+        var computedName = hasSplitName
+            ? string.Join(" ", new[] { firstName, lastName }
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p!.Trim()))
+            : name.Trim();
+
         return new Provider
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             TenantId         = tenantId,
-            Name             = name.Trim(),
+            Name             = computedName,
+            FirstName        = firstName?.Trim(),
+            LastName         = lastName?.Trim(),
             OrganizationName = organizationName?.Trim(),
             Email            = email.Trim(),
             Phone            = phone.Trim(),
@@ -312,9 +328,26 @@ public class Provider : AuditableEntity
         Guid?   updatedByUserId,
         double? latitude       = null,
         double? longitude      = null,
-        string? geoPointSource = null)
+        string? geoPointSource = null,
+        string? firstName      = null,
+        string? lastName       = null)
     {
-        Name             = name.Trim();
+        var hasSplitName = !string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName);
+        var computedName = hasSplitName
+            ? string.Join(" ", new[] { firstName, lastName }
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p!.Trim()))
+            : name.Trim();
+
+        Name             = computedName;
+        // Only overwrite FirstName/LastName when the caller explicitly supplies them —
+        // callers that still only pass the legacy single `name` leave existing split
+        // values (if any) untouched rather than wiping them back to null.
+        if (hasSplitName)
+        {
+            FirstName = firstName?.Trim();
+            LastName  = lastName?.Trim();
+        }
         OrganizationName = organizationName?.Trim();
         Email            = email.Trim();
         Phone            = phone.Trim();

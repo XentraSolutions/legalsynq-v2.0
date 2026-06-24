@@ -6,6 +6,7 @@ public interface ISettingService
 {
     Task<List<SettingResponse>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default);
     Task<SettingResponse>       GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+    Task<SettingResponse?>      GetByKeyAsync(Guid tenantId, string settingKey, string? productKey, CancellationToken ct = default);
 
     /// <summary>
     /// Upsert a setting by (TenantId, SettingKey, ProductKey).

@@ -1,6 +1,5 @@
 import multer from 'multer';
 import type { Request } from 'express';
-import { fromBuffer as fileTypeFromBuffer } from 'file-type';
 import { ALLOWED_MIME_TYPES } from '@/shared/constants';
 import {
   FileValidationError,
@@ -37,6 +36,7 @@ export async function validateFileContent(buffer: Buffer, declaredMime: string):
     throw new FileTooLargeError(config.MAX_FILE_SIZE_MB);
   }
 
+  const { fileTypeFromBuffer } = await import('file-type');
   const detected = await fileTypeFromBuffer(buffer);
 
   // If file-type can't detect (e.g. plain text/csv), allow if declared type is whitelisted

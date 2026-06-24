@@ -35,6 +35,12 @@ public interface IReferralEmailService
     /// IMPORTANT: The caller must also verify that result.TokenVersion matches the referral's
     /// current TokenVersion to detect revoked tokens.
     /// </summary>
+    ReferralTokenValidationOutcome ValidateViewTokenDetailed(string token);
+
+    /// <summary>
+    /// Legacy compatibility shim. Prefer <see cref="ValidateViewTokenDetailed"/> for new logic
+    /// so callers can distinguish malformed, expired, and revoked tokens.
+    /// </summary>
     ViewTokenValidationResult? ValidateViewToken(string token);
 
     /// <summary>
@@ -44,8 +50,14 @@ public interface IReferralEmailService
     /// Also covers TOKEN_GENERATED event since a signed token is included in the email.
     /// </summary>
     Task SendNewReferralNotificationAsync(
-        Referral referral,
-        Provider provider,
+        Referral          referral,
+        Provider          provider,
+        CancellationToken ct = default);
+
+    Task SendNewReferralNotificationAsync(
+        Referral          referral,
+        Provider          provider,
+        string?           treatmentTypeName,
         CancellationToken ct = default);
 
     /// <summary>

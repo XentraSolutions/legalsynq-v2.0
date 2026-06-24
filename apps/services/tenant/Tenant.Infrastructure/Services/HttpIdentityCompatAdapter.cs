@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Tenant.Application.Interfaces;
 
@@ -18,13 +19,16 @@ namespace Tenant.Infrastructure.Services;
 public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
 {
     private readonly IHttpClientFactory                  _httpClientFactory;
+    private readonly IHttpContextAccessor                _httpContextAccessor;
     private readonly ILogger<HttpIdentityCompatAdapter>  _logger;
 
     public HttpIdentityCompatAdapter(
         IHttpClientFactory                  httpClientFactory,
+        IHttpContextAccessor                httpContextAccessor,
         ILogger<HttpIdentityCompatAdapter>  logger)
     {
         _httpClientFactory = httpClientFactory;
+        _httpContextAccessor = httpContextAccessor;
         _logger            = logger;
     }
 
@@ -35,6 +39,7 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
         try
         {
             using var client = _httpClientFactory.CreateClient("IdentityInternal");
+            AddAuthorizationHeader(client);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(3));
@@ -89,6 +94,7 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
         try
         {
             using var client = _httpClientFactory.CreateClient("IdentityInternal");
+            AddAuthorizationHeader(client);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(5));
@@ -124,6 +130,64 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
                 "IdentityCompatAdapter: failed setting sessionTimeout for tenant {TenantId}",
                 tenantId);
             return false;
+        }
+    }
+
+    public async Task<bool> SetTenantProductEntitlementAsync(
+        Guid              tenantId,
+        string            productCode,
+        bool              enabled,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var client = _httpClientFactory.CreateClient("IdentityInternal");
+            AddAuthorizationHeader(client);
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+
+            var payload = JsonSerializer.Serialize(new { enabled });
+            var content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+            var response = await client.PostAsync(
+                $"/api/admin/tenants/{tenantId}/entitlements/{Uri.EscapeDataString(productCode)}",
+                content,
+                cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "IdentityCompatAdapter: POST entitlement for tenant {TenantId} product {ProductCode} returned {StatusCode}",
+                    tenantId, productCode, (int)response.StatusCode);
+                return false;
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "IdentityCompatAdapter: timed out setting entitlement for tenant {TenantId} product {ProductCode}",
+                tenantId, productCode);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "IdentityCompatAdapter: failed setting entitlement for tenant {TenantId} product {ProductCode}",
+                tenantId, productCode);
+            return false;
+        }
+    }
+
+    private void AddAuthorizationHeader(HttpClient client)
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers.Authorization.ToString();
+        if (!string.IsNullOrWhiteSpace(authHeader))
+        {
+            client.DefaultRequestHeaders.Remove("Authorization");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader);
         }
     }
 }

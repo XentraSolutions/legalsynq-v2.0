@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { tenantClientApi, ApiError } from '@/lib/tenant-client-api';
+import { useTimezone } from '@/lib/use-timezone';
 import type { TenantGroup, TenantUser } from '@/types/tenant';
 
 type StatusFilter = 'All' | 'Active' | 'Archived';
@@ -41,6 +42,7 @@ interface Props {
 
 export function GroupTable({ groups, users, tenantId }: Props) {
   const router = useRouter();
+  const timezone = useTimezone();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [page, setPage] = useState(1);
@@ -225,7 +227,7 @@ export function GroupTable({ groups, users, tenantId }: Props) {
                     <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">{g.scopeType}</span>
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-xs hidden lg:table-cell">
-                    {new Date(g.createdAtUtc).toLocaleDateString()}
+                    {new Date(g.createdAtUtc).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone })}
                   </td>
                 </tr>
               ))

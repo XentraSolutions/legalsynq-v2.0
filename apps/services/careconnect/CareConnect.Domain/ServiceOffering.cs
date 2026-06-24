@@ -25,7 +25,7 @@ public class ServiceOffering : AuditableEntity
     {
         return new ServiceOffering
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = name.Trim(),
             Code = code.Trim().ToUpper(),

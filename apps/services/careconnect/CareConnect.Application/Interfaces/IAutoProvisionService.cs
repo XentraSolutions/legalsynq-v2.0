@@ -26,5 +26,7 @@ public interface IAutoProvisionService
         string            token,
         string?           requesterName,
         string?           requesterEmail,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string?           requesterFirstName = null,
+        string?           requesterLastName = null);
 }

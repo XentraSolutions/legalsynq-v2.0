@@ -1,0 +1,1594 @@
+{
+  "info": {
+    "_postman_id": "liens-legacy-collection-v1",
+    "name": "LegalSynq Liens — Legacy API",
+    "description": "All legacy route aliases for the LegalSynq Liens service.\n\n**Auth**: Every request inherits the collection-level Bearer token.\nObtain a JWT from your Identity service with the required `permissions` claims (e.g. `SYNQ_LIENS.lien:read`, `SYNQ_LIENS.lien:service`, etc.) and paste it into the `bearerToken` environment variable.\n\n**Environment**: Import `liens-legacy.postman_environment.json` alongside this collection.\nThe seed GUIDs match the test `SeedHelper` stable IDs so local dev runs work out of the box.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{bearerToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+
+    {
+      "name": "Lookup",
+      "description": "Read-only lookup / reference-data routes.\nRequired permission: `SYNQ_LIENS.lien:read`",
+      "item": [
+        {
+          "name": "States",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/states",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "states"]
+            },
+            "description": "Returns all US state lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Document Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/document/type",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "document", "type"]
+            },
+            "description": "Returns document category lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Accident Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/accident/type",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "accident", "type"]
+            },
+            "description": "Returns accident type lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Lien Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/liens/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "liens", "status"]
+            },
+            "description": "Returns lien status lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Case Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/case/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "case", "status"]
+            },
+            "description": "Returns case status lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Medical Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/medical/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "medical", "status"]
+            },
+            "description": "Returns medical status lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Settlement Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/settlement/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "settlement", "status"]
+            },
+            "description": "Returns settlement status lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Settlement Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/settlement/type",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "settlement", "type"]
+            },
+            "description": "Returns settlement type lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Current Attributes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/current-attributes",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "current-attributes"]
+            },
+            "description": "Returns current-attributes lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Task Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/task/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "task", "status"]
+            },
+            "description": "Returns task status lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Task Priority",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/task/priority",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "task", "priority"]
+            },
+            "description": "Returns task priority lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Contact Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/contact/type",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "contact", "type"]
+            },
+            "description": "Returns contact type lookup values.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Procedure Codes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/medical/procedure/codes",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "medical", "procedure", "codes"]
+            },
+            "description": "Returns all medical procedure codes.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Procedure Cost by Code",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/medical/procedure/costs/99213",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "medical", "procedure", "costs", "99213"]
+            },
+            "description": "Returns the cost lookup for a specific procedure code.\nReplace `99213` with the desired CPT code.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "All Lookups",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/all",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "all"]
+            },
+            "description": "Returns a dictionary of every lookup category keyed by category name.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Contacts (all types)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/contact",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "contact"]
+            },
+            "description": "Returns all contacts across all contact types.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Lookup — Law Firms",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/contact/lawfirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "contact", "lawfirm"]
+            },
+            "description": "Returns all law firm contacts.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Lookup — Medical Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/contact/medical-provider",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "contact", "medical-provider"]
+            },
+            "description": "Returns all medical provider contacts.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Lookup — Funding Companies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/contact/funding-company",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "contact", "funding-company"]
+            },
+            "description": "Returns all funding company (lien holder) contacts.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Lookup — Law Firm Roles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/contact/lawfirm/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "contact", "lawfirm", "role"]
+            },
+            "description": "Returns all law firm role contacts.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Backup Case Managers by Law Firm",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/backupcasemanager/{{lawFirmId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "backupcasemanager", "{{lawFirmId}}"]
+            },
+            "description": "Returns backup case managers scoped to a law firm.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Case Managers by Law Firm",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/casemanager/{{lawFirmId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "casemanager", "{{lawFirmId}}"]
+            },
+            "description": "Returns case managers scoped to a law firm.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Contacts by Role",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/contacts/{{lawFirmId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "contacts", "{{lawFirmId}}"]
+            },
+            "description": "Returns contacts scoped to a specific role (law firm) ID.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "User List",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/user-list",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "user-list"]
+            },
+            "description": "Returns a legacy stub user list (always empty array in current implementation).\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Lookup — Facilities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/facility",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "facility"]
+            },
+            "description": "Returns all active facilities as lookup data.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Contact Persons by Facility",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/contactperson/{{facilityId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["lookup", "contactperson", "{{facilityId}}"]
+            },
+            "description": "Returns contact persons for a given facility ID.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Contact",
+      "description": "CRUD and search for contacts (law firms, medical providers, funding companies, leads).\nRequired permission: `SYNQ_LIENS.lien:service`",
+      "item": [
+        {
+          "name": "Create Contact",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactType\": \"LawFirm\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\",\n  \"title\": \"Partner\",\n  \"organization\": \"Smith & Associates LLP\",\n  \"email\": \"jane@smithlaw.com\",\n  \"phone\": \"555-100-1000\",\n  \"fax\": \"555-100-1001\",\n  \"website\": \"https://smithlaw.com\",\n  \"addressLine1\": \"123 Legal Ave\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90001\",\n  \"notes\": \"Primary law firm contact\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "create"]
+            },
+            "description": "Creates a new contact. Returns 201 Created with the new contact.\nValid `contactType` values: `LawFirm`, `Provider`, `LienHolder`, `CaseManager`, `InternalUser`, `Lead`.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Update Contact",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{contactId}}\",\n  \"contactType\": \"LawFirm\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith Updated\",\n  \"title\": \"Senior Partner\",\n  \"organization\": \"Smith & Associates Updated LLP\",\n  \"email\": \"jane.updated@smithlaw.com\",\n  \"phone\": \"555-100-2000\",\n  \"fax\": \"555-100-2001\",\n  \"website\": \"https://smithlaw.com\",\n  \"addressLine1\": \"456 Legal Blvd\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90002\",\n  \"notes\": \"Updated notes\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/update",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "update"]
+            },
+            "description": "Updates an existing contact by `id`. Returns the updated contact.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Delete Contact",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contact/delete/{{contactId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "delete", "{{contactId}}"]
+            },
+            "description": "Deactivates a contact by ID. Returns the updated (deactivated) contact.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Get Law Firms",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contact/lawfirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "lawfirm"]
+            },
+            "description": "Lists all law firm contacts. Optionally append `/{id}` to filter to a single ID.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Get Law Firm by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contact/lawfirm/{{lawFirmId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "lawfirm", "{{lawFirmId}}"]
+            },
+            "description": "Returns a single law firm contact wrapped in an array.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Get Medical Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contact/medical-provider",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "medical-provider"]
+            },
+            "description": "Lists all medical provider contacts.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Get Funding Companies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contact/funding-company",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "funding-company"]
+            },
+            "description": "Lists all funding company (lien holder) contacts.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Get Leads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contact/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "leads"]
+            },
+            "description": "Lists all lead contacts.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Search Law Firms (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"Smith\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/lawfirm/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "lawfirm", "v3"]
+            },
+            "description": "Paginated search for law firms.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Search Medical Providers (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/medical-provider/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "medical-provider", "v3"]
+            },
+            "description": "Paginated search for medical providers.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Search Medical Providers by ID (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/medical-provider/v3/{{medicalProviderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "medical-provider", "v3", "{{medicalProviderId}}"]
+            },
+            "description": "Paginated search for medical providers scoped to a specific provider ID.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Search Funding Companies (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/funding-company/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "funding-company", "v3"]
+            },
+            "description": "Paginated search for funding companies.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Search Funding Companies by ID (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/funding-company/v3/{{fundingCompanyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "funding-company", "v3", "{{fundingCompanyId}}"]
+            },
+            "description": "Paginated search for funding companies scoped to a specific company ID.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Search Leads (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/leads/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "leads", "v3"]
+            },
+            "description": "Paginated search for lead contacts.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Search Leads by ID (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/leads/v3/{{leadContactId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "leads", "v3", "{{leadContactId}}"]
+            },
+            "description": "Paginated search for leads scoped to a specific lead ID.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Get Law Firm Roles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contact/lawfirm/role/{{lawFirmId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "lawfirm", "role", "{{lawFirmId}}"]
+            },
+            "description": "Returns role contacts for a given law firm. Optionally append `/{id}` for a specific role.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Export Contacts CSV",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactType\": \"LawFirm\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/generate-csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "generate-csv"]
+            },
+            "description": "Generates a base64-encoded CSV export of contacts for a given type.\nResponse: `{ \"data\": \"<base64-csv>\" }`\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Export Facility CSV",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{facilityId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contact/generate-facility-csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["contact", "generate-facility-csv"]
+            },
+            "description": "Generates a facility CSV stub (legacy route, returns empty data string).\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Facility",
+      "description": "CRUD for medical facilities and their contact persons.\nRequired permission: `SYNQ_LIENS.lien:service`",
+      "item": [
+        {
+          "name": "Create Facility",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sunrise Medical Center\",\n  \"code\": \"SMC-001\",\n  \"externalReference\": \"EXT-12345\",\n  \"addressLine1\": \"100 Health Blvd\",\n  \"addressLine2\": \"Suite 200\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90001\",\n  \"phone\": \"555-200-1000\",\n  \"email\": \"info@sunrisemedical.com\",\n  \"fax\": \"555-200-1001\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/facility/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["facility", "create"]
+            },
+            "description": "Creates a new facility. Returns 201 Created with the new facility.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Update Facility",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{facilityId}}\",\n  \"name\": \"Sunrise Medical Center Updated\",\n  \"code\": \"SMC-002\",\n  \"externalReference\": \"EXT-99999\",\n  \"addressLine1\": \"200 Health Ave\",\n  \"addressLine2\": \"\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90002\",\n  \"phone\": \"555-200-2000\",\n  \"email\": \"info@sunrise-updated.com\",\n  \"fax\": \"555-200-2001\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/facility/update",
+              "host": ["{{baseUrl}}"],
+              "path": ["facility", "update"]
+            },
+            "description": "Updates an existing facility by `id`. Returns the updated facility.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Delete Facility",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facility/delete/{{facilityId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["facility", "delete", "{{facilityId}}"]
+            },
+            "description": "Deactivates a facility by ID. Returns 204 No Content.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "List Facilities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facility/list",
+              "host": ["{{baseUrl}}"],
+              "path": ["facility", "list"]
+            },
+            "description": "Lists all active facilities. Optionally append `/{id}` to filter to one facility.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Search Facilities (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"isActive\": true,\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/facility/list/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["facility", "list", "v3"]
+            },
+            "description": "Paginated search for facilities.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Create Contact Person",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"facilityId\": \"{{facilityId}}\",\n  \"firstName\": \"Alice\",\n  \"lastName\": \"Johnson\",\n  \"position\": \"Billing Manager\",\n  \"email\": \"alice@sunrisemedical.com\",\n  \"phone\": \"555-200-3000\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/facility/contactperson",
+              "host": ["{{baseUrl}}"],
+              "path": ["facility", "contactperson"]
+            },
+            "description": "Creates a new contact person for a facility. Returns 200 with the created contact person.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Update Contact Person",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{facilityContactId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"firstName\": \"Alice\",\n  \"lastName\": \"Johnson Updated\",\n  \"position\": \"Senior Billing Manager\",\n  \"email\": \"alice.updated@sunrisemedical.com\",\n  \"phone\": \"555-200-3001\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/facility/update-contactperson",
+              "host": ["{{baseUrl}}"],
+              "path": ["facility", "update-contactperson"]
+            },
+            "description": "Updates a facility contact person by `id`. Returns the updated contact person.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Delete Contact Person",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facility/delete-contactperson/{{facilityContactId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["facility", "delete-contactperson", "{{facilityContactId}}"]
+            },
+            "description": "Deletes a facility contact person by ID. Returns 204 No Content.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        },
+        {
+          "name": "Get Contact Persons by Facility",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facility/get-contactperson/{{facilityId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["facility", "get-contactperson", "{{facilityId}}"]
+            },
+            "description": "Returns all contact persons for a given facility.\nPermission: `SYNQ_LIENS.lien:service`"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Settlement",
+      "description": "Settlement reductions, settlements, and payment details.\nRequired permissions: `SYNQ_LIENS.lien:update` (writes), `SYNQ_LIENS.lien:read` (reads)",
+      "item": [
+        {
+          "name": "Create Lien Reduction",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"lienId\": \"{{lienId}}\",\n  \"reductionDate\": \"2026-05-30\",\n  \"amount\": 1500.00,\n  \"note\": \"Negotiated reduction per agreement\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/service/liens/update/reduction",
+              "host": ["{{baseUrl}}"],
+              "path": ["service", "liens", "update", "reduction"]
+            },
+            "description": "Records a lien reduction. Returns 201 Created with the reduction record.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Create Lien Settlement",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"lienId\": \"{{lienId}}\",\n  \"paymentNumber\": \"PMT-001\",\n  \"amount\": 5000.00,\n  \"status\": \"Pending\",\n  \"note\": \"Initial settlement offer\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/service/liens/update/settlement",
+              "host": ["{{baseUrl}}"],
+              "path": ["service", "liens", "update", "settlement"]
+            },
+            "description": "Records a lien settlement entry. Returns 201 Created with the settlement record.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Create Settlement Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"lienId\": \"{{lienId}}\",\n  \"paymentNumber\": \"PMT-001\",\n  \"amount\": 5000.00,\n  \"paymentDate\": \"2026-06-01\",\n  \"payee\": \"Sunrise Medical Center\",\n  \"checkNumber\": \"CHK-10042\",\n  \"note\": \"Final payment\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/service/liens/settlement/payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["service", "liens", "settlement", "payment"]
+            },
+            "description": "Records a settlement payment detail. Returns 201 Created with the payment record.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Delete Settlement Payment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/service/delete-payment/{{paymentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["service", "delete-payment", "{{paymentId}}"]
+            },
+            "description": "Deletes a settlement payment detail by ID.\nResponse: `{ \"isSuccess\": true, \"message\": \"...\" }`\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Get Settlement History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/service/settlement/history/{{caseId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["service", "settlement", "history", "{{caseId}}"]
+            },
+            "description": "Returns all settlements, reductions, and payments for a case.\nResponse: `{ \"settlements\": [...], \"reductions\": [...], \"payments\": [...] }`\nPermission: `SYNQ_LIENS.lien:read`"
+          },
+          "response": [
+            {
+              "name": "200 OK - Settlement history with dummy data",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/service/settlement/history/{{caseId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["service", "settlement", "history", "{{caseId}}"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "cookie": [],
+              "body": "{\n  \"settlements\": [\n    {\n      \"id\": \"8b2a98e6-68c4-4ee7-a75d-26b43238a6b1\",\n      \"tenantId\": \"11111111-1111-1111-1111-111111111111\",\n      \"caseId\": \"22222222-2222-2222-2222-222222222222\",\n      \"lienId\": \"33333333-3333-3333-3333-333333333333\",\n      \"paymentNumber\": 1,\n      \"amount\": 5000.00,\n      \"status\": \"Pending\",\n      \"note\": \"Initial settlement offer\",\n      \"createdAtUtc\": \"2026-06-01T14:30:00Z\",\n      \"updatedAtUtc\": \"2026-06-01T14:30:00Z\"\n    },\n    {\n      \"id\": \"7ce9df65-b8af-47f7-9765-7c6cc85485c3\",\n      \"tenantId\": \"11111111-1111-1111-1111-111111111111\",\n      \"caseId\": \"22222222-2222-2222-2222-222222222222\",\n      \"lienId\": \"44444444-4444-4444-4444-444444444444\",\n      \"paymentNumber\": 2,\n      \"amount\": 2750.00,\n      \"status\": \"Approved\",\n      \"note\": \"Final approved settlement amount\",\n      \"createdAtUtc\": \"2026-06-03T16:10:00Z\",\n      \"updatedAtUtc\": \"2026-06-04T09:25:00Z\"\n    }\n  ],\n  \"reductions\": [\n    {\n      \"id\": \"391c687e-4eb5-44aa-b4b6-35cb529e828b\",\n      \"tenantId\": \"11111111-1111-1111-1111-111111111111\",\n      \"caseId\": \"22222222-2222-2222-2222-222222222222\",\n      \"lienId\": \"33333333-3333-3333-3333-333333333333\",\n      \"reductionDate\": \"2026-05-30\",\n      \"amount\": 1500.00,\n      \"note\": \"Negotiated reduction per agreement\",\n      \"createdAtUtc\": \"2026-05-30T18:05:00Z\",\n      \"updatedAtUtc\": \"2026-05-30T18:05:00Z\"\n    },\n    {\n      \"id\": \"6cc87289-31be-4207-a550-63f845bc6768\",\n      \"tenantId\": \"11111111-1111-1111-1111-111111111111\",\n      \"caseId\": \"22222222-2222-2222-2222-222222222222\",\n      \"lienId\": \"44444444-4444-4444-4444-444444444444\",\n      \"reductionDate\": \"2026-06-02\",\n      \"amount\": 750.00,\n      \"note\": \"Prompt payment discount\",\n      \"createdAtUtc\": \"2026-06-02T17:20:00Z\",\n      \"updatedAtUtc\": \"2026-06-02T17:20:00Z\"\n    }\n  ],\n  \"payments\": [\n    {\n      \"id\": \"53a99d8d-c3b7-423f-802f-8389c94d587d\",\n      \"tenantId\": \"11111111-1111-1111-1111-111111111111\",\n      \"caseId\": \"22222222-2222-2222-2222-222222222222\",\n      \"lienId\": \"33333333-3333-3333-3333-333333333333\",\n      \"paymentNumber\": 1,\n      \"amount\": 5000.00,\n      \"paymentDate\": \"2026-06-01\",\n      \"payee\": \"Sunrise Medical Center\",\n      \"checkNumber\": \"CHK-10042\",\n      \"note\": \"Final payment\",\n      \"createdAtUtc\": \"2026-06-01T19:45:00Z\",\n      \"updatedAtUtc\": \"2026-06-01T19:45:00Z\"\n    },\n    {\n      \"id\": \"ed33219c-6cff-4e5b-bd0c-7e3435bd01ff\",\n      \"tenantId\": \"11111111-1111-1111-1111-111111111111\",\n      \"caseId\": \"22222222-2222-2222-2222-222222222222\",\n      \"lienId\": \"44444444-4444-4444-4444-444444444444\",\n      \"paymentNumber\": 2,\n      \"amount\": 2750.00,\n      \"paymentDate\": \"2026-06-04\",\n      \"payee\": \"Clearwater Radiology Group\",\n      \"checkNumber\": \"ACH-883104\",\n      \"note\": \"ACH settlement payment\",\n      \"createdAtUtc\": \"2026-06-04T20:15:00Z\",\n      \"updatedAtUtc\": \"2026-06-04T20:15:00Z\"\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "Report",
+      "description": "DIY (dynamic) report configuration, execution, and export.\nRequired permissions: `SYNQ_LIENS.case:read` (reads/runs), `SYNQ_LIENS.case:update` (delete)",
+      "item": [
+        {
+          "name": "Get Saved Reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy",
+              "host": ["{{baseUrl}}"],
+              "path": ["report", "diy"]
+            },
+            "description": "Returns all saved DIY report configurations for the current tenant/user.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Run Report",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config\": {\n    \"columns\": [\"caseNumber\", \"clientName\", \"status\", \"lienTotal\"],\n    \"filters\": {}\n  },\n  \"page\": 1,\n  \"limit\": 25,\n  \"sortBy\": \"clientName\",\n  \"sortDir\": \"asc\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/report/diy",
+              "host": ["{{baseUrl}}"],
+              "path": ["report", "diy"]
+            },
+            "description": "Executes a DIY report with a given config and pagination.\nResponse: paginated `{ items, page, pageSize, totalCount }`\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Export Report CSV",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config\": {\n    \"columns\": [\"caseNumber\", \"clientName\", \"status\", \"lienTotal\"],\n    \"filters\": {}\n  },\n  \"page\": 1,\n  \"limit\": 1000,\n  \"sortBy\": \"clientName\",\n  \"sortDir\": \"asc\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/export",
+              "host": ["{{baseUrl}}"],
+              "path": ["report", "diy", "export"]
+            },
+            "description": "Exports the DIY report result as a base64-encoded CSV.\nResponse: `{ \"data\": \"<base64-csv>\" }`\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Save Report Config",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Monthly Lien Summary\",\n  \"config\": {\n    \"columns\": [\"caseNumber\", \"clientName\", \"status\", \"lienTotal\"],\n    \"filters\": {}\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/save",
+              "host": ["{{baseUrl}}"],
+              "path": ["report", "diy", "save"]
+            },
+            "description": "Saves a named DIY report configuration. Returns 201 Created with the saved config record.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Delete Report Config",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/{{reportConfigId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["report", "diy", "{{reportConfigId}}"]
+            },
+            "description": "Deletes a saved DIY report configuration.\nResponse: `{ \"isSuccess\": true, \"message\": \"...\" }`\nPermission: `SYNQ_LIENS.case:update`"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Case",
+      "description": "Legacy case and lien management routes.\nBase path: `/api/liens/cases`\nRequired permissions vary by operation — see individual request descriptions.",
+      "item": [
+        {
+          "name": "Get Case Info (v2)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/getcaseinfo/{{caseId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "getcaseinfo", "{{caseId}}"]
+            },
+            "description": "Returns full legacy case info for a given case ID.\nResponse: `{ isSuccess, message, data: [LegacyCaseInfoV2Response] }`\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Get Cases by Law Firm",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/law/{{lawFirmId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "law", "{{lawFirmId}}"]
+            },
+            "description": "Returns all cases for a law firm. Optionally append `/true` for totals-only.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Search Cases by Law Firm (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lawFirmId\": \"{{lawFirmId}}\",\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/law/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "law", "v3"]
+            },
+            "description": "Paginated search of cases for a law firm with metrics.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Search Cases by Medical Provider (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"medicalId\": \"{{medicalProviderId}}\",\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/medical/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "medical", "v3"]
+            },
+            "description": "Paginated search of liens for a medical provider.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Search Cases by Funding Company (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/funding/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "funding", "v3"]
+            },
+            "description": "Paginated search of liens for a funding company.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Search Cases by Medical Facility (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"facilityId\": \"{{facilityId}}\",\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/medical/facility/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "medical", "facility", "v3"]
+            },
+            "description": "Paginated search of liens for a medical facility.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Search Cases by Lead (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leadId\": \"{{leadContactId}}\",\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/leads/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "leads", "v3"]
+            },
+            "description": "Paginated search of cases for a lead contact.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Get Case Updates (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/case-updates/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "case-updates", "v3"]
+            },
+            "description": "Paginated list of case update notes for a case.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Get Lien Updates (v3)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens-updates/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens-updates", "v3"]
+            },
+            "description": "Paginated lien audit/history for a case.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Search Cases (v3 filter)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page\": 1,\n  \"limit\": 20,\n  \"lawFirmId\": null,\n  \"accidentTypeId\": null,\n  \"statusId\": null,\n  \"caseManagerId\": null,\n  \"keyword\": \"\",\n  \"sortBy\": \"createdAt\",\n  \"sortDirection\": \"desc\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/v3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "v3"]
+            },
+            "description": "Paginated, filtered case search.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Create Case",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"CASE-2026-001\",\n  \"firstname\": \"John\",\n  \"lastname\": \"Doe\",\n  \"dob\": \"1985-06-15\",\n  \"address\": \"789 Elm St\",\n  \"city\": \"San Diego\",\n  \"state\": \"CA\",\n  \"zipcode\": \"92101\",\n  \"dateOfLoss\": \"2026-01-10\",\n  \"note\": \"Initial intake\",\n  \"externalCaseId\": \"EXT-2026-001\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "create"]
+            },
+            "description": "Creates a new case.\nResponse: `{ isSuccess, message, data: { id } }`\nPermission: `SYNQ_LIENS.case:create`"
+          }
+        },
+        {
+          "name": "Update Case",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstname\": \"John\",\n  \"lastname\": \"Doe Updated\",\n  \"dob\": \"1985-06-15\",\n  \"address\": \"999 Oak Ave\",\n  \"city\": \"San Diego\",\n  \"state\": \"CA\",\n  \"zipcode\": \"92102\",\n  \"dateOfLoss\": \"2026-01-10\",\n  \"note\": \"Updated note\",\n  \"externalCaseId\": \"EXT-2026-001-U\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/update/{{caseId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "update", "{{caseId}}"]
+            },
+            "description": "Updates a case by ID.\nResponse: `{ isSuccess, message }`\nPermission: `SYNQ_LIENS.case:update`"
+          }
+        },
+        {
+          "name": "Add Lien Facility (Medical Info)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": null,\n  \"liensId\": \"{{lienId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"facilityContactId\": \"{{facilityContactId}}\",\n  \"email\": \"billing@sunrisemedical.com\",\n  \"phone\": \"555-200-1000\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/facility",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "facility"]
+            },
+            "description": "Associates a medical facility with a lien.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Update Lien Facility",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{facilityId}}\",\n  \"liensId\": \"{{lienId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"facilityContactId\": \"{{facilityContactId}}\",\n  \"email\": \"billing-updated@sunrisemedical.com\",\n  \"phone\": \"555-200-9999\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/update-facility",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "update-facility"]
+            },
+            "description": "Updates the medical facility association for a lien.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Get Lien Facility",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/get-facility/{{lienId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "get-facility", "{{lienId}}"]
+            },
+            "description": "Returns the facility/medical-info record for a lien.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Add Lien Medical Info",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": null,\n  \"caseId\": \"{{caseId}}\",\n  \"status\": \"Active\",\n  \"purchaseDate\": \"2026-01-15\",\n  \"initialServiceDate\": \"2026-01-20\",\n  \"endServiceDate\": null,\n  \"note\": \"Initial medical record\",\n  \"isBulk\": false,\n  \"isServicing\": true,\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/medical",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "medical"]
+            },
+            "description": "Creates medical information for a lien.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Update Lien Medical Info",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{lienId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"status\": \"Serviced\",\n  \"purchaseDate\": \"2026-01-15\",\n  \"initialServiceDate\": \"2026-01-20\",\n  \"endServiceDate\": \"2026-05-01\",\n  \"note\": \"Completed service\",\n  \"isBulk\": false,\n  \"isServicing\": false,\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/update-medical",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "update-medical"]
+            },
+            "description": "Updates medical information for a lien.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Get Lien Medical Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/get-medical/{{lienId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "get-medical", "{{lienId}}"]
+            },
+            "description": "Returns medical information record for a lien.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Add Medical Code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": null,\n  \"liensId\": \"{{lienId}}\",\n  \"code\": \"99213\",\n  \"medicareCost\": 75.00,\n  \"billingAmount\": 250.00,\n  \"purchaseAmount\": 150.00,\n  \"payee\": \"Sunrise Medical Center\",\n  \"outboundCheckNumber\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/medicalcode",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "medicalcode"]
+            },
+            "description": "Adds a medical procedure code record to a lien.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Update Medical Code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{lienId}}\",\n  \"liensId\": \"{{lienId}}\",\n  \"code\": \"99213\",\n  \"medicareCost\": 75.00,\n  \"billingAmount\": 260.00,\n  \"purchaseAmount\": 155.00,\n  \"payee\": \"Sunrise Medical Center\",\n  \"outboundCheckNumber\": \"CHK-10043\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/update-medicalcode",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "update-medicalcode"]
+            },
+            "description": "Updates a medical procedure code record for a lien.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Get Medical Codes by Case",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/get-medicalcode/{{caseId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "get-medicalcode", "{{caseId}}"]
+            },
+            "description": "Returns all medical code records for a case.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Delete Medical Code",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/delete-medicalcode/{{lienId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "delete-medicalcode", "{{lienId}}"]
+            },
+            "description": "Deletes all medical code records for a lien.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Update Payee / Outbound Check",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": null,\n  \"liensId\": \"{{lienId}}\",\n  \"payee\": \"Sunrise Medical Center\",\n  \"outboundCheckNumber\": \"CHK-10050\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "payment"]
+            },
+            "description": "Sets the payee and outbound check number for a lien.\nPermission: `SYNQ_LIENS.lien:update`"
+          }
+        },
+        {
+          "name": "Get Payee / Outbound Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/get-payee-outbound/{{lienId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "get-payee-outbound", "{{lienId}}"]
+            },
+            "description": "Returns the payee/outbound-check record for a lien.\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        },
+        {
+          "name": "Create Case Manager",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstname\": \"Bob\",\n  \"lastname\": \"Manager\",\n  \"email\": \"bob.manager@smithlaw.com\",\n  \"phone\": \"555-300-1000\",\n  \"lawfirmId\": \"{{lawFirmId}}\",\n  \"roleId\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/casemanager",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "casemanager"]
+            },
+            "description": "Creates a new case manager contact.\nPermission: `SYNQ_LIENS.case:create`"
+          }
+        },
+        {
+          "name": "Update Case Manager",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{contactId}}\",\n  \"firstname\": \"Bob\",\n  \"lastname\": \"Manager Updated\",\n  \"email\": \"bob.updated@smithlaw.com\",\n  \"phone\": \"555-300-2000\",\n  \"lawfirmId\": \"{{lawFirmId}}\",\n  \"roleId\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/update-casemanager",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "update-casemanager"]
+            },
+            "description": "Updates a case manager contact.\nPermission: `SYNQ_LIENS.case:update`"
+          }
+        },
+        {
+          "name": "Delete Case Manager",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/delete-casemanager/{{contactId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "delete-casemanager", "{{contactId}}"]
+            },
+            "description": "Deletes a case manager by ID.\nPermission: `SYNQ_LIENS.case:update`"
+          }
+        },
+        {
+          "name": "Reassign Law Firm",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"lawfirm\": \"{{lawFirmId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/reassign/lawfirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "reassign", "lawfirm"]
+            },
+            "description": "Reassigns a case to a different law firm.\nPermission: `SYNQ_LIENS.case:update`"
+          }
+        },
+        {
+          "name": "Reassign Case Manager",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"caseManager\": \"{{contactId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/reassign/casemanager",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "reassign", "casemanager"]
+            },
+            "description": "Reassigns a case to a different case manager.\nPermission: `SYNQ_LIENS.case:update`"
+          }
+        },
+        {
+          "name": "Reassign Lead",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"leadId\": \"{{leadContactId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/reassign/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "reassign", "leads"]
+            },
+            "description": "Reassigns a case to a different lead contact.\nPermission: `SYNQ_LIENS.case:update`"
+          }
+        },
+        {
+          "name": "Batch Reassign",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactType\": \"LawFirm\",\n  \"oldId\": \"{{lawFirmId}}\",\n  \"newId\": \"<new-lawfirm-guid>\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/batch-reassign",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "batch-reassign"]
+            },
+            "description": "Batch reassigns all cases from one contact to another of the same type.\nPermission: `SYNQ_LIENS.case:update`"
+          }
+        },
+        {
+          "name": "Generate Payoff Quote",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/payoff-quote/{{caseId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "payoff-quote", "{{caseId}}"]
+            },
+            "description": "Generates a payoff quote document URL for a case.\nResponse: `{ isSuccess, message, url }`\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Dashboard Pie Chart",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/dashboard/piechart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "dashboard", "piechart"]
+            },
+            "description": "Returns dashboard summary data: total cases, active cases, lien counts, and status breakdowns.\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Export Cases CSV",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": null,\n  \"lawFirmId\": \"{{lawFirmId}}\",\n  \"accidentTypeId\": null,\n  \"statusId\": null,\n  \"caseManagerId\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/generate-csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "generate-csv"]
+            },
+            "description": "Generates a CSV export for cases matching the given filters.\nResponse: `{ isSuccess, message, data: [{ base64, filename, export_format }] }`\nPermission: `SYNQ_LIENS.case:read`"
+          }
+        },
+        {
+          "name": "Export Liens CSV",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"liensId\": null,\n  \"lawFirmId\": null,\n  \"medicalFacilityId\": null,\n  \"purchaseDate\": null,\n  \"caseManagerId\": null,\n  \"lienStatusId\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/generate-csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "cases", "liens", "generate-csv"]
+            },
+            "description": "Generates a CSV export for liens matching the given filters.\nResponse: `{ isSuccess, message, data: [{ base64, filename, export_format }] }`\nPermission: `SYNQ_LIENS.lien:read`"
+          }
+        }
+      ]
+    }
+
+  ]
+}

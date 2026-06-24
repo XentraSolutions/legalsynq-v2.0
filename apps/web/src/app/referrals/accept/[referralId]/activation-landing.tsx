@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { PublicAttachmentLink } from './public-attachment-link';
+import { buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
 
 /**
  * LSCC-01-002-01: Public direct acceptance removed.
@@ -38,6 +40,7 @@ interface ReferralPublicSummary {
   requestedService:    string;
   status:              string;
   isAlreadyAccepted:   boolean;
+  providerHasAccount?: boolean;
   attachments:         PublicAttachmentInfo[];
 }
 
@@ -54,8 +57,11 @@ function formatFileSize(bytes: number): string {
 }
 
 export function ActivationLanding({ summary, token, referralId }: ActivationLandingProps) {
-  const activateUrl = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}`;
-  const loginUrl    = `/login?returnTo=${encodeURIComponent(`/careconnect/referrals/${referralId}`)}&reason=referral-view`;
+  const activateUrl = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}&companyName=${encodeURIComponent(summary.providerName)}`;
+  const loginUrl = buildCareConnectReferralLoginUrl(
+    process.env.CC_COMMON_PORTAL_HOSTNAME,
+    `/careconnect/referrals/${referralId}`,
+  );
 
   const hasProviderContact = summary.providerPhone || summary.providerEmail;
   const hasProviderAddress = summary.providerAddressLine1 || summary.providerCity;
@@ -173,30 +179,15 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
               </h2>
               <div className="space-y-2">
                 {summary.attachments.map(att => {
-                  const downloadUrl =
-                    `/api/public/careconnect/api/referrals/${referralId}/public-attachments/${att.id}/url` +
-                    `?token=${encodeURIComponent(token)}&download=true`;
                   return (
-                    <a
+                    <PublicAttachmentLink
                       key={att.id}
-                      href={downloadUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 hover:border-primary/40 hover:bg-primary/5 transition-colors group"
-                    >
-                      <svg className="w-5 h-5 text-gray-400 group-hover:text-primary shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-gray-900 truncate font-medium">{att.fileName}</p>
-                        <p className="text-xs text-gray-400">{formatFileSize(att.fileSizeBytes)}</p>
-                      </div>
-                      <svg className="w-4 h-4 text-gray-400 group-hover:text-primary shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                    </a>
+                      attachmentId={att.id}
+                      fileName={att.fileName}
+                      fileSizeLabel={formatFileSize(att.fileSizeBytes)}
+                      referralId={referralId}
+                      token={token}
+                    />
                   );
                 })}
               </div>
@@ -209,8 +200,9 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
           <div>
             <h2 className="text-sm font-semibold text-gray-900 mb-1">Log in to view and accept this referral</h2>
             <p className="text-sm text-gray-500 leading-relaxed">
-              Accepting a referral requires platform access. Log in if you already have a CareConnect account,
-              or activate your account to get started.
+              {summary.providerHasAccount
+                ? 'Accepting a referral requires platform access. Log in if you already have a CareConnect account, or activate your account to get started.'
+                : 'Accepting a referral requires platform access. Activate your account to get started.'}
             </p>
           </div>
 
@@ -239,11 +231,13 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
           </Link>
 
           {/* Secondary CTA — existing platform users */}
-          <div className="text-center">
-            <Link href={loginUrl} className="text-sm text-primary hover:underline font-medium">
-              Already have an account? Log in
-            </Link>
-          </div>
+          {summary.providerHasAccount && (
+            <div className="text-center">
+              <Link href={loginUrl} className="text-sm text-primary hover:underline font-medium">
+                Already have an account? Log in
+              </Link>
+            </div>
+          )}
         </div>
 
       </div>

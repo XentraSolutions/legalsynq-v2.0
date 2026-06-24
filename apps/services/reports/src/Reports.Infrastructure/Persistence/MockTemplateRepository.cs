@@ -31,7 +31,7 @@ public sealed class MockTemplateRepository : ITemplateRepository
     public Task<ReportTemplate> CreateAsync(ReportTemplate template, CancellationToken ct)
     {
         if (template.Id == Guid.Empty)
-            template.Id = Guid.NewGuid();
+            template.Id = Guid.CreateVersion7();
         _log.LogDebug("MockTemplateRepository: Created {Id}", template.Id);
         return Task.FromResult(template);
     }
@@ -75,7 +75,7 @@ public sealed class MockTemplateRepository : ITemplateRepository
     public Task<ReportTemplateVersion> CreateVersionAsync(ReportTemplateVersion version, CancellationToken ct)
     {
         if (version.Id == Guid.Empty)
-            version.Id = Guid.NewGuid();
+            version.Id = Guid.CreateVersion7();
         _log.LogDebug("MockTemplateRepository: Created version {Id}", version.Id);
         return Task.FromResult(version);
     }
@@ -91,7 +91,7 @@ public sealed class MockTemplateRepository : ITemplateRepository
         _log.LogDebug("MockTemplateRepository: PublishVersionAtomic {TemplateId} v{Version}", templateId, versionNumber);
         var version = new ReportTemplateVersion
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ReportTemplateId = templateId,
             VersionNumber = versionNumber,
             IsPublished = true,
@@ -104,7 +104,7 @@ public sealed class MockTemplateRepository : ITemplateRepository
     public Task<ReportTemplateVersion> CreateVersionAtomicAsync(ReportTemplate template, ReportTemplateVersion version, CancellationToken ct)
     {
         if (version.Id == Guid.Empty)
-            version.Id = Guid.NewGuid();
+            version.Id = Guid.CreateVersion7();
         version.VersionNumber = template.CurrentVersion + 1;
         template.CurrentVersion = version.VersionNumber;
         _log.LogDebug("MockTemplateRepository: CreateVersionAtomic {TemplateId} v{Version}", template.Id, version.VersionNumber);

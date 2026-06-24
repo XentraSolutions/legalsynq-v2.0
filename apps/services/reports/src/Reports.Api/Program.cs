@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using Reports.Api.Configuration;
@@ -50,7 +51,7 @@ if (!string.IsNullOrWhiteSpace(signingKey))
                 ValidateIssuerSigningKey = true,
                 ValidIssuer              = jwtSection["Issuer"],
                 ValidAudience            = jwtSection["Audience"],
-                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
                 RoleClaimType            = "role",
                 ClockSkew                = TimeSpan.Zero
             };

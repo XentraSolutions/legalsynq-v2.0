@@ -22,7 +22,7 @@ public sealed class ServiceTokenIssuer : IServiceTokenIssuer
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.SigningKey);
 
-    public string IssueToken(string tenantId, string? actorUserId = null)
+    public string IssueToken(string tenantId, string? actorUserId = null, string? audience = null)
     {
         if (!IsConfigured)
             throw new InvalidOperationException(
@@ -51,12 +51,12 @@ public sealed class ServiceTokenIssuer : IServiceTokenIssuer
             claims.Add(new Claim(ServiceTokenAuthenticationDefaults.ActorClaim, $"user:{actorUserId}"));
         }
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId };
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var jwt = new JwtSecurityToken(
             issuer: _options.Issuer,
-            audience: _options.Audience,
+            audience: string.IsNullOrWhiteSpace(audience) ? _options.Audience : audience,
             claims: claims,
             notBefore: now,
             expires: now.AddMinutes(lifetime),

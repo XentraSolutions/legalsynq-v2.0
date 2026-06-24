@@ -29,7 +29,7 @@ public class UserOrganizationMembership
 
         return new UserOrganizationMembership
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             UserId = userId,
             OrganizationId = organizationId,
             MemberRole = memberRole,

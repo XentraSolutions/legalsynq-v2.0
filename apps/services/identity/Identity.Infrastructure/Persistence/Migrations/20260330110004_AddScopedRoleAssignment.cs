@@ -1,9 +1,12 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Identity.Infrastructure.Persistence.Migrations;
 
+[DbContext(typeof(IdentityDbContext))]
 [Migration("20260330110004_AddScopedRoleAssignment")]
 public partial class AddScopedRoleAssignment : Migration
 {

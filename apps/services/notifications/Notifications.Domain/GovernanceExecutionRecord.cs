@@ -9,7 +9,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class GovernanceExecutionRecord
 {
-    public Guid    Id                      { get; set; } = Guid.NewGuid();
+    public Guid    Id                      { get; set; } = Guid.CreateVersion7();
 
     /// <summary>Originating notification ID — nullable for simulations.</summary>
     public Guid?   NotificationId          { get; set; }

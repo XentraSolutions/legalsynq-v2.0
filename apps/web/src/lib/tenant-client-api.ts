@@ -77,6 +77,9 @@ export const tenantClientApi = {
   assignRole: (userId: string, roleId: string) =>
     apiClient.post<void>(`/identity/api/admin/users/${userId}/roles`, { roleId }),
 
+  assignMembership: (userId: string, organizationId: string, memberRole?: string) =>
+    apiClient.post<void>(`/identity/api/admin/users/${userId}/memberships`, { organizationId, memberRole }),
+
   removeRole: (userId: string, roleId: string) =>
     apiClient.delete<void>(`/identity/api/admin/users/${userId}/roles/${roleId}`),
 
@@ -129,6 +132,17 @@ export const tenantClientApi = {
 
   simulateAuthorization: (body: SimulationRequest) =>
     apiClient.post<SimulationResult>('/identity/api/admin/authorization/simulate', body),
+
+  // ── Map provider setting (TenantAdmin) ──────────────────────────────────
+
+  getMapProviderSetting: (tenantId: string) =>
+    apiClient.get<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/map-provider`),
+
+  upsertMapProviderSetting: (tenantId: string, value: 'google' | 'osm') =>
+    apiClient.put<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/map-provider`, { value }),
+
+  updateTimezoneSetting: (tenantId: string, value: string) =>
+    apiClient.put<{ value: string }>(`/tenant/api/tenants/${tenantId}/settings/timezone`, { value }),
 
   // ── LS-ID-TNT-013: Permission management (tenant-level) ──────────────────
 

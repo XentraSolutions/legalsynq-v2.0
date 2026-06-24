@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { updateProductEntitlement } from '@/app/tenants/[id]/actions';
+import { PRODUCT_CATALOG, mergeTenantEntitlements } from '@/lib/product-catalog';
 import type { ProductCode, ProductEntitlementSummary, EntitlementStatus } from '@/types/control-center';
 
 interface ProductEntitlementsPanelProps {
@@ -9,14 +10,12 @@ interface ProductEntitlementsPanelProps {
   entitlements: ProductEntitlementSummary[];
 }
 
-const PRODUCT_META: Record<ProductCode, { iconSrc: string; description: string }> = {
-  SynqFund:    { iconSrc: '/product-icons/synqfund.png',    description: 'Presettlement funding' },
-  SynqLien:    { iconSrc: '/product-icons/synqlien.png',    description: 'Medical lien tracking and settlement workflows' },
-  SynqBill:    { iconSrc: '/product-icons/synqbill.png',    description: 'Billing, invoicing, and fee management' },
-  SynqRx:      { iconSrc: '/product-icons/synqrx.png',      description: 'Prescription and pharmacy benefit coordination' },
-  SynqPayout:  { iconSrc: '/product-icons/synqpayout.png',  description: 'Disbursement and payout processing' },
-  CareConnect: { iconSrc: '/product-icons/synqconnect.png', description: 'Care coordination and provider network management' },
-};
+const PRODUCT_META = Object.fromEntries(
+  PRODUCT_CATALOG.map(product => [
+    product.code,
+    { iconSrc: product.iconSrc, description: product.description },
+  ]),
+) as Record<ProductCode, { iconSrc: string; description: string }>;
 
 /**
  * ProductEntitlementsPanel — interactive product toggle grid.
@@ -31,7 +30,7 @@ export function ProductEntitlementsPanel({
   tenantId,
   entitlements,
 }: ProductEntitlementsPanelProps) {
-  const [items, setItems] = useState<ProductEntitlementSummary[]>(entitlements);
+  const [items, setItems] = useState<ProductEntitlementSummary[]>(() => mergeTenantEntitlements(entitlements));
   const [pending, setPending] = useState<ProductCode | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -75,7 +74,6 @@ export function ProductEntitlementsPanel({
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
 
-      {/* Panel header */}
       <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           Product Entitlements
@@ -85,7 +83,6 @@ export function ProductEntitlementsPanel({
         </span>
       </div>
 
-      {/* Error banner */}
       {errorMsg && (
         <div className="mx-5 mt-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-md flex items-start gap-2.5">
           <span className="text-red-500 text-sm leading-none mt-0.5">&#9888;</span>
@@ -100,7 +97,6 @@ export function ProductEntitlementsPanel({
         </div>
       )}
 
-      {/* Product grid */}
       <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map(item => {
           const meta    = PRODUCT_META[item.productCode] ?? { iconSrc: '', description: '' };
@@ -122,8 +118,6 @@ export function ProductEntitlementsPanel({
   );
 }
 
-// ── ProductCard ───────────────────────────────────────────────────────────────
-
 interface ProductCardProps {
   item:        ProductEntitlementSummary;
   iconSrc:     string;
@@ -144,7 +138,6 @@ function ProductCard({ item, iconSrc, description, loading, onToggle }: ProductC
           : 'border-gray-200 bg-white',
       ].join(' ')}
     >
-      {/* Top row: icon + name + toggle */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           {iconSrc ? (
@@ -162,7 +155,6 @@ function ProductCard({ item, iconSrc, description, loading, onToggle }: ProductC
           </span>
         </div>
 
-        {/* Toggle switch */}
         <button
           role="switch"
           aria-checked={isActive}
@@ -190,12 +182,10 @@ function ProductCard({ item, iconSrc, description, loading, onToggle }: ProductC
         </button>
       </div>
 
-      {/* Description */}
       <p className="mt-2 text-xs text-gray-500 leading-relaxed">
         {description}
       </p>
 
-      {/* Status badge */}
       <div className="mt-3">
         <StatusBadge status={item.status} />
       </div>

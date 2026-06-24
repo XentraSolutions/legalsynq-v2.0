@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth-guards';
+import { tenantServerApi } from '@/lib/tenant-api';
 import {
 
   notificationsServerApi,
@@ -57,14 +58,15 @@ function ChannelBadge({ channel }: { channel: string }) {
   );
 }
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string, timezone: string): string {
   try {
     return new Date(iso).toLocaleString('en-US', {
-      month:  'short',
-      day:    'numeric',
-      year:   'numeric',
-      hour:   'numeric',
-      minute: '2-digit',
+      month:    'short',
+      day:      'numeric',
+      year:     'numeric',
+      hour:     'numeric',
+      minute:   '2-digit',
+      timeZone: timezone,
     });
   } catch {
     return iso;
@@ -257,6 +259,9 @@ export default async function ActivityPage({
   const sp = await searchParams;
   const session = await requireOrg();
   const { tenantId } = session;
+
+  const tzResult = await tenantServerApi.getTimezoneSetting(tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
 
   const status  = sp.status  || '';
   const channel = sp.channel || '';
@@ -531,7 +536,7 @@ export default async function ActivityPage({
                       )}
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
-                      {fmtDate(n.createdAt)}
+                      {fmtDate(n.createdAt, tenantTimezone)}
                     </td>
                     <td className="px-5 py-3 text-right">
                       {n.status.toLowerCase() === 'failed' && (

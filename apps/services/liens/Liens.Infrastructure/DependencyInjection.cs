@@ -1,4 +1,5 @@
 using BuildingBlocks.Authentication.ServiceTokens;
+using BuildingBlocks.Commerce;
 using BuildingBlocks.Context;
 using BuildingBlocks.Notifications;
 using LegalSynq.AuditClient;
@@ -37,9 +38,11 @@ public static class DependencyInjection
         services.AddScoped<ICaseRepository, CaseRepository>();
         services.AddScoped<IContactRepository, ContactRepository>();
         services.AddScoped<IFacilityRepository, FacilityRepository>();
+        services.AddScoped<IFacilityContactPersonRepository, FacilityContactPersonRepository>();
         services.AddScoped<ILookupValueRepository, LookupValueRepository>();
         services.AddScoped<ILienRepository, LienRepository>();
         services.AddScoped<ILienOfferRepository, LienOfferRepository>();
+        services.AddScoped<ISellingPortfolioRepository, SellingPortfolioRepository>();
         services.AddScoped<IBillOfSaleRepository, BillOfSaleRepository>();
         services.AddScoped<IServicingItemRepository, ServicingItemRepository>();
         services.AddScoped<ILienTaskRepository, LienTaskRepository>();
@@ -56,12 +59,15 @@ public static class DependencyInjection
         services.AddScoped<ILienSaleService, LienSaleService>();
         services.AddScoped<ILienService, LienService>();
         services.AddScoped<ILienOfferService, LienOfferService>();
+        services.AddScoped<ILienEligibilityValidator, LienEligibilityValidator>();
+        services.AddScoped<ISellingPortfolioService, SellingPortfolioService>();
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();
         services.AddScoped<IBillOfSaleDocumentQueryService, BillOfSaleDocumentQueryService>();
         services.AddScoped<ICaseService, CaseService>();
         services.AddScoped<IServicingItemService, ServicingItemService>();
         services.AddScoped<ILookupValueService, LookupValueService>();
         services.AddScoped<IContactService, ContactService>();
+        services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<ILienTaskService, LienTaskService>();
         services.AddScoped<ILienWorkflowConfigService, LienWorkflowConfigService>();
         services.AddScoped<IWorkflowTransitionValidationService, WorkflowTransitionValidationService>();
@@ -70,6 +76,14 @@ public static class DependencyInjection
         services.AddScoped<ILienTaskGenerationEngine, LienTaskGenerationEngine>();
         services.AddScoped<ILienTaskNoteService, LienTaskNoteService>();
         services.AddScoped<ILienCaseNoteService, LienCaseNoteService>();
+        // Settlement, Reduction & Payment
+        services.AddScoped<ILienReductionRepository, LienReductionRepository>();
+        services.AddScoped<ILienSettlementRepository, LienSettlementRepository>();
+        services.AddScoped<ISettlementPaymentDetailRepository, SettlementPaymentDetailRepository>();
+        services.AddScoped<ISettlementService, SettlementService>();
+        // DIY Reports
+        services.AddScoped<IDIYReportConfigRepository, DIYReportConfigRepository>();
+        services.AddScoped<IDIYReportService, DIYReportService>();
         // LS-LIENS-FLOW-006 — Task governance
         services.AddScoped<ILienTaskGovernanceService, LienTaskGovernanceService>();
         // LS-LIENS-FLOW-007 — Flow instance linkage resolver
@@ -125,6 +139,22 @@ public static class DependencyInjection
             client.Timeout     = TimeSpan.FromSeconds(30);
         })
         .AddHttpMessageHandler<TaskServiceAuthDelegatingHandler>();
+
+        // LS-COMMERCE-FINAL-01 — Commerce ecosystem integration.
+        // Enabled=false (default): noop entitlement client + noop lifecycle notifier; no Commerce dependency.
+        // Enabled=true: HTTP entitlement client + HTTP lifecycle notifier targeting CommerceIntegration:BaseUrl.
+        services.AddCommerceIntegration(configuration);
+        services.AddCommerceServiceMetadata(
+            configuration:       configuration,
+            serviceName:         "Synq Liens",
+            productKey:          "SYNQLIEN",
+            primaryFeatureKey:   "synqlien.access",
+            subscriptionRequired: true,
+            monetizationEnabled: false);
+
+        // LS-COMMERCE-FINAL-01 — Lien entitlement policy helper.
+        // Registered as scoped (per-request) because it reads ICurrentRequestContext.
+        services.AddScoped<Liens.Application.Commerce.LienEntitlementPolicy>();
 
         return services;
     }

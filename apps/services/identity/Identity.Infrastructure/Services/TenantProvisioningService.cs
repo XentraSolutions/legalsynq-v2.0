@@ -154,6 +154,6 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
             if (!taken) return candidate;
         }
 
-        return $"{slug}-{Guid.NewGuid().ToString("N")[..6]}";
+        return $"{slug}-{Guid.CreateVersion7().ToString("N")[..6]}";
     }
 }

@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using Identity.Api.Helpers;
 using Identity.Application;
 using Identity.Application.DTOs;
+using Identity.Application.Exceptions;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
@@ -16,6 +18,12 @@ namespace Identity.Api.Endpoints;
 
 public static class AuthEndpoints
 {
+    private sealed record TenantPrimaryMembership(
+        Guid TenantId,
+        Guid OrganizationId,
+        string OrganizationName,
+        string OrganizationType);
+
     public static void MapAuthEndpoints(this WebApplication app)
     {
         // ── POST /api/auth/login ─────────────────────────────────────────────
@@ -40,6 +48,15 @@ public static class AuthEndpoints
             catch (UnauthorizedAccessException)
             {
                 return Results.Problem("Invalid credentials.", statusCode: 401);
+            }
+            catch (CareConnectPortalRoleRestrictedException ex)
+            {
+                return Results.Json(new
+                {
+                    title = "CareConnectPortalRoleRestricted",
+                    detail = ex.Message,
+                    status = 403,
+                }, statusCode: 403);
             }
             catch (InvalidOperationException ex)
             {
@@ -75,6 +92,94 @@ public static class AuthEndpoints
         {
             var response = await authService.GetCurrentUserAsync(httpContext.User, ct);
             return Results.Ok(response);
+        })
+        .RequireAuthorization();
+
+        // ── GET /api/auth/my-product-access ───────────────────────────────────
+        // Authenticated (Bearer JWT required).
+        // Returns the calling user's direct product-access rows across all tenants,
+        // enriched with tenant + primary-org metadata for cross-tenant UI flows.
+        app.MapGet("/api/auth/my-product-access", async (
+            HttpContext httpContext,
+            IdentityDbContext db,
+            CancellationToken ct) =>
+        {
+            var sub = httpContext.User.FindFirstValue("sub")
+                   ?? httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!Guid.TryParse(sub, out var userId))
+                return Results.Unauthorized();
+
+            var requestedProductCode = httpContext.Request.Query["productCode"].FirstOrDefault();
+            var normalizedProductCode = string.IsNullOrWhiteSpace(requestedProductCode)
+                ? null
+                : requestedProductCode.Trim().ToUpperInvariant();
+
+            var records = await db.UserProductAccessRecords
+                .AsNoTracking()
+                .Where(a => a.UserId == userId && a.AccessStatus == AccessStatus.Granted)
+                .Where(a => normalizedProductCode == null || a.ProductCode == normalizedProductCode)
+                .Join(
+                    db.Tenants.AsNoTracking().Where(t => t.IsActive),
+                    access => access.TenantId,
+                    tenant => tenant.Id,
+                    (access, tenant) => new
+                    {
+                        access.Id,
+                        access.TenantId,
+                        access.ProductCode,
+                        access.AccessStatus,
+                        access.GrantedAtUtc,
+                        access.OrganizationId,
+                        TenantCode = tenant.Code,
+                        TenantName = tenant.Name,
+                        TenantSubdomain = tenant.Subdomain,
+                    })
+                .ToListAsync(ct);
+
+            var tenantIds = records.Select(r => r.TenantId).Distinct().ToList();
+            var primaryMemberships = tenantIds.Count == 0
+                ? new List<TenantPrimaryMembership>()
+                : await db.UserOrganizationMemberships
+                    .AsNoTracking()
+                    .Include(m => m.Organization)
+                    .Where(m => m.UserId == userId
+                             && m.IsActive
+                             && m.IsPrimary
+                             && m.Organization.TenantId != null
+                             && tenantIds.Contains(m.Organization.TenantId.Value))
+                    .Select(m => new TenantPrimaryMembership(
+                        m.Organization.TenantId!.Value,
+                        m.Organization.Id,
+                        m.Organization.DisplayName ?? m.Organization.Name,
+                        m.Organization.OrgType))
+                    .ToListAsync(ct);
+            var primaryMembershipByTenant = primaryMemberships
+                .GroupBy(m => m.TenantId)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var payload = records
+                .OrderBy(r => r.TenantName)
+                .ThenBy(r => r.ProductCode)
+                .Select(r =>
+                {
+                    primaryMembershipByTenant.TryGetValue(r.TenantId, out var membership);
+                    return new
+                    {
+                        r.Id,
+                        r.TenantId,
+                        tenantCode = r.TenantCode,
+                        tenantName = r.TenantName,
+                        tenantSubdomain = r.TenantSubdomain,
+                        r.ProductCode,
+                        accessStatus = r.AccessStatus.ToString(),
+                        r.GrantedAtUtc,
+                        organizationId = membership?.OrganizationId ?? r.OrganizationId,
+                        organizationName = membership?.OrganizationName,
+                        organizationType = membership?.OrganizationType,
+                    };
+                });
+
+            return Results.Ok(payload);
         })
         .RequireAuthorization();
 
@@ -229,31 +334,6 @@ public static class AuthEndpoints
             user.SetPassword(passwordHash);
             user.Activate();
 
-            // Auto-assign the user to their tenant's organization if they don't
-            // already have a membership. Invited users (tenant user / tenant admin)
-            // always belong to the tenant's primary org — without this they land
-            // on the /no-org wall immediately after their first login.
-            var hasMembership = await db.UserOrganizationMemberships
-                .AnyAsync(m => m.UserId == user.Id, ct);
-
-            if (!hasMembership)
-            {
-                var tenantOrg = await db.Organizations
-                    .Where(o => o.TenantId == user.TenantId && o.IsActive)
-                    .OrderBy(o => o.Name)
-                    .FirstOrDefaultAsync(ct);
-
-                if (tenantOrg is not null)
-                {
-                    var membership = UserOrganizationMembership.Create(
-                        userId:         user.Id,
-                        organizationId: tenantOrg.Id,
-                        memberRole:     MemberRole.Member);
-                    membership.SetPrimary();
-                    db.UserOrganizationMemberships.Add(membership);
-                }
-            }
-
             // Mark the invitation accepted.
             invitation.Accept();
 
@@ -273,12 +353,12 @@ public static class AuthEndpoints
                 Scope = new AuditEventScopeDto
                 {
                     ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
+                    TenantId  = invitation.TenantId.ToString(),
                 },
                 Actor       = new AuditEventActorDto { Type = ActorType.User, Id = user.Id.ToString() },
                 Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
                 Action      = "InviteAccepted",
-                Description = $"User '{user.Email}' accepted invitation and activated account in tenant {user.TenantId}.",
+                Description = $"User '{user.Email}' accepted invitation and activated account in tenant {invitation.TenantId}.",
                 IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.For(
                     "identity-service", "identity.user.invite_accepted", invitation.Id.ToString()),
                 Tags = ["user-management", "invite", "activation"],
@@ -286,7 +366,7 @@ public static class AuthEndpoints
 
             // LS-ID-TNT-016-01: Build tenant portal base URL so the frontend can redirect
             // the user to the correct subdomain login page after accepting the invite.
-            var inviteTenant      = await db.Tenants.FindAsync([user.TenantId], ct);
+            var inviteTenant      = await db.Tenants.FindAsync([invitation.TenantId], ct);
             var tenantPortalUrl   = TenantPortalUrlHelper.BuildBaseUrl(inviteTenant, notifOptions.Value);
 
             return Results.Ok(new
@@ -342,6 +422,8 @@ public static class AuthEndpoints
             user.SetPassword(newHash);
             await db.SaveChangesAsync(ct);
 
+            var changePwdTenantIdStr = httpContext.User.FindFirstValue("tenant_id") ?? "";
+
             var now = DateTimeOffset.UtcNow;
             _ = auditClient.IngestAsync(new IngestAuditEventRequest
             {
@@ -355,7 +437,7 @@ public static class AuthEndpoints
                 Scope = new AuditEventScopeDto
                 {
                     ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
+                    TenantId  = changePwdTenantIdStr,
                 },
                 Actor       = new AuditEventActorDto
                 {
@@ -600,6 +682,12 @@ public static class AuthEndpoints
 
             await db.SaveChangesAsync(ct);
 
+            var resetTenantId = await db.UserTenants
+                .Where(ut => ut.UserId == user.Id && ut.IsActive)
+                .OrderBy(ut => ut.JoinedAtUtc)
+                .Select(ut => (Guid?)ut.TenantId)
+                .FirstOrDefaultAsync(ct);
+
             var now = DateTimeOffset.UtcNow;
             _ = auditClient.IngestAsync(new IngestAuditEventRequest
             {
@@ -613,7 +701,7 @@ public static class AuthEndpoints
                 Scope = new AuditEventScopeDto
                 {
                     ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
+                    TenantId  = resetTenantId?.ToString() ?? "",
                 },
                 Actor = new AuditEventActorDto
                 {
@@ -623,7 +711,7 @@ public static class AuthEndpoints
                 },
                 Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
                 Action      = "PasswordResetCompleted",
-                Description = $"Password reset completed for user '{user.Email}' in tenant {user.TenantId}.",
+                Description = $"Password reset completed for user '{user.Email}'.",
                 IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
                     now, "identity-service", "identity.user.password_reset_completed", user.Id.ToString()),
                 Tags = ["auth", "security", "password-reset"],
@@ -642,6 +730,7 @@ public static class AuthEndpoints
         // out-of-band (email/SMS) by the notification service.
         app.MapPost("/api/auth/forgot-password", async (
             ForgotPasswordRequest                    body,
+            HttpRequest                              request,
             IdentityDbContext                        db,
             IAuditEventClient                        auditClient,
             INotificationsEmailClient                emailClient,
@@ -651,11 +740,219 @@ public static class AuthEndpoints
             CancellationToken                        ct) =>
         {
             var logger = loggerFactory.CreateLogger(nameof(AuthEndpoints));
+            var fpSw = Stopwatch.StartNew();
 
-            if (string.IsNullOrWhiteSpace(body.TenantCode))
-                return Results.BadRequest(new { error = "tenantCode is required." });
+            // Floor: mitigate timing oracle — always take at least 150 ms
+            const int MinResponseMs = 150;
+
             if (string.IsNullOrWhiteSpace(body.Email))
                 return Results.BadRequest(new { error = "email is required." });
+
+            // AUTH-CC01: CareConnect common-portal forgot-password flow.
+            // When ResolveByEmail=true the caller does not know the tenant code;
+            // we look the user up globally by email, find their CareConnect tenant
+            // via UserProductAccessRecords, then fall through to the shared token
+            // creation and email delivery code below.
+            // All failure paths return the same generic Ok response to prevent
+            // timing/existence oracles.
+            //
+            // SECURITY: ResolveByEmail=true is only accepted from trusted internal
+            // callers (BFF). Require the X-Ls-Internal-Source header to be present;
+            // external callers that bypass the BFF cannot set this header because it
+            // must be stripped by the reverse proxy before forwarding external traffic.
+            if (body.ResolveByEmail && !request.Headers.TryGetValue("X-Ls-Internal-Source", out _))
+            {
+                logger.LogWarning(
+                    "[forgot-password] ResolveByEmail=true received without X-Ls-Internal-Source header — rejecting.");
+                return Results.BadRequest(new { error = "tenantCode is required." });
+            }
+
+            if (body.ResolveByEmail)
+            {
+                logger.LogInformation(
+                    "[forgot-password] AUTH-CC01: ResolveByEmail=true email={Email}",
+                    body.Email);
+
+                Tenant? ccTenant = null;
+                User?   ccUser   = null;
+
+                try
+                {
+                    var emailNormFp = body.Email.Trim().ToLowerInvariant();
+
+                    ccUser = await db.Users
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(u => u.Email == emailNormFp && u.IsActive, ct);
+
+                    if (ccUser is not null)
+                    {
+                        // Try UserProductAccessRecords first (LS-COR-AUT-002 source of truth).
+                        const string CcProductPrefix = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect;
+                        var ccAccess = await db.UserProductAccessRecords
+                            .AsNoTracking()
+                            .Where(a => a.UserId       == ccUser.Id
+                                     && a.ProductCode  == CcProductPrefix
+                                     && a.AccessStatus == AccessStatus.Granted)
+                            .Join(
+                                db.Tenants.Where(t => t.IsActive),
+                                a => a.TenantId,
+                                t => t.Id,
+                                (a, t) => new { Tenant = t, a.GrantedAtUtc })
+                            .OrderByDescending(a => a.GrantedAtUtc)
+                            .Select(a => a.Tenant)
+                            .FirstOrDefaultAsync(ct);
+
+                        if (ccAccess is not null)
+                        {
+                            ccTenant = ccAccess;
+                        }
+                        else
+                        {
+                            // Fall back to UserTenants (multi-tenant membership table).
+                            ccTenant = await db.UserTenants
+                                .AsNoTracking()
+                                .Where(ut => ut.UserId == ccUser.Id && ut.IsActive)
+                                .Join(
+                                    db.Tenants.Where(t => t.IsActive),
+                                    ut => ut.TenantId,
+                                    t  => t.Id,
+                                    (ut, t) => new { Tenant = t, ut.JoinedAtUtc })
+                                .OrderByDescending(ut => ut.JoinedAtUtc)
+                                .Select(ut => ut.Tenant)
+                                .FirstOrDefaultAsync(ct);
+                        }
+                    }
+
+                    if (ccUser is null || ccTenant is null)
+                    {
+                        logger.LogInformation(
+                            "[forgot-password] AUTH-CC01: user or tenant not resolved for email={Email}; returning generic ok.",
+                            body.Email);
+                        return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
+                    }
+
+                    // --- shared token creation & email delivery (mirrored from the standard path) ---
+                    // Generate token materials up-front, before any EF mutations, so we only
+                    // touch the DB when we have a valid reset link to send.
+                    var rawCcToken  = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+                    var ccTokenHash = Convert.ToHexString(
+                        System.Security.Cryptography.SHA256.HashData(
+                            System.Text.Encoding.UTF8.GetBytes(rawCcToken)));
+
+                    var ccResetToken = PasswordResetToken.Create(ccUser.Id, ccTenant.Id, ccTokenHash);
+
+                    var opts = notifOptions.Value;
+                    string? ccResetLink;
+                    if (!string.IsNullOrWhiteSpace(opts.CareConnectPortalBaseUrl))
+                    {
+                        ccResetLink = $"{opts.CareConnectPortalBaseUrl.TrimEnd('/')}/reset-password?token={Uri.EscapeDataString(rawCcToken)}";
+                    }
+                    else
+                    {
+                        ccResetLink = TenantPortalUrlHelper.Build(ccTenant, "reset-password", rawCcToken, opts);
+                    }
+
+                    if (ccResetLink is null)
+                    {
+                        logger.LogError(
+                            "[forgot-password] AUTH-CC01: Neither CareConnectPortalBaseUrl nor PortalBaseDomain/PortalBaseUrl is configured. " +
+                            "Reset email for user {UserId} ({Email}) cannot be sent.",
+                            ccUser.Id, ccUser.Email);
+                    }
+                    else
+                    {
+                        // Revoke here, atomically with SaveChangesAsync — EF never tracks
+                        // mutations that won't be persisted.
+                        var existingCcTokens = await db.PasswordResetTokens
+                            .Where(t => t.UserId == ccUser.Id && t.Status == PasswordResetToken.Statuses.Pending)
+                            .ToListAsync(ct);
+                        foreach (var old in existingCcTokens) old.Revoke();
+
+                        db.PasswordResetTokens.Add(ccResetToken);
+                        await db.SaveChangesAsync(ct);
+
+                        logger.LogInformation(
+                            "[forgot-password] AUTH-CC01: token created for user {UserId} ({Email}) tenant {TenantCode}.",
+                            ccUser.Id, ccUser.Email, ccTenant.Code);
+
+                        var ccDisplayName = !string.IsNullOrWhiteSpace(ccUser.FirstName)
+                            ? $"{ccUser.FirstName} {ccUser.LastName}".Trim()
+                            : ccUser.Email;
+
+                        if (env.IsDevelopment())
+                        {
+                            logger.LogInformation(
+                                "[forgot-password — dev only] AUTH-CC01: resetLink for {Email}: {ResetLink}",
+                                ccUser.Email, ccResetLink);
+                        }
+
+                        try
+                        {
+                            var (_, ccEmailSent, ccEmailError) = await emailClient.SendPasswordResetEmailAsync(
+                                ccUser.Email, ccDisplayName, ccResetLink, ccTenant.Id, ct);
+
+                            if (!ccEmailSent)
+                                logger.LogWarning(
+                                    "[forgot-password] AUTH-CC01: email delivery failed for user {UserId} ({Email}): {Error}",
+                                    ccUser.Id, ccUser.Email, ccEmailError ?? "(unknown)");
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogError(ex,
+                                "[forgot-password] AUTH-CC01: exception sending reset email for user {UserId} ({Email}).",
+                                ccUser.Id, ccUser.Email);
+                        }
+
+                        // Audit only when a token was actually persisted and an email attempted.
+                        var ccNow = DateTimeOffset.UtcNow;
+                        _ = auditClient.IngestAsync(new LegalSynq.AuditClient.DTOs.IngestAuditEventRequest
+                        {
+                            EventType     = "identity.user.password_reset_requested",
+                            EventCategory = LegalSynq.AuditClient.Enums.EventCategory.Security,
+                            SourceSystem  = "identity-service",
+                            SourceService = "auth-api",
+                            Visibility    = LegalSynq.AuditClient.Enums.VisibilityScope.User,
+                            Severity      = LegalSynq.AuditClient.Enums.SeverityLevel.Info,
+                            OccurredAtUtc = ccNow,
+                            Scope = new LegalSynq.AuditClient.DTOs.AuditEventScopeDto
+                            {
+                                ScopeType = LegalSynq.AuditClient.Enums.ScopeType.Tenant,
+                                TenantId  = ccTenant.Id.ToString(),
+                            },
+                            Actor = new LegalSynq.AuditClient.DTOs.AuditEventActorDto
+                            {
+                                Id   = ccUser.Id.ToString(),
+                                Type = LegalSynq.AuditClient.Enums.ActorType.User,
+                                Name = ccUser.Email,
+                            },
+                            Entity      = new LegalSynq.AuditClient.DTOs.AuditEventEntityDto { Type = "User", Id = ccUser.Id.ToString() },
+                            Action      = "PasswordResetRequested",
+                            Description = $"Self-service password reset requested (CareConnect common portal) for user '{ccUser.Email}' in tenant {ccTenant.Code}.",
+                            IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
+                                ccNow, "identity-service", "identity.user.password_reset_requested", ccUser.Id.ToString()),
+                            Tags = ["auth", "security", "password-reset", "careconnect"],
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex,
+                        "[forgot-password] AUTH-CC01: unexpected exception; returning generic ok.");
+                }
+                finally
+                {
+                    var fpElapsed = (int)fpSw.ElapsedMilliseconds;
+                    if (fpElapsed < MinResponseMs)
+                        await Task.Delay(MinResponseMs - fpElapsed, CancellationToken.None);
+                }
+
+                return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
+            }
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(body.TenantCode))
+                    return Results.BadRequest(new { error = "tenantCode is required." });
 
             logger.LogInformation("[forgot-password] Received request: tenantCode={TenantCode}, email={Email}",
                 body.TenantCode, body.Email);
@@ -678,7 +975,7 @@ public static class AuthEndpoints
             {
                 logger.LogInformation("[forgot-password] Code+subdomain lookup missed, trying TenantId={TenantId}", body.TenantId.Value);
                 tenant = await db.Tenants
-                    .FirstOrDefaultAsync(t => t.Id == body.TenantId.Value, ct);
+                    .FirstOrDefaultAsync(t => t.Id == body.TenantId.Value && t.IsActive, ct);
             }
 
             if (tenant is null)
@@ -690,7 +987,7 @@ public static class AuthEndpoints
             logger.LogInformation("[forgot-password] Tenant found: {TenantId} ({TenantCode})", tenant.Id, tenant.Code);
 
             var user = await db.Users
-                .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Email == body.Email && u.IsActive, ct);
+                .FirstOrDefaultAsync(u => db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tenant.Id && ut.IsActive) && u.Email == body.Email && u.IsActive, ct);
 
             if (user is null)
             {
@@ -748,7 +1045,7 @@ public static class AuthEndpoints
                 try
                 {
                     var (_, emailSent, emailError) = await emailClient.SendPasswordResetEmailAsync(
-                        user.Email, displayName, resetLink, user.TenantId, ct);
+                        user.Email, displayName, resetLink, tenant.Id, ct);
 
                     if (!emailSent)
                         logger.LogWarning(
@@ -796,6 +1093,19 @@ public static class AuthEndpoints
             {
                 message = "If an account exists with that email, a password reset link has been generated.",
             });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[forgot-password] unexpected exception on standard path; returning generic ok.");
+            }
+            finally
+            {
+                var fpElapsed = (int)fpSw.ElapsedMilliseconds;
+                if (fpElapsed < MinResponseMs)
+                    await Task.Delay(MinResponseMs - fpElapsed, CancellationToken.None);
+            }
+
+            return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
         })
         .AllowAnonymous()
         .RequireRateLimiting("auth-forgot-password");
@@ -806,5 +1116,5 @@ public static class AuthEndpoints
     private record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     private record SetAvatarRequest(string DocumentId);
     private record SetPhoneRequest(string? Phone);
-    private record ForgotPasswordRequest(string TenantCode, string Email, string? Subdomain = null, Guid? TenantId = null);
+    private record ForgotPasswordRequest(string TenantCode, string Email, string? Subdomain = null, Guid? TenantId = null, bool ResolveByEmail = false);
 }

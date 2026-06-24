@@ -954,6 +954,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("varchar(320)");
 
+                    b.Property<string>("FirstName")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("GeoPointSource")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
@@ -966,6 +969,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LastName")
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime?>("LastOnboardingAttemptAtUtc")
                         .HasColumnType("datetime(6)");
@@ -1363,6 +1369,20 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<string>("ReferrerEmail")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("ReferrerFirmName")
+                        .HasMaxLength(250)
+                        .HasColumnType("varchar(250)");
+
+                    b.Property<string>("ReferrerFirstName")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ReferrerPhone")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("ReferrerLastName")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("ReferrerName")
                         .HasColumnType("longtext");
 
@@ -1370,7 +1390,6 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasColumnType("char(36)");
 
                     b.Property<string>("RequestedService")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
@@ -1378,6 +1397,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<Guid?>("TreatmentTypeId")
+                        .HasColumnType("char(36)");
 
                     b.Property<DateOnly?>("SubjectDobSnapshot")
                         .HasColumnType("date");
@@ -1433,6 +1455,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Status", "CreatedAtUtc")
                         .HasDatabaseName("IX_Referrals_TenantId_Status_CreatedAtUtc");
+
+                    b.HasIndex("TreatmentTypeId")
+                        .HasDatabaseName("IX_Referrals_TreatmentTypeId");
 
                     b.ToTable("cc_Referrals", (string)null);
                 });

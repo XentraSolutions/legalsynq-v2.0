@@ -44,7 +44,8 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         Guid              tenantId,
         Guid              providerCcId,
         string            providerName,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool              globalScope = false)
     {
         if (!_isEnabled)
         {
@@ -67,6 +68,7 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
                 tenantId     = tenantId,
                 providerCcId = providerCcId,
                 providerName = providerName,
+                globalScope  = globalScope,
             };
 
             using var response = await client.PostAsJsonAsync(
@@ -159,6 +161,18 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
             if (!response.IsSuccessStatusCode)
             {
+                if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                {
+                    var conflictBody = await response.Content
+                        .ReadFromJsonAsync<ErrorCodeResponse>(cancellationToken: cts.Token);
+                    if (conflictBody?.Code == "OWNER_ENROLLMENT_BLOCKED")
+                    {
+                        _logger.LogWarning(
+                            "CC2-INT-B04 Identity user provision blocked — owner enrollment for org {OrgId}.", orgId);
+                        return new ProvisionProviderUserResult { IsOwnerBlocked = true };
+                    }
+                }
+
                 _logger.LogWarning(
                     "CC2-INT-B04 Identity user provision returned HTTP {Status} for org {OrgId}. " +
                     "Invitation not sent — provider org link is still valid.",
@@ -211,10 +225,12 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
     /// <inheritdoc />
     public async Task<SelfRegisterResult?> RegisterUserDirectlyAsync(
         Guid              orgId,
+        Guid              tenantId,
         string            email,
         string            password,
         string            firstName,
         string?           lastName,
+        string?           phone,
         CancellationToken ct = default)
     {
         if (!_isEnabled)
@@ -230,13 +246,25 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
             using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
 
-            var body = new { email, password, firstName, lastName };
+            var body = new { tenantId, email, password, firstName, lastName, phone };
 
             using var response = await client.PostAsJsonAsync(
                 $"api/admin/organizations/{orgId}/self-register", body, cts.Token);
 
             if (!response.IsSuccessStatusCode)
             {
+                if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                {
+                    var conflictBody = await response.Content
+                        .ReadFromJsonAsync<ErrorCodeResponse>(cancellationToken: cts.Token);
+                    if (conflictBody?.Code == "OWNER_ENROLLMENT_BLOCKED")
+                    {
+                        _logger.LogWarning(
+                            "CC2-ENROLL Identity self-register blocked — owner enrollment for org {OrgId}.", orgId);
+                        return new SelfRegisterResult { IsOwnerBlocked = true };
+                    }
+                }
+
                 _logger.LogWarning(
                     "CC2-ENROLL Identity self-register returned HTTP {Status} for org {OrgId}.",
                     (int)response.StatusCode, orgId);
@@ -340,7 +368,97 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
     // ── CC-PORTAL-CHECK: Referrer portal access lookup ────────────────────────
 
     /// <inheritdoc />
-    public async Task<bool> CheckReferrerPortalAccessAsync(
+    public async Task<string> GetReferrerPortalAccessStatusAsync(
+        Guid              tenantId,
+        string            email,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+            return ReferrerPortalAccessStatuses.NoAccount;
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var url = $"api/internal/users/portal-access?tenantId={tenantId}&email={Uri.EscapeDataString(email.Trim())}";
+            using var response = await client.GetAsync(url, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "CC-PORTAL-CHECK Identity portal-access returned HTTP {Status} for email check.",
+                    (int)response.StatusCode);
+                return ReferrerPortalAccessStatuses.NoAccount;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<PortalAccessResponse>(
+                cancellationToken: cts.Token);
+
+            return string.IsNullOrWhiteSpace(result?.Status)
+                ? ReferrerPortalAccessStatuses.NoAccount
+                : result.Status;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("CC-PORTAL-CHECK Identity portal-access check timed out.");
+            return ReferrerPortalAccessStatuses.NoAccount;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CC-PORTAL-CHECK Identity portal-access check failed.");
+            return ReferrerPortalAccessStatuses.NoAccount;
+        }
+    }
+
+    // ── CC-OWNER-CHECK: Tenant owner referral block ────────────────────────
+
+    /// <inheritdoc />
+    public async Task<bool> CheckTenantOwnerEmailAsync(
+        Guid              tenantId,
+        string            email,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+            return false;
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var url = $"api/internal/users/is-owner?tenantId={tenantId}&email={Uri.EscapeDataString(email.Trim())}";
+            using var response = await client.GetAsync(url, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "CC-OWNER-CHECK Identity is-owner returned HTTP {Status}.",
+                    (int)response.StatusCode);
+                return false;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<IsOwnerResponse>(
+                cancellationToken: cts.Token);
+
+            return result?.IsTenantOwner ?? false;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("CC-OWNER-CHECK Identity is-owner check timed out.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CC-OWNER-CHECK Identity is-owner check failed.");
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> CheckAnyTenantOwnerEmailAsync(
         string            email,
         CancellationToken ct = default)
     {
@@ -353,31 +471,70 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
             using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
 
-            var url = $"api/internal/users/portal-access?email={Uri.EscapeDataString(email.Trim())}";
+            var url = $"api/internal/users/is-any-owner?email={Uri.EscapeDataString(email.Trim())}";
             using var response = await client.GetAsync(url, cts.Token);
 
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning(
-                    "CC-PORTAL-CHECK Identity portal-access returned HTTP {Status} for email check.",
+                    "CC-OWNER-CHECK Identity is-any-owner returned HTTP {Status}.",
                     (int)response.StatusCode);
                 return false;
             }
 
-            var result = await response.Content.ReadFromJsonAsync<PortalAccessResponse>(
+            var result = await response.Content.ReadFromJsonAsync<IsOwnerResponse>(
                 cancellationToken: cts.Token);
-
-            return result?.HasPortalAccess ?? false;
+            return result?.IsTenantOwner ?? false;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            _logger.LogWarning("CC-PORTAL-CHECK Identity portal-access check timed out.");
+            _logger.LogWarning("CC-OWNER-CHECK Identity is-any-owner check timed out.");
             return false;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "CC-PORTAL-CHECK Identity portal-access check failed.");
+            _logger.LogWarning(ex, "CC-OWNER-CHECK Identity is-any-owner check failed.");
             return false;
+        }
+    }
+
+    public async Task<string?> GetOrganizationNameAsync(
+        Guid              orgId,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled || orgId == Guid.Empty)
+            return null;
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync(
+                $"api/admin/organizations/{orgId}", cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var result = await response.Content.ReadFromJsonAsync<OrganizationLookupResponse>(
+                cancellationToken: cts.Token);
+
+            return string.IsNullOrWhiteSpace(result?.Name)
+                ? null
+                : result.Name.Trim();
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "Identity organization lookup timed out for org {OrgId}.", orgId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Identity organization lookup failed for org {OrgId}.", orgId);
+            return null;
         }
     }
 
@@ -457,7 +614,28 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
     private sealed class PortalAccessResponse
     {
-        [JsonPropertyName("hasPortalAccess")]
-        public bool HasPortalAccess { get; set; }
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+    }
+
+    private sealed class IsOwnerResponse
+    {
+        [JsonPropertyName("isTenantOwner")]
+        public bool IsTenantOwner { get; set; }
+    }
+
+    private sealed class OrganizationLookupResponse
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+    }
+
+    private sealed class ErrorCodeResponse
+    {
+        [JsonPropertyName("code")]
+        public string? Code { get; set; }
+
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
     }
 }

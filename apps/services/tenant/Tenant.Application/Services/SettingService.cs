@@ -34,6 +34,21 @@ public class SettingService : ISettingService
         return ToResponse(record);
     }
 
+    public async Task<SettingResponse?> GetByKeyAsync(
+        Guid              tenantId,
+        string            settingKey,
+        string?           productKey,
+        CancellationToken ct = default)
+    {
+        await RequireTenantAsync(tenantId, ct);
+        var normalizedKey        = TenantSetting.NormalizeKey(settingKey);
+        var normalizedProductKey = string.IsNullOrWhiteSpace(productKey)
+            ? null
+            : productKey.Trim().ToLowerInvariant();
+        var record = await _settings.GetByKeyAsync(tenantId, normalizedKey, normalizedProductKey, ct);
+        return record is null ? null : ToResponse(record);
+    }
+
     // ── Upsert ────────────────────────────────────────────────────────────────
 
     public async Task<SettingResponse> UpsertAsync(

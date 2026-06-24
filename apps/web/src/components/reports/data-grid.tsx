@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import type { ReportColumnDto, ReportRowDto } from '@/lib/reports/reports.types';
+import { useTimezone } from '@/lib/use-timezone';
 
 interface DataGridProps {
   columns: ReportColumnDto[];
@@ -12,6 +13,7 @@ interface DataGridProps {
 type SortDir = 'asc' | 'desc' | null;
 
 export function DataGrid({ columns, rows, maxHeight = '500px' }: DataGridProps) {
+  const timezone = useTimezone();
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
 
@@ -89,7 +91,7 @@ export function DataGrid({ columns, rows, maxHeight = '500px' }: DataGridProps) 
                   <td className="px-3 py-2 text-xs text-gray-400">{row.rowNumber}</td>
                   {orderedCols.map((col) => (
                     <td key={col.name} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                      {row.formattedValues?.[col.name] ?? formatCell(row.values[col.name], col.dataType)}
+                      {row.formattedValues?.[col.name] ?? formatCell(row.values[col.name], col.dataType, timezone)}
                     </td>
                   ))}
                 </tr>
@@ -106,11 +108,11 @@ export function DataGrid({ columns, rows, maxHeight = '500px' }: DataGridProps) 
   );
 }
 
-function formatCell(value: unknown, dataType: string): string {
+function formatCell(value: unknown, dataType: string, timezone: string): string {
   if (value == null) return '—';
   if (dataType === 'DateTime' || dataType === 'Date') {
     try {
-      return new Date(String(value)).toLocaleDateString();
+      return new Date(String(value)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone });
     } catch {
       return String(value);
     }

@@ -6,8 +6,12 @@ import type { PublicProviderMarker } from '@/lib/public-network-api';
 
 interface NumberedMarker extends PublicProviderMarker { index: number; }
 interface PublicNetworkMapProps {
-  markers: NumberedMarker[]; selectedId: string | null;
-  onSelect: (id: string) => void; onRequestReferral: (m: PublicProviderMarker) => void;
+  markers: NumberedMarker[];
+  selectedId: string | null;
+  zoomToId?: string | null;
+  onZoomed?: () => void;
+  onSelect: (id: string) => void;
+  onRequestReferral: (m: PublicProviderMarker) => void;
 }
 
 const US_CENTER = { lat: 39.5, lng: -98.35 };
@@ -25,7 +29,7 @@ function numberedPinUrl(index: number, accepting: boolean, selected: boolean): s
   )}`;
 }
 
-export function PublicNetworkMapGoogle({ markers, selectedId, onSelect, onRequestReferral }: PublicNetworkMapProps) {
+export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed, onSelect, onRequestReferral }: PublicNetworkMapProps) {
   const isLoaded     = useGoogleMapsScript();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<google.maps.Map | null>(null);
@@ -48,6 +52,7 @@ export function PublicNetworkMapGoogle({ markers, selectedId, onSelect, onReques
     const map = mapRef.current;
     if (!map || !isLoaded) return;
 
+    // Fit bounds or center on single marker
     const cur = markers.length;
     if (cur > 0 && cur !== prevCount.current) {
       prevCount.current = cur;
@@ -61,6 +66,18 @@ export function PublicNetworkMapGoogle({ markers, selectedId, onSelect, onReques
       }
     }
 
+    // Animate to provider if zoomToId is set (e.g. left panel click)
+    if (typeof zoomToId === 'string' && zoomToId) {
+      const m = markers.find(mk => mk.id === zoomToId);
+      if (m) {
+        map.panTo({ lat: m.latitude, lng: m.longitude });
+        const currentZoom = map.getZoom() ?? 0;
+        if (currentZoom < 13) map.setZoom(13);
+        onZoomed?.();
+      }
+    }
+
+    // Marker management
     const seen = new Set<string>();
     for (const m of markers) {
       seen.add(m.id);
@@ -73,6 +90,9 @@ export function PublicNetworkMapGoogle({ markers, selectedId, onSelect, onReques
         marker = new window.google.maps.Marker({ position: { lat: m.latitude, lng: m.longitude }, map, icon, zIndex: selected ? 1000 : m.index });
         const captured = { ...m };
         marker.addListener('click', () => {
+          map.panTo({ lat: captured.latitude, lng: captured.longitude });
+          const currentZoom = map.getZoom() ?? 0;
+          if (currentZoom < 13) map.setZoom(13);
           onSelect(captured.id);
           const content = `
             <div style="font-family:system-ui,sans-serif;min-width:200px">
@@ -107,7 +127,7 @@ export function PublicNetworkMapGoogle({ markers, selectedId, onSelect, onReques
       if (!seen.has(id)) { marker.setMap(null); markerRefs.current.delete(id); }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markers, selectedId, isLoaded]);
+  }, [markers, selectedId, isLoaded, zoomToId]);
 
   useEffect(() => () => {
     for (const m of markerRefs.current.values()) m.setMap(null);

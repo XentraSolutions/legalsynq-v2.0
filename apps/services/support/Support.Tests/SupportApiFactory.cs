@@ -9,7 +9,7 @@ namespace Support.Tests;
 
 public class SupportApiFactory : WebApplicationFactory<Program>
 {
-    public string DbName { get; } = $"support-tests-{Guid.NewGuid()}";
+    public string DbName { get; } = $"support-tests-{Guid.CreateVersion7()}";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -28,7 +28,7 @@ public class SupportApiFactory : WebApplicationFactory<Program>
 /// </summary>
 public class SupportApiProdFactory : WebApplicationFactory<Program>
 {
-    public string DbName { get; } = $"support-tests-prod-{Guid.NewGuid()}";
+    public string DbName { get; } = $"support-tests-prod-{Guid.CreateVersion7()}";
 
     static SupportApiProdFactory()
     {

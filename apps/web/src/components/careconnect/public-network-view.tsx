@@ -12,6 +12,8 @@
 import { useState, useMemo, useCallback, useRef, forwardRef, useEffect, type FormEvent, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
+import { isValidIsoDate, hasReasonableYear } from '@/lib/daterange';
+import { createEnrollmentToken } from '@/app/enroll/actions';
 import type {
   PublicNetworkDetail,
   PublicProviderItem,
@@ -19,6 +21,7 @@ import type {
   PublicReferralRequest,
 } from '@/lib/public-network-api';
 import type { NumberedMarker } from './public-network-map';
+import { URGENCY_OPTIONS, type ReferralUrgencyValue } from '@/types/careconnect';
 
 const PublicNetworkMap = dynamic(
   () => import('./public-network-map').then(m => m.PublicNetworkMap),
@@ -35,6 +38,8 @@ interface PublicNetworkViewProps {
   detail:          PublicNetworkDetail;
   tenantCode:      string;
   tenantId:        string;
+  loginUrl:        string;
+  referrerScopeSignature?: string;
   /** When provided, the law firm section is hidden and pre-filled (authenticated referrer flow). */
   prefillLawFirm?: PrefillLawFirm;
 }
@@ -43,12 +48,20 @@ type ViewMode = 'split' | 'list' | 'map';
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 
-export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm }: PublicNetworkViewProps) {
+export function PublicNetworkView({
+  detail,
+  tenantCode,
+  tenantId,
+  loginUrl,
+  referrerScopeSignature,
+  prefillLawFirm,
+}: PublicNetworkViewProps) {
   const [search,      setSearch]      = useState('');
   const [viewMode,    setViewMode]    = useState<ViewMode>('split');
   const [showAll,     setShowAll]     = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [hoveredId,   setHovered]     = useState<string | null>(null);
+  const [zoomToId,    setZoomToId]    = useState<string | null>(null);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const [dark, setDark] = useState<boolean>(() => {
@@ -275,6 +288,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm
                         tenantId={tenantId}
                         onHover={setHovered}
                         onToggle={toggleSelect}
+                        onClick={() => { setHovered(provider.id); setZoomToId(provider.id); }}
                         ref={el => { cardRefs.current[provider.id] = el; }}
                       />
                     ))}
@@ -288,6 +302,8 @@ export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm
                   <PublicNetworkMap
                     markers={displayedMarkers}
                     selectedId={hoveredId}
+                    zoomToId={zoomToId}
+                    onZoomed={() => setZoomToId(null)}
                     onSelect={handleMapSelect}
                     onRequestReferral={handleMapReferral}
                   />
@@ -352,6 +368,8 @@ export function PublicNetworkView({ detail, tenantCode, tenantId, prefillLawFirm
         <ReferralPanel
           providers={selectedProviders}
           tenantId={tenantId}
+          loginUrl={loginUrl}
+          referrerScopeSignature={referrerScopeSignature}
           onClearSelection={() => setSelectedIds(new Set())}
           prefillLawFirm={prefillLawFirm}
         />
@@ -373,15 +391,15 @@ const ProviderCard = forwardRef<
     tenantId: string;
     onHover:  (id: string | null) => void;
     onToggle: (id: string) => void;
+    onClick?: () => void;
   }
->(function ProviderCard({ provider, number, selected, hovered, compact, tenantId, onHover, onToggle }, ref) {
-  const enrollUrl = `/enroll?id=${provider.id}&tenantId=${encodeURIComponent(tenantId)}`;
-  const canEnroll = provider.accessStage === 'URL';
+>(function ProviderCard({ provider, number, selected, hovered, compact, tenantId, onHover, onToggle, onClick }, ref) {
   return (
     <div
       ref={ref}
       onMouseEnter={() => onHover(provider.id)}
       onMouseLeave={() => onHover(null)}
+      onClick={onClick}
       className={[
         'transition-colors',
         compact ? 'p-3' : 'p-4 rounded-xl border',
@@ -450,21 +468,6 @@ const ProviderCard = forwardRef<
             </span>
           </div>
 
-          {/* Enrollment CTA — only for providers not yet on the portal */}
-          {canEnroll && (
-            <a
-              href={enrollUrl}
-              onClick={e => e.stopPropagation()}
-              className={[
-                'inline-flex items-center gap-1 font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors',
-                compact ? 'text-xs mt-1.5' : 'text-sm mt-2',
-              ].join(' ')}
-              title="Get Full Portal Access"
-            >
-              <i className={compact ? 'ri-arrow-right-circle-line text-xs' : 'ri-arrow-right-circle-line text-sm'} />
-              {compact ? 'Get Portal Access' : 'Get Full Portal Access'}
-            </a>
-          )}
         </div>
 
         {/* Select button */}
@@ -492,73 +495,181 @@ const ProviderCard = forwardRef<
 
 // ── Referral panel ────────────────────────────────────────────────────────────
 
-interface TreatmentType {
-  id:           string;
-  name:         string;
-  category:     string | null;
-  displayOrder: number;
-}
+const SERVICE_TYPES = [
+  'General Referral',
+  'Consultation',
+  'Initial Service',
+  'Diagnostic Service',
+  'Laboratory Service',
+  'Imaging/Radiology',
+  'Emergency Service',
+  'Home Health Service',
+  'Specialist Referral',
+  'Telehealth Service',
+  'Follow-up Service',
+];
 
 interface ReferralForm {
-  patientName:          string;
+  patientFirstName:     string;
+  patientLastName:      string;
   patientPhone:         string;
   patientEmail:         string;
   patientAddress:       string;
   patientDob:           string;   // YYYY-MM-DD
   patientDateOfAccident: string;  // YYYY-MM-DD
+  urgency:              ReferralUrgencyValue;
+  serviceType:          string;
   treatmentTypeId:      string;
   notes:                string;
   firmName:             string;
-  contactName:          string;
+  contactFirstName:     string;
+  contactLastName:      string;
   email:                string;
   phone:                string;
 }
 
 const EMPTY_FORM: ReferralForm = {
-  patientName: '', patientPhone: '', patientEmail: '',
+  patientFirstName: '', patientLastName: '', patientPhone: '', patientEmail: '',
   patientAddress: '', patientDob: '', patientDateOfAccident: '',
-  treatmentTypeId: '', notes: '',
-  firmName: '', contactName: '', email: '', phone: '',
+  urgency: 'Normal',
+  serviceType: 'General Referral',
+  treatmentTypeId: '',
+  notes: '',
+  firmName: '', contactFirstName: '', contactLastName: '', email: '', phone: '',
 };
 
-type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error';
+type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error' | 'account-exists';
+
+interface CreatedReferralUploadTarget {
+  referralId: string;
+  providerId: string;
+}
+
+function extractApiErrorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string')
+    return (err as { message: string }).message;
+  if (err && typeof err === 'object' && 'detail' in err && typeof (err as { detail: unknown }).detail === 'string')
+    return (err as { detail: string }).detail;
+  if (err && typeof err === 'object' && 'title' in err && typeof (err as { title: unknown }).title === 'string')
+    return (err as { title: string }).title;
+  return fallback;
+}
+
+function toCreatedReferralUploadTarget(
+  value: unknown,
+  fallbackProviderId: string,
+): CreatedReferralUploadTarget {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Referral created, but the server returned an unexpected response.');
+  }
+
+  const referralId =
+    'referralId' in value && typeof (value as { referralId?: unknown }).referralId === 'string'
+      ? (value as { referralId: string }).referralId
+      : 'id' in value && typeof (value as { id?: unknown }).id === 'string'
+        ? (value as { id: string }).id
+        : null;
+
+  const providerId =
+    'providerId' in value && typeof (value as { providerId?: unknown }).providerId === 'string'
+      ? (value as { providerId: string }).providerId
+      : fallbackProviderId;
+
+  if (!referralId) {
+    throw new Error('Referral created, but the response did not include a referral id.');
+  }
+
+  return { referralId, providerId };
+}
 
 function ReferralPanel({
-  providers, tenantId, onClearSelection, prefillLawFirm,
+  providers, tenantId, loginUrl, referrerScopeSignature, onClearSelection, prefillLawFirm,
 }: {
   providers:        PublicProviderItem[];
   tenantId:         string;
+  loginUrl:         string;
+  referrerScopeSignature?: string;
   onClearSelection: () => void;
   prefillLawFirm?:  PrefillLawFirm;
 }) {
   const [form,           setForm]          = useState<ReferralForm>(() =>
     prefillLawFirm
-      ? { ...EMPTY_FORM, firmName: prefillLawFirm.firmName, email: prefillLawFirm.email, contactName: prefillLawFirm.contactName ?? '' }
+      ? { ...EMPTY_FORM, firmName: prefillLawFirm.firmName, email: prefillLawFirm.email, contactFirstName: prefillLawFirm.contactName ?? '' }
       : EMPTY_FORM
   );
   const [state,          setState]         = useState<PanelState>('form');
   const [errorMsg,       setErrMsg]        = useState('');
   const [fieldErrors,    setErrors]        = useState<Record<string, string>>({});
   const [providerFiles,  setProviderFiles] = useState<Record<string, File | null>>({});
-  const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
   const [hasPortalAccess, setHasPortalAccess] = useState(false);
+  const [enrollToken,    setEnrollToken]   = useState<string | null>(null);
+  const [treatmentTypes, setTreatmentTypes] = useState<{ id: string; name: string }[]>([]);
+  const [checkingEmail,  setCheckingEmail]  = useState(false);
+
+  const hasPhoneValue        = form.phone.trim().length > 0;
+  const hasInvalidPhone      = hasPhoneValue && !isValidPhone(form.phone);
+  const hasPatientPhoneValue = form.patientPhone.trim().length > 0;
+  const hasInvalidPatientPhone = hasPatientPhoneValue && !isValidPhone(form.patientPhone);
+
+  const canSubmit =
+    !!form.patientFirstName.trim() &&
+    !!form.patientLastName.trim() &&
+    hasPatientPhoneValue && !hasInvalidPatientPhone &&
+    !!form.patientDob && isValidIsoDate(form.patientDob) && hasReasonableYear(form.patientDob) && new Date(form.patientDob) <= new Date() &&
+    !!form.patientDateOfAccident && isValidIsoDate(form.patientDateOfAccident) && hasReasonableYear(form.patientDateOfAccident) && new Date(form.patientDateOfAccident) <= new Date() &&
+    !hasInvalidPhone &&
+    (!form.patientEmail.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patientEmail.trim())) &&
+    (prefillLawFirm
+      ? !!([form.contactFirstName.trim(), form.contactLastName.trim()].filter(Boolean).join(' ') || form.firmName.trim())
+      : !!form.firmName.trim() && !!form.email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()));
+
+  useEffect(() => {
+    const endpoint = prefillLawFirm
+      ? '/api/careconnect/api/treatment-types'
+      : `/api/public/careconnect/api/public/treatment-types`;
+    fetch(endpoint, prefillLawFirm ? {} : { headers: { 'X-Tenant-Id': tenantId } })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { id: string; name: string }[]) => setTreatmentTypes(data))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Pre-generate a signed enrollment token when the referral succeeds so the
+  // "Activate your free account" CTA never carries raw PII in the URL.
+  // Skipped when the user is already authenticated (prefillLawFirm present) — CTA is hidden.
+  useEffect(() => {
+    if (state !== 'success' || !!prefillLawFirm) return;
+    createEnrollmentToken({
+      tenantId,
+      ...(form.email       ? { email:   form.email }       : {}),
+      ...(form.firmName    ? { firm:    form.firmName }    : {}),
+      ...(form.phone       ? { phone:   form.phone }       : {}),
+      ...(form.contactFirstName.trim() ? { contactFirstName: form.contactFirstName.trim() } : {}),
+      ...(form.contactLastName.trim()  ? { contactLastName:  form.contactLastName.trim() }  : {}),
+    }).then(t => setEnrollToken(t)).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]); // form values are stable once state === 'success'
 
   // ── Address autocomplete ─────────────────────────────────────────────────
   const [addrSuggestions, setAddrSuggestions] = useState<Array<{ displayName: string; addressLine1: string; city: string; state: string; postalCode: string }>>([]);
   const [showAddrSugg,    setShowAddrSugg]    = useState(false);
   const addrDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    fetch('/api/public/careconnect/api/public/treatment-types', {
-      headers: { 'X-Tenant-Id': tenantId },
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then((data: TreatmentType[] | null) => { if (data) setTreatmentTypes(data); })
-      .catch(() => {});
-  }, [tenantId]);
-
   const update = useCallback((field: keyof ReferralForm, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
+    const dateFields: (keyof ReferralForm)[] = ['patientDob', 'patientDateOfAccident'];
+    if (dateFields.includes(field) && value && isValidIsoDate(value)) {
+      if (!hasReasonableYear(value)) {
+        setErrors(prev => ({ ...prev, [field]: 'Please enter a valid year (1900 or later).' }));
+        return;
+      }
+      if (new Date(value) > new Date()) {
+        const label = field === 'patientDob' ? 'Date of birth' : 'Date of accident';
+        setErrors(prev => ({ ...prev, [field]: `${label} cannot be in the future.` }));
+        return;
+      }
+    }
     setErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
   }, []);
 
@@ -588,95 +699,184 @@ function ReferralPanel({
 
   const validate = useCallback((): Record<string, string> => {
     const errs: Record<string, string> = {};
-    if (!form.patientName.trim()) errs['patientName'] = 'Patient name is required.';
+    if (!form.patientFirstName.trim()) errs['patientFirstName'] = 'Patient first name is required.';
+    if (!form.patientLastName.trim()) errs['patientLastName'] = 'Patient last name is required.';
     if (!form.patientPhone.trim()) errs['patientPhone'] = 'Patient phone is required.';
     else if (!isValidPhone(form.patientPhone)) errs['patientPhone'] = 'Enter a valid 10-digit phone number.';
     if (form.patientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patientEmail.trim()))
       errs['patientEmail'] = 'Enter a valid email address.';
     if (!form.patientDob) errs['patientDob'] = 'Date of birth is required.';
+    else if (!isValidIsoDate(form.patientDob)) errs['patientDob'] = 'Enter a valid date of birth.';
+    else if (!hasReasonableYear(form.patientDob)) errs['patientDob'] = 'Please enter a valid year (1900 or later).';
     else if (new Date(form.patientDob) > new Date()) errs['patientDob'] = 'Date of birth cannot be in the future.';
     if (!form.patientDateOfAccident) errs['patientDateOfAccident'] = 'Date of accident is required.';
+    else if (!isValidIsoDate(form.patientDateOfAccident)) errs['patientDateOfAccident'] = 'Enter a valid date of accident.';
+    else if (!hasReasonableYear(form.patientDateOfAccident)) errs['patientDateOfAccident'] = 'Please enter a valid year (1900 or later).';
     else if (new Date(form.patientDateOfAccident) > new Date()) errs['patientDateOfAccident'] = 'Date of accident cannot be in the future.';
+    if (form.phone.trim() && !isValidPhone(form.phone)) errs['phone'] = 'Phone number must be 10 digits.';
     if (!prefillLawFirm) {
       if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
       if (!form.email.trim()) errs['email'] = 'Email is required.';
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs['email'] = 'Enter a valid email address.';
+    } else {
+      // prefillLawFirm is active — firmName is server-supplied and not editable.
+      // Guard against an empty firmName arriving from the backend (e.g. stale session
+      // before the identity service populates org_name), which would produce
+      // senderName:"" and a server-side validation failure. Use a form-level error
+      // key (_form) so the message surfaces as a banner — there is no contactName
+      // input rendered in prefill mode for the user to correct.
+      const senderName = [form.contactFirstName.trim(), form.contactLastName.trim()].filter(Boolean).join(' ') || form.firmName.trim();
+      if (!senderName) errs['_form'] = 'Unable to submit: your firm name could not be loaded. Please refresh the page or sign out and sign back in.';
     }
     return errs;
-  }, [form]);
+  }, [form, prefillLawFirm]);
 
-  // Validate then show confirmation modal
-  const handleSubmit = useCallback((e: FormEvent) => {
+  // Validate then show confirmation modal (with pre-submit portal account check)
+  const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     setErrMsg('');
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
+
+    // CC-PORTAL-ACCOUNT-CHECK: Check if the sender email already has an active
+    // portal account on this tenant. Skip for authenticated users (already logged in).
+    if (!prefillLawFirm && form.email.trim()) {
+      setCheckingEmail(true);
+      try {
+        const res = await fetch(
+          `/api/public/careconnect/api/public/referrer-status?email=${encodeURIComponent(form.email.trim())}`,
+          { headers: { 'X-Tenant-Id': tenantId } },
+        );
+        if (res.ok) {
+          const data = await res.json() as { hasPortalAccess: boolean; status: string };
+          if (data.status === 'active_in_tenant') {
+            setCheckingEmail(false);
+            setState('account-exists');
+            return;
+          }
+        }
+      } catch {
+        // Fail-open: proceed to confirm on any network error
+      }
+      setCheckingEmail(false);
+    }
+
     setState('confirm');
-  }, [validate]);
+  }, [validate, form.email, tenantId, prefillLawFirm]);
 
   // Called from confirmation modal — actually sends the referral
   const confirmAndSend = useCallback(async () => {
+    if (prefillLawFirm && !referrerScopeSignature) {
+      setErrMsg('Your CareConnect tenant selection could not be verified. Please return to Available Networks and retry.');
+      setState('error');
+      return;
+    }
+
     setState('submitting');
-
-    const [firstName, ...rest] = form.patientName.trim().split(' ');
-    const lastName = rest.join(' ') || firstName;
-
-    const selectedTreatment = treatmentTypes.find(t => t.id === form.treatmentTypeId);
-    const serviceTypeName   = selectedTreatment?.name.trim() || undefined;
 
     const payloads: PublicReferralRequest[] = providers.map(p => ({
       providerId:             p.id,
-      senderName:             form.contactName.trim() || form.firmName.trim(),
+      senderFirstName:        form.contactFirstName.trim() || form.firmName.trim(),
+      senderLastName:         form.contactFirstName.trim() ? (form.contactLastName.trim() || undefined) : undefined,
       senderEmail:            form.email.trim(),
-      patientFirstName:       firstName,
-      patientLastName:        lastName,
+      senderFirmName:         form.firmName.trim() || undefined,
+      senderPhone:            stripPhone(form.phone) || undefined,
+      patientFirstName:       form.patientFirstName.trim(),
+      patientLastName:        form.patientLastName.trim(),
       patientPhone:           stripPhone(form.patientPhone),
       patientEmail:           form.patientEmail.trim() || undefined,
       patientDateOfBirth:     form.patientDob || undefined,
       patientDateOfAccident:  form.patientDateOfAccident || undefined,
       patientAddress:         form.patientAddress.trim() || undefined,
-      serviceType:            serviceTypeName,
-      notes:                  [
-        form.notes,
-        form.phone    ? `Firm phone: ${form.phone}` : '',
-        form.firmName ? `Firm: ${form.firmName}`   : '',
-      ].filter(Boolean).join('\n') || undefined,
+      serviceType:            form.serviceType || 'General Referral',
+      urgency:                form.urgency,
+      treatmentTypeId:        form.treatmentTypeId || undefined,
+      notes:                  form.notes.trim() || undefined,
     }));
+
+    // Authenticated users (prefillLawFirm present) submit through the auth endpoint —
+    // tenant is resolved from the JWT, no host-based resolution needed.
+    // Unauthenticated users use the anonymous public endpoint with X-Tenant-Id.
+    const isAuthenticated = !!prefillLawFirm;
 
     try {
       const responses = await Promise.all(payloads.map(async payload => {
-        const res = await fetch('/api/public/careconnect/api/public/referrals', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId },
-          body:    JSON.stringify(payload),
-        });
+        let res: Response;
+        if (isAuthenticated) {
+          const authNotes = form.notes.trim() || undefined;
+
+          const authBody = {
+            tenantId,
+            providerId:       payload.providerId,
+            clientFirstName:  payload.patientFirstName,
+            clientLastName:   payload.patientLastName,
+            clientPhone:      payload.patientPhone,
+            clientEmail:      payload.patientEmail ?? '',
+            clientDob:        payload.patientDateOfBirth,
+            requestedService: payload.serviceType || 'General Referral',
+            urgency:          payload.urgency ?? 'Normal',
+            treatmentTypeId:  form.treatmentTypeId || undefined,
+            dateOfAccident:   form.patientDateOfAccident || undefined,
+            notes:            authNotes,
+            referrerScopeSignature,
+            referrerEmail:    payload.senderEmail,
+            referrerFirmName: form.firmName.trim() || undefined,
+            referrerPhone:    stripPhone(form.phone) || undefined,
+            referrerName:     [form.contactFirstName.trim(), form.contactLastName.trim()].filter(Boolean).join(' ') || form.firmName.trim(),
+          };
+          res = await fetch('/api/careconnect/api/referrals', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(authBody),
+          });
+        } else {
+          res = await fetch('/api/public/careconnect/api/public/referrals', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId },
+            body:    JSON.stringify(payload),
+          });
+        }
         if (!res.ok) {
           // Parse the error body; fall back to a generic message if parsing fails.
           let body: unknown;
           try { body = await res.json(); } catch { throw new Error('Server error'); }
           throw body;
         }
-        return res.json() as Promise<{ referralId: string; providerId: string }>;
+        const body = await res.json() as unknown;
+        return toCreatedReferralUploadTarget(body, payload.providerId);
       }));
 
-      await Promise.allSettled(responses.map(r => {
+      await Promise.all(responses.map(async (r) => {
         const fileForProvider = providerFiles[r.providerId] ?? null;
-        if (!fileForProvider) return Promise.resolve();
+        if (!fileForProvider) return;
         const fd = new FormData();
         fd.append('file', fileForProvider);
-        return fetch(`/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`, {
+        const uploadEndpoint = isAuthenticated
+          ? `/api/careconnect/api/referrals/${r.referralId}/attachments/upload`
+          : `/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`;
+        const uploadHeaders: Record<string, string> = {};
+        if (!isAuthenticated) uploadHeaders['X-Tenant-Id'] = tenantId;
+        const uploadRes = await fetch(uploadEndpoint, {
           method:  'POST',
-          headers: { 'X-Tenant-Id': tenantId },
+          headers: uploadHeaders,
           body:    fd,
         });
+        if (!uploadRes.ok) {
+          let body: unknown;
+          try { body = await uploadRes.json(); } catch { throw new Error('Document upload failed after the referral was created.'); }
+          throw new Error(
+            `Referral created, but the document upload failed: ${extractApiErrorMessage(body, 'The uploaded document could not be attached.')}`
+          );
+        }
       }));
 
       setState('success');
 
       // CC-PORTAL-CHECK: fire-and-forget — check if the law firm email already has
       // an active portal account so the success screen shows the right CTA.
-      if (form.email) {
+      // Skipped when the user is already authenticated (prefillLawFirm present) — CTA is hidden.
+      if (form.email && !prefillLawFirm) {
         fetch(`/api/public/careconnect/api/public/referrer-status?email=${encodeURIComponent(form.email)}`, {
           headers: { 'X-Tenant-Id': tenantId },
         })
@@ -692,21 +892,12 @@ function ReferralPanel({
         : {};
       // Extract the most useful message: prefer 'message', fall back to ProblemDetails
       // 'detail' or 'title', then a generic fallback.
-      const msg =
-        err instanceof Error
-          ? err.message
-          : err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
-            ? (err as { message: string }).message
-            : err && typeof err === 'object' && 'detail' in err && typeof (err as { detail: unknown }).detail === 'string'
-              ? (err as { detail: string }).detail
-              : err && typeof err === 'object' && 'title' in err && typeof (err as { title: unknown }).title === 'string'
-                ? (err as { title: string }).title
-                : 'Something went wrong. Please try again.';
+      const msg = extractApiErrorMessage(err);
       if (Object.keys(apiErrors).length > 0) { setErrors(apiErrors); }
       setErrMsg(msg);
       setState('error');
     }
-  }, [form, providers, tenantId, treatmentTypes, providerFiles]);
+  }, [form, providers, tenantId, providerFiles]);
 
   const hasProviders = providers.length > 0;
 
@@ -776,7 +967,7 @@ function ReferralPanel({
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Patient details</p>
-                  <p className="text-xs text-gray-400">Name, phone, and treatment type</p>
+                  <p className="text-xs text-gray-400">Name and phone</p>
                 </div>
               </div>
               <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
@@ -819,6 +1010,7 @@ function ReferralPanel({
 
             {/* Law firm section — hidden when the user is a known authenticated referrer */}
             {prefillLawFirm ? (
+              <>
               <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 bg-indigo-50/60">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500">
                   <i className="ri-briefcase-line text-white text-sm" />
@@ -828,6 +1020,12 @@ function ReferralPanel({
                   <p className="text-[11px] text-indigo-500 truncate">{prefillLawFirm.email}</p>
                 </div>
               </div>
+              {fieldErrors['_form'] && (
+                <div className="mx-5 mt-2 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-xs text-red-700">
+                  {fieldErrors['_form']}
+                </div>
+              )}
+              </>
             ) : (
               <SectionRow
                 icon="ri-briefcase-line" avatarBg="bg-indigo-500"
@@ -839,37 +1037,48 @@ function ReferralPanel({
                   <PanelField label="Firm name" required error={fieldErrors['firmName']}>
                     <input
                       type="text" required value={form.firmName}
-                      placeholder="Acme Injury Law"
+                      placeholder="Enter firm name"
                       onChange={e => update('firmName', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['firmName'])}
                     />
                   </PanelField>
-                  <PanelField label="Contact name">
-                    <input
-                      type="text" value={form.contactName}
-                      placeholder="Paralegal or attorney"
-                      onChange={e => update('contactName', e.target.value)}
-                      disabled={state === 'submitting'}
-                      className={panelInputCls(false)}
-                    />
-                  </PanelField>
+                  <div className="grid grid-cols-2 gap-3">
+                    <PanelField label="Contact first name">
+                      <input
+                        type="text" value={form.contactFirstName}
+                        placeholder="Enter first name"
+                        onChange={e => update('contactFirstName', e.target.value)}
+                        disabled={state === 'submitting'}
+                        className={panelInputCls(false)}
+                      />
+                    </PanelField>
+                    <PanelField label="Contact last name">
+                      <input
+                        type="text" value={form.contactLastName}
+                        placeholder="Enter last name"
+                        onChange={e => update('contactLastName', e.target.value)}
+                        disabled={state === 'submitting'}
+                        className={panelInputCls(false)}
+                      />
+                    </PanelField>
+                  </div>
                   <PanelField label="Email" required error={fieldErrors['email']}>
                     <input
                       type="email" required value={form.email}
-                      placeholder="intake@firm.example"
+                      placeholder="Enter email address"
                       onChange={e => update('email', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['email'])}
                     />
                   </PanelField>
-                  <PanelField label="Phone">
+                  <PanelField label="Phone" error={hasInvalidPhone ? 'Phone number must be 10 digits.' : undefined}>
                     <input
                       type="tel" value={form.phone}
-                      placeholder="(555) 555-5555"
+                      placeholder="Enter 10-digit phone number"
                       onChange={e => update('phone', formatPhoneInput(e.target.value))}
                       disabled={state === 'submitting'}
-                      className={panelInputCls(false)}
+                      className={panelInputCls(hasInvalidPhone)}
                     />
                   </PanelField>
                 </div>
@@ -881,31 +1090,42 @@ function ReferralPanel({
               icon="ri-user-heart-line" avatarBg="bg-teal-500"
               title="Patient"
               subtitle="Who is being referred"
-              hasError={!!(fieldErrors['patientName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail'])}
+              hasError={!!(fieldErrors['patientFirstName'] || fieldErrors['patientLastName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail'])}
             >
               <div className="px-5 pb-4 space-y-3">
-                <PanelField label="Patient name" required error={fieldErrors['patientName']}>
-                  <input
-                    type="text" required value={form.patientName}
-                    placeholder="Jane Doe"
-                    onChange={e => update('patientName', e.target.value)}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(!!fieldErrors['patientName'])}
-                  />
-                </PanelField>
-                <PanelField label="Patient phone" required error={fieldErrors['patientPhone']}>
+                <div className="grid grid-cols-2 gap-3">
+                  <PanelField label="Patient First name" required error={fieldErrors['patientFirstName']}>
+                    <input
+                      type="text" required value={form.patientFirstName}
+                      placeholder="Enter patient first name"
+                      onChange={e => update('patientFirstName', e.target.value)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(!!fieldErrors['patientFirstName'])}
+                    />
+                  </PanelField>
+                  <PanelField label="Patient Last name" required error={fieldErrors['patientLastName']}>
+                    <input
+                      type="text" required value={form.patientLastName}
+                      placeholder="Enter patient last name"
+                      onChange={e => update('patientLastName', e.target.value)}
+                      disabled={state === 'submitting'}
+                      className={panelInputCls(!!fieldErrors['patientLastName'])}
+                    />
+                  </PanelField>
+                </div>
+                <PanelField label="Patient phone" required error={hasInvalidPatientPhone ? 'Phone number must be 10 digits.' : fieldErrors['patientPhone']}>
                   <input
                     type="tel" required value={form.patientPhone}
-                    placeholder="(555) 555-5555"
+                    placeholder="Enter 10-digit phone number"
                     onChange={e => update('patientPhone', formatPhoneInput(e.target.value))}
                     disabled={state === 'submitting'}
-                    className={panelInputCls(!!fieldErrors['patientPhone'])}
+                    className={panelInputCls(hasInvalidPatientPhone || !!fieldErrors['patientPhone'])}
                   />
                 </PanelField>
                 <PanelField label="Patient email" hint="optional" error={fieldErrors['patientEmail']}>
                   <input
                     type="email" value={form.patientEmail}
-                    placeholder="patient@example.com"
+                    placeholder="Enter email address"
                     onChange={e => update('patientEmail', e.target.value)}
                     disabled={state === 'submitting'}
                     className={panelInputCls(!!fieldErrors['patientEmail'])}
@@ -942,7 +1162,7 @@ function ReferralPanel({
                   <PanelField label="Date of birth" required error={fieldErrors['patientDob']}>
                     <input
                       type="date" required value={form.patientDob}
-                      max={new Date().toISOString().split('T')[0]}
+                      min="1900-01-01" max={new Date().toISOString().split('T')[0]}
                       onChange={e => update('patientDob', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['patientDob'])}
@@ -951,30 +1171,48 @@ function ReferralPanel({
                   <PanelField label="Date of accident" required error={fieldErrors['patientDateOfAccident']}>
                     <input
                       type="date" required value={form.patientDateOfAccident}
-                      max={new Date().toISOString().split('T')[0]}
+                      min="1900-01-01" max={new Date().toISOString().split('T')[0]}
                       onChange={e => update('patientDateOfAccident', e.target.value)}
                       disabled={state === 'submitting'}
                       className={panelInputCls(!!fieldErrors['patientDateOfAccident'])}
                     />
                   </PanelField>
                 </div>
-                <PanelField label="Treatment type" hint="optional">
+                <PanelField label="Urgency">
+                  <select
+                    value={form.urgency}
+                    onChange={e => update('urgency', e.target.value as ReferralUrgencyValue)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  >
+                    {URGENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </PanelField>
+                <PanelField label="Type of service">
+                  <select
+                    value={form.serviceType}
+                    onChange={e => update('serviceType', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  >
+                    {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </PanelField>
+                <PanelField label="Type of treatment" hint="optional">
                   <select
                     value={form.treatmentTypeId}
                     onChange={e => update('treatmentTypeId', e.target.value)}
                     disabled={state === 'submitting'}
                     className={panelInputCls(false)}
                   >
-                    <option value="">— Select type —</option>
-                    {treatmentTypes.map(t => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
+                    <option value="">None</option>
+                    {treatmentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </PanelField>
                 <PanelField label="Notes" hint="optional">
                   <textarea
                     rows={3} value={form.notes}
-                    placeholder="Background, urgency, prior treatment…"
+                    placeholder="Background, prior treatment…"
                     onChange={e => update('notes', e.target.value)}
                     disabled={state === 'submitting'}
                     className={panelInputCls(false) + ' resize-none'}
@@ -1042,7 +1280,7 @@ function ReferralPanel({
 
             {/* Validation summary */}
             {Object.keys(fieldErrors).length > 0 && state !== 'submitting' && (() => {
-              const hasPatientErr = !!(fieldErrors['patientName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail']);
+              const hasPatientErr = !!(fieldErrors['patientFirstName'] || fieldErrors['patientLastName'] || fieldErrors['patientPhone'] || fieldErrors['patientDob'] || fieldErrors['patientDateOfAccident'] || fieldErrors['patientEmail']);
               const hasFirmErr    = !!(fieldErrors['firmName']    || fieldErrors['email']);
               const sections = [hasPatientErr && 'Patient', hasFirmErr && 'Law firm'].filter(Boolean).join(' and ');
               return (
@@ -1060,10 +1298,12 @@ function ReferralPanel({
           <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900">
             <button
               type="submit"
-              disabled={state === 'submitting'}
-              className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+              disabled={state === 'submitting' || checkingEmail || !canSubmit}
+              className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
-              {state === 'submitting' ? (
+              {checkingEmail ? (
+                <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Checking…</>
+              ) : state === 'submitting' ? (
                 <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
               ) : (
                 <><i className="ri-send-plane-line" />Send Referral{providers.length > 1 ? `s (${providers.length})` : ''}</>
@@ -1079,15 +1319,25 @@ function ReferralPanel({
         <ReferralConfirmModal
           form={form}
           providers={providers}
-          treatmentTypes={treatmentTypes}
           providerFiles={providerFiles}
           state={state}
           tenantId={tenantId}
+          loginUrl={loginUrl}
           hasPortalAccess={hasPortalAccess}
           prefillLawFirm={prefillLawFirm}
+          enrollToken={enrollToken}
           onConfirm={confirmAndSend}
           onBack={() => setState('form')}
           onClose={() => window.location.reload()}
+        />
+      )}
+
+      {/* Account exists modal — blocks referral when email is already active on this tenant */}
+      {state === 'account-exists' && (
+        <AccountExistsModal
+          email={form.email}
+          loginUrl={loginUrl}
+          onCancel={() => setState('form')}
         />
       )}
     </div>
@@ -1113,21 +1363,21 @@ function ConfirmRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ReferralConfirmModal({
-  form, providers, treatmentTypes, providerFiles, state, tenantId, hasPortalAccess, prefillLawFirm, onConfirm, onBack, onClose,
+  form, providers, providerFiles, state, tenantId, loginUrl, hasPortalAccess, prefillLawFirm, enrollToken, onConfirm, onBack, onClose,
 }: {
   form:             ReferralForm;
   providers:        PublicProviderItem[];
-  treatmentTypes:   TreatmentType[];
   providerFiles:    Record<string, File | null>;
   state:            PanelState;
   tenantId:         string;
+  loginUrl:         string;
   hasPortalAccess:  boolean;
   prefillLawFirm?:  PrefillLawFirm;
+  enrollToken:      string | null;
   onConfirm:        () => void;
   onBack:           () => void;
   onClose:          () => void;
 }) {
-  const treatment = treatmentTypes.find(t => t.id === form.treatmentTypeId);
   const isSending = state === 'submitting';
   const isSent    = state === 'success';
 
@@ -1184,7 +1434,9 @@ function ReferralConfirmModal({
               </div>
 
               {/* Account CTA — login if already registered, activate if not */}
-              <div className="px-6 py-5">
+              {/* Hidden when the user is already authenticated (prefillLawFirm present) */}
+              {!prefillLawFirm && (
+                <div className="px-6 py-5">
                 {hasPortalAccess ? (
                   <div className="rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-100 dark:border-green-700/50 p-4">
                     <div className="flex gap-3 items-start">
@@ -1198,7 +1450,7 @@ function ReferralConfirmModal({
                           all your cases in one place.
                         </p>
                         <a
-                          href="/login"
+                          href={loginUrl}
                           className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
                         >
                           <i className="ri-login-circle-line" />
@@ -1220,13 +1472,8 @@ function ReferralConfirmModal({
                           your cases in one place — completely free.
                         </p>
                         <a
-                          href={`/enroll?${new URLSearchParams({
-                            tenantId:            tenantId,
-                            ...(form.email       ? { email:   form.email }       : {}),
-                            ...(form.firmName    ? { firm:    form.firmName }    : {}),
-                            ...(form.phone       ? { phone:   form.phone }       : {}),
-                            ...(form.contactName ? { contact: form.contactName } : {}),
-                          }).toString()}`}
+                          href={enrollToken ? `/enroll?token=${enrollToken}` : '#'}
+                          onClick={!enrollToken ? (e: React.MouseEvent) => e.preventDefault() : undefined}
                           className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
                         >
                           <i className="ri-user-add-line" />
@@ -1237,6 +1484,7 @@ function ReferralConfirmModal({
                   </div>
                 )}
               </div>
+              )}
             </div>
 
             {/* Footer */}
@@ -1281,7 +1529,7 @@ function ReferralConfirmModal({
                   </p>
                   <div className="space-y-1.5 pl-1">
                     <ConfirmRow label="Firm name"    value={form.firmName}    />
-                    <ConfirmRow label="Contact name" value={form.contactName} />
+                    <ConfirmRow label="Contact name" value={`${form.contactFirstName} ${form.contactLastName}`.trim()} />
                     <ConfirmRow label="Email"        value={form.email}       />
                     <ConfirmRow label="Phone"        value={form.phone}       />
                   </div>
@@ -1294,13 +1542,12 @@ function ReferralConfirmModal({
                   <i className="ri-user-heart-line" /> Patient
                 </p>
                 <div className="space-y-1.5 pl-1">
-                  <ConfirmRow label="Name"             value={form.patientName}                     />
+                  <ConfirmRow label="Name"             value={`${form.patientFirstName} ${form.patientLastName}`.trim()} />
                   <ConfirmRow label="Phone"            value={form.patientPhone}                    />
                   <ConfirmRow label="Email"            value={form.patientEmail}                    />
                   <ConfirmRow label="Date of birth"    value={fmtDate(form.patientDob)}             />
                   <ConfirmRow label="Date of accident" value={fmtDate(form.patientDateOfAccident)}  />
                   <ConfirmRow label="Address"          value={form.patientAddress}                  />
-                  <ConfirmRow label="Treatment type"   value={treatment?.name}                      />
                 </div>
               </div>
 
@@ -1359,6 +1606,69 @@ function ReferralConfirmModal({
           </>
         )}
 
+      </div>
+    </div>
+  );
+}
+
+// ── Account exists modal ─────────────────────────────────────────────────────
+
+function AccountExistsModal({
+  email, loginUrl, onCancel,
+}: {
+  email:    string;
+  loginUrl: string;
+  onCancel: () => void;
+}) {
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div
+        ref={modalRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="account-exists-title"
+        aria-describedby="account-exists-desc"
+        tabIndex={-1}
+        className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl focus:outline-none"
+      >
+        <div className="px-6 pt-8 pb-6 text-center">
+          <div className="mx-auto w-14 h-14 rounded-full bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center mb-4">
+            <i className="ri-shield-check-line text-amber-500 text-3xl" />
+          </div>
+          <h2 id="account-exists-title" className="text-base font-bold text-gray-900 dark:text-white">
+            Account Already Exists
+          </h2>
+          <p id="account-exists-desc" className="text-sm text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
+            The email <strong className="text-gray-700 dark:text-gray-200">{email}</strong> is
+            already linked to an active CareConnect account for this network.
+          </p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+            Please log in to submit referrals through your portal dashboard.
+          </p>
+        </div>
+
+        <div className="px-6 pb-6 flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+          >
+            Cancel
+          </button>
+          <a
+            href={loginUrl}
+            className="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+          >
+            Login
+            <i className="ri-arrow-right-line text-sm" />
+          </a>
+        </div>
       </div>
     </div>
   );

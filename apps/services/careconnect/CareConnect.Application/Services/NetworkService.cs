@@ -10,18 +10,21 @@ namespace CareConnect.Application.Services;
 // CC2-INT-B06 / CC2-INT-B06-01 — provider network management with shared provider registry
 public class NetworkService : INetworkService
 {
-    private readonly INetworkRepository      _networks;
-    private readonly ICategoryRepository     _categories;
+    private readonly INetworkRepository _networks;
+    private readonly ICategoryRepository _categories;
+    private readonly IProviderImportParser _providerImportParser;
     private readonly ILogger<NetworkService> _logger;
 
     public NetworkService(
-        INetworkRepository      networks,
-        ICategoryRepository     categories,
+        INetworkRepository networks,
+        ICategoryRepository categories,
+        IProviderImportParser providerImportParser,
         ILogger<NetworkService> logger)
     {
-        _networks   = networks;
+        _networks = networks;
         _categories = categories;
-        _logger     = logger;
+        _providerImportParser = providerImportParser;
+        _logger = logger;
     }
 
     // ── Network CRUD ─────────────────────────────────────────────────────────
@@ -94,15 +97,8 @@ public class NetworkService : INetworkService
         _logger.LogInformation("Network {NetworkId} soft-deleted for tenant {TenantId}.", id, tenantId);
     }
 
-    // ── CC2-INT-B06-01: Shared provider registry — match-or-create ───────────
+    // ── Shared provider registry — search/import/match-or-create ────────────
 
-    /// <summary>
-    /// Search the shared global provider registry (cross-tenant).
-    /// Matching priority:
-    ///   1. NPI exact match (most specific, globally unique)
-    ///   2. Normalized phone + name substring
-    ///   3. Name substring + city
-    /// </summary>
     public async Task<List<ProviderSearchResult>> SearchProvidersAsync(
         string? name, string? phone, string? npi, string? city, CancellationToken ct = default)
     {
@@ -110,100 +106,199 @@ public class NetworkService : INetworkService
         return providers.Select(ToSearchResult).ToList();
     }
 
-    /// <summary>
-    /// Add a provider to a network using the match-or-create flow.
-    ///
-    /// ExistingProviderId path:
-    ///   - Validate the provider exists in the shared registry
-    ///   - Associate to the network (idempotent)
-    ///
-    /// NewProvider path:
-    ///   1. If NPI provided → check for existing provider by NPI (dedup)
-    ///   2. If match found → associate existing (no duplicate created)
-    ///   3. If no match → create new Provider in shared registry → associate
-    ///
-    /// The Provider.TenantId records the REGISTERING tenant (audit trail),
-    /// not ownership. Providers are accessible across all networks/tenants.
-    /// </summary>
-    public async Task<NetworkProviderItem> AddProviderAsync(
-        Guid tenantId, Guid networkId,
-        AddProviderToNetworkRequest request, Guid? userId,
+    public async Task<ProviderImportSummaryResponse> ImportProvidersAsync(
+        Guid networkId,
+        Stream fileStream,
+        string fileName,
+        bool dryRun,
+        Guid? userId,
         CancellationToken ct = default)
     {
-        // Validate the network belongs to this tenant
-        var network = await _networks.GetByIdAsync(tenantId, networkId, ct)
+        var network = await _networks.GetByIdGlobalAsync(networkId, ct)
+            ?? throw new NotFoundException($"Network {networkId} not found.");
+        var networkTenantId = network.TenantId;
+
+        _logger.LogInformation(
+            "Provider import started: TenantId={TenantId} NetworkId={NetworkId} FileName={FileName} DryRun={DryRun}",
+            networkTenantId, networkId, fileName, dryRun);
+
+        var parsed = await _providerImportParser.ParseAsync(fileStream, fileName, ct);
+        var npis = parsed.Rows
+            .Select(r => NormalizeOptional(r.Npi))
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Cast<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var emails = parsed.Rows
+            .Select(r => NormalizeEmail(r.Email))
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Cast<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var providersByNpi = await _networks.GetProvidersByNpisAsync(npis, ct);
+        var providersByEmail = await _networks.GetProvidersByTenantEmailsAsync(networkTenantId, emails, ct);
+        var providerIdsInNetwork = await _networks.GetNetworkProviderIdsAsync(networkTenantId, networkId, ct);
+
+        var rows = new List<ProviderImportRowResult>(parsed.Rows.Count);
+        var createdProviders = 0;
+        var reusedByNpi = 0;
+        var reusedByEmail = 0;
+        var alreadyInNetwork = 0;
+        var failedRows = 0;
+        var validRows = 0;
+        var processedRows = 0;
+
+        foreach (var parsedRow in parsed.Rows)
+        {
+            if (!TryNormalizeImportRow(parsedRow, out var normalized, out var errors))
+            {
+                failedRows++;
+                rows.Add(new ProviderImportRowResult(
+                    parsedRow.RowNumber,
+                    parsedRow.SourceKey,
+                    "failed",
+                    null,
+                    "Row validation failed.",
+                    null,
+                    errors));
+                continue;
+            }
+
+            validRows++;
+
+            try
+            {
+                if (normalized.TenantId != networkTenantId)
+                {
+                    failedRows++;
+                    rows.Add(new ProviderImportRowResult(
+                        parsedRow.RowNumber,
+                        parsedRow.SourceKey,
+                        "failed",
+                        null,
+                        "Row tenant does not match the target network tenant.",
+                        normalized,
+                        [$"tenantId {normalized.TenantId} does not match network tenant {networkTenantId}."]));
+                    continue;
+                }
+
+                var resolution = ResolveImportProvider(networkTenantId, userId, normalized, providersByNpi, providersByEmail);
+                var provider = resolution.Provider;
+                var status = resolution.Status;
+                var message = resolution.Message;
+
+                if (providerIdsInNetwork.Contains(provider.Id))
+                {
+                    alreadyInNetwork++;
+                    processedRows++;
+                    rows.Add(new ProviderImportRowResult(
+                        parsedRow.RowNumber,
+                        parsedRow.SourceKey,
+                        "already_in_network",
+                        provider.Id,
+                        "Provider is already linked to this network.",
+                        normalized,
+                        []));
+                    continue;
+                }
+
+                if (!dryRun)
+                {
+                    if (status == "created")
+                        await _networks.AddProviderToRegistryAsync(provider, ct);
+
+                    await _networks.AddProviderAsync(NetworkProvider.Create(networkTenantId, networkId, provider.Id), ct);
+                    await _networks.SaveChangesAsync(ct);
+                }
+
+                providerIdsInNetwork.Add(provider.Id);
+                CacheResolvedProvider(provider, providersByNpi, providersByEmail);
+
+                processedRows++;
+                switch (status)
+                {
+                    case "created":
+                        createdProviders++;
+                        break;
+                    case "reused_npi":
+                        reusedByNpi++;
+                        break;
+                    case "reused_email":
+                        reusedByEmail++;
+                        break;
+                }
+
+                rows.Add(new ProviderImportRowResult(
+                    parsedRow.RowNumber,
+                    parsedRow.SourceKey,
+                    status,
+                    provider.Id,
+                    message,
+                    normalized,
+                    []));
+            }
+            catch (Exception ex)
+            {
+                _networks.ClearTracking();
+                failedRows++;
+                _logger.LogWarning(
+                    ex,
+                    "Provider import row failed: TenantId={TenantId} NetworkId={NetworkId} FileName={FileName} RowNumber={RowNumber}",
+                    networkTenantId, networkId, fileName, parsedRow.RowNumber);
+
+                rows.Add(new ProviderImportRowResult(
+                    parsedRow.RowNumber,
+                    parsedRow.SourceKey,
+                    "failed",
+                    null,
+                    "Row import failed.",
+                    normalized,
+                    [ex.Message]));
+            }
+        }
+
+        _logger.LogInformation(
+            "Provider import completed: TenantId={TenantId} NetworkId={NetworkId} FileName={FileName} DryRun={DryRun} TotalRows={TotalRows} Created={CreatedProviders} ReusedByNpi={ReusedByNpi} ReusedByEmail={ReusedByEmail} AlreadyInNetwork={AlreadyInNetwork} FailedRows={FailedRows}",
+            networkTenantId, networkId, fileName, dryRun, parsed.TotalRows, createdProviders, reusedByNpi, reusedByEmail, alreadyInNetwork, failedRows);
+
+        return new ProviderImportSummaryResponse(
+            TenantId: networkTenantId,
+            NetworkId: networkId,
+            FileName: fileName,
+            DryRun: dryRun,
+            TotalRows: parsed.TotalRows,
+            ValidRows: validRows,
+            ProcessedRows: processedRows,
+            CreatedProviders: createdProviders,
+            ReusedByNpi: reusedByNpi,
+            ReusedByEmail: reusedByEmail,
+            AlreadyInNetwork: alreadyInNetwork,
+            FailedRows: failedRows,
+            Rows: rows);
+    }
+
+    public async Task<NetworkProviderItem> AddProviderAsync(
+        Guid tenantId,
+        Guid networkId,
+        AddProviderToNetworkRequest request,
+        Guid? userId,
+        CancellationToken ct = default)
+    {
+        _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
         Provider provider;
 
         if (request.ExistingProviderId.HasValue)
         {
-            // ── Path A: Associate an existing shared provider ─────────────────
             provider = await _networks.GetProviderByIdGlobalAsync(request.ExistingProviderId.Value, ct)
                 ?? throw new NotFoundException($"Provider {request.ExistingProviderId.Value} not found in the shared registry.");
         }
         else if (request.NewProvider is { } np)
         {
-            // ── Path B: Match-or-create ───────────────────────────────────────
             ValidateNewProvider(np);
-
-            // Step 1: NPI dedup — if NPI provided and a record already exists, reuse it
-            if (!string.IsNullOrWhiteSpace(np.Npi))
-            {
-                var byNpi = await _networks.GetProviderByNpiAsync(np.Npi, ct);
-                if (byNpi is not null)
-                {
-                    _logger.LogInformation(
-                        "Provider NPI {Npi} already exists (Id={ProviderId}); reusing instead of creating duplicate.",
-                        np.Npi, byNpi.Id);
-                    provider = byNpi;
-                    goto associate;
-                }
-            }
-
-            // Step 2: No NPI match — create a new Provider in the shared registry
-            // TenantId = registering tenant (audit/tracking, not ownership)
-            provider = Provider.Create(
-                tenantId:          tenantId,
-                name:              np.Name,
-                organizationName:  np.OrganizationName,
-                email:             np.Email,
-                phone:             np.Phone,
-                addressLine1:      np.AddressLine1,
-                city:              np.City,
-                state:             np.State,
-                postalCode:        np.PostalCode,
-                isActive:          np.IsActive,
-                acceptingReferrals: np.AcceptingReferrals,
-                createdByUserId:   userId,
-                npi:               np.Npi);
-
-            await _networks.AddProviderToRegistryAsync(provider, ct);
-
-            // Sync provider categories (types) if provided
-            if (np.CategoryCodes is { Count: > 0 } codes)
-            {
-                var categoryEntities = await _categories.GetByCodesAsync(codes, ct);
-
-                // Build ordered list: primary first, then the rest
-                var orderedIds = new List<Guid>();
-                if (!string.IsNullOrWhiteSpace(np.PrimaryCategoryCode))
-                {
-                    var primary = categoryEntities.FirstOrDefault(
-                        c => string.Equals(c.Code, np.PrimaryCategoryCode, StringComparison.OrdinalIgnoreCase));
-                    if (primary is not null) orderedIds.Add(primary.Id);
-                }
-                orderedIds.AddRange(categoryEntities
-                    .Where(c => !string.Equals(c.Code, np.PrimaryCategoryCode, StringComparison.OrdinalIgnoreCase))
-                    .Select(c => c.Id));
-
-                if (orderedIds.Count > 0)
-                    await _networks.SyncProviderCategoriesAsync(provider.Id, orderedIds, ct);
-            }
-
-            _logger.LogInformation(
-                "New provider {ProviderId} ({Name}) registered in shared registry by tenant {TenantId}.",
-                provider.Id, provider.Name, tenantId);
+            provider = await ResolveProviderForAddAsync(tenantId, np, userId, ct);
         }
         else
         {
@@ -211,18 +306,11 @@ public class NetworkService : INetworkService
                 new() { ["request"] = ["Either ExistingProviderId or NewProvider must be provided."] });
         }
 
-        associate:
-        // ── Associate provider to network (idempotent) ────────────────────────
         var existing = await _networks.GetMembershipAsync(networkId, provider.Id, ct);
-        if (existing is not null)
-        {
-            _logger.LogDebug("Provider {ProviderId} already in network {NetworkId} — no-op.", provider.Id, networkId);
-        }
+        if (existing is null)
+            await _networks.AddProviderAsync(NetworkProvider.Create(tenantId, networkId, provider.Id), ct);
         else
-        {
-            var entry = NetworkProvider.Create(tenantId, networkId, provider.Id);
-            await _networks.AddProviderAsync(entry, ct);
-        }
+            _logger.LogDebug("Provider {ProviderId} already in network {NetworkId} — no-op.", provider.Id, networkId);
 
         await _networks.SaveChangesAsync(ct);
 
@@ -232,14 +320,12 @@ public class NetworkService : INetworkService
     public async Task RemoveProviderAsync(
         Guid tenantId, Guid networkId, Guid providerId, CancellationToken ct = default)
     {
-        // Validate the network belongs to this tenant
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
         var entry = await _networks.GetMembershipAsync(networkId, providerId, ct)
             ?? throw new NotFoundException($"Provider {providerId} is not a member of network {networkId}.");
 
-        // Remove ONLY the association — the ProviderMaster record remains intact
         await _networks.RemoveProviderAsync(entry, ct);
         await _networks.SaveChangesAsync(ct);
 
@@ -256,9 +342,6 @@ public class NetworkService : INetworkService
 
         var providers = await _networks.GetNetworkProvidersAsync(tenantId, networkId, ct);
 
-        // Include every provider in the network so the frontend can geocode
-        // those whose coordinates have not yet been stored (lat/lng = 0 signals
-        // "needs geocoding" to the client-side geocoder).
         return providers
             .Select(p => new NetworkProviderMarker(
                 p.Id,
@@ -300,6 +383,255 @@ public class NetworkService : INetworkService
         new(p.Id, p.Name, p.OrganizationName, p.Email, p.Phone, p.City, p.State,
             p.AddressLine1, p.PostalCode, p.Npi, p.IsActive, p.AcceptingReferrals, p.AccessStage);
 
+    private async Task<Provider> ResolveProviderForAddAsync(
+        Guid tenantId,
+        NewProviderData np,
+        Guid? userId,
+        CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(np.Npi))
+        {
+            var byNpi = await _networks.GetProviderByNpiAsync(np.Npi, ct);
+            if (byNpi is not null)
+            {
+                _logger.LogInformation(
+                    "Provider NPI {Npi} already exists (Id={ProviderId}); reusing instead of creating duplicate.",
+                    np.Npi, byNpi.Id);
+                return byNpi;
+            }
+        }
+
+        var byEmail = await _networks.GetProviderByTenantEmailAsync(tenantId, np.Email, ct);
+        if (byEmail is not null)
+        {
+            _logger.LogInformation(
+                "Provider email {Email} already exists for tenant {TenantId} (Id={ProviderId}); reusing existing provider.",
+                np.Email, tenantId, byEmail.Id);
+            return byEmail;
+        }
+
+        var provider = Provider.Create(
+            tenantId: tenantId,
+            name: $"{np.FirstName} {np.LastName}".Trim(),
+            firstName: np.FirstName,
+            lastName: np.LastName,
+            organizationName: np.OrganizationName,
+            email: np.Email.Trim().ToLowerInvariant(),
+            phone: np.Phone,
+            addressLine1: np.AddressLine1,
+            city: np.City,
+            state: np.State,
+            postalCode: np.PostalCode,
+            isActive: np.IsActive,
+            acceptingReferrals: np.AcceptingReferrals,
+            createdByUserId: userId,
+            npi: NormalizeOptional(np.Npi));
+
+        await _networks.AddProviderToRegistryAsync(provider, ct);
+
+        if (np.CategoryCodes is { Count: > 0 } codes)
+        {
+            var categoryEntities = await _categories.GetByCodesAsync(codes, ct);
+            var orderedIds = new List<Guid>();
+
+            if (!string.IsNullOrWhiteSpace(np.PrimaryCategoryCode))
+            {
+                var primary = categoryEntities.FirstOrDefault(
+                    c => string.Equals(c.Code, np.PrimaryCategoryCode, StringComparison.OrdinalIgnoreCase));
+                if (primary is not null) orderedIds.Add(primary.Id);
+            }
+
+            orderedIds.AddRange(categoryEntities
+                .Where(c => !string.Equals(c.Code, np.PrimaryCategoryCode, StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.Id));
+
+            if (orderedIds.Count > 0)
+                await _networks.SyncProviderCategoriesAsync(provider.Id, orderedIds, ct);
+        }
+
+        _logger.LogInformation(
+            "New provider {ProviderId} ({Name}) registered in shared registry by tenant {TenantId}.",
+            provider.Id, provider.Name, tenantId);
+
+        return provider;
+    }
+
+    private ImportProviderResolution ResolveImportProvider(
+        Guid tenantId,
+        Guid? userId,
+        ProviderImportNormalizedRow normalized,
+        Dictionary<string, Provider> providersByNpi,
+        Dictionary<string, Provider> providersByEmail)
+    {
+        if (!string.IsNullOrWhiteSpace(normalized.Npi) &&
+            providersByNpi.TryGetValue(normalized.Npi, out var byNpi))
+        {
+            return new ImportProviderResolution(
+                byNpi,
+                "reused_npi",
+                "Matched existing provider by NPI.");
+        }
+
+        if (providersByEmail.TryGetValue(normalized.Email, out var byEmail))
+        {
+            return new ImportProviderResolution(
+                byEmail,
+                "reused_email",
+                "Matched existing provider by tenant email.");
+        }
+
+        var provider = Provider.Create(
+            tenantId: tenantId,
+            name: $"{normalized.FirstName} {normalized.LastName}".Trim(),
+            firstName: normalized.FirstName,
+            lastName: normalized.LastName,
+            organizationName: normalized.OrganizationName,
+            email: normalized.Email,
+            phone: normalized.Phone,
+            addressLine1: normalized.AddressLine1,
+            city: normalized.City,
+            state: normalized.State,
+            postalCode: normalized.PostalCode,
+            isActive: normalized.IsActive,
+            acceptingReferrals: normalized.AcceptingReferrals,
+            createdByUserId: userId,
+            npi: normalized.Npi);
+
+        return new ImportProviderResolution(
+            provider,
+            "created",
+            "Provider will be created and linked to the network.");
+    }
+
+    private static void CacheResolvedProvider(
+        Provider provider,
+        Dictionary<string, Provider> providersByNpi,
+        Dictionary<string, Provider> providersByEmail)
+    {
+        if (!string.IsNullOrWhiteSpace(provider.Npi))
+            providersByNpi[provider.Npi] = provider;
+
+        providersByEmail[provider.Email] = provider;
+    }
+
+    private static bool TryNormalizeImportRow(
+        ProviderImportParsedRow parsedRow,
+        out ProviderImportNormalizedRow normalized,
+        out List<string> errors)
+    {
+        errors = [];
+
+        var tenantId = ParseRequiredGuid(parsedRow.TenantId, "tenantId is required and must be a valid GUID.", errors);
+        var firstName = NormalizeRequired(parsedRow.FirstName, "Provider first name is required.", errors);
+        var lastName = NormalizeRequired(parsedRow.LastName, "Provider last name is required.", errors);
+        var email = NormalizeRequired(parsedRow.Email, "Provider email is required.", errors, NormalizeEmail);
+        var phone = NormalizeRequired(parsedRow.Phone, "Provider phone is required.", errors);
+        var addressLine1 = NormalizeRequired(parsedRow.AddressLine1, "Address is required.", errors);
+        var city = NormalizeRequired(parsedRow.City, "City is required.", errors);
+        var state = NormalizeRequired(parsedRow.State, "State is required.", errors, v => v.Trim().ToUpperInvariant());
+        var postalCode = NormalizeRequired(parsedRow.PostalCode, "Postal code is required.", errors);
+
+        if (!TryParseOptionalBoolean(parsedRow.IsActiveRaw, defaultValue: true, out var isActive, out var isActiveError))
+            errors.Add(isActiveError);
+
+        if (!TryParseOptionalBoolean(parsedRow.AcceptingReferralsRaw, defaultValue: true, out var acceptingReferrals, out var acceptingError))
+            errors.Add(acceptingError);
+
+        if (errors.Count > 0)
+        {
+            normalized = default!;
+            return false;
+        }
+
+        normalized = new ProviderImportNormalizedRow(
+            TenantId: tenantId!.Value,
+            FirstName: firstName!,
+            LastName: lastName!,
+            OrganizationName: NormalizeOptional(parsedRow.OrganizationName),
+            Npi: NormalizeOptional(parsedRow.Npi),
+            Email: email!,
+            Phone: phone!,
+            AddressLine1: addressLine1!,
+            City: city!,
+            State: state!,
+            PostalCode: postalCode!,
+            IsActive: isActive,
+            AcceptingReferrals: acceptingReferrals);
+
+        return true;
+    }
+
+    private static Guid? ParseRequiredGuid(string? value, string errorMessage, List<string> errors)
+    {
+        var normalized = NormalizeOptional(value);
+        if (normalized is null || !Guid.TryParse(normalized, out var parsed))
+        {
+            errors.Add(errorMessage);
+            return null;
+        }
+
+        return parsed;
+    }
+
+    private static string? NormalizeRequired(
+        string? value,
+        string errorMessage,
+        List<string> errors,
+        Func<string, string?>? normalize = null)
+    {
+        var normalized = normalize is null ? NormalizeOptional(value) : NormalizeOptional(value) is { } text ? normalize(text) : null;
+        if (string.IsNullOrWhiteSpace(normalized))
+            errors.Add(errorMessage);
+        return normalized;
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return value.Trim();
+    }
+
+    private static string? NormalizeEmail(string? value)
+    {
+        var normalized = NormalizeOptional(value);
+        return normalized?.ToLowerInvariant();
+    }
+
+    private static bool TryParseOptionalBoolean(
+        string? raw,
+        bool defaultValue,
+        out bool value,
+        out string error)
+    {
+        error = string.Empty;
+        var normalized = NormalizeOptional(raw);
+        if (normalized is null)
+        {
+            value = defaultValue;
+            return true;
+        }
+
+        switch (normalized.ToLowerInvariant())
+        {
+            case "true":
+            case "1":
+            case "yes":
+            case "y":
+                value = true;
+                return true;
+            case "false":
+            case "0":
+            case "no":
+            case "n":
+                value = false;
+                return true;
+            default:
+                value = defaultValue;
+                error = $"Boolean value '{raw}' is invalid. Use true/false, 1/0, yes/no, or y/n.";
+                return false;
+        }
+    }
+
     // ── Validation ────────────────────────────────────────────────────────────
 
     private static void ValidateName(string name)
@@ -315,8 +647,10 @@ public class NetworkService : INetworkService
     private static void ValidateNewProvider(NewProviderData np)
     {
         var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(np.Name))
-            errors["name"] = ["Provider name is required."];
+        if (string.IsNullOrWhiteSpace(np.FirstName))
+            errors["firstName"] = ["Provider first name is required."];
+        if (string.IsNullOrWhiteSpace(np.LastName))
+            errors["lastName"] = ["Provider last name is required."];
         if (string.IsNullOrWhiteSpace(np.Email))
             errors["email"] = ["Provider email is required."];
         if (string.IsNullOrWhiteSpace(np.Phone))
@@ -332,4 +666,9 @@ public class NetworkService : INetworkService
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
     }
+
+    private sealed record ImportProviderResolution(
+        Provider Provider,
+        string Status,
+        string Message);
 }

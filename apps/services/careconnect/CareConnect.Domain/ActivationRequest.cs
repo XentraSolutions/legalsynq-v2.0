@@ -60,7 +60,7 @@ public class ActivationRequest : AuditableEntity
     {
         return new ActivationRequest
         {
-            Id             = Guid.NewGuid(),
+            Id             = Guid.CreateVersion7(),
             TenantId       = tenantId,
             ReferralId     = referralId,
             ProviderId     = providerId,

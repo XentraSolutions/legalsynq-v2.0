@@ -12,5 +12,6 @@ public interface IJwtTokenService
         IEnumerable<string>? productRoles = null,
         int? sessionTimeoutMinutes = null,
         IEnumerable<string>? productCodes = null,
-        IEnumerable<string>? permissions = null);
+        IEnumerable<string>? permissions = null,
+        IEnumerable<Guid>? tenantIds = null);
 }

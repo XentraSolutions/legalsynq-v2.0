@@ -25,7 +25,7 @@ public class ReferralStatusHistory
     {
         return new ReferralStatusHistory
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ReferralId = referralId,
             TenantId = tenantId,
             OldStatus = oldStatus,

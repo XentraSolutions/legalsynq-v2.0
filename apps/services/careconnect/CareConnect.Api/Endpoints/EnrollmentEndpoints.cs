@@ -1,6 +1,7 @@
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
+using CareConnect.Application.Helpers;
 using CareConnect.Domain;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
@@ -43,7 +44,9 @@ public static class EnrollmentEndpoints
             if (tenantId is null)
                 return Results.StatusCode(403);
 
-            var provider = await providers.GetByIdCrossAsync(providerId, ct);
+            // Use tenant-scoped lookup to prevent cross-tenant PII enumeration.
+            // A caller supplying a providerId from a different tenant will receive 404.
+            var provider = await providers.GetByIdAsync(tenantId.Value, providerId, ct);
             if (provider is null)
                 return Results.NotFound(new { message = "Provider not found." });
 
@@ -151,6 +154,12 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "Password must be at least 8 characters." });
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
+            if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out var normalizedPhone))
+                return Results.BadRequest(new { message = "Phone number must be 10 digits." });
+            if (!PostalCodeHelper.IsValidOptionalUsZip(body.PostalCode))
+                return Results.BadRequest(new { message = "ZIP code must be 5 digits or 5+4 format." });
+            if (!ValidateAddressSelectionToken(body.AddressSelectionToken, body.AddressLine1, body.City, body.State, body.PostalCode, config))
+                return Results.BadRequest(new { message = "ZIP code must match the selected address." });
 
             // ── Load provider ────────────────────────────────────────────────
 
@@ -160,6 +169,22 @@ public static class EnrollmentEndpoints
 
             if (ProviderAccessStage.IsAtLeast(provider.AccessStage, ProviderAccessStage.CommonPortal))
                 return Results.Conflict(new { message = "This provider has already activated portal access.", alreadyEnrolled = true });
+
+            // ── CC-OWNER-CHECK: Block all tenant owners from self-enrolling ──
+            // Placed after provider existence check to avoid a cross-service call
+            // for requests with an invalid providerId.
+            var isAnyOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(body.Email.Trim(), ct);
+            if (isAnyOwner)
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL Enrollment blocked — email {Email} belongs to a tenant owner.",
+                    body.Email.Trim());
+                return Results.Conflict(new
+                {
+                    message = "The email address used is associated with a network owner account and cannot be enrolled.",
+                    code    = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
 
             // ── OTP verification (required only when email differs from record) ──
 
@@ -185,7 +210,7 @@ public static class EnrollmentEndpoints
                 name:             provider.Name,
                 organizationName: companyName,
                 email:            body.Email.Trim(),
-                phone:            body.Phone?.Trim() ?? provider.Phone,
+                phone:            normalizedPhone ?? provider.Phone,
                 addressLine1:     body.AddressLine1?.Trim() ?? provider.AddressLine1,
                 city:             body.City?.Trim() ?? provider.City,
                 state:            body.State?.Trim() ?? provider.State,
@@ -197,7 +222,7 @@ public static class EnrollmentEndpoints
             // ── Step 1: Create / resolve Identity org ────────────────────────
 
             var orgId = await identityOrgs.EnsureProviderOrganizationAsync(
-                provider.TenantId, provider.Id, companyName, ct);
+                provider.TenantId, provider.Id, companyName, ct: ct, globalScope: true);
 
             if (orgId is null)
             {
@@ -224,11 +249,25 @@ public static class EnrollmentEndpoints
 
             var registerResult = await identityOrgs.RegisterUserDirectlyAsync(
                 orgId.Value,
+                provider.TenantId,
                 body.Email.Trim(),
                 body.Password,
                 body.FirstName.Trim(),
                 body.LastName?.Trim(),
+                ResolveIdentityEnrollmentPhone(normalizedPhone, provider.Phone),
                 ct);
+
+            if (registerResult is { IsOwnerBlocked: true })
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL Enrollment blocked — email belongs to tenant owner for provider {ProviderId}.",
+                    provider.Id);
+                return Results.Conflict(new
+                {
+                    error = "The email address used is associated with the account that owns this network and cannot be enrolled as a provider.",
+                    code  = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
 
             if (registerResult is null)
             {
@@ -286,6 +325,7 @@ public static class EnrollmentEndpoints
             IConfiguration           config,
             FirmEnrollmentRegisterRequest body,
             IIdentityOrganizationService identityOrgs,
+            IReferralRepository      referrals,
             IAuditEventClient         auditClient,
             ILoggerFactory            loggerFactory,
             CancellationToken         ct) =>
@@ -304,10 +344,47 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "Password must be at least 8 characters." });
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
+            if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out var normalizedPhone))
+                return Results.BadRequest(new { message = "Phone number must be 10 digits." });
+            if (!PostalCodeHelper.IsValidOptionalUsZip(body.PostalCode))
+                return Results.BadRequest(new { message = "ZIP code must be 5 digits or 5+4 format." });
+            if (!ValidateAddressSelectionToken(body.AddressSelectionToken, body.AddressLine1, body.City, body.State, body.PostalCode, config))
+                return Results.BadRequest(new { message = "ZIP code must match the selected address." });
 
-            // Use the tenantId supplied in the payload (the CareConnect tenant that owns the referral)
-            // rather than the trust-boundary resolved one which may differ.
-            var firmTenantId = body.TenantId != Guid.Empty ? body.TenantId : tenantId.Value;
+            // ── CC-OWNER-CHECK: Block all tenant owners from self-enrolling ──
+            var isAnyOwner = await identityOrgs.CheckAnyTenantOwnerEmailAsync(body.Email.Trim(), ct);
+            if (isAnyOwner)
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL-FIRM Enrollment blocked — email {Email} belongs to a tenant owner.",
+                    body.Email.Trim());
+                return Results.Conflict(new
+                {
+                    message = "The email address used is associated with a network owner account and cannot be enrolled.",
+                    code    = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
+
+            // ── DUPLICATE-CHECK: Block re-enrollment if user is already active ──
+            var portalStatus = await identityOrgs.GetReferrerPortalAccessStatusAsync(
+                tenantId.Value, body.Email.Trim(), ct);
+            if (portalStatus == ReferrerPortalAccessStatuses.ActiveInTenant)
+            {
+                logger.LogInformation(
+                    "CC2-ENROLL-FIRM Duplicate enrollment blocked — email {Email} is already active in tenant.",
+                    body.Email.Trim());
+                return Results.Conflict(new
+                {
+                    message = "An account with this email address has already been created.",
+                    code    = "ALREADY_ENROLLED",
+                });
+            }
+
+            // Always use the HMAC-validated tenantId from the trust boundary — never the body value.
+            // The body.TenantId was previously preferred here but is user-supplied and bypasses
+            // the HMAC guarantee. Both values originate from the same URL param so they are
+            // identical in legitimate flows; using the validated header value is strictly safer.
+            var firmTenantId = tenantId.Value;
 
             // Step 1: Create / resolve the LAW_FIRM org
             var orgId = await identityOrgs.EnsureLawFirmOrganizationAsync(
@@ -323,11 +400,25 @@ public static class EnrollmentEndpoints
             // Step 2: Create active user with chosen password
             var registerResult = await identityOrgs.RegisterUserDirectlyAsync(
                 orgId.Value,
+                firmTenantId,
                 body.Email.Trim(),
                 body.Password,
                 body.FirstName.Trim(),
                 body.LastName?.Trim(),
+                ResolveIdentityEnrollmentPhone(normalizedPhone, null),
                 ct);
+
+            if (registerResult is { IsOwnerBlocked: true })
+            {
+                logger.LogWarning(
+                    "CC2-ENROLL-FIRM Enrollment blocked — email belongs to tenant owner for firm '{CompanyName}'.",
+                    body.CompanyName);
+                return Results.Conflict(new
+                {
+                    error = "The email address used is associated with the account that owns this network and cannot be enrolled as a provider.",
+                    code  = "OWNER_ENROLLMENT_BLOCKED",
+                });
+            }
 
             if (registerResult is null)
             {
@@ -335,6 +426,12 @@ public static class EnrollmentEndpoints
                     "CC2-ENROLL-FIRM Identity user registration failed for firm '{CompanyName}'.", body.CompanyName);
                 return Results.Problem("Account setup could not complete. Please try again or contact support.");
             }
+
+            await referrals.BackfillReferringOrganizationByEmailAsync(
+                firmTenantId,
+                body.Email.Trim(),
+                orgId.Value,
+                ct);
 
             _ = auditClient.IngestAsync(new LegalSynq.AuditClient.DTOs.IngestAuditEventRequest
             {
@@ -445,6 +542,45 @@ public static class EnrollmentEndpoints
         catch { return false; }
     }
 
+    internal static string? ResolveIdentityEnrollmentPhone(string? normalizedPhone, string? fallbackPhone)
+    {
+        static string? ToIdentityPhone(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+
+            var trimmed = raw.Trim();
+            if (trimmed.StartsWith('+'))
+                return trimmed;
+
+            var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+            return digits.Length == 10
+                ? $"+1{digits}"
+                : digits.Length == 11 && digits.StartsWith('1')
+                    ? $"+{digits}"
+                    : trimmed;
+        }
+
+        return ToIdentityPhone(normalizedPhone) ?? ToIdentityPhone(fallbackPhone);
+    }
+
+    private static bool ValidateAddressSelectionToken(
+        string? addressSelectionToken,
+        string? addressLine1,
+        string? city,
+        string? state,
+        string? postalCode,
+        IConfiguration config)
+    {
+        if (string.IsNullOrWhiteSpace(addressSelectionToken))
+            return true;
+
+        var secret = config["PublicTrustBoundary:InternalRequestSecret"];
+        var claims = AddressSelectionTokenHelper.Decode(addressSelectionToken, secret);
+        return claims is not null
+            && AddressSelectionTokenHelper.MatchesAddress(claims, addressLine1, city, state, postalCode);
+    }
+
     // ── OTP email template ─────────────────────────────────────────────────────
 
     private static string BuildOtpEmailHtml(string email, string code) => $"""
@@ -495,6 +631,7 @@ public static class EnrollmentEndpoints
         string? City         = null,
         string? State        = null,
         string? PostalCode   = null,
+        string? AddressSelectionToken = null,
         string? OtpCode      = null);
 
     public record FirmEnrollmentRegisterRequest(
@@ -508,5 +645,6 @@ public static class EnrollmentEndpoints
         string? AddressLine1 = null,
         string? City         = null,
         string? State        = null,
-        string? PostalCode   = null);
+        string? PostalCode   = null,
+        string? AddressSelectionToken = null);
 }

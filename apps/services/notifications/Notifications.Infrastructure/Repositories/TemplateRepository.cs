@@ -31,7 +31,7 @@ public class TemplateRepository : ITemplateRepository
 
     public async Task<Template> CreateAsync(Template template)
     {
-        template.Id = template.Id == Guid.Empty ? Guid.NewGuid() : template.Id;
+        template.Id = template.Id == Guid.Empty ? Guid.CreateVersion7() : template.Id;
         template.CreatedAt = DateTime.UtcNow;
         template.UpdatedAt = DateTime.UtcNow;
         _db.Templates.Add(template);
@@ -74,7 +74,7 @@ public class TemplateVersionRepository : ITemplateVersionRepository
 
     public async Task<TemplateVersion> CreateAsync(TemplateVersion version)
     {
-        version.Id = version.Id == Guid.Empty ? Guid.NewGuid() : version.Id;
+        version.Id = version.Id == Guid.Empty ? Guid.CreateVersion7() : version.Id;
         version.CreatedAt = DateTime.UtcNow;
         version.UpdatedAt = DateTime.UtcNow;
         _db.TemplateVersions.Add(version);

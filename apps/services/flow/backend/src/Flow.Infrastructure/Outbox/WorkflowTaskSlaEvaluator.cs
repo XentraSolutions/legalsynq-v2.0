@@ -1,9 +1,11 @@
 using Flow.Application.Interfaces;
 using Flow.Domain.Common;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Net.Sockets;
 
 namespace Flow.Infrastructure.Outbox;
 
@@ -47,13 +49,17 @@ public sealed class WorkflowTaskSlaEvaluator : BackgroundService
     private readonly IServiceScopeFactory _scopes;
     private readonly IOptionsMonitor<WorkflowTaskSlaOptions> _options;
     private readonly ILogger<WorkflowTaskSlaEvaluator> _log;
+    private readonly Uri? _taskServiceBaseUri;
+    private bool _taskServiceUnavailable;
 
     public WorkflowTaskSlaEvaluator(
         IServiceScopeFactory scopes,
+        IConfiguration configuration,
         IOptionsMonitor<WorkflowTaskSlaOptions> options,
         ILogger<WorkflowTaskSlaEvaluator> log)
     {
         _scopes = scopes;
+        _taskServiceBaseUri = BuildTaskServiceBaseUri(configuration["ExternalServices:Task:BaseUrl"]);
         _options = options;
         _log = log;
     }
@@ -101,6 +107,19 @@ public sealed class WorkflowTaskSlaEvaluator : BackgroundService
         var opts = _options.CurrentValue;
         if (!opts.Enabled) return;
 
+        if (!await IsTaskServiceReachableAsync(ct))
+        {
+            if (!_taskServiceUnavailable)
+            {
+                _taskServiceUnavailable = true;
+                _log.LogWarning(
+                    "WorkflowTaskSlaEvaluator: Task service at {BaseUrl} is unreachable — skipping tick until the dependency is reachable.",
+                    _taskServiceBaseUri?.ToString() ?? "(unconfigured)");
+            }
+
+            return;
+        }
+
         await using var scope = _scopes.CreateAsyncScope();
         var taskClient = scope.ServiceProvider.GetRequiredService<IFlowTaskServiceClient>();
 
@@ -121,9 +140,24 @@ public sealed class WorkflowTaskSlaEvaluator : BackgroundService
         }
         catch (Exception ex)
         {
-            _log.LogError(ex,
-                "WorkflowTaskSlaEvaluator: Task service SLA batch read FAILED — skipping tick.");
+            if (!_taskServiceUnavailable)
+            {
+                _taskServiceUnavailable = true;
+                _log.LogWarning(ex,
+                    "WorkflowTaskSlaEvaluator: Task service SLA batch read failed — skipping tick until the dependency is reachable.");
+            }
+            else
+            {
+                _log.LogDebug(ex,
+                    "WorkflowTaskSlaEvaluator: Task service SLA batch read still failing.");
+            }
             return;
+        }
+
+        if (_taskServiceUnavailable)
+        {
+            _taskServiceUnavailable = false;
+            _log.LogInformation("WorkflowTaskSlaEvaluator: Task service connectivity restored.");
         }
 
         if (batch.Count == 0) return;
@@ -177,6 +211,42 @@ public sealed class WorkflowTaskSlaEvaluator : BackgroundService
                     "WorkflowTaskSlaEvaluator: Task service SLA push FAILED for tenant {TenantId} ({Count} update(s)).",
                     tenantGuid, perTenantUpdates.Count);
             }
+        }
+    }
+
+    private static Uri? BuildTaskServiceBaseUri(string? configuredBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(configuredBaseUrl))
+            return null;
+
+        return Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var uri) ? uri : null;
+    }
+
+    private async Task<bool> IsTaskServiceReachableAsync(CancellationToken ct)
+    {
+        if (_taskServiceBaseUri is null)
+            return false;
+
+        var port = _taskServiceBaseUri.IsDefaultPort
+            ? (_taskServiceBaseUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? 443 : 80)
+            : _taskServiceBaseUri.Port;
+
+        using var tcp = new TcpClient();
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(500));
+
+        try
+        {
+            await tcp.ConnectAsync(_taskServiceBaseUri.Host, port, timeoutCts.Token);
+            return true;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (SocketException)
+        {
+            return false;
         }
     }
 }

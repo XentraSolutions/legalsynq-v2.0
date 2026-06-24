@@ -1,4 +1,4 @@
-import { requireOrg }    from '@/lib/auth-guards';
+import { requireAdmin }  from '@/lib/auth-guards';
 import { serverApi }     from '@/lib/server-api-client';
 
 export const dynamic = 'force-dynamic';
@@ -79,12 +79,12 @@ const CATEGORY_TABS = [
 /**
  * /activity — Tenant portal: activity & audit log viewer.
  *
- * Access: authenticated org member (requireOrg guard).
+ * Access: TenantAdmin or PlatformAdmin only (requireAdmin guard).
  * Scope: events scoped to the authenticated user's tenantId only.
  */
 export default async function ActivityPage({ searchParams }: PageProps) {
   const searchParamsData = await searchParams;
-  const session = await requireOrg();
+  const session = await requireAdmin();
 
   const category  = searchParamsData.category  || undefined;
   const eventType = searchParamsData.eventType?.trim() || undefined;

@@ -61,7 +61,7 @@ public class CcBccRecipientTests
 
         var conv = Conversation.Create(
             TestHelpers.TenantId, TestHelpers.OrgId, "SYNQ_COMMS",
-            ContextType.General, $"test-{Guid.NewGuid():N}",
+            ContextType.General, $"test-{Guid.CreateVersion7():N}",
             "CC/BCC Test Subject", VisibilityType.SharedExternal,
             TestHelpers.UserId1);
         await convRepo.AddAsync(conv);
@@ -94,7 +94,7 @@ public class CcBccRecipientTests
         var result = await service.ProcessInboundAsync(
             new InboundEmailIntakeRequest(
                 Provider: "test",
-                InternetMessageId: $"<cc-test-{Guid.NewGuid():N}@example.com>",
+                InternetMessageId: $"<cc-test-{Guid.CreateVersion7():N}@example.com>",
                 ProviderMessageId: null,
                 ProviderThreadId: null,
                 InReplyToMessageId: null,
@@ -137,7 +137,7 @@ public class CcBccRecipientTests
         await service.ProcessInboundAsync(
             new InboundEmailIntakeRequest(
                 Provider: "test",
-                InternetMessageId: $"<reuse-test-{Guid.NewGuid():N}@example.com>",
+                InternetMessageId: $"<reuse-test-{Guid.CreateVersion7():N}@example.com>",
                 ProviderMessageId: null,
                 ProviderThreadId: null,
                 InReplyToMessageId: null,
@@ -285,7 +285,7 @@ public class CcBccRecipientTests
 
         var conv = Conversation.Create(
             TestHelpers.TenantId, TestHelpers.OrgId, "SYNQ_COMMS",
-            ContextType.General, $"test-{Guid.NewGuid():N}",
+            ContextType.General, $"test-{Guid.CreateVersion7():N}",
             "Internal Subject", VisibilityType.InternalOnly,
             TestHelpers.UserId1);
         await convRepo.AddAsync(conv);
@@ -324,7 +324,7 @@ public class CcBccRecipientTests
         await service.ProcessInboundAsync(
             new InboundEmailIntakeRequest(
                 Provider: "test",
-                InternetMessageId: $"<audit-test-{Guid.NewGuid():N}@example.com>",
+                InternetMessageId: $"<audit-test-{Guid.CreateVersion7():N}@example.com>",
                 ProviderMessageId: null,
                 ProviderThreadId: null,
                 InReplyToMessageId: null,

@@ -24,38 +24,11 @@ namespace Flow.Infrastructure.Persistence.Migrations
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Drop all foreign-key indexes first (MySQL requires this before
-            // dropping a table that is referenced by or references other tables).
-            migrationBuilder.DropIndex(
-                name: "ix_flow_workflow_tasks_instance",
-                table: "flow_workflow_tasks");
-
-            migrationBuilder.DropIndex(
-                name: "ix_flow_workflow_tasks_status_dueat_eval",
-                table: "flow_workflow_tasks");
-
-            migrationBuilder.DropIndex(
-                name: "ix_flow_workflow_tasks_tenant_mode_status",
-                table: "flow_workflow_tasks");
-
-            migrationBuilder.DropIndex(
-                name: "ix_flow_workflow_tasks_tenant_role_status",
-                table: "flow_workflow_tasks");
-
-            migrationBuilder.DropIndex(
-                name: "ix_flow_workflow_tasks_tenant_status",
-                table: "flow_workflow_tasks");
-
-            migrationBuilder.DropIndex(
-                name: "ix_flow_workflow_tasks_tenant_status_dueat",
-                table: "flow_workflow_tasks");
-
-            migrationBuilder.DropIndex(
-                name: "ix_flow_workflow_tasks_tenant_status_slastatus",
-                table: "flow_workflow_tasks");
-
-            migrationBuilder.DropIndex(
-                name: "ix_flow_workflow_tasks_tenant_user_status",
+            // MySQL pins the FK backing index, so dropping the index first fails
+            // on a clean schema. Remove the FK and then drop the table; InnoDB
+            // tears down the remaining secondary indexes with the table.
+            migrationBuilder.DropForeignKey(
+                name: "FK_flow_workflow_tasks_flow_workflow_instances_WorkflowInstance~",
                 table: "flow_workflow_tasks");
 
             // Drop the shadow table. All authoritative task data lives in the

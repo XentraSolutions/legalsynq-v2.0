@@ -99,7 +99,7 @@ window before the route even compiles.
 ## What was NOT the cause
 
 - **IPv4/IPv6 mismatch in gateway `appsettings.json`**: All clusters use `localhost:PORT`.
-  In .NET 8, `HttpClient` resolves `localhost` to `127.0.0.1` (IPv4) by default. This
+  In .NET 10, `HttpClient` resolves `localhost` to `127.0.0.1` (IPv4) by default. This
   works correctly in dev. The IPv4/IPv6 risk is for Node.js (CC), not .NET (YARP).
 - **Contract mismatch between monitoring service and CC**: Both sides are correctly
   aligned. The service emits `scope`, the CC maps it to `category`. Field names verified.

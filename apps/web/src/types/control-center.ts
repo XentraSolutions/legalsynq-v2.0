@@ -21,22 +21,31 @@ export interface TenantSummary {
 }
 
 export interface TenantDetail {
-  id:           string;
-  code:         string;
-  displayName:  string;
-  isActive:     boolean;
-  createdAtUtc: string;
-  updatedAtUtc: string;
-  products:     TenantProductSummary[];
-  userCount:    number;
-  orgCount:     number;
+  id:                    string;
+  code:                  string;
+  displayName:           string;
+  type:                  TenantType;
+  status:                TenantStatus;
+  primaryContactName:    string;
+  email?:                string;
+  isActive:              boolean;
+  userCount:             number;
+  activeUserCount?:      number;
+  orgCount:              number;
+  linkedOrgCount?:       number;
+  createdAtUtc:          string;
+  updatedAtUtc:          string;
+  sessionTimeoutMinutes: number;
+  logoDocumentId?:       string;
+  logoWhiteDocumentId?:  string;
+  productEntitlements:   TenantProductEntitlementSummary[];
 }
 
-export interface TenantProductSummary {
-  productId:   string;
-  productCode: string;
-  productName: string;
-  isEnabled:   boolean;
+export interface TenantProductEntitlementSummary {
+  productCode:  string;
+  productName:  string;
+  enabled:      boolean;
+  status:       string;
   enabledAtUtc?: string;
 }
 
@@ -75,6 +84,13 @@ export interface ProductEntitlementSummary {
   productName: string;
   isEnabled:   boolean;
   enabledAtUtc?: string;
+}
+
+export interface ProductCatalogItem {
+  code:        string;
+  name:        string;
+  description?: string;
+  isActive:    boolean;
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────

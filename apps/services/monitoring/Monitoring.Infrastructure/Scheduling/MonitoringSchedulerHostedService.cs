@@ -75,7 +75,7 @@ public sealed class MonitoringSchedulerHostedService : BackgroundService
 
     private async Task RunCycleAsync(CancellationToken stoppingToken)
     {
-        var cycleId = Guid.NewGuid();
+        var cycleId = Guid.CreateVersion7();
         var stopwatch = Stopwatch.StartNew();
 
         _logger.LogInformation("Monitoring cycle {CycleId} started.", cycleId);

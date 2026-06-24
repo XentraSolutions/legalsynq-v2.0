@@ -40,7 +40,7 @@ public class LienWorkflowConfig : AuditableEntity
         var now = DateTime.UtcNow;
         return new LienWorkflowConfig
         {
-            Id                  = Guid.NewGuid(),
+            Id                  = Guid.CreateVersion7(),
             TenantId            = tenantId,
             ProductCode         = productCode.Trim(),
             WorkflowName        = workflowName.Trim(),

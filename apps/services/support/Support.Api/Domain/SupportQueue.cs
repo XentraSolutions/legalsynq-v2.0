@@ -9,7 +9,7 @@ public enum QueueMemberRole
 
 public class SupportQueue
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid Id { get; set; } = Guid.CreateVersion7();
     public string TenantId { get; set; } = default!;
     public string Name { get; set; } = default!;
     public string? Description { get; set; }
@@ -23,7 +23,7 @@ public class SupportQueue
 
 public class SupportQueueMember
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid Id { get; set; } = Guid.CreateVersion7();
     public Guid QueueId { get; set; }
     public string TenantId { get; set; } = default!;
     public string UserId { get; set; } = default!;

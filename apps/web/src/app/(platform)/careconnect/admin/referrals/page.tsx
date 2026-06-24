@@ -16,11 +16,19 @@ import type { AdminReferralItem, AdminReferralPage } from '@/types/careconnect';
 export const dynamic = 'force-dynamic';
 
 
-// Referral.ValidStatuses
-const ALL_STATUSES = ['New', 'Accepted', 'InProgress', 'Completed', 'Declined', 'Cancelled'];
+// Referral.ValidStatuses — filter labels aligned across all portals
+const ALL_STATUSES: { value: string; label: string }[] = [
+  { value: 'New',       label: 'Unopened'  },
+  { value: 'NewOpened', label: 'Opened'    },
+  { value: 'Accepted',  label: 'Accepted'  },
+  { value: 'Declined',  label: 'Declined'  },
+  { value: 'Completed', label: 'Completed' },
+  { value: 'Cancelled', label: 'Cancelled' },
+];
 
 const STATUS_BADGE: Record<string, string> = {
   New:        'bg-blue-100 text-blue-800',
+  NewOpened:  'bg-sky-100 text-sky-800',
   Accepted:   'bg-indigo-100 text-indigo-800',
   InProgress: 'bg-yellow-100 text-yellow-800',
   Completed:  'bg-green-100 text-green-800',
@@ -36,8 +44,17 @@ const URGENCY_BADGE: Record<string, string> = {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
+    month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
   });
+}
+
+function normalizeNetworkDisplay(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed && trimmed !== '-' ? trimmed : null;
+}
+
+function getNetworkDisplay(item: AdminReferralItem): string | null {
+  return normalizeNetworkDisplay(item.networkName) ?? normalizeNetworkDisplay(item.tenantName);
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -78,7 +95,15 @@ function EmptyState({ status }: { status?: string }) {
   );
 }
 
-function ReferralRow({ item }: { item: AdminReferralItem }) {
+function ReferralRow({
+  item,
+  showNetworkColumn,
+}: {
+  item: AdminReferralItem;
+  showNetworkColumn: boolean;
+}) {
+  const networkDisplay = getNetworkDisplay(item);
+
   return (
     <tr className="hover:bg-gray-50 transition-colors">
       <td className="px-4 py-3">
@@ -96,6 +121,17 @@ function ReferralRow({ item }: { item: AdminReferralItem }) {
           {item.requestedService}
         </div>
       </td>
+      {showNetworkColumn && (
+        <td className="px-4 py-3">
+          {networkDisplay ? (
+            <div className="text-sm text-gray-900 max-w-[180px] truncate" title={networkDisplay}>
+              {networkDisplay}
+            </div>
+          ) : (
+            <span className="text-xs text-gray-400">-</span>
+          )}
+        </td>
+      )}
       <td className="px-4 py-3">
         {item.providerName ? (
           <div>
@@ -158,6 +194,7 @@ export default async function AdminReferralMonitorPage({ searchParams }: PagePro
   }
 
   const items = data?.items ?? [];
+  const showNetworkColumn = items.some((item) => 'networkName' in item || 'tenantName' in item);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -198,15 +235,15 @@ export default async function AdminReferralMonitorPage({ searchParams }: PagePro
         </Link>
         {ALL_STATUSES.map((s) => (
           <Link
-            key={s}
-            href={`/careconnect/admin/referrals?status=${s}`}
+            key={s.value}
+            href={`/careconnect/admin/referrals?status=${s.value}`}
             className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              status === s
+              status === s.value
                 ? 'bg-gray-900 text-white border-gray-900'
                 : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
             }`}
           >
-            {s}
+            {s.label}
           </Link>
         ))}
       </div>
@@ -232,6 +269,9 @@ export default async function AdminReferralMonitorPage({ searchParams }: PagePro
                   <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Urgency</th>
                   <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Service</th>
+                  {showNetworkColumn && (
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Network</th>
+                  )}
                   <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Provider</th>
                   <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Referrer</th>
                   <th className="px-4 py-3" />
@@ -239,7 +279,7 @@ export default async function AdminReferralMonitorPage({ searchParams }: PagePro
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {items.map((item) => (
-                  <ReferralRow key={item.id} item={item} />
+                  <ReferralRow key={item.id} item={item} showNetworkColumn={showNetworkColumn} />
                 ))}
               </tbody>
             </table>

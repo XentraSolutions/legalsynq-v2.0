@@ -63,7 +63,7 @@ public class ActivationQueueTests
     private static Provider BuildProvider(bool linked)
     {
         var p = Provider.Create(
-            tenantId:         Guid.NewGuid(),
+            tenantId:         Guid.CreateVersion7(),
             name:             "Test Provider",
             organizationName: "Test Org",
             email:            "provider@test.com",
@@ -76,7 +76,7 @@ public class ActivationQueueTests
             acceptingReferrals: true,
             createdByUserId:  null);
 
-        if (linked) p.LinkOrganization(Guid.NewGuid());
+        if (linked) p.LinkOrganization(Guid.CreateVersion7());
         return p;
     }
 
@@ -87,7 +87,7 @@ public class ActivationQueueTests
     {
         provider ??= BuildProvider(false);
         var tenantId   = provider.TenantId;
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
 
         var req = ActivationRequest.Create(
             tenantId:          tenantId,
@@ -115,7 +115,7 @@ public class ActivationQueueTests
 
         if (alreadyApproved)
         {
-            req.Approve(Guid.NewGuid(), Guid.NewGuid());
+            req.Approve(Guid.CreateVersion7(), Guid.CreateVersion7());
         }
 
         return req;
@@ -132,9 +132,9 @@ public class ActivationQueueTests
                 .ReturnsAsync((ActivationRequest?)null);
 
         await service.UpsertAsync(
-            referralId:        Guid.NewGuid(),
-            providerId:        Guid.NewGuid(),
-            tenantId:          Guid.NewGuid(),
+            referralId:        Guid.CreateVersion7(),
+            providerId:        Guid.CreateVersion7(),
+            tenantId:          Guid.CreateVersion7(),
             providerName:      "Dr. Smith",
             providerEmail:     "dr@smith.com",
             requesterName:     "Alice",
@@ -217,7 +217,7 @@ public class ActivationQueueTests
         repoMock.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((ActivationRequest?)null);
 
-        var result = await service.GetByIdAsync(Guid.NewGuid());
+        var result = await service.GetByIdAsync(Guid.CreateVersion7());
 
         Assert.Null(result);
     }
@@ -273,8 +273,8 @@ public class ActivationQueueTests
 
         var provider = BuildProvider(false);
         var req      = BuildActivationRequest(provider);
-        var orgId    = Guid.NewGuid();
-        var adminId  = Guid.NewGuid();
+        var orgId    = Guid.CreateVersion7();
+        var adminId  = Guid.CreateVersion7();
 
         repoMock.Setup(r => r.GetByIdAsync(req.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(req);
@@ -303,7 +303,7 @@ public class ActivationQueueTests
 
         var provider  = BuildProvider(true);
         var req       = BuildActivationRequest(provider, alreadyApproved: true);
-        var orgId     = Guid.NewGuid();
+        var orgId     = Guid.CreateVersion7();
 
         repoMock.Setup(r => r.GetByIdAsync(req.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(req);
@@ -326,7 +326,7 @@ public class ActivationQueueTests
 
         var provider = BuildProvider(true); // has OrganizationId already
         var req      = BuildActivationRequest(provider); // still Pending
-        var orgId    = Guid.NewGuid();
+        var orgId    = Guid.CreateVersion7();
 
         repoMock.Setup(r => r.GetByIdAsync(req.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(req);
@@ -352,6 +352,6 @@ public class ActivationQueueTests
                 .ReturnsAsync((ActivationRequest?)null);
 
         await Assert.ThrowsAsync<BuildingBlocks.Exceptions.NotFoundException>(
-            () => service.ApproveAsync(Guid.NewGuid(), Guid.NewGuid(), null));
+            () => service.ApproveAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), null));
     }
 }

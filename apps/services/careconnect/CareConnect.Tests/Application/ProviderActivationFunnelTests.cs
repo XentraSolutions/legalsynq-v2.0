@@ -69,6 +69,7 @@ public class ProviderActivationFunnelTests
             new Mock<INotificationsProducer>().Object,
             config,
             new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
             NullLogger<ReferralEmailService>.Instance);
     }
 
@@ -76,7 +77,7 @@ public class ProviderActivationFunnelTests
     {
         // Provider.Create does not set OrganizationId — simulate via reflection for testing
         var provider = Provider.Create(
-            tenantId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(),
             name: "Test Provider Practice",
             organizationName: "Test Org",
             email: "provider@test.com",
@@ -92,7 +93,7 @@ public class ProviderActivationFunnelTests
         if (isActive)
         {
             // Simulate an active (linked) provider by calling LinkOrganization
-            provider.LinkOrganization(Guid.NewGuid());
+            provider.LinkOrganization(Guid.CreateVersion7());
         }
 
         return provider;
@@ -101,8 +102,8 @@ public class ProviderActivationFunnelTests
     private static Referral BuildReferral(Provider provider, string status = "New", int tokenVersion = 1)
     {
         var referral = Referral.Create(
-            tenantId: Guid.NewGuid(),
-            referringOrganizationId: Guid.NewGuid(),
+            tenantId: Guid.CreateVersion7(),
+            referringOrganizationId: Guid.CreateVersion7(),
             receivingOrganizationId: null,
             providerId: provider.Id,
             subjectPartyId: null,
@@ -252,7 +253,7 @@ public class ProviderActivationFunnelTests
     public async Task GetPublicSummary_InvalidToken_ReturnsNull()
     {
         var svc     = BuildReferralService(BuildEmailService());
-        var summary = await svc.GetPublicSummaryAsync(Guid.NewGuid(), "garbage-token");
+        var summary = await svc.GetPublicSummaryAsync(Guid.CreateVersion7(), "garbage-token");
         Assert.Null(summary);
     }
 
@@ -278,9 +279,9 @@ public class ProviderActivationFunnelTests
     public async Task GetPublicSummary_TokenReferralIdMismatch_ReturnsNull()
     {
         var emailSvc    = BuildEmailService();
-        var tokenForId  = Guid.NewGuid();
+        var tokenForId  = Guid.CreateVersion7();
         var token       = emailSvc.GenerateViewToken(tokenForId, tokenVersion: 1);
-        var differentId = Guid.NewGuid();
+        var differentId = Guid.CreateVersion7();
 
         var svc     = BuildReferralService(emailSvc);
         var summary = await svc.GetPublicSummaryAsync(differentId, token);
@@ -379,7 +380,7 @@ public class ProviderActivationFunnelTests
     public async Task TrackFunnelEvent_InvalidToken_ReturnsFalse()
     {
         var svc = BuildReferralService(BuildEmailService());
-        var ok  = await svc.TrackFunnelEventAsync(Guid.NewGuid(), "bad-token", "ReferralViewed");
+        var ok  = await svc.TrackFunnelEventAsync(Guid.CreateVersion7(), "bad-token", "ReferralViewed");
         Assert.False(ok);
     }
 
@@ -406,7 +407,7 @@ public class ProviderActivationFunnelTests
     [Fact]
     public void ActiveProvider_LoginReturnToUrl_PointsToPortalReferral()
     {
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         var returnTo   = $"/careconnect/referrals/{referralId}";
         var loginUrl   = $"/login?returnTo={Uri.EscapeDataString(returnTo)}&reason=referral-view";
 
@@ -422,7 +423,7 @@ public class ProviderActivationFunnelTests
     [Fact]
     public void PendingProvider_ActivationUrl_PreservesReferralAndToken()
     {
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         var token      = "some-encoded-token-value";
         var activateUrl = $"/referrals/activate?referralId={referralId}&token={Uri.EscapeDataString(token)}";
 
@@ -450,9 +451,11 @@ public class ProviderActivationFunnelTests
         return new ReferralService(
             referrals,
             providers,
+            new Mock<ITenantServiceClient>().Object,
             notifications,
             notificationRepo,
             emailSvc,
+            new Mock<IIdentityOrganizationService>().Object,
             scopeFactory,
             relationshipResolver,
             auditClient,

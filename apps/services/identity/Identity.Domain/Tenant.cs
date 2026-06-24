@@ -37,6 +37,10 @@ public class Tenant
     public Guid? LogoDocumentId { get; private set; }
     public Guid? LogoWhiteDocumentId { get; private set; }
 
+    // Write-through: Tenant service is the source of truth. Stored here so Identity
+    // enrollment endpoints can check owner status without a cross-service call.
+    public Guid? OwnerUserId { get; private set; }
+
     public string? AddressLine1 { get; private set; }
     public string? City         { get; private set; }
     public string? State        { get; private set; }
@@ -62,7 +66,6 @@ public class Tenant
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string? PreferredSubdomain { get; private set; }
 
-    public ICollection<User> Users { get; private set; } = [];
     public ICollection<Role> Roles { get; private set; } = [];
     public ICollection<TenantProduct> TenantProducts { get; private set; } = [];
     public ICollection<Organization> Organizations { get; private set; } = [];
@@ -80,7 +83,7 @@ public class Tenant
         var now = DateTime.UtcNow;
         return new Tenant
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             Name = name.Trim(),
             Code = slug,
             IsActive = true,
@@ -158,6 +161,14 @@ public class Tenant
         if (minutes.HasValue && (minutes.Value < 5 || minutes.Value > 480))
             throw new ArgumentOutOfRangeException(nameof(minutes), "Session timeout must be between 5 and 480 minutes.");
         SessionTimeoutMinutes = minutes;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetOwner(Guid ownerUserId)
+    {
+        if (ownerUserId == Guid.Empty)
+            throw new ArgumentException("ownerUserId must not be empty.", nameof(ownerUserId));
+        OwnerUserId  = ownerUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 

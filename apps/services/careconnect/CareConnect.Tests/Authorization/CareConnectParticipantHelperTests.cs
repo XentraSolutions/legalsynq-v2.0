@@ -20,21 +20,25 @@ namespace CareConnect.Tests.Authorization;
 /// </summary>
 public class CareConnectParticipantHelperTests
 {
-    private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid OrgA     = Guid.NewGuid();
-    private static readonly Guid OrgB     = Guid.NewGuid();
-    private static readonly Guid OrgC     = Guid.NewGuid();
+    private static readonly Guid TenantId = Guid.CreateVersion7();
+    private static readonly Guid OrgA     = Guid.CreateVersion7();
+    private static readonly Guid OrgB     = Guid.CreateVersion7();
+    private static readonly Guid OrgC     = Guid.CreateVersion7();
 
     // ── Context helpers ───────────────────────────────────────────────────────
 
     private static ICurrentRequestContext MakeCtx(
         bool isPlatformAdmin = false,
         string? tenantAdminRole = null,
-        Guid? orgId = null)
+        Guid? orgId = null,
+        string? orgType = null,
+        params string[] productRoles)
     {
         var mock = new Mock<ICurrentRequestContext>();
         mock.Setup(c => c.IsPlatformAdmin).Returns(isPlatformAdmin);
         mock.Setup(c => c.OrgId).Returns(orgId);
+        mock.Setup(c => c.OrgType).Returns(orgType);
+        mock.Setup(c => c.ProductRoles).Returns(productRoles);
 
         var roles = tenantAdminRole is not null
             ? new[] { tenantAdminRole }
@@ -48,7 +52,7 @@ public class CareConnectParticipantHelperTests
             tenantId: TenantId,
             referringOrganizationId: referringOrgId,
             receivingOrganizationId: receivingOrgId,
-            providerId: Guid.NewGuid(),
+            providerId: Guid.CreateVersion7(),
             subjectPartyId: null,
             subjectNameSnapshot: null,
             subjectDobSnapshot: null,
@@ -66,9 +70,9 @@ public class CareConnectParticipantHelperTests
     private static Appointment MakeAppointment(Guid? referringOrgId, Guid? receivingOrgId) =>
         Appointment.Create(
             tenantId: TenantId,
-            referralId: Guid.NewGuid(),
-            providerId: Guid.NewGuid(),
-            facilityId: Guid.NewGuid(),
+            referralId: Guid.CreateVersion7(),
+            providerId: Guid.CreateVersion7(),
+            facilityId: Guid.CreateVersion7(),
             serviceOfferingId: null,
             appointmentSlotId: null,
             scheduledStartAtUtc: DateTime.UtcNow.AddDays(1),
@@ -100,6 +104,30 @@ public class CareConnectParticipantHelperTests
     {
         var ctx = MakeCtx(orgId: OrgA);
         Assert.False(CareConnectParticipantHelper.IsAdmin(ctx));
+    }
+
+    [Fact]
+    public void IsReceiverContext_Returns_True_For_Receiver_ProductRole()
+    {
+        var ctx = MakeCtx(orgId: OrgA, productRoles: ["SYNQ_CARECONNECT:CARECONNECT_RECEIVER"]);
+
+        Assert.True(CareConnectParticipantHelper.IsReceiverContext(ctx));
+    }
+
+    [Fact]
+    public void IsReceiverContext_Falls_Back_To_Provider_OrgType()
+    {
+        var ctx = MakeCtx(orgId: OrgA, orgType: OrgType.Provider);
+
+        Assert.True(CareConnectParticipantHelper.IsReceiverContext(ctx));
+    }
+
+    [Fact]
+    public void IsReceiverContext_Returns_False_For_NonReceiver_Context()
+    {
+        var ctx = MakeCtx(orgId: OrgA, orgType: OrgType.LawFirm);
+
+        Assert.False(CareConnectParticipantHelper.IsReceiverContext(ctx));
     }
 
     // ── IsReferralParticipant ─────────────────────────────────────────────────

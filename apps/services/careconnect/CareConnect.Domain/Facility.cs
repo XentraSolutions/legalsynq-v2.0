@@ -44,7 +44,7 @@ public class Facility : AuditableEntity
     {
         return new Facility
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Name = name.Trim(),
             AddressLine1 = addressLine1.Trim(),

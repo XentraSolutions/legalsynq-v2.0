@@ -74,7 +74,7 @@ public class TenantCapability
         var now = DateTime.UtcNow;
         return new TenantCapability
         {
-            Id                   = Guid.NewGuid(),
+            Id                   = Guid.CreateVersion7(),
             TenantId             = tenantId,
             ProductEntitlementId = productEntitlementId,
             CapabilityKey        = normalized,

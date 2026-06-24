@@ -11,7 +11,7 @@
 |---|---|---|---|
 | `sub` | `string` (GUID) | `Users.Id` | Always |
 | `email` | `string` | `Users.Email` | Always |
-| `jti` | `string` (GUID) | `Guid.NewGuid()` | Always — token replay prevention |
+| `jti` | `string` (GUID) | `Guid.CreateVersion7()` | Always — token replay prevention |
 | `nbf` | `long` (Unix epoch) | `DateTime.UtcNow` | Always |
 | `exp` | `long` (Unix epoch) | `now + ExpiryMinutes` | Always |
 | `iss` | `string` | `appsettings:Jwt:Issuer` | Always |
@@ -233,7 +233,7 @@ public class JwtTokenService : IJwtTokenService
         {
             new(JwtRegisteredClaimNames.Sub,   user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
-            new(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()),
+            new(JwtRegisteredClaimNames.Jti,   Guid.CreateVersion7().ToString()),
             new("tenant_id",   tenant.Id.ToString()),
             new("tenant_code", tenant.Code),
         };
@@ -1014,14 +1014,14 @@ public class CapabilityServiceTests
     {
         // Use EF Core in-memory provider with the capability seed
         var opts = new DbContextOptionsBuilder<IdentityDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString())
             .Options;
         var db = new IdentityDbContext(opts);
 
-        var product = new Product { Id = Guid.NewGuid(), Code = "SYNQ_CARECONNECT", Name = "CareConnect", IsActive = true };
-        var role    = new ProductRole { Id = Guid.NewGuid(), ProductId = product.Id, Code = "CARECONNECT_REFERRER", Name = "Referrer", IsActive = true, EligibleOrgType = "LAW_FIRM" };
-        var cap1    = new Capability { Id = Guid.NewGuid(), ProductId = product.Id, Code = "referral:create",   Name = "Create Referral", IsActive = true };
-        var cap2    = new Capability { Id = Guid.NewGuid(), ProductId = product.Id, Code = "referral:read:own", Name = "Read Own",        IsActive = true };
+        var product = new Product { Id = Guid.CreateVersion7(), Code = "SYNQ_CARECONNECT", Name = "CareConnect", IsActive = true };
+        var role    = new ProductRole { Id = Guid.CreateVersion7(), ProductId = product.Id, Code = "CARECONNECT_REFERRER", Name = "Referrer", IsActive = true, EligibleOrgType = "LAW_FIRM" };
+        var cap1    = new Capability { Id = Guid.CreateVersion7(), ProductId = product.Id, Code = "referral:create",   Name = "Create Referral", IsActive = true };
+        var cap2    = new Capability { Id = Guid.CreateVersion7(), ProductId = product.Id, Code = "referral:read:own", Name = "Read Own",        IsActive = true };
 
         db.Products.Add(product);
         db.ProductRoles.Add(role);
@@ -1118,11 +1118,11 @@ public class ReferralEndpointTests : IClassFixture<WebApplicationFactory<Program
         var client = BuildClientWithClaims(
             ("product_roles", "CARECONNECT_REFERRER"),
             ("org_type", "LAW_FIRM"),
-            ("org_id", Guid.NewGuid().ToString()),
+            ("org_id", Guid.CreateVersion7().ToString()),
             ("tenant_id", "20000000-0000-0000-0000-000000000001"));
 
         var response = await client.PostAsJsonAsync("/api/referrals",
-            new { ProviderId = Guid.NewGuid(), Notes = "Test referral" });
+            new { ProviderId = Guid.CreateVersion7(), Notes = "Test referral" });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
@@ -1135,7 +1135,7 @@ public class ReferralEndpointTests : IClassFixture<WebApplicationFactory<Program
             ("org_type", "FUNDER"));
 
         var response = await client.PostAsJsonAsync("/api/referrals",
-            new { ProviderId = Guid.NewGuid() });
+            new { ProviderId = Guid.CreateVersion7() });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -1148,7 +1148,7 @@ public class ReferralEndpointTests : IClassFixture<WebApplicationFactory<Program
             // no product_roles claim — admin bypasses capability check
 
         var response = await client.PostAsJsonAsync("/api/referrals",
-            new { ProviderId = Guid.NewGuid() });
+            new { ProviderId = Guid.CreateVersion7() });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
@@ -1156,8 +1156,8 @@ public class ReferralEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task AcceptReferral_ReceiverFromDifferentOrg_Returns403()
     {
-        var receiverOrgId = Guid.NewGuid();
-        var differentOrgId = Guid.NewGuid(); // referral addressed to different org
+        var receiverOrgId = Guid.CreateVersion7();
+        var differentOrgId = Guid.CreateVersion7(); // referral addressed to different org
 
         var client = BuildClientWithClaims(
             ("product_roles", "CARECONNECT_RECEIVER"),

@@ -100,7 +100,7 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
 
         var assignment = new ReportTemplateAssignment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ReportTemplateId = templateId,
             AssignmentScope = isGlobal ? "Global" : "Tenant",
             ProductCode = template.ProductCode,
@@ -117,7 +117,7 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
             {
                 assignment.TenantTargets.Add(new ReportTemplateAssignmentTenant
                 {
-                    Id = Guid.NewGuid(),
+                    Id = Guid.CreateVersion7(),
                     TenantId = tenantId.Trim(),
                     IsActive = true,
                     CreatedByUserId = actorId
@@ -221,7 +221,7 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
             {
                 assignment.TenantTargets.Add(new ReportTemplateAssignmentTenant
                 {
-                    Id = Guid.NewGuid(),
+                    Id = Guid.CreateVersion7(),
                     TenantId = tenantId.Trim(),
                     IsActive = true,
                     CreatedByUserId = actorId

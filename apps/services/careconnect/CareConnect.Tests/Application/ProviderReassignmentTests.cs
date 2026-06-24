@@ -62,7 +62,7 @@ public class ProviderReassignmentTests
 
     private static Provider BuildProvider(Guid? orgId = null)
         => Provider.Create(
-            tenantId:           Guid.NewGuid(),
+            tenantId:           Guid.CreateVersion7(),
             name:               "New Provider",
             organizationName:   "New Org",
             email:              "newprovider@example.com",
@@ -142,9 +142,11 @@ public class ProviderReassignmentTests
         var svc = new ReferralService(
             referralRepo.Object,
             providerRepo.Object,
+            new Mock<ITenantServiceClient>().Object,
             notifSvc.Object,
             notifRepo.Object,
             emailSvc.Object,
+            new Mock<IIdentityOrganizationService>().Object,
             scopeFactory.Object,
             relResolver.Object,
             auditClient.Object,
@@ -161,9 +163,9 @@ public class ProviderReassignmentTests
     [Fact]
     public async Task ReassignProviderAsync_HappyPath_UpdatesProviderIdAndTokenVersion()
     {
-        var tenantId        = Guid.NewGuid();
-        var originalProvider = Guid.NewGuid();
-        var newProviderId    = Guid.NewGuid();
+        var tenantId        = Guid.CreateVersion7();
+        var originalProvider = Guid.CreateVersion7();
+        var newProviderId    = Guid.CreateVersion7();
         var referral         = BuildReferral(tenantId, originalProvider);
         var newProvider      = BuildProvider();
         var originalToken    = referral.TokenVersion;
@@ -185,10 +187,10 @@ public class ProviderReassignmentTests
     [Fact]
     public async Task ReassignProviderAsync_HappyPath_FiresProviderAssignedNotificationWithReassignSuffix()
     {
-        var tenantId     = Guid.NewGuid();
-        var referral     = BuildReferral(tenantId, Guid.NewGuid());
+        var tenantId     = Guid.CreateVersion7();
+        var referral     = BuildReferral(tenantId, Guid.CreateVersion7());
         var newProvider  = BuildProvider();
-        var newProviderId = Guid.NewGuid();
+        var newProviderId = Guid.CreateVersion7();
 
         var (svc, _, _, emailSvc, _) = BuildService(referralInRepo: referral, providerInRepo: newProvider);
 
@@ -212,14 +214,14 @@ public class ProviderReassignmentTests
     public async Task ReassignProviderAsync_TenantAdmin_CrossTenantReferral_ThrowsNotFoundException()
     {
         // Referral belongs to tenantA; caller is an admin of tenantB.
-        var tenantA  = Guid.NewGuid();
-        var tenantB  = Guid.NewGuid();
-        var referral = BuildReferral(tenantA, Guid.NewGuid());
+        var tenantA  = Guid.CreateVersion7();
+        var tenantB  = Guid.CreateVersion7();
+        var referral = BuildReferral(tenantA, Guid.CreateVersion7());
 
         var (svc, _, _, _, _) = BuildService(referralInRepo: referral, providerInRepo: BuildProvider());
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
-            svc.ReassignProviderAsync(tenantB, referral.Id, Guid.NewGuid(),
+            svc.ReassignProviderAsync(tenantB, referral.Id, Guid.CreateVersion7(),
                 actingUserId: null, isPlatformAdmin: false));
     }
 
@@ -227,10 +229,10 @@ public class ProviderReassignmentTests
     public async Task ReassignProviderAsync_PlatformAdmin_CrossTenantReferral_Succeeds()
     {
         // Platform admins bypass the tenant check; cross-tenant reassignment is allowed.
-        var tenantA      = Guid.NewGuid();
-        var tenantB      = Guid.NewGuid(); // caller's tenantId — different from referral's
-        var newProviderId = Guid.NewGuid();
-        var referral     = BuildReferral(tenantA, Guid.NewGuid());
+        var tenantA      = Guid.CreateVersion7();
+        var tenantB      = Guid.CreateVersion7(); // caller's tenantId — different from referral's
+        var newProviderId = Guid.CreateVersion7();
+        var referral     = BuildReferral(tenantA, Guid.CreateVersion7());
 
         var (svc, referralRepo, _, _, _) = BuildService(referralInRepo: referral, providerInRepo: BuildProvider());
 
@@ -252,19 +254,19 @@ public class ProviderReassignmentTests
         var (svc, _, _, _, _) = BuildService(referralInRepo: null, providerInRepo: BuildProvider());
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
-            svc.ReassignProviderAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null));
+            svc.ReassignProviderAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), null));
     }
 
     [Fact]
     public async Task ReassignProviderAsync_NewProviderNotFound_ThrowsNotFoundException()
     {
-        var tenantId = Guid.NewGuid();
-        var referral = BuildReferral(tenantId, Guid.NewGuid());
+        var tenantId = Guid.CreateVersion7();
+        var referral = BuildReferral(tenantId, Guid.CreateVersion7());
 
         var (svc, _, _, _, _) = BuildService(referralInRepo: referral, providerInRepo: null);
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
-            svc.ReassignProviderAsync(tenantId, referral.Id, Guid.NewGuid(), null));
+            svc.ReassignProviderAsync(tenantId, referral.Id, Guid.CreateVersion7(), null));
     }
 
     // ── Audit event ───────────────────────────────────────────────────────────
@@ -272,9 +274,9 @@ public class ProviderReassignmentTests
     [Fact]
     public async Task ReassignProviderAsync_HappyPath_EmitsProviderReassignedAuditEvent()
     {
-        var tenantId      = Guid.NewGuid();
-        var newProviderId = Guid.NewGuid();
-        var referral      = BuildReferral(tenantId, Guid.NewGuid());
+        var tenantId      = Guid.CreateVersion7();
+        var newProviderId = Guid.CreateVersion7();
+        var referral      = BuildReferral(tenantId, Guid.CreateVersion7());
         var newProvider   = BuildProvider();
 
         var (svc, _, providerRepo, _, auditClient) = BuildService(referralInRepo: referral, providerInRepo: newProvider);

@@ -1,3 +1,4 @@
+import { createHmac } from 'crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
@@ -12,6 +13,11 @@ import { NextResponse, type NextRequest } from 'next/server';
  */
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 const USER_AGENT = 'LegalSynq/2.0 contact@legalsynq.com';
+const INTERNAL_REQUEST_SECRET =
+  process.env['PublicTrustBoundary__InternalRequestSecret'] ??
+  process.env.INTERNAL_REQUEST_SECRET ??
+  '';
+const ADDRESS_SELECTION_TOKEN_TTL_SECONDS = 86400;
 
 export interface AddressSuggestion {
   displayName:  string;
@@ -19,6 +25,7 @@ export interface AddressSuggestion {
   city:         string;
   state:        string;
   postalCode:   string;
+  addressSelectionToken: string;
   latitude:     number;
   longitude:    number;
 }
@@ -95,7 +102,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const state = STATE_ABBR[stateFull] ?? stateFull.slice(0, 2).toUpperCase();
     const postalCode = addr.postcode?.slice(0, 5) ?? '';
 
-    if (!city || !state) continue;
+    if (!city || !state || (!postalCode && !loose)) continue;
 
     const displayName = [
       addressLine1,
@@ -104,7 +111,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     ].filter(Boolean).join(', ');
 
     if (!suggestions.some(s => s.displayName === displayName)) {
-      suggestions.push({ displayName, addressLine1, city, state, postalCode, latitude: lat, longitude: lon });
+      suggestions.push({
+        displayName,
+        addressLine1,
+        city,
+        state,
+        postalCode,
+        addressSelectionToken: createAddressSelectionToken({ addressLine1, city, state, postalCode }),
+        latitude: lat,
+        longitude: lon,
+      });
     }
     if (suggestions.length >= 5) break;
   }
@@ -112,4 +128,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json(suggestions, {
     headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
   });
+}
+
+function createAddressSelectionToken(address: {
+  addressLine1: string;
+  city: string;
+  state: string;
+  postalCode: string;
+}): string {
+  if (!INTERNAL_REQUEST_SECRET) return '';
+
+  const payload = {
+    ...address,
+    exp: Math.floor(Date.now() / 1000) + ADDRESS_SELECTION_TOKEN_TTL_SECONDS,
+  };
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = createHmac('sha256', INTERNAL_REQUEST_SECRET).update(body).digest('base64url');
+  return `${body}.${sig}`;
 }

@@ -123,7 +123,7 @@ None
 1. **Settings in Contracts**: Integration settings classes placed in `Reports.Contracts.Configuration` to avoid circular dependency between Infrastructure and Api projects.
 2. **Composite data query adapter**: Rather than replacing MockReportDataQueryAdapter outright, created a CompositeReportDataQueryAdapter that routes by product code. Liens adapter handles "LIENS", mock handles everything else. Easy to add more real adapters later.
 3. **Non-fatal file storage**: Storage failures during export are logged and audited but do not fail the export operation — the exported file is still returned to the caller.
-4. **SSH.NET version**: Used 2024.1.0 (latest stable for .NET 8).
+4. **SSH.NET version**: Used 2024.1.0 (latest stable for .NET 10).
 5. **Metrics in-memory**: Used ConcurrentDictionary + Interlocked for thread-safe counters. Sufficient for production; can be replaced with OpenTelemetry later.
 
 ## Known Gaps

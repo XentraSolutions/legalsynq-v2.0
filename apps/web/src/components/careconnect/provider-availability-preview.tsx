@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { careConnectApi } from '@/lib/careconnect-api';
+import { useTimezone } from '@/lib/use-timezone';
 import type { AvailabilitySlot } from '@/types/careconnect';
 
 interface ProviderAvailabilityPreviewProps {
@@ -14,15 +15,16 @@ function isoDate(d: Date): string {
   return d.toLocaleDateString('en-CA');
 }
 
-function formatSlot(slot: AvailabilitySlot): string {
+function formatSlot(slot: AvailabilitySlot, timezone: string): string {
   const start = new Date(slot.startUtc);
   return start.toLocaleString('en-US', {
-    weekday: 'short',
-    month:   'short',
-    day:     'numeric',
-    hour:    'numeric',
-    minute:  '2-digit',
-    hour12:  true,
+    weekday:  'short',
+    month:    'short',
+    day:      'numeric',
+    hour:     'numeric',
+    minute:   '2-digit',
+    hour12:   true,
+    timeZone: timezone,
   });
 }
 
@@ -34,6 +36,7 @@ function formatSlot(slot: AvailabilitySlot): string {
 export function ProviderAvailabilityPreview({ providerId, providerName }: ProviderAvailabilityPreviewProps) {
   const [slots,   setSlots]   = useState<AvailabilitySlot[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const timezone = useTimezone();
 
   useEffect(() => {
     const today = new Date();
@@ -87,7 +90,7 @@ export function ProviderAvailabilityPreview({ providerId, providerName }: Provid
           <ul className="space-y-1.5">
             {slots.map(slot => (
               <li key={slot.id} className="flex items-center justify-between gap-3">
-                <span className="text-sm text-gray-700">{formatSlot(slot)}</span>
+                <span className="text-sm text-gray-700">{formatSlot(slot, timezone)}</span>
                 <div className="flex items-center gap-2 shrink-0">
                   {slot.serviceType && (
                     <span className="text-xs text-gray-400">{slot.serviceType}</span>

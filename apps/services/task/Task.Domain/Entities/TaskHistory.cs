@@ -26,7 +26,7 @@ public class TaskHistory
 
         return new TaskHistory
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             TaskId            = taskId,
             TenantId          = tenantId,
             Action            = action.Trim(),

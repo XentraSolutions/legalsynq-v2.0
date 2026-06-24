@@ -15,13 +15,18 @@ public sealed class SmsGovernanceAnalyticsOptions
     public int MaxResultRows { get; set; } = 200;
 
     /// <summary>
-    /// Minimum warn count for a rule to be considered a false-positive candidate.
+    /// Warn threshold used by the false-positive heuristic.
+    /// Values greater than or equal to 1 are treated as an absolute warn-count floor.
+    /// Values between 0 and 1 are treated as a warn-ratio floor.
     /// </summary>
-    public int FalsePositiveWarnThreshold { get; set; } = 10;
+    public double FalsePositiveWarnThreshold { get; set; } = 10;
 
     /// <summary>
-    /// Maximum live/simulation ratio below which a rule is a false-positive candidate.
-    /// 0.1 = fewer than 10% of matches are live evaluations.
+    /// Live/simulation threshold used by the false-positive heuristic.
+    /// Values between 0 and 1 are treated as the maximum allowed live share:
+    /// live / (live + sim) must be below the configured value.
+    /// Values greater than 1 are treated as a simulation-to-live ratio threshold:
+    /// sim / live must be greater than the configured value.
     /// </summary>
     public double FalsePositiveLiveToSimRatio { get; set; } = 0.1;
 }

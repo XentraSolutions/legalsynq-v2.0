@@ -12,7 +12,7 @@ public class SmsPreferenceHistoryRepository : ISmsPreferenceHistoryRepository
 
     public async Task AppendAsync(SmsPreferenceHistory history)
     {
-        history.Id        = Guid.NewGuid();
+        history.Id        = Guid.CreateVersion7();
         history.CreatedAt = DateTime.UtcNow;
         _db.SmsPreferenceHistories.Add(history);
         await _db.SaveChangesAsync();

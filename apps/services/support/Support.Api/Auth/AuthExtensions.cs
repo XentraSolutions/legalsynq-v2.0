@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
@@ -40,7 +41,7 @@ public static class AuthExtensions
                 throw new InvalidOperationException(
                     "Jwt:SigningKey must be at least 32 characters long.");
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId };
 
             authBuilder.AddJwtBearer(o =>
             {

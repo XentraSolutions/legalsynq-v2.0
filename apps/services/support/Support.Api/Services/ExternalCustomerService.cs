@@ -49,7 +49,7 @@ public class ExternalCustomerService : IExternalCustomerService
 
         var customer = new ExternalCustomer
         {
-            Id        = Guid.NewGuid(),
+            Id        = Guid.CreateVersion7(),
             TenantId  = tenantId,
             Email     = normalized,
             Name      = name?.Trim(),

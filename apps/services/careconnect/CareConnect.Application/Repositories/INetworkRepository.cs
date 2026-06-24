@@ -11,6 +11,7 @@ public interface INetworkRepository
     // Returns each network with its provider count without loading full provider entities.
     Task<List<(Guid Id, string Name, string? Description, int ProviderCount)>> GetAllWithProviderCountAsync(Guid tenantId, CancellationToken ct = default);
 
+    Task<ProviderNetwork?> GetByIdGlobalAsync(Guid id, CancellationToken ct = default);
     Task<ProviderNetwork?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<ProviderNetwork?> GetWithProvidersAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<bool> NameExistsAsync(Guid tenantId, string name, Guid? excludeId = null, CancellationToken ct = default);
@@ -25,7 +26,11 @@ public interface INetworkRepository
     Task<List<Provider>> SearchProvidersGlobalAsync(string? name, string? phone, string? npi, string? city, int limit = 20, CancellationToken ct = default);
     Task<Provider?> GetProviderByIdGlobalAsync(Guid id, CancellationToken ct = default);
     Task<Provider?> GetProviderByNpiAsync(string npi, CancellationToken ct = default);
+    Task<Provider?> GetProviderByTenantEmailAsync(Guid tenantId, string email, CancellationToken ct = default);
     Task AddProviderToRegistryAsync(Provider provider, CancellationToken ct = default);
+    Task<Dictionary<string, Provider>> GetProvidersByNpisAsync(IEnumerable<string> npis, CancellationToken ct = default);
+    Task<Dictionary<string, Provider>> GetProvidersByTenantEmailsAsync(Guid tenantId, IEnumerable<string> emails, CancellationToken ct = default);
+    Task<HashSet<Guid>> GetNetworkProviderIdsAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
 
     /// <summary>
     /// Replaces all category associations for a provider with the supplied list.
@@ -33,4 +38,12 @@ public interface INetworkRepository
     /// Does NOT call SaveChanges — caller is responsible.
     /// </summary>
     Task SyncProviderCategoriesAsync(Guid providerId, List<Guid> categoryIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns true when the provider is a member of at least one network that belongs to the given tenant.
+    /// Used to enforce public referral binding — prevents cross-tenant provider injection on the
+    /// anonymous POST /api/public/referrals endpoint.
+    /// </summary>
+    Task<bool> IsProviderInTenantNetworkAsync(Guid tenantId, Guid providerId, CancellationToken ct = default);
+    void ClearTracking();
 }

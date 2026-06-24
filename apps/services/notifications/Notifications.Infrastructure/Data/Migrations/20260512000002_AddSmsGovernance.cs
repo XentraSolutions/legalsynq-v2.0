@@ -1,5 +1,8 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
@@ -22,6 +25,8 @@ namespace Notifications.Infrastructure.Data.Migrations
     /// Security: No phone numbers, credentials, CredentialsJson, SettingsJson, auth tokens,
     /// webhook URLs, or raw provider payloads stored in either table.
     /// </summary>
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260512000002_AddSmsGovernance")]
     public partial class AddSmsGovernance : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

@@ -5,24 +5,25 @@ interface AvailabilityListProps {
   slots:          AvailabilitySlot[];
   selectedSlotId: string | null;
   onSelectSlot:   (slot: AvailabilitySlot) => void;
+  timezone:       string;
 }
 
-/** Groups ISO-UTC slot starts by local calendar date (yyyy-MM-dd) */
-function groupByDate(slots: AvailabilitySlot[]): Record<string, AvailabilitySlot[]> {
+function groupByDate(slots: AvailabilitySlot[], timezone: string): Record<string, AvailabilitySlot[]> {
   const groups: Record<string, AvailabilitySlot[]> = {};
   for (const slot of slots) {
-    const key = new Date(slot.startUtc).toLocaleDateString('en-CA');   // yyyy-MM-dd
+    const key = new Date(slot.startUtc).toLocaleDateString('en-CA', { timeZone: timezone });
     (groups[key] ??= []).push(slot);
   }
   return groups;
 }
 
-function formatDayHeading(dateKey: string): string {
+function formatDayHeading(dateKey: string, timezone: string): string {
   const d = new Date(`${dateKey}T12:00:00`);
   return d.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month:   'long',
-    day:     'numeric',
+    weekday:  'long',
+    month:    'long',
+    day:      'numeric',
+    timeZone: timezone,
   });
 }
 
@@ -30,6 +31,7 @@ export function AvailabilityList({
   slots,
   selectedSlotId,
   onSelectSlot,
+  timezone,
 }: AvailabilityListProps) {
   if (slots.length === 0) {
     return (
@@ -40,7 +42,7 @@ export function AvailabilityList({
     );
   }
 
-  const groups    = groupByDate(slots);
+  const groups    = groupByDate(slots, timezone);
   const dateKeys  = Object.keys(groups).sort();
   const available = slots.filter(s => s.isAvailable).length;
 
@@ -60,7 +62,7 @@ export function AvailabilityList({
             <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${
               dayAvailable ? 'text-gray-500' : 'text-gray-300'
             }`}>
-              {formatDayHeading(dateKey)}
+              {formatDayHeading(dateKey, timezone)}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {daySlots.map(slot => (
@@ -69,6 +71,7 @@ export function AvailabilityList({
                   slot={slot}
                   selected={slot.id === selectedSlotId}
                   onSelect={onSelectSlot}
+                  timezone={timezone}
                 />
               ))}
             </div>

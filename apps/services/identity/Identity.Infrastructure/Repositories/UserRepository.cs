@@ -25,7 +25,10 @@ public class UserRepository : IUserRepository
         _db.Users.FirstOrDefaultAsync(u => u.Email == email, ct);
 
     public Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-        _db.Users.FirstOrDefaultAsync(u => u.TenantId == tenantId && u.Email == email, ct);
+        _db.Users.FirstOrDefaultAsync(
+            u => _db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tenantId && ut.IsActive)
+                 && u.Email == email,
+            ct);
 
     public Task<List<User>> GetAllWithRolesAsync(CancellationToken ct = default) =>
         _db.Users
@@ -38,16 +41,18 @@ public class UserRepository : IUserRepository
 
     public Task<List<User>> GetByTenantWithRolesAsync(Guid tenantId, CancellationToken ct = default) =>
         _db.Users
-            .Where(u => u.TenantId == tenantId)
+            .Where(u => _db.UserTenants.Any(ut => ut.UserId == u.Id && ut.TenantId == tenantId && ut.IsActive))
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
                 .ThenInclude(s => s.Role)
             .OrderBy(u => u.LastName)
             .ThenBy(u => u.FirstName)
             .ToListAsync(ct);
 
-    public async Task AddAsync(User user, IReadOnlyList<Guid> roleIds, CancellationToken ct = default)
+    public async Task AddAsync(User user, Guid tenantId, IReadOnlyList<Guid> roleIds, CancellationToken ct = default)
     {
         await _db.Users.AddAsync(user, ct);
+
+        await _db.UserTenants.AddAsync(UserTenant.Create(user.Id, tenantId), ct);
 
         foreach (var roleId in roleIds)
         {
@@ -100,9 +105,34 @@ public class UserRepository : IUserRepository
             // Chain 2: Phase 1 — canonical OrganizationType catalog record on the org itself
             .Include(m => m.Organization)
                 .ThenInclude(o => o.OrganizationTypeRef)
-            .Where(m => m.UserId == userId && m.IsActive)
+            .Where(m => m.UserId == userId && m.IsActive && m.IsPrimary)
             .OrderBy(m => m.JoinedAtUtc)
             .FirstOrDefaultAsync(ct);
+
+    public Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(
+        Guid userId, Guid tenantId, CancellationToken ct = default) =>
+        _db.UserOrganizationMemberships
+            .Include(m => m.Organization)
+                .ThenInclude(o => o.OrganizationProducts)
+                    .ThenInclude(op => op.Product)
+                        .ThenInclude(p => p.ProductRoles)
+                            .ThenInclude(pr => pr.OrgTypeRules)
+                                .ThenInclude(r => r.OrganizationType)
+            .Include(m => m.Organization)
+                .ThenInclude(o => o.OrganizationTypeRef)
+            .Where(m => m.UserId == userId
+                     && m.IsActive
+                     && (m.Organization.TenantId == tenantId || m.Organization.TenantId == null))
+            .OrderBy(m => m.JoinedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+    public Task<List<UserTenant>> GetActiveTenantMembershipsAsync(
+        Guid userId, CancellationToken ct = default) =>
+        _db.UserTenants
+            .Include(ut => ut.Tenant)
+            .Where(ut => ut.UserId == userId && ut.IsActive)
+            .OrderBy(ut => ut.JoinedAtUtc)
+            .ToListAsync(ct);
 
     public Task<List<UserOrganizationMembership>> GetActiveMembershipsWithProductsAsync(
         Guid userId, Guid tenantId, CancellationToken ct = default) =>
@@ -118,7 +148,7 @@ public class UserRepository : IUserRepository
             .Where(m => m.UserId == userId
                      && m.IsActive
                      && m.Organization.IsActive
-                     && m.Organization.TenantId == tenantId)
+                     && (m.Organization.TenantId == tenantId || m.Organization.TenantId == null))
             .OrderByDescending(m => m.IsPrimary)
             .ThenBy(m => m.JoinedAtUtc)
             .ToListAsync(ct);

@@ -10,6 +10,7 @@ import {
   fetchContactHealth,
   fetchContactSuppressions,
 } from '../actions';
+import { useTimezone } from '@/lib/use-timezone';
 
 function parseRecipientFromJson(json: string): { value: string; type: string } {
   try {
@@ -112,6 +113,7 @@ function SuppressionAwarenessPanel({ notification }: { notification: NotifDetail
 }
 
 function ContactHealthCard({ notification }: { notification: NotifDetail }) {
+  const timezone = useTimezone();
   const [health, setHealth] = useState<ContactHealth | null>(null);
   const [suppressions, setSuppressions] = useState<ContactSuppression[]>([]);
   const [loading, setLoading] = useState(false);
@@ -217,7 +219,7 @@ function ContactHealthCard({ notification }: { notification: NotifDetail }) {
           {health.lastEvent && (
             <div className="text-xs text-gray-400">
               Last event: {health.lastEvent}
-              {health.lastEventAt && ` (${new Date(health.lastEventAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`}
+              {health.lastEventAt && ` (${new Date(health.lastEventAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone })})`}
             </div>
           )}
           {health.isSuppressed && health.suppressionReason && (
@@ -242,7 +244,7 @@ function ContactHealthCard({ notification }: { notification: NotifDetail }) {
                 </div>
                 {sup.detail && <p className="text-xs text-red-600 mt-0.5">{sup.detail}</p>}
                 <p className="text-[10px] text-red-400 mt-1">
-                  Since {new Date(sup.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  Since {new Date(sup.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone })}
                 </p>
               </div>
             ))}
@@ -299,6 +301,7 @@ function ConfirmDialog({ open, title, description, confirmLabel, confirmVariant,
 
 export default function DeliveryActionsClient({ notification }: { notification: NotifDetail }) {
   const router = useRouter();
+  const timezone = useTimezone();
   const eligibility = deriveEligibility(notification);
 
   const [confirmAction, setConfirmAction] = useState<'retry' | 'resend' | null>(null);

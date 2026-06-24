@@ -23,8 +23,6 @@ export default async function DashboardPage() {
   if (portalConfig) redirect(portalConfig.landingPath);
 
   // Filter product tiles to only those enabled for this tenant.
-  // resolveEnabledNavKeys falls back to ALL products when the list is empty
-  // (e.g. PlatformAdmin sessions, or tenants with no entitlements configured yet).
   const enabledKeys    = resolveEnabledNavKeys(session.enabledProducts ?? []);
   const productEntries = Object.entries(PRODUCT_META).filter(([id]) => enabledKeys.has(id));
 
@@ -47,16 +45,22 @@ export default async function DashboardPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
             Your Products
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {productEntries.map(([id, meta]) => (
-              <ProductCard
-                key={id}
-                id={id}
-                meta={meta}
-                items={(PRODUCT_NAV[id] ?? []).flatMap(s => s.items).slice(0, 3)}
-              />
-            ))}
-          </div>
+          {productEntries.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {productEntries.map(([id, meta]) => (
+                <ProductCard
+                  key={id}
+                  id={id}
+                  meta={meta}
+                  items={(PRODUCT_NAV[id] ?? []).flatMap(s => s.items).slice(0, 3)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-gray-200 bg-white px-5 py-8 text-sm text-gray-400">
+              No products assigned.
+            </div>
+          )}
         </div>
 
         {/* Admin shortcut */}

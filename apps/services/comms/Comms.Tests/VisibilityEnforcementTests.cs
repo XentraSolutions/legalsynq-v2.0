@@ -24,7 +24,7 @@ public class VisibilityEnforcementTests
             conversation.Id, TestHelpers.UserId1, ParticipantType.InternalUser);
         await participantRepo.AddAsync(internalParticipant);
 
-        var externalUserId = Guid.NewGuid();
+        var externalUserId = Guid.CreateVersion7();
         var externalParticipant = TestHelpers.CreateTestParticipant(
             conversation.Id, externalUserId, ParticipantType.ExternalContact,
             externalName: "External User", externalEmail: "ext@test.com");
@@ -56,7 +56,7 @@ public class VisibilityEnforcementTests
     {
         Assert.Throws<InvalidOperationException>(() =>
             TestHelpers.CreateTestMessage(
-                Guid.NewGuid(),
+                Guid.CreateVersion7(),
                 visibility: VisibilityType.SharedExternal,
                 channel: Channel.SystemNote));
     }

@@ -13,6 +13,7 @@ import {
 } from '@/lib/liens/lien-tasks.types';
 import type { TenantUser } from '@/types/tenant';
 import { useLienStore } from '@/stores/lien-store';
+import { useTimezone } from '@/lib/use-timezone';
 import { CreateEditTaskForm } from '@/components/lien/forms/create-edit-task-form';
 import { TaskDetailDrawer } from '@/components/lien/task-detail-drawer';
 import { TaskManagerHeader } from '@/components/lien/task-manager-header';
@@ -44,11 +45,11 @@ function getInitials(first: string, last: string): string {
   return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
 }
 
-function formatDate(val?: string | null): string {
+function formatDate(val: string | null | undefined, timezone: string): string {
   if (!val) return '\u2014';
   try {
     const d = new Date(val);
-    return isNaN(d.getTime()) ? val : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return isNaN(d.getTime()) ? val : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone });
   } catch { return val ?? '\u2014'; }
 }
 
@@ -63,6 +64,7 @@ function shortCaseId(caseId: string): string {
 
 export default function TaskManagerPage() {
   const addToast = useLienStore((s) => s.addToast);
+  const timezone = useTimezone();
 
   const [tasks, setTasks]           = useState<TaskDto[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -288,11 +290,11 @@ export default function TaskManagerPage() {
                       </td>
                       <td className="px-4 py-2">
                         <span className={`text-[10px] ${isOverdue(task.dueDate, task.status) ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-                          {formatDate(task.dueDate)}
+                          {formatDate(task.dueDate, timezone)}
                           {isOverdue(task.dueDate, task.status) && <i className="ri-error-warning-line ml-1" />}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-[10px] text-gray-400">{formatDate(task.updatedAtUtc)}</td>
+                      <td className="px-4 py-2 text-[10px] text-gray-400">{formatDate(task.updatedAtUtc, timezone)}</td>
                     </tr>
                   );
                 })}

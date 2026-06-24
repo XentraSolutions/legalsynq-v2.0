@@ -7,6 +7,11 @@ import { ApiError } from '@/lib/api-client';
 
 vi.mock('@/lib/careconnect-api', () => ({
   careConnectApi: {
+    adminReferrals: {
+      getHistory: vi.fn(),
+      listAttachments: vi.fn(),
+      getAttachmentSignedUrl: vi.fn(),
+    },
     referralAttachments: {
       list:         vi.fn(),
       upload:       vi.fn(),
@@ -55,6 +60,8 @@ function makeApiError(status: number, message: string): ApiError {
 const mockList      = () => vi.mocked(careConnectApi.referralAttachments.list);
 const mockUpload    = () => vi.mocked(careConnectApi.referralAttachments.upload);
 const mockSignedUrl = () => vi.mocked(careConnectApi.referralAttachments.getSignedUrl);
+const mockAdminList = () => vi.mocked(careConnectApi.adminReferrals.listAttachments);
+const mockAdminSignedUrl = () => vi.mocked(careConnectApi.adminReferrals.getAttachmentSignedUrl);
 
 describe('AttachmentPanel', () => {
   beforeEach(() => {
@@ -70,6 +77,16 @@ describe('AttachmentPanel', () => {
     await waitFor(() =>
       expect(screen.getByText('No documents uploaded yet.')).toBeInTheDocument(),
     );
+  });
+
+  test('hides upload controls in read-only mode without showing a badge', async () => {
+    mockList().mockResolvedValue(ok([]));
+    render(<AttachmentPanel entityType="referral" entityId="ref-1" readOnly />);
+    await waitFor(() =>
+      expect(screen.getByText('No documents uploaded yet.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('View only')).not.toBeInTheDocument();
+    expect(screen.queryByText('+ Upload')).not.toBeInTheDocument();
   });
 
   test('renders all attachment file names returned on mount', async () => {
@@ -205,6 +222,31 @@ describe('AttachmentPanel', () => {
     expect(window.open).toHaveBeenCalledWith(
       SIGNED_URL.url, '_blank', 'noopener,noreferrer',
     );
+  });
+
+  test('uses admin referral endpoints in tenant-admin referral view mode', async () => {
+    mockAdminList().mockResolvedValue(ok([ATT_1]));
+    mockAdminSignedUrl().mockResolvedValue(ok(SIGNED_URL));
+
+    const user = userEvent.setup();
+    render(
+      <AttachmentPanel
+        entityType="referral"
+        entityId="ref-1"
+        readOnly
+        adminReferralView
+      />,
+    );
+
+    await waitFor(() => expect(mockAdminList()).toHaveBeenCalledWith('ref-1'));
+    expect(mockList()).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
+
+    await waitFor(() =>
+      expect(mockAdminSignedUrl()).toHaveBeenCalledWith('ref-1', 'att-1'),
+    );
+    expect(mockSignedUrl()).not.toHaveBeenCalled();
   });
 
   test('each View click triggers a new network request (fresh URL per click)', async () => {

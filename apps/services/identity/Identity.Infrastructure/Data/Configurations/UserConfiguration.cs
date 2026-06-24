@@ -12,9 +12,6 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.HasKey(u => u.Id);
 
-        builder.Property(u => u.TenantId)
-            .IsRequired();
-
         builder.Property(u => u.Email)
             .IsRequired()
             .HasMaxLength(320);
@@ -81,12 +78,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasConversion<string>()
             .HasDefaultValue(UserType.TenantUser);
 
-        builder.HasIndex(u => new { u.TenantId, u.Email })
+        builder.HasIndex(u => u.Email)
             .IsUnique();
 
-        builder.HasOne(u => u.Tenant)
-            .WithMany(t => t.Users)
-            .HasForeignKey(u => u.TenantId)
-            .OnDelete(DeleteBehavior.Restrict);
     }
 }

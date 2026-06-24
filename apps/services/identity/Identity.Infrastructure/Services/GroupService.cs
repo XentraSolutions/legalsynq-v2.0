@@ -119,7 +119,7 @@ public class GroupService : IGroupService
             .Distinct()
             .ToListAsync(ct);
         var affectedUsers = await _db.Users
-            .Where(u => affectedUserIds.Contains(u.Id) && u.TenantId == tenantId)
+            .Where(u => affectedUserIds.Contains(u.Id))
             .ToListAsync(ct);
         foreach (var u in affectedUsers)
             u.IncrementAccessVersion();

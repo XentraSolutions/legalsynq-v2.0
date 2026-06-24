@@ -1,4 +1,7 @@
+using BuildingBlocks.Commerce;
 using BuildingBlocks.Exceptions;
+using Contracts.Commerce;
+using Microsoft.Extensions.Logging;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Domain;
@@ -16,17 +19,41 @@ namespace Tenant.Application.Services;
 ///      IIdentityProvisioningAdapter to handle downstream auth/provisioning work.
 ///      ToggleEntitlementAsync: upserts TenantProductEntitlement, then best-effort
 ///      syncs to Identity via IIdentityCompatAdapter/sync path.
+///
+/// LS-COMMERCE-ECO-02: Commerce lifecycle notifications wired for tenant created
+///      and status transitions (activated/suspended).  Notifications are noop-first
+///      and never block the primary tenant lifecycle operation.
 /// </summary>
 public class TenantAdminService : ITenantAdminService
 {
-    private readonly ITenantRepository         _tenantRepo;
-    private readonly IBrandingRepository       _brandingRepo;
-    private readonly IEntitlementRepository    _entitlementRepo;
-    private readonly IDomainRepository         _domainRepo;
-    private readonly ICapabilityRepository     _capabilityRepo;
-    private readonly ISettingRepository        _settingRepo;
-    private readonly IIdentityCompatAdapter    _identityCompat;
+    private readonly ITenantRepository            _tenantRepo;
+    private readonly IBrandingRepository          _brandingRepo;
+    private readonly IEntitlementRepository       _entitlementRepo;
+    private readonly IDomainRepository            _domainRepo;
+    private readonly ICapabilityRepository        _capabilityRepo;
+    private readonly ISettingRepository           _settingRepo;
+    private readonly IIdentityCompatAdapter       _identityCompat;
     private readonly IIdentityProvisioningAdapter _identityProvisioning;
+    private readonly ICommerceLifecycleNotifier   _commerceNotifier;
+    private readonly ILogger<TenantAdminService>  _logger;
+
+    private const string HostPlatformKey = "legalsynq";
+    private static readonly Dictionary<string, string> CanonicalProductCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["careconnect"] = "CareConnect",
+        ["synq_careconnect"] = "CareConnect",
+        ["synqfund"] = "SynqFund",
+        ["synq_fund"] = "SynqFund",
+        ["synqliens"] = "SynqLien",
+        ["synq_liens"] = "SynqLien",
+        ["synqlien"] = "SynqLien",
+        ["synqbill"] = "SynqBill",
+        ["synq_bill"] = "SynqBill",
+        ["synqrx"] = "SynqRx",
+        ["synq_rx"] = "SynqRx",
+        ["synqpayout"] = "SynqPayout",
+        ["synq_payout"] = "SynqPayout",
+    };
 
     public TenantAdminService(
         ITenantRepository            tenantRepo,
@@ -36,7 +63,9 @@ public class TenantAdminService : ITenantAdminService
         ICapabilityRepository        capabilityRepo,
         ISettingRepository           settingRepo,
         IIdentityCompatAdapter       identityCompat,
-        IIdentityProvisioningAdapter identityProvisioning)
+        IIdentityProvisioningAdapter identityProvisioning,
+        ICommerceLifecycleNotifier   commerceNotifier,
+        ILogger<TenantAdminService>  logger)
     {
         _tenantRepo           = tenantRepo;
         _brandingRepo         = brandingRepo;
@@ -46,6 +75,8 @@ public class TenantAdminService : ITenantAdminService
         _settingRepo          = settingRepo;
         _identityCompat       = identityCompat;
         _identityProvisioning = identityProvisioning;
+        _commerceNotifier     = commerceNotifier;
+        _logger               = logger;
     }
 
     // ── B11: List ─────────────────────────────────────────────────────────────
@@ -71,29 +102,20 @@ public class TenantAdminService : ITenantAdminService
         var tenant = await _tenantRepo.GetByIdAsync(id, ct);
         if (tenant is null) return null;
 
-        var brandingTask       = _brandingRepo.GetByTenantIdAsync(id, ct);
-        var entitlementsTask   = _entitlementRepo.ListByTenantAsync(id, ct);
-        var domainsTask        = _domainRepo.ListByTenantAsync(id, ct);
-        var capabilitiesTask   = _capabilityRepo.ListByTenantAsync(id, ct);
-        var settingsTask       = _settingRepo.ListByTenantAsync(id, ct);
-        var sessionTimeoutTask = _identityCompat.GetSessionTimeoutMinutesAsync(id, ct);
-
-        await Task.WhenAll(brandingTask, entitlementsTask, domainsTask, capabilitiesTask, settingsTask, sessionTimeoutTask);
-
-        var branding       = await brandingTask;
-        var entitlements   = await entitlementsTask;
-        var domains        = await domainsTask;
-        var capabilities   = await capabilitiesTask;
-        var settings       = await settingsTask;
-        var sessionTimeout = await sessionTimeoutTask;
+        var branding       = await _brandingRepo.GetByTenantIdAsync(id, ct);
+        var entitlements   = await _entitlementRepo.ListByTenantAsync(id, ct);
+        var domains        = await _domainRepo.ListByTenantAsync(id, ct);
+        var capabilities   = await _capabilityRepo.ListByTenantAsync(id, ct);
+        var settings       = await _settingRepo.ListByTenantAsync(id, ct);
+        var sessionTimeout = await _identityCompat.GetSessionTimeoutMinutesAsync(id, ct);
 
         var logoDocumentId      = branding?.LogoDocumentId      ?? tenant.LogoDocumentId;
         var logoWhiteDocumentId = branding?.LogoWhiteDocumentId ?? tenant.LogoWhiteDocumentId;
 
         var entitlementItems = entitlements
             .Select(e => new AdminEntitlementItem(
-                ProductCode:  e.ProductKey,
-                ProductName:  e.ProductDisplayName ?? e.ProductKey,
+                ProductCode:  ToCanonicalProductCode(e.ProductKey),
+                ProductName:  e.ProductDisplayName ?? ToCanonicalProductCode(e.ProductKey),
                 Enabled:      e.IsEnabled,
                 Status:       e.IsEnabled ? "Active" : "Disabled",
                 EnabledAtUtc: e.EffectiveFromUtc))
@@ -162,6 +184,26 @@ public class TenantAdminService : ITenantAdminService
 
         tenant.SetStatus(parsed);
         await _tenantRepo.UpdateAsync(tenant, ct);
+
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of the status transition ─────────
+        var eventType = parsed switch
+        {
+            TenantStatus.Active    => CommerceEventTypes.TenantActivated,
+            TenantStatus.Suspended => CommerceEventTypes.TenantSuspended,
+            _                      => CommerceEventTypes.TenantSuspended   // Inactive treated as suspended; no Closed status in domain
+        };
+
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        eventType,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"]  = tenant.Code,
+                ["newStatus"]   = parsed.ToString()
+            }), ct);
+
         return ToSummary(tenant);
     }
 
@@ -232,9 +274,7 @@ public class TenantAdminService : ITenantAdminService
         var provResult = await _identityProvisioning.ProvisionAsync(provisioningRequest, ct);
 
         // BLK-TS-02 — Update Tenant-owned provisioning state from Identity result.
-        var newProvStatus = provResult.Success
-            ? Domain.TenantProvisioningStatus.Provisioned
-            : Domain.TenantProvisioningStatus.Failed;
+        var newProvStatus = MapProvisioningStatus(provResult.ProvisioningStatus, provResult.Success);
         var provError = provResult.Errors.Count > 0 ? string.Join("; ", provResult.Errors) : null;
 
         tenant.SetProvisioningStatus(newProvStatus, provError);
@@ -243,12 +283,29 @@ public class TenantAdminService : ITenantAdminService
         if (provResult.Success && !string.IsNullOrWhiteSpace(provResult.Subdomain))
             tenant.SetSubdomain(provResult.Subdomain);
 
+        if (provResult.Success
+            && !string.IsNullOrWhiteSpace(provResult.AdminUserId)
+            && Guid.TryParse(provResult.AdminUserId, out var ownerUserId))
+        {
+            tenant.SetOwner(ownerUserId);
+        }
+
         await _tenantRepo.UpdateAsync(tenant, ct);
 
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of new tenant creation ────────
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        CommerceEventTypes.TenantCreated,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"]         = tenant.Code,
+                ["identityProvisioned"] = provResult.Success.ToString().ToLowerInvariant()
+            }), ct);
+
         // ── Step 3: Build response ─────────────────────────────────────────────
-        var nextAction = provResult.Success
-            ? "None"
-            : "RetryProvisioning";
+        var nextAction = GetNextProvisioningAction(provResult.ProvisioningStatus, provResult.Success);
 
         return new AdminCreateTenantResponse(
             TenantId:            tenant.Id.ToString(),
@@ -266,6 +323,46 @@ public class TenantAdminService : ITenantAdminService
             NextAction:          nextAction,
             ProvisioningWarnings: provResult.Warnings,
             ProvisioningErrors:   provResult.Errors);
+    }
+
+    private static TenantProvisioningStatus MapProvisioningStatus(string? provisioningStatus, bool requestSucceeded)
+    {
+        if (!string.IsNullOrWhiteSpace(provisioningStatus) &&
+            Enum.TryParse<Domain.TenantProvisioningStatus>(provisioningStatus, ignoreCase: true, out var direct))
+        {
+            return direct;
+        }
+
+        if (!string.IsNullOrWhiteSpace(provisioningStatus))
+        {
+            switch (provisioningStatus.Trim())
+            {
+                case "Active":
+                case "Provisioned":
+                    return Domain.TenantProvisioningStatus.Provisioned;
+                case "Pending":
+                case "InProgress":
+                case "Verifying":
+                    return Domain.TenantProvisioningStatus.InProgress;
+                case "Failed":
+                    return Domain.TenantProvisioningStatus.Failed;
+            }
+        }
+
+        return requestSucceeded
+            ? Domain.TenantProvisioningStatus.Provisioned
+            : Domain.TenantProvisioningStatus.Failed;
+    }
+
+    private static string GetNextProvisioningAction(string? provisioningStatus, bool requestSucceeded)
+    {
+        return provisioningStatus?.Trim() switch
+        {
+            "Pending" or "InProgress" or "Verifying" => "MonitorProvisioning",
+            "Failed" => "RetryProvisioning",
+            "Active" or "Provisioned" => "None",
+            _ => requestSucceeded ? "None" : "RetryProvisioning",
+        };
     }
 
     // ── B12: Entitlement Toggle (Tenant-first) ─────────────────────────────────
@@ -309,16 +406,52 @@ public class TenantAdminService : ITenantAdminService
             enabledAtUtc = entitlement.EffectiveFromUtc;
         }
 
+        var identitySynced = await _identityCompat.SetTenantProductEntitlementAsync(
+            tenantId,
+            productCode,
+            enabled,
+            ct);
+
         return new AdminEntitlementToggleResponse(
             EntitlementId: entitlement.Id,
             TenantId:      tenantId,
-            ProductCode:   productCode,
-            ProductName:   entitlement.ProductDisplayName ?? productCode,
+            ProductCode:   ToCanonicalProductCode(productCode),
+            ProductName:   entitlement.ProductDisplayName ?? ToCanonicalProductCode(productCode),
             Enabled:       enabled,
             Status:        enabled ? "Active" : "Disabled",
             EnabledAtUtc:  enabledAtUtc?.ToString("o"),
-            IdentitySynced: false);
+            IdentitySynced: identitySynced);
     }
+
+    // ── LS-COMMERCE-ECO-02: Safe Commerce notification helper ─────────────────
+
+    /// <summary>
+    /// Sends a Commerce lifecycle event without blocking or throwing into the
+    /// caller.  The <see cref="ICommerceLifecycleNotifier"/> contract already
+    /// requires implementations to swallow delivery errors; this wrapper adds a
+    /// second safety net at the call-site level.
+    /// </summary>
+    private async Task TryNotifyCommerceAsync(CommerceLifecycleEvent ev, CancellationToken ct)
+    {
+        try
+        {
+            await _commerceNotifier.NotifyAsync(ev, ct);
+            _logger.LogDebug(
+                "Commerce lifecycle notification dispatched: EventType={EventType}, TenantId={TenantId}",
+                ev.EventType, ev.ExternalTenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Commerce lifecycle notification failed (non-blocking): EventType={EventType}, TenantId={TenantId}",
+                ev.EventType, ev.ExternalTenantId);
+        }
+    }
+
+    private static string ToCanonicalProductCode(string productCode)
+        => CanonicalProductCodes.TryGetValue(productCode.Trim(), out var canonical)
+            ? canonical
+            : productCode;
 
     // ── Mapping ───────────────────────────────────────────────────────────────
 

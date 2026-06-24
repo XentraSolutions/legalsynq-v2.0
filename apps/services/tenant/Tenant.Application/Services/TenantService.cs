@@ -1,17 +1,43 @@
 using System.Net.Mail;
 using System.Text.RegularExpressions;
+using BuildingBlocks.Commerce;
 using BuildingBlocks.Exceptions;
+using Contracts.Commerce;
+using Microsoft.Extensions.Logging;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Domain;
 
 namespace Tenant.Application.Services;
 
+/// <summary>
+/// LS-COMMERCE-ECO-02: Commerce lifecycle notifications wired for tenant
+/// provisioning, creation, and deactivation.  Notifications are noop-first
+/// and never block the primary tenant lifecycle operation.
+/// </summary>
 public class TenantService : ITenantService
 {
-    private readonly ITenantRepository _repository;
+    private readonly ITenantRepository           _repository;
+    private readonly ISettingRepository          _settings;
+    private readonly ICommerceLifecycleNotifier  _commerceNotifier;
+    private readonly ILogger<TenantService>      _logger;
 
-    public TenantService(ITenantRepository repository) => _repository = repository;
+    private const string HostPlatformKey        = "legalsynq";
+    private const string DefaultTimezone        = TenantDefaults.Timezone;
+    private const string TimezoneSettingKey     = TenantDefaults.TimezoneSettingKey;
+    private const string LegacyTimezoneSettingKey = TenantDefaults.LegacyTimezoneSettingKey;
+
+    public TenantService(
+        ITenantRepository          repository,
+        ISettingRepository         settings,
+        ICommerceLifecycleNotifier commerceNotifier,
+        ILogger<TenantService>     logger)
+    {
+        _repository       = repository;
+        _settings         = settings;
+        _commerceNotifier = commerceNotifier;
+        _logger           = logger;
+    }
 
     // ── BLK-TS-01: Tenant code format rules ──────────────────────────────────
 
@@ -88,9 +114,25 @@ public class TenantService : ITenantService
         var tenant = Domain.Tenant.Create(
             code:        code,
             displayName: request.TenantName.Trim(),
-            subdomain:   subdomain);
+            subdomain:   subdomain,
+            timeZone:    DefaultTimezone);
+
+        if (request.OwnerUserId.HasValue)
+            tenant.SetOwner(request.OwnerUserId.Value);
 
         await _repository.AddAsync(tenant, ct);
+
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of provisioned tenant ─────────
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        CommerceEventTypes.TenantCreated,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"] = tenant.Code,
+                ["source"]     = "provision"
+            }), ct);
 
         return new ProvisionResponse(tenant.Id, tenant.Code, tenant.Subdomain ?? subdomain);
     }
@@ -158,7 +200,7 @@ public class TenantService : ITenantService
             request.Subdomain,
             request.Description,
             request.WebsiteUrl,
-            request.TimeZone,
+            request.TimeZone ?? DefaultTimezone,
             request.Locale,
             request.SupportEmail,
             request.SupportPhone,
@@ -170,6 +212,19 @@ public class TenantService : ITenantService
             request.CountryCode);
 
         await _repository.AddAsync(tenant, ct);
+
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of new tenant creation ─────────
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        CommerceEventTypes.TenantCreated,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"] = tenant.Code,
+                ["source"]     = "create"
+            }), ct);
+
         return ToResponse(tenant);
     }
 
@@ -242,6 +297,35 @@ public class TenantService : ITenantService
 
         tenant.SetStatus(TenantStatus.Inactive);
         await _repository.UpdateAsync(tenant, ct);
+
+        // ── LS-COMMERCE-ECO-02: Notify Commerce of tenant deactivation ─────────
+        // Inactive is the closest domain status to suspended; no Closed status exists.
+        await TryNotifyCommerceAsync(new CommerceLifecycleEvent(
+            EventType:        CommerceEventTypes.TenantSuspended,
+            HostPlatformKey:  HostPlatformKey,
+            ExternalTenantId: tenant.Id.ToString(),
+            OccurredAtUtc:    DateTimeOffset.UtcNow,
+            Metadata:         new Dictionary<string, string>
+            {
+                ["tenantCode"] = tenant.Code,
+                ["newStatus"]  = TenantStatus.Inactive.ToString()
+            }), ct);
+    }
+
+    public async Task<string> GetTimezoneAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var tenant = await _repository.GetByIdAsync(tenantId, ct)
+            ?? throw new NotFoundException($"Tenant '{tenantId}' was not found.");
+
+        if (!string.IsNullOrWhiteSpace(tenant.TimeZone))
+            return tenant.TimeZone;
+
+        var setting = await _settings.GetByKeyAsync(tenantId, TimezoneSettingKey, productKey: null, ct)
+                   ?? await _settings.GetByKeyAsync(tenantId, LegacyTimezoneSettingKey, productKey: null, ct);
+
+        return string.IsNullOrWhiteSpace(setting?.SettingValue)
+            ? DefaultTimezone
+            : setting.SettingValue;
     }
 
     /// <summary>
@@ -256,6 +340,60 @@ public class TenantService : ITenantService
     /// are left unchanged on update or left null on create — they will be populated
     /// by the migration execute endpoint or a subsequent operator update.
     /// </summary>
+    public async Task<string> UpdateTimezoneAsync(Guid tenantId, string timezone, CancellationToken ct = default)
+    {
+        var tenant = await _repository.GetByIdAsync(tenantId, ct)
+            ?? throw new NotFoundException($"Tenant '{tenantId}' was not found.");
+
+        try { TimeZoneInfo.FindSystemTimeZoneById(timezone); }
+        catch (TimeZoneNotFoundException)
+        {
+            throw new ValidationException(
+                $"'{timezone}' is not a recognized IANA or Windows timezone identifier.",
+                new Dictionary<string, string[]> { ["timezone"] = [$"'{timezone}' is not a valid timezone."] });
+        }
+
+        tenant.UpdateProfile(
+            tenant.DisplayName,
+            tenant.LegalName,
+            tenant.Description,
+            tenant.WebsiteUrl,
+            timezone,
+            tenant.Locale,
+            tenant.SupportEmail,
+            tenant.SupportPhone);
+
+        await _repository.UpdateAsync(tenant, ct);
+        await UpsertTimezoneSettingAsync(tenantId, timezone, ct);
+        return timezone;
+    }
+
+    private async Task UpsertTimezoneSettingAsync(Guid tenantId, string timezone, CancellationToken ct)
+    {
+        var canonicalSetting = await _settings.GetByKeyAsync(tenantId, TimezoneSettingKey, productKey: null, ct);
+        if (canonicalSetting is null)
+        {
+            canonicalSetting = TenantSetting.Create(
+                tenantId,
+                TimezoneSettingKey,
+                timezone,
+                SettingValueType.String);
+            await _settings.AddAsync(canonicalSetting, ct);
+        }
+        else
+        {
+            canonicalSetting.UpdateValue(timezone, SettingValueType.String);
+            await _settings.UpdateAsync(canonicalSetting, ct);
+        }
+
+        var legacySetting = await _settings.GetByKeyAsync(tenantId, LegacyTimezoneSettingKey, productKey: null, ct);
+        if (legacySetting is not null)
+        {
+            legacySetting.UpdateValue(timezone, SettingValueType.String);
+            await _settings.UpdateAsync(legacySetting, ct);
+        }
+    }
+
     public async Task UpsertFromSyncAsync(TenantSyncRequest request, CancellationToken ct = default)
     {
         var existing = await _repository.GetByIdAsync(request.TenantId, ct);
@@ -317,6 +455,31 @@ public class TenantService : ITenantService
 
     private static TenantStatus ParseStatus(string? status) =>
         Enum.TryParse<TenantStatus>(status, ignoreCase: true, out var s) ? s : TenantStatus.Active;
+
+    // ── LS-COMMERCE-ECO-02: Safe Commerce notification helper ─────────────────
+
+    /// <summary>
+    /// Sends a Commerce lifecycle event without blocking or throwing into the
+    /// caller.  The <see cref="ICommerceLifecycleNotifier"/> contract already
+    /// requires implementations to swallow delivery errors; this wrapper adds a
+    /// second safety net at the call-site level.
+    /// </summary>
+    private async Task TryNotifyCommerceAsync(CommerceLifecycleEvent ev, CancellationToken ct)
+    {
+        try
+        {
+            await _commerceNotifier.NotifyAsync(ev, ct);
+            _logger.LogDebug(
+                "Commerce lifecycle notification dispatched: EventType={EventType}, TenantId={TenantId}",
+                ev.EventType, ev.ExternalTenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Commerce lifecycle notification failed (non-blocking): EventType={EventType}, TenantId={TenantId}",
+                ev.EventType, ev.ExternalTenantId);
+        }
+    }
 
     // ── Validation helpers ────────────────────────────────────────────────────
 

@@ -12,16 +12,16 @@ namespace Comms.Tests;
 
 public static class TestHelpers
 {
-    public static readonly Guid TenantId = Guid.NewGuid();
-    public static readonly Guid OrgId = Guid.NewGuid();
-    public static readonly Guid UserId1 = Guid.NewGuid();
-    public static readonly Guid UserId2 = Guid.NewGuid();
-    public static readonly Guid ExternalUserId = Guid.NewGuid();
+    public static readonly Guid TenantId = Guid.CreateVersion7();
+    public static readonly Guid OrgId = Guid.CreateVersion7();
+    public static readonly Guid UserId1 = Guid.CreateVersion7();
+    public static readonly Guid UserId2 = Guid.CreateVersion7();
+    public static readonly Guid ExternalUserId = Guid.CreateVersion7();
 
     public static CommsDbContext CreateDbContext(string? dbName = null)
     {
         var options = new DbContextOptionsBuilder<CommsDbContext>()
-            .UseInMemoryDatabase(dbName ?? Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(dbName ?? Guid.CreateVersion7().ToString())
             .Options;
 
         return new CommsDbContext(options);
@@ -63,7 +63,7 @@ public static class TestHelpers
         return Message.Create(
             conversationId, TenantId, OrgId,
             channel, Direction.Internal,
-            $"Test message {Guid.NewGuid()}", visibility,
+            $"Test message {Guid.CreateVersion7()}", visibility,
             senderUserId ?? UserId1,
             senderUserId: senderUserId ?? UserId1,
             senderParticipantType: ParticipantType.InternalUser);
@@ -247,7 +247,7 @@ public class MockNotificationsServiceClient : INotificationsServiceClient
     public List<Application.DTOs.OperationalAlertPayload> SentAlerts { get; } = new();
     public NotificationsSendResult NextResult { get; set; } = new(
         Success: true,
-        NotificationsRequestId: Guid.NewGuid(),
+        NotificationsRequestId: Guid.CreateVersion7(),
         ProviderUsed: "test-provider",
         ProviderMessageId: null,
         Status: "queued",

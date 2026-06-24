@@ -24,7 +24,12 @@ The Documents service handles file upload, versioning, metadata management, acce
 
 ### Authenticated Endpoints
 
-All endpoints under `/documents` require an authenticated user. The caller's identity is extracted from the JWT bearer token via `JwtPrincipalExtractor`.
+All endpoints under `/documents` require authentication. Callers may use either:
+
+- a standard user JWT issued by Identity
+- a signed platform service JWT (`iss=legalsynq-service-tokens`) carrying tenant context
+
+The caller's identity and tenant scope are extracted from the bearer token via `JwtPrincipalExtractor`.
 
 Requests missing authentication receive a `401 Unauthorized` response.
 

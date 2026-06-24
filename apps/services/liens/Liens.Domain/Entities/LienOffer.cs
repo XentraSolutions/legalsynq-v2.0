@@ -52,7 +52,7 @@ public class LienOffer : AuditableEntity
         var now = DateTime.UtcNow;
         return new LienOffer
         {
-            Id                = Guid.NewGuid(),
+            Id                = Guid.CreateVersion7(),
             TenantId          = tenantId,
             LienId            = lienId,
             BuyerOrgId        = buyerOrgId,

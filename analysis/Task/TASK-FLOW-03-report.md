@@ -48,7 +48,7 @@ After TASK-FLOW-02, every **read** consumer has been migrated to the Task servic
 The factory currently builds a `WorkflowTask` entity, calls Task service, then adds the entity to EF context. After the change:
 - Build the `CreateWorkflowTaskAsync` body inline from the same inputs (title, priority, dueAt, assignment, stepKey, workflowInstanceId, externalId).
 - Remove all `var task = new WorkflowTask(...)` and `_db.WorkflowTasks.Add(task)`.
-- `task.Id` (used as `externalId`) should be generated as `Guid.NewGuid()` before the call and returned to the engine if needed.
+- `task.Id` (used as `externalId`) should be generated as `Guid.CreateVersion7()` before the call and returned to the engine if needed.
 - The factory still returns `Guid` (the task ID) so the engine can wire `InitialTaskId` on the workflow instance.
 
 **Also remove:**

@@ -2,6 +2,12 @@ namespace CareConnect.Application.DTOs;
 
 public class CreateReferralRequest
 {
+    /// <summary>
+    /// Optional authenticated-flow tenant override for users who can act in more than one tenant.
+    /// When omitted, the API uses the caller's active JWT tenant.
+    /// </summary>
+    public Guid? TenantId { get; set; }
+
     public Guid ProviderId { get; set; }
     public string ClientFirstName { get; set; } = string.Empty;
     public string ClientLastName { get; set; } = string.Empty;
@@ -9,8 +15,10 @@ public class CreateReferralRequest
     public string ClientPhone { get; set; } = string.Empty;
     public string ClientEmail { get; set; } = string.Empty;
     public string? CaseNumber { get; set; }
-    public string RequestedService { get; set; } = string.Empty;
+    public string? RequestedService { get; set; }
     public string Urgency { get; set; } = string.Empty;
+    public Guid? TreatmentTypeId { get; set; }
+    public DateOnly? DateOfAccident { get; set; }
     public string? Notes { get; set; }
 
     // Phase C: optional multi-org context.
@@ -23,4 +31,14 @@ public class CreateReferralRequest
     // Pre-filled from session on the frontend; optional for backward compatibility.
     public string? ReferrerEmail { get; set; }
     public string? ReferrerName  { get; set; }
+    public string? ReferrerFirstName { get; set; }
+    public string? ReferrerLastName  { get; set; }
+    public string? ReferrerFirmName  { get; set; }
+    public string? ReferrerPhone    { get; set; }
+
+    /// <summary>
+    /// HMAC signature proving the authenticated user selected the supplied
+    /// tenant/org scope from the trusted browse-network flow.
+    /// </summary>
+    public string? ReferrerScopeSignature { get; set; }
 }

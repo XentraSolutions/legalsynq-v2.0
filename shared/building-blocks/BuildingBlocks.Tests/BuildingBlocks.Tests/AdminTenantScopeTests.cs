@@ -226,6 +226,7 @@ internal sealed class StubRequestContext : ICurrentRequestContext
     public Guid?  TenantId        => _tenantId;
     public string? TenantCode     => null;
     public string? Email          => null;
+    public string? Name           => null;
     public Guid?  OrgId           => null;
     public string? OrgType        => null;
     public Guid?  OrgTypeId       => null;
@@ -236,4 +237,5 @@ internal sealed class StubRequestContext : ICurrentRequestContext
     public IReadOnlyCollection<string> Roles        => [];
     public IReadOnlyCollection<string> ProductRoles => [];
     public IReadOnlyCollection<string> Permissions  => [];
+    public IReadOnlyList<Guid> TenantIds => _tenantId.HasValue ? [_tenantId.Value] : [];
 }

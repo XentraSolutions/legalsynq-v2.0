@@ -1,5 +1,8 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
@@ -18,6 +21,8 @@ namespace Notifications.Infrastructure.Data.Migrations
     ///   "manual"              — operator-entered correction
     ///   "unavailable"         — no estimate configured; cost is NULL
     /// </summary>
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260511000001_AddSmsCostFields")]
     public partial class AddSmsCostFields : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

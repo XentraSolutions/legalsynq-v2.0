@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth-guards';
+import { tenantServerApi } from '@/lib/tenant-api';
 import {
 
   notificationsServerApi,
@@ -65,14 +66,15 @@ function ChannelBadge({ channel }: { channel: string }) {
 
 // ── Date formatter ────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string, timezone: string): string {
   try {
     return new Date(iso).toLocaleString('en-US', {
-      month:  'short',
-      day:    'numeric',
-      year:   'numeric',
-      hour:   'numeric',
-      minute: '2-digit',
+      month:    'short',
+      day:      'numeric',
+      year:     'numeric',
+      hour:     'numeric',
+      minute:   '2-digit',
+      timeZone: timezone,
     });
   } catch {
     return iso;
@@ -203,6 +205,9 @@ export default async function NotificationLogPage({ searchParams }: PageProps) {
   const searchParamsData = await searchParams;
   const session = await requireOrg();
   const { tenantId } = session;
+
+  const tzResult = await tenantServerApi.getTimezoneSetting(tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
 
   const status  = searchParamsData.status  || '';
   const channel = searchParamsData.channel || '';
@@ -357,7 +362,7 @@ export default async function NotificationLogPage({ searchParams }: PageProps) {
                       <FailureCell category={n.failureCategory ?? null} message={n.lastErrorMessage ?? null} />
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
-                      {fmtDate(n.createdAt)}
+                      {fmtDate(n.createdAt, tenantTimezone)}
                     </td>
                   </tr>
                 ))}

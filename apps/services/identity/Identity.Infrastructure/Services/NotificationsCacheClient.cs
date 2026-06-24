@@ -55,6 +55,22 @@ public sealed class NotificationsServiceOptions
     /// Leave empty in development to continue using PortalBaseUrl (localhost).
     /// </summary>
     public string? PortalBaseDomain { get; set; }
+
+    // ── CareConnect ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// AUTH-CC01: Base URL for the CareConnect common portal, used to construct
+    /// self-service password-reset links when ResolveByEmail=true.
+    ///
+    /// Example: https://careconnect-demo.legalsynq.com
+    ///
+    /// When set and a forgot-password request arrives with ResolveByEmail=true,
+    /// the reset link is built as:
+    ///   {CareConnectPortalBaseUrl.TrimEnd('/')}/reset-password?token={rawToken}
+    ///
+    /// Leave empty to fall back to TenantPortalUrlHelper.Build (subdomain-based URL).
+    /// </summary>
+    public string? CareConnectPortalBaseUrl { get; set; }
 }
 
 /// <summary>

@@ -363,7 +363,7 @@ public sealed class GovernanceTopologyResolver : IGovernanceTopologyResolver
 
                 case GovernanceFederationOverlay.OverlayTypes.AddRule:
                     rules.Add(new TopologyEffectiveRule(
-                        overlay.RuleId ?? Guid.NewGuid(),
+                        overlay.RuleId ?? Guid.CreateVersion7(),
                         ExtractStringField(overlay.OverlayJson, "name") ?? "federation_injected",
                         ExtractStringField(overlay.OverlayJson, "ruleType") ?? "federation",
                         ExtractStringField(overlay.OverlayJson, "severity") ?? "info",

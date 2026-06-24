@@ -74,7 +74,7 @@ public sealed class Document
         var now = DateTime.UtcNow;
         return new Document
         {
-            Id             = Guid.NewGuid(),
+            Id             = Guid.CreateVersion7(),
             TenantId       = tenantId,
             ProductId      = productId,
             ReferenceId    = referenceId,

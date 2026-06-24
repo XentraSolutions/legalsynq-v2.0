@@ -10,7 +10,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsGovernanceRolloutStage
 {
-    public Guid    Id              { get; set; } = Guid.NewGuid();
+    public Guid    Id              { get; set; } = Guid.CreateVersion7();
     public Guid    RolloutPlanId   { get; set; }
 
     /// <summary>Ordered execution position. Unique per rollout plan. 1-based.</summary>

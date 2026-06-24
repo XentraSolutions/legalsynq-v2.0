@@ -7,6 +7,7 @@ import { useSession } from '@/hooks/use-session';
 import { useProduct } from '@/contexts/product-context';
 import { orgTypeLabel, PRODUCT_CODE_TO_NAV_KEY } from '@/lib/nav';
 import { getClientPortalConfig, type PortalConfig } from '@/lib/portal';
+import { isEligibleForCareConnectCommonPortal } from '@/lib/careconnect-common-portal-access';
 import { useTenantBranding } from '@/providers/tenant-branding-provider';
 import { NotificationBell } from '@/components/shell/notification-bell';
 
@@ -123,7 +124,7 @@ function AppSwitcher() {
   // Compute visible products only once the session is confirmed loaded.
   // LS-ID-TNT-009: prefer userProducts (user-level effective access from JWT product_codes)
   // over enabledProducts (tenant-level) so the switcher shows only products the user can
-  // actually use. Both empty → PlatformAdmin / unconfigured; show all.
+  // actually use. Both empty → show none.
   // Note: portal-level restriction is enforced at the TopBar level — AppSwitcher is hidden
   // entirely on restricted portals, so no portal filtering is needed here.
   const visibleProducts: typeof ALL_PRODUCTS[number][] = (() => {
@@ -131,7 +132,7 @@ function AppSwitcher() {
     const up = session.userProducts ?? [];
     const ep = session.enabledProducts ?? [];
     const productList = up.length > 0 ? up : ep;           // user-level beats tenant-level
-    if (productList.length === 0) return [...ALL_PRODUCTS]; // PlatformAdmin / unconfigured
+    if (productList.length === 0) return [];
     const ids = new Set(productList.map(code => PRODUCT_CODE_TO_NAV_KEY[code]).filter(Boolean));
     return ALL_PRODUCTS.filter(p => ids.has(p.id));
   })();
@@ -224,6 +225,7 @@ interface UserMenuProps {
 function UserMenu({ session, clearSession }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const hideActivityLog = isEligibleForCareConnectCommonPortal(session);
 
   useEffect(() => {
     if (!open) return;
@@ -312,7 +314,9 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
           <div className="py-1.5">
             <ProfileMenuItem href="/profile"  icon="ri-user-3-line"     label="Profile"           onClick={() => setOpen(false)} />
             <ProfileMenuItem href="/settings" icon="ri-settings-3-line"  label="Account Settings" onClick={() => setOpen(false)} />
-            <ProfileMenuItem href="/activity" icon="ri-history-line"     label="Activity Log"      onClick={() => setOpen(false)} />
+            {!hideActivityLog && (
+              <ProfileMenuItem href="/activity" icon="ri-history-line" label="Activity Log" onClick={() => setOpen(false)} />
+            )}
           </div>
 
           <div className="border-t border-gray-100" />

@@ -67,7 +67,7 @@ export async function POST(
     );
     // Bust the cached workflow list/exception views so the next render
     // sees the new status without a page-level reload.
-    revalidateTag(CACHE_TAGS.workflows);
+    revalidateTag(CACHE_TAGS.workflows, {});
     return NextResponse.json({ result });
   } catch (err: unknown) {
     // Translate upstream Flow errors using the structured `ApiError`

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using BuildingBlocks.DataGovernance;
@@ -33,56 +32,33 @@ namespace CareConnect.Application.Services;
 public class ReferralEmailService : IReferralEmailService
 {
     private const int TokenExpiryDays      = 30;
-    private const string DevFallbackSecret = "LEGALSYNQ-DEV-REFERRAL-TOKEN-SECRET-2026";
-
     private readonly INotificationRepository       _notifications;
     private readonly INotificationsProducer        _producer;
     private readonly ILogger<ReferralEmailService> _logger;
     private readonly ITenantServiceClient          _tenantClient;
-    private readonly string _tokenSecret;
-    private readonly string _appBaseUrl;
-    private readonly string _appBaseDomain;
-
-    // Short-lived in-process cache: avoids one HTTP call per email for the same tenant.
-    // Keyed by TenantId → subdomain slug. Never evicted (process lifetime cache is fine
-    // for a slug that never changes after provisioning).
-    private readonly ConcurrentDictionary<Guid, string> _subdomainCache = new();
+    private readonly ITenantSubdomainCache         _subdomainCache;
+    private readonly SemaphoreSlim _notificationUpdateLock = new(1, 1);
+    private readonly ReferralRuntimeOptions _options;
 
     public ReferralEmailService(
         INotificationRepository       notifications,
         INotificationsProducer        producer,
         IConfiguration                configuration,
         ITenantServiceClient          tenantClient,
+        ITenantSubdomainCache         subdomainCache,
         ILogger<ReferralEmailService> logger)
     {
-        _notifications = notifications;
-        _producer      = producer;
-        _logger        = logger;
-        _tenantClient  = tenantClient;
-        _appBaseUrl    = (configuration["AppBaseUrl"]    ?? "http://localhost:3000").TrimEnd('/');
-        _appBaseDomain = (configuration["AppBaseDomain"] ?? string.Empty).Trim().TrimStart('.');
+        _notifications  = notifications;
+        _producer       = producer;
+        _logger         = logger;
+        _tenantClient   = tenantClient;
+        _subdomainCache = subdomainCache;
+        _options        = ReferralRuntimeOptions.FromConfiguration(configuration);
 
-        // CC2-INT-B03: Hard enforcement — DevFallbackSecret is blocked outside Development.
-        // IsNullOrWhiteSpace ensures a blank/whitespace-only value is treated the same as a missing secret.
-        var secret      = configuration["ReferralToken:Secret"];
-        var environment = configuration["ASPNETCORE_ENVIRONMENT"] ?? "Production";
-        if (string.IsNullOrWhiteSpace(secret))
+        if (_options.UsingDevelopmentFallbackSecret)
         {
-            var isDevelopment = string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase);
-            if (!isDevelopment)
-                throw new InvalidOperationException(
-                    "ReferralToken:Secret must be configured in non-Development environments. " +
-                    "Set the 'ReferralToken:Secret' configuration key to a strong random value. " +
-                    $"Current environment: '{environment}'.");
-
-            _tokenSecret = DevFallbackSecret;
             _logger.LogWarning(
-                "ReferralToken:Secret is not configured. Using development fallback — " +
-                "DO NOT use this in production.");
-        }
-        else
-        {
-            _tokenSecret = secret;
+                "ReferralToken:Secret is not configured. Using development fallback — DO NOT use this in production.");
         }
     }
 
@@ -92,19 +68,20 @@ public class ReferralEmailService : IReferralEmailService
     //   AppBaseDomain configured → https://{subdomain}.{AppBaseDomain}{path}
     //   AppBaseDomain empty / subdomain unavailable → {AppBaseUrl}{path}
     //
-    // Subdomain is cached in-process for the lifetime of the service instance.
+    // Subdomain is sourced from ITenantSubdomainCache (Singleton), so the result
+    // survives across DI scopes and request lifetimes.
 
     private async Task<string> BuildTenantUrlAsync(
         Guid tenantId, string path, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(_appBaseDomain))
-            return _appBaseUrl + path;
+        if (string.IsNullOrEmpty(_options.AppBaseDomain))
+            return _options.AppBaseUrl + path;
 
         if (!_subdomainCache.TryGetValue(tenantId, out var subdomain))
         {
             subdomain = await _tenantClient.GetSubdomainAsync(tenantId, ct);
             if (!string.IsNullOrWhiteSpace(subdomain))
-                _subdomainCache.TryAdd(tenantId, subdomain);
+                _subdomainCache.TryAdd(tenantId, subdomain!);
         }
 
         if (string.IsNullOrWhiteSpace(subdomain))
@@ -112,10 +89,10 @@ public class ReferralEmailService : IReferralEmailService
             _logger.LogDebug(
                 "ReferralEmailService: subdomain not found for tenant {TenantId} — using AppBaseUrl fallback.",
                 tenantId);
-            return _appBaseUrl + path;
+            return _options.AppBaseUrl + path;
         }
 
-        return $"https://{subdomain}.{_appBaseDomain}{path}";
+        return $"https://{subdomain}.{_options.AppBaseDomain}{path}";
     }
 
     // ── Token helpers ─────────────────────────────────────────────────────────
@@ -146,8 +123,11 @@ public class ReferralEmailService : IReferralEmailService
     /// The caller must also verify that result.TokenVersion matches the referral's
     /// current TokenVersion to detect revoked tokens.
     /// </summary>
-    public ViewTokenValidationResult? ValidateViewToken(string token)
+    public ReferralTokenValidationOutcome ValidateViewTokenDetailed(string token)
     {
+        if (string.IsNullOrWhiteSpace(token))
+            return ReferralTokenValidationOutcome.Failure(ReferralTokenFailureReasons.Missing);
+
         try
         {
             var padded  = token.Replace('-', '+').Replace('_', '/');
@@ -157,7 +137,8 @@ public class ReferralEmailService : IReferralEmailService
             var parts   = raw.Split(':');
 
             // LSCC-005-01: 4-part format: referralId:version:expiry:hmac
-            if (parts.Length != 4) return null;
+            if (parts.Length != 4)
+                return ReferralTokenValidationOutcome.Failure(ReferralTokenFailureReasons.Malformed);
 
             var referralId   = Guid.Parse(parts[0]);
             var tokenVersion = int.Parse(parts[1]);
@@ -167,7 +148,10 @@ public class ReferralEmailService : IReferralEmailService
             if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expiry)
             {
                 _logger.LogInformation("Referral view token expired for referral {ReferralId}", referralId);
-                return null;
+                return ReferralTokenValidationOutcome.Failure(
+                    ReferralTokenFailureReasons.Expired,
+                    referralId,
+                    tokenVersion);
             }
 
             var expectedSig = ComputeHmac($"{referralId}:{tokenVersion}:{expiry}");
@@ -176,79 +160,115 @@ public class ReferralEmailService : IReferralEmailService
                     Encoding.UTF8.GetBytes(expectedSig)))
             {
                 _logger.LogWarning("Referral view token HMAC mismatch — possible tampering.");
-                return null;
+                return ReferralTokenValidationOutcome.Failure(
+                    ReferralTokenFailureReasons.Malformed,
+                    referralId,
+                    tokenVersion);
             }
 
-            return new ViewTokenValidationResult(referralId, tokenVersion);
+            return ReferralTokenValidationOutcome.Success(referralId, tokenVersion);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to parse referral view token.");
-            return null;
+            return ReferralTokenValidationOutcome.Failure(ReferralTokenFailureReasons.Malformed);
         }
+    }
+
+    public ViewTokenValidationResult? ValidateViewToken(string token)
+    {
+        var detailed = ValidateViewTokenDetailed(token);
+        return detailed.IsValid && detailed.ReferralId.HasValue && detailed.TokenVersion.HasValue
+            ? new ViewTokenValidationResult(detailed.ReferralId.Value, detailed.TokenVersion.Value)
+            : null;
     }
 
     private string ComputeHmac(string payload)
     {
-        var keyBytes     = Encoding.UTF8.GetBytes(_tokenSecret);
+        var keyBytes     = Encoding.UTF8.GetBytes(_options.TokenSecret);
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
         using var hmac   = new HMACSHA256(keyBytes);
         return Convert.ToHexString(hmac.ComputeHash(payloadBytes)).ToLowerInvariant();
     }
 
-    // ── Email dispatch ────────────────────────────────────────────────────────
-
-    public async Task SendNewReferralNotificationAsync(
+    private async Task<string> BuildProviderEntryLinkAsync(
         Referral referral,
         Provider provider,
+        string token,
+        CancellationToken ct)
+    {
+        var path = $"/referrals/thread?token={token}";
+        return await BuildTenantUrlAsync(referral.TenantId, path, ct);
+    }
+
+    // ── Email dispatch ────────────────────────────────────────────────────────
+
+    public Task SendNewReferralNotificationAsync(
+        Referral          referral,
+        Provider          provider,
+        CancellationToken ct = default)
+        => SendNewReferralNotificationAsync(referral, provider, null, ct);
+
+    public async Task SendNewReferralNotificationAsync(
+        Referral          referral,
+        Provider          provider,
+        string?           treatmentTypeName,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(provider.Email))
+        var token = GenerateViewToken(referral.Id, referral.TokenVersion);
+
+        // Build both tenant URLs in parallel — independent lookups.
+        var urls = await Task.WhenAll(
+            BuildProviderEntryLinkAsync(referral, provider, token, ct),
+            BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={token}", ct));
+        var providerEntryLink = urls[0];
+        var firmStatusLink = urls[1];
+
+        var tasks = new List<Task>();
+
+        // ── Provider notification ──────────────────────────────────────────
+        if (!string.IsNullOrWhiteSpace(provider.Email))
+        {
+            var dedupeKey = $"referral:{referral.Id}:created:provider";
+            var subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
+            var body      = BuildNewReferralEmailHtml(referral, provider, providerEntryLink, treatmentTypeName);
+
+            var notification = CareConnectNotification.Create(
+                tenantId:          referral.TenantId,
+                notificationType:  NotificationType.ReferralCreated,
+                relatedEntityType: NotificationRelatedEntityType.Referral,
+                relatedEntityId:   referral.Id,
+                recipientType:     NotificationRecipientType.Provider,
+                recipientAddress:  provider.Email,
+                subject:           subject,
+                message:           providerEntryLink,
+                scheduledForUtc:   null,
+                createdByUserId:   referral.CreatedByUserId,
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         dedupeKey);
+
+            if (await _notifications.TryAddWithDedupeAsync(notification, ct))
+                // LSCC-005-02: schedule retry on failure (attempt 1 → retry after 5 min)
+                tasks.Add(TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            else
+                _logger.LogInformation("Duplicate new-referral provider notification skipped for referral {ReferralId}.", referral.Id);
+        }
+        else
         {
             _logger.LogWarning(
-                "Cannot send new-referral notification: provider {ProviderId} has no email address.",
+                "Cannot send new-referral provider notification: provider {ProviderId} has no email address.",
                 provider.Id);
-            return;
         }
 
-        var dedupeKey = $"referral:{referral.Id}:created:provider";
-
-        var token          = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var threadLink     = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
-        var firmStatusLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={token}", ct);
-        var subject        = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
-        var body           = BuildNewReferralEmailHtml(referral, provider, threadLink);
-
-        var notification = CareConnectNotification.Create(
-            tenantId:          referral.TenantId,
-            notificationType:  NotificationType.ReferralCreated,
-            relatedEntityType: NotificationRelatedEntityType.Referral,
-            relatedEntityId:   referral.Id,
-            recipientType:     NotificationRecipientType.Provider,
-            recipientAddress:  provider.Email,
-            subject:           subject,
-            message:           threadLink,
-            scheduledForUtc:   null,
-            createdByUserId:   referral.CreatedByUserId,
-            triggerSource:     NotificationSource.Initial,
-            dedupeKey:         dedupeKey);
-
-        if (!await _notifications.TryAddWithDedupeAsync(notification, ct))
-        {
-            _logger.LogInformation("Duplicate new-referral notification skipped for referral {ReferralId}.", referral.Id);
-            return;
-        }
-
-        // LSCC-005-02: schedule retry on failure (attempt 1 → retry after 5 min)
-        await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct,
-            nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1));
-
-        // LSCC-005-03: Send submission confirmation to the law firm (referrer).
+        // ── Referrer submission confirmation ───────────────────────────────
+        // LSCC-005-03: Independent of provider path — referrer always receives
+        // their submission confirmation as long as ReferrerEmail is present.
         if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
         {
             var refDedupeKey = $"referral:{referral.Id}:created:referrer";
             var refSubject   = $"Referral submitted — {referral.ClientFirstName} {referral.ClientLastName}";
-            var refBody      = BuildReferrerSubmissionHtml(referral, provider, firmStatusLink);
+            var refBody      = BuildReferrerSubmissionHtml(referral, provider, firmStatusLink, treatmentTypeName);
 
             var refNotif = CareConnectNotification.Create(
                 tenantId:          referral.TenantId,
@@ -265,8 +285,13 @@ public class ReferralEmailService : IReferralEmailService
                 dedupeKey:         refDedupeKey);
 
             if (await _notifications.TryAddWithDedupeAsync(refNotif, ct))
-                await TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct);
+                tasks.Add(TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            else
+                _logger.LogInformation("Duplicate new-referral referrer notification skipped for referral {ReferralId}.", referral.Id);
         }
+
+        await Task.WhenAll(tasks);
     }
 
     /// <summary>
@@ -289,9 +314,9 @@ public class ReferralEmailService : IReferralEmailService
         }
 
         var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
+        var providerEntryLink = await BuildProviderEntryLinkAsync(referral, provider, token, ct);
         var subject    = $"Referral (resent) — {referral.ClientFirstName} {referral.ClientLastName}";
-        var body       = BuildNewReferralEmailHtml(referral, provider, threadLink);
+        var body       = BuildNewReferralEmailHtml(referral, provider, providerEntryLink);
 
         var notification = CareConnectNotification.Create(
             tenantId:          referral.TenantId,
@@ -301,7 +326,7 @@ public class ReferralEmailService : IReferralEmailService
             recipientType:     NotificationRecipientType.Provider,
             recipientAddress:  provider.Email,
             subject:           subject,
-            message:           threadLink,
+            message:           providerEntryLink,
             scheduledForUtc:   null,
             createdByUserId:   null,
             triggerSource:     NotificationSource.ManualResend);
@@ -335,11 +360,11 @@ public class ReferralEmailService : IReferralEmailService
             return;
         }
 
-        var dedupeKey = $"referral:{referral.Id}:provider_assigned:{provider.Id}{dedupeKeySuffix}";
-        var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var viewLink  = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/view?token={token}", ct);
-        var subject   = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
-        var body      = BuildProviderAssignedEmailHtml(referral, provider, viewLink);
+        var dedupeKey  = $"referral:{referral.Id}:provider_assigned:{provider.Id}{dedupeKeySuffix}";
+        var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var providerEntryLink = await BuildProviderEntryLinkAsync(referral, provider, token, ct);
+        var subject    = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
+        var body       = BuildProviderAssignedEmailHtml(referral, provider, providerEntryLink);
 
         var notification = CareConnectNotification.Create(
             tenantId:          referral.TenantId,
@@ -349,7 +374,7 @@ public class ReferralEmailService : IReferralEmailService
             recipientType:     NotificationRecipientType.Provider,
             recipientAddress:  provider.Email,
             subject:           subject,
-            message:           viewLink,
+            message:           providerEntryLink,
             scheduledForUtc:   null,
             createdByUserId:   actingUserId,
             triggerSource:     NotificationSource.Initial,
@@ -666,13 +691,13 @@ public class ReferralEmailService : IReferralEmailService
                         "RetryNotificationAsync: provider {ProviderId} has no email. Clearing retry for notification {Id}.",
                         provider.Id, notification.Id);
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
-                var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
+                var providerEntryLink = await BuildProviderEntryLinkAsync(referral, provider, token, ct);
                 subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
-                body      = BuildNewReferralEmailHtml(referral, provider, threadLink);
+                body      = BuildNewReferralEmailHtml(referral, provider, providerEntryLink);
                 toAddress = provider.Email;
                 break;
             }
@@ -681,7 +706,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(provider.Email))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 subject   = $"Referral accepted — {referral.ClientFirstName} {referral.ClientLastName}";
@@ -695,7 +720,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(toAddress))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var retryAcceptToken  = GenerateViewToken(referral.Id, referral.TokenVersion);
@@ -711,7 +736,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(toAddress))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 subject = $"Your case has been accepted — {provider.OrganizationName ?? provider.Name}";
@@ -723,7 +748,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(provider.Email))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 subject   = $"Referral declined — {referral.ClientFirstName} {referral.ClientLastName}";
@@ -737,7 +762,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(toAddress))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var retryRejectToken  = GenerateViewToken(referral.Id, referral.TokenVersion);
@@ -751,7 +776,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(provider.Email))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 subject   = $"Referral cancelled — {referral.ClientFirstName} {referral.ClientLastName}";
@@ -765,7 +790,7 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(toAddress))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var retryCancelToken  = GenerateViewToken(referral.Id, referral.TokenVersion);
@@ -779,13 +804,13 @@ public class ReferralEmailService : IReferralEmailService
                 if (string.IsNullOrWhiteSpace(provider.Email))
                 {
                     notification.ClearRetrySchedule();
-                    await _notifications.UpdateAsync(notification, ct);
+                    await UpdateNotificationAsync(notification, ct);
                     return;
                 }
                 var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
-                var threadLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
+                var providerEntryLink = await BuildProviderEntryLinkAsync(referral, provider, token, ct);
                 subject   = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
-                body      = BuildProviderAssignedEmailHtml(referral, provider, threadLink);
+                body      = BuildProviderAssignedEmailHtml(referral, provider, providerEntryLink);
                 toAddress = provider.Email;
                 break;
             }
@@ -794,7 +819,7 @@ public class ReferralEmailService : IReferralEmailService
                     "RetryNotificationAsync: unsupported type '{Type}' for notification {Id}. Clearing retry.",
                     notification.NotificationType, notification.Id);
                 notification.ClearRetrySchedule();
-                await _notifications.UpdateAsync(notification, ct);
+                await UpdateNotificationAsync(notification, ct);
                 return;
         }
 
@@ -817,6 +842,9 @@ public class ReferralEmailService : IReferralEmailService
         CancellationToken ct = default)
     {
         var token          = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var providerEntryLink = referral.Provider is not null
+            ? await BuildProviderEntryLinkAsync(referral, referral.Provider, token, ct)
+            : await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
         var threadLink     = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/thread?token={token}", ct);
         var firmStatusLink = await BuildTenantUrlAsync(referral.TenantId, $"/referrals/firm-status?token={token}", ct);
 
@@ -834,10 +862,10 @@ public class ReferralEmailService : IReferralEmailService
         string  notifLink;
         if (isFromReferrer)
         {
-            // referrer posted → notify provider with thread link
+            // referrer posted → notify provider with canonical provider entry link
             toAddress      = referral.Provider?.Email;
             recipientLabel = provName;
-            notifLink      = threadLink;
+            notifLink      = providerEntryLink;
         }
         else
         {
@@ -865,7 +893,7 @@ public class ReferralEmailService : IReferralEmailService
             recipientType:     recipientType,
             recipientAddress:  toAddress,
             subject:           subject,
-            message:           threadLink,
+            message:           notifLink,
             scheduledForUtc:   null,
             createdByUserId:   null,
             triggerSource:     NotificationSource.Initial,
@@ -909,7 +937,7 @@ public class ReferralEmailService : IReferralEmailService
                 ct:            ct);
 
             notification.MarkSent();
-            await _notifications.UpdateAsync(notification, ct);
+            await UpdateNotificationAsync(notification, ct);
         }
         catch (Exception ex)
         {
@@ -919,13 +947,26 @@ public class ReferralEmailService : IReferralEmailService
                 notification.Id, eventKey, toAddress);
             // LSCC-005-02: pass nextRetryAfterUtc so the retry worker knows when to re-submit
             notification.MarkFailed(ex.Message, nextRetryAfterUtcOnFailure);
-            try { await _notifications.UpdateAsync(notification, ct); }
+            try { await UpdateNotificationAsync(notification, ct); }
             catch (Exception saveEx)
             {
                 _logger.LogError(saveEx,
                     "Also failed to persist failure state for notification {NotificationId}.",
                     notification.Id);
             }
+        }
+    }
+
+    private async Task UpdateNotificationAsync(CareConnectNotification notification, CancellationToken ct)
+    {
+        await _notificationUpdateLock.WaitAsync(ct);
+        try
+        {
+            await _notifications.UpdateAsync(notification, ct);
+        }
+        finally
+        {
+            _notificationUpdateLock.Release();
         }
     }
 
@@ -953,31 +994,6 @@ public class ReferralEmailService : IReferralEmailService
     // ── HTML email templates ──────────────────────────────────────────────────
 
     // ── Layout helpers ────────────────────────────────────────────────────────
-
-    /// <summary>Extracts "Firm: {name}" from the notes field, returns null if absent.</summary>
-    private static string? ExtractFirmName(string? notes)
-    {
-        if (string.IsNullOrWhiteSpace(notes)) return null;
-        foreach (var line in notes.Split('\n'))
-        {
-            var t = line.Trim();
-            if (t.StartsWith("Firm:", StringComparison.OrdinalIgnoreCase) &&
-                !t.StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase))
-                return t["Firm:".Length..].Trim();
-        }
-        return null;
-    }
-
-    /// <summary>Strips "Firm: ..." / "Firm phone: ..." meta-lines from notes for clean display.</summary>
-    private static string? CleanNotes(string? notes)
-    {
-        if (string.IsNullOrWhiteSpace(notes)) return null;
-        var cleaned = string.Join('\n', notes.Split('\n')
-            .Where(l => !l.TrimStart().StartsWith("Firm:", StringComparison.OrdinalIgnoreCase) &&
-                        !l.TrimStart().StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase)))
-            .Trim();
-        return string.IsNullOrEmpty(cleaned) ? null : cleaned;
-    }
 
     /// <summary>Single table row; skipped when value is null/empty.</summary>
     private static string Row(string label, string? value, bool bold = false)
@@ -1028,21 +1044,24 @@ public class ReferralEmailService : IReferralEmailService
 
     // ── Template builders ─────────────────────────────────────────────────────
 
-    private static string BuildNewReferralEmailHtml(Referral r, Provider p, string viewLink)
+    private static string BuildNewReferralEmailHtml(Referral r, Provider p, string entryLink, string? treatmentTypeName = null)
     {
         var provName       = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        var firmName       = ExtractFirmName(r.Notes);
-        var cleanNotes     = CleanNotes(r.Notes);
+        var firmName       = r.ReferrerFirmName;
         var referrerLabel  = firmName ?? r.ReferrerName ?? "the referring party";
         var clientDob      = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null;
+        var ctaLabel       = "View Referral";
+        var introCopy      = "Use the button below to review this referral in CareConnect.";
 
         var clientRows =
-            Row("Full Name",     $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
-            Row("Phone",         string.IsNullOrWhiteSpace(r.ClientPhone) ? null : r.ClientPhone) +
-            Row("Date of Birth", clientDob) +
-            Row("Service",       r.RequestedService) +
-            Row("Case #",        r.CaseNumber) +
-            Row("Urgency",       r.Urgency);
+            Row("Full Name",         $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Phone",             string.IsNullOrWhiteSpace(r.ClientPhone) ? null : r.ClientPhone) +
+            Row("Date of Birth",     clientDob) +
+            Row("Service",           r.RequestedService) +
+            Row("Case #",            r.CaseNumber) +
+            Row("Urgency",           r.Urgency) +
+            Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd")) +
+            Row("Type of Treatment", treatmentTypeName);
 
         var referrerRows =
             Row("Name",     r.ReferrerName) +
@@ -1051,12 +1070,12 @@ public class ReferralEmailService : IReferralEmailService
                 ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
                 : null);
 
-        var notesBlock = cleanNotes is not null
+        var notesBlock = r.Notes is not null
             ? $"""
               <div style="margin-top:28px">
                 <h3 style="margin:0 0 6px;color:#1a56db;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">Notes</h3>
                 <div style="height:2px;background:linear-gradient(to right,#e05e26,#f9a825);margin-bottom:4px"></div>
-                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{cleanNotes}</p>
+                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{r.Notes}</p>
               </div>
               """
             : "";
@@ -1072,11 +1091,12 @@ public class ReferralEmailService : IReferralEmailService
               Please find below a referral request from <strong>{referrerLabel}</strong>.
               Kindly schedule an appointment at your earliest convenience.
             </p>
+            <p style="margin:12px 0 4px;font-size:14px;color:#4b5563">{introCopy}</p>
             {Section("Client Information", clientRows)}
             {Section("Referring Case Manager", referrerRows)}
             {notesBlock}
             <p style="margin-top:28px">
-              <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral</a>
+              <a href="{entryLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">{ctaLabel}</a>
             </p>
             <p style="margin-top:12px;font-size:11px;color:#9ca3af">This link expires in 30 days.</p>
             """;
@@ -1084,17 +1104,19 @@ public class ReferralEmailService : IReferralEmailService
         return Wrap($"{provName} \u2013 Referral Request", body, footer);
     }
 
-    private static string BuildReferrerSubmissionHtml(Referral r, Provider p, string viewLink)
+    private static string BuildReferrerSubmissionHtml(Referral r, Provider p, string viewLink, string? treatmentTypeName = null)
     {
         var provName   = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var greeting   = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
-        var firmName   = ExtractFirmName(r.Notes);
-        var cleanNotes = CleanNotes(r.Notes);
+        var firmName   = r.ReferrerFirmName;
 
         var patientRows =
-            Row("Full Name", $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
-            Row("Service",   r.RequestedService) +
-            Row("Notes",     cleanNotes);
+            Row("Full Name",         $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service",           r.RequestedService) +
+            Row("Urgency",           r.Urgency) +
+            Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd")) +
+            Row("Type of Treatment", treatmentTypeName) +
+            Row("Notes",             r.Notes);
 
         var providerRows =
             Row("Provider", provName, bold: true) +
@@ -1122,13 +1144,13 @@ public class ReferralEmailService : IReferralEmailService
         return Wrap("Referral Submitted", body, footer);
     }
 
-    private static string BuildProviderAssignedEmailHtml(Referral r, Provider p, string viewLink)
+    private static string BuildProviderAssignedEmailHtml(Referral r, Provider p, string entryLink)
     {
         var provName      = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        var firmName      = ExtractFirmName(r.Notes);
-        var cleanNotes    = CleanNotes(r.Notes);
+        var firmName      = r.ReferrerFirmName;
         var referrerLabel = firmName ?? r.ReferrerName ?? "the referring party";
         var clientDob     = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null;
+        var ctaLabel      = "View Referral";
 
         var clientRows =
             Row("Full Name",     $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
@@ -1136,7 +1158,8 @@ public class ReferralEmailService : IReferralEmailService
             Row("Date of Birth", clientDob) +
             Row("Service",       r.RequestedService) +
             Row("Case #",        r.CaseNumber) +
-            Row("Urgency",       r.Urgency);
+            Row("Urgency",           r.Urgency) +
+            Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd"));
 
         var referrerRows =
             Row("Name",     r.ReferrerName) +
@@ -1145,12 +1168,12 @@ public class ReferralEmailService : IReferralEmailService
                 ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
                 : null);
 
-        var notesBlock = cleanNotes is not null
+        var notesBlock = r.Notes is not null
             ? $"""
               <div style="margin-top:28px">
                 <h3 style="margin:0 0 6px;color:#1a56db;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">Notes</h3>
                 <div style="height:2px;background:linear-gradient(to right,#e05e26,#f9a825);margin-bottom:4px"></div>
-                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{cleanNotes}</p>
+                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{r.Notes}</p>
               </div>
               """
             : "";
@@ -1170,7 +1193,7 @@ public class ReferralEmailService : IReferralEmailService
             {Section("Referring Case Manager", referrerRows)}
             {notesBlock}
             <p style="margin-top:28px">
-              <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral</a>
+              <a href="{entryLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">{ctaLabel}</a>
             </p>
             <p style="margin-top:12px;font-size:11px;color:#9ca3af">This link expires in 30 days.</p>
             """;

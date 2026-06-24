@@ -15,9 +15,10 @@ interface ReferralPublicSummary {
 }
 
 interface ActivationFormProps {
-  summary:    ReferralPublicSummary;
-  token:      string;
-  referralId: string;
+  summary:          ReferralPublicSummary;
+  token:            string;
+  referralId:       string;
+  fallbackLoginUrl: string;
 }
 
 type ProvisionOutcome = 'provisioned' | 'alreadyActive' | 'fallback';
@@ -28,8 +29,9 @@ interface ProvisionState {
   name:     string;
 }
 
-export function ActivationForm({ summary, token, referralId }: ActivationFormProps) {
-  const [name,     setName]     = useState('');
+export function ActivationForm({ summary, token, referralId, fallbackLoginUrl }: ActivationFormProps) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName,  setLastName]  = useState('');
   const [email,    setEmail]    = useState('');
   const [status,   setStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
   const [error,    setError]    = useState('');
@@ -38,21 +40,19 @@ export function ActivationForm({ summary, token, referralId }: ActivationFormPro
 
   const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
 
-  // CC2-INT-B05: land providers in the Common Portal after login, not the Tenant Portal.
-  // Fallback login URL used if the auto-provision endpoint does not return one.
-  const fallbackLoginUrl = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${referralId}`)}&reason=referral-view`;
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !email.trim()) {
+    if (!firstName.trim() || !email.trim()) {
       setError('Please enter your name and email address.');
       return;
     }
     setStatus('loading');
     setError('');
 
+    const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
+
     startTransition(async () => {
-      const result = await autoProvision(referralId, token, name.trim(), email.trim());
+      const result = await autoProvision(referralId, token, firstName.trim(), lastName.trim(), email.trim());
 
       if (result.error) {
         setStatus('error');
@@ -63,11 +63,11 @@ export function ActivationForm({ summary, token, referralId }: ActivationFormPro
       const loginUrl = result.loginUrl ?? fallbackLoginUrl;
 
       if (result.success && !result.alreadyActive) {
-        setProvision({ outcome: 'provisioned', loginUrl, name: name.trim() });
+        setProvision({ outcome: 'provisioned', loginUrl, name: fullName });
       } else if (result.success && result.alreadyActive) {
-        setProvision({ outcome: 'alreadyActive', loginUrl, name: name.trim() });
+        setProvision({ outcome: 'alreadyActive', loginUrl, name: fullName });
       } else {
-        setProvision({ outcome: 'fallback', loginUrl: null, name: name.trim() });
+        setProvision({ outcome: 'fallback', loginUrl: null, name: fullName });
       }
     });
   }
@@ -188,19 +188,34 @@ export function ActivationForm({ summary, token, referralId }: ActivationFormPro
         </p>
       </div>
 
-      <div>
-        <label htmlFor="activate-name" className="block text-xs font-medium text-gray-700 mb-1">
-          Full name <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="activate-name"
-          type="text"
-          required
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="Your full name"
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label htmlFor="activate-first-name" className="block text-xs font-medium text-gray-700 mb-1">
+            First name <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="activate-first-name"
+            type="text"
+            required
+            value={firstName}
+            onChange={e => setFirstName(e.target.value)}
+            placeholder="Jane"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          />
+        </div>
+        <div>
+          <label htmlFor="activate-last-name" className="block text-xs font-medium text-gray-700 mb-1">
+            Last name
+          </label>
+          <input
+            id="activate-last-name"
+            type="text"
+            value={lastName}
+            onChange={e => setLastName(e.target.value)}
+            placeholder="Doe"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          />
+        </div>
       </div>
 
       <div>

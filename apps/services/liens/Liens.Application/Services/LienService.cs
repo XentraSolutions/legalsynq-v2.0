@@ -71,8 +71,8 @@ public sealed class LienService : ILienService
         CreateLienRequest request, CancellationToken ct = default)
     {
         var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(request.LienNumber))
-            errors.Add("lienNumber", ["Lien number is required."]);
+        if (string.IsNullOrWhiteSpace(request.LienNumber) && !request.CaseId.HasValue)
+            errors.Add("lienNumber", ["Lien number is required when no case is provided."]);
         if (string.IsNullOrWhiteSpace(request.LienType))
             errors.Add("lienType", ["Lien type is required."]);
         else if (!LienType.All.Contains(request.LienType))
@@ -82,19 +82,24 @@ public sealed class LienService : ILienService
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing or invalid.", errors);
 
-        var existing = await _lienRepo.GetByLienNumberAsync(tenantId, request.LienNumber.Trim(), ct);
-        if (existing is not null)
-            throw new ConflictException(
-                $"A lien with number '{request.LienNumber.Trim()}' already exists.",
-                "LIEN_NUMBER_DUPLICATE");
-
+        Case? caseEntity = null;
         if (request.CaseId.HasValue)
         {
-            var caseEntity = await _caseRepo.GetByIdAsync(tenantId, request.CaseId.Value, ct);
+            caseEntity = await _caseRepo.GetByIdAsync(tenantId, request.CaseId.Value, ct);
             if (caseEntity is null)
                 throw new ValidationException("Referenced case does not exist.",
                     new Dictionary<string, string[]> { ["caseId"] = [$"Case '{request.CaseId.Value}' not found."] });
         }
+
+        var lienNumber = string.IsNullOrWhiteSpace(request.LienNumber)
+            ? await GenerateLienNumberAsync(tenantId, caseEntity!, ct)
+            : request.LienNumber.Trim();
+
+        var existing = await _lienRepo.GetByLienNumberAsync(tenantId, lienNumber, ct);
+        if (existing is not null)
+            throw new ConflictException(
+                $"A lien with number '{lienNumber}' already exists.",
+                "LIEN_NUMBER_DUPLICATE");
 
         if (request.FacilityId.HasValue)
         {
@@ -107,7 +112,7 @@ public sealed class LienService : ILienService
         var entity = Lien.Create(
             tenantId: tenantId,
             orgId: orgId,
-            lienNumber: request.LienNumber,
+            lienNumber: lienNumber,
             lienType: request.LienType,
             originalAmount: request.OriginalAmount,
             createdByUserId: actingUserId,
@@ -156,6 +161,30 @@ public sealed class LienService : ILienService
             }, TaskContinuationOptions.OnlyOnFaulted);
 
         return MapToResponse(entity);
+    }
+
+    private async Task<string> GenerateLienNumberAsync(Guid tenantId, Case caseEntity, CancellationToken ct)
+    {
+        var prefix = caseEntity.CaseNumber.Trim();
+        var existingLiens = await _lienRepo.GetByCaseIdAsync(tenantId, caseEntity.Id, ct);
+        var maxSequence = existingLiens
+            .Select(l => TryGetLienSequence(l.LienNumber, prefix))
+            .Where(sequence => sequence.HasValue)
+            .Select(sequence => sequence!.Value)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return $"{prefix}-{maxSequence + 1:00}";
+    }
+
+    private static int? TryGetLienSequence(string lienNumber, string caseNumber)
+    {
+        var prefix = $"{caseNumber}-";
+        if (!lienNumber.StartsWith(prefix, StringComparison.Ordinal))
+            return null;
+
+        var suffix = lienNumber[prefix.Length..];
+        return int.TryParse(suffix, out var sequence) ? sequence : null;
     }
 
     public async Task<LienResponse> UpdateAsync(
@@ -264,5 +293,44 @@ public sealed class LienService : ILienService
     {
         var display = $"{firstName} {lastName}".Trim();
         return string.IsNullOrEmpty(display) ? null : display;
+    }
+
+    public async Task DeleteAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default)
+    {
+        var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
+
+        // Already terminal — treat as success (idempotent soft-delete).
+        if (LienStatus.Terminal.Contains(entity.Status))
+        {
+            return;
+        }
+
+        // Transition to the appropriate terminal state respecting the state machine.
+        // Cancelled is reachable from Draft, Sold, Active, Disputed.
+        // Withdrawn is reachable from Offered, UnderReview.
+        if (LienStatus.AllowedTransitions.TryGetValue(entity.Status, out var allowed) &&
+            allowed.Contains(LienStatus.Cancelled))
+        {
+            entity.TransitionStatus(LienStatus.Cancelled, actingUserId);
+        }
+        else
+        {
+            entity.TransitionStatus(LienStatus.Withdrawn, actingUserId);
+        }
+
+        await _lienRepo.UpdateAsync(entity, ct);
+
+        _logger.LogInformation(
+            "Lien deleted (status={Status}): {LienId} Tenant={TenantId}", entity.Status, entity.Id, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.lien.deleted",
+            action: "delete",
+            description: $"Lien '{entity.LienNumber}' deleted (transitioned to {entity.Status})",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Lien",
+            entityId: entity.Id.ToString());
     }
 }

@@ -64,6 +64,9 @@ public class IdentityDbContext : DbContext
     public DbSet<PolicyRule>                    PolicyRules                      => Set<PolicyRule>();
     public DbSet<PermissionPolicy>             PermissionPolicies               => Set<PermissionPolicy>();
 
+    // Multi-tenant account linking
+    public DbSet<UserTenant>                    UserTenants                     => Set<UserTenant>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(IdentityDbContext).Assembly);

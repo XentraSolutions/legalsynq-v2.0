@@ -38,7 +38,7 @@ public class TaskReminder
         var now = DateTime.UtcNow;
         return new TaskReminder
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             TaskId       = taskId,
             TenantId     = tenantId,
             ReminderType = reminderType,

@@ -69,7 +69,9 @@ public sealed class AutoProvisionResult
 /// </summary>
 public sealed class AutoProvisionRequest
 {
-    public string  Token          { get; set; } = string.Empty;
-    public string? RequesterName  { get; set; }
-    public string? RequesterEmail { get; set; }
+    public string  Token              { get; set; } = string.Empty;
+    public string? RequesterName      { get; set; }
+    public string? RequesterFirstName { get; set; }
+    public string? RequesterLastName  { get; set; }
+    public string? RequesterEmail     { get; set; }
 }

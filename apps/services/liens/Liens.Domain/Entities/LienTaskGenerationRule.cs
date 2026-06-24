@@ -70,7 +70,7 @@ public class LienTaskGenerationRule : AuditableEntity
         var now = DateTime.UtcNow;
         return new LienTaskGenerationRule
         {
-            Id                        = Guid.NewGuid(),
+            Id                        = Guid.CreateVersion7(),
             TenantId                  = tenantId,
             ProductCode               = "SYNQ_LIENS",
             Name                      = name.Trim(),

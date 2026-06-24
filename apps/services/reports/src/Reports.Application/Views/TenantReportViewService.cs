@@ -83,7 +83,7 @@ public sealed class TenantReportViewService : ITenantReportViewService
 
         var entity = new TenantReportView
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = request.TenantId.Trim(),
             ReportTemplateId = templateId,
             BaseTemplateVersionNumber = request.BaseTemplateVersionNumber,

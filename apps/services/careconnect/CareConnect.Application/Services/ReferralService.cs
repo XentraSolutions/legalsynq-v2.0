@@ -17,11 +17,15 @@ namespace CareConnect.Application.Services;
 
 public class ReferralService : IReferralService
 {
+    private const string QueueDisplayFallback = "-";
+
     private readonly IReferralRepository _referrals;
     private readonly IProviderRepository _providers;
+    private readonly ITenantServiceClient _tenantClient;
     private readonly INotificationService _notifications;
     private readonly INotificationRepository _notificationRepo;
     private readonly IReferralEmailService _emailService;
+    private readonly IIdentityOrganizationService _identityOrganizationService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOrganizationRelationshipResolver _relationshipResolver;
     private readonly IAuditEventClient _auditClient;
@@ -33,9 +37,11 @@ public class ReferralService : IReferralService
     public ReferralService(
         IReferralRepository referrals,
         IProviderRepository providers,
+        ITenantServiceClient tenantClient,
         INotificationService notifications,
         INotificationRepository notificationRepo,
         IReferralEmailService emailService,
+        IIdentityOrganizationService identityOrganizationService,
         IServiceScopeFactory scopeFactory,
         IOrganizationRelationshipResolver relationshipResolver,
         IAuditEventClient auditClient,
@@ -46,9 +52,11 @@ public class ReferralService : IReferralService
     {
         _referrals            = referrals;
         _providers            = providers;
+        _tenantClient         = tenantClient;
         _notifications        = notifications;
         _notificationRepo     = notificationRepo;
         _emailService         = emailService;
+        _identityOrganizationService = identityOrganizationService;
         _scopeFactory         = scopeFactory;
         _relationshipResolver = relationshipResolver;
         _auditClient          = auditClient;
@@ -63,15 +71,27 @@ public class ReferralService : IReferralService
         ValidateQuery(query);
 
         var (items, totalCount) = await _referrals.SearchAsync(tenantId, query, ct);
+        var tenantDisplayNames = await ReferralTenantNameResolver.ResolveForReferralsAsync(items, _tenantClient, ct);
+        var referringOrgIds = items
+            .Select(r => r.ReferringOrganizationId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var referringOrgNameTasks = referringOrgIds.ToDictionary(
+            id => id,
+            id => _identityOrganizationService.GetOrganizationNameAsync(id, ct));
 
-        var networkNames = await _referrals.GetProviderNetworkNamesAsync(
-            items.Select(r => r.ProviderId), ct);
+        await Task.WhenAll(referringOrgNameTasks.Values);
 
+        // TreatmentTypeName is intentionally not resolved here — doing so would require
+        // one extra DB round-trip per referral (N+1). Name is only populated in GetByIdAsync.
         var responses = items.Select(r =>
         {
             var resp = ToResponse(r);
-            if (networkNames.TryGetValue(r.ProviderId, out var name))
-                resp.NetworkName = name;
+            resp.NetworkName = tenantDisplayNames.GetValueOrDefault(r.TenantId, QueueDisplayFallback);
+            if (r.ReferringOrganizationId.HasValue)
+                resp.ReferringOrganizationName = referringOrgNameTasks[r.ReferringOrganizationId.Value].Result;
             return resp;
         }).ToList();
 
@@ -97,7 +117,17 @@ public class ReferralService : IReferralService
         var effectiveTenantId = referral.TenantId;
         // LSCC-005-01: load latest notification for email status display
         var latestNotif = await _notificationRepo.GetLatestByReferralAsync(effectiveTenantId, id, ct: ct);
-        return ToResponse(referral, latestNotif);
+        var treatmentTypeName = referral.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(referral.TreatmentTypeId.Value, ct)
+            : null;
+        var response = ToResponse(referral, latestNotif, treatmentTypeName);
+        if (referral.ReferringOrganizationId.HasValue)
+        {
+            response.ReferringOrganizationName = await _identityOrganizationService.GetOrganizationNameAsync(
+                referral.ReferringOrganizationId.Value,
+                ct);
+        }
+        return response;
     }
 
     public async Task MarkAsOpenedAsync(Guid id, CancellationToken ct = default)
@@ -169,9 +199,20 @@ public class ReferralService : IReferralService
             userId,
             organizationRelationshipId: orgRelationshipId,
             referrerEmail: request.ReferrerEmail,
-            referrerName:  request.ReferrerName);
+            referrerName:  request.ReferrerName,
+            referrerFirstName: request.ReferrerFirstName,
+            referrerLastName:  request.ReferrerLastName,
+            referrerFirmName:  request.ReferrerFirmName,
+            referrerPhone:    request.ReferrerPhone,
+            treatmentTypeId: request.TreatmentTypeId,
+            dateOfAccident: request.DateOfAccident);
 
         await _referrals.AddAsync(referral, ct);
+
+        // Resolve treatment type name now (before the background scope) so the email includes it.
+        var treatmentTypeName = request.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(request.TreatmentTypeId.Value, ct)
+            : null;
 
         // LSCC-005: Fire provider email notifications (fire-and-observe — never gates creation).
         // Only "New referral received" is sent on creation. The provider-assigned email is
@@ -184,7 +225,7 @@ public class ReferralService : IReferralService
         {
             using var scope    = scopeFactory.CreateScope();
             var       emailSvc = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
-            try { await emailSvc.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None); }
+            try { await emailSvc.SendNewReferralNotificationAsync(referral, provider, treatmentTypeName, CancellationToken.None); }
             catch (Exception ex)
             {
                 logger.LogWarning(ex,
@@ -255,9 +296,17 @@ public class ReferralService : IReferralService
 
         ReferralStatusHistory? history = null;
 
-        if (referral.Status != request.Status)
+        // Null status = no status change intended (e.g. treatment-type-only update).
+        // Resolve the effective target status: use the request value when provided, otherwise keep the current.
+        var effectiveStatus = request.Status ?? referral.Status;
+
+        if (request.Status is not null && referral.Status != request.Status)
         {
             ReferralWorkflowRules.ValidateTransition(referral.Status, request.Status);
+
+            var historyNotes = request.Status == Referral.ValidStatuses.Declined
+                ? request.DeclineNotes
+                : request.Notes;
 
             history = ReferralStatusHistory.Create(
                 referral.Id,
@@ -265,12 +314,35 @@ public class ReferralService : IReferralService
                 referral.Status,
                 request.Status,
                 userId,
-                request.Notes);
+                historyNotes);
         }
 
         bool statusChanged = history is not null;
 
-        referral.Update(request.RequestedService, request.Urgency, request.Status, request.Notes, userId);
+        bool clearTreatment = request.TreatmentTypeId == Guid.Empty;
+        Guid? setTreatmentTypeId = clearTreatment ? null : request.TreatmentTypeId;
+        if (setTreatmentTypeId.HasValue)
+        {
+            var exists = await _referrals.GetTreatmentTypeNameAsync(setTreatmentTypeId.Value, ct);
+            if (exists is null)
+                throw new ValidationException("Validation failed.", new Dictionary<string, string[]>
+                    { ["treatmentTypeId"] = new[] { "The specified treatment type does not exist or is inactive." } });
+        }
+
+        // Null fields mean "no change" — preserve existing values unless ClearNotes is explicitly set.
+        var effectiveRequestedService = request.RequestedService ?? referral.RequestedService;
+        var effectiveNotes            = request.ClearNotes ? null : (request.Notes ?? referral.Notes);
+
+        if (request.Status == Referral.ValidStatuses.Declined)
+        {
+            referral.Decline(userId, request.DeclineNotes);
+        }
+        else
+        {
+            referral.Update(effectiveRequestedService, request.Urgency, effectiveStatus, effectiveNotes, userId,
+                treatmentTypeId: setTreatmentTypeId,
+                clearTreatmentType: clearTreatment);
+        }
         await _referrals.UpdateAsync(referral, history, ct: ct);
 
         if (statusChanged)
@@ -342,9 +414,10 @@ public class ReferralService : IReferralService
                 : $"Referral {referral.Id} updated.",
             After       = JsonSerializer.Serialize(new
             {
-                status = request.Status,
+                status = effectiveStatus,
                 requestedService = request.RequestedService,
                 urgency = request.Urgency,
+                treatmentTypeId = request.TreatmentTypeId,
                 statusChanged,
             }),
             CorrelationId  = _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString(),
@@ -356,7 +429,10 @@ public class ReferralService : IReferralService
         var loaded = bypassTenantScope
             ? await _referrals.GetByIdGlobalAsync(referral.Id, ct)
             : await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
-        return ToResponse(loaded!);
+        var updatedTreatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: updatedTreatmentName);
     }
 
     /// <summary>
@@ -408,7 +484,7 @@ public class ReferralService : IReferralService
         // even when the same provider is re-assigned multiple times concurrently.
         var scopeFactory      = _scopeFactory;
         var logger            = _logger;
-        var reassignEventGuid = Guid.NewGuid(); // GUID suffix guarantees uniqueness across concurrent reassignments
+        var reassignEventGuid = Guid.CreateVersion7(); // GUID suffix guarantees uniqueness across concurrent reassignments
         _ = Task.Run(async () =>
         {
             using var scope   = scopeFactory.CreateScope();
@@ -463,7 +539,10 @@ public class ReferralService : IReferralService
         });
 
         var reloaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
-        return ToResponse(reloaded!);
+        var treatmentName = reloaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(reloaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(reloaded!, treatmentTypeName: treatmentName);
     }
 
     public async Task<List<ReferralStatusHistoryResponse>> GetHistoryAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false)
@@ -486,30 +565,55 @@ public class ReferralService : IReferralService
         string token,
         CancellationToken ct = default)
     {
-        var tokenResult = _emailService.ValidateViewToken(token);
-        if (tokenResult is null)
+        var tokenValidation = _emailService.ValidateViewTokenDetailed(token);
+        if (!tokenValidation.IsValid)
         {
-            // Emit audit for invalid/malformed token access
-            EmitInvalidTokenAudit(token, "malformed-or-expired", null);
-            return new ReferralViewTokenRouteResponse { RouteType = "invalid" };
+            LogPublicTokenFailure("view", tokenValidation, null);
+            EmitInvalidTokenAudit(token, tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed, tokenValidation.ReferralId);
+            return new ReferralViewTokenRouteResponse
+            {
+                RouteType = "invalid",
+                FailureReason = tokenValidation.FailureReason,
+            };
         }
 
-        var referral = await _referrals.GetByIdGlobalAsync(tokenResult.ReferralId, ct);
+        var referral = await _referrals.GetByIdGlobalAsync(tokenValidation.ReferralId!.Value, ct);
         if (referral is null)
         {
-            EmitInvalidTokenAudit(token, "referral-not-found", tokenResult.ReferralId);
-            return new ReferralViewTokenRouteResponse { RouteType = "notfound" };
+            LogPublicTokenFailure(
+                "view",
+                tokenValidation,
+                tokenValidation.ReferralId,
+                failureReasonOverride: ReferralTokenFailureReasons.ReferralNotFound);
+            EmitInvalidTokenAudit(token, ReferralTokenFailureReasons.ReferralNotFound, tokenValidation.ReferralId);
+            return new ReferralViewTokenRouteResponse
+            {
+                RouteType = "notfound",
+                ReferralId = tokenValidation.ReferralId,
+                FailureReason = ReferralTokenFailureReasons.ReferralNotFound,
+            };
         }
 
         // LSCC-005-01: Version check — rejects revoked tokens
-        if (tokenResult.TokenVersion != referral.TokenVersion)
+        if (tokenValidation.TokenVersion != referral.TokenVersion)
         {
             _logger.LogWarning(
                 "Referral view token version mismatch for referral {ReferralId}: " +
                 "token has version {TokenVersion}, referral has version {ReferralVersion}. Token revoked.",
-                referral.Id, tokenResult.TokenVersion, referral.TokenVersion);
-            EmitInvalidTokenAudit(token, "revoked", tokenResult.ReferralId);
-            return new ReferralViewTokenRouteResponse { RouteType = "invalid" };
+                referral.Id, tokenValidation.TokenVersion, referral.TokenVersion);
+            LogPublicTokenFailure(
+                "view",
+                tokenValidation,
+                referral.Id,
+                currentReferralTokenVersion: referral.TokenVersion,
+                failureReasonOverride: ReferralTokenFailureReasons.Revoked);
+            EmitInvalidTokenAudit(token, ReferralTokenFailureReasons.Revoked, tokenValidation.ReferralId);
+            return new ReferralViewTokenRouteResponse
+            {
+                RouteType = "invalid",
+                ReferralId = referral.Id,
+                FailureReason = ReferralTokenFailureReasons.Revoked,
+            };
         }
 
         var provider = referral.Provider;
@@ -680,13 +784,17 @@ public class ReferralService : IReferralService
         });
 
         var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
-        return ToResponse(loaded!);
+        var treatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: treatmentName);
     }
 
     public async Task<ReferralResponse> DeclineByTokenAsync(
         Guid referralId,
         string token,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? declineNotes = null)
     {
         var tokenResult = _emailService.ValidateViewToken(token);
         if (tokenResult is null)
@@ -719,15 +827,19 @@ public class ReferralService : IReferralService
         var provider = referral.Provider
             ?? throw new InvalidOperationException($"Provider data missing for referral '{referralId}'.");
 
+        var historyNotesText = string.IsNullOrWhiteSpace(declineNotes)
+            ? "Declined via public token link."
+            : declineNotes.Trim();
+
         var history = ReferralStatusHistory.Create(
             referral.Id,
             referral.TenantId,
             referral.Status,
             Referral.ValidStatuses.Declined,
             changedByUserId: null,
-            notes: "Declined via public token link.");
+            notes: historyNotesText);
 
-        referral.Decline(updatedByUserId: null);
+        referral.Decline(updatedByUserId: null, declineNotes: declineNotes);
         await _referrals.UpdateAsync(referral, history, ct: ct);
 
         var scopeFactory2 = _scopeFactory;
@@ -767,7 +879,231 @@ public class ReferralService : IReferralService
         });
 
         var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
-        return ToResponse(loaded!);
+        var treatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: treatmentName);
+    }
+
+    public async Task<ReferralResponse> CompleteByTokenAsync(
+        Guid referralId,
+        string token,
+        CancellationToken ct = default)
+    {
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)
+        {
+            EmitInvalidTokenAudit(token, "malformed-or-expired", null);
+            throw new UnauthorizedAccessException("Invalid or expired view token.");
+        }
+
+        if (tokenResult.ReferralId != referralId)
+            throw new UnauthorizedAccessException("Token does not match the requested referral.");
+
+        var referral = await _referrals.GetByIdGlobalAsync(referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        if (tokenResult.TokenVersion != referral.TokenVersion)
+        {
+            EmitInvalidTokenAudit(token, "revoked", referralId);
+            throw new UnauthorizedAccessException("This referral link has been revoked. Please contact the referring party for a new link.");
+        }
+
+        if (referral.Status != Referral.ValidStatuses.Accepted && referral.Status != Referral.ValidStatuses.InProgress)
+        {
+            throw new InvalidOperationException(
+                $"Referral cannot be completed from '{referral.Status}' status.");
+        }
+
+        var history = ReferralStatusHistory.Create(
+            referral.Id,
+            referral.TenantId,
+            referral.Status,
+            Referral.ValidStatuses.Completed,
+            changedByUserId: null,
+            notes: "Completed via public token link.");
+
+        referral.Complete(updatedByUserId: null);
+        await _referrals.UpdateAsync(referral, history, ct: ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.completed.by-token",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = referral.TenantId.ToString() },
+            Actor         = new AuditEventActorDto { Id = "public-token", Type = ActorType.System, Name = "PublicTokenComplete" },
+            Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action        = "ReferralCompletedByToken",
+            Description   = $"Referral '{referral.Id}' completed via public view token.",
+            Outcome       = "success",
+            CorrelationId  = _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString(),
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.completed.by-token", referral.Id.ToString()),
+            Tags           = ["referral", "completed", "public-token"],
+        });
+
+        var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
+        var treatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: treatmentName);
+    }
+
+    public async Task<ReferralResponse> CancelByTokenAsync(
+        Guid referralId,
+        string token,
+        CancellationToken ct = default)
+    {
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)
+        {
+            EmitInvalidTokenAudit(token, "malformed-or-expired", null);
+            throw new UnauthorizedAccessException("Invalid or expired view token.");
+        }
+
+        if (tokenResult.ReferralId != referralId)
+            throw new UnauthorizedAccessException("Token does not match the requested referral.");
+
+        var referral = await _referrals.GetByIdGlobalAsync(referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        if (tokenResult.TokenVersion != referral.TokenVersion)
+        {
+            EmitInvalidTokenAudit(token, "revoked", referralId);
+            throw new UnauthorizedAccessException("This referral link has been revoked. Please contact the referring party for a new link.");
+        }
+
+        if (ReferralWorkflowRules.IsTerminal(referral.Status))
+        {
+            throw new InvalidOperationException(
+                $"Referral cannot be cancelled from '{referral.Status}' status.");
+        }
+
+        var provider = referral.Provider
+            ?? throw new InvalidOperationException($"Provider data missing for referral '{referralId}'.");
+
+        var history = ReferralStatusHistory.Create(
+            referral.Id,
+            referral.TenantId,
+            referral.Status,
+            Referral.ValidStatuses.Cancelled,
+            changedByUserId: null,
+            notes: "Cancelled via public token link.");
+
+        referral.Cancel(updatedByUserId: null);
+        await _referrals.UpdateAsync(referral, history, ct: ct);
+
+        var scopeFactory3 = _scopeFactory;
+        var logger3       = _logger;
+        _ = Task.Run(async () =>
+        {
+            using var scope3   = scopeFactory3.CreateScope();
+            var       emailSvc = scope3.ServiceProvider.GetRequiredService<IReferralEmailService>();
+            try { await emailSvc.SendCancellationNotificationsAsync(referral, provider, null, CancellationToken.None); }
+            catch (Exception ex)
+            {
+                logger3.LogWarning(ex,
+                    "Background cancel notification failed for referral {ReferralId}.", referral.Id);
+            }
+        });
+
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.cancelled.by-token",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = referral.TenantId.ToString() },
+            Actor         = new AuditEventActorDto { Id = "public-token", Type = ActorType.System, Name = "PublicTokenCancel" },
+            Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action        = "ReferralCancelledByToken",
+            Description   = $"Referral '{referral.Id}' cancelled via public view token.",
+            Outcome       = "success",
+            CorrelationId  = _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString(),
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.cancelled.by-token", referral.Id.ToString()),
+            Tags           = ["referral", "cancelled", "public-token"],
+        });
+
+        var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
+        var treatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: treatmentName);
+    }
+
+    public async Task<ReferralResponse> UpdateTreatmentTypeByTokenAsync(
+        Guid referralId,
+        string token,
+        Guid? treatmentTypeId,
+        CancellationToken ct = default)
+    {
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)
+        {
+            EmitInvalidTokenAudit(token, "malformed-or-expired", null);
+            throw new UnauthorizedAccessException("Invalid or expired view token.");
+        }
+
+        if (tokenResult.ReferralId != referralId)
+            throw new UnauthorizedAccessException("Token does not match the requested referral.");
+
+        var referral = await _referrals.GetByIdGlobalAsync(referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        if (tokenResult.TokenVersion != referral.TokenVersion)
+        {
+            _logger.LogWarning(
+                "Treatment-type update attempt with revoked token for referral {ReferralId}.",
+                referral.Id);
+            EmitInvalidTokenAudit(token, "revoked", referralId);
+            throw new UnauthorizedAccessException("This referral link has been revoked. Please contact the referring party for a new link.");
+        }
+
+        var terminalStatuses = new[] { Referral.ValidStatuses.Completed, Referral.ValidStatuses.Cancelled, Referral.ValidStatuses.Declined };
+        if (terminalStatuses.Contains(referral.Status))
+            throw new InvalidOperationException($"Treatment type cannot be changed on a referral in '{referral.Status}' status.");
+
+        bool clearTreatment = treatmentTypeId == Guid.Empty || treatmentTypeId == null;
+        Guid? setTreatmentTypeId = clearTreatment ? null : treatmentTypeId;
+
+        if (setTreatmentTypeId.HasValue)
+        {
+            var exists = await _referrals.GetTreatmentTypeNameAsync(setTreatmentTypeId.Value, ct);
+            if (exists is null)
+                throw new ValidationException("Validation failed.", new Dictionary<string, string[]>
+                    { ["treatmentTypeId"] = new[] { "The specified treatment type does not exist or is inactive." } });
+        }
+
+        referral.Update(
+            requestedService:   referral.RequestedService,
+            urgency:            referral.Urgency,
+            status:             referral.Status,
+            notes:              referral.Notes,
+            updatedByUserId:    null,
+            treatmentTypeId:    setTreatmentTypeId,
+            clearTreatmentType: clearTreatment);
+        await _referrals.UpdateAsync(referral, ct: ct);
+
+        _logger.LogInformation(
+            "Treatment type updated via public token for referral {ReferralId}. TreatmentTypeId={TreatmentTypeId}",
+            referral.Id, setTreatmentTypeId);
+
+        var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
+        var treatmentName = loaded!.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(loaded.TreatmentTypeId.Value, ct)
+            : null;
+        return ToResponse(loaded!, treatmentTypeName: treatmentName);
     }
 
     // ── LSCC-005-01: Hardening methods ───────────────────────────────────────
@@ -861,10 +1197,13 @@ public class ReferralService : IReferralService
     /// Any token with an older version will be rejected as revoked.
     /// Newly generated tokens (e.g. from resend) will use the new version and will work.
     /// </summary>
-    public async Task<ReferralResponse> RevokeTokenAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    public async Task<ReferralResponse> RevokeTokenAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false)
     {
-        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
-            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+        var referral = isPlatformAdmin
+            ? await _referrals.GetByIdGlobalAsync(referralId, ct)
+            : await _referrals.GetByIdAsync(tenantId, referralId, ct);
+        if (referral is null)
+            throw new NotFoundException($"Referral '{referralId}' was not found.");
 
         var oldVersion = referral.TokenVersion;
         referral.IncrementTokenVersion();
@@ -885,7 +1224,7 @@ public class ReferralService : IReferralService
             Visibility    = AuditVisibility.Tenant,
             Severity      = SeverityLevel.Warn,
             OccurredAtUtc = now,
-            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = referral.TenantId.ToString() },
             Actor         = new AuditEventActorDto { Type = ActorType.User },
             Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
             Action        = "ReferralTokenRevoked",
@@ -897,7 +1236,7 @@ public class ReferralService : IReferralService
             Tags           = ["referral", "token", "revoked", "security"],
         });
 
-        var latest = await _notificationRepo.GetLatestByReferralAsync(tenantId, referralId, ct: ct);
+        var latest = await _notificationRepo.GetLatestByReferralAsync(referral.TenantId, referralId, ct: ct);
         return ToResponse(referral, latest);
     }
 
@@ -945,6 +1284,24 @@ public class ReferralService : IReferralService
         });
     }
 
+    private void LogPublicTokenFailure(
+        string surface,
+        ReferralTokenValidationOutcome tokenValidation,
+        Guid? requestedReferralId,
+        int? currentReferralTokenVersion = null,
+        string? failureReasonOverride = null)
+    {
+        var failureReason = failureReasonOverride ?? tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed;
+        _logger.LogWarning(
+            "Public referral token rejected on surface {Surface}. FailureReason={FailureReason} RequestedReferralId={RequestedReferralId} TokenReferralId={TokenReferralId} TokenVersion={TokenVersion} CurrentReferralTokenVersion={CurrentReferralTokenVersion}",
+            surface,
+            failureReason,
+            requestedReferralId,
+            tokenValidation.ReferralId,
+            tokenValidation.TokenVersion,
+            currentReferralTokenVersion);
+    }
+
     private static void ValidateQuery(GetReferralsQuery q)
     {
         var errors = new Dictionary<string, string[]>();
@@ -981,9 +1338,6 @@ public class ReferralService : IReferralService
             !Regex.IsMatch(r.ClientEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
             errors["clientEmail"] = new[] { "ClientEmail format is invalid." };
 
-        if (string.IsNullOrWhiteSpace(r.RequestedService))
-            errors["requestedService"] = new[] { "RequestedService is required." };
-
         if (!Referral.ValidUrgencies.All.Contains(r.Urgency))
             errors["urgency"] = new[] { $"Urgency must be one of: {string.Join(", ", Referral.ValidUrgencies.All)}." };
 
@@ -995,20 +1349,17 @@ public class ReferralService : IReferralService
     {
         var errors = new Dictionary<string, string[]>();
 
-        if (string.IsNullOrWhiteSpace(r.RequestedService))
-            errors["requestedService"] = new[] { "RequestedService is required." };
-
         if (!Referral.ValidUrgencies.All.Contains(r.Urgency))
             errors["urgency"] = new[] { $"Urgency must be one of: {string.Join(", ", Referral.ValidUrgencies.All)}." };
 
-        if (!Referral.ValidStatuses.All.Contains(r.Status))
+        if (r.Status is not null && !Referral.ValidStatuses.All.Contains(r.Status))
             errors["status"] = new[] { $"Status must be one of: {string.Join(", ", Referral.ValidStatuses.All)}." };
 
         if (errors.Count > 0)
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
-    private static ReferralResponse ToResponse(Referral r, CareConnectNotification? latestNotif = null) => new()
+    private static ReferralResponse ToResponse(Referral r, CareConnectNotification? latestNotif = null, string? treatmentTypeName = null) => new()
     {
         Id = r.Id,
         TenantId = r.TenantId,
@@ -1016,7 +1367,7 @@ public class ReferralService : IReferralService
         ProviderName = r.Provider?.Name ?? string.Empty,
         ClientFirstName = r.ClientFirstName,
         ClientLastName = r.ClientLastName,
-        ClientDob = r.ClientDob,
+        ClientDob = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null,
         ClientPhone = r.ClientPhone,
         ClientEmail = r.ClientEmail,
         CaseNumber = r.CaseNumber,
@@ -1024,6 +1375,8 @@ public class ReferralService : IReferralService
         Urgency = r.Urgency,
         Status = r.Status,
         Notes = r.Notes,
+        DeclineNotes = r.DeclineNotes,
+        DateOfAccident = r.DateOfAccident?.ToString("yyyy-MM-dd"),
         CreatedAtUtc = r.CreatedAtUtc,
         UpdatedAtUtc = r.UpdatedAtUtc,
         // Phase 5: expose org context fields resolved at creation time
@@ -1032,11 +1385,15 @@ public class ReferralService : IReferralService
         OrganizationRelationshipId = r.OrganizationRelationshipId,
         // CC-REFERRER-EMAIL: surface for participant-check in endpoints
         ReferrerEmail = r.ReferrerEmail,
+        ReferrerName = r.ReferrerName,
         // LSCC-005-01: hardening fields
         TokenVersion          = r.TokenVersion,
         ProviderEmailStatus   = latestNotif?.Status,
         ProviderEmailAttempts = latestNotif?.AttemptCount ?? 0,
         ProviderEmailFailureReason = latestNotif?.FailureReason,
+        // Type of Treatment
+        TreatmentTypeId   = r.TreatmentTypeId,
+        TreatmentTypeName = treatmentTypeName,
     };
 
     private static ReferralStatusHistoryResponse ToHistoryResponse(ReferralStatusHistory h) => new()
@@ -1197,22 +1554,54 @@ public class ReferralService : IReferralService
     /// Only fields already present in the provider notification email are exposed.
     /// Returns null when the token is invalid, revoked, or the referral cannot be found.
     /// </summary>
-    public async Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(
+    public async Task<PublicReferralAccessResult<ReferralPublicSummaryResponse>> GetPublicSummaryAccessAsync(
         Guid referralId,
         string token,
         CancellationToken ct = default)
     {
-        var tokenResult = _emailService.ValidateViewToken(token);
-        if (tokenResult is null)                          return null;
-        if (tokenResult.ReferralId != referralId)         return null;
+        var tokenValidation = _emailService.ValidateViewTokenDetailed(token);
+        if (!tokenValidation.IsValid)
+        {
+            LogPublicTokenFailure("summary", tokenValidation, referralId);
+            return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Failure(
+                tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed);
+        }
+
+        if (tokenValidation.ReferralId != referralId)
+        {
+            LogPublicTokenFailure(
+                "summary",
+                tokenValidation,
+                referralId,
+                failureReasonOverride: ReferralTokenFailureReasons.ReferralMismatch);
+            return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Failure(ReferralTokenFailureReasons.ReferralMismatch);
+        }
 
         var referral = await _referrals.GetByIdGlobalAsync(referralId, ct);
-        if (referral is null)                             return null;
-        if (tokenResult.TokenVersion != referral.TokenVersion) return null;
+        if (referral is null)
+        {
+            LogPublicTokenFailure(
+                "summary",
+                tokenValidation,
+                referralId,
+                failureReasonOverride: ReferralTokenFailureReasons.ReferralNotFound);
+            return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Failure(ReferralTokenFailureReasons.ReferralNotFound);
+        }
+
+        if (tokenValidation.TokenVersion != referral.TokenVersion)
+        {
+            LogPublicTokenFailure(
+                "summary",
+                tokenValidation,
+                referralId,
+                currentReferralTokenVersion: referral.TokenVersion,
+                failureReasonOverride: ReferralTokenFailureReasons.Revoked);
+            return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Failure(ReferralTokenFailureReasons.Revoked);
+        }
 
         var attachments = await _referralAttachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
 
-        return new ReferralPublicSummaryResponse
+        return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Success(new ReferralPublicSummaryResponse
         {
             ReferralId            = referral.Id,
             TenantId              = referral.TenantId,
@@ -1228,11 +1617,27 @@ public class ReferralService : IReferralService
             ProviderCity          = referral.Provider?.City          ?? "",
             ProviderState         = referral.Provider?.State         ?? "",
             ProviderPostalCode    = referral.Provider?.PostalCode    ?? "",
+            ProviderHasAccount    = ProviderHasPortalAccount(referral.Provider),
             Attachments           = attachments
                 .Select(a => new PublicAttachmentInfo(a.Id, a.FileName, a.ContentType, a.FileSizeBytes))
                 .ToList(),
-        };
+        });
     }
+
+    public async Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(
+        Guid referralId,
+        string token,
+        CancellationToken ct = default)
+    {
+        var result = await GetPublicSummaryAccessAsync(referralId, token, ct);
+        return result.Data;
+    }
+
+    private static bool ProviderHasPortalAccount(Provider? provider) =>
+        provider is not null && (
+            ProviderAccessStage.IsAtLeast(provider.AccessStage, ProviderAccessStage.CommonPortal) ||
+            provider.OrganizationId.HasValue ||
+            provider.IdentityUserId.HasValue);
 
     /// <summary>
     /// Emits a provider activation funnel tracking event.
@@ -1304,7 +1709,7 @@ public class ReferralService : IReferralService
                     requesterName:     requesterName,
                     requesterEmail:    requesterEmail,
                     clientName:        clientName,
-                    referringFirmName: referral.ReferrerName,
+                    referringFirmName: referral.ReferrerFirmName ?? referral.ReferrerName,
                     requestedService:  referral.RequestedService,
                     ct:                ct);
             }

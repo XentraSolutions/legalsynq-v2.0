@@ -63,7 +63,7 @@ public class Contact : AuditableEntity
         var now = DateTime.UtcNow;
         return new Contact
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             TenantId     = tenantId,
             OrgId        = orgId,
             ContactType  = contactType,

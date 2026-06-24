@@ -46,6 +46,12 @@ public class SubmitNotificationDto
     public string? TemplateKey { get; set; }
     public Dictionary<string, string>? TemplateData { get; set; }
 
+    /// <summary>
+    /// Email subject line. When set, takes precedence over a <c>subject</c> field
+    /// embedded inside <see cref="Message"/>. Ignored for non-email channels.
+    /// </summary>
+    public string? Subject { get; set; }
+
     // ── Legacy / backward compat ─────────────────────────────────────────────
 
     /// <summary>

@@ -7,7 +7,7 @@ _Status: COMPLETE_
 ## 1. Codebase Analysis
 
 ### Service overview
-- .NET 8 minimal-API service, MySQL via Pomelo EF Core
+- .NET 10 minimal-API service, MySQL via Pomelo EF Core
 - Serilog request logging, OpenTelemetry + Prometheus metrics
 - FluentValidation for most request DTOs
 - Split middleware pipeline: `UseAuthentication → TenantResolutionMiddleware → UseAuthorization`

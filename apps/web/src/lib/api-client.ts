@@ -1,4 +1,5 @@
 import type { ApiResponse } from '@/types';
+import { normalizeUtcTimestamps } from '@/lib/normalize-utc';
 
 // In production the Next.js server proxies /api/* → gateway via next.config rewrites.
 // In dev the same rewrite points to http://localhost:5000.
@@ -37,14 +38,20 @@ async function request<T>(
   options: RequestOptions = {},
 ): Promise<ApiResponse<T>> {
   const url = `${GATEWAY_PREFIX}${path}`;
+  const method = options.method ?? 'GET';
+  const headers: Record<string, string> = {
+    ...options.headers,
+  };
+  const hasJsonBody = options.body !== undefined && !['GET', 'HEAD'].includes(method);
+
+  if (hasJsonBody) {
+    headers['Content-Type'] = headers['Content-Type'] ?? 'application/json';
+  }
 
   const res = await fetch(url, {
-    method:      options.method ?? 'GET',
+    method,
     credentials: 'include',   // send HttpOnly session cookie automatically
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
@@ -85,7 +92,7 @@ async function request<T>(
   // that would otherwise surface a raw SyntaxError to the caller.
   let data: T;
   try {
-    data = await res.json();
+    data = normalizeUtcTimestamps(await res.json());
   } catch {
     throw new ApiError(res.status, 'Unexpected server response. Please try again.', correlationId);
   }
@@ -131,7 +138,7 @@ async function requestForm<T>(
     return { data: undefined as T, correlationId, status: res.status };
   }
 
-  const data: T = await res.json();
+  const data: T = normalizeUtcTimestamps(await res.json());
   return { data, correlationId, status: res.status };
 }
 

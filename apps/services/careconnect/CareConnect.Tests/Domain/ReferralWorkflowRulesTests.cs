@@ -15,10 +15,10 @@ public class ReferralWorkflowRulesTests
     [InlineData("New",        "Cancelled",  true)]
     [InlineData("New",        "InProgress", false)]
     [InlineData("New",        "Scheduled",  false)]
-    [InlineData("Accepted",   "InProgress", true)]
-    [InlineData("Accepted",   "Declined",   true)]
+    [InlineData("Accepted",   "InProgress", false)]  // InProgress removed from provider workflow
+    [InlineData("Accepted",   "Declined",   false)]  // Decline removed from Accepted state
     [InlineData("Accepted",   "Cancelled",  true)]
-    [InlineData("Accepted",   "Completed",  false)]  // blocked — must go through InProgress
+    [InlineData("Accepted",   "Completed",  true)]   // Direct Accepted → Completed now allowed
     [InlineData("Accepted",   "New",        false)]
     [InlineData("Accepted",   "Scheduled",  false)]  // Scheduled no longer a valid target
     [InlineData("InProgress", "Completed",  true)]
@@ -71,7 +71,7 @@ public class ReferralWorkflowRulesTests
     [InlineData("Declined",   PermissionCodes.ReferralDecline)]
     [InlineData("Cancelled",  PermissionCodes.ReferralCancel)]
     [InlineData("InProgress", PermissionCodes.ReferralUpdateStatus)]
-    [InlineData("Completed",  PermissionCodes.ReferralUpdateStatus)]
+    [InlineData("Completed",  PermissionCodes.ReferralAccept)]
     public void RequiredPermissionFor_ReturnsExpected(string toStatus, string expectedPerm)
     {
         Assert.Equal(expectedPerm, ReferralWorkflowRules.RequiredPermissionFor(toStatus));
@@ -119,11 +119,18 @@ public class ReferralWorkflowRulesTests
     }
 
     [Fact]
-    public void ValidateTransition_AcceptedToCompleted_Throws()
+    public void ValidateTransition_AcceptedToCompleted_DoesNotThrow()
     {
-        // LSCC-01-001-01: Accepted → Completed is blocked; must go through InProgress.
-        Assert.Throws<BuildingBlocks.Exceptions.ValidationException>(
+        var ex = Record.Exception(
             () => ReferralWorkflowRules.ValidateTransition("Accepted", "Completed"));
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void ValidateTransition_AcceptedToDeclined_Throws()
+    {
+        Assert.Throws<BuildingBlocks.Exceptions.ValidationException>(
+            () => ReferralWorkflowRules.ValidateTransition("Accepted", "Declined"));
     }
 
     [Fact]

@@ -30,7 +30,7 @@
     <PackageReference Include="Serilog.Enrichers.Thread" Version="3.1.0" />
 
     <!-- JWT Bearer authentication -->
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
 
     <!-- OpenTelemetry tracing -->
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.9.0" />

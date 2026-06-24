@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Commerce.Contracts</RootNamespace>
+    <AssemblyName>Commerce.Contracts</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Commerce.Domain\Commerce.Domain.csproj" />
+  </ItemGroup>
+</Project>

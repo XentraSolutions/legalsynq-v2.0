@@ -4,6 +4,7 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { TenantListTable } from '@/components/tenants/tenant-list-table';
 import { CreateTenantButton } from '@/components/tenants/create-tenant-button';
+import type { PlatformSetting } from '@/types/control-center';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,12 +33,23 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
 
   let result = null;
   let fetchError: string | null = null;
+  let settings: PlatformSetting[] = [];
 
   try {
     result = await controlCenterServerApi.tenants.list({ page, pageSize: 20, search, tenantId: tenantCtx?.tenantId });
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load tenants.';
   }
+
+  try {
+    settings = await controlCenterServerApi.settings.list();
+  } catch {
+    // Non-fatal — UI falls back to backend-provided hostname where available.
+  }
+
+  const portalBaseDomain = String(
+    settings.find(s => s.key === 'platform.portalBaseDomain')?.value ?? '',
+  );
 
   return (
     <CCShell userEmail={session.email}>
@@ -53,7 +65,7 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
               </span>
             )}
           </div>
-          <CreateTenantButton />
+          <CreateTenantButton portalBaseDomain={portalBaseDomain} />
         </div>
 
         {/* Search */}

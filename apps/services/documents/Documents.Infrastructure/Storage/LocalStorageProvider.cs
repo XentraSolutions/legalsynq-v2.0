@@ -40,7 +40,7 @@ public sealed class LocalStorageProvider : IStorageProvider
 
     public Task<string> GenerateSignedUrlAsync(string key, int ttlSeconds, string disposition, CancellationToken ct = default)
     {
-        var token   = Guid.NewGuid().ToString("N");
+        var token   = Guid.CreateVersion7().ToString("N");
         var expires = DateTime.UtcNow.AddSeconds(ttlSeconds);
         lock (_tokens) { _tokens[token] = (key, expires); }
 

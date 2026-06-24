@@ -138,7 +138,7 @@ public class PlatformTask : AuditableEntity
         var now = DateTime.UtcNow;
         return new PlatformTask
         {
-            Id                    = externalId ?? Guid.NewGuid(),
+            Id                    = externalId ?? Guid.CreateVersion7(),
             TenantId              = tenantId,
             Title                 = title.Trim(),
             Description           = description?.Trim(),

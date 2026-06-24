@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // AuditEventClientExample.cs
 //
-// Reference implementation: how a .NET 8 upstream service calls the Platform
+// Reference implementation: how a .NET 10 upstream service calls the Platform
 // Audit Event Service ingest API.
 //
 // Copy the IAuditEventClient interface + HttpAuditEventClient implementation

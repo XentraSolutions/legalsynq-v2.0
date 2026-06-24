@@ -8,6 +8,7 @@ import { AppointmentDetailPanel } from '@/components/careconnect/appointment-det
 import { AppointmentActions } from '@/components/careconnect/appointment-actions';
 import { AppointmentCancelButton } from '@/components/careconnect/appointment-cancel-button';
 import { AttachmentPanel } from '@/components/careconnect/attachment-panel';
+import { tenantServerApi } from '@/lib/tenant-api';
 
 interface AppointmentDetailPageProps {
   params: Promise<{ id: string }>;
@@ -16,6 +17,9 @@ interface AppointmentDetailPageProps {
 export default async function AppointmentDetailPage({ params }: AppointmentDetailPageProps) {
   const { id } = await params;
   const session = await requireOrg();
+
+  const tzResult = await tenantServerApi.getTimezoneSetting(session.tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
 
   const hasReferrerRole = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const hasReceiverRole = session.productRoles.includes(ProductRole.CareConnectReceiver);
@@ -73,7 +77,7 @@ export default async function AppointmentDetailPage({ params }: AppointmentDetai
         </div>
       )}
 
-      {appointment && <AppointmentDetailPanel appointment={appointment} />}
+      {appointment && <AppointmentDetailPanel appointment={appointment} timezone={tenantTimezone} />}
 
       {/* Documents — CC2-INT-B03 */}
       {appointment && (

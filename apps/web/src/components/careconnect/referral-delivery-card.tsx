@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
+import { useBrowserTimezone } from '@/lib/use-timezone';
 import type { ReferralDetail, ReferralNotification } from '@/types/careconnect';
 
 interface ReferralDeliveryCardProps {
@@ -37,6 +38,7 @@ function NotifTypePill({ type, source }: { type: string; source?: string }) {
 
 export function ReferralDeliveryCard({ referral }: ReferralDeliveryCardProps) {
   const router = useRouter();
+  const timezone = useBrowserTimezone();
 
   const [busy,     setBusy]     = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -208,7 +210,7 @@ export function ReferralDeliveryCard({ referral }: ReferralDeliveryCardProps) {
                       {displayStatus === 'Retrying' && n.nextRetryAfterUtc && (
                         <span className="block text-yellow-600 text-[11px]">
                           Next retry after {new Date(n.nextRetryAfterUtc).toLocaleTimeString('en-US', {
-                            hour: '2-digit', minute: '2-digit', hour12: false
+                            hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC'
                           })} UTC
                         </span>
                       )}
@@ -220,7 +222,7 @@ export function ReferralDeliveryCard({ referral }: ReferralDeliveryCardProps) {
                       )}
                     </span>
                     <span className="text-gray-300 whitespace-nowrap text-[11px]">
-                      {new Date(n.createdAtUtc).toLocaleDateString()}
+                      {new Date(n.createdAtUtc).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone })}
                     </span>
                   </li>
                 );

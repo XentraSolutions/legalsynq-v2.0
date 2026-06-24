@@ -27,7 +27,7 @@ public class ConversationReadState : AuditableEntity
         var now = DateTime.UtcNow;
         return new ConversationReadState
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConversationId = conversationId,
             UserId = userId,

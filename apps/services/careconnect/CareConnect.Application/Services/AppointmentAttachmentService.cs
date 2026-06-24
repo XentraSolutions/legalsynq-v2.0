@@ -152,7 +152,7 @@ public class AppointmentAttachmentService : IAppointmentAttachmentService
         // CC2-INT-B03: Enforce attachment scope before issuing a signed URL.
         EnforceScope(attachment, appointment, callerOrgId, callerOrgType, isAdmin);
 
-        var result = await _documents.GetSignedUrlAsync(attachment.ExternalDocumentId, isDownload, ct);
+        var result = await _documents.GetSignedUrlAsync(tenantId, attachment.ExternalDocumentId, isDownload, ct);
         if (result is null) return null;
 
         return new SignedUrlResponse

@@ -90,6 +90,35 @@ async function resolveTenantIdFromHost(host: string): Promise<string | null> {
     } catch { /* fall through */ }
   }
 
+  // Local dev fallback: no subdomain on localhost, use NEXT_PUBLIC_TENANT_CODE.
+  if (process.env.NODE_ENV === 'development' && !subdomain) {
+    const devCode = process.env.NEXT_PUBLIC_TENANT_CODE;
+    if (devCode) {
+      try {
+        const res = await fetch(
+          `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-code/${encodeURIComponent(devCode)}`,
+          { method: 'GET' },
+        );
+        if (res.ok) {
+          const body = await res.json() as { tenantId?: string };
+          if (body.tenantId && body.tenantId !== '') return body.tenantId;
+        }
+      } catch { /* fall through */ }
+
+      // Also try by-subdomain in case code differs from the configured value (e.g. liens-company).
+      try {
+        const res = await fetch(
+          `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-subdomain/${encodeURIComponent(devCode)}`,
+          { method: 'GET' },
+        );
+        if (res.ok) {
+          const body = await res.json() as { tenantId?: string };
+          if (body.tenantId && body.tenantId !== '') return body.tenantId;
+        }
+      } catch { /* fall through */ }
+    }
+  }
+
   // Fallback: Identity branding endpoint (only if explicitly enabled for rollback)
   if (ENABLE_IDENTITY_FALLBACK) {
     console.warn('[careconnect-proxy] Tenant resolution failed; falling back to Identity branding endpoint', { host });
@@ -126,6 +155,8 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
   const gatewayPath = `/careconnect/${pathSegments.join('/')}`;
   const qs = request.nextUrl.searchParams.toString();
   const url = `${GATEWAY_URL}${gatewayPath}${qs ? `?${qs}` : ''}`;
+  const incomingContentType = request.headers.get('Content-Type') ?? '';
+  const isMultipart = incomingContentType.startsWith('multipart/form-data');
 
   // Resolve tenant ID server-side from the Host header — never from the client-supplied header.
   const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? request.nextUrl.host;
@@ -140,14 +171,20 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
   const sig = signTenantId(tenantId);
 
   const reqHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
     'X-Tenant-Id': tenantId,
     ...(sig ? { 'X-Tenant-Id-Sig': sig } : {}),
   };
 
-  let body: string | undefined;
+  let body: ArrayBuffer | string | undefined;
   if (!['GET', 'HEAD'].includes(request.method)) {
-    try { body = await request.text(); } catch { /* empty */ }
+    if (isMultipart) {
+      // Preserve the full multipart boundary and raw bytes for document uploads.
+      reqHeaders['Content-Type'] = incomingContentType;
+      try { body = await request.arrayBuffer(); } catch { /* empty body */ }
+    } else {
+      reqHeaders['Content-Type'] = 'application/json';
+      try { body = await request.text(); } catch { /* empty body */ }
+    }
   }
 
   let gatewayRes: Response;

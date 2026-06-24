@@ -8,6 +8,7 @@ import type {
   AvailabilitySearchParams,
   ReferralSummary,
   ReferralDetail,
+  ReferralComment,
   ActivationRequestSummary,
   ActivationRequestDetail,
   ReferralSearchParams,
@@ -28,6 +29,7 @@ import type {
   NetworkProviderMarker,
   NetworkReferralPage,
 } from '@/types/careconnect';
+import type { OrgTypeValue } from '@/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -44,6 +46,23 @@ function toQs(params: Record<string, unknown>): string {
 // DO NOT import this in Client Components — use careconnect-api.ts instead.
 
 export const careConnectServerApi = {
+  access: {
+    getMyProductAccess: (productCode: string) =>
+      serverApi.get<Array<{
+        id: string;
+        tenantId: string;
+        tenantCode: string;
+        tenantName: string;
+        tenantSubdomain?: string | null;
+        productCode: string;
+        accessStatus: string;
+        grantedAtUtc?: string | null;
+        organizationId?: string | null;
+        organizationName?: string | null;
+        organizationType?: OrgTypeValue | null;
+      }>>(`/identity/api/auth/my-product-access${toQs({ productCode })}`),
+  },
+
   providers: {
     search: (params: ProviderSearchParams = {}) =>
       serverApi.get<PagedResponse<ProviderSummary>>(
@@ -72,6 +91,9 @@ export const careConnectServerApi = {
 
     getById: (id: string) =>
       serverApi.get<ReferralDetail>(`/careconnect/api/referrals/${id}`),
+
+    getComments: (id: string) =>
+      serverApi.get<ReferralComment[]>(`/careconnect/api/referrals/${id}/comments`),
   },
 
   appointments: {
@@ -147,9 +169,29 @@ export const careConnectServerApi = {
       status?:   string;
       tenantId?: string;
       since?:    string;
+      createdFrom?: string;
+      createdTo?: string;
     } = {}) =>
       serverApi.get<AdminReferralPage>(
         `/careconnect/api/admin/referrals${toQs(params as Record<string, unknown>)}`,
+      ),
+
+    getReferralById: (id: string) =>
+      serverApi.get<ReferralDetail>(`/careconnect/api/admin/referrals/${id}`),
+  },
+
+  adminAppointments: {
+    search: (params: {
+      page?: number;
+      pageSize?: number;
+      status?: string;
+      tenantId?: string;
+      providerId?: string;
+      from?: string;
+      to?: string;
+    } = {}) =>
+      serverApi.get<PagedResponse<AppointmentSummary>>(
+        `/careconnect/api/admin/appointments${toQs(params as Record<string, unknown>)}`,
       ),
   },
 

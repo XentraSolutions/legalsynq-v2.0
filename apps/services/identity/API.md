@@ -15,6 +15,7 @@
 - [Tenant Branding Endpoints](#tenant-branding-endpoints)
 - [Admin Endpoints](#admin-endpoints)
   - [Tenant Management](#admin-tenant-management)
+  - [Tenant User Management (PUM-B03)](#admin-tenant-user-management-pum-b03)
   - [DNS Provisioning](#admin-dns-provisioning)
   - [User Management](#admin-user-management)
   - [User Lifecycle](#admin-user-lifecycle)
@@ -27,6 +28,7 @@
   - [Product Org-Type Rules](#admin-product-org-type-rules)
   - [Product Relationship-Type Rules](#admin-product-relationship-type-rules)
   - [Memberships](#admin-memberships)
+  - [External Users (PUM-B05)](#admin-external-users-pum-b05)
   - [Permissions Catalog](#admin-permissions-catalog)
   - [Role Permissions](#admin-role-permissions)
   - [User Effective Permissions](#admin-user-effective-permissions)
@@ -41,6 +43,8 @@
   - [Legacy Coverage](#admin-legacy-coverage)
   - [Platform Readiness](#admin-platform-readiness)
   - [CareConnect Readiness & Provisioning](#admin-careconnect-readiness--provisioning)
+  - [Membership Lookup](#admin-membership-lookup)
+  - [Notifications Cache](#admin-notifications-cache)
 
 ---
 
@@ -236,9 +240,12 @@ Accept an invitation token, set a new password, and activate the invited user ac
 
 ```json
 {
-  "message": "Invitation accepted. Your account is now active."
+  "message": "Invitation accepted. Your account is now active.",
+  "tenantPortalUrl": "https://<subdomain>.legalsynq.com"
 }
 ```
+
+`tenantPortalUrl` is the base URL for the tenant's portal (used by the frontend to redirect to the correct subdomain login page). May be `null` if portal URL is not configured.
 
 **Errors:**
 - `400` — Invalid/expired token, already accepted, or password too short
@@ -332,9 +339,11 @@ Confirm a password reset using an admin-triggered reset token. Sets a new passwo
 
 ### POST `/api/auth/forgot-password`
 
-Self-service password reset request. Generates a reset token for the user.
+Self-service password reset request. Generates a reset token stored hashed in the database and delivers it **out-of-band via email only**. The raw token is never returned in any API response.
 
 **Auth:** Anonymous
+
+**Rate limit:** `auth-forgot-password`
 
 **Request Body: `ForgotPasswordRequest`**
 
@@ -342,15 +351,19 @@ Self-service password reset request. Generates a reset token for the user.
 |---|---|---|---|
 | `tenantCode` | `string` | Yes | Tenant code |
 | `email` | `string` | Yes | User email address |
+| `subdomain` | `string` | No | Tenant subdomain fallback (tried when `tenantCode` lookup misses) |
+| `tenantId` | `guid` | No | Tenant ID fallback (tried when code + subdomain lookup both miss — AUTH-B01) |
 
-**Response:** `200 OK`
+**Response:** `200 OK` — Always returns `200` regardless of whether the email/tenant exists (prevents enumeration)
 
 ```json
 {
-  "message": "If an account exists with that email, a password reset link has been generated.",
-  "resetToken": "base64-encoded-token"
+  "message": "If an account exists with that email, a password reset link has been generated."
 }
 ```
+
+**Errors:**
+- `400` — Missing `tenantCode` or `email`
 
 ---
 
@@ -1104,6 +1117,181 @@ Retry DNS verification for a tenant whose verification previously failed.
 
 ---
 
+#### GET `/api/admin/tenants/check-code` ⚠️ RETIRED
+
+**[RETIRED — BLK-ID-01]** Tenant code validation has moved to the Tenant service.
+
+**Response:** `410 Gone`
+
+```json
+{
+  "error": "This endpoint has been retired.",
+  "reason": "Tenant code validation has moved to the Tenant service.",
+  "tenantServiceEndpoint": "GET /tenant/api/v1/tenants/check-code?code={code}"
+}
+```
+
+Migrate to: `GET /tenant/api/v1/tenants/check-code?code={code}`
+
+---
+
+#### POST `/api/admin/tenants/self-provision` ⚠️ RETIRED
+
+**[RETIRED — BLK-ID-01]** Tenant creation has moved to the Tenant service.
+
+**Response:** `410 Gone`
+
+```json
+{
+  "error": "This endpoint has been retired.",
+  "reason": "Tenant creation is no longer supported in Identity service. Use Tenant service.",
+  "tenantServiceEndpoints": {
+    "checkCode": "GET /tenant/api/v1/tenants/check-code?code={code}",
+    "createTenant": "POST /tenant/api/v1/admin/tenants"
+  }
+}
+```
+
+Migrate to: `POST /tenant/api/v1/admin/tenants`
+
+---
+
+### Admin: Tenant User Management (PUM-B03)
+
+Endpoints for managing users within a specific tenant context. These operate on users with an active `idt_UserTenants` membership in the target tenant.
+
+**Auth:** PlatformAdmin or TenantAdmin (TenantAdmin scoped to own tenant)
+
+#### GET `/api/admin/tenants/{tenantId}/users`
+
+List users belonging to a tenant with pagination and search.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `tenantId` | `guid` | Tenant unique identifier |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `page` | `integer` | No | `1` | Page number |
+| `pageSize` | `integer` | No | `20` | Items per page |
+| `search` | `string` | No | `""` | Search by email, first name, or last name |
+
+**Response:** `200 OK`
+
+| Field | Type | Description |
+|---|---|---|
+| `items` | `array` | User summaries with `userId`, `email`, `firstName`, `lastName`, `displayName`, `userType`, `isActive`, `tenantId`, `roles`, `createdAtUtc`, `updatedAtUtc`, `lastLoginAtUtc` |
+| `totalCount` | `integer` | Total matching users |
+| `page` | `integer` | Current page |
+| `pageSize` | `integer` | Page size |
+
+**Errors:**
+- `403` — Cross-tenant access attempt
+- `404` — Tenant not found
+
+---
+
+#### POST `/api/admin/tenants/{tenantId}/users`
+
+Verify a user belongs to a tenant and optionally assign a Tenant-scoped role. Safe no-op if user is already in the tenant with no role requested.
+
+> **Architecture note (PUM-B03-R09):** Tenant membership is stored in `idt_UserTenants`. If the user is not an active member of the target tenant, `409` is returned.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `tenantId` | `guid` | Target tenant |
+
+**Request Body: `AssignUserToTenantRequest`**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `userId` | `guid` | Yes | User to assign |
+| `roleId` | `guid` | No | Tenant-scoped role ID to assign |
+| `roleKey` | `string` | No | Tenant-scoped role name (used if `roleId` not provided) |
+
+**Response:** `200 OK`
+
+| Field | Type | Description |
+|---|---|---|
+| `userId` | `guid` | User ID |
+| `tenantId` | `guid` | Tenant ID |
+| `email` | `string` | User email |
+| `firstName` | `string` | First name |
+| `lastName` | `string` | Last name |
+| `isActive` | `boolean` | Active status |
+| `roles` | `array` | Active tenant-scoped role assignments |
+
+**Errors:**
+- `403` — Cross-tenant access
+- `404` — Tenant or user not found
+- `409` — `USER_IN_DIFFERENT_TENANT` — user belongs to a different tenant
+
+---
+
+#### DELETE `/api/admin/tenants/{tenantId}/users/{userId}`
+
+Soft-remove a user from a tenant by revoking all their active Tenant-scoped role assignments. The user account is not globally deactivated.
+
+**Response:** `200 OK`
+
+| Field | Type | Description |
+|---|---|---|
+| `message` | `string` | Result summary |
+| `userId` | `guid` | User ID |
+| `tenantId` | `guid` | Tenant ID |
+| `revokedCount` | `integer` | Number of role assignments revoked |
+
+**Errors:**
+- `403` — Cross-tenant access
+- `404` — Tenant or user not found
+
+---
+
+#### POST `/api/admin/tenants/{tenantId}/users/{userId}/roles`
+
+Assign a Tenant-scoped role to a specific user within a tenant. Idempotent.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `tenantId` | `guid` | Tenant ID |
+| `userId` | `guid` | User ID |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `roleId` | `guid` | No | Role ID to assign |
+| `roleKey` | `string` | No | Role name to assign (used if `roleId` not provided) |
+
+**Response:** `200 OK` — Current tenant role assignments for the user
+
+**Errors:**
+- `403` — Cross-tenant access
+- `404` — Tenant, user, or role not found
+- `400` — Role is not Tenant-scoped
+
+---
+
+#### DELETE `/api/admin/tenants/{tenantId}/users/{userId}/roles/{assignmentId}`
+
+Revoke a specific Tenant-scoped role assignment from a user.
+
+**Response:** `204 No Content`
+
+**Errors:**
+- `403` — Cross-tenant access
+- `404` — Assignment not found
+
+---
+
 ### Admin: DNS Provisioning
 
 #### POST `/api/admin/dns/provision`
@@ -1224,13 +1412,86 @@ Create a new user and send an invitation.
 
 #### POST `/api/admin/users/{id}/resend-invite`
 
-Revoke existing invitations and create a new one for the user.
+Revoke existing invitations and create a new one for the user. Sends the new invite email via the notifications service.
 
 **Response:** `200 OK`
 
 | Field | Type | Description |
 |---|---|---|
 | `invitationId` | `guid` | New invitation ID |
+
+**Errors:**
+- `404` — User not found
+- `503` — Portal URL or notifications service not configured
+
+---
+
+#### POST `/api/admin/users/{id}/cancel-invite`
+
+Revoke all pending invitations for a user without creating a new one.
+
+**Response:** `204 No Content`
+
+**Errors:**
+- `404` — User not found
+- `409` — No pending invitations found
+
+---
+
+#### PATCH `/api/admin/users/{id}/phone`
+
+Set or clear the admin-managed primary phone number for a user. The phone is normalised to E.164 before persisting.
+
+**Permission required:** `TENANT.users:manage`
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `phone` | `string` | No | Phone number in any format. Pass `null` or empty string to clear. |
+
+**Response:** `200 OK`
+
+```json
+{ "phone": "+15551234567" }
+```
+
+`phone` is `null` if cleared.
+
+**Errors:**
+- `400` — Invalid phone number format
+- `404` — User not found
+
+---
+
+#### POST `/api/admin/platform-users/invite`
+
+**[PUM-B06]** Invite a new LegalSynq platform-internal staff user (`UserType = PlatformInternal`). Creates the user as inactive, sends an invite email, and optionally assigns an initial platform role.
+
+**Permission required:** `TENANT.users:manage`
+
+**Request Body: `InvitePlatformUserRequest`**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `email` | `string` | Yes | User email |
+| `firstName` | `string` | Yes | First name |
+| `lastName` | `string` | Yes | Last name |
+| `roleId` | `guid` | No | Initial platform role to assign |
+
+**Response:** `201 Created`
+
+| Field | Type | Description |
+|---|---|---|
+| `userId` | `guid` | New user ID |
+| `invitationId` | `guid` | Invitation record ID |
+| `email` | `string` | Normalised email |
+| `activationLink` | `string` | Activation link (non-production environments only) |
+
+**Errors:**
+- `400` — Missing required fields
+- `409` — Email already exists
+- `500` — No active platform tenant found
 
 ---
 
@@ -1468,6 +1729,60 @@ Update an organization's name, display name, or org type.
 
 ---
 
+#### POST `/api/admin/organizations/law-firm`
+
+**[CC2-ENROLL-FIRM]** Create a law firm organization and its default admin user in a single transaction. Idempotent: if an organization with the same `tenantId` + `adminEmail` already exists, the existing record is returned.
+
+**Auth:** PlatformAdmin only (internal, gateway-gated)
+
+**Request Body: `CreateLawFirmOrgRequest`**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `tenantId` | `guid` | Yes | Tenant that owns the organization |
+| `adminEmail` | `string` | Yes | Email for the default admin user |
+| `adminFirstName` | `string` | Yes | Admin first name |
+| `adminLastName` | `string` | Yes | Admin last name |
+| `orgName` | `string` | No | Organization display name (defaults to admin email prefix) |
+
+**Response:** `201 Created` (new) or `200 OK` (existing)
+
+| Field | Type | Description |
+|---|---|---|
+| `organizationId` | `guid` | Organization ID |
+| `userId` | `guid` | Admin user ID |
+| `isNew` | `boolean` | Whether a new organization was created |
+
+---
+
+#### PATCH `/api/admin/organizations/{id}/provider-mode`
+
+Update the `providerMode` of an organization. Controls whether the organization operates in `sell` mode (listing lien products) or `manage` mode (managing their own portfolios).
+
+**Auth:** PlatformAdmin only
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `providerMode` | `string` | Yes | `sell` or `manage` |
+
+**Response:** `200 OK`
+
+```json
+{
+  "id": "guid",
+  "providerMode": "sell"
+}
+```
+
+**Errors:**
+- `400` — Invalid `providerMode` value
+- `403` — Not PlatformAdmin
+- `404` — Organization not found
+
+---
+
 ### Admin: Organization Types
 
 #### GET `/api/admin/organization-types`
@@ -1677,6 +1992,97 @@ Remove a membership. Safety rules prevent removing the last membership or the pr
 **Errors:**
 - `404` — Membership not found
 - `409` — Cannot remove last membership or primary membership
+
+---
+
+### Admin: External Users (PUM-B05)
+
+Endpoints for managing external customer users (`UserType = ExternalCustomer`). External users are customers with limited, product-gated access.
+
+**Auth:** PlatformAdmin or TenantAdmin
+
+#### POST `/api/admin/external-users`
+
+Create an external customer user account with optional product access grants.
+
+**Request Body: `CreateExternalUserRequest`**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `tenantId` | `guid` | Yes | Tenant to create the user under |
+| `email` | `string` | Yes | User email |
+| `firstName` | `string` | Yes | First name |
+| `lastName` | `string` | Yes | Last name |
+| `isActive` | `boolean` | No | Whether to activate immediately (default: `true`) |
+| `productKeys` | `string[]` | No | Product codes to grant access to on creation |
+
+**Response:** `201 Created` — Created user with access records
+
+**Errors:**
+- `409` — Email already exists
+
+---
+
+#### GET `/api/admin/external-users`
+
+List external customer users with pagination and optional tenant filter.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `page` | `integer` | No | `1` | Page number |
+| `pageSize` | `integer` | No | `20` | Items per page |
+| `tenantId` | `guid` | No | | Filter by tenant (PlatformAdmin only) |
+| `search` | `string` | No | `""` | Search by email or name |
+
+**Response:** `200 OK` — `PaginatedResult` with external user summaries
+
+---
+
+#### GET `/api/admin/external-users/{userId}`
+
+Get an external customer user by ID.
+
+**Response:** `200 OK` — External user details with product access records
+
+**Errors:**
+- `400` — User is not an `ExternalCustomer`
+- `404` — User not found
+
+---
+
+#### GET `/api/admin/external-users/{userId}/products/{productKey}/access`
+
+Check whether an external customer user has active access to a specific product.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `userId` | `guid` | External user ID |
+| `productKey` | `string` | Product code (frontend or DB form) |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `tenantId` | `guid` | No | Override tenant scope (defaults to user's tenant) |
+
+**Response:** `200 OK`
+
+```json
+{
+  "hasAccess": true,
+  "userId": "guid",
+  "productCode": "SYNQ_FUND",
+  "tenantId": "guid"
+}
+```
+
+**Errors:**
+- `400` — `USER_TYPE_MISMATCH` — user is not an `ExternalCustomer`; use `GET /api/admin/users/{id}/products/{productKey}/access` for non-external users
+- `404` — User or product not found
 
 ---
 
@@ -2152,7 +2558,7 @@ List all platform settings (static seed, no DB table).
 
 ---
 
-#### PUT `/api/admin/settings/{key}`
+#### PATCH `/api/admin/settings/{key}`
 
 Update a platform setting.
 
@@ -2304,3 +2710,55 @@ Idempotently provision a user for CareConnect. Ensures tenant product, org produ
 
 **Errors:**
 - `422` — No primary org membership or org not found
+
+---
+
+### Admin: Membership Lookup
+
+#### GET `/api/admin/membership-lookup`
+
+**Internal service-to-service endpoint.** Used by the notifications service to resolve role- or org-addressed recipients to concrete user records (email + phone). Gateway/network policy fronts this endpoint.
+
+**Auth:** Gateway-trusted. TenantAdmin callers are restricted to their own tenant. PlatformAdmin and unauthenticated internal callers may resolve any tenant.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `tenantId` | `guid` | Yes | Tenant to resolve users within |
+| `roleKey` | `string` | No | Role name filter (at least one of `roleKey` or `orgId` required) |
+| `orgId` | `guid` | No | Organization membership filter |
+
+**Response:** `200 OK`
+
+| Field | Type | Description |
+|---|---|---|
+| `items` | `array` | Matching users with `userId`, `email`, `phone`, `organizationId` |
+| `totalCount` | `integer` | Total matched users |
+
+**Errors:**
+- `400` — Missing or invalid `tenantId`; neither `roleKey` nor `orgId` provided
+- `403` — TenantAdmin cross-tenant access attempt
+
+---
+
+### Admin: Notifications Cache
+
+#### GET `/api/admin/notifications-cache/status`
+
+Operator-facing snapshot of the identity → notifications cache invalidation counters. Surfaces misconfigurations (wrong `BaseUrl` or shared token) without requiring log access.
+
+**Auth:** Admin (gateway-enforced)
+
+**Response:** `200 OK`
+
+| Field | Type | Description |
+|---|---|---|
+| `configured` | `boolean` | Whether the notifications service `BaseUrl` is set |
+| `attempted` | `integer` | Total invalidation attempts made |
+| `succeeded` | `integer` | Total successful invalidations |
+| `failed` | `integer` | Total failed invalidations |
+| `lastFailureUtc` | `datetime` | Timestamp of the last failure (null if none) |
+| `lastFailureReason` | `string` | Description of the last failure (null if none) |
+
+A healthy configuration shows `succeeded` incrementing and `failed` staying at 0. If `succeeded` stays 0 while `failed` climbs, check `NotificationsService:BaseUrl` and the shared token configuration.

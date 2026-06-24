@@ -22,7 +22,7 @@ public class TenantDomain
 
         return new TenantDomain
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             Domain = domain.Trim().ToLowerInvariant(),
             DomainType = domainType.ToUpperInvariant(),

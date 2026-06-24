@@ -16,7 +16,7 @@ namespace Notifications.Domain;
 /// </summary>
 public sealed class SmsComplianceProfile
 {
-    public Guid     Id                     { get; set; } = Guid.NewGuid();
+    public Guid     Id                     { get; set; } = Guid.CreateVersion7();
 
     /// <summary>null = platform default / global profile</summary>
     public Guid?    TenantId               { get; set; }

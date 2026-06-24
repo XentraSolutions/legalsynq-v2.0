@@ -23,7 +23,7 @@ public class Product
 
         return new Product
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             Name = name.Trim(),
             Code = code.ToUpperInvariant().Trim(),
             Description = description?.Trim(),

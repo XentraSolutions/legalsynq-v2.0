@@ -5,6 +5,7 @@ using System.Text;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
+using CareConnect.Domain;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -44,7 +45,8 @@ public class ReferralEmailServiceTests
         ILogger<ReferralEmailService> logger = NullLogger<ReferralEmailService>.Instance;
 
         return new ReferralEmailService(notifications.Object, producer.Object, config,
-            new Mock<ITenantServiceClient>().Object, logger);
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object, logger);
     }
 
     // ── Token format ─────────────────────────────────────────────────────────
@@ -53,7 +55,7 @@ public class ReferralEmailServiceTests
     public void GenerateViewToken_ReturnsNonEmptyString()
     {
         var svc   = BuildService();
-        var token = svc.GenerateViewToken(Guid.NewGuid(), tokenVersion: 1);
+        var token = svc.GenerateViewToken(Guid.CreateVersion7(), tokenVersion: 1);
         Assert.False(string.IsNullOrWhiteSpace(token));
     }
 
@@ -61,7 +63,7 @@ public class ReferralEmailServiceTests
     public void GenerateViewToken_IsUrlSafeBase64_NoReservedChars()
     {
         var svc   = BuildService();
-        var token = svc.GenerateViewToken(Guid.NewGuid(), tokenVersion: 1);
+        var token = svc.GenerateViewToken(Guid.CreateVersion7(), tokenVersion: 1);
 
         Assert.DoesNotContain("+", token);
         Assert.DoesNotContain("/", token);
@@ -74,7 +76,7 @@ public class ReferralEmailServiceTests
         // Each token has a fresh expiry timestamp — two calls seconds apart may produce
         // different tokens. Either way, both must be non-empty and round-trip correctly.
         var svc = BuildService();
-        var id  = Guid.NewGuid();
+        var id  = Guid.CreateVersion7();
         var t1  = svc.GenerateViewToken(id, tokenVersion: 1);
         var t2  = svc.GenerateViewToken(id, tokenVersion: 1);
 
@@ -88,7 +90,7 @@ public class ReferralEmailServiceTests
         // LSCC-005-01: token version is embedded in the HMAC payload, so version 1 and
         // version 2 tokens for the same referral must differ.
         var svc = BuildService();
-        var id  = Guid.NewGuid();
+        var id  = Guid.CreateVersion7();
         var t1  = svc.GenerateViewToken(id, tokenVersion: 1);
         var t2  = svc.GenerateViewToken(id, tokenVersion: 2);
 
@@ -101,7 +103,7 @@ public class ReferralEmailServiceTests
     public void RoundTrip_Generate_Validate_ReturnsOriginalReferralId()
     {
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         var token      = svc.GenerateViewToken(referralId, tokenVersion: 1);
         var result     = svc.ValidateViewToken(token);
 
@@ -115,7 +117,7 @@ public class ReferralEmailServiceTests
         // LSCC-005-01: the token version must round-trip correctly so callers can
         // detect revoked tokens by comparing result.TokenVersion with referral.TokenVersion.
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
 
         var token2  = svc.GenerateViewToken(referralId, tokenVersion: 2);
         var result2 = svc.ValidateViewToken(token2);
@@ -132,7 +134,7 @@ public class ReferralEmailServiceTests
     public void RoundTrip_MultipleIds_EachValidatesToCorrectId()
     {
         var svc = BuildService();
-        var ids = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToList();
+        var ids = Enumerable.Range(0, 5).Select(_ => Guid.CreateVersion7()).ToList();
 
         foreach (var id in ids)
         {
@@ -150,7 +152,7 @@ public class ReferralEmailServiceTests
     public void ValidateViewToken_ExpiredToken_ReturnsNull()
     {
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         const int tokenVersion = 1;
 
         // Craft an expired 4-part token using the same algorithm the service uses.
@@ -173,7 +175,7 @@ public class ReferralEmailServiceTests
     {
         // LSCC-005-01: tokens from before the hardening upgrade (3-part format) must be
         // rejected without throwing — they lack the version field and parts.Length != 4.
-        var referralId  = Guid.NewGuid();
+        var referralId  = Guid.CreateVersion7();
         var expiry      = DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds();
         var payload     = $"{referralId}:{expiry}";              // old 2-field payload
         var keyBytes    = Encoding.UTF8.GetBytes(TestSecret);
@@ -193,7 +195,7 @@ public class ReferralEmailServiceTests
     public void ValidateViewToken_TamperedSignature_ReturnsNull()
     {
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         var token      = svc.GenerateViewToken(referralId, tokenVersion: 1);
 
         // Decode, replace the HMAC with an all-zeros hex string of the same length, re-encode.
@@ -214,7 +216,7 @@ public class ReferralEmailServiceTests
     {
         var svcA   = BuildService("SECRET-A");
         var svcB   = BuildService("SECRET-B");
-        var id     = Guid.NewGuid();
+        var id     = Guid.CreateVersion7();
         var token  = svcA.GenerateViewToken(id, tokenVersion: 1);  // signed with A
         var result = svcB.ValidateViewToken(token);                  // validated with B
         Assert.Null(result);
@@ -226,7 +228,7 @@ public class ReferralEmailServiceTests
         // LSCC-005-01: if an attacker modifies the version field in the token body,
         // the HMAC computed over the (modified) payload will not match the real signature.
         var svc        = BuildService();
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         var token      = svc.GenerateViewToken(referralId, tokenVersion: 1);
 
         // Decode and replace the version digit.
@@ -287,8 +289,9 @@ public class ReferralEmailServiceTests
         ILogger<ReferralEmailService> logger = NullLogger<ReferralEmailService>.Instance;
 
         var svc  = new ReferralEmailService(notifications.Object, producer.Object, config,
-            new Mock<ITenantServiceClient>().Object, logger);
-        var id   = Guid.NewGuid();
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object, logger);
+        var id   = Guid.CreateVersion7();
         var tok  = svc.GenerateViewToken(id, tokenVersion: 1);
         var res  = svc.ValidateViewToken(tok);
 
@@ -296,4 +299,232 @@ public class ReferralEmailServiceTests
         Assert.Equal(id, res!.ReferralId);
         Assert.Equal(1, res.TokenVersion);
     }
+
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_SerializesNotificationUpdates()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReferralToken:Secret"] = TestSecret,
+                ["AppBaseUrl"]           = TestBaseUrl,
+            })
+            .Build();
+
+        var notifications = new Mock<INotificationRepository>(MockBehavior.Strict);
+        var producer = new Mock<INotificationsProducer>(MockBehavior.Strict);
+        var tenantClient = new Mock<ITenantServiceClient>(MockBehavior.Strict);
+        var subdomainCache = new Mock<ITenantSubdomainCache>(MockBehavior.Strict);
+
+        var submitCount = 0;
+        var allSubmissionsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        producer
+            .Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(async (
+                Guid _,
+                string _,
+                string _,
+                string _,
+                string _,
+                string? _,
+                string? _,
+                CancellationToken _) =>
+            {
+                if (Interlocked.Increment(ref submitCount) == 2)
+                    allSubmissionsStarted.TrySetResult();
+
+                await allSubmissionsStarted.Task;
+            });
+
+        notifications
+            .Setup(n => n.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var activeUpdates = 0;
+        var overlappingUpdatesDetected = 0;
+
+        notifications
+            .Setup(n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(async (CareConnectNotification _, CancellationToken _) =>
+            {
+                var current = Interlocked.Increment(ref activeUpdates);
+                if (current > 1)
+                    Interlocked.Exchange(ref overlappingUpdatesDetected, 1);
+
+                await Task.Delay(25);
+                Interlocked.Decrement(ref activeUpdates);
+            });
+
+        var service = new ReferralEmailService(
+            notifications.Object,
+            producer.Object,
+            config,
+            tenantClient.Object,
+            subdomainCache.Object,
+            NullLogger<ReferralEmailService>.Instance);
+
+        await service.SendNewReferralNotificationAsync(
+            BuildReferral(referrerEmail: "referrer@example.com"),
+            BuildProvider(),
+            CancellationToken.None);
+
+        Assert.Equal(0, overlappingUpdatesDetected);
+        notifications.Verify(
+            n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_UsesLegacyReferralLink_ForPendingProvider()
+    {
+        var notifications = new Mock<INotificationRepository>();
+        var producer = new Mock<INotificationsProducer>();
+        producer
+            .Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        CareConnectNotification? providerNotification = null;
+        notifications
+            .Setup(n => n.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Callback<CareConnectNotification, CancellationToken>((notification, _) =>
+            {
+                if (notification.RecipientType == NotificationRecipientType.Provider)
+                    providerNotification = notification;
+            })
+            .ReturnsAsync(true);
+        notifications
+            .Setup(n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new ReferralEmailService(
+            notifications.Object,
+            producer.Object,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ReferralToken:Secret"] = TestSecret,
+                    ["AppBaseUrl"] = TestBaseUrl,
+                })
+                .Build(),
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
+            NullLogger<ReferralEmailService>.Instance);
+
+        var referral = BuildReferral(referrerEmail: "referrer@example.com");
+        var provider = BuildProvider();
+
+        await service.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None);
+
+        Assert.NotNull(providerNotification);
+        Assert.Contains("/referrals/thread?token=", providerNotification!.Message);
+    }
+
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_UsesViewLink_ForActiveProvider()
+    {
+        var notifications = new Mock<INotificationRepository>();
+        var producer = new Mock<INotificationsProducer>();
+        producer
+            .Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        CareConnectNotification? providerNotification = null;
+        notifications
+            .Setup(n => n.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Callback<CareConnectNotification, CancellationToken>((notification, _) =>
+            {
+                if (notification.RecipientType == NotificationRecipientType.Provider)
+                    providerNotification = notification;
+            })
+            .ReturnsAsync(true);
+        notifications
+            .Setup(n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new ReferralEmailService(
+            notifications.Object,
+            producer.Object,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ReferralToken:Secret"] = TestSecret,
+                    ["AppBaseUrl"] = TestBaseUrl,
+                })
+                .Build(),
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
+            NullLogger<ReferralEmailService>.Instance);
+
+        var referral = BuildReferral(referrerEmail: "referrer@example.com");
+        var provider = BuildProvider();
+        provider.LinkOrganization(Guid.CreateVersion7());
+
+        await service.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None);
+
+        Assert.NotNull(providerNotification);
+        Assert.Contains("/referrals/thread?token=", providerNotification!.Message);
+    }
+
+    private static Referral BuildReferral(string? referrerEmail = null)
+        => Referral.Create(
+            tenantId:                   Guid.CreateVersion7(),
+            referringOrganizationId:    null,
+            receivingOrganizationId:    null,
+            providerId:                 Guid.CreateVersion7(),
+            subjectPartyId:             null,
+            subjectNameSnapshot:        null,
+            subjectDobSnapshot:         null,
+            clientFirstName:            "Jane",
+            clientLastName:             "Doe",
+            clientDob:                  null,
+            clientPhone:                "555-000-0001",
+            clientEmail:                "client@example.com",
+            caseNumber:                 null,
+            requestedService:           "Physical Therapy",
+            urgency:                    Referral.ValidUrgencies.Normal,
+            notes:                      null,
+            createdByUserId:            null,
+            organizationRelationshipId: null,
+            referrerEmail:              referrerEmail,
+            referrerName:               "Referrer");
+
+    private static Provider BuildProvider(string email = "provider@clinic.com")
+        => Provider.Create(
+            tenantId:           Guid.CreateVersion7(),
+            name:               "Test Clinic",
+            organizationName:   "Test Clinic LLC",
+            email:              email,
+            phone:              "555-000-9999",
+            addressLine1:       "123 Main St",
+            city:               "Las Vegas",
+            state:              "NV",
+            postalCode:         "89101",
+            isActive:           true,
+            acceptingReferrals: true,
+            createdByUserId:    null);
 }

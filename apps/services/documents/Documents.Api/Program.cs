@@ -1,4 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Documents.Api.Background;
 using Documents.Api.Endpoints;
 using Documents.Api.Middleware;
@@ -40,9 +42,48 @@ var signingKey  = jwtSection["SigningKey"];
 var jwksUri     = jwtSection["JwksUri"];
 var issuer      = jwtSection["Issuer"];
 var audience    = jwtSection["Audience"];
+const string MultiScheme = "MultiAuth";
+string[] serviceTokenAudiences =
+[
+    builder.Configuration["ServiceTokens:Audience"] ?? "documents-service",
+    "documents-service",
+    "notifications-service",
+    "flow-service",
+    "legalsynq-services",
+    "legalsynq-platform"
+];
+serviceTokenAudiences = serviceTokenAudiences
+    .Where(static value => !string.IsNullOrWhiteSpace(value))
+    .Distinct(StringComparer.Ordinal)
+    .ToArray();
+var tokenReader = new JwtSecurityTokenHandler();
 
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(MultiScheme)
+    .AddPolicyScheme(MultiScheme, MultiScheme, options =>
+    {
+        options.ForwardDefaultSelector = ctx =>
+        {
+            var auth = ctx.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrWhiteSpace(auth) &&
+                auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var raw = auth["Bearer ".Length..].Trim();
+                try
+                {
+                    var parsed = tokenReader.ReadJwtToken(raw);
+                    if (string.Equals(parsed.Issuer, ServiceTokenAuthenticationDefaults.DefaultIssuer, StringComparison.Ordinal))
+                        return ServiceTokenAuthenticationDefaults.Scheme;
+                }
+                catch
+                {
+                    // Fall through to the user JWT scheme so it can log the parse failure.
+                }
+            }
+
+            return JwtBearerDefaults.AuthenticationScheme;
+        };
+    })
     .AddJwtBearer(options =>
     {
         options.MapInboundClaims = false;
@@ -67,7 +108,7 @@ builder.Services
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId },
                 ValidateIssuer           = issuer is not null,
                 ValidIssuer              = issuer,
                 ValidateAudience         = audience is not null,
@@ -96,6 +137,62 @@ builder.Services
                     .CreateLogger("JwtAuth");
                 logger.LogWarning("JWT challenge issued for {Path}: {Error} - {ErrorDescription}",
                     context.Request.Path, context.Error, context.ErrorDescription);
+                return Task.CompletedTask;
+            }
+        };
+    })
+    .AddJwtBearer(ServiceTokenAuthenticationDefaults.Scheme, options =>
+    {
+        var serviceTokenKey =
+            Environment.GetEnvironmentVariable(ServiceTokenAuthenticationDefaults.SecretEnvVar)
+            ?? builder.Configuration[$"{ServiceTokenOptions.SectionName}:SigningKey"]
+            ?? string.Empty;
+
+        options.MapInboundClaims = false;
+        options.RequireHttpsMetadata = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
+            ValidateIssuerSigningKey = true,
+            RequireSignedTokens      = true,
+            RequireExpirationTime    = true,
+            ValidIssuer              = ServiceTokenAuthenticationDefaults.DefaultIssuer,
+            ValidAudiences           = serviceTokenAudiences,
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(serviceTokenKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },
+            NameClaimType            = "sub",
+            RoleClaimType            = "role",
+            ClockSkew                = TimeSpan.FromSeconds(30),
+        };
+
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                var principal = context.Principal;
+                var sub = principal?.FindFirst("sub")?.Value;
+                if (string.IsNullOrWhiteSpace(sub) ||
+                    !sub.StartsWith("service:", StringComparison.Ordinal))
+                {
+                    context.Fail("Service token must have a subject starting with 'service:'.");
+                    return Task.CompletedTask;
+                }
+
+                var tenantId = principal?.FindFirst("tenant_id")?.Value
+                               ?? principal?.FindFirst(ServiceTokenAuthenticationDefaults.TenantClaim)?.Value;
+                if (string.IsNullOrWhiteSpace(tenantId))
+                {
+                    context.Fail("Service token must include tenant_id or tid.");
+                }
+
+                return Task.CompletedTask;
+            },
+            OnAuthenticationFailed = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger(ServiceTokenAuthenticationDefaults.Scheme);
+                logger.LogWarning(context.Exception, "Service token authentication failed for {Path}", context.HttpContext.Request.Path);
                 return Task.CompletedTask;
             }
         };
@@ -338,9 +435,12 @@ static async Task HealLogoPublicationAsync(DocsDbContext db, Microsoft.Extension
     var logoDocTypeId = Guid.Parse("20000000-0000-0000-0000-000000000002");
 
     // Eligible scan statuses: always include Clean; include Skipped when scan not required.
+    // Use List<T> (not array) — in .NET 10, EF Core's ParameterExtractingExpressionVisitor
+    // resolves array.Contains to a ReadOnlySpan<T> overload which is a ref struct and
+    // cannot be used as a generic type argument, causing a crash at startup.
     var eligibleStatuses = requireCleanScan
-        ? new[] { ScanStatus.Clean }
-        : new[] { ScanStatus.Clean, ScanStatus.Skipped };
+        ? new List<ScanStatus> { ScanStatus.Clean }
+        : new List<ScanStatus> { ScanStatus.Clean, ScanStatus.Skipped };
 
     // Tenants that have at least one eligible logo but none currently published
     var tenantsNeedingHeal = await db.Documents

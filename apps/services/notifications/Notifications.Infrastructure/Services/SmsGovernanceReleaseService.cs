@@ -59,7 +59,7 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
         var now = DateTime.UtcNow;
         var pkg = new SmsGovernanceReleasePackage
         {
-            Id           = Guid.NewGuid(),
+            Id           = Guid.CreateVersion7(),
             TenantId     = request.TenantId,
             Name         = request.Name.Trim(),
             Description  = request.Description?.Trim(),
@@ -205,7 +205,7 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
         var now  = DateTime.UtcNow;
         var item = new SmsGovernanceReleaseItem
         {
-            Id                  = Guid.NewGuid(),
+            Id                  = Guid.CreateVersion7(),
             ReleasePackageId    = releaseId,
             EntityType          = request.EntityType,
             EntityId            = request.EntityId,
@@ -543,7 +543,7 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
         }
 
         // No lock or stale lock — acquire
-        var lockId          = Guid.NewGuid();
+        var lockId          = Guid.CreateVersion7();
         pkg.ActivationLockId         = lockId;
         pkg.ActivationLockAcquiredAt = now;
         pkg.ActivationLockExpiresAt  = now.AddMinutes(_opts.ActivationLockTimeoutMinutes);
@@ -573,7 +573,7 @@ public sealed class SmsGovernanceReleaseService : ISmsGovernanceReleaseService
     {
         _db.SmsGovernanceReleaseAuditEvents.Add(new SmsGovernanceReleaseAuditEvent
         {
-            Id               = Guid.NewGuid(),
+            Id               = Guid.CreateVersion7(),
             ReleasePackageId = releaseId,
             EventType        = eventType,
             PreviousState    = prevState,

@@ -19,7 +19,7 @@ Flow is designed to be a **detachable, standalone service** that can operate ind
 ## Stack
 
 ### Backend
-- **Runtime**: .NET 8.0 (ASP.NET Core Web API)
+- **Runtime**: .NET 10.0 (ASP.NET Core Web API)
 - **Language**: C#
 - **ORM**: Entity Framework Core with Pomelo MySQL provider
 - **Database**: MySQL (`flow_db`)

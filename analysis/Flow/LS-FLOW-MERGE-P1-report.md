@@ -65,7 +65,7 @@ Not relocated (intentional, see Assumption 4):
 - All four `.csproj` files use **only relative `..\Flow.<Layer>\Flow.<Layer>.csproj` `ProjectReference`s** within `src/`, so the move is reference-clean.
 - `Flow.Infrastructure` uses `Pomelo.EntityFrameworkCore.MySql 8.0.2` — same provider family LegalSynq already uses against AWS RDS MySQL. Connection-string key `FlowDb` (not `SynqCommDb`-style); database name `flow_db`. Both preserved.
 - `appsettings.json` ships a localhost dev connection string — preserved as-is. No environment-specific values introduced.
-- `Flow.Api.csproj` is `Microsoft.NET.Sdk.Web` with `net8.0` — matches the rest of LegalSynq.
+- `Flow.Api.csproj` is `Microsoft.NET.Sdk.Web` with `net10.0` — matches the rest of LegalSynq.
 
 ## Frontend Integration Notes
 
@@ -93,10 +93,10 @@ Not relocated (intentional, see Assumption 4):
 ```
 $ dotnet build apps/services/flow/backend/Flow.sln --verbosity minimal
   Restored Flow.Domain / Flow.Application / Flow.Infrastructure / Flow.Api
-  Flow.Domain         -> .../bin/Debug/net8.0/Flow.Domain.dll
-  Flow.Application    -> .../bin/Debug/net8.0/Flow.Application.dll
-  Flow.Infrastructure -> .../bin/Debug/net8.0/Flow.Infrastructure.dll
-  Flow.Api            -> .../bin/Debug/net8.0/Flow.Api.dll
+  Flow.Domain         -> .../bin/Debug/net10.0/Flow.Domain.dll
+  Flow.Application    -> .../bin/Debug/net10.0/Flow.Application.dll
+  Flow.Infrastructure -> .../bin/Debug/net10.0/Flow.Infrastructure.dll
+  Flow.Api            -> .../bin/Debug/net10.0/Flow.Api.dll
 
 Build succeeded.
     0 Warning(s)

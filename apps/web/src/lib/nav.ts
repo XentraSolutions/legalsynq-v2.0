@@ -72,6 +72,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       heading: 'MY TOOLS',
       items: [
+        { href: '/lien/reports', label: 'Reports', icon: 'ri-file-copy-2-line' },
         { href: '/lien/batch-entry',       label: 'Batch Entry',       icon: 'ri-upload-2-line', requiredRoles: [ProductRole.SynqLienSeller] },
         { href: '/lien/document-handling', label: 'Document Handling', icon: 'ri-file-copy-2-line' },
       ],
@@ -132,11 +133,10 @@ export const PRODUCT_CODE_TO_NAV_KEY: Record<string, string> = {
 /**
  * Converts a list of backend enabledProducts codes into the set of PRODUCT_META
  * keys that should be shown on the dashboard.
- * Falls back to showing ALL products when the list is empty (e.g. during
- * onboarding, or for PlatformAdmin users whose tokens predate this feature).
+ * Returns no product keys when the list is empty.
  */
 export function resolveEnabledNavKeys(enabledProducts: string[]): Set<string> {
-  if (enabledProducts.length === 0) return new Set(Object.keys(PRODUCT_META));
+  if (enabledProducts.length === 0) return new Set();
   const keys = new Set<string>();
   for (const code of enabledProducts) {
     const key = PRODUCT_CODE_TO_NAV_KEY[code];
@@ -223,11 +223,12 @@ export function orgTypeLabel(orgType: string | undefined): string {
 export const GLOBAL_BOTTOM_NAV: NavSection = {
   heading: 'ACCOUNT',
   items: [
-    { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line'                       },
-    { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line'                  },
-    { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line'                    },
+    { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line',                adminOnly: true },
+    { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line',           adminOnly: true },
+    { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line',             adminOnly: true },
     { href: '/support',                         label: 'Support',         icon: 'ri-customer-service-2-line', adminOnly: true },
     { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-shield-user-line',        adminOnly: true },
+    { href: '/tenant/settings',                 label: 'Tenant Settings', icon: 'ri-settings-3-line',         adminOnly: true },
   ],
 };
 

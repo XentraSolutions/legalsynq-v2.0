@@ -7,16 +7,18 @@ interface AppointmentListTableProps {
   totalCount:   number;
   page:         number;
   pageSize:     number;
+  timezone:     string;
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, timezone: string): string {
   return new Date(iso).toLocaleString('en-US', {
-    month:   'short',
-    day:     'numeric',
-    year:    'numeric',
-    hour:    'numeric',
-    minute:  '2-digit',
-    hour12:  true,
+    month:    'short',
+    day:      'numeric',
+    year:     'numeric',
+    hour:     'numeric',
+    minute:   '2-digit',
+    hour12:   true,
+    timeZone: timezone,
   });
 }
 
@@ -25,6 +27,7 @@ export function AppointmentListTable({
   totalCount,
   page,
   pageSize,
+  timezone,
 }: AppointmentListTableProps) {
   if (appointments.length === 0) {
     return (
@@ -66,7 +69,7 @@ export function AppointmentListTable({
                 <td className="px-4 py-3 text-sm text-gray-700">{appt.providerName}</td>
                 <td className="px-4 py-3 text-sm text-gray-600">{appt.serviceType ?? '—'}</td>
                 <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                  {formatDateTime(appt.scheduledAtUtc)}
+                  {formatDateTime(appt.scheduledAtUtc, timezone)}
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                   {appt.durationMinutes} min

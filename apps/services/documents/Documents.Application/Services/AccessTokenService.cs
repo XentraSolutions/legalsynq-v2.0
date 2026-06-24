@@ -34,6 +34,10 @@ public sealed class AccessTokenService
         ["DocManager"]    = new[] { "read", "write", "delete" },
         ["TenantAdmin"]   = new[] { "read", "write", "delete" },
         ["PlatformAdmin"] = new[] { "read", "write", "delete", "admin" },
+        // Service tokens are tenant-scoped and may issue view/download access
+        // tokens for downstream document access, but they do not gain admin
+        // privileges such as cross-tenant overrides.
+        ["service"]       = new[] { "read", "write", "delete" },
     };
 
     public AccessTokenService(

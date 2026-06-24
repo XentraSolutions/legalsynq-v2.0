@@ -1,24 +1,22 @@
 import { headers } from 'next/headers';
 import { LoginPageClient } from './login-page-client';
+import { getServerPortalConfig } from '@/lib/portal';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Login page — server component.
  *
- * Reads the incoming hostname via the x-forwarded-host (proxy) or host header
- * to determine whether the visitor is on the CareConnect common portal domain.
- * Passes `isPortal` to the client layout so it can render CareConnect branding
- * without a client-side flash or extra round-trips.
+ * Uses getServerPortalConfig to detect whether the visitor is on a portal
+ * hostname (e.g. careconnect-demo.legalsynq.com in prod, or localhost when
+ * CC_PORTAL_SUBDOMAIN=localhost in dev). Passes `isPortal` to the
+ * client layout so it can render CareConnect branding without a client-side
+ * flash or extra round-trips.
  */
 export default async function LoginPage() {
-  const hdrs = await headers();
-  const forwardedHost = hdrs.get('x-forwarded-host') ?? '';
-  const rawHost       = hdrs.get('host') ?? '';
-  const hostname      = (forwardedHost || rawHost).split(':')[0].toLowerCase();
-
-  const portalHostname = (process.env.CC_COMMON_PORTAL_HOSTNAME ?? '').trim().toLowerCase();
-  const isPortal = !!portalHostname && hostname === portalHostname;
+  const hdrs      = await headers();
+  const rawHost   = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '';
+  const isPortal  = getServerPortalConfig(rawHost) !== null;
 
   return <LoginPageClient isPortal={isPortal} />;
 }

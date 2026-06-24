@@ -5,6 +5,7 @@ using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
 using CareConnect.Infrastructure.Documents;
+using CareConnect.Infrastructure.Imports;
 using CareConnect.Infrastructure.Notifications;
 using CareConnect.Infrastructure.Repositories;
 using CareConnect.Infrastructure.Services;
@@ -77,9 +78,13 @@ public static class DependencyInjection
 
         services.AddDbContext<CareConnectDbContext>(options =>
             options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
+        services.AddDbContextFactory<CareConnectDbContext>(options =>
+            options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))),
+            ServiceLifetime.Scoped);
 
         services.AddScoped<IProviderRepository, ProviderRepository>();
         services.AddScoped<IReferralRepository, ReferralRepository>();
+        services.AddScoped<IReferralCommentRepository, ReferralCommentRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<IFacilityRepository, FacilityRepository>();
         services.AddScoped<IServiceOfferingRepository, ServiceOfferingRepository>();
@@ -98,6 +103,7 @@ public static class DependencyInjection
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
+        services.AddScoped<IReferralThreadService, ReferralThreadService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<IServiceOfferingService, ServiceOfferingService>();
@@ -153,6 +159,8 @@ public static class DependencyInjection
         services.AddHttpClient("NotificationsService")
             .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
         services.AddScoped<INotificationsProducer, NotificationsProducerClient>();
+        // Singleton: subdomain slugs never change after provisioning; cache must outlive Scoped email service.
+        services.AddSingleton<ITenantSubdomainCache, TenantSubdomainCache>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();
 
         // LSCC-005-02: Automatic email retry background worker
@@ -178,6 +186,7 @@ public static class DependencyInjection
 
         // CC2-INT-B06: Provider network management (role-based, not orgType-based)
         services.AddScoped<INetworkRepository, NetworkRepository>();
+        services.AddScoped<IProviderImportParser, CsvProviderImportParser>();
         services.AddScoped<INetworkService, NetworkService>();
 
         return services;

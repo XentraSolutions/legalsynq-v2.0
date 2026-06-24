@@ -1,5 +1,5 @@
 import { requireCCPlatformAdmin } from '@/lib/auth-guards';
-import { controlCenterServerApi } from '@/lib/control-center-api';
+import { controlCenterServerApi } from '@/lib/control-center-server-api';
 import { TenantListTable }        from '@/components/control-center/tenant-list-table';
 
 export const dynamic = 'force-dynamic';
@@ -17,8 +17,7 @@ interface TenantsPageProps {
  *
  * Access: PlatformAdmin only (enforced by requireCCPlatformAdmin).
  *
- * Data: currently served from a mock stub in controlCenterServerApi.tenants.list().
- * TODO: When GET /identity/api/admin/tenants is live, the stub auto-wires — no page change needed.
+ * Data: served from GET /identity/api/admin/tenants via controlCenterServerApi.tenants.list().
  */
 export default async function TenantsPage({ searchParams }: TenantsPageProps) {
   await requireCCPlatformAdmin();

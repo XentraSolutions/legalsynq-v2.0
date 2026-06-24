@@ -13,7 +13,7 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
 
         await service.RecordAsync(
             TestHelpers.TenantId, conversationId,
@@ -21,7 +21,7 @@ public class ConversationTimelineTests
             "Message sent", TimelineVisibility.InternalOnly,
             DateTime.UtcNow,
             actorId: TestHelpers.UserId1,
-            relatedMessageId: Guid.NewGuid(),
+            relatedMessageId: Guid.CreateVersion7(),
             metadataJson: "{\"channel\":\"InApp\"}");
 
         var result = await service.GetTimelineAsync(
@@ -41,7 +41,7 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
 
         var t1 = DateTime.UtcNow.AddMinutes(-30);
         var t2 = DateTime.UtcNow.AddMinutes(-20);
@@ -70,7 +70,7 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
 
         await service.RecordAsync(TestHelpers.TenantId, conversationId,
             TimelineEventTypes.MessageSent, TimelineActorType.User, "Internal msg",
@@ -101,7 +101,7 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
 
         await service.RecordAsync(TestHelpers.TenantId, conversationId,
             TimelineEventTypes.MessageSent, TimelineActorType.User, "Message",
@@ -126,7 +126,7 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
 
         for (int i = 0; i < 5; i++)
         {
@@ -158,7 +158,7 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
 
         var now = DateTime.UtcNow;
         await service.RecordAsync(TestHelpers.TenantId, conversationId,
@@ -184,8 +184,8 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
-        var otherTenant = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
+        var otherTenant = Guid.CreateVersion7();
 
         await service.RecordAsync(TestHelpers.TenantId, conversationId,
             TimelineEventTypes.MessageSent, TimelineActorType.User, "Our message",
@@ -206,10 +206,10 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
-        var messageId = Guid.NewGuid();
-        var assignmentId = Guid.NewGuid();
-        var slaId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
+        var messageId = Guid.CreateVersion7();
+        var assignmentId = Guid.CreateVersion7();
+        var slaId = Guid.CreateVersion7();
 
         await service.RecordAsync(
             TestHelpers.TenantId, conversationId,
@@ -236,7 +236,7 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
 
         await service.RecordAsync(
             TestHelpers.TenantId, conversationId,
@@ -376,7 +376,7 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
 
         await service.RecordAsync(TestHelpers.TenantId, conversationId,
             TimelineEventTypes.MessageSent, TimelineActorType.User, "Test",
@@ -400,7 +400,7 @@ public class ConversationTimelineTests
     {
         var db = TestHelpers.CreateDbContext();
         var service = TestHelpers.CreateTimelineService(db);
-        var conversationId = Guid.NewGuid();
+        var conversationId = Guid.CreateVersion7();
 
         var result = await service.GetTimelineAsync(
             TestHelpers.TenantId, conversationId, new TimelineQuery());

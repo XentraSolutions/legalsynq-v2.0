@@ -1,6 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import type { ReferralSummary } from '@/types/careconnect';
 import { formatTimestamp } from '@/lib/format-date';
+import { useBrowserTimezone } from '@/lib/use-timezone';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { ReferralQuickActions } from './referral-quick-actions';
 
@@ -13,6 +16,7 @@ interface ReferralListTableProps {
   isReceiver: boolean;
   orgId?:     string;
   currentQs?: string;
+  timezone?:  string;
 }
 
 function rowHighlight(status: string): string {
@@ -20,7 +24,20 @@ function rowHighlight(status: string): string {
   if (status === 'NewOpened')  return 'bg-sky-50/40 hover:bg-sky-50 border-l-4 border-l-sky-400';
   if (status === 'Accepted')   return 'hover:bg-gray-50 border-l-4 border-l-teal-400';
   if (status === 'InProgress') return 'bg-amber-50/30 hover:bg-amber-50/60 border-l-4 border-l-amber-400';
+  if (status === 'Completed')  return 'bg-green-50/30 hover:bg-green-50/60 border-l-4 border-l-green-400';
+  if (status === 'Declined')   return 'bg-red-50/30 hover:bg-red-50/60 border-l-4 border-l-red-400';
+  if (status === 'Cancelled')  return 'bg-gray-50/60 hover:bg-gray-100 border-l-4 border-l-gray-400';
   return 'hover:bg-gray-50 border-l-4 border-l-transparent';
+}
+
+function normalizeNetworkDisplay(networkName?: string | null): string | null {
+  const value = networkName?.trim();
+  return value && value !== '-' ? value : null;
+}
+
+function normalizeParticipantDisplay(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 export function ReferralListTable({
@@ -32,7 +49,12 @@ export function ReferralListTable({
   isReceiver,
   orgId,
   currentQs = '',
+  timezone,
 }: ReferralListTableProps) {
+  const browserTimezone = useBrowserTimezone();
+  const resolvedTimezone = timezone ?? browserTimezone;
+  const participantColumnLabel = isReceiver ? 'Referrer' : 'Provider';
+
   if (referrals.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
@@ -49,7 +71,7 @@ export function ReferralListTable({
           <thead>
             <tr className="bg-gray-50">
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Client</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Provider</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{participantColumnLabel}</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">Service</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden lg:table-cell">Network</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Urgency</th>
@@ -59,8 +81,17 @@ export function ReferralListTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {referrals.map(r => (
-              <tr key={r.id} className={`transition-colors ${rowHighlight(r.status)}`}>
+            {referrals.map(r => {
+              const networkDisplay = normalizeNetworkDisplay(r.networkName);
+              const participantDisplay = isReceiver
+                ? normalizeParticipantDisplay(r.referringOrganizationName)
+                  ?? normalizeParticipantDisplay(r.referrerName)
+                  ?? normalizeParticipantDisplay(r.referrerEmail)
+                  ?? '—'
+                : r.providerName;
+
+              return (
+                <tr key={r.id} className={`transition-colors ${rowHighlight(r.status)}`}>
                 {/* Client */}
                 <td className="px-4 py-3">
                   <p className="text-sm font-medium text-gray-900 truncate max-w-[160px]">
@@ -71,9 +102,9 @@ export function ReferralListTable({
                   )}
                 </td>
 
-                {/* Provider */}
+                {/* Provider / Referrer */}
                 <td className="px-4 py-3">
-                  <p className="text-sm text-gray-700 truncate max-w-[160px]">{r.providerName}</p>
+                  <p className="text-sm text-gray-700 truncate max-w-[160px]">{participantDisplay}</p>
                 </td>
 
                 {/* Service */}
@@ -83,15 +114,15 @@ export function ReferralListTable({
 
                 {/* Network */}
                 <td className="px-4 py-3 hidden lg:table-cell">
-                  {r.networkName ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-100 truncate max-w-[140px]" title={r.networkName}>
-                      <svg className="w-2.5 h-2.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 12.094A5.973 5.973 0 004 15v1H1v-1a3 3 0 013.75-2.906z" />
-                      </svg>
-                      {r.networkName}
+                  {networkDisplay ? (
+                    <span
+                      className="block truncate max-w-[140px] text-sm text-gray-700"
+                      title={networkDisplay}
+                    >
+                      {networkDisplay}
                     </span>
                   ) : (
-                    <span className="text-xs text-gray-300">—</span>
+                    <span className="text-xs text-gray-300">-</span>
                   )}
                 </td>
 
@@ -110,7 +141,7 @@ export function ReferralListTable({
 
                 {/* Created */}
                 <td className="px-4 py-3 whitespace-nowrap hidden lg:table-cell">
-                  {(() => { const ts = formatTimestamp(r.createdAtUtc); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
+                  {(() => { const ts = formatTimestamp(r.createdAtUtc, resolvedTimezone); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
                 </td>
 
                 {/* Quick actions */}
@@ -122,8 +153,9 @@ export function ReferralListTable({
                     contextQs={currentQs}
                   />
                 </td>
-              </tr>
-            ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

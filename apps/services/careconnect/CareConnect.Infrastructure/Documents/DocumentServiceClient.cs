@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using BuildingBlocks.Authentication.ServiceTokens;
+using BuildingBlocks.Context;
 using CareConnect.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -18,6 +20,7 @@ namespace CareConnect.Infrastructure.Documents;
 /// </summary>
 public sealed class DocumentServiceClient : IDocumentServiceClient
 {
+    private const string DocumentsServiceAudience = "documents-service";
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -25,21 +28,29 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string             _baseUrl;
-    private readonly string?            _serviceToken;
+    private readonly string             _publicAccessBaseUrl;
+    private readonly string?            _legacyServiceToken;
     private readonly string             _defaultProductId;
     private readonly string?            _defaultDocumentTypeId;
+    private readonly IServiceTokenIssuer _serviceTokenIssuer;
+    private readonly ICurrentRequestContext _requestContext;
     private readonly ILogger<DocumentServiceClient> _logger;
 
     public DocumentServiceClient(
         IHttpClientFactory                    httpClientFactory,
         IConfiguration                        configuration,
+        IServiceTokenIssuer                   serviceTokenIssuer,
+        ICurrentRequestContext                requestContext,
         ILogger<DocumentServiceClient>        logger)
     {
         _httpClientFactory     = httpClientFactory;
         _baseUrl               = (configuration["DocumentsService:BaseUrl"] ?? "http://localhost:5006").TrimEnd('/');
-        _serviceToken          = configuration["DocumentsService:ServiceToken"];
+        _publicAccessBaseUrl   = NormalizePublicAccessBaseUrl(configuration["DocumentsService:PublicBaseUrl"]);
+        _legacyServiceToken    = configuration["DocumentsService:ServiceToken"];
         _defaultProductId      = configuration["DocumentsService:ProductId"] ?? "CareConnect";
         _defaultDocumentTypeId = configuration["DocumentsService:DocumentTypeId"];
+        _serviceTokenIssuer    = serviceTokenIssuer;
+        _requestContext        = requestContext;
         _logger                = logger;
     }
 
@@ -58,10 +69,6 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
     {
         var client = _httpClientFactory.CreateClient("DocumentsService");
         var url    = $"{_baseUrl}/documents";
-
-        if (!string.IsNullOrWhiteSpace(_serviceToken))
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", _serviceToken);
 
         using var form = new MultipartFormDataContent();
 
@@ -88,7 +95,12 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
         HttpResponseMessage response;
         try
         {
-            response = await client.PostAsync(url, form, ct);
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = form
+            };
+            ApplyDocumentsAuthorization(request, tenantId);
+            response = await client.SendAsync(request, ct);
         }
         catch (Exception ex)
         {
@@ -127,15 +139,12 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
     }
 
     public async Task<DocumentSignedUrlResult?> GetSignedUrlAsync(
+        Guid              tenantId,
         string            documentId,
         bool              isDownload = false,
         CancellationToken ct         = default)
     {
         var client = _httpClientFactory.CreateClient("DocumentsService");
-
-        if (!string.IsNullOrWhiteSpace(_serviceToken))
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", _serviceToken);
 
         var path   = isDownload
             ? $"{_baseUrl}/documents/{documentId}/download-url"
@@ -148,7 +157,9 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
         HttpResponseMessage response;
         try
         {
-            response = await client.PostAsync(path, null, ct);
+            using var request = new HttpRequestMessage(HttpMethod.Post, path);
+            ApplyDocumentsAuthorization(request, tenantId);
+            response = await client.SendAsync(request, ct);
         }
         catch (Exception ex)
         {
@@ -183,14 +194,57 @@ public sealed class DocumentServiceClient : IDocumentServiceClient
             ? expProp.GetInt32() : 300;
 
         if (!redeemUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            redeemUrl = $"{_baseUrl}{redeemUrl}";
+            redeemUrl = $"{_publicAccessBaseUrl}/{redeemUrl.TrimStart('/')}";
 
         return new DocumentSignedUrlResult(redeemUrl, expiresSeconds);
+    }
+
+    private static string NormalizePublicAccessBaseUrl(string? configuredBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(configuredBaseUrl))
+            return "/api/documents";
+
+        return configuredBaseUrl.TrimEnd('/');
     }
 
     private static async Task<string> SafeReadBodyAsync(HttpResponseMessage resp, CancellationToken ct)
     {
         try { return await resp.Content.ReadAsStringAsync(ct); }
         catch { return string.Empty; }
+    }
+
+    private void ApplyDocumentsAuthorization(HttpRequestMessage request, Guid? tenantId)
+    {
+        request.Headers.Authorization = null;
+
+        if (_serviceTokenIssuer.IsConfigured && tenantId.HasValue)
+        {
+            try
+            {
+                var actorUserId = _requestContext.UserId?.ToString();
+                var token = _serviceTokenIssuer.IssueToken(
+                    tenantId.Value.ToString(),
+                    actorUserId,
+                    DocumentsServiceAudience);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Could not mint Documents service token. Falling back to legacy token if configured. Tenant={TenantId}",
+                    tenantId);
+            }
+        }
+        else if (_serviceTokenIssuer.IsConfigured && !tenantId.HasValue)
+        {
+            _logger.LogWarning(
+                "Skipping Documents service-token mint because no tenant context was available. Falling back to legacy token if configured.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(_legacyServiceToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _legacyServiceToken);
+        }
     }
 }

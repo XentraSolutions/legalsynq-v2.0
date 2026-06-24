@@ -40,11 +40,11 @@ public class BlockedProviderAccessLogTests
     [Fact]
     public void Create_AllFieldsProvided_SetsPropertiesCorrectly()
     {
-        var tenantId  = Guid.NewGuid();
-        var userId    = Guid.NewGuid();
-        var orgId     = Guid.NewGuid();
-        var pId       = Guid.NewGuid();
-        var rId       = Guid.NewGuid();
+        var tenantId  = Guid.CreateVersion7();
+        var userId    = Guid.CreateVersion7();
+        var orgId     = Guid.CreateVersion7();
+        var pId       = Guid.CreateVersion7();
+        var rId       = Guid.CreateVersion7();
 
         var log = Build(
             tenantId:       tenantId,

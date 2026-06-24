@@ -1,5 +1,8 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Notifications.Infrastructure.Data;
 
 #nullable disable
 
@@ -9,6 +12,8 @@ namespace Notifications.Infrastructure.Data.Migrations;
 /// LS-NOTIF-SMS-021-HARDENING: Adds activation concurrency locking and retry-tracking
 /// columns to ntf_SmsGovernanceReleasePackages.
 /// </summary>
+    [DbContext(typeof(NotificationsDbContext))]
+    [Migration("20260512000007_AddSmsGovernanceReleaseHardening")]
 public partial class AddSmsGovernanceReleaseHardening : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

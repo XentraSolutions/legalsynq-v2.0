@@ -16,7 +16,7 @@ public sealed class MockDocumentAdapter : IDocumentAdapter
             request.FileName, request.Content.Length, ctx.CorrelationId);
         var info = new StoredDocumentInfo
         {
-            DocumentId = $"mock-doc-{Guid.NewGuid():N}",
+            DocumentId = $"mock-doc-{Guid.CreateVersion7():N}",
             FileName = request.FileName,
             SizeBytes = request.Content.Length,
         };

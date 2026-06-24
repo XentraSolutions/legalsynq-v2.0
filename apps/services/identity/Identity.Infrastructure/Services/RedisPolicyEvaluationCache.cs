@@ -33,7 +33,7 @@ public class RedisPolicyEvaluationCache : IPolicyEvaluationCache
             if (val.IsNullOrEmpty)
                 return null;
 
-            var result = JsonSerializer.Deserialize<PolicyEvaluationResult>(val!, JsonOptions);
+            var result = JsonSerializer.Deserialize<PolicyEvaluationResult>((string)val!, JsonOptions);
             return result;
         }
         catch (JsonException ex)

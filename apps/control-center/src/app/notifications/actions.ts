@@ -1,6 +1,7 @@
 'use server';
 
-import { revalidateTag }        from 'next/cache';
+import { revalidateTag as _revalidateTag } from 'next/cache';
+const revalidateTag = (tag: string): undefined => _revalidateTag(tag, {});
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { notifClient, notifFetch, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {

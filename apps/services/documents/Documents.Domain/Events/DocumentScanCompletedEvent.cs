@@ -12,7 +12,7 @@ namespace Documents.Domain.Events;
 public sealed class DocumentScanCompletedEvent
 {
     /// <summary>Unique identifier for this event instance.</summary>
-    public Guid       EventId       { get; init; } = Guid.NewGuid();
+    public Guid       EventId       { get; init; } = Guid.CreateVersion7();
 
     /// <summary>Name of the originating service — for routing in multi-service consumers.</summary>
     public string     ServiceName   { get; init; } = "documents";

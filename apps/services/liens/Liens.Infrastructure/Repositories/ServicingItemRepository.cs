@@ -80,4 +80,10 @@ public class ServicingItemRepository : IServicingItemRepository
         _db.ServicingItems.Update(entity);
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task DeleteAsync(ServicingItem entity, CancellationToken ct = default)
+    {
+        _db.ServicingItems.Remove(entity);
+        await _db.SaveChangesAsync(ct);
+    }
 }

@@ -29,19 +29,66 @@ public sealed class CaseService : ICaseService
 
     public async Task<PaginatedResult<CaseResponse>> SearchAsync(
         Guid tenantId, string? search, string? status, int page, int pageSize,
+        Guid? orgId = null,
         CancellationToken ct = default)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        var (items, totalCount) = await _caseRepo.SearchAsync(tenantId, search, status, page, pageSize, ct);
+        var (items, totalCount) = await _caseRepo.SearchAsync(
+            tenantId,
+            search,
+            status,
+            page,
+            pageSize,
+            orgId,
+            ct: ct);
 
         return new PaginatedResult<CaseResponse>
         {
             Items = items.Select(MapToResponse).ToList(),
             Page = page,
             PageSize = pageSize,
+            TotalCount = totalCount,
+        };
+    }
+
+    public async Task<PaginatedResult<CaseResponse>> SearchV3Async(
+        Guid tenantId,
+        string? keyword,
+        string? statusId,
+        int page,
+        int limit,
+        string? sortBy,
+        string? sortDirection,
+        Guid? lawFirmOrgId = null,
+        string? accidentTypeId = null,
+        string? caseManagerId = null,
+        CancellationToken ct = default)
+    {
+        if (page < 1) page = 1;
+        if (limit < 1) limit = 20;
+        if (limit > 100) limit = 100;
+
+        var (items, totalCount) = await _caseRepo.SearchAsync(
+            tenantId,
+            keyword,
+            statusId,
+            page,
+            limit,
+            lawFirmOrgId,
+            sortBy,
+            sortDirection,
+            accidentTypeId,
+            caseManagerId,
+            ct);
+
+        return new PaginatedResult<CaseResponse>
+        {
+            Items = items.Select(MapToResponse).ToList(),
+            Page = page,
+            PageSize = limit,
             TotalCount = totalCount,
         };
     }
@@ -63,8 +110,6 @@ public sealed class CaseService : ICaseService
         CreateCaseRequest request, CancellationToken ct = default)
     {
         var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(request.CaseNumber))
-            errors.Add("caseNumber", ["Case number is required."]);
         if (string.IsNullOrWhiteSpace(request.ClientFirstName))
             errors.Add("clientFirstName", ["Client first name is required."]);
         if (string.IsNullOrWhiteSpace(request.ClientLastName))
@@ -72,16 +117,20 @@ public sealed class CaseService : ICaseService
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing.", errors);
 
-        var existing = await _caseRepo.GetByCaseNumberAsync(tenantId, request.CaseNumber.Trim(), ct);
+        var caseNumber = string.IsNullOrWhiteSpace(request.CaseNumber)
+            ? await GenerateCaseNumberAsync(tenantId, ct)
+            : request.CaseNumber.Trim();
+
+        var existing = await _caseRepo.GetByCaseNumberAsync(tenantId, caseNumber, ct);
         if (existing is not null)
             throw new ConflictException(
-                $"A case with number '{request.CaseNumber.Trim()}' already exists.",
+                $"A case with number '{caseNumber}' already exists.",
                 "CASE_NUMBER_DUPLICATE");
 
         var entity = Case.Create(
             tenantId: tenantId,
             orgId: orgId,
-            caseNumber: request.CaseNumber,
+            caseNumber: caseNumber,
             clientFirstName: request.ClientFirstName,
             clientLastName: request.ClientLastName,
             createdByUserId: actingUserId,
@@ -133,6 +182,30 @@ public sealed class CaseService : ICaseService
             }, TaskContinuationOptions.OnlyOnFaulted);
 
         return MapToResponse(entity);
+    }
+
+    private async Task<string> GenerateCaseNumberAsync(Guid tenantId, CancellationToken ct)
+    {
+        var yearPrefix = DateTime.UtcNow.ToString("yy");
+        var prefix = $"{yearPrefix}-";
+        var existingCases = await _caseRepo.GetByCaseNumberPrefixAsync(tenantId, prefix, ct);
+        var maxSequence = existingCases
+            .Select(c => TryGetCaseSequence(c.CaseNumber, prefix))
+            .Where(sequence => sequence.HasValue)
+            .Select(sequence => sequence!.Value)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return $"{prefix}{maxSequence + 1:000000}";
+    }
+
+    private static int? TryGetCaseSequence(string caseNumber, string prefix)
+    {
+        if (!caseNumber.StartsWith(prefix, StringComparison.Ordinal))
+            return null;
+
+        var suffix = caseNumber[prefix.Length..];
+        return int.TryParse(suffix, out var sequence) ? sequence : null;
     }
 
     public async Task<CaseResponse> UpdateAsync(
@@ -197,6 +270,66 @@ public sealed class CaseService : ICaseService
             entityId: entity.Id.ToString());
 
         return MapToResponse(entity);
+    }
+
+    public async Task<bool> ReassignLawFirmAsync(
+        Guid tenantId,
+        Guid caseId,
+        Guid lawFirmOrgId,
+        Guid actingUserId,
+        CancellationToken ct = default)
+    {
+        var entity = await _caseRepo.GetByIdAsync(tenantId, caseId, ct);
+        if (entity is null)
+            return false;
+
+        entity.ReassignLawFirm(lawFirmOrgId, actingUserId);
+        await _caseRepo.UpdateAsync(entity, ct);
+
+        _logger.LogInformation(
+            "Case law firm reassigned: {CaseId} NewOrg={OrgId} Tenant={TenantId}",
+            entity.Id, lawFirmOrgId, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.case.reassigned.lawfirm",
+            action: "update",
+            description: $"Case '{entity.CaseNumber}' reassigned to law firm '{lawFirmOrgId}'",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Case",
+            entityId: entity.Id.ToString());
+
+        return true;
+    }
+
+    public async Task<bool> ReassignCaseManagerAsync(
+        Guid tenantId,
+        Guid caseId,
+        Guid caseManagerId,
+        Guid actingUserId,
+        CancellationToken ct = default)
+    {
+        var entity = await _caseRepo.GetByIdAsync(tenantId, caseId, ct);
+        if (entity is null)
+            return false;
+
+        entity.ReassignCaseManager(caseManagerId, actingUserId);
+        await _caseRepo.UpdateAsync(entity, ct);
+
+        _logger.LogInformation(
+            "Case manager reassigned: {CaseId} CaseManager={CaseManagerId} Tenant={TenantId}",
+            entity.Id, caseManagerId, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.case.reassigned.casemanager",
+            action: "update",
+            description: $"Case '{entity.CaseNumber}' reassigned to case manager '{caseManagerId}'",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Case",
+            entityId: entity.Id.ToString());
+
+        return true;
     }
 
     private static CaseResponse MapToResponse(Case entity)

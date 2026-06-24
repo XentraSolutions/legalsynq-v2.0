@@ -64,7 +64,7 @@ public class AuditServiceFactory : WebApplicationFactory<Program>
             });
         });
 
-        var dbName = $"AuditEventDb-Test-{Guid.NewGuid():N}";
+        var dbName = $"AuditEventDb-Test-{Guid.CreateVersion7():N}";
 
         builder.ConfigureServices(services =>
         {

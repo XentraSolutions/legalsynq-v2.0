@@ -59,8 +59,8 @@ import { apiClient, CACHE_TAGS }       from '@/lib/api-client';
  * called from an App Router Server Action or Route Handler.
  */
 function safeRevalidateTag(tag: string): void {
-  void (import('next/cache') as Promise<{ revalidateTag: (tag: string) => void }>)
-    .then(({ revalidateTag }) => revalidateTag(tag))
+  void (import('next/cache') as Promise<{ revalidateTag: (tag: string, profile: string | { expire?: number }) => undefined }>)
+    .then(({ revalidateTag }) => revalidateTag(tag, {}))
     .catch(() => { /* no-op when running outside App Router */ });
 }
 import {
@@ -112,6 +112,8 @@ import {
 import type {
   TenantSummary,
   TenantDetail,
+  TenantAccessCodeMetadata,
+  TenantAccessCodeSaveResult,
   TenantUserSummary,
   TenantUserRoleAssignment,
   UserSummary,
@@ -464,6 +466,45 @@ export const controlCenterServerApi = {
         { sessionTimeoutMinutes },
       );
       safeRevalidateTag(CACHE_TAGS.tenants);
+    },
+
+    getAccessCode: async (tenantId: string): Promise<TenantAccessCodeMetadata> => {
+      const raw = await apiClient.get<TenantAccessCodeMetadata>(
+        `/tenant/api/tenants/${encodeURIComponent(tenantId)}/careconnect/public-network/access-code/`,
+        0,
+        [CACHE_TAGS.tenants],
+      );
+      return {
+        configured: Boolean(raw.configured),
+        version: Number(raw.version ?? 0),
+        updatedAtUtc: raw.updatedAtUtc ? String(raw.updatedAtUtc) : null,
+      };
+    },
+
+    setAccessCode: async (tenantId: string, code: string): Promise<TenantAccessCodeSaveResult> => {
+      const raw = await apiClient.put<TenantAccessCodeSaveResult>(
+        `/tenant/api/tenants/${encodeURIComponent(tenantId)}/careconnect/public-network/access-code/`,
+        { code },
+      );
+      safeRevalidateTag(CACHE_TAGS.tenants);
+      return {
+        configured: Boolean(raw.configured),
+        version: Number(raw.version ?? 0),
+        updatedAtUtc: raw.updatedAtUtc ? String(raw.updatedAtUtc) : null,
+        revealedCode: String(raw.revealedCode ?? ''),
+      };
+    },
+
+    clearAccessCode: async (tenantId: string): Promise<TenantAccessCodeMetadata> => {
+      const raw = await apiClient.del<TenantAccessCodeMetadata>(
+        `/tenant/api/tenants/${encodeURIComponent(tenantId)}/careconnect/public-network/access-code/`
+      );
+      safeRevalidateTag(CACHE_TAGS.tenants);
+      return {
+        configured: Boolean(raw.configured),
+        version: Number(raw.version ?? 0),
+        updatedAtUtc: raw.updatedAtUtc ? String(raw.updatedAtUtc) : null,
+      };
     },
 
     /**

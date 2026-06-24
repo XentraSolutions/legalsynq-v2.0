@@ -7,6 +7,8 @@ using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Domain;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace CareConnect.Api.Endpoints;
 
@@ -25,7 +27,7 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
             var isAdmin = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin);
 
             // BLK-PERF-01: Clamp page size to protect against unbounded result-set queries.
@@ -58,7 +60,14 @@ public static class ReferralEndpoints
             }
             else
             {
-                query.ReferringOrgId = ctx.OrgId;
+                // Cross-tenant referrer match — mirrors the provider's CrossTenantReceiver
+                // branch above. Matches purely on ReferringOrgId/ReferrerEmail instead of
+                // gating on TenantId first, so the firm's list stays correct even if a
+                // referral's TenantId ever drifts from the firm's session tenant (e.g. a
+                // stale/conflicting Tenant-service record used to resolve the public
+                // submission endpoint's tenant).
+                query.CrossTenantReferrer = true;
+                query.ReferringOrgId      = ctx.OrgId;
                 // CC-REFERRER-EMAIL: also surface public referrals submitted before the
                 // law firm activated their portal (those have ReferrerEmail set but no
                 // ReferringOrganizationId).
@@ -131,11 +140,11 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
+            var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
             var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
 
-            if (!ctx.IsPlatformAdmin)
+            if (!CareConnectParticipantHelper.IsAdmin(ctx))
             {
                 var isParticipant =
                     (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
@@ -168,12 +177,12 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
+            var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 
             // Participant check — mirrors GET /{id:guid} to prevent cross-tenant data access.
             var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
-            if (!ctx.IsPlatformAdmin)
+            if (!CareConnectParticipantHelper.IsAdmin(ctx))
             {
                 var isParticipant =
                     (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
@@ -192,18 +201,90 @@ public static class ReferralEndpoints
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect);
 
+        group.MapGet("/{id:guid}/comments", async (
+            Guid id,
+            IReferralThreadService threadService,
+            ICurrentRequestContext ctx,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+
+            var comments = await threadService.GetAuthenticatedCommentsAsync(
+                tenantId,
+                id,
+                ctx.OrgId,
+                ctx.Email,
+                useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)),
+                bypassParticipantCheck: CareConnectParticipantHelper.IsAdmin(ctx),
+                ct);
+
+            return comments is null ? Results.NotFound() : Results.Ok(comments);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
+
+        group.MapPost("/{id:guid}/comments", async (
+            Guid id,
+            [FromBody] CreateReferralCommentRequest request,
+            IReferralThreadService threadService,
+            ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 4000)
+                return Results.BadRequest(new { error = "message is required and must be 4000 characters or fewer." });
+
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var canPostThread = await CareConnectAuthHelper.HasAnyAsync(
+                ctx,
+                authSvc,
+                [PermissionCodes.ReferralReadOwn, PermissionCodes.ReferralReadAddressed],
+                ct);
+            if (!canPostThread)
+                return Results.Forbid();
+
+            var senderName = string.IsNullOrWhiteSpace(ctx.Name)
+                ? (string.IsNullOrWhiteSpace(ctx.Email) ? "Provider" : ctx.Email!)
+                : ctx.Name!;
+
+            var comment = await threadService.PostAuthenticatedCommentAsync(
+                tenantId,
+                id,
+                ctx.OrgId,
+                ctx.Email,
+                senderName,
+                request.Message,
+                useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)),
+                ct);
+
+            return comment is null
+                ? Results.NotFound()
+                : Results.Created($"/api/referrals/{id}/comments/{comment.Id}", comment);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
+
         // LS-ID-TNT-012: filter-level JWT permission check; handler also validates via IEffectivePermissionService.
         group.MapPost("/", async (
             [FromBody] CreateReferralRequest request,
             IReferralService service,
             ICurrentRequestContext ctx,
             AuthorizationService authSvc,
+            IConfiguration config,
             CancellationToken ct) =>
         {
-            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
+            var effectiveTenantId = AuthenticatedReferralScopeResolver.ResolveTenantId(
+                ctx,
+                request,
+                HasVerifiedScopeSelection(ctx, request, config));
+            // JWT claims are authoritative for authenticated referral creation —
+            // override any client-submitted referrer identity with the verified token values.
+            // Referring organization always comes from the authenticated account context.
             request.ReferringOrganizationId = ctx.OrgId;
-            var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct, actorName: ctx.Name ?? ctx.Email);
+            if (!string.IsNullOrWhiteSpace(ctx.Name))  request.ReferrerName  = ctx.Name;
+            if (!string.IsNullOrWhiteSpace(ctx.Email)) request.ReferrerEmail = ctx.Email;
+            var referral = await service.CreateAsync(effectiveTenantId, ctx.UserId, request, ct, actorName: ctx.Name ?? ctx.Email);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
@@ -221,11 +302,12 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            var requiredPermission = ReferralWorkflowRules.RequiredPermissionFor(request.Status);
+            // Null status = treatment-type-only update; apply the fallback ReferralUpdateStatus permission.
+            var requiredPermission = ReferralWorkflowRules.RequiredPermissionFor(request.Status ?? string.Empty);
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredPermission, ct);
 
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var bypassTenant = ctx.IsPlatformAdmin || isProviderOrg;
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
+            var bypassTenant = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 
             // Participant check — verify caller is a participant before mutating the referral.
             // Returns 404 (not 403) to avoid confirming record existence across tenants.
@@ -241,6 +323,14 @@ public static class ReferralEndpoints
                      string.Equals(existing.ReferrerEmail, ctx.Email, StringComparison.OrdinalIgnoreCase));
                 if (!isParticipant)
                     return Results.NotFound();
+            }
+
+            // TreatmentTypeId may only be set by the Receiver (provider org) or a PlatformAdmin.
+            if (request.TreatmentTypeId.HasValue && !ctx.IsPlatformAdmin)
+            {
+                var isReceiverOrg = ctx.OrgId.HasValue && existing.ReceivingOrganizationId == ctx.OrgId;
+                if (!isReceiverOrg)
+                    return Results.Forbid();
             }
 
             var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct, bypassTenantScope: bypassTenant, actorName: ctx.Name ?? ctx.Email);
@@ -260,8 +350,8 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+            var isProviderOrg = CareConnectParticipantHelper.IsReceiverContext(ctx);
+            var globalLookup = ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 
             // Participant check — mirrors GET /{id:guid} to prevent cross-tenant data access.
             var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
@@ -299,7 +389,11 @@ public static class ReferralEndpoints
             try
             {
                 // LSCC-01-005-01 (DEF-002)
-                var referral = await service.ResendEmailAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+                var referral = await service.ResendEmailAsync(
+                    tenantId,
+                    id,
+                    ct,
+                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)));
                 return Results.Ok(referral);
             }
             catch (NotFoundException)
@@ -357,7 +451,11 @@ public static class ReferralEndpoints
 
             try
             {
-                var referral = await service.RevokeTokenAsync(tenantId, id, ct);
+                var referral = await service.RevokeTokenAsync(
+                    tenantId,
+                    id,
+                    ct,
+                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)));
                 return Results.Ok(referral);
             }
             catch (NotFoundException)
@@ -382,7 +480,11 @@ public static class ReferralEndpoints
             try
             {
                 // LSCC-01-005-01 (DEF-002)
-                var timeline = await service.GetAuditTimelineAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+                var timeline = await service.GetAuditTimelineAsync(
+                    tenantId,
+                    id,
+                    ct,
+                    isPlatformAdmin: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)));
                 return Results.Ok(timeline);
             }
             catch (NotFoundException)
@@ -427,11 +529,14 @@ public static class ReferralEndpoints
             if (string.IsNullOrWhiteSpace(token))
                 return Results.BadRequest(new { error = "token is required." });
 
-            var summary = await service.GetPublicSummaryAsync(id, token, ct);
-            if (summary is null)
-                return Results.Unauthorized();
+            var result = await service.GetPublicSummaryAccessAsync(id, token, ct);
+            if (result.Data is not null)
+                return Results.Ok(result.Data);
 
-            return Results.Ok(summary);
+            if (result.FailureReason == CareConnect.Application.DTOs.ReferralTokenFailureReasons.ReferralNotFound)
+                return Results.Json(new { reason = result.FailureReason }, statusCode: StatusCodes.Status404NotFound);
+
+            return Results.Json(new { reason = result.FailureReason }, statusCode: StatusCodes.Status401Unauthorized);
         });
         // Note: no .RequireAuthorization — intentionally public, token-gated
 
@@ -472,7 +577,9 @@ public static class ReferralEndpoints
                 return Results.BadRequest(new { error = "token is required." });
 
             var result = await provisioner.ProvisionAsync(
-                id, request.Token, request.RequesterName, request.RequesterEmail, ct);
+                id, request.Token, request.RequesterName, request.RequesterEmail, ct,
+                requesterFirstName: request.RequesterFirstName,
+                requesterLastName:  request.RequesterLastName);
 
             return Results.Ok(result);
         });
@@ -486,7 +593,7 @@ public static class ReferralEndpoints
             Guid                      id,
             Guid                      attachmentId,
             [FromQuery] string        token,
-            [FromQuery] bool          download,
+            [FromQuery] bool?         download,
             IReferralService          service,
             IReferralAttachmentService attachmentSvc,
             CancellationToken         ct) =>
@@ -495,21 +602,26 @@ public static class ReferralEndpoints
                 return Results.BadRequest(new { error = "token is required." });
 
             // Reuse GetPublicSummaryAsync to validate the token — null means invalid/expired.
-            var summary = await service.GetPublicSummaryAsync(id, token, ct);
-            if (summary is null)
-                return Results.Unauthorized();
+            var summaryResult = await service.GetPublicSummaryAccessAsync(id, token, ct);
+            if (summaryResult.Data is null)
+            {
+                if (summaryResult.FailureReason == CareConnect.Application.DTOs.ReferralTokenFailureReasons.ReferralNotFound)
+                    return Results.Json(new { reason = summaryResult.FailureReason }, statusCode: StatusCodes.Status404NotFound);
+
+                return Results.Json(new { reason = summaryResult.FailureReason }, statusCode: StatusCodes.Status401Unauthorized);
+            }
 
             try
             {
                 // isAdmin=true bypasses scope enforcement — safe because token is already HMAC-validated.
                 var result = await attachmentSvc.GetSignedUrlAsync(
-                    summary.TenantId,
+                    summaryResult.Data.TenantId,
                     id,
                     attachmentId,
                     callerOrgId:   null,
                     callerOrgType: null,
                     isAdmin:       true,
-                    isDownload:    download,
+                    isDownload:    download ?? false,
                     ct:            ct);
 
                 if (result is null)
@@ -554,7 +666,7 @@ public static class ReferralEndpoints
         // Public, HMAC view-token gated. Declines the referral directly from the provider thread page.
         group.MapPost("/{id:guid}/decline-by-token", async (
             Guid id,
-            [FromBody] AcceptByTokenRequest request,
+            [FromBody] DeclineByTokenRequest request,
             IReferralService referralService,
             CancellationToken ct) =>
         {
@@ -562,7 +674,7 @@ public static class ReferralEndpoints
                 return Results.BadRequest(new { error = "token is required." });
             try
             {
-                var result = await referralService.DeclineByTokenAsync(id, request.Token, ct);
+                var result = await referralService.DeclineByTokenAsync(id, request.Token, ct, declineNotes: request.DeclineNotes);
                 return Results.Ok(result);
             }
             catch (UnauthorizedAccessException ex)
@@ -575,6 +687,167 @@ public static class ReferralEndpoints
             }
         });
         // Note: no .RequireAuthorization — intentionally public, token-gated
+
+        // POST /api/referrals/{id}/complete-by-token
+        // Public, HMAC view-token gated. Completes the referral from the provider thread page.
+        group.MapPost("/{id:guid}/complete-by-token", async (
+            Guid id,
+            [FromBody] AcceptByTokenRequest request,
+            IReferralService referralService,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+            try
+            {
+                var result = await referralService.CompleteByTokenAsync(id, request.Token, ct);
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
+            }
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+
+        // POST /api/referrals/{id}/cancel-by-token
+        // Public, HMAC view-token gated. Cancels the referral from the provider thread page.
+        group.MapPost("/{id:guid}/cancel-by-token", async (
+            Guid id,
+            [FromBody] AcceptByTokenRequest request,
+            IReferralService referralService,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+            try
+            {
+                var result = await referralService.CancelByTokenAsync(id, request.Token, ct);
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
+            }
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+
+        // PATCH /api/referrals/{id}/treatment-type-by-token
+        // Public, view-token gated. Sets/clears the treatment type from the provider thread page.
+        group.MapPatch("/{id:guid}/treatment-type-by-token", async (
+            Guid                                   id,
+            [FromBody] UpdateTreatmentTypeByTokenRequest request,
+            IReferralService                       referralService,
+            CancellationToken                      ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+            try
+            {
+                var result = await referralService.UpdateTreatmentTypeByTokenAsync(
+                    id, request.Token, request.TreatmentTypeId, ct);
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized");
+            }
+            catch (NotFoundException ex)
+            {
+                return Results.NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
+            }
+            catch (ValidationException ex)
+            {
+                return Results.UnprocessableEntity(new { errors = ex.Errors });
+            }
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+    }
+
+    private static bool HasVerifiedScopeSelection(
+        ICurrentRequestContext ctx,
+        CreateReferralRequest request,
+        IConfiguration config)
+    {
+        if (!ctx.UserId.HasValue ||
+            !request.TenantId.HasValue ||
+            string.IsNullOrWhiteSpace(request.ReferrerScopeSignature))
+            return false;
+
+        var secret = config["PublicTrustBoundary:InternalRequestSecret"];
+        if (string.IsNullOrWhiteSpace(secret))
+            return false;
+
+        var data = BuildReferrerScopeSignaturePayload(
+            ctx.UserId.Value,
+            request.TenantId.Value);
+
+        return TryValidateHmac(data, request.ReferrerScopeSignature, secret);
+    }
+
+    private static string BuildReferrerScopeSignaturePayload(
+        Guid userId,
+        Guid tenantId) =>
+        $"{userId:D}:{tenantId:D}";
+
+    private static bool TryValidateHmac(string data, string sig, string secret)
+    {
+        try
+        {
+            byte[] sigBytes;
+            try { sigBytes = Convert.FromBase64String(sig); }
+            catch { return false; }
+
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+            var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(data));
+
+            return sigBytes.Length == expected.Length &&
+                   CryptographicOperations.FixedTimeEquals(expected, sigBytes);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static IReadOnlyList<Guid>? GetReferrerTenantScope(ICurrentRequestContext ctx)
+    {
+        var tenantIds = ctx.TenantIds
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        if (tenantIds.Count > 0)
+            return tenantIds;
+
+        return ctx.TenantId.HasValue
+            ? [ctx.TenantId.Value]
+            : null;
+    }
+
+    private static bool ShouldUseGlobalReferralLookup(ICurrentRequestContext ctx, bool isProviderOrg)
+    {
+        if (ctx.IsPlatformAdmin || isProviderOrg)
+            return true;
+
+        var tenantScope = GetReferrerTenantScope(ctx);
+        if (tenantScope is null || tenantScope.Count <= 1)
+            return false;
+
+        return ctx.ProductRoles.Any(role =>
+            role.EndsWith(":CARECONNECT_REFERRER", StringComparison.OrdinalIgnoreCase));
     }
 }
 

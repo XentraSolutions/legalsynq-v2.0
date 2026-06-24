@@ -574,7 +574,7 @@ Identity.Domain/
 Register all sets in `IdentityDbContext`. Apply configurations via `modelBuilder.ApplyConfigurationsFromAssembly(...)`. Keep one `IEntityTypeConfiguration<T>` file per entity.
 
 ### Many-to-Many Tables
-EF Core 8 supports skip navigations for clean many-to-many, but given the explicit join tables with payload columns, all joins are configured as explicit entity types with composite PKs:
+EF Core 10 supports skip navigations for clean many-to-many, but given the explicit join tables with payload columns, all joins are configured as explicit entity types with composite PKs:
 - `TenantProducts` (TenantId, ProductId) + `IsEnabled`, `EnabledAtUtc`
 - `OrganizationProducts` (OrganizationId, ProductId) + `IsEnabled`, `EnabledAtUtc`, `GrantedByUserId`
 - `RoleCapabilities` (ProductRoleId, CapabilityId) — pure join, no payload; could use EF skip navigation

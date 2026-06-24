@@ -31,7 +31,7 @@ public class AutoProvisionService : IAutoProvisionService
     private readonly IActivationRequestService     _activationRequests;
     private readonly IAuditEventClient             _auditClient;
     private readonly ILogger<AutoProvisionService> _logger;
-    private readonly string                        _appBaseUrl;
+    private readonly ReferralRuntimeOptions        _options;
     private readonly IHttpContextAccessor          _httpContextAccessor;
 
     public AutoProvisionService(
@@ -54,7 +54,7 @@ public class AutoProvisionService : IAutoProvisionService
         _activationRequests  = activationRequests;
         _auditClient         = auditClient;
         _logger              = logger;
-        _appBaseUrl          = (configuration["AppBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+        _options             = ReferralRuntimeOptions.FromConfiguration(configuration);
         _httpContextAccessor = httpContextAccessor;
     }
 
@@ -65,12 +65,30 @@ public class AutoProvisionService : IAutoProvisionService
         string            token,
         string?           requesterName,
         string?           requesterEmail,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string?           requesterFirstName = null,
+        string?           requesterLastName = null)
     {
-        // Step 1: Validate token and load referral
-        var tokenResult = _emailService.ValidateViewToken(token);
-        if (tokenResult is null || tokenResult.ReferralId != referralId)
+        // requesterFirstName/requesterLastName (new split-field input) take precedence;
+        // requesterName stays as a computed display fallback for the LSCC-009 admin queue
+        // and any caller that still only supplies a single string.
+        var hasSplitRequesterName = !string.IsNullOrWhiteSpace(requesterFirstName) || !string.IsNullOrWhiteSpace(requesterLastName);
+        if (hasSplitRequesterName)
         {
+            requesterName = string.Join(" ", new[] { requesterFirstName, requesterLastName }
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p!.Trim()));
+        }
+
+        // Step 1: Validate token and load referral
+        var tokenValidation = _emailService.ValidateViewTokenDetailed(token);
+        if (!tokenValidation.IsValid || tokenValidation.ReferralId != referralId)
+        {
+            LogPublicTokenFailure(
+                "auto-provision",
+                tokenValidation,
+                referralId,
+                failureReasonOverride: !tokenValidation.IsValid ? null : ReferralTokenFailureReasons.ReferralMismatch);
             _logger.LogWarning(
                 "LSCC-010 Auto-provision: invalid token for referral {ReferralId}.", referralId);
             return AutoProvisionResult.Fallback("Invalid activation token.");
@@ -83,8 +101,14 @@ public class AutoProvisionService : IAutoProvisionService
             return AutoProvisionResult.Fallback("Referral not found.");
         }
 
-        if (tokenResult.TokenVersion != referral.TokenVersion)
+        if (tokenValidation.TokenVersion != referral.TokenVersion)
         {
+            LogPublicTokenFailure(
+                "auto-provision",
+                tokenValidation,
+                referralId,
+                currentReferralTokenVersion: referral.TokenVersion,
+                failureReasonOverride: ReferralTokenFailureReasons.Revoked);
             _logger.LogWarning(
                 "LSCC-010 Auto-provision: token version mismatch for referral {ReferralId}.", referralId);
             return AutoProvisionResult.Fallback("Activation token has been revoked.");
@@ -122,7 +146,7 @@ public class AutoProvisionService : IAutoProvisionService
 
         // Step 4: Create/resolve Identity Organization
         var orgId = await _identityOrgs.EnsureProviderOrganizationAsync(
-            referral.TenantId, provider.Id, provider.Name, ct);
+            referral.TenantId, provider.Id, provider.Name, ct: ct);
 
         if (orgId is null)
         {
@@ -165,7 +189,7 @@ public class AutoProvisionService : IAutoProvisionService
         // and the activation request will still exist in the LSCC-009 queue. A platform
         // admin can resend the invitation from Identity. We never block the provision.
         var (invitationSent, userAlreadyExisted, identityUserId) = await TryInviteProviderUserAsync(
-            orgId.Value, requesterEmail, requesterName, ct);
+            orgId.Value, requesterEmail, requesterName, ct, requesterFirstName, requesterLastName);
 
         // CC2-INT-B06-02: Transition to COMMON_PORTAL stage.
         // EF identity resolution means `provider` is the same tracked entity that
@@ -246,7 +270,9 @@ public class AutoProvisionService : IAutoProvisionService
         Guid              orgId,
         string?           email,
         string?           requesterName,
-        CancellationToken ct)
+        CancellationToken ct,
+        string?           requesterFirstName = null,
+        string?           requesterLastName = null)
     {
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -257,18 +283,39 @@ public class AutoProvisionService : IAutoProvisionService
 
         try
         {
-            // Split requesterName into first/last (best-effort)
-            var firstName = "Provider";
-            var lastName  = default(string?);
-            if (!string.IsNullOrWhiteSpace(requesterName))
+            // Prefer the explicit firstName/lastName fields supplied by the caller — avoids
+            // the ambiguity of guessing where a single full name string should be split
+            // (e.g. "Mary Jane Watson" or multi-word last names). Only fall back to the
+            // best-effort single-space split when the caller only has one combined string.
+            string firstName;
+            string? lastName;
+            if (!string.IsNullOrWhiteSpace(requesterFirstName) || !string.IsNullOrWhiteSpace(requesterLastName))
             {
-                var parts = requesterName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-                firstName = parts[0];
-                lastName  = parts.Length > 1 ? parts[1] : null;
+                firstName = string.IsNullOrWhiteSpace(requesterFirstName) ? "Provider" : requesterFirstName.Trim();
+                lastName  = string.IsNullOrWhiteSpace(requesterLastName) ? null : requesterLastName.Trim();
+            }
+            else
+            {
+                firstName = "Provider";
+                lastName  = null;
+                if (!string.IsNullOrWhiteSpace(requesterName))
+                {
+                    var parts = requesterName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                    firstName = parts[0];
+                    lastName  = parts.Length > 1 ? parts[1] : null;
+                }
             }
 
             var result = await _identityOrgs.InviteProviderUserAsync(orgId, email, firstName, lastName, ct);
             if (result is null) return (false, false, null);
+
+            if (result.IsOwnerBlocked)
+            {
+                _logger.LogWarning(
+                    "CC2-INT-B04 User invitation skipped for org {OrgId} \u2014 email belongs to tenant owner. Non-fatal, provision continues.",
+                    orgId);
+                return (false, false, null);
+            }
 
             return (result.InvitationSent, !result.IsNew, result.UserId);
         }
@@ -283,7 +330,25 @@ public class AutoProvisionService : IAutoProvisionService
     private string BuildLoginUrl(Guid referralId)
     {
         var returnTo = Uri.EscapeDataString($"/careconnect/referrals/{referralId}");
-        return $"{_appBaseUrl}/login?returnTo={returnTo}&reason=activation-complete";
+        return $"{_options.AppBaseUrl}/login?returnTo={returnTo}&reason=activation-complete";
+    }
+
+    private void LogPublicTokenFailure(
+        string surface,
+        ReferralTokenValidationOutcome tokenValidation,
+        Guid? requestedReferralId,
+        int? currentReferralTokenVersion = null,
+        string? failureReasonOverride = null)
+    {
+        var failureReason = failureReasonOverride ?? tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed;
+        _logger.LogWarning(
+            "Public referral token rejected on surface {Surface}. FailureReason={FailureReason} RequestedReferralId={RequestedReferralId} TokenReferralId={TokenReferralId} TokenVersion={TokenVersion} CurrentReferralTokenVersion={CurrentReferralTokenVersion}",
+            surface,
+            failureReason,
+            requestedReferralId,
+            tokenValidation.ReferralId,
+            tokenValidation.TokenVersion,
+            currentReferralTokenVersion);
     }
 
     private static string? BuildClientName(Domain.Referral referral)

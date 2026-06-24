@@ -26,7 +26,7 @@ public class NotificationRepository : INotificationRepository
 
     public async Task<Notification> CreateAsync(Notification notification)
     {
-        notification.Id = notification.Id == Guid.Empty ? Guid.NewGuid() : notification.Id;
+        notification.Id = notification.Id == Guid.Empty ? Guid.CreateVersion7() : notification.Id;
         notification.CreatedAt = DateTime.UtcNow;
         notification.UpdatedAt = DateTime.UtcNow;
         _db.Notifications.Add(notification);

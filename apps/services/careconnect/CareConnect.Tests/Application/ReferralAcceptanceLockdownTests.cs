@@ -142,7 +142,7 @@ public class ReferralAcceptanceLockdownTests
     {
         // LSCC-01-002-01: /referrals/view now routes both pending and active to login.
         // The returnTo is always /careconnect/referrals/{id} regardless of provider state.
-        var referralId = Guid.NewGuid();
+        var referralId = Guid.CreateVersion7();
         var returnToPending = Uri.EscapeDataString($"/careconnect/referrals/{referralId}");
         var returnToActive  = Uri.EscapeDataString($"/careconnect/referrals/{referralId}");
         Assert.Equal(returnToPending, returnToActive);

@@ -593,7 +593,7 @@ public sealed class SmsGovernancePolicyService : ISmsGovernancePolicyService
 
             _db.SmsGovernanceDecisions.Add(new SmsGovernanceDecision
             {
-                Id                   = Guid.NewGuid(),
+                Id                   = Guid.CreateVersion7(),
                 NotificationId       = request.NotificationId,
                 AttemptId            = request.AttemptId,
                 TenantId             = request.TenantId,
