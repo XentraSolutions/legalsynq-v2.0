@@ -418,6 +418,76 @@ Update an existing case.
 
 ---
 
+### POST `/api/liens/cases/upload/document`
+
+Legacy-compatible case document upload endpoint.
+
+**Permission:** `SYNQ_LIENS.case:update`
+
+**Content-Type:** `multipart/form-data`
+
+**Form Fields:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `file` | file | Yes | Document file. Allowed extensions: `.pdf`, `.jpg`, `.jpeg`, `.png`, `.docx`, `.xlsx`, `.xls`, `.csv`. Maximum size: 50 MB. |
+| `caseId` | `guid` | Yes | Case identifier to link the uploaded document to. |
+| `DocFileTypeId` | `string` | No | Legacy document type ID. Preserved in local metadata; UUID values are forwarded to Documents as `documentTypeId`. |
+| `DocName` | `string` | No | Document title. Defaults to the uploaded filename without extension. |
+| `DocDescription` | `string` | No | Document description. Defaults to the file extension label. |
+
+Uploads the file to the Documents service and records legacy document metadata as a `LegacyCaseDocument` servicing item for compatibility with existing case document lookups.
+
+**Response:** `200 OK`
+
+```json
+{
+  "isSuccess": true,
+  "message": "Successfully uploaded document.",
+  "data": {
+    "url": "/documents/{documentId}",
+    "documentId": "guid"
+  }
+}
+```
+
+---
+
+### POST `/api/liens/cases/liens/upload/document`
+
+Legacy-compatible lien document upload endpoint.
+
+**Permission:** `SYNQ_LIENS.lien:update`
+
+**Content-Type:** `multipart/form-data`
+
+**Form Fields:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `file` | file | Yes | Document file. Allowed extensions: `.pdf`, `.jpg`, `.jpeg`, `.png`, `.docx`, `.xlsx`, `.xls`, `.csv`. Maximum size: 50 MB. |
+| `liensId` | `guid` | Yes | Lien identifier to link the uploaded document to. `lienId` is also accepted. |
+| `DocFileTypeId` | `string` | No | Legacy document type ID. Preserved in local metadata; UUID values are forwarded to Documents as `documentTypeId`. |
+| `DocName` | `string` | No | Document title. Defaults to the uploaded filename without extension. |
+| `DocDescription` | `string` | No | Document description. Defaults to the file extension label. |
+
+Uploads the file to the Documents service and records legacy document metadata as a `LegacyLienDocument` servicing item.
+
+**Response:** `200 OK`
+
+```json
+{
+  "isSuccess": true,
+  "message": "Successfully uploaded document.",
+  "data": {
+    "url": "/documents/{documentId}",
+    "documentId": "guid"
+  }
+}
+```
+
+---
+
 ### CaseResponse
 
 | Field | Type | Nullable | Description |

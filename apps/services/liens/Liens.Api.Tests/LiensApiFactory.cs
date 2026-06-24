@@ -1,3 +1,4 @@
+using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
@@ -72,6 +73,10 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IAuditPublisher>();
             services.AddSingleton<CapturingAuditPublisher>();
             services.AddSingleton<IAuditPublisher>(sp => sp.GetRequiredService<CapturingAuditPublisher>());
+
+            services.RemoveAll<ILegacyDocumentUploadClient>();
+            services.AddSingleton<CapturingLegacyDocumentUploadClient>();
+            services.AddSingleton<ILegacyDocumentUploadClient>(sp => sp.GetRequiredService<CapturingLegacyDocumentUploadClient>());
         });
     }
 }
@@ -184,3 +189,48 @@ internal sealed record CapturedAuditEvent(
     string? After,
     string? Metadata,
     DateTimeOffset OccurredAtUtc);
+
+internal sealed class CapturingLegacyDocumentUploadClient : ILegacyDocumentUploadClient
+{
+    private readonly List<CapturedLegacyDocumentUpload> _uploads = [];
+
+    public IReadOnlyList<CapturedLegacyDocumentUpload> Uploads => _uploads;
+
+    public void Clear() => _uploads.Clear();
+
+    public Task<LegacyDocumentUploadResult> UploadAsync(
+        LegacyDocumentUploadRequest request,
+        CancellationToken ct = default)
+    {
+        var documentId = Guid.CreateVersion7();
+        _uploads.Add(new CapturedLegacyDocumentUpload(
+            request.TenantId,
+            request.ActingUserId,
+            request.ReferenceId,
+            request.ReferenceType,
+            request.DocumentTypeId,
+            request.Title,
+            request.FileName,
+            request.ContentType,
+            request.Length,
+            documentId));
+
+        return Task.FromResult(new LegacyDocumentUploadResult
+        {
+            DocumentId = documentId,
+            Url = $"/documents/{documentId}",
+        });
+    }
+}
+
+internal sealed record CapturedLegacyDocumentUpload(
+    Guid TenantId,
+    Guid ActingUserId,
+    Guid ReferenceId,
+    string ReferenceType,
+    Guid DocumentTypeId,
+    string Title,
+    string FileName,
+    string ContentType,
+    long Length,
+    Guid DocumentId);
