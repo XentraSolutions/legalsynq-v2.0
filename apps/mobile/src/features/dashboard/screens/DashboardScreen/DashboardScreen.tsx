@@ -6,11 +6,19 @@ import Svg, { Circle, Defs, LinearGradient, Path, Polyline, Stop } from 'react-n
 import { useAtom } from 'jotai';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
 
-import { useDashboardPiechart } from '@/features/dashboard/hooks';
+import {
+  useDashboardLawFirmCaseReport,
+  useDashboardMedicalProviderReport,
+  useDashboardPiechart,
+} from '@/features/dashboard/hooks';
 import { AppMenu } from '@/shared/components/AppMenu';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import type { DashboardPiechart } from '@/shared/api/endpoints/Cases';
+import type {
+  DashboardPiechart,
+  DashboardLawFirmCaseReportRow,
+  DashboardMedicalProviderReportRow,
+} from '@/shared/api/endpoints/Cases';
 
 interface StatCardData {
   label: string;
@@ -275,6 +283,8 @@ function SellingDashboard({ isDark }: { isDark: boolean }) {
   );
 }
 
+const SLICE_COLORS = [BLUE, ORANGE, GREEN, YELLOW, RED];
+
 function mapPiechartToLienSlices(data: DashboardPiechart): DonutSlice[] {
   const total = data.totalLiens || 1;
   const closedCount = data.lienStatus
@@ -306,11 +316,99 @@ function formatCurrency(value: number): string {
   return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
+function numericValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function getLawFirmCaseCount(row: DashboardLawFirmCaseReportRow): number {
+  return numericValue(row.totalCases)
+    ?? numericValue(row.totalCase)
+    ?? numericValue(row.caseCount)
+    ?? numericValue(row.cases)
+    ?? numericValue(row.count)
+    ?? numericValue(row.total)
+    ?? numericValue(row.value)
+    ?? 0;
+}
+
+function getLawFirmLabel(row: DashboardLawFirmCaseReportRow): string {
+  return row.lawFirm ?? row.lawfirm ?? row.lawFirmName ?? row.name ?? row.label ?? 'Unknown Law Firm';
+}
+
+function getMedicalProviderCaseCount(row: DashboardMedicalProviderReportRow): number {
+  return numericValue(row.totalCases)
+    ?? numericValue(row.totalCase)
+    ?? numericValue(row.caseCount)
+    ?? numericValue(row.cases)
+    ?? numericValue(row.count)
+    ?? numericValue(row.total)
+    ?? numericValue(row.value)
+    ?? 0;
+}
+
+function getMedicalProviderLabel(row: DashboardMedicalProviderReportRow): string {
+  return row.facilityName
+    ?? row.medicalProvider
+    ?? row.medicalprovider
+    ?? row.medicalProviderName
+    ?? row.providerName
+    ?? row.name
+    ?? row.label
+    ?? 'Unknown Facility';
+}
+
+function mapAllocationReportToSlices<Row>(
+  rows: Row[],
+  getLabel: (row: Row) => string,
+  getCount: (row: Row) => number,
+): DonutSlice[] {
+  const rowsWithCounts = rows
+    .map((row) => ({ label: getLabel(row), count: getCount(row) }))
+    .filter((row) => row.count > 0);
+  const total = rowsWithCounts.reduce((sum, row) => sum + row.count, 0) || 1;
+
+  return rowsWithCounts.map((row, index) => {
+    const pct = (row.count / total) * 100;
+    return {
+      label: row.label,
+      value: row.count,
+      amount: row.count.toLocaleString(),
+      percent: `(${pct.toFixed(2)}%)`,
+      color: SLICE_COLORS[index % SLICE_COLORS.length],
+    };
+  });
+}
+
 function BuyingDashboard({ isDark }: { isDark: boolean }) {
   const { data: piechartData } = useDashboardPiechart();
+  const { data: lawFirmReport = [] } = useDashboardLawFirmCaseReport();
+  const { data: medicalProviderReport = [] } = useDashboardMedicalProviderReport();
   const lienSlices = piechartData ? mapPiechartToLienSlices(piechartData) : BUYING_TOTAL_LIENS;
   const totalLiens = piechartData ? String(piechartData.totalLiens) : '239';
   const totalLienValue = piechartData ? formatCurrency(piechartData.totalLienValue) : '$2,287,386.12';
+  const lawFirmReportSlices = mapAllocationReportToSlices(lawFirmReport, getLawFirmLabel, getLawFirmCaseCount);
+  const lawFirmAllocationSlices = lawFirmReportSlices.length > 0 ? lawFirmReportSlices : LAW_FIRM_ALLOCATION;
+  const lawFirmTotalCases = lawFirmReportSlices.length > 0
+    ? lawFirmReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
+    : '175';
+  const facilityReportSlices = mapAllocationReportToSlices(
+    medicalProviderReport,
+    getMedicalProviderLabel,
+    getMedicalProviderCaseCount,
+  );
+  const facilityAllocationSlices = facilityReportSlices.length > 0 ? facilityReportSlices : FACILITY_ALLOCATION;
+  const facilityTotalCases = facilityReportSlices.length > 0
+    ? facilityReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
+    : '239';
 
   return (
     <>
@@ -338,19 +436,19 @@ function BuyingDashboard({ isDark }: { isDark: boolean }) {
       />
       <DonutCard
         centerCaption="Total Cases"
-        centerValue="175"
+        centerValue={lawFirmTotalCases}
         icon="time-outline"
         isDark={isDark}
-        slices={LAW_FIRM_ALLOCATION}
+        slices={lawFirmAllocationSlices}
         subtitle="Distribution of total case volume across assigned legal firms."
         title="Law Firm Case Allocation"
       />
       <DonutCard
         centerCaption="Total Cases"
-        centerValue="239"
+        centerValue={facilityTotalCases}
         icon="time-outline"
         isDark={isDark}
-        slices={FACILITY_ALLOCATION}
+        slices={facilityAllocationSlices}
         subtitle="Distribution of total case volume across assigned healthcare facilities."
         title="Medical Facility Case Allocation"
       />

@@ -20,37 +20,37 @@ export const lienKeys = {
 
 export const LiensApi = {
   async listLiens(params: LienQueryParams): Promise<PagedResult<Lien>> {
-    const response = await apiClient.get<PagedResult<Lien>>('/api/liens', { params });
+    const response = await apiClient.get<PagedResult<Lien>>('/liens/api/liens', { params });
     return response.data;
   },
 
   async getLien(id: string): Promise<Lien> {
-    const response = await apiClient.get<Lien>(`/api/liens/${id}`);
+    const response = await apiClient.get<Lien>(`/liens/api/liens/${id}`);
     return response.data;
   },
 
   async createLien(body: CreateLienRequest): Promise<Lien> {
-    const response = await apiClient.post<Lien>('/api/liens', body);
+    const response = await apiClient.post<Lien>('/liens/api/liens', body);
     return response.data;
   },
 
   async updateLien(id: string, body: UpdateLienRequest): Promise<Lien> {
-    const response = await apiClient.put<Lien>(`/api/liens/${id}`, body);
+    const response = await apiClient.put<Lien>(`/liens/api/liens/${id}`, body);
     return response.data;
   },
 
   async getLienStatusHistory(id: string): Promise<StatusHistoryEntry[]> {
-    const response = await apiClient.get<StatusHistoryEntry[]>(`/api/liens/${id}/status-history`);
+    const response = await apiClient.get<StatusHistoryEntry[]>(`/liens/api/liens/${id}/status-history`);
     return response.data;
   },
 
   async getLienOffers(lienId: string): Promise<Offer[]> {
-    const response = await apiClient.get<Offer[]>(`/api/liens/${lienId}/offers`);
+    const response = await apiClient.get<Offer[]>(`/liens/api/liens/${lienId}/offers`);
     return response.data;
   },
 
   async makeOffer(lienId: string, body: MakeOfferRequest): Promise<Offer> {
-    const response = await apiClient.post<Offer>(`/api/liens/${lienId}/offers`, body);
+    const response = await apiClient.post<Offer>(`/liens/api/liens/${lienId}/offers`, body);
     return response.data;
   },
 
@@ -59,11 +59,11 @@ export const LiensApi = {
     offerId: string,
     body: UpdateOfferRequest
   ): Promise<Offer> {
-    const response = await apiClient.patch<Offer>(`/api/liens/${lienId}/offers/${offerId}`, body);
+    const response = await apiClient.patch<Offer>(`/liens/api/liens/${lienId}/offers/${offerId}`, body);
     return response.data;
   },
 
   async withdrawOffer(lienId: string, offerId: string): Promise<void> {
-    await apiClient.delete(`/api/liens/${lienId}/offers/${offerId}`);
+    await apiClient.delete(`/liens/api/liens/${lienId}/offers/${offerId}`);
   },
 };

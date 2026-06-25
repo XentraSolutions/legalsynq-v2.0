@@ -67,3 +67,54 @@ export const dashboardPiechartSchema = z.object({
   caseStatus: z.array(piechartStatusSchema),
   lienStatus: z.array(piechartStatusSchema),
 });
+
+export const dashboardTaskSummarySchema = z.object({
+  totalTasks: z.number(),
+  overdue: z.number(),
+  dueToday: z.number(),
+});
+
+export const reportFilterRequestSchema = z.object({
+  page: z.number().int().positive().optional(),
+  limit: z.number().int().positive().optional(),
+  filterType: z.string().optional(),
+  filterId: z.string().optional(),
+});
+
+const reportNumericSchema = z.union([z.number(), z.string()]);
+
+export const dashboardLawFirmCaseReportRowSchema = z.object({
+  lawFirm: z.string().optional(),
+  lawfirm: z.string().optional(),
+  lawFirmName: z.string().optional(),
+  name: z.string().optional(),
+  label: z.string().optional(),
+  totalCases: reportNumericSchema.optional(),
+  totalCase: reportNumericSchema.optional(),
+  caseCount: reportNumericSchema.optional(),
+  cases: reportNumericSchema.optional(),
+  count: reportNumericSchema.optional(),
+  total: reportNumericSchema.optional(),
+  value: reportNumericSchema.optional(),
+  percentage: reportNumericSchema.optional(),
+  percent: z.union([z.number(), z.string()]).optional(),
+}).passthrough();
+
+export const dashboardMedicalProviderReportRowSchema = z.object({
+  medicalProvider: z.string().optional(),
+  medicalprovider: z.string().optional(),
+  medicalProviderName: z.string().optional(),
+  facilityName: z.string().optional(),
+  providerName: z.string().optional(),
+  name: z.string().optional(),
+  label: z.string().optional(),
+  totalCases: reportNumericSchema.optional(),
+  totalCase: reportNumericSchema.optional(),
+  caseCount: reportNumericSchema.optional(),
+  cases: reportNumericSchema.optional(),
+  count: reportNumericSchema.optional(),
+  total: reportNumericSchema.optional(),
+  value: reportNumericSchema.optional(),
+  percentage: reportNumericSchema.optional(),
+  percent: z.union([z.number(), z.string()]).optional(),
+}).passthrough();

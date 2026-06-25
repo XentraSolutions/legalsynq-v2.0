@@ -6,9 +6,13 @@ import type {
   caseSchema,
   caseStatusSchema,
   dashboardPiechartSchema,
+  dashboardLawFirmCaseReportRowSchema,
+  dashboardMedicalProviderReportRowSchema,
+  dashboardTaskSummarySchema,
   linkedLienSchema,
   noteSchema,
   piechartStatusSchema,
+  reportFilterRequestSchema,
   updateCaseStatusRequestSchema,
 } from './schemas';
 
@@ -21,3 +25,7 @@ export type LinkedLien = z.infer<typeof linkedLienSchema>;
 export type UpdateCaseStatusRequest = z.infer<typeof updateCaseStatusRequestSchema>;
 export type PiechartStatus = z.infer<typeof piechartStatusSchema>;
 export type DashboardPiechart = z.infer<typeof dashboardPiechartSchema>;
+export type DashboardLawFirmCaseReportRow = z.infer<typeof dashboardLawFirmCaseReportRowSchema>;
+export type DashboardMedicalProviderReportRow = z.infer<typeof dashboardMedicalProviderReportRowSchema>;
+export type DashboardTaskSummary = z.infer<typeof dashboardTaskSummarySchema>;
+export type ReportFilterRequest = z.infer<typeof reportFilterRequestSchema>;

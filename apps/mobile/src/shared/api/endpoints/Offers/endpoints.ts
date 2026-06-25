@@ -11,22 +11,22 @@ export const offerKeys = {
 
 export const OffersApi = {
   async listOffers(params: OfferQueryParams): Promise<PagedResult<Offer>> {
-    const response = await apiClient.get<PagedResult<Offer>>('/api/liens/offers', { params });
+    const response = await apiClient.get<PagedResult<Offer>>('/liens/api/liens/offers', { params });
     return response.data;
   },
 
   async getOffer(id: string): Promise<Offer> {
-    const response = await apiClient.get<Offer>(`/api/liens/offers/${id}`);
+    const response = await apiClient.get<Offer>(`/liens/api/liens/offers/${id}`);
     return response.data;
   },
 
   async acceptOffer(id: string, body: OfferActionRequest = {}): Promise<Offer> {
-    const response = await apiClient.patch<Offer>(`/api/liens/offers/${id}/accept`, body);
+    const response = await apiClient.patch<Offer>(`/liens/api/liens/offers/${id}/accept`, body);
     return response.data;
   },
 
   async declineOffer(id: string, body: OfferActionRequest = {}): Promise<Offer> {
-    const response = await apiClient.patch<Offer>(`/api/liens/offers/${id}/decline`, body);
+    const response = await apiClient.patch<Offer>(`/liens/api/liens/offers/${id}/decline`, body);
     return response.data;
   },
 };
