@@ -59,7 +59,12 @@ module.exports = {
         surface: {
           DEFAULT: '#ffffff',
           secondary: '#f8fafc',
-          tertiary: '#f1f5f9',
+          tertiary: '#F5F5F5',
+        },
+        'surface-dark': {
+          DEFAULT: '#ffffff',
+          secondary: '#f8fafc',
+          tertiary: '#262626',
         },
         background: {
           DEFAULT: '#f8fafc',

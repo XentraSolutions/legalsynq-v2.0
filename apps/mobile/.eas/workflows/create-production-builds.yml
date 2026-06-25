@@ -17,4 +17,5 @@ jobs:
     needs: [build_ios]
     params:
       platform: ios
+      build_id: ${{ needs.build_ios.outputs.build_id }}
       profile: production
