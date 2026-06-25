@@ -6,17 +6,25 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "development",
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "qa",
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net"
+      }
     },
     "qa": {
       "autoIncrement": true,
       "channel": "qa",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "qa",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net/identity/api"
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net"
       }
     },
     "production": {
@@ -24,12 +32,20 @@
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net/identity/api"
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net"
       }
     }
   },
   "submit": {
-    "qa": {},
-    "production": {}
+    "qa": {
+      "ios": {
+        "ascAppId": "6783912563"
+      }
+    },
+    "production": {
+      "ios": {
+        "ascAppId": "6783912563"
+      }
+    }
   }
 }

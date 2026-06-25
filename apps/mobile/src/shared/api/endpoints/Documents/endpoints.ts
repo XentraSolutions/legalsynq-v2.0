@@ -4,14 +4,14 @@ import type { UploadedDocument } from './types';
 
 export const DocumentsApi = {
   async uploadDocument(formData: FormData): Promise<UploadedDocument> {
-    const response = await apiClient.post<UploadedDocument>('/documents', formData, {
+    const response = await apiClient.post<UploadedDocument>('/api/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
   },
 
   async getDocumentDownloadUrl(id: string): Promise<string> {
-    const response = await apiClient.get<string>(`/documents/${id}/content`);
+    const response = await apiClient.get<string>(`/api/documents/${id}/content`);
     return response.data;
   },
 };

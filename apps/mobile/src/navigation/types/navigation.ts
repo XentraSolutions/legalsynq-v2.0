@@ -11,6 +11,7 @@ export type AuthStackParamList = {
 };
 
 export type MainStackParamList = {
+  Tabs: undefined;
   Dashboard: undefined;
   Marketplace: undefined;
   Offers: undefined;

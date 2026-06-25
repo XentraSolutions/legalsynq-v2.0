@@ -3,7 +3,7 @@ import type { PagedResult } from '@/shared/types/api';
 
 import type { AddCaseNoteRequest, Case, CaseQueryParams, Note } from './types';
 
-const CASES_BASE_PATH = '/liens/cases';
+const CASES_BASE_PATH = '/api/liens/cases';
 
 export const caseKeys = {
   all: ['cases'] as const,

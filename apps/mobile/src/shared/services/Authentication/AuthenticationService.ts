@@ -4,6 +4,7 @@ import { AuthenticationApi, type LoginResponse } from '@/shared/api/endpoints/Au
 import { STORAGE_KEYS } from '@/shared/constants/storageKeys';
 import { authAtom } from '@/shared/state/atoms/authAtom';
 import { SecureStorageService } from '@/shared/services/SecureStorage';
+import { StorageService } from '@/shared/services/Storage';
 import type { UserSession } from '@/shared/types/auth';
 
 import { AuthenticationAdapter } from './AuthenticationAdapter';
@@ -11,7 +12,10 @@ import { AuthenticationAdapter } from './AuthenticationAdapter';
 const store = getDefaultStore();
 
 async function clearSession(): Promise<void> {
-  await SecureStorageService.clearAll();
+  await Promise.all([
+    SecureStorageService.clearAll(),
+    StorageService.removeItem(STORAGE_KEYS.USER_SESSION),
+  ]);
   store.set(authAtom, {
     user: null,
     token: null,
@@ -25,7 +29,7 @@ async function persistSession(response: LoginResponse): Promise<UserSession> {
 
   await Promise.all([
     SecureStorageService.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.accessToken),
-    SecureStorageService.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(user)),
+    StorageService.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(user)),
   ]);
 
   store.set(authAtom, authState);
@@ -47,7 +51,7 @@ export const AuthenticationService = {
   },
 
   async getSession(): Promise<UserSession | null> {
-    const serializedSession = await SecureStorageService.getItem(STORAGE_KEYS.USER_SESSION);
+    const serializedSession = await StorageService.getItem(STORAGE_KEYS.USER_SESSION);
     if (!serializedSession) {
       return null;
     }

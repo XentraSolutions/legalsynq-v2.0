@@ -1,7 +1,7 @@
 import { DEFAULT_FEATURE_FLAGS } from '@/shared/constants/featureFlags';
 import type { Environment, FeatureFlags } from '@/shared/types/common';
 
-const DEFAULT_API_URL = 'http://localhost:5010/api';
+const DEFAULT_API_URL = 'https://core-qa.legalsynq.net';
 
 function readEnv(name: string): string | undefined {
   return process.env[name];

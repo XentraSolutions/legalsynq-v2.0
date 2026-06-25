@@ -13,7 +13,7 @@ const Stack = createNativeStackNavigator<MainStackParamList>();
 export function MainStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen component={BottomTabNavigator} name="Dashboard" />
+      <Stack.Screen component={BottomTabNavigator} name="Tabs" />
       <Stack.Screen component={LienDetailScreen} name="LienDetail" />
       <Stack.Screen component={SellLienScreen} name="SellLien" />
       <Stack.Screen component={MyLiensScreen} name="MyLiens" />
