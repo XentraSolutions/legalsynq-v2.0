@@ -47,7 +47,7 @@ export const contactsApi = {
   },
 
   delete(id: string) {
-    return apiClient.delete<ContactResponseDto>(`${BASE}/delete/${id}`);
+    return apiClient.delete<ContactResponseDto>(`/lien/contact/delete/${id}`);
   },
 
   export(contactType: string) {
