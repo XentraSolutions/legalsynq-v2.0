@@ -11,11 +11,25 @@
     "preview": {
       "distribution": "internal"
     },
+    "qa": {
+      "autoIncrement": true,
+      "channel": "qa",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "qa",
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net/identity/api"
+      }
+    },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net/identity/api"
+      }
     }
   },
   "submit": {
+    "qa": {},
     "production": {}
   }
 }

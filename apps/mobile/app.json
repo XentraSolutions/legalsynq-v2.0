@@ -16,7 +16,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/images/adaptive-icon.png",
-        "backgroundColor": "#2563eb"
+        "backgroundColor": "#0d1f35"
       },
       "package": "com.legalsynq",
       "permissions": [
@@ -32,9 +32,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#2563eb",
+          "backgroundColor": "#0d1f35",
           "image": "./src/assets/images/splash.png",
-          "imageWidth": 200,
+          "imageWidth": 300,
           "resizeMode": "contain"
         }
       ]

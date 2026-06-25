@@ -15,13 +15,6 @@ export interface UserSession {
   tenantId: string;
 }
 
-export interface SessionEnvelope {
-  user: UserSession;
-  issuedAt: string;
-  expiresAt: string;
-  tenantId: string;
-}
-
 export interface AuthState {
   user: UserSession | null;
   token: string | null;

@@ -37,10 +37,11 @@ The app has its own `pnpm-lock.yaml` and local `pnpm-workspace.yaml` because it 
 
 ## Environment
 
-The mobile app reads the backend API base URL from:
+The mobile app reads public runtime configuration from:
 
-```bash
+```text
 EXPO_PUBLIC_API_URL
+EXPO_PUBLIC_APP_ENV
 ```
 
 Default value:
@@ -49,19 +50,24 @@ Default value:
 http://localhost:5010/api
 ```
 
+Current EAS build values:
+
+| Environment | `EXPO_PUBLIC_APP_ENV` | `EXPO_PUBLIC_API_URL` |
+| --- | --- | --- |
+| QA | `qa` | `https://core-qa.legalsynq.net/identity/api` |
+| Production | `production` | `https://core-qa.legalsynq.net/identity/api` |
+
+`EXPO_PUBLIC_*` values are bundled into the app binary and must not contain secrets.
+
 Example local run against the gateway:
 
 ```bash
 EXPO_PUBLIC_API_URL=http://localhost:5010/api pnpm --dir apps/mobile dev
 ```
 
-In development, login falls back to a demo session if the gateway authentication API is unavailable. Use:
+Login always calls the configured authentication API. No local demo credentials or offline auth fallback are provided.
 
-```text
-Email: demo@legalsynq.com
-Password: password123
-Tenant: demo
-```
+The configured auth login URL is `${EXPO_PUBLIC_API_URL}/auth/login`.
 
 ## Run The App
 
@@ -158,28 +164,54 @@ cd apps/mobile
 eas build:configure
 ```
 
-Build Android:
+Build Android with the default profile:
 
 ```bash
 cd apps/mobile
 eas build --platform android
 ```
 
-Build iOS:
+Build iOS with the default profile:
 
 ```bash
 cd apps/mobile
 eas build --platform ios
 ```
 
-Build both platforms:
+Build both platforms with the default profile:
 
 ```bash
 cd apps/mobile
 eas build --platform all
 ```
 
-No `eas.json` is currently checked in, so `eas build:configure` is required before first cloud build.
+Build QA iOS:
+
+```bash
+cd apps/mobile
+eas build --platform ios --profile qa
+```
+
+Build production iOS:
+
+```bash
+cd apps/mobile
+eas build --platform ios --profile production
+```
+
+## EAS Workflows
+
+QA builds use `apps/mobile/.eas/workflows/create-qa-builds.yml`.
+
+- Trigger: push to `main`
+- Build profile: `qa`
+- Submit profile: `qa`
+
+Production builds use `apps/mobile/.eas/workflows/create-production-builds.yml`.
+
+- Trigger: manual `workflow_dispatch`
+- Build profile: `production`
+- Submit profile: `production`
 
 ## Install A Build
 

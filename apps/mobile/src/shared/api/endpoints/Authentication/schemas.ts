@@ -22,16 +22,30 @@ export const userSessionSchema = z.object({
   tenantId: z.string(),
 });
 
-export const sessionEnvelopeSchema = z.object({
-  user: userSessionSchema,
-  issuedAt: z.string(),
-  expiresAt: z.string(),
+export const loginUserResponseSchema = z.object({
+  id: z.string(),
   tenantId: z.string(),
+  email: z.string().email(),
+  firstName: z.string(),
+  lastName: z.string(),
+  isActive: z.boolean(),
+  roles: z.array(z.string()),
+  organizationId: z.string().nullable().optional(),
+  orgType: z.string().nullable().optional(),
+  productRoles: z.array(z.string()).nullable().optional(),
+  avatarDocumentId: z.string().nullable().optional(),
+});
+
+export const tenantSummarySchema = z.object({
+  tenantId: z.string(),
+  tenantCode: z.string(),
 });
 
 export const loginResponseSchema = z.object({
   accessToken: z.string(),
-  sessionEnvelope: sessionEnvelopeSchema,
+  expiresAtUtc: z.string(),
+  user: loginUserResponseSchema,
+  tenants: z.array(tenantSummarySchema).nullable().optional(),
 });
 
 export {

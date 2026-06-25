@@ -29,13 +29,15 @@ function headerValue(headers: AxiosResponse['headers'] | undefined, name: string
 function toApiError(error: AxiosError): ApiError {
   const data = error.response?.data as Partial<{
     code: string;
+    detail: string;
     message: string;
+    title: string;
     details: unknown;
   }>;
 
   return new ApiError({
-    code: data?.code ?? 'API_ERROR',
-    message: data?.message ?? error.message ?? 'Unexpected API error',
+    code: data?.code ?? data?.title ?? 'API_ERROR',
+    message: data?.message ?? data?.detail ?? data?.title ?? error.message ?? 'Unexpected API error',
     statusCode: error.response?.status,
     correlationId: headerValue(error.response?.headers, 'x-correlation-id'),
     details: data?.details ?? data,

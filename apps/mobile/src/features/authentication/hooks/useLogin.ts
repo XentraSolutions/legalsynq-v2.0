@@ -11,7 +11,7 @@ export function useLogin() {
     }: {
       email: string;
       password: string;
-      tenantCode?: string;
+      tenantCode: string;
     }) => AuthenticationService.login(email, password, tenantCode),
   });
 }

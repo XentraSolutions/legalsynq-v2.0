@@ -9,7 +9,7 @@ export function States() {
     <View className="gap-4 bg-white p-4">
       <Input label="Email address" placeholder="name@example.com" value="" />
       <Input errorMessage="Email is required" label="Email address" value="" />
-      <Input hint="Use your work email" label="Work email" value="demo@legalsynq.com" />
+      <Input hint="Use your work email" label="Work email" value="avery.mendoza@smithlaw.example" />
       <Input label="Notes" multiline value="Longer case notes" />
     </View>
   );

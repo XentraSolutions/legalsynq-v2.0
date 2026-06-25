@@ -27,9 +27,9 @@ export function LoginScreen() {
     formState: { errors },
   } = useForm<LoginFormValues>({
     defaultValues: {
-      email: 'demo@legalsynq.com',
-      password: 'password123',
-      tenantCode: 'demo',
+      email: 'ralph.lopez+1@xentragroup.com',
+      password: 'Password@123',
+      tenantCode: 'rl-liens1',
     },
     resolver: zodResolver(loginSchema),
   });
@@ -62,6 +62,21 @@ export function LoginScreen() {
             keyboardType="email-address"
             label="Email address"
             placeholder="name@example.com"
+            value={value}
+            onChangeText={onChange}
+          />
+        )}
+      />
+      <Controller
+        control={control}
+        name="tenantCode"
+        render={({ field: { onChange, value } }) => (
+          <Input
+            autoCapitalize="characters"
+            className="mt-4"
+            errorMessage={errors.tenantCode?.message}
+            label="Tenant code"
+            placeholder="e.g. SMITHLAW"
             value={value}
             onChangeText={onChange}
           />

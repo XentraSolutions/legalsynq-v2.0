@@ -1,14 +1,12 @@
-import type { SessionEnvelope, UserSession } from '@/shared/types/auth';
+import type { LoginResponse as ApiLoginResponse } from '@/shared/api/endpoints/Authentication';
+import type { UserSession } from '@/shared/types/auth';
 
 export interface LoginCredentials {
   email: string;
   password: string;
-  tenantCode?: string;
+  tenantCode: string;
 }
 
-export interface LoginResponse {
-  accessToken: string;
-  sessionEnvelope: SessionEnvelope;
-}
+export type LoginResponse = ApiLoginResponse;
 
-export type { SessionEnvelope, UserSession };
+export type { UserSession };

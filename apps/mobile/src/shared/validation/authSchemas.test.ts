@@ -4,14 +4,14 @@ describe('loginSchema', () => {
   it('accepts a valid login payload', () => {
     expect(
       loginSchema.parse({
-        email: 'demo@legalsynq.com',
-        password: 'password123',
-        tenantCode: 'demo',
+        email: 'avery.mendoza@smithlaw.example',
+        password: 'ValidPass123',
+        tenantCode: 'smith-law',
       })
     ).toEqual({
-      email: 'demo@legalsynq.com',
-      password: 'password123',
-      tenantCode: 'demo',
+      email: 'avery.mendoza@smithlaw.example',
+      password: 'ValidPass123',
+      tenantCode: 'smith-law',
     });
   });
 

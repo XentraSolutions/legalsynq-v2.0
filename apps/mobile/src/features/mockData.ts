@@ -37,7 +37,7 @@ export interface DashboardSummary {
 
 export const DEMO_USER: UserSession = {
   id: 'usr-demo-1',
-  email: 'demo@legalsynq.com',
+  email: 'avery.mendoza@smithlaw.example',
   firstName: 'Avery',
   lastName: 'Mendoza',
   roles: ['TenantAdmin', 'SYNQLIEN_SELLER', 'SYNQLIEN_BUYER'],
