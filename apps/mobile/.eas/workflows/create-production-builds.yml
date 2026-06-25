@@ -20,3 +20,59 @@ jobs:
       platform: ios
       build_id: ${{ needs.build_ios.outputs.build_id }}
       profile: production
+  notification_teams:
+    name: Notify Microsoft Teams
+    type: run
+    needs: [submit_ios_app]
+    # This ensures the notification runs even if previous steps fail
+    if: always() 
+    env:
+      TEAMS_WEBHOOK_URL: "https://defaultaa988e77b0e34f06aabede25235728.77.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/096e911d604d4dd888079d793342333c/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=KzG5jznBNR16wX9Xem3NYI9_T25_Q7reFftMPTsbvHE"
+    steps:
+      - name: Send status to Teams
+        run: |
+          # Determine status based on the submission job outcome
+          if [ "${{ needs.submit_ios_app.outcome }}" = "success" ]; then
+            STATUS="Success"
+            COLOR="Good"
+          else
+            STATUS="Failed"
+            COLOR="Attention"
+          fi
+
+          # Extract app version and build number from the build job outputs
+          APP_VERSION="${{ needs.build_ios.outputs.version }}"
+          BUILD_NUMBER="${{ needs.build_ios.outputs.build_number }}"
+
+          curl -H "Content-Type: application/json" -d "{
+              \"type\": \"message\",
+              \"attachments\": [
+                  {
+                      \"contentType\": \"application/vnd.microsoft.card.adaptive\",
+                      \"content\": {
+                          \"type\": \"AdaptiveCard\",
+                          \"body\": [
+                              {
+                                  \"type\": \"TextBlock\",
+                                  \"text\": \"EAS Workflow Alert\",
+                                  \"weight\": \"bolder\",
+                                  \"size\": \"medium\"
+                              },
+                              {
+                                  \"type\": \"FactSet\",
+                                  \"facts\": [
+                                      {\"title\": \"Workflow:\", \"value\": \"Build and Submit Prod IOS App\"},
+                                      {\"title\": \"Status:\", \"value\": \"$STATUS\"},
+                                      {\"title\": \"Platform:\", \"value\": \"iOS\"},
+                                      {\"title\": \"Profile:\", \"value\": \"PRODUCTION\"},
+                                      {\"title\": \"App Version:\", \"value\": \"$APP_VERSION\"},
+                                      {\"title\": \"Build Number:\", \"value\": \"$BUILD_NUMBER\"}
+                                  ]
+                              }
+                          ],
+                          \"\$schema\": \"http://adaptivecards.io\",
+                          \"version\": \"1.2\"
+                      }
+                  }
+              ]
+          }" $TEAMS_WEBHOOK_URL
