@@ -5,8 +5,10 @@ import type {
   caseQueryParamsSchema,
   caseSchema,
   caseStatusSchema,
+  dashboardPiechartSchema,
   linkedLienSchema,
   noteSchema,
+  piechartStatusSchema,
   updateCaseStatusRequestSchema,
 } from './schemas';
 
@@ -17,3 +19,5 @@ export type Note = z.infer<typeof noteSchema>;
 export type AddCaseNoteRequest = z.infer<typeof addCaseNoteRequestSchema>;
 export type LinkedLien = z.infer<typeof linkedLienSchema>;
 export type UpdateCaseStatusRequest = z.infer<typeof updateCaseStatusRequestSchema>;
+export type PiechartStatus = z.infer<typeof piechartStatusSchema>;
+export type DashboardPiechart = z.infer<typeof dashboardPiechartSchema>;

@@ -6,9 +6,11 @@ import Svg, { Circle, Defs, LinearGradient, Path, Polyline, Stop } from 'react-n
 import { useAtom } from 'jotai';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
 
+import { useDashboardPiechart } from '@/features/dashboard/hooks';
 import { AppMenu } from '@/shared/components/AppMenu';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
+import type { DashboardPiechart } from '@/shared/api/endpoints/Cases';
 
 interface StatCardData {
   label: string;
@@ -273,20 +275,55 @@ function SellingDashboard({ isDark }: { isDark: boolean }) {
   );
 }
 
+function mapPiechartToLienSlices(data: DashboardPiechart): DonutSlice[] {
+  const total = data.totalLiens || 1;
+  const closedCount = data.lienStatus
+    .filter((s) => s.label.toLowerCase() === 'closed')
+    .reduce((sum, s) => sum + s.value, 0);
+  const openCount = total - closedCount;
+  const openPct = (openCount / total) * 100;
+  const closedPct = (closedCount / total) * 100;
+
+  return [
+    {
+      label: 'Open',
+      value: openPct,
+      amount: String(openCount),
+      percent: `(${openPct.toFixed(1)}%)`,
+      color: BLUE,
+    },
+    {
+      label: 'Close',
+      value: closedPct,
+      amount: String(closedCount),
+      percent: `(${closedPct.toFixed(1)}%)`,
+      color: ORANGE,
+    },
+  ];
+}
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
+
 function BuyingDashboard({ isDark }: { isDark: boolean }) {
+  const { data: piechartData } = useDashboardPiechart();
+  const lienSlices = piechartData ? mapPiechartToLienSlices(piechartData) : BUYING_TOTAL_LIENS;
+  const totalLiens = piechartData ? String(piechartData.totalLiens) : '239';
+  const totalLienValue = piechartData ? formatCurrency(piechartData.totalLienValue) : '$2,287,386.12';
+
   return (
     <>
       <StatGrid isDark={isDark} stats={BUYING_STATS} />
       <DonutCard
         centerCaption="Total Liens"
-        centerValue="239"
+        centerValue={totalLiens}
         icon="time-outline"
         isDark={isDark}
-        slices={BUYING_TOTAL_LIENS}
+        slices={lienSlices}
         subtitle="Breakdown of open and closed claims with total purchase and billing values."
         summaryRows={[
-          { label: 'Total Purchase Amount', value: '$573,775.74' },
-          { label: 'Total Billing Amount', value: '$2,287,386.12' },
+          { label: 'Total Billing Amount', value: totalLienValue },
         ]}
         title="Total Liens"
       />

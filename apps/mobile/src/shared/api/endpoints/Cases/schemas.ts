@@ -53,3 +53,17 @@ export const linkedLienSchema = lienSchema.pick({
 export const updateCaseStatusRequestSchema = z.object({
   status: caseStatusSchema.or(lienStatusSchema),
 });
+
+export const piechartStatusSchema = z.object({
+  label: z.string(),
+  value: z.number(),
+});
+
+export const dashboardPiechartSchema = z.object({
+  totalCases: z.number(),
+  totalActiveCases: z.number(),
+  totalLiens: z.number(),
+  totalLienValue: z.number(),
+  caseStatus: z.array(piechartStatusSchema),
+  lienStatus: z.array(piechartStatusSchema),
+});

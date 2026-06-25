@@ -1,7 +1,7 @@
 import { apiClient } from '@/shared/api/client';
 import type { PagedResult } from '@/shared/types/api';
 
-import type { AddCaseNoteRequest, Case, CaseQueryParams, Note } from './types';
+import type { AddCaseNoteRequest, Case, CaseQueryParams, DashboardPiechart, Note } from './types';
 
 const CASES_BASE_PATH = '/api/liens/cases';
 
@@ -35,5 +35,10 @@ export const CasesApi = {
   async addCaseNote(caseId: string, body: AddCaseNoteRequest): Promise<Note> {
     const response = await apiClient.post<Note>(`${CASES_BASE_PATH}/${caseId}/notes`, body);
     return response.data;
+  },
+
+  async getDashboardPiechart(): Promise<DashboardPiechart> {
+    const response = await apiClient.get<{ data: DashboardPiechart }>(`${CASES_BASE_PATH}/dashboard/piechart`);
+    return response.data.data;
   },
 };

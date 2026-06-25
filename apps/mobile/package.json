@@ -4,7 +4,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "start:qa": "EXPO_PUBLIC_API_URL=https://core-qa.legalsynq.net/identity/api expo start",
+    "start:qa": "EXPO_PUBLIC_API_URL=https://core-qa.legalsynq.net expo start",
     "start": "expo start",
     "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
