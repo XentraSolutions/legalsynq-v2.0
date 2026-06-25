@@ -30,7 +30,7 @@ const AVAILABLE_COLUMNS = [
 const INITIAL_FORM = {
   name: "",
   description: "",
-  viewBy: "",
+  reportType: "",
   statusView: "ALL",
   lienStatusIds: [],
   purchaseDateFrom: null,
@@ -62,21 +62,25 @@ export default function CreateUpdateReport({
   template,
   initialData,
 }: any) {
+  console.log(template, initialData, mode);
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedCols, setSelectedCols] = useState<Array<ColsType>>([]);
-  const [available, setAvailable] = useState(AVAILABLE_COLUMNS);
+  const [available, setAvailable] = useState([]);
+
   const [leftSearch, setLeftSearch] = useState("");
   const [rightSearch, setRightSearch] = useState("");
-  const [form, setForm] = useState(initialData ?? { ...INITIAL_FORM });
+  const [form, setForm] = useState(
+    initialData ? { ...initialData } : { ...INITIAL_FORM },
+  );
 
   const [data, setData] = useState<any>(
     mode == "create"
       ? {
-          viewBy: [
+          reportType: [
             { key: "LIENS", value: "LIENS", label: "LIENS" },
             { key: "CASES", value: "CASES", label: "CASES" },
           ],
-          statusView: [],
+          statusView: "ALL",
           lawfirm: [],
           plaintiff: [],
           attorney: [],
@@ -87,13 +91,22 @@ export default function CreateUpdateReport({
           liensStatus: [],
         }
       : {
-          viewBy: [
+          reportType: [
             { key: "LIENS", value: "LIENS", label: "LIENS" },
             { key: "CASES", value: "CASES", label: "CASES" },
           ],
-          ...initialData,
+          statusView: "ALL",
+          lawfirm: [],
+          plaintiff: [],
+          attorney: [],
+          funding: [],
+          facility: [],
+          provider: [],
+          caseManagers: [],
+          liensStatus: [],
         },
   );
+  console.log(data);
 
   const fetchData = useCallback(async () => {
     const [
@@ -135,12 +148,7 @@ export default function CreateUpdateReport({
               return { key: c.id, value: c.id, label: c.clientName };
             })
           : [],
-      attorney:
-        lawfirmRes.status === "fulfilled"
-          ? lawfirmRes.value.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.displayName };
-            })
-          : [],
+      attorney: [],
       funding:
         fundingRes.status === "fulfilled"
           ? fundingRes.value.items.map((c) => {
@@ -172,6 +180,23 @@ export default function CreateUpdateReport({
             })
           : [],
     }));
+
+    const filteredSelectedColumns =
+      initialData?.config?.columns?.map((c: string) => {
+        return {
+          code: c,
+          label: AVAILABLE_COLUMNS.find((col) => col.code == c)?.label,
+        };
+      }) ?? [];
+    const filteredAvailableColumns =
+      AVAILABLE_COLUMNS.filter(
+        (availableCol) =>
+          !initialData?.config?.columns?.some(
+            (selectedCol) => selectedCol === availableCol.code,
+          ),
+      ) ?? [];
+    setSelectedCols(filteredSelectedColumns);
+    setAvailable(filteredAvailableColumns);
   }, []);
 
   useEffect(() => {
@@ -219,31 +244,48 @@ export default function CreateUpdateReport({
   };
 
   const createReportTemplate = async () => {
-    const reportData = await lienReportsService.generateTemplate({
-      reportType: form.viewBy,
-      statusView: form.statusView,
-      lienStatusIds: form.lienStatusIds,
-      purchaseDateFrom: form.purchaseDateFrom,
-      purchaseDateTo: form.purchaseDateTo,
-      closedDateFrom: form.closedDateFrom,
-      closedDateTo: form.closedDateTo,
-      isBulk: form.isBulk,
-      plaintiffCaseIds: form.plaintiffCaseIds,
-      lawFirmIds: form.lawFirmIds,
-      attorneyIds: form.attorneyIds,
-      fundingCompanyIds: form.fundingCompanyIds,
-      medicalFacilityIds: form.medicalFacilityIds,
-      caseManagerIds: form.caseManagerIds,
-      medicalProviderIds: form.medicalProviderIds,
+    const payload = {
+      viewBy: form.viewBy,
+      reportType: form.reportType,
+      statusView: form.statusView ?? [],
+      lienStatusIds: form.lienStatusIds ?? [],
+      purchaseDateFrom: form.purchaseDateFrom ?? [],
+      purchaseDateTo: form.purchaseDateTo ?? null,
+      closedDateFrom: form.closedDateFrom ?? null,
+      closedDateTo: form.closedDateTo ?? null,
+      isBulk: form.isBulk == "true" ? "Y" : "N",
+      plaintiffCaseIds: form.plaintiffCaseIds ?? [],
+      lawFirmIds: form.lawFirmIds ?? [],
+      attorneyIds: form.attorneyIds ?? [],
+      fundingCompanyIds: form.fundingCompanyIds ?? [],
+      medicalFacilityIds: form.medicalFacilityIds ?? [],
+      caseManagerIds: form.caseManagerIds ?? [],
+      medicalProviderIds: form.medicalProviderIds ?? [],
       columns: selectedCols.map((c: ColsType) => c.code),
+    };
+    const reportData = await lienReportsService.generateTemplate({
+      ...payload,
       page: "1",
       limit: "10",
     });
     return {
-      ...reportData,
+      items: reportData.data.map((c) => {
+        return {
+          id: c.l_id,
+          caseNumber: c.case_id,
+          clientName: c.plaintiff_first_name + c.plaintiff_last_name,
+          lawFirm: c.lawfirm,
+          caseManager: c.case_manager ? c.case_manager : [],
+          status: c.case_status,
+          accidentType: c.case_type,
+          dateOfIncident: c.date_of_loss,
+        };
+      }),
+      summaryTotals: reportData.summaryTotals,
+      ...payload,
+      config: { columns: selectedCols.map((c: ColsType) => c.code) },
       name: form.name,
       description: form.description,
-      columns: selectedCols.map((c: ColsType) => c.code),
     };
   };
 
@@ -259,7 +301,7 @@ export default function CreateUpdateReport({
     <Modal
       open={true}
       onClose={onClose}
-      title="Create Report"
+      title={mode == "create" ? "Create Report" : "Edit Report"}
       subtitle="Configure your report step by step"
       size="lg"
       footer={
@@ -350,10 +392,10 @@ export default function CreateUpdateReport({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field
               label="View By"
-              value={form.viewBy}
-              options={data.viewBy}
+              value={form.reportType}
+              options={data.reportType}
               onChange={(v) => {
-                setForm({ ...form, viewBy: v });
+                setForm({ ...form, reportType: v });
               }}
               type="select"
             />
@@ -490,7 +532,7 @@ export default function CreateUpdateReport({
             <Field
               label="Lien Status"
               value={form.lienStatusIds}
-              options={data.lienStatus ? data.lienStatus : []}
+              options={data.liensStatus ? data.liensStatus : []}
               placeholder="Select one or more lien statuses"
               onChange={(v) =>
                 setForm({

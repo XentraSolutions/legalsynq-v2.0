@@ -11,6 +11,10 @@ import { CreateReports, ReportTemplate } from "@/lib/liens/lien-report.types";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { ReportListItem } from "@/lib/liens/lien-reports.mapper";
 
+type ShowCreateModalProps = {
+  isOpen: boolean;
+  mode?: "create" | "edit";
+};
 const SAMPLE_REPORTS = [
   {
     id: "1",
@@ -34,7 +38,10 @@ export default function ReportsPage() {
   const [template, setTemplate] = useState<any | null>(null);
   const [isSettingTemplate, setIsSettingTemplate] = useState<boolean>(false);
 
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState<ShowCreateModalProps>({
+    isOpen: false,
+    mode: "create",
+  });
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +73,7 @@ export default function ReportsPage() {
             subtitle={`${reports?.length} saved reports`}
             actions={
               <button
-                onClick={() => setShowCreate(true)}
+                onClick={() => setShowCreate({ isOpen: true, mode: "create" })}
                 className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
               >
                 <i className="ri-add-line text-base" />
@@ -98,32 +105,52 @@ export default function ReportsPage() {
           </div>
         </>
       ) : (
+        // <ReportDisplay
+        //   report={template}
+        //   onBack={() => {
+        //     setTemplate(null);
+        //     setIsSettingTemplate(false);
+        //   }}
+        //   onSaved={() => {
+        //     // setTemplate(data);
+        //     setIsSettingTemplate(false);
+        //     setTemplate(null);
+        //     fetchReports();
+        //   }}
+        //   // onExport={() => {
+        //   //   console.log("export report:", template);
+        //   // }}
+        //   onEdit={() => {
+        //     console.log(template);
+        //     setShowCreate({ isOpen: true, mode: "edit" });
+        //   }}
+
+        // />
         <ReportDisplay
-          report={template}
+          report={{ ...template }}
           onBack={() => {
             setTemplate(null);
             setIsSettingTemplate(false);
           }}
-          onSave={(data: CreateReports) => {
-            console.log("saved report:", data);
-            // setTemplate(data);
+          onEdit={() => setShowCreate({ isOpen: true, mode: "edit" })}
+          onSaved={() => {
             setIsSettingTemplate(false);
             setTemplate(null);
+            setTimeout(() => {
+              fetchReports();
+            }, 500);
           }}
-          onExport={() => {
-            console.log("export report:", template);
-          }}
-          // onEdit={() => setEditMode(true)}
         />
       )}
-      {showCreate && (
+      {showCreate.isOpen && (
         <CreateUpdateReport
-          mode={isSettingTemplate ? "create" : "edit"}
-          onClose={() => setShowCreate(false)}
+          mode={showCreate.mode}
+          onClose={() => setShowCreate({ isOpen: false })}
           template={template}
+          initialData={template}
           onSaved={(data: any) => {
             console.log("saved report:", data);
-            setShowCreate(false);
+            setShowCreate({ isOpen: false });
             setTemplate(data);
             setIsSettingTemplate(true);
           }}

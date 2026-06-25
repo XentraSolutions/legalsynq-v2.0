@@ -5,6 +5,7 @@ import { KpiCard } from "@/components/lien/kpi-card";
 import { ApiError } from "@/lib/api-client";
 import { CaseListItem } from "@/lib/cases";
 import {
+  CreateReports,
   ExportReportRequest,
   ReportListResponse,
   ReportsResponse,
@@ -20,21 +21,25 @@ type SummaryTotals = {
   summaryTotals: ReportTotals;
 };
 interface ReportDisplayProps {
-  report: ReportListResponse & SummaryTotals & ExportReportRequest;
+  report: ReportListResponse &
+    SummaryTotals &
+    ExportReportRequest &
+    CreateReports;
   onBack: () => void;
   onEdit: () => void;
+  onSaved: () => void;
 }
 
 export default function ReportDisplay({
   report,
   onBack,
   onEdit,
+  onSaved,
 }: ReportDisplayProps) {
   console.log(report);
   const [loading, setLoading] = useState(true);
-  const [cases, setCases] = useState<CaseListItem[]>(report?.items ?? []);
+  const [cases, setCases] = useState<CaseListItem[]>(report.items ?? []);
   const addToast = useLienStore((s) => s.addToast);
-
   const viewBy = report?.reportType ?? "cases"; // 'cases' | 'liens'
   report;
   const metrics =
@@ -96,8 +101,23 @@ export default function ReportDisplay({
     try {
       const response = await lienReportsService.createReports({
         name: report.name,
-        description: report.description,
+        description: report.description ?? report.reportDescription,
         config: { columns: report.columns },
+        attorneyIds: report.attorneyIds,
+        caseManagerIds: report.caseManagerIds,
+        closedDateFrom: null,
+        closedDateTo: null,
+        fundingCompanyIds: report.fundingCompanyIds,
+        isBulk: report.isBulk,
+        lawFirmIds: report.lawFirmIds,
+        lienStatusIds: report.lienStatusIds,
+        medicalFacilityIds: report.medicalFacilityIds,
+        medicalProviderIds: report.medicalProviderIds,
+        plaintiffCaseIds: report.plaintiffCaseIds,
+        purchaseDateFrom: report.purchaseDateFrom,
+        purchaseDateTo: report.purchaseDateTo,
+        reportType: report.reportType,
+        statusView: report.statusView,
       });
 
       if (response) {
@@ -105,7 +125,7 @@ export default function ReportDisplay({
           type: "success",
           title: "Report Saved",
         });
-        onBack();
+        onSaved();
       }
     } catch (err) {
       const message =
@@ -244,9 +264,9 @@ export default function ReportDisplay({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {cases.map((c: CaseListItem) => (
+                  {cases.map((c: CaseListItem, i) => (
                     <tr
-                      key={c.caseId}
+                      key={c.id + c.caseNumber + i}
                       className={`hover:bg-gray-50/80 transition-colors cursor-pointer`}
                     >
                       <td className="px-3 py-2.5">{c.caseNumber}</td>

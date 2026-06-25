@@ -9,7 +9,10 @@ import {
   UpdateReportConfigRequest,
 } from "./lien-report.types";
 import { lienReportsApi } from "./lien-reports.api";
-import { mapReportToListItem } from "./lien-reports.mapper";
+import {
+  mapReportToListItem,
+  mapReportToTemplate,
+} from "./lien-reports.mapper";
 
 export const lienReportsService = {
   async getReports(): Promise<ReportListResponse> {
@@ -22,10 +25,11 @@ export const lienReportsService = {
     return data ?? [];
   },
 
-  async generateTemplate(request: ReportTemplate): Promise<ReportsResponse> {
+  async generateTemplate(request: ReportTemplate): Promise<ReportListResponse> {
     const { data } = await lienReportsApi.createTemplate(request);
     if (!data) throw new Error("Failed to create report");
-    return data ?? [];
+    console.log(data.data.map(mapReportToTemplate));
+    return { ...data, items: data.data.map(mapReportToTemplate) };
   },
   async createReports(request: CreateReports): Promise<ApiResponse> {
     const { data } = await lienReportsApi.createReport(request);

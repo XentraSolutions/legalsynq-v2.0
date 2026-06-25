@@ -79,18 +79,26 @@ export default function ReportDetailsPage() {
           report={{ ...template, reportId: id }}
           onBack={() => router.push("/lien/reports")}
           onEdit={() => setEditMode(true)}
+          onSaved={() => {
+            setEditMode(false);
+            setTemplate(null);
+            setTimeout(() => {
+              router.push("/lien/reports");
+            }, 500);
+          }}
         />
       )}
       {editMode ? (
         <CreateUpdateReport
           mode="edit"
-          initialData={report}
+          initialData={{ ...report, ...template }}
           onClose={(data: ReportTemplate | null) => {
             setEditMode(false);
-            console.log(data);
-            if (data) {
-              setTemplate(data);
-            }
+          }}
+          onSaved={(data: any) => {
+            console.log("saved report:", data);
+            setEditMode(false);
+            setTemplate(data);
           }}
         />
       ) : (

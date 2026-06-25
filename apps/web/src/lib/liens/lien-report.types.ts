@@ -7,6 +7,21 @@ export interface CreateReports {
   config: {
     columns: Array<string>;
   };
+  attorneyIds: Array<string>;
+  caseManagerIds: Array<string>;
+  closedDateFrom?: null;
+  closedDateTo?: null;
+  fundingCompanyIds: Array<string>;
+  isBulk: string;
+  lawFirmIds: Array<string>;
+  lienStatusIds: Array<string>;
+  medicalFacilityIds: Array<string>;
+  medicalProviderIds: Array<string>;
+  plaintiffCaseIds: Array<string>;
+  purchaseDateFrom: string;
+  purchaseDateTo: string;
+  reportType: string;
+  statusView: string;
 }
 
 export interface ReportListResponse {
@@ -38,10 +53,20 @@ export interface ReportConfigResponse {
   config: {
     columns: Array<string>;
   };
+
+  createdAt: string;
   createdAtUtc: string;
+  createdBy: string;
   id: string;
   name: string;
-  description: string | undefined | null;
+  reportDescription: string | undefined | null;
+  reportConfig: {
+    columns: Array<string>;
+  };
+  reportId: string;
+  reportName: string;
+  reportType: string;
+  updatedAt: string;
   tenantId: string;
   updatedAtUtc: string;
   userId: string;
@@ -90,6 +115,7 @@ export interface ReportsResponse {
   returned_amt: null;
   reportConfig?: ReportConfig;
   summaryTotals?: ReportTotals;
+  reportType: string;
 }
 
 interface ReportConfig {
