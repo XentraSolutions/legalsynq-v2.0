@@ -33,7 +33,7 @@ export const lookupApi = {
   },
   getMedicalProcedureCodes() {
     return apiClient.get<MedicalProcedureCodesResponse[]>(
-      `${BASE}/procedure/codes`,
+      `${BASE}/medical/procedure/codes`,
     );
   },
   getMedicalProcedureCosts(code: MedicalProcedureCodesResponse["code"]) {
@@ -76,7 +76,7 @@ export const lookupApi = {
   },
 
   getLiensStatus() {
-    return apiClient.get<LookupGenericResponse[]>(`${BASE}/liens/status`);
+    return apiClient.get<LookupData[]>(`${BASE}/liens/status`);
   },
 
   getFundingCompany() {

@@ -25,7 +25,7 @@ export const lookupService = {
   },
   async getMedicalProcedureCodes(): Promise<MedicalProcedureCodesResponse[]> {
     const { data } = await lookupApi.getMedicalProcedureCodes();
-    return data;
+    return data.data;
   },
   async getMedicalProcedureCosts(
     code: MedicalProcedureCodesResponse["code"],

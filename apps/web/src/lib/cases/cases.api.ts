@@ -11,7 +11,16 @@ import type {
   CaseLiensApiResponse,
   CasesFilters,
   ExportResponse,
+  CreateMedicalLiensDto,
+  CreateMedicalFacilityDto,
+  CreateMedicalPaymentDto,
+  CreateMedicalCodeDto,
+  CreateMedicalCodeLiensDto,
+  CaseLiensFilters,
+  UpdateCasePersonalRequestDto,
+  UpdateCaseDetailsRequestDto,
 } from "./cases.types";
+import { ApiResponse } from "../liens/lien-report.types";
 
 const BASE = "/lien/api/liens/cases";
 function toQs(params: Record<string, unknown>): string {
@@ -46,8 +55,28 @@ export const casesApi = {
     return apiClient.post<CaseResponseDto>(`${BASE}/create`, request);
   },
 
+  updatePersonal(id: string, request: UpdateCaseDetailsRequestDto) {
+    return apiClient.patch<CaseResponseDto>(
+      `${BASE}/personal-update/${id}`,
+      request,
+    );
+  },
+  updateCase(id: string, request: UpdateCaseRequestDto) {
+    return apiClient.patch<CaseResponseDto>(`${BASE}/update/${id}`, request);
+  },
+
   update(id: string, request: UpdateCaseRequestDto) {
     return apiClient.put<CaseResponseDto>(`${BASE}/${id}`, request);
+  },
+
+  uploadDocument(request: any) {
+    const formData = new FormData();
+    formData.append("File", request.document ?? "");
+    formData.append("liensId", request.lienId);
+    formData.append("DocName", "Lien Document");
+    formData.append("DocDescription", "Legacy lien Document upload");
+    formData.append("DocFileTypeId", request.documentType);
+    return apiClient.postForm<any>(`${BASE}/liens/upload/document`, formData);
   },
 
   listLiensByCase(request: CasePaginatedParams) {
@@ -90,7 +119,77 @@ export const casesApi = {
   getDashboardStats() {
     return apiClient.get<DashboardStats>(`${BASE}/dashboard/piechart`);
   },
+
   export(request: CasesFilters) {
     return apiClient.post<ExportResponse>(`${BASE}/generate-csv`, request);
+  },
+
+  payoffQoute(caseId: string) {
+    return apiClient.get<DashboardStats>(`${BASE}/payoff-qoute/${caseId}`);
+  },
+
+  createMedicalLiens(request: CreateMedicalLiensDto) {
+    return apiClient.post<ApiResponse>(`${BASE}/liens/medical`, request);
+  },
+  createMedicalFacilityLiens(request: CreateMedicalFacilityDto) {
+    return apiClient.post<ApiResponse>(`${BASE}/liens/facility`, request);
+  },
+  createMedicalPaymentLiens(request: CreateMedicalPaymentDto) {
+    return apiClient.post<ApiResponse>(`${BASE}/liens/payment`, request);
+  },
+
+  createMedicalCodeLiens(request: CreateMedicalCodeLiensDto) {
+    return apiClient.post<ApiResponse>(`${BASE}/liens/medicalcode`, request);
+  },
+
+  updateMedicalLiens(request: CreateMedicalLiensDto) {
+    return apiClient.post<ApiResponse>(`${BASE}/liens/update-medical`, request);
+  },
+  updateMedicalFacilityLiens(request: CreateMedicalFacilityDto) {
+    return apiClient.post<ApiResponse>(
+      `${BASE}/liens//update-facility`,
+      request,
+    );
+  },
+
+  updateMedicalCodeLiens(request: CreateMedicalCodeLiensDto) {
+    return apiClient.post<ApiResponse>(`${BASE}/liens/medicalcode`, request);
+  },
+
+  createMedicalCode(request: CreateMedicalCodeDto) {
+    return apiClient.post<ApiResponse>(
+      `${BASE}/manual/medical/code/create`,
+      request,
+    );
+  },
+
+  getMedicalInfo(lienId: string) {
+    return apiClient.get<ApiResponse>(`${BASE}/liens/get-medical/${lienId}`);
+  },
+
+  getMedicalFacility(lienId: string) {
+    return apiClient.get<ApiResponse>(`${BASE}/liens/get-facility/${lienId}`);
+  },
+
+  getMedicalCode(lienId: string) {
+    return apiClient.get<ApiResponse>(
+      `${BASE}/liens/get-medicalcode/${lienId}`,
+    );
+  },
+
+  getMedicalDocument(lienId: string) {
+    return apiClient.get<ApiResponse>(
+      `${BASE}/liens/get-medicaldocument/${lienId}`,
+    );
+  },
+
+  getPayee(lienId: string) {
+    return apiClient.get<ApiResponse>(
+      `${BASE}/liens/get-payee-outbound/${lienId}`,
+    );
+  },
+
+  exportCaseLiens(request: CaseLiensFilters) {
+    return apiClient.post<ApiResponse>(`${BASE}/liens/generate-csv/`, request);
   },
 };

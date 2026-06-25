@@ -121,7 +121,7 @@ export default function CasesPage() {
           accidentTypeId: params?.accidentTypeId?.toString(),
           caseManagerId: params?.caseManagerId?.toString(),
           lawFirmId: params?.lawFirmId?.toString(),
-          statusId: statusFilter || params?.statusId,
+          statusId: statusFilter.toString() || params?.statusId?.toString(),
         });
         setCases(result.items);
 
@@ -181,7 +181,7 @@ export default function CasesPage() {
   useEffect(() => {
     fetchCases();
     lookupCaseStatus();
-  }, [fetchCases]);
+  }, [search]);
 
   const canEdit = ra.can("case:edit");
 
@@ -232,7 +232,7 @@ export default function CasesPage() {
 
   const handleCaseCreated = () => {
     setShowCreate(false);
-    fetchCases();
+    setTimeout(() => fetchCases(), 500);
   };
 
   const handleCasesFilter = (e: any) => {
@@ -326,7 +326,9 @@ export default function CasesPage() {
 
       <FilterToolbar
         searchPlaceholder="Search by case number or client name..."
-        onSearch={setSearch}
+        onSearch={(e) => {
+          setSearch(e);
+        }}
         filters={[
           {
             label: "All Statuses",

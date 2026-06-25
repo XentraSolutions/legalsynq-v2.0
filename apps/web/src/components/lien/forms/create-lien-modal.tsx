@@ -41,7 +41,7 @@ export function CreateLienModal({
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.lienNumber.trim()) e.lienNumber = "Lien number is required";
+    // if (!form.lienNumber.trim()) e.lienNumber = "Lien number is required";
     if (!form.lienType) e.lienType = "Lien type is required";
     if (
       !form.originalAmount ||

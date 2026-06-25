@@ -64,7 +64,7 @@ export function CreateCaseForm({
     setSubmitting(true);
     try {
       const request: CreateCaseRequestDto = {
-        caseNumber: form.caseNumber.trim(),
+        // caseNumber: form.caseNumber.trim(),
         firstname: form.clientFirstName.trim(),
         lastname: form.clientLastName.trim(),
         externalReference: form.externalReference.trim(),
@@ -134,14 +134,6 @@ export function CreateCaseForm({
       }
     >
       <div className="space-y-4">
-        <Field
-          label="Case Number"
-          required
-          value={form.caseNumber}
-          onChange={(v) => setForm({ ...form, caseNumber: v })}
-          error={errors.caseNumber}
-          placeholder="e.g. CASE-2026-0001"
-        />
         <div className="grid grid-cols-2 gap-3">
           <Field
             label="Client First Name"
@@ -194,7 +186,7 @@ export function CreateCaseForm({
           value={form.clientEmail}
           onChange={(v) => setForm({ ...form, clientEmail: v })}
           error={errors.clientEmail}
-          placeholder="Client Phone"
+          placeholder="Client Email"
         />
         <Field
           label="Client Address"

@@ -33,7 +33,7 @@ export interface PaginatedResultDto<T> {
 }
 
 export interface CreateCaseRequestDto {
-  caseNumber: string;
+  caseNumber?: string;
   firstname: string;
   lastname: string;
   externalReference?: string;
@@ -51,6 +51,8 @@ export interface CreateCaseRequestDto {
 }
 
 export interface UpdateCaseRequestDto {
+  firstName?: string;
+  lastName?: string;
   clientFirstName: string;
   clientLastName: string;
   externalReference?: string;
@@ -68,6 +70,34 @@ export interface UpdateCaseRequestDto {
   status?: string;
   demandAmount?: number;
   settlementAmount?: number;
+}
+
+export interface UpdateCaseDetailsRequestDto {
+  firstname: string;
+  lastname: string;
+
+  externalReference?: string;
+  title?: string;
+  dateOfIncident?: string;
+  insuranceCarrier?: string;
+  policyNumber?: string;
+  claimNumber?: string;
+  description?: string;
+  notes?: string;
+  status?: string;
+  demandAmount?: number;
+  settlementAmount?: number;
+}
+
+export interface UpdateCasePersonalRequestDto {
+  firstName: string;
+  lastName: string;
+  externalReference?: string;
+  title?: string;
+  clientDob?: string;
+  clientPhone?: string;
+  clientEmail?: string;
+  clientAddress?: string;
 }
 
 export interface CasesQuery {
@@ -161,7 +191,7 @@ export interface CaseLienItemMetadata {
   reductionAmount: number | null;
   purchaseAmount: number | null;
   paymentAmount: number | null;
-  balance: number,
+  balance: number;
 }
 export interface CaseUpdatesItem {
   id: string;
@@ -263,6 +293,62 @@ export interface CasesFilters {
   caseManagerId: string | null;
 }
 
+export interface CaseLiensFilters {
+  caseId: string;
+  liensId: null;
+  lawFirmId: null;
+  medicalFacilityId: null;
+  purchaseDate: null;
+  caseManagerId: null;
+  lienStatusId: null;
+}
+
 export interface ExportResponse {
   data: Array<{ base64: string; export_format: string; filename: string }>;
+}
+
+export interface CreateMedicalLiensDto {
+  id: null | string;
+  caseId: string;
+  status: string;
+  purchaseDate: string;
+  initialServiceDate: string;
+  endServiceDate: null | string;
+  note: string;
+  isBulk: boolean | string;
+  isServicing: boolean | string;
+  fundingCompanyId: string;
+}
+
+export interface CreateMedicalFacilityDto {
+  liensId: string;
+  facilityId: string;
+  facility: string;
+  facilityContactId: string;
+  facilityContact: string;
+  email: string;
+  medicalProviderId: string;
+  medicalProvider: string;
+}
+
+export interface CreateMedicalCodeLiensDto {
+  id: string;
+  liensId: string;
+  code: string;
+  medicareCost: string;
+  billingAmount: string;
+  purchaseAmount: string;
+}
+
+export interface CreateMedicalPaymentDto {
+  id: null;
+  liensId: string;
+  payee: string;
+  outboundCheckNumber: string;
+}
+
+export interface CreateMedicalCodeDto {
+  liensId: string;
+  payee: string;
+  outboundCheckNumber: string;
 }

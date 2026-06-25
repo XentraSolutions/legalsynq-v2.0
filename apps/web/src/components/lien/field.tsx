@@ -12,10 +12,12 @@ export default function Field({
   optionValueKey,
   optionLabelKey,
   multiple,
+  isChecked,
+  children,
 }: {
   label: string;
   value: string | string[] | null;
-  onChange: (v: string | string[]) => void;
+  onChange: (v: string | string[] | boolean) => void;
   error?: string;
   placeholder?: string;
   type?: string;
@@ -24,9 +26,15 @@ export default function Field({
   optionValueKey?: string;
   optionLabelKey?: string;
   multiple?: boolean;
+  isChecked?: boolean;
+  children?: React.ReactNode;
 }) {
   return (
-    <div className={type == "checkbox" ? "col-span-2" : ""}>
+    <div
+      className={
+        type == "checkbox" ? "flex items-center gap-3 cursor-pointer" : ""
+      }
+    >
       <label className="block text-sm font-medium text-gray-700 mb-1">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
@@ -37,6 +45,7 @@ export default function Field({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
+          children={children}
         />
       ) : type === "select" ? (
         <SelectField
@@ -49,6 +58,17 @@ export default function Field({
           optionValueKey={optionValueKey}
           optionLabelKey={optionLabelKey}
           multiple={multiple}
+          children={children}
+        />
+      ) : type === "checkbox" ? (
+        <input
+          type="checkbox"
+          value={value ?? ""}
+          checked={isChecked}
+          onChange={(e) => onChange(e.target.checked)}
+          placeholder={placeholder}
+          className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary mb-1"
+          children={children}
         />
       ) : (
         <input
@@ -74,6 +94,7 @@ function SelectField({
   optionValueKey = "value",
   optionLabelKey = "label",
   multiple,
+  children,
 }: {
   label: string;
   value: string | string[] | null;
@@ -84,12 +105,11 @@ function SelectField({
   optionValueKey?: string;
   optionLabelKey?: string;
   multiple?: boolean;
+  children?: React.ReactNode;
 }) {
-  console.log(options, value);
   const containerRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-
   const opts: any[] = (options ?? (window as any).__FIELD_OPTIONS__) || [];
   const selectedValues = Array.isArray(value) ? value : value ? [value] : [];
 
@@ -125,7 +145,7 @@ function SelectField({
     return getOptionLabel(selectedValues[0]);
   };
 
-  const filteredOptions = opts.filter((option) => {
+  const filteredOptions = opts?.filter((option) => {
     const label = String(option[optionLabelKey] ?? "").toLowerCase();
     const valueText = String(option[optionValueKey] ?? "").toLowerCase();
     const keyText = String(option.key ?? "").toLowerCase();
@@ -209,6 +229,7 @@ function SelectField({
               <div className="p-3 text-sm text-gray-500">No options found.</div>
             )}
           </div>
+          {children}
         </div>
       )}
     </div>

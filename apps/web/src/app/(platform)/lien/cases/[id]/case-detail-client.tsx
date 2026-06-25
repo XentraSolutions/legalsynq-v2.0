@@ -11,7 +11,12 @@ import Link from "next/link";
 import { useLienStore } from "@/stores/lien-store";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useSession } from "@/hooks/use-session";
-import { casesService, type CaseDetail, type CaseLienItem, type CaseLienItemMetadata } from "@/lib/cases";
+import {
+  casesService,
+  type CaseDetail,
+  type CaseLienItem,
+  type CaseLienItemMetadata,
+} from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { TaskPanel } from "@/components/lien/task-panel";
@@ -19,6 +24,7 @@ import { CaseTaskManager } from "@/components/lien/case-task-manager";
 
 import { ConfirmDialog } from "@/components/lien/modal";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
+import MedicalLienComponent from "@/components/lien/add-medical-lien/add-medical-lien/medical-lien-component";
 import { useCaseWorkflows } from "@/hooks/use-case-workflows";
 import { workflowApi, type WorkflowInstanceDetail } from "@/lib/workflow";
 import {
@@ -27,7 +33,13 @@ import {
   type CaseNoteCategory,
 } from "@/lib/liens/lien-case-notes.service";
 import { emailToDisplayName, isNoteOwner } from "@/lib/liens/note-utils";
-import { CaseUpdatesItem } from "@/lib/cases/cases.types";
+import {
+  CaseUpdatesItem,
+  CreateMedicalCodeLiensDto,
+  CreateMedicalFacilityDto,
+  CreateMedicalLiensDto,
+  CreateMedicalPaymentDto,
+} from "@/lib/cases/cases.types";
 import { lookupService } from "@/lib/lookup";
 import { GetSettlementHistoryResponse } from "@/lib/settlement/settlement.types";
 import { settlementService } from "@/lib/settlement";
@@ -35,6 +47,12 @@ import { useSessionContext } from "@/providers/session-provider";
 import { CreateSettlementForm } from "@/components/lien/forms/settlement-payment-form";
 import { SetupReductionForm } from "./components/setup-reduction-form";
 import { LienListItem, liensService } from "@/lib/liens";
+import { contactsService } from "@/lib/contacts";
+import MedicalLienInfo from "@/components/lien/forms/add-medical-lien/medical-lien-info";
+import MedicalFacilityProviderInfo from "@/components/lien/forms/add-medical-lien/medical-facility-provider-info";
+import MedicalCodesDescription from "@/components/lien/forms/add-medical-lien/medical-codes-description";
+import UploadDocuments from "@/components/lien/forms/add-medical-lien/medical-upload-document";
+import Field from "@/components/lien/field";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -84,7 +102,9 @@ export function CaseDetailClient({ id }: { id: string }) {
   const [history, setHistory] = useState<any>();
 
   const [relatedLiens, setRelatedLiens] = useState<CaseLienItem[]>([]);
-  const [relatedLiensWithMetadata, setRelatedLiensWithMetadata] = useState<(CaseLienItem & CaseLienItemMetadata)[]>([]);
+  const [relatedLiensWithMetadata, setRelatedLiensWithMetadata] = useState<
+    (CaseLienItem & CaseLienItemMetadata)[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
@@ -96,6 +116,8 @@ export function CaseDetailClient({ id }: { id: string }) {
     status: string;
     name: string;
   } | null>(null);
+  const [showMedicalLienModal, setShowMedicalLienModal] = useState(false);
+  const [actionOpen, setActionOpen] = useState(false);
 
   const fetchCase = useCallback(async () => {
     setLoading(true);
@@ -103,29 +125,31 @@ export function CaseDetailClient({ id }: { id: string }) {
     try {
       const [detail, liensResult] = await Promise.all([
         casesService.getCase(id),
-        liensService.getLiens({caseId: id}).catch(() => ({
+        liensService.getLiens({ caseId: id }).catch(() => ({
           items: [],
           pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
         })),
       ]);
       setCaseDetail(detail);
-      // setCaseUpdates(updates ?? []);
       setRelatedLiens(liensResult.items);
       setRelatedLiensWithMetadata(
         liensResult.items.map((lien) => {
-          const lienExtended = lien as (LienListItem & CaseLienItemMetadata);
+          const lienExtended = lien as LienListItem & CaseLienItemMetadata;
           // TEMP: force type while we are waiting for real / full CaseLienItem data;
           return {
-          ...lien,
-          facility: lienExtended.facility ?? "",
-          originalAmount: lienExtended.originalAmount ?? 0,
-          reductionAmount: lienExtended.reductionAmount ?? null,
-          purchaseAmount: lienExtended.purchaseAmount ?? null,
-          paymentAmount: lienExtended.paymentAmount ?? null,
-          balance: lienExtended.originalAmount - (lienExtended.reductionAmount ?? 0) - (lienExtended.paymentAmount ?? 0),
-          closedAtUtc: lienExtended.closedAtUtc ?? null,
-        };
-      })
+            ...lien,
+            facility: lienExtended.facility ?? "",
+            originalAmount: lienExtended.originalAmount ?? 0,
+            reductionAmount: lienExtended.reductionAmount ?? null,
+            purchaseAmount: lienExtended.purchaseAmount ?? null,
+            paymentAmount: lienExtended.paymentAmount ?? null,
+            balance:
+              lienExtended.originalAmount -
+              (lienExtended.reductionAmount ?? 0) -
+              (lienExtended.paymentAmount ?? 0),
+            closedAtUtc: lienExtended.closedAtUtc ?? null,
+          };
+        }),
       );
     } catch (err) {
       if (err instanceof ApiError) {
@@ -238,6 +262,22 @@ export function CaseDetailClient({ id }: { id: string }) {
     }
   };
 
+  const generatePayoff = async () => {
+    try {
+      const response = await casesService.payoffQoute(id);
+      console.log(response);
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Failed to generate payoff";
+      addToast({
+        type: "error",
+        title: "Generate Payoff Failed",
+        description: message,
+      });
+      setConfirmAction(null);
+    }
+  };
+
   const confirmStatusChange = async () => {
     if (!confirmAction) return;
     try {
@@ -272,7 +312,7 @@ export function CaseDetailClient({ id }: { id: string }) {
         <span className="text-gray-500">Liens Management</span>
       </div>
 
-      <div className="mx-6 mt-2 bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="mx-6 mt-2 bg-white border border-gray-200 rounded-lg">
         <div className="px-6 py-4">
           <div className="flex items-center gap-8">
             <div className="shrink-0 min-w-[160px]">
@@ -283,10 +323,11 @@ export function CaseDetailClient({ id }: { id: string }) {
               <p className="text-xs text-gray-400 mt-1.5 font-medium">
                 {d.caseNumber}
               </p>
+              <p className="text-xs text-gray-400 mt-1.5 font-medium">{d.id}</p>
             </div>
 
             <div className="flex-1 min-w-0">
-              <div className="grid grid-cols-4 gap-x-6 gap-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
                 <HeaderMeta label="Case Type" value={d.title || "Lien Case"} />
                 <HeaderMeta label="Case Status">
                   <StatusBadge status={d.status} />
@@ -301,21 +342,56 @@ export function CaseDetailClient({ id }: { id: string }) {
                 />
                 {/* TEMP: UI mock data for visual review only */}
                 <HeaderMeta label="State of Incident" value="FL" />
-                <HeaderMeta
-                  label="Law Firm"
-                  value={d.insuranceCarrier || "Smith & Associates"}
-                />
+                <HeaderMeta label="Law Firm" value={d.insuranceCarrier || ""} />
                 {/* TEMP: UI mock data for visual review only */}
                 <HeaderMeta label="Case Manager" value="" />
                 {canEdit ? (
                   <div className="flex items-end">
-                    <button
+                    {/* <button
                       onClick={handleAdvanceStatus}
                       disabled={d.status === "Closed"}
                       className="text-sm font-medium px-4 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors whitespace-nowrap"
                     >
                       Actions
-                    </button>
+                    </button> */}
+                    <div className="relative">
+                      {/* Dropdown Button */}
+                      <button
+                        onClick={() => setActionOpen(!actionOpen)}
+                        className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-2 py-2 transition-colors"
+                      >
+                        Actions
+                        <i className="ri-arrow-down-s-line text-base" />
+                      </button>
+                      {/* Dropdown Menu */}
+                      {actionOpen && (
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                          {/* Create Lien */}
+                          {ra.can("lien:edit") && (
+                            <button
+                              onClick={() => {
+                                handleAdvanceStatus();
+                                setActionOpen(false);
+                              }}
+                              disabled={d.status === "Closed"}
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                            >
+                              Advance Status
+                            </button>
+                          )}
+                          {/* Filter */}
+                          <button
+                            onClick={() => {
+                              generatePayoff();
+                              setActionOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                          >
+                            Payoff Qoute
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div />
@@ -368,6 +444,7 @@ export function CaseDetailClient({ id }: { id: string }) {
             caseDetail={d}
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
+            onAddMedicalLien={(e: boolean) => setShowMedicalLienModal(e)}
           />
         )}
         {activeTab === "documents" && (
@@ -400,6 +477,18 @@ export function CaseDetailClient({ id }: { id: string }) {
           description={`Move ${d.caseNumber} to ${confirmAction?.name}?`}
           confirmLabel="Advance"
         />
+      )}
+
+      {showMedicalLienModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full mx-4 my-6">
+            <MedicalLienComponent
+              caseInfo={{ ...caseDetail }}
+              caseId={id}
+              onClose={() => setShowMedicalLienModal(false)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -562,7 +651,6 @@ function DetailsTab({
   const [tStatus, setTStatus] = useState(d.status);
   const [tSaving, setTSaving] = useState(false);
   const [tErrors, setTErrors] = useState<Record<string, string>>({});
-
   const { lookup } = useSessionContext();
 
   const resetPlaintiffForm = useCallback(() => {
@@ -591,10 +679,11 @@ function DetailsTab({
       errs.email = "Invalid email format";
     if (pPhone.trim() && !/^[\d\s()+-]{7,20}$/.test(pPhone.trim()))
       errs.phone = "Invalid phone format";
+    const pdob = dateConverter(pDob);
     if (
-      pDob.trim() &&
-      !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(pDob.trim()) &&
-      !/^\w{3}\s\d{1,2},\s\d{4}$/.test(pDob.trim())
+      pdob.trim() &&
+      !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(pdob.trim()) &&
+      !/^\w{3}\s\d{1,2},\s\d{4}$/.test(pdob.trim())
     )
       errs.dob = "Invalid date format (use MM/DD/YYYY)";
     setPErrors(errs);
@@ -603,10 +692,13 @@ function DetailsTab({
 
   const validateTracking = (): boolean => {
     const errs: Record<string, string> = {};
+    const dateOfIncident = dateConverter(tDateOfIncident);
+
     if (
-      tDateOfIncident.trim() &&
-      !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(tDateOfIncident.trim()) &&
-      !/^\w{3}\s\d{1,2},\s\d{4}$/.test(tDateOfIncident.trim())
+      dateOfIncident &&
+      dateOfIncident.trim() &&
+      !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateOfIncident.trim()) &&
+      !/^\w{3}\s\d{1,2},\s\d{4}$/.test(dateOfIncident.trim())
     ) {
       errs.dateOfIncident = "Invalid date format (use MM/DD/YYYY)";
     }
@@ -614,30 +706,50 @@ function DetailsTab({
     return Object.keys(errs).length === 0;
   };
 
+  const dateConverter = (dateData: string) => {
+    if (!dateData) return;
+
+    const date = new Date(dateData);
+
+    // Format the date using the US locale to automatically get MM/DD/YYYY
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+    });
+
+    const formattedDate = formatter.format(date);
+    return formattedDate;
+  };
+
   const handlePlaintiffSave = useCallback(async () => {
     if (!validatePlaintiff()) return;
     setPSaving(true);
+    const payload = {
+      firstName: pFirstName.trim(),
+      lastName: pLastName.trim(),
+      clientFirstName: pFirstName.trim(),
+      clientLastName: pLastName.trim(),
+      phone: pPhone.trim() || undefined,
+      email: pEmail.trim() || undefined,
+      dob: dateConverter(pDob) || undefined,
+      dateOfLoss: dateConverter(d.dateOfIncident) || undefined,
+      address: pAddress.trim() || undefined,
+      status: d.status,
+      title: d.title || undefined || "",
+      description: d.description || undefined,
+      dateOfIncident: d.dateOfIncident || undefined,
+      externalReference: d.externalReference || undefined,
+      insuranceCarrier: d.insuranceCarrier || undefined,
+      policyNumber: d.policyNumber || undefined,
+      claimNumber: d.claimNumber || undefined,
+      notes: d.notes || undefined,
+      demandAmount: d.demandAmount ?? undefined,
+      settlementAmount: d.settlementAmount ?? undefined,
+    };
     try {
-      const updated = await casesService.updateCase(d.id, {
-        clientFirstName: pFirstName.trim(),
-        clientLastName: pLastName.trim(),
-        clientPhone: pPhone.trim() || undefined,
-        clientEmail: pEmail.trim() || undefined,
-        clientDob: "2000-06-09", //pDob  || undefined,
-        clientAddress: pAddress.trim() || undefined,
-        status: d.status,
-        title: d.title || undefined || "",
-        description: d.description || undefined,
-        dateOfIncident: "2026-06-07", //d.dateOfIncident || undefined,
-        externalReference: d.externalReference || undefined,
-        insuranceCarrier: d.insuranceCarrier || undefined,
-        policyNumber: d.policyNumber || undefined,
-        claimNumber: d.claimNumber || undefined,
-        notes: d.notes || undefined,
-        demandAmount: d.demandAmount ?? undefined,
-        settlementAmount: d.settlementAmount ?? undefined,
-      });
-      onCaseUpdated(updated);
+      const updated = await casesService.updateCase(d.id, payload);
+      onCaseUpdated({ ...d, payload });
       setEditingPlaintiff(false);
       addToast({
         type: "success",
@@ -666,27 +778,31 @@ function DetailsTab({
   const handleTrackingSave = useCallback(async () => {
     if (!validateTracking()) return;
     setTSaving(true);
+    const payload = {
+      firstName: pFirstName.trim(),
+      lastName: pLastName.trim(),
+      clientFirstName: pFirstName.trim(),
+      clientLastName: pLastName.trim(),
+      clientPhone: d.clientPhone || undefined,
+      clientEmail: d.clientEmail || undefined,
+      clientDob: d.clientDob || undefined,
+      clientAddress: d.clientAddress || undefined,
+      status: tStatus,
+      title: tTitle.trim() || undefined,
+      description: tDescription.trim() || undefined,
+      dateOfIncident: dateConverter(tDateOfIncident) || undefined,
+      dateOfLoss: dateConverter(tDateOfIncident) || undefined,
+      externalReference: d.externalReference || undefined,
+      insuranceCarrier: d.insuranceCarrier || undefined,
+      policyNumber: d.policyNumber || undefined,
+      claimNumber: d.claimNumber || undefined,
+      notes: d.notes || undefined,
+      demandAmount: d.demandAmount ?? undefined,
+      settlementAmount: d.settlementAmount ?? undefined,
+    };
     try {
-      const updated = await casesService.updateCase(d.id, {
-        clientFirstName: d.clientFirstName,
-        clientLastName: d.clientLastName,
-        clientPhone: d.clientPhone || undefined,
-        clientEmail: d.clientEmail || undefined,
-        clientDob: d.clientDob || undefined,
-        clientAddress: d.clientAddress || undefined,
-        status: tStatus,
-        title: tTitle.trim() || undefined,
-        description: tDescription.trim() || undefined,
-        dateOfIncident: tDateOfIncident || undefined,
-        externalReference: d.externalReference || undefined,
-        insuranceCarrier: d.insuranceCarrier || undefined,
-        policyNumber: d.policyNumber || undefined,
-        claimNumber: d.claimNumber || undefined,
-        notes: d.notes || undefined,
-        demandAmount: d.demandAmount ?? undefined,
-        settlementAmount: d.settlementAmount ?? undefined,
-      });
-      onCaseUpdated(updated);
+      const updated = await casesService.updateCase(d.id, payload);
+      onCaseUpdated({ ...d, payload });
       setEditingTracking(false);
       addToast({
         type: "success",
@@ -795,12 +911,12 @@ function DetailsTab({
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Birthdate
                 </label>
-                <input
-                  type="text"
+                <Field
+                  label=""
+                  type="date"
                   value={pDob}
-                  onChange={(e) => setPDob(e.target.value)}
-                  placeholder="MM/DD/YYYY"
-                  className={inputCls}
+                  onChange={(e) => setPDob(e.toString())}
+                  placeholder={pDob}
                 />
                 {pErrors.dob && <p className={errCls}>{pErrors.dob}</p>}
               </div>
@@ -915,26 +1031,33 @@ function DetailsTab({
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Case Type
                 </label>
-                <input
+                {/* <input
                   type="text"
                   value={tTitle}
                   onChange={(e) => setTTitle(e.target.value)}
                   className={inputCls}
-                />
+                /> */}
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  Date of Incident
-                </label>
-                <input
+                {/* <input
                   type="text"
                   value={tDateOfIncident}
                   onChange={(e) => setTDateOfIncident(e.target.value)}
                   placeholder="MM/DD/YYYY"
                   className={inputCls}
+                /> */}
+                <Field
+                  label=""
+                  type="date"
+                  value={tDateOfIncident}
+                  onChange={(e) => {
+                    console.log(e);
+                    setTDateOfIncident(e.toString());
+                  }}
+                  placeholder={tDateOfIncident}
                 />
-                {tErrors.dateOfIncident && (
-                  <p className={errCls}>{tErrors.dateOfIncident}</p>
+                {tErrors.tDateOfIncident && (
+                  <p className={errCls}>{tErrors.tDateOfIncident}</p>
                 )}
               </div>
               {/* Fields below not supported by current API */}
@@ -1200,7 +1323,7 @@ function DetailsTab({
             </div>
             <div className="min-w-0">
               <p className="text-sm text-gray-700 font-medium truncate">
-                {d.insuranceCarrier || "Smith & Associates"}
+                {d.insuranceCarrier || ""}
               </p>
               <p className="text-xs text-gray-400">Law Firm</p>
             </div>
@@ -1307,24 +1430,86 @@ function LiensTab({
   caseDetail,
   panelMode,
   onPanelModeChange,
+  onAddMedicalLien,
 }: {
   caseId: string;
   liens: CaseLienItem[];
   caseDetail: CaseDetail;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
+  onAddMedicalLien: (m: boolean) => void;
 }) {
   const [search, setSearch] = useState("");
   const [liensUpdates, setLiensUpdates] = useState<any>();
+  const [lienId, setSelectedId] = useState<string | null>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [forms, setForms] = useState<any>({
+    [0]: undefined,
+    [1]: undefined,
+    [2]: undefined,
+  });
+  const addToast = useLienStore((s) => s.addToast);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const fetchData = useCallback(async () => {
-    const liensUpdates = casesService.getCaseLiensUpdates(caseId);
+    const liensUpdates = await casesService.getCaseLiensUpdates(caseId);
     setLiensUpdates(liensUpdates);
   }, []);
 
+  const findValueById = (list: any[], id: any, field: string) => {
+    const item = list.find((i) => String(i.id) === String(id));
+    return item ? item[field] : "";
+  };
+
+  const fetchLienDetails = useCallback(async () => {
+    if (lienId) {
+      try {
+        setLoading(true);
+        const taskPromises = [
+          casesService.getMedicalInfo(lienId),
+          casesService.getMedicalFacility(lienId),
+          casesService.getMedicalCodes(lienId),
+          casesService.getPayee(lienId),
+          lookupService.getMedicalProcedureCodes(),
+        ];
+
+        // 2. Wait for ALL tasks to either resolve or reject
+        const results = await Promise.allSettled(taskPromises);
+        const proceduralCodes = results[results.length - 1];
+        console.log(results);
+        // 3. Process the results individually if needed
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") {
+            if (index == 1 && proceduralCodes.status == "fulfilled") {
+              setForms({
+                [index]: findValueById(
+                  proceduralCodes.value.data,
+                  result.value.data,
+                  "name",
+                ),
+              });
+            } else {
+              console.log({ [index]: result.value.data });
+              setForms((prev) => ({ ...prev, [index]: result.value.data }));
+            }
+          } else {
+            console.error(`Task ${index} failed due to:`, result.reason);
+          }
+        });
+      } catch (error) {
+        // Promise.allSettled itself rarely throws unless input is invalid
+        console.error("Unexpected execution error", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [lienId]);
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchLienDetails();
+  }, [fetchLienDetails, lienId]);
   /* TEMP: visual fallback data for UI review only */
   const usingFallback = liens.length === 0;
   const displayLiens = liens.map((l) => {
@@ -1364,195 +1549,536 @@ function LiensTab({
     0,
   );
 
+  const exportCaseLiens = async () => {
+    const response = await casesService.exportCaseLiens({
+      caseId: caseId,
+      liensId: null,
+      lawFirmId: null,
+      medicalFacilityId: null,
+      purchaseDate: null,
+      caseManagerId: null,
+      lienStatusId: null,
+    });
+
+    const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
+    const link = document.createElement("a");
+    link.href = src;
+    link.download = response.data[0]?.filename;
+    link.click();
+    link.remove();
+  };
+
+  function onFormValid(data?: any, index: number) {
+    console.log(data);
+    setForms((prev) => {
+      console.log(prev);
+      const copy = prev;
+      copy[index] = data ?? copy[index];
+      return copy;
+    });
+  }
+
+  const dateConverter = (dateData: string) => {
+    if (!dateData) return;
+
+    const date = new Date(dateData);
+
+    // Format the date using the US locale to automatically get MM/DD/YYYY
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+    });
+
+    const formattedDate = formatter.format(date);
+    return formattedDate;
+  };
+  async function save() {
+    try {
+      // Implement save logic here (API call)
+      Promise.allSettled([
+        await updateMedicalLien({
+          ...forms[0],
+          purchaseDate: dateConverter(forms[0].purchaseDate),
+          initialServiceDate: dateConverter(forms[0].initialServiceDate),
+          endServiceDate: dateConverter(forms[0].endServiceDate),
+        }),
+        await updateMedicalFacilityLiens(forms[1]),
+
+        forms[2].codeRows.forEach(async (element) => {
+          await updateMedicalCodeLiens({
+            payee: forms[2].payee,
+            outboundCheckNumber: forms[2].outboundCheckNumber,
+            ...element,
+          });
+        }),
+        await updateMedicalPayee(forms[2]),
+        await uploadDocuments(forms[3]),
+      ]);
+      addToast({
+        type: "success",
+        title: "Liens Updated",
+        description: `Liens has been updated.`,
+      });
+      // closeModal();
+    } finally {
+      // stopLoading();
+    }
+  }
+
+  const updateMedicalLien = async (payload: CreateMedicalLiensDto) => {
+    console.log(payload);
+    try {
+      const request: CreateMedicalLiensDto = {
+        id: forms[0].id,
+        caseId: caseId,
+        status: payload.status,
+        purchaseDate: payload.purchaseDate,
+        initialServiceDate: payload.initialServiceDate,
+        endServiceDate: payload.endServiceDate,
+        note: payload.note,
+        isBulk: payload.isBulk == "true" ? "Yes" : "No",
+        isServicing: payload.isServicing == "true" ? "Yes" : "No",
+        fundingCompanyId: payload.fundingCompanyId,
+      };
+      await casesService.updateMedicalLiens(request);
+      //
+      setErrors({});
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.isConflict) {
+          setErrors({ caseNumber: "A case with this number already exists" });
+        } else {
+          addToast({
+            type: "error",
+            title: "Create Failed",
+            description: err.message,
+          });
+        }
+      } else {
+        addToast({
+          type: "error",
+          title: "Update Medical Information Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    }
+  };
+
+  const updateMedicalFacilityLiens = async (
+    payload: CreateMedicalFacilityDto,
+  ) => {
+    console.log(payload);
+    if (!payload.facilityId) return;
+    try {
+      const request: CreateMedicalFacilityDto = {
+        id: caseId,
+        liensId: lienId,
+        facilityId: payload.facilityId,
+        facility: payload.facility,
+        facilityContactId: payload.facilityContactId,
+        facilityContact: payload.facilityContact,
+        email: payload.email,
+        medicalProviderId: payload.medicalProviderId,
+        medicalProvider: payload.medicalProvider,
+      };
+      await casesService.createMedicalFacilityLiens(request);
+      addToast({
+        type: "success",
+        title: "Facility Updated",
+        description: `Facility has been updated.`,
+      });
+      setErrors({});
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: err.message,
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    }
+  };
+
+  const updateMedicalPayee = async (payload: CreateMedicalPaymentDto) => {
+    console.log(payload);
+    try {
+      const request: CreateMedicalPaymentDto = {
+        id: null,
+        liensId: lienId,
+        payee: payload.payee,
+        outboundCheckNumber: payload.outboundCheckNumber,
+      };
+      await casesService.createMedicalPaymentLiens(request);
+      addToast({
+        type: "success",
+        title: "Payee Updated",
+        description: `Payee has been updated.`,
+      });
+      setErrors({});
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: err.message,
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    }
+    // finally {
+    //   setSubmitting(false);
+    // }
+  };
+
+  const uploadDocuments = async (payload: any) => {
+    console.log(payload);
+    try {
+      await casesService.uploadDocuments({ ...payload, lienId: lienId });
+      addToast({
+        type: "success",
+        title: "Document Uploaded",
+        description: `Document has been updated.`,
+      });
+      setErrors({});
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: err.message,
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    }
+    // finally {
+    //   setSubmitting(false);
+    // }
+  };
+
+  const updateMedicalCodeLiens = async (payload: CreateMedicalCodeLiensDto) => {
+    console.log(payload);
+    try {
+      const request: CreateMedicalCodeLiensDto = {
+        id: null,
+        liensId: lienId,
+        code: payload.code,
+        medicareCost: parseFloat(payload.medicareCost).toFixed(2),
+        billingAmount: parseFloat(payload.billingAmount).toFixed(2),
+        purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
+        payee: payload.payee,
+        outboundCheckNumber: payload.outboundCheckNumber,
+      };
+      await casesService.createMedicalCodeLiens(request);
+      addToast({
+        type: "success",
+        title: "Medical Code Updated",
+        description: `Medical Code has been updated.`,
+      });
+      setErrors({});
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: err.message,
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    }
+    // finally {
+    //   setSubmitting(false);
+    // }
+  };
+
   const leftContent = (
     <div className="space-y-4">
-      <CollapsibleSection title="Liens" icon="ri-stack-line">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="relative flex-1">
-            <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search liens..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
-            />
-          </div>
-          <button className="px-3.5 py-2 text-sm font-medium text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap">
-            <i className="ri-link text-sm" />
-            Link Lien
-          </button>
-        </div>
+      {!lienId ? (
+        <>
+          <CollapsibleSection title="Liens" icon="ri-stack-line">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="relative flex-1">
+                <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search liens..."
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+              <button
+                className="px-3.5 py-2 text-sm font-medium text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
+                onClick={() => onAddMedicalLien(true)}
+              >
+                <i className="ri-link text-sm" />
+                Link Lien
+              </button>
 
-        {filtered.length === 0 ? (
-          <div className="text-center py-8">
-            <i className="ri-stack-line text-2xl text-gray-300" />
-            <p className="text-sm text-gray-400 mt-2">
-              {search
-                ? "No liens match your search"
-                : "No liens linked to this case"}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto -mx-5 px-5">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Lien ID
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Facility Name
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Service Date
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Purchase Date
-                  </th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Purchase Amt
-                  </th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Billing Amt
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Status
-                  </th>
-                  <th className="pl-3 py-2 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[50px]"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filtered.map((l) => (
-                  <tr
-                    key={l.id}
-                    className="hover:bg-gray-50/50 transition-colors"
-                  >
-                    <td className="pr-3 py-2.5">
-                      <Link
-                        href={`/lien/liens/${l.id}`}
-                        className="text-xs font-mono text-primary hover:underline"
-                      >
-                        {l.lienNumber}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[160px]">
-                      {l.facility}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                      {l.serviceDate}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                      {l.purchaseDate}
-                    </td>
-                    <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">
-                      {formatCurrency(l.purchaseAmount)}
-                    </td>
-                    <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">
-                      {formatCurrency(l.originalAmount)}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <StatusBadge status={l.status} />
-                    </td>
-                    <td className="pl-3 py-2.5 text-center">
-                      <Link
-                        href={`/lien/liens/${l.id}`}
-                        className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                      >
-                        <i className="ri-eye-line text-sm" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-gray-200 bg-gray-50/50">
-                  <td
-                    colSpan={4}
-                    className="pr-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide"
-                  >
-                    Totals ({filtered.length} lien
-                    {filtered.length !== 1 ? "s" : ""})
-                  </td>
-                  <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
-                    {formatCurrency(totalPurchase)}
-                  </td>
-                  <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
-                    {formatCurrency(totalBilling)}
-                  </td>
-                  <td colSpan={2} />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </CollapsibleSection>
+              <button
+                className="px-3.5 py-2 text-sm font-medium text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
+                onClick={() => exportCaseLiens()}
+              >
+                Export
+              </button>
+            </div>
 
-      <CollapsibleSection title="Updates" icon="ri-history-line">
-        <div className="overflow-x-auto -mx-5 px-5">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Timestamp
-                </th>
-                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Lien ID
-                </th>
-                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Actions
-                </th>
-                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">
-                  Description
-                </th>
-                <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Updated By
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {/* TEMP: visual fallback data for UI review only */}
-              {liensUpdates && liensUpdates.length > 0 ? (
-                liensUpdates.map((u) => (
-                  <tr
-                    key={u.id}
-                    className="hover:bg-gray-50/50 transition-colors"
-                  >
-                    <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                      {u.timestamp}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs font-mono text-primary">
-                      {u.lienId}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
-                        {u.action}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-sm text-gray-600">
-                      {u.description}
-                    </td>
-                    <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">
-                      {u.updatedBy}
-                    </td>
+            {filtered.length === 0 ? (
+              <div className="text-center py-8">
+                <i className="ri-stack-line text-2xl text-gray-300" />
+                <p className="text-sm text-gray-400 mt-2">
+                  {search
+                    ? "No liens match your search"
+                    : "No liens linked to this case"}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto -mx-5 px-5">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                        Lien ID
+                      </th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                        Facility Name
+                      </th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                        Service Date
+                      </th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                        Purchase Date
+                      </th>
+                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                        Purchase Amt
+                      </th>
+                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                        Billing Amt
+                      </th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                        Status
+                      </th>
+                      <th className="pl-3 py-2 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[50px]"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filtered.map((l) => (
+                      <tr
+                        key={l.id}
+                        className="hover:bg-gray-50/50 transition-colors"
+                      >
+                        <td
+                          className="pr-3 py-2.5"
+                          onClick={() => setSelectedId(l.id)}
+                        >
+                          <span className="text-xs font-mono cursor-pointer text-primary hover:underline">
+                            {l.lienNumber}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[160px]">
+                          {l.facility}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                          {l.serviceDate}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                          {l.purchaseDate}
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">
+                          {formatCurrency(l.purchaseAmount)}
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">
+                          {formatCurrency(l.originalAmount)}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <StatusBadge status={l.status} />
+                        </td>
+                        <td className="pl-3 py-2.5 text-center">
+                          <Link
+                            href={`/lien/liens/${l.id}`}
+                            className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                          >
+                            <i className="ri-eye-line text-sm" />
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-gray-200 bg-gray-50/50">
+                      <td
+                        colSpan={4}
+                        className="pr-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                      >
+                        Totals ({filtered.length} lien
+                        {filtered.length !== 1 ? "s" : ""})
+                      </td>
+                      <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
+                        {formatCurrency(totalPurchase)}
+                      </td>
+                      <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
+                        {formatCurrency(totalBilling)}
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Updates" icon="ri-history-line">
+            <div className="overflow-x-auto -mx-5 px-5">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                      Timestamp
+                    </th>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                      Lien ID
+                    </th>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                      Actions
+                    </th>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">
+                      Description
+                    </th>
+                    <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                      Updated By
+                    </th>
                   </tr>
-                ))
-              ) : (
-                <tr className="hover:bg-gray-50/50 transition-colors">
-                  <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                    No updates found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-          <p className="text-xs text-gray-400">
-            Showing {liens.length} entries
-          </p>
-        </div>
-      </CollapsibleSection>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {/* TEMP: visual fallback data for UI review only */}
+                  {liensUpdates && liensUpdates.length > 0 ? (
+                    liensUpdates.map((u) => (
+                      <tr
+                        key={u.id}
+                        className="hover:bg-gray-50/50 transition-colors"
+                      >
+                        <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                          {u.timestamp}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs font-mono text-primary">
+                          {u.lienId}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
+                            {u.action}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-600">
+                          {u.description}
+                        </td>
+                        <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">
+                          {u.updatedBy}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr className="hover:bg-gray-50/50 transition-colors">
+                      <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                        No updates found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-xs text-gray-400">
+                Showing {liens.length} entries
+              </p>
+            </div>
+          </CollapsibleSection>
+        </>
+      ) : (
+        <CollapsibleSection title="Medical Liens" icon="ri-stack-line">
+          {!loading && (
+            <>
+              <div className="border-b-1 pb-6 border-gray-300">
+                <MedicalLienInfo
+                  caseId={caseId}
+                  lienId={lienId}
+                  data={forms[0]}
+                  onFormValid={(e: boolean, data?: any) => {
+                    console.log(e);
+                    onFormValid(data, 0);
+                  }}
+                />
+              </div>
+
+              <div className="border-b-1 pb-6 pt-6 border-gray-300">
+                <MedicalFacilityProviderInfo
+                  caseId={caseId}
+                  lienId={lienId}
+                  data={forms[1]}
+                  onFormValid={(e: boolean, data?: any) => onFormValid(data, 1)}
+                />
+              </div>
+
+              <div className="border-b-1 pb-6 pt-6 border-gray-300">
+                <MedicalCodesDescription
+                  caseId={caseId}
+                  lienId={lienId}
+                  data={forms[2]}
+                  onFormValid={(e: boolean, data?: any) => onFormValid(data, 2)}
+                />
+              </div>
+
+              <div className="border-b-1 pb-6 pt-6 border-gray-300">
+                <UploadDocuments
+                  caseId={caseId}
+                  lienId={lienId}
+                  data={forms[3]}
+                  onFormValid={(e: boolean, data?: any) => onFormValid(data, 3)}
+                />
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-between mt-6">
+            <button
+              onClick={() => setSelectedId(null)}
+              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+            >
+              Go back
+            </button>
+            <button
+              onClick={() => {
+                save();
+              }}
+              className="text-sm px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-50"
+            >
+              {/* //disabled={submitDisabled || loading} */}
+              {/* {loading ? 'Saving...' : submitLabel} */}
+              Save
+            </button>
+          </div>
+        </CollapsibleSection>
+      )}
     </div>
   );
 
@@ -1585,7 +2111,7 @@ function LiensTab({
             </div>
             <div className="min-w-0">
               <p className="text-sm text-gray-700 font-medium truncate">
-                {caseDetail.insuranceCarrier || "Smith & Associates"}
+                {caseDetail.insuranceCarrier || ""}
               </p>
               <p className="text-xs text-gray-400">Law Firm</p>
             </div>
@@ -1728,12 +2254,13 @@ function DocumentsTab({
                 onChange={(e) => setSelectedDocType(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
               >
-                <option value="">Select document type...</option>
-                {docTypes.map((t: string) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
+                {/* <option value="">Select document type...</option>
+                {docTypes &&
+                  docTypes.map((t: string) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))} */}
               </select>
               <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -1997,23 +2524,12 @@ function DocumentsTab({
         {/* TEMP: visual fallback data for UI review only */}
         <div className="space-y-2">
           <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <i className="ri-user-line text-sm text-primary" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm text-gray-700 font-medium truncate">
-                Sarah Mitchell
-              </p>
-              <p className="text-xs text-gray-400">Case Manager</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
             <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
               <i className="ri-building-line text-sm text-blue-500" />
             </div>
             <div className="min-w-0">
               <p className="text-sm text-gray-700 font-medium truncate">
-                {caseDetail.insuranceCarrier || "Smith & Associates"}
+                {caseDetail.insuranceCarrier || ""}
               </p>
               <p className="text-xs text-gray-400">Law Firm</p>
             </div>
@@ -2091,7 +2607,7 @@ const TEMP_SERVICING_CLOSED_LIENS = [
     paymentAmount: 2400,
     balance: 0,
     status: "Closed",
-    lienType: ''
+    lienType: "",
   },
 ];
 
@@ -2211,17 +2727,14 @@ function ServicingTab({
     useState("Sarah Mitchell");
   const saveDisabled = true;
 
-  let openLiens = liens.filter(i => i.closedAtUtc === null);
-  let closedLiens = liens.filter(i => i.closedAtUtc !== null);
+  let openLiens = liens.filter((i) => i.closedAtUtc === null);
+  let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
 
   const openLiensTotalBilling = openLiens.reduce(
     (s, l) => s + l.originalAmount,
     0,
   );
-  const openLiensTotalBalance = openLiens.reduce(
-    (s, l) => s + l.balance,
-    0,
-  );
+  const openLiensTotalBalance = openLiens.reduce((s, l) => s + l.balance, 0);
   const closedLiensTotalBilling = closedLiens.reduce(
     (s, l) => s + l.originalAmount,
     0,
@@ -2237,14 +2750,18 @@ function ServicingTab({
 
   const { lookup } = useSessionContext();
 
-  const settlementTypeLookups = ([{ id: '1', code: '', description: 'Other', name: '' }]).map(item => ({
+  const settlementTypeLookups = [
+    { id: "1", code: "", description: "Other", name: "" },
+  ].map((item) => ({
     id: item.id || item.code,
-    description: item.name || item.description || ''
+    description: item.name || item.description || "",
   }));
 
-  const settlementStatusLookups = ([{ id: '1', code: '', description: 'Full Payment', name: '' }]).map(item => ({
+  const settlementStatusLookups = [
+    { id: "1", code: "", description: "Full Payment", name: "" },
+  ].map((item) => ({
     id: item.id || item.code,
-    description: item.name || item.description || ''
+    description: item.name || item.description || "",
   }));
 
   const leftContent = (
@@ -2416,7 +2933,10 @@ function ServicingTab({
                 {TEMP_PAYMENT_HISTORY.length} payment
                 {TEMP_PAYMENT_HISTORY.length !== 1 ? "s" : ""} recorded
               </p>
-              <button onClick={handleOpenStandardPayment} className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
+              <button
+                onClick={handleOpenStandardPayment}
+                className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1"
+              >
                 <i className="ri-add-line text-sm" />
                 Add Payment
               </button>
@@ -2430,7 +2950,7 @@ function ServicingTab({
                 }}
                 lookups={{
                   settlementType: settlementTypeLookups,
-                  settlementStatus: settlementStatusLookups
+                  settlementStatus: settlementStatusLookups,
                 }}
               />
             </div>
@@ -2539,11 +3059,17 @@ function ServicingTab({
                     <i className="ri-percent-line text-sm" />
                     Setup Reduction
                   </button>
-                  <button onClick={handleOpenNoRecoverySetup} className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors inline-flex items-center gap-1">
+                  <button
+                    onClick={handleOpenNoRecoverySetup}
+                    className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors inline-flex items-center gap-1"
+                  >
                     <i className="ri-close-circle-line text-sm" />
                     No Recovery
                   </button>
-                  <button onClick={handleOpenStandardPayment} className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
+                  <button
+                    onClick={handleOpenStandardPayment}
+                    className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1"
+                  >
                     <i className="ri-money-dollar-circle-line text-sm" />
                     Add Payment
                   </button>
@@ -2828,7 +3354,7 @@ function ServicingTab({
             </div>
             <div className="min-w-0">
               <p className="text-sm text-gray-700 font-medium truncate">
-                {caseDetail.insuranceCarrier || "Smith & Associates"}
+                {caseDetail.insuranceCarrier || ""}
               </p>
               <p className="text-xs text-gray-400">Law Firm</p>
             </div>
