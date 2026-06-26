@@ -1,5 +1,5 @@
 import { settlementApi } from './settlement.api';
-import type { CreateLienReductionRequest, CreateLienReductionResponse, CreateLienSettlementRequest, CreateLienSettlementResponse, DeletePaymentRequest, GetSettlementHistoryResponse, SettlementGenericResponse, UpdateSettlementRequest, UpdateSettlementResponse } from './settlement.types';
+import type { CreateLienReductionRequest, CreateLienReductionResponse, CreateLienSettlementRequest, CreateLienSettlementResponse, CreateLienSettlementV2Request, CreateLienSettlementV2Response, CreateSettlementPaymentRequest, CreateSettlementPaymentResponse, DeletePaymentRequest, GetSettlementHistoryResponse, SettlementGenericResponse, UpdateSettlementRequest, UpdateSettlementResponse } from './settlement.types';
 
 export const settlementService = {
   async deletePayment(id: DeletePaymentRequest['caseId']): Promise<SettlementGenericResponse> {
@@ -24,5 +24,13 @@ export const settlementService = {
   async getSettlementHistory(id: string): Promise<GetSettlementHistoryResponse> {
     const { data } = await settlementApi.getSettlementHistory(id)
     return data
-  }
+  },
+  async createLienSettlement(form: CreateLienSettlementV2Request): Promise<CreateLienSettlementV2Response> {
+    const { data } = await settlementApi.createLienSettlement(form)
+    return data
+  },
+  async createSettlementPayment(form: CreateSettlementPaymentRequest): Promise<CreateSettlementPaymentResponse> {
+    const { data } = await settlementApi.createSettlementPayment(form)
+    return data
+  },
 }

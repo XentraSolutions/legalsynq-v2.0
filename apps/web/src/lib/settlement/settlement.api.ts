@@ -4,6 +4,10 @@ import {
   CreateLienReductionResponse,
   CreateLienSettlementRequest,
   CreateLienSettlementResponse,
+  CreateLienSettlementV2Request,
+  CreateLienSettlementV2Response,
+  CreateSettlementPaymentRequest,
+  CreateSettlementPaymentResponse,
   DeletePaymentRequest,
   GetSettlementHistoryResponse,
   SettlementGenericResponse,
@@ -35,5 +39,11 @@ export const settlementApi = {
   },
   getSettlementHistory(id: string) {
     return apiClient.get<GetSettlementHistoryResponse>(`${BASE}/settlement/history/${id}`)
-  }
+  },
+  createLienSettlement(form: CreateLienSettlementV2Request) {
+    return apiClient.post<CreateLienSettlementV2Response>(`/lien/api/liens/settlement/create`, form)
+  },
+  createSettlementPayment(form: CreateSettlementPaymentRequest) {
+    return apiClient.post<CreateSettlementPaymentResponse>(`/lien/api/liens/settlement/payments`, form)
+  },
 }

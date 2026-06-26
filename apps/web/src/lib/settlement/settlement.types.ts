@@ -61,3 +61,29 @@ export interface GetSettlementHistoryResponse {
   reductions: HistoryData[]
   payments: HistoryData[]
 }
+
+export interface CreateLienSettlementV2Request {
+  lienId: string
+  caseId: string
+  settlementAmount: number
+  settlementDate: string
+  notes: string
+}
+
+export interface CreateLienSettlementV2Response extends SettlementGenericResponse {}
+
+export interface CreateSettlementPaymentRequest {
+  lienId: string
+  caseId: string
+  amount: number // received payment
+  paymentDate: string
+  paymentMethod: string
+  referenceNumber: string
+  notes: string
+
+  // missing from the api
+  settlementType: string
+  settlementStatus: string
+}
+
+export interface CreateSettlementPaymentResponse extends SettlementGenericResponse {}

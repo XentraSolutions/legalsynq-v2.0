@@ -100,4 +100,12 @@ export const lookupApi = {
   getMedicalFacility() {
     return apiClient.get<LookupGenericResponse[]>(`${BASE}/facility`);
   },
+
+  getSettlementStatus() {
+    return apiClient.get<LookupData[]>(`${BASE}/settlement/status`);
+  },
+
+  getSettlementType() {
+    return apiClient.get<LookupData[]>(`${BASE}/settlement/type`);
+  },
 };

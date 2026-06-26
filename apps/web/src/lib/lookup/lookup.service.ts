@@ -5,6 +5,7 @@ import type {
   ContactsByIdResponse,
   DocumentTypeResponse,
   LawFirmListResponse,
+  LookupData,
   LookupGenericResponse,
   LookupResponse,
   MedicalProcedureCodesResponse,
@@ -120,5 +121,15 @@ export const lookupService = {
     return {
       items: data,
     };
+  },
+
+  async getSettlementStatus(): Promise<{ items: LookupData[] }> {
+    const { data } = await lookupApi.getSettlementStatus();
+    return { items: data };
+  },
+
+  async getSettlementType(): Promise<{ items: LookupData[] }> {
+    const { data } = await lookupApi.getSettlementType();
+    return { items: data };
   },
 };

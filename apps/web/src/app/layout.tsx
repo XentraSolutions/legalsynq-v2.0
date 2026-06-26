@@ -3,6 +3,7 @@ import './globals.css';
 import { TenantBrandingProvider } from '@/providers/tenant-branding-provider';
 import { SessionProvider, type SerializableSession } from '@/providers/session-provider';
 import { ProviderModeProvider } from '@/providers/provider-mode-provider';
+import { QueryProvider } from '@/providers/query-provider';
 import { getServerSession } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -40,9 +41,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="antialiased">
         <TenantBrandingProvider>
           <SessionProvider initialSession={initialSession}>
-            <ProviderModeProvider>
-              {children}
-            </ProviderModeProvider>
+            <QueryProvider>
+              <ProviderModeProvider>
+                {children}
+              </ProviderModeProvider>
+            </QueryProvider>
           </SessionProvider>
         </TenantBrandingProvider>
       </body>

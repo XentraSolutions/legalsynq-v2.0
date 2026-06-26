@@ -6,6 +6,10 @@ import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
+import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
+import { LienTable } from "@/components/lien/lien-table";
+import type { LienColumnDef, LienFooterCell } from "@/components/lien/lien-table";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "---";
@@ -26,6 +30,9 @@ interface SetupReductionFormProps {
   onClose: () => void;
   caseId: string;
   liens: (CaseLienItem & CaseLienItemMetadata)[];
+  liensLoadedAt: Date | null;
+  onRefreshLiens?: () => void;
+  isLiensFetching?: boolean;
   onSaved: () => void;
 }
 
@@ -39,6 +46,9 @@ export function SetupReductionForm({
   onClose,
   caseId,
   liens,
+  liensLoadedAt,
+  onRefreshLiens,
+  isLiensFetching,
   onSaved,
 }: SetupReductionFormProps) {
   const addToast = useLienStore((s) => s.addToast);
@@ -289,6 +299,141 @@ export function SetupReductionForm({
   );
   const totalSettle = totalBilling - totalReduction;
 
+  const reductionColumns: LienColumnDef[] = [
+    {
+      id: "lienId",
+      header: "Lien ID",
+      cell: (l) => (
+        <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
+      ),
+    },
+    {
+      id: "billing",
+      header: "Billing Amount",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency(l.originalAmount ?? 0)}
+        </span>
+      ),
+    },
+    {
+      id: "purchase",
+      header: "Purchase Amount",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency(l.purchaseAmount ?? 0)}
+        </span>
+      ),
+    },
+    {
+      id: "reduction",
+      header: "Reduction Amount",
+      align: "right",
+      cell: (l, isChecked) => {
+        const inputVal = lienInputs[l.id] ?? "";
+        const inputNumeric = parseFloat(inputVal) || 0;
+        const rowExceedsBilling =
+          inputNumeric > (l.originalAmount ?? 0) && inputNumeric > 0;
+        if (!isChecked)
+          return <span className="text-sm text-gray-300">---</span>;
+        return (
+          <div className="flex flex-col items-end gap-0.5">
+            <div className="relative">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                $
+              </span>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={inputVal}
+                onChange={(e) => handleRowInputChange(l.id, e.target.value)}
+                onBlur={() => {
+                  const n = parseFloat(inputVal);
+                  if (!isNaN(n))
+                    setLienInputs((prev) => ({
+                      ...prev,
+                      [l.id]: n.toFixed(2),
+                    }));
+                }}
+                placeholder="0.00"
+                className={`w-28 pl-5 pr-2 py-1 text-right ${
+                  rowExceedsBilling
+                    ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+                    : ""
+                }`}
+              />
+            </div>
+            {rowExceedsBilling && (
+              <span className="text-[10px] text-red-500 whitespace-nowrap">
+                Exceeds billing
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: "toSettle",
+      header: "Amount to Settle",
+      align: "right",
+      cell: (l, isChecked) => {
+        if (!isChecked)
+          return <span className="text-sm text-gray-300">---</span>;
+        const reduction = lienReductions[l.id] ?? 0;
+        return (
+          <span className="text-sm text-gray-700 tabular-nums">
+            {formatCurrency((l.originalAmount ?? 0) - reduction)}
+          </span>
+        );
+      },
+    },
+  ];
+
+  const reductionFooter: LienFooterCell[] = [
+    {
+      colSpan: 3,
+      content: (
+        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+          Total
+        </span>
+      ),
+    },
+    {
+      align: "right",
+      content: (
+        <span className="text-sm font-semibold text-gray-900 tabular-nums">
+          {formatCurrency(totalBilling)}
+        </span>
+      ),
+    },
+    {
+      align: "right",
+      content: (
+        <span className="text-sm font-semibold text-gray-900 tabular-nums">
+          {formatCurrency(totalPurchase)}
+        </span>
+      ),
+    },
+    {
+      align: "right",
+      content: (
+        <span className="text-sm font-semibold text-green-600 tabular-nums">
+          {formatCurrency(totalReduction)}
+        </span>
+      ),
+    },
+    {
+      align: "right",
+      content: (
+        <span className="text-sm font-semibold text-gray-900 tabular-nums">
+          {formatCurrency(totalSettle)}
+        </span>
+      ),
+    },
+  ];
+
   const inverseValue = (() => {
     if (numericParent <= 0 || checkedBilling === 0) return null;
     return isPercent
@@ -351,7 +496,7 @@ export function SetupReductionForm({
                 Reduction Amount
               </label>
               <div
-                className={`flex items-stretch rounded-lg border overflow-hidden transition-colors ${
+                className={`flex items-stretch h-9 rounded-lg border overflow-hidden transition-colors ${
                   parentExceedsChecked || parentExceeds100
                     ? "border-red-300"
                     : "border-gray-200"
@@ -361,7 +506,7 @@ export function SetupReductionForm({
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
                     {isPercent ? "%" : "$"}
                   </span>
-                  <input
+                  <Input
                     type="text"
                     inputMode="decimal"
                     value={reductionInput}
@@ -372,7 +517,7 @@ export function SetupReductionForm({
                         setReductionInput(n.toFixed(2));
                     }}
                     placeholder="0.00"
-                    className="w-full h-full pl-6 pr-3 py-2 text-sm bg-white focus:outline-none focus:ring-0"
+                    className="h-full pl-6 pr-3 border-0 rounded-none focus:ring-0"
                   />
                 </div>
 
@@ -382,7 +527,7 @@ export function SetupReductionForm({
                       $
                     </span>
                   )}
-                  <input
+                  <Input
                     type="text"
                     disabled
                     readOnly
@@ -397,7 +542,7 @@ export function SetupReductionForm({
                         : ""
                     }
                     placeholder="0.00"
-                    className={`w-full h-full ${isPercent ? "pl-6" : "pl-3"} ${!isPercent ? "pr-6" : "pr-3"} py-2 text-sm text-gray-400 bg-transparent cursor-not-allowed focus:outline-none`}
+                    className={`h-full border-0 rounded-none focus:ring-0 bg-transparent text-gray-400 ${isPercent ? "pl-6 pr-3" : "pl-3 pr-6"}`}
                   />
                   {!isPercent && (
                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
@@ -466,160 +611,17 @@ export function SetupReductionForm({
           </button>
         </div>
 
-        <div className="overflow-x-auto border border-gray-100 rounded-lg">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-3 py-2 text-left w-10">
-                  <input
-                    type="checkbox"
-                    checked={allChecked}
-                    onChange={toggleAll}
-                    className="w-4 h-4 rounded border-gray-300 cursor-pointer"
-                  />
-                </th>
-                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Lien ID
-                </th>
-                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Facility
-                </th>
-                <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Billing Amount
-                </th>
-                <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Purchase Amount
-                </th>
-                <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Reduction Amount
-                </th>
-                <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                  Amount to Settle
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {openLiens.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-3 py-8 text-center text-sm text-gray-400"
-                  >
-                    No open liens on this case
-                  </td>
-                </tr>
-              ) : (
-                openLiens.map((l) => {
-                  const reduction = lienReductions[l.id] ?? 0;
-                  const amtToSettle = (l.originalAmount ?? 0) - reduction;
-                  const isChecked = checkedIds.has(l.id);
-                  const inputVal = lienInputs[l.id] ?? "";
-                  const inputNumeric = parseFloat(inputVal) || 0;
-                  const rowExceedsBilling =
-                    inputNumeric > (l.originalAmount ?? 0) && inputNumeric > 0;
-                  return (
-                    <tr
-                      key={l.id}
-                      className="hover:bg-gray-50/50 transition-colors"
-                    >
-                      <td className="px-3 py-2.5">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleCheck(l.id)}
-                          className="w-4 h-4 rounded border-gray-300 cursor-pointer"
-                        />
-                      </td>
-                      <td className="px-3 py-2.5 text-xs font-mono text-primary">
-                        {l.lienNumber}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-400">
-                        {l.facility}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">
-                        {formatCurrency(l.originalAmount ?? 0)}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">
-                        {formatCurrency(l.purchaseAmount ?? 0)}
-                      </td>
-                      <td className="px-3 py-2.5 tabular-nums text-right">
-                        {isChecked ? (
-                          <div className="flex flex-col items-end gap-0.5">
-                            <div className="relative">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                                $
-                              </span>
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={inputVal}
-                                onChange={(e) =>
-                                  handleRowInputChange(l.id, e.target.value)
-                                }
-                                onBlur={() => {
-                                  const n = parseFloat(inputVal);
-                                  if (!isNaN(n))
-                                    setLienInputs((prev) => ({
-                                      ...prev,
-                                      [l.id]: n.toFixed(2),
-                                    }));
-                                }}
-                                placeholder="0.00"
-                                className={`w-28 pl-5 pr-2 py-1 text-sm text-right border rounded focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
-                                  rowExceedsBilling
-                                    ? "border-red-300 focus:border-red-400 focus:ring-red-100"
-                                    : "border-gray-200"
-                                }`}
-                              />
-                            </div>
-                            {rowExceedsBilling && (
-                              <span className="text-[10px] text-red-500 whitespace-nowrap">
-                                Exceeds billing
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-300">---</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm tabular-nums text-right">
-                        {isChecked ? (
-                          <span className="text-gray-700">
-                            {formatCurrency(amtToSettle)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-300">---</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-gray-200 bg-gray-50/80">
-                <td
-                  colSpan={3}
-                  className="px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide"
-                >
-                  Total
-                </td>
-                <td className="px-3 py-2.5 text-sm font-semibold text-gray-900 tabular-nums text-right">
-                  {formatCurrency(totalBilling)}
-                </td>
-                <td className="px-3 py-2.5 text-sm font-semibold text-gray-900 tabular-nums text-right">
-                  {formatCurrency(totalPurchase)}
-                </td>
-                <td className="px-3 py-2.5 text-sm font-semibold text-green-600 tabular-nums text-right">
-                  {formatCurrency(totalReduction)}
-                </td>
-                <td className="px-3 py-2.5 text-sm font-semibold text-gray-900 tabular-nums text-right">
-                  {formatCurrency(totalSettle)}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <LienTable
+          liens={openLiens}
+          checkedIds={checkedIds}
+          onToggleCheck={toggleCheck}
+          onToggleAll={toggleAll}
+          columns={reductionColumns}
+          footer={reductionFooter}
+          loadedAt={liensLoadedAt}
+          onRefresh={onRefreshLiens}
+          isRefreshing={isLiensFetching}
+        />
       </div>
     </FormModal>
   );
@@ -648,13 +650,21 @@ function Field({
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
-      />
+      {type === "date" ? (
+        <DatePicker
+          value={value}
+          onChange={onChange}
+          className={error ? "border-red-300" : undefined}
+        />
+      ) : (
+        <Input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={error ? "border-red-300" : undefined}
+        />
+      )}
       {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </div>
   );

@@ -44,9 +44,14 @@ import { lookupService } from "@/lib/lookup";
 import { GetSettlementHistoryResponse } from "@/lib/settlement/settlement.types";
 import { settlementService } from "@/lib/settlement";
 import { useSessionContext } from "@/providers/session-provider";
-import { CreateSettlementForm } from "@/components/lien/forms/settlement-payment-form";
 import { SetupReductionForm } from "./components/setup-reduction-form";
+import { NoRecoveryForm } from "./components/no-recovery-form";
+import { AddPaymentForm } from "./components/add-payment-form";
+import { LienSettlementForm } from "./components/lien-settlement-form";
+import { LienTable } from "@/components/lien/lien-table";
+import type { LienColumnDef, LienFooterCell } from "@/components/lien/lien-table";
 import { LienListItem, liensService } from "@/lib/liens";
+import { useCaseLiens } from "@/hooks/use-case-liens";
 import { contactsService } from "@/lib/contacts";
 import MedicalLienInfo from "@/components/lien/forms/add-medical-lien/medical-lien-info";
 import MedicalFacilityProviderInfo from "@/components/lien/forms/add-medical-lien/medical-facility-provider-info";
@@ -101,10 +106,13 @@ export function CaseDetailClient({ id }: { id: string }) {
 
   const [history, setHistory] = useState<any>();
 
-  const [relatedLiens, setRelatedLiens] = useState<CaseLienItem[]>([]);
-  const [relatedLiensWithMetadata, setRelatedLiensWithMetadata] = useState<
-    (CaseLienItem & CaseLienItemMetadata)[]
-  >([]);
+  const {
+    data: relatedLiensWithMetadata = [],
+    dataUpdatedAt: liensUpdatedAt,
+    refetch: refetchLiens,
+    isFetching: isLiensFetching,
+  } = useCaseLiens(id);
+  const relatedLiens = relatedLiensWithMetadata;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
@@ -123,34 +131,8 @@ export function CaseDetailClient({ id }: { id: string }) {
     setLoading(true);
     setError(null);
     try {
-      const [detail, liensResult] = await Promise.all([
-        casesService.getCase(id),
-        liensService.getLiens({ caseId: id }).catch(() => ({
-          items: [],
-          pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
-        })),
-      ]);
+      const detail = await casesService.getCase(id);
       setCaseDetail(detail);
-      setRelatedLiens(liensResult.items);
-      setRelatedLiensWithMetadata(
-        liensResult.items.map((lien) => {
-          const lienExtended = lien as LienListItem & CaseLienItemMetadata;
-          // TEMP: force type while we are waiting for real / full CaseLienItem data;
-          return {
-            ...lien,
-            facility: lienExtended.facility ?? "",
-            originalAmount: lienExtended.originalAmount ?? 0,
-            reductionAmount: lienExtended.reductionAmount ?? null,
-            purchaseAmount: lienExtended.purchaseAmount ?? null,
-            paymentAmount: lienExtended.paymentAmount ?? null,
-            balance:
-              lienExtended.originalAmount -
-              (lienExtended.reductionAmount ?? 0) -
-              (lienExtended.paymentAmount ?? 0),
-            closedAtUtc: lienExtended.closedAtUtc ?? null,
-          };
-        }),
-      );
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.isNotFound ? "Case not found." : err.message);
@@ -460,6 +442,9 @@ export function CaseDetailClient({ id }: { id: string }) {
             caseDetail={d}
             history={history}
             liens={relatedLiensWithMetadata}
+            liensLoadedAt={liensUpdatedAt ? new Date(liensUpdatedAt) : null}
+            onRefreshLiens={refetchLiens}
+            isLiensFetching={isLiensFetching}
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
           />
@@ -1521,7 +1506,7 @@ function LiensTab({
     };
     return {
       ...l,
-      facility: extras.facility,
+      facility: extras.facility || '(Blank)',
       serviceDate: extras.serviceDate,
       purchaseDate: extras.purchaseDate,
       purchaseAmount: extras.purchaseAmount,
@@ -2689,29 +2674,26 @@ function ServicingTab({
   caseDetail,
   history,
   liens,
+  liensLoadedAt,
+  onRefreshLiens,
+  isLiensFetching,
   panelMode,
   onPanelModeChange,
 }: {
   caseDetail: CaseDetail;
   history: GetSettlementHistoryResponse;
   liens: (CaseLienItem & CaseLienItemMetadata)[];
+  liensLoadedAt: Date | null;
+  onRefreshLiens: () => void;
+  isLiensFetching: boolean;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [isNoRecoveryMode, setIsNoRecoveryMode] = useState(false);
+  const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
+  const [isNoRecoveryOpen, setIsNoRecoveryOpen] = useState(false);
   const [setupReductionFormShown, showSetupReductionForm] = useState(false);
-
-  const handleOpenStandardPayment = () => {
-    setIsNoRecoveryMode(false);
-    setIsPaymentModalOpen(true);
-  };
-
-  const handleOpenNoRecoverySetup = () => {
-    setIsNoRecoveryMode(true);
-    setIsPaymentModalOpen(true);
-  };
+  const [isLienSettlementOpen, setIsLienSettlementOpen] = useState(false);
 
   /* TEMP: visual fallback data for UI review only */
   const [caseStatus, setCaseStatus] = useState(
@@ -2750,19 +2732,105 @@ function ServicingTab({
 
   const { lookup } = useSessionContext();
 
-  const settlementTypeLookups = [
-    { id: "1", code: "", description: "Other", name: "" },
-  ].map((item) => ({
-    id: item.id || item.code,
-    description: item.name || item.description || "",
-  }));
+  const lienDisplayColumns: LienColumnDef[] = [
+    {
+      id: "lienId",
+      header: "Lien ID",
+      cell: (l) => (
+        <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
+      ),
+    },
+    {
+      id: "billing",
+      header: "Billing Amt",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency(l.originalAmount)}
+        </span>
+      ),
+    },
+    {
+      id: "reduction",
+      header: "Reduction",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-500 tabular-nums">
+          {l.reductionAmount !== null ? formatCurrency(l.reductionAmount) : "---"}
+        </span>
+      ),
+    },
+    {
+      id: "payment",
+      header: "Payment",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-500 tabular-nums">
+          {l.paymentAmount !== null ? formatCurrency(l.paymentAmount) : "---"}
+        </span>
+      ),
+    },
+    {
+      id: "balance",
+      header: "Balance",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-700 font-medium tabular-nums">
+          {formatCurrency(l.balance)}
+        </span>
+      ),
+    },
+  ];
 
-  const settlementStatusLookups = [
-    { id: "1", code: "", description: "Full Payment", name: "" },
-  ].map((item) => ({
-    id: item.id || item.code,
-    description: item.name || item.description || "",
-  }));
+  const closedLienDisplayColumns: LienColumnDef[] = [
+    {
+      id: "lienId",
+      header: "Lien ID",
+      cell: (l) => (
+        <span className="text-xs font-mono text-gray-500">{l.lienNumber}</span>
+      ),
+    },
+    {
+      id: "billing",
+      header: "Billing Amt",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency(l.originalAmount)}
+        </span>
+      ),
+    },
+    {
+      id: "reduction",
+      header: "Reduction",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-green-600 tabular-nums">
+          {formatCurrency(l.reductionAmount)}
+        </span>
+      ),
+    },
+    {
+      id: "payment",
+      header: "Payment",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency(l.paymentAmount)}
+        </span>
+      ),
+    },
+    {
+      id: "balance",
+      header: "Balance",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-700 font-medium tabular-nums">
+          {formatCurrency(l.balance)}
+        </span>
+      ),
+    },
+  ];
 
   const leftContent = (
     <div className="space-y-4">
@@ -2927,6 +2995,14 @@ function ServicingTab({
           </CollapsibleSection>
           */}
 
+          {/*
+            OLD PATTERN (commented out): Standalone "Payments" CollapsibleSection
+            from the legacy UX. The new design moves "Add Payment" as a
+            contextual action button on the Open Liens table below, which ties
+            the payment directly to the liens being paid and eliminates the
+            duplicate entry point. The Open Liens table already shows per-lien
+            Reduction / Payment / Balance columns making this section redundant.
+
           <CollapsibleSection title="Payments" icon="ri-bank-card-line">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs text-gray-500">
@@ -2940,116 +3016,40 @@ function ServicingTab({
                 <i className="ri-add-line text-sm" />
                 Add Payment
               </button>
-              <CreateSettlementForm
-                caseId={caseDetail.id}
-                open={isPaymentModalOpen}
-                noRecovery={isNoRecoveryMode}
-                onClose={() => setIsPaymentModalOpen(false)}
-                onCreated={() => {
-                  setIsPaymentModalOpen(false);
-                }}
-                lookups={{
-                  settlementType: settlementTypeLookups,
-                  settlementStatus: settlementStatusLookups,
-                }}
-              />
             </div>
-          </CollapsibleSection>
+          </CollapsibleSection> */}
 
           <CollapsibleSection title="Open Liens" icon="ri-stack-line">
-            {liens.length === 0 ? (
+            {openLiens.length === 0 ? (
               <div className="text-center py-8">
                 <i className="ri-stack-line text-2xl text-gray-300" />
                 <p className="text-sm text-gray-400 mt-2">No open liens</p>
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto -mx-5 px-5">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Lien ID
-                        </th>
-                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Facility
-                        </th>
-                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Billing Amt
-                        </th>
-                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Reduction
-                        </th>
-                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Payment
-                        </th>
-                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Balance
-                        </th>
-                        <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Status
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {liens.map((l) => (
-                        <tr
-                          key={l.id}
-                          className="hover:bg-gray-50/50 transition-colors"
-                        >
-                          <td className="pr-3 py-2.5 text-xs font-mono text-primary">
-                            {l.lienNumber}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[160px]">
-                            {l.facility}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">
-                            {formatCurrency(l.originalAmount)}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-500 tabular-nums text-right">
-                            {l.reductionAmount !== null
-                              ? formatCurrency(l.reductionAmount)
-                              : "---"}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-500 tabular-nums text-right">
-                            {l.paymentAmount !== null
-                              ? formatCurrency(l.paymentAmount)
-                              : "---"}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">
-                            {formatCurrency(l.balance)}
-                          </td>
-                          <td className="pl-3 py-2.5">
-                            <StatusBadge status={l.status} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t border-gray-200 bg-gray-50/50">
-                        <td
-                          colSpan={2}
-                          className="pr-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide"
-                        >
-                          Totals ({openLiens.length} lien
-                          {openLiens.length !== 1 ? "s" : ""})
-                        </td>
-                        <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
-                          {formatCurrency(openLiensTotalBilling)}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-400 text-right">
-                          ---
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-400 text-right">
-                          ---
-                        </td>
-                        <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
-                          {formatCurrency(openLiensTotalBalance)}
-                        </td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
+                <div className="-mx-5">
+                  <LienTable
+                    liens={openLiens}
+                    columns={lienDisplayColumns}
+                    footer={[
+                      {
+                        colSpan: 2,
+                        content: (
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            Totals ({openLiens.length} lien{openLiens.length !== 1 ? "s" : ""})
+                          </span>
+                        ),
+                      },
+                      { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(openLiensTotalBilling)}</span> },
+                      { align: "right", content: <span className="text-sm text-gray-400">---</span> },
+                      { align: "right", content: <span className="text-sm text-gray-400">---</span> },
+                      { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(openLiensTotalBalance)}</span> },
+                    ]}
+                    loadedAt={liensLoadedAt}
+                    onRefresh={onRefreshLiens}
+                    isRefreshing={isLiensFetching}
+                    className="rounded-none border-x-0 border-t-0"
+                  />
                 </div>
                 <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
                   <button
@@ -3060,19 +3060,27 @@ function ServicingTab({
                     Setup Reduction
                   </button>
                   <button
-                    onClick={handleOpenNoRecoverySetup}
+                    onClick={() => setIsNoRecoveryOpen(true)}
                     className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors inline-flex items-center gap-1"
                   >
                     <i className="ri-close-circle-line text-sm" />
                     No Recovery
                   </button>
                   <button
-                    onClick={handleOpenStandardPayment}
+                    onClick={() => setIsAddPaymentOpen(true)}
                     className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1"
                   >
                     <i className="ri-money-dollar-circle-line text-sm" />
                     Add Payment
                   </button>
+                  {/* not existing on legacy disabled for now, also my implementation could be wrong */}
+                  {/* <button
+                    onClick={() => setIsLienSettlementOpen(true)}
+                    className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1"
+                  >
+                    <i className="ri-hand-coin-line text-sm" />
+                    Lien Settlement
+                  </button> */}
                 </div>
               </>
             )}
@@ -3088,88 +3096,29 @@ function ServicingTab({
                 <p className="text-sm text-gray-400 mt-2">No closed liens</p>
               </div>
             ) : (
-              <div className="overflow-x-auto -mx-5 px-5">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                        Lien ID
-                      </th>
-                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                        Facility
-                      </th>
-                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                        Billing Amt
-                      </th>
-                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                        Reduction
-                      </th>
-                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                        Payment
-                      </th>
-                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                        Balance
-                      </th>
-                      <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {closedLiens.map((l) => (
-                      <tr
-                        key={l.id}
-                        className="hover:bg-gray-50/50 transition-colors"
-                      >
-                        <td className="pr-3 py-2.5 text-xs font-mono text-gray-500">
-                          {l.lienNumber}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[160px]">
-                          {l.facility}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">
-                          {formatCurrency(l.originalAmount)}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-green-600 tabular-nums text-right">
-                          {formatCurrency(l.reductionAmount)}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">
-                          {formatCurrency(l.paymentAmount)}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">
-                          {formatCurrency(l.balance)}
-                        </td>
-                        <td className="pl-3 py-2.5">
-                          <StatusBadge status={l.status} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-gray-200 bg-gray-50/50">
-                      <td
-                        colSpan={2}
-                        className="pr-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide"
-                      >
-                        Totals ({closedLiens.length} lien
-                        {closedLiens.length !== 1 ? "s" : ""})
-                      </td>
-                      <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
-                        {formatCurrency(closedLiensTotalBilling)}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm font-semibold text-green-600 tabular-nums text-right">
-                        {formatCurrency(closedLiensTotalReduction)}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
-                        {formatCurrency(closedLiensTotalPayment)}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">
-                        {formatCurrency(0)}
-                      </td>
-                      <td />
-                    </tr>
-                  </tfoot>
-                </table>
+              <div className="-mx-5">
+                <LienTable
+                  liens={closedLiens}
+                  columns={closedLienDisplayColumns}
+                  footer={[
+                    {
+                      colSpan: 2,
+                      content: (
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Totals ({closedLiens.length} lien{closedLiens.length !== 1 ? "s" : ""})
+                        </span>
+                      ),
+                    },
+                    { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(closedLiensTotalBilling)}</span> },
+                    { align: "right", content: <span className="text-sm font-semibold text-green-600 tabular-nums">{formatCurrency(closedLiensTotalReduction)}</span> },
+                    { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(closedLiensTotalPayment)}</span> },
+                    { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(0)}</span> },
+                  ]}
+                  loadedAt={liensLoadedAt}
+                  onRefresh={onRefreshLiens}
+                  isRefreshing={isLiensFetching}
+                  className="rounded-none border-x-0 border-t-0"
+                />
               </div>
             )}
           </CollapsibleSection>
@@ -3377,8 +3326,41 @@ function ServicingTab({
         onClose={() => showSetupReductionForm(false)}
         caseId={caseDetail.id}
         liens={liens}
-        onSaved={() => showSetupReductionForm(false)}
+        liensLoadedAt={liensLoadedAt}
+        onRefreshLiens={onRefreshLiens}
+        isLiensFetching={isLiensFetching}
+        onSaved={() => { showSetupReductionForm(false); onRefreshLiens(); }}
       />
+      <NoRecoveryForm
+        open={isNoRecoveryOpen}
+        onClose={() => setIsNoRecoveryOpen(false)}
+        caseId={caseDetail.id}
+        liens={liens}
+        liensLoadedAt={liensLoadedAt}
+        onRefreshLiens={onRefreshLiens}
+        isLiensFetching={isLiensFetching}
+        onSaved={() => { setIsNoRecoveryOpen(false); onRefreshLiens(); }}
+      />
+      <AddPaymentForm
+        open={isAddPaymentOpen}
+        onClose={() => setIsAddPaymentOpen(false)}
+        caseId={caseDetail.id}
+        liens={liens}
+        liensLoadedAt={liensLoadedAt}
+        onRefreshLiens={onRefreshLiens}
+        isLiensFetching={isLiensFetching}
+        onSaved={() => { setIsAddPaymentOpen(false); onRefreshLiens(); }}
+      />
+      {/* <LienSettlementForm
+        open={isLienSettlementOpen}
+        onClose={() => setIsLienSettlementOpen(false)}
+        caseId={caseDetail.id}
+        liens={liens}
+        liensLoadedAt={liensLoadedAt}
+        onRefreshLiens={onRefreshLiens}
+        isLiensFetching={isLiensFetching}
+        onSaved={() => { setIsLienSettlementOpen(false); onRefreshLiens(); }}
+      /> */}
     </>
   );
 }
