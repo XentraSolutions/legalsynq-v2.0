@@ -23,7 +23,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    ErrorTrackingService.captureException(error, { componentStack: errorInfo.componentStack });
+    ErrorTrackingService.captureException(error, {
+      componentStack: errorInfo.componentStack,
+      source: 'react-error-boundary',
+    });
   }
 
   reset = (): void => {

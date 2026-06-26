@@ -43,7 +43,7 @@ export const LoggerService = {
   warn(message: string, context?: object): void {
     if (shouldLog()) {
       console.warn(message, sanitize(context));
-      tron()?.warn?.(message, sanitize(context) as Record<string, unknown>);
+      tron()?.warn?.({ message, context: sanitize(context) });
     }
   },
 

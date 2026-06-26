@@ -22,7 +22,7 @@ jobs:
       profile: production
   notification_teams:
     name: Notify Microsoft Teams
-    type: run
+    type: custom
     needs: [submit_ios_app]
     # This ensures the notification runs even if previous steps fail
     if: always() 

@@ -1,6 +1,7 @@
 import type { AxiosError, AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
 import { STORAGE_KEYS } from '@/shared/constants/storageKeys';
+import { ErrorTrackingService } from '@/shared/services/ErrorTracking';
 import { SecureStorageService } from '@/shared/services/SecureStorage';
 import { ApiError } from '@/shared/types/api';
 
@@ -44,6 +45,41 @@ function toApiError(error: AxiosError): ApiError {
   });
 }
 
+function parseRequestData(data: unknown): unknown {
+  if (!data) {
+    return undefined;
+  }
+
+  if (typeof FormData !== 'undefined' && data instanceof FormData) {
+    return '[form-data]';
+  }
+
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data) as unknown;
+    } catch {
+      return '[string request body omitted]';
+    }
+  }
+
+  return data;
+}
+
+function captureApiError(error: AxiosError, apiError: ApiError): void {
+  ErrorTrackingService.captureApiError(apiError, {
+    baseURL: error.config?.baseURL,
+    code: apiError.code,
+    correlationId: apiError.correlationId,
+    method: error.config?.method?.toUpperCase(),
+    params: error.config?.params,
+    requestBody: parseRequestData(error.config?.data),
+    responseData: error.response?.data,
+    statusCode: error.response?.status,
+    timeout: error.config?.timeout,
+    url: error.config?.url,
+  });
+}
+
 export function registerUnauthorizedHandler(handler: UnauthorizedHandler): void {
   unauthorizedHandler = handler;
 }
@@ -67,7 +103,9 @@ export function attachInterceptors(apiClient: AxiosInstance): void {
         await unauthorizedHandler?.();
       }
 
-      return Promise.reject(toApiError(error));
+      const apiError = toApiError(error);
+      captureApiError(error, apiError);
+      return Promise.reject(apiError);
     }
   );
 }
