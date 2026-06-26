@@ -74,7 +74,8 @@ export const ErrorTrackingService = {
       message: `${context.method ?? 'API'} ${context.url ?? 'request'} failed`,
     });
 
-    this.captureException(error, sanitizedContext);
+    Sentry.captureException(error, sanitizedContext ? { extra: sanitizedContext } : undefined);
+    LoggerService.log('Captured API error', sanitizedContext);
   },
 
   setCurrentScreen(name: string, params?: ErrorTrackingContext): void {

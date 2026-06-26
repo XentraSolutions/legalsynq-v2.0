@@ -1,6 +1,11 @@
 import { ConfigService } from '@/shared/services/Config';
 
-const REDACTED_KEYS = ['authorization', 'password', 'token', 'accessToken', 'refreshToken'];
+const REDACTED_KEY_PARTS = ['authorization', 'cookie', 'password', 'secret', 'token'];
+
+function shouldRedactKey(key: string): boolean {
+  const normalizedKey = key.toLowerCase();
+  return REDACTED_KEY_PARTS.some((part) => normalizedKey.includes(part));
+}
 
 function sanitize(value: unknown): unknown {
   if (!value || typeof value !== 'object') {
@@ -13,7 +18,7 @@ function sanitize(value: unknown): unknown {
 
   return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>(
     (accumulator, [key, item]) => {
-      accumulator[key] = REDACTED_KEYS.includes(key) ? '[redacted]' : sanitize(item);
+      accumulator[key] = shouldRedactKey(key) ? '[redacted]' : sanitize(item);
       return accumulator;
     },
     {}

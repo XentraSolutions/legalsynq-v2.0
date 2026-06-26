@@ -105,8 +105,8 @@ export function LoginScreen() {
         <Text className={cx(FIGMA_TEXT.rowValue, 'text-[#f97332]')}>Forgot Password?</Text>
       </Pressable>
       <Button className="mt-6" label="Sign In" loading={login.isPending} onPress={handleSubmit(submit)} />
-      <Divider label="or continue with" />
-      {biometricsAvailable ? <Button label="Face ID / Touch ID" variant="ghost" /> : null}
+      
+      {biometricsAvailable ? <><Divider label="or continue with" /><Button label="Face ID / Touch ID" variant="ghost" /></> : null}
       <Text className={cx(FIGMA_TEXT.body, 'mt-8 text-center text-[#6f737d] dark:text-[#a1a1aa]')}>
         Do not have an account? <Text className="text-[#f97332]">Contact your admin</Text>
       </Text>

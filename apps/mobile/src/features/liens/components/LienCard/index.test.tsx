@@ -2,7 +2,7 @@ import { render } from '@testing-library/react-native';
 
 import { LIENS } from '@/features/mockData';
 
-import { LienCard } from './LienCard';
+import { LienCard } from './index';
 
 describe('LienCard', () => {
   it('renders lien summary details', async () => {

@@ -6,6 +6,8 @@
   "scripts": {
     "start:qa": "EXPO_PUBLIC_API_URL=https://core-qa.legalsynq.net expo start",
     "start": "expo start",
+    "scaffold:feature-module": "node scripts/scaffold-feature-module.mjs",
+    "check:feature-modules": "node scripts/check-feature-modules.mjs",
     "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "type-check": "pnpm typecheck",

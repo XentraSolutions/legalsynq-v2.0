@@ -2,7 +2,7 @@ import { render } from '@testing-library/react-native';
 
 import { OFFERS } from '@/features/mockData';
 
-import { OfferCard } from './OfferCard';
+import { OfferCard } from './index';
 
 describe('OfferCard', () => {
   it('renders offer details', async () => {
