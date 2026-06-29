@@ -1,8 +1,10 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { CaseDetailScreen } from '@/features/cases';
+import { DashboardReportDetailScreen } from '@/features/dashboard';
 import { LienDetailScreen, MyLiensScreen, SellLienScreen } from '@/features/liens';
 import { OfferDetailScreen } from '@/features/offers';
+import { PlaceholderScreen } from '@/features/placeholders';
 import { SettingsScreen } from '@/features/profile';
 import type { MainStackParamList } from '@/navigation/types/navigation';
 
@@ -20,6 +22,8 @@ export function MainStack() {
       <Stack.Screen component={OfferDetailScreen} name="OfferDetail" />
       <Stack.Screen component={CaseDetailScreen} name="CaseDetail" />
       <Stack.Screen component={SettingsScreen} name="Settings" />
+      <Stack.Screen component={DashboardReportDetailScreen} name="DashboardReportDetail" />
+      <Stack.Screen component={PlaceholderScreen} name="Placeholder" />
     </Stack.Navigator>
   );
 }

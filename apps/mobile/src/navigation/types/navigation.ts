@@ -1,5 +1,7 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
+import type { DashboardReportType } from '@/features/dashboard/types/types';
+
 export type RootStackParamList = {
   Auth: NavigatorScreenParams<AuthStackParamList>;
   Main: NavigatorScreenParams<MainStackParamList>;
@@ -23,4 +25,6 @@ export type MainStackParamList = {
   OfferDetail: { offerId: string };
   CaseDetail: { caseId: string };
   Settings: undefined;
+  DashboardReportDetail: { reportType: DashboardReportType };
+  Placeholder: { title: string; subtitle?: string };
 };

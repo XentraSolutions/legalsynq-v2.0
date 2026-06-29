@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import Svg, { Circle, Defs, LinearGradient, Path, Polyline, Stop } from 'react-native-svg';
 import { useAtom } from 'jotai';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
@@ -11,6 +12,8 @@ import {
   useDashboardMedicalProviderReport,
   useDashboardPiechart,
 } from '@/features/dashboard/hooks';
+import type { DashboardReportType } from '@/features/dashboard/types/types';
+import type { MainStackParamList } from '@/navigation/types/navigation';
 import { AppMenu } from '@/shared/components/AppMenu';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
@@ -80,11 +83,41 @@ const SELLING_STATUS: DonutSlice[] = [
 ];
 
 const SELLING_TOP_BALANCES = [
-  { name: 'Apex Mutual', subtitle: 'Active Accounts: 182', balance: '$1,125,842.50', share: '23.5%', mark: 'pie' },
-  { name: 'Nova Care', subtitle: 'Active Accounts: 132', balance: '$687,421.88', share: '14.4%', mark: 'cube' },
-  { name: 'Summit Ins.', subtitle: 'Active Accounts: 98', balance: '$456,218.33', share: '9.5%', mark: 'wave' },
-  { name: 'Beacon Life', subtitle: 'Active Accounts: 76', balance: '$321,775.19', share: '6.7%', mark: 'bars' },
-  { name: 'Vanguard', subtitle: 'Active Accounts: 64', balance: '$289,114.22', share: '6.0%', mark: 'v' },
+  {
+    name: 'Apex Mutual',
+    subtitle: 'Active Accounts: 182',
+    balance: '$1,125,842.50',
+    share: '23.5%',
+    mark: 'pie',
+  },
+  {
+    name: 'Nova Care',
+    subtitle: 'Active Accounts: 132',
+    balance: '$687,421.88',
+    share: '14.4%',
+    mark: 'cube',
+  },
+  {
+    name: 'Summit Ins.',
+    subtitle: 'Active Accounts: 98',
+    balance: '$456,218.33',
+    share: '9.5%',
+    mark: 'wave',
+  },
+  {
+    name: 'Beacon Life',
+    subtitle: 'Active Accounts: 76',
+    balance: '$321,775.19',
+    share: '6.7%',
+    mark: 'bars',
+  },
+  {
+    name: 'Vanguard',
+    subtitle: 'Active Accounts: 64',
+    balance: '$289,114.22',
+    share: '6.0%',
+    mark: 'v',
+  },
 ];
 
 const SELLING_SELLERS: SellerRisk[] = [
@@ -150,16 +183,26 @@ const FACILITY_ALLOCATION: DonutSlice[] = [
   { label: 'Pueblo Medical', value: 41.84, amount: '100', percent: '(41.84%)', color: BLUE },
   { label: 'MUIR MD Associates', value: 26.78, amount: '64', percent: '(26.78%)', color: ORANGE },
   { label: 'Surgical Arts Center', value: 20.92, amount: '50', percent: '(20.92%)', color: GREEN },
-  { label: 'Summit Surgical Center', value: 10.46, amount: '25', percent: '(10.46%)', color: YELLOW },
+  {
+    label: 'Summit Surgical Center',
+    value: 10.46,
+    amount: '25',
+    percent: '(10.46%)',
+    color: YELLOW,
+  },
 ];
 
 const LINE_POINTS = [2.4, 3.7, 2.6, 1.0, 2.5, 2.6];
 
 export function DashboardScreen() {
+  const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const { colorScheme } = useNativeWindColorScheme();
   const [accountMode] = useAtom(accountModeAtom);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const isDark = colorScheme === 'dark';
+  const handleViewReport = (reportType: DashboardReportType) => {
+    navigation.navigate('DashboardReportDetail', { reportType });
+  };
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-[#f7f7f8] dark:bg-[#050506]">
@@ -168,9 +211,17 @@ export function DashboardScreen() {
         contentContainerStyle={{ paddingBottom: 26 }}
         showsVerticalScrollIndicator={false}
       >
-        <DashboardHeader accountMode={accountMode} isDark={isDark} onOpenMenu={() => setDrawerVisible(true)} />
+        <DashboardHeader
+          accountMode={accountMode}
+          isDark={isDark}
+          onOpenMenu={() => setDrawerVisible(true)}
+        />
         <DatePill isDark={isDark} />
-        {accountMode === 'selling' ? <SellingDashboard isDark={isDark} /> : <BuyingDashboard isDark={isDark} />}
+        {accountMode === 'selling' ? (
+          <SellingDashboard isDark={isDark} />
+        ) : (
+          <BuyingDashboard isDark={isDark} onViewReport={handleViewReport} />
+        )}
       </ScrollView>
       <AppMenu visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>
@@ -191,10 +242,19 @@ function DashboardHeader({
 
   return (
     <View className="mt-2 flex-row items-center">
-      <CircleButton icon="menu-outline" iconColor={iconColor} isDark={isDark} onPress={onOpenMenu} />
+      <CircleButton
+        icon="menu-outline"
+        iconColor={iconColor}
+        isDark={isDark}
+        onPress={onOpenMenu}
+      />
       <View className="ml-3 flex-1">
-        <Text className={cx(TYPE.dashboardGreeting, 'text-[#1f2329] dark:text-white')}>Welcome, John</Text>
-        <Text className={cx(TYPE.dashboardSubtitle, 'mt-0.5 text-[#8a8d96] dark:text-[#8d9099]')}>{subtitle}</Text>
+        <Text className={cx(TYPE.dashboardGreeting, 'text-[#1f2329] dark:text-white')}>
+          Welcome, John
+        </Text>
+        <Text className={cx(TYPE.dashboardSubtitle, 'mt-0.5 text-[#8a8d96] dark:text-[#8d9099]')}>
+          {subtitle}
+        </Text>
       </View>
       <View className="flex-row gap-2">
         <CircleButton icon="search-outline" iconColor={iconColor} isDark={isDark} />
@@ -248,7 +308,9 @@ function DatePill({ isDark }: { isDark: boolean }) {
         elevation: 1,
       }}
     >
-      <Text className={cx(TYPE.dateLabel, 'text-[#6f737d] dark:text-[#a1a1aa]')}>10 / 27 / 2026</Text>
+      <Text className={cx(TYPE.dateLabel, 'text-[#6f737d] dark:text-[#a1a1aa]')}>
+        10 / 27 / 2026
+      </Text>
       <Ionicons color={isDark ? '#a1a1aa' : '#6f737d'} name="calendar-clear-outline" size={16} />
     </View>
   );
@@ -288,7 +350,10 @@ const SLICE_COLORS = [BLUE, ORANGE, GREEN, YELLOW, RED];
 function mapPiechartToLienSlices(data: DashboardPiechart): DonutSlice[] {
   const total = data.totalLiens || 1;
   const closedCount = data.lienStatus
-    .filter((s) => s.label.toLowerCase() === 'closed')
+    .filter((s) => {
+      const label = s.label.toLowerCase();
+      return label === 'closed' || label === 'close';
+    })
     .reduce((sum, s) => sum + s.value, 0);
   const openCount = total - closedCount;
   const openPct = (openCount / total) * 100;
@@ -330,46 +395,54 @@ function numericValue(value: unknown): number | undefined {
 }
 
 function getLawFirmCaseCount(row: DashboardLawFirmCaseReportRow): number {
-  return numericValue(row.totalCases)
-    ?? numericValue(row.totalCase)
-    ?? numericValue(row.caseCount)
-    ?? numericValue(row.cases)
-    ?? numericValue(row.count)
-    ?? numericValue(row.total)
-    ?? numericValue(row.value)
-    ?? 0;
+  return (
+    numericValue(row.totalCases) ??
+    numericValue(row.totalCase) ??
+    numericValue(row.caseCount) ??
+    numericValue(row.cases) ??
+    numericValue(row.count) ??
+    numericValue(row.total) ??
+    numericValue(row.value) ??
+    0
+  );
 }
 
 function getLawFirmLabel(row: DashboardLawFirmCaseReportRow): string {
-  return row.lawFirm ?? row.lawfirm ?? row.lawFirmName ?? row.name ?? row.label ?? 'Unknown Law Firm';
+  return (
+    row.lawFirm ?? row.lawfirm ?? row.lawFirmName ?? row.name ?? row.label ?? 'Unknown Law Firm'
+  );
 }
 
 function getMedicalProviderCaseCount(row: DashboardMedicalProviderReportRow): number {
-  return numericValue(row.totalCases)
-    ?? numericValue(row.totalCase)
-    ?? numericValue(row.caseCount)
-    ?? numericValue(row.cases)
-    ?? numericValue(row.count)
-    ?? numericValue(row.total)
-    ?? numericValue(row.value)
-    ?? 0;
+  return (
+    numericValue(row.totalCases) ??
+    numericValue(row.totalCase) ??
+    numericValue(row.caseCount) ??
+    numericValue(row.cases) ??
+    numericValue(row.count) ??
+    numericValue(row.total) ??
+    numericValue(row.value) ??
+    0
+  );
 }
 
 function getMedicalProviderLabel(row: DashboardMedicalProviderReportRow): string {
-  return row.facilityName
-    ?? row.medicalProvider
-    ?? row.medicalprovider
-    ?? row.medicalProviderName
-    ?? row.providerName
-    ?? row.name
-    ?? row.label
-    ?? 'Unknown Facility';
+  return (
+    row.facilityName ??
+    row.medicalProvider ??
+    row.medicalprovider ??
+    row.medicalProviderName ??
+    row.providerName ??
+    row.name ??
+    row.label ??
+    'Unknown Facility'
+  );
 }
 
 function mapAllocationReportToSlices<Row>(
   rows: Row[],
   getLabel: (row: Row) => string,
-  getCount: (row: Row) => number,
+  getCount: (row: Row) => number
 ): DonutSlice[] {
   const rowsWithCounts = rows
     .map((row) => ({ label: getLabel(row), count: getCount(row) }))
@@ -388,27 +461,43 @@ function mapAllocationReportToSlices<Row>(
   });
 }
 
-function BuyingDashboard({ isDark }: { isDark: boolean }) {
+function BuyingDashboard({
+  isDark,
+  onViewReport,
+}: {
+  isDark: boolean;
+  onViewReport: (reportType: DashboardReportType) => void;
+}) {
   const { data: piechartData } = useDashboardPiechart();
   const { data: lawFirmReport = [] } = useDashboardLawFirmCaseReport();
   const { data: medicalProviderReport = [] } = useDashboardMedicalProviderReport();
   const lienSlices = piechartData ? mapPiechartToLienSlices(piechartData) : BUYING_TOTAL_LIENS;
   const totalLiens = piechartData ? String(piechartData.totalLiens) : '239';
-  const totalLienValue = piechartData ? formatCurrency(piechartData.totalLienValue) : '$2,287,386.12';
-  const lawFirmReportSlices = mapAllocationReportToSlices(lawFirmReport, getLawFirmLabel, getLawFirmCaseCount);
-  const lawFirmAllocationSlices = lawFirmReportSlices.length > 0 ? lawFirmReportSlices : LAW_FIRM_ALLOCATION;
-  const lawFirmTotalCases = lawFirmReportSlices.length > 0
-    ? lawFirmReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
-    : '175';
+  const totalLienValue = piechartData
+    ? formatCurrency(piechartData.totalLienValue)
+    : '$2,287,386.12';
+  const lawFirmReportSlices = mapAllocationReportToSlices(
+    lawFirmReport,
+    getLawFirmLabel,
+    getLawFirmCaseCount
+  );
+  const lawFirmAllocationSlices =
+    lawFirmReportSlices.length > 0 ? lawFirmReportSlices : LAW_FIRM_ALLOCATION;
+  const lawFirmTotalCases =
+    lawFirmReportSlices.length > 0
+      ? lawFirmReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
+      : '175';
   const facilityReportSlices = mapAllocationReportToSlices(
     medicalProviderReport,
     getMedicalProviderLabel,
-    getMedicalProviderCaseCount,
+    getMedicalProviderCaseCount
   );
-  const facilityAllocationSlices = facilityReportSlices.length > 0 ? facilityReportSlices : FACILITY_ALLOCATION;
-  const facilityTotalCases = facilityReportSlices.length > 0
-    ? facilityReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
-    : '239';
+  const facilityAllocationSlices =
+    facilityReportSlices.length > 0 ? facilityReportSlices : FACILITY_ALLOCATION;
+  const facilityTotalCases =
+    facilityReportSlices.length > 0
+      ? facilityReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
+      : '239';
 
   return (
     <>
@@ -420,10 +509,9 @@ function BuyingDashboard({ isDark }: { isDark: boolean }) {
         isDark={isDark}
         slices={lienSlices}
         subtitle="Breakdown of open and closed claims with total purchase and billing values."
-        summaryRows={[
-          { label: 'Total Billing Amount', value: totalLienValue },
-        ]}
+        summaryRows={[{ label: 'Total Billing Amount', value: totalLienValue }]}
         title="Total Liens"
+        onViewDetails={() => onViewReport('total-liens')}
       />
       <DonutCard
         centerCaption="Total Cases"
@@ -433,6 +521,7 @@ function BuyingDashboard({ isDark }: { isDark: boolean }) {
         slices={BUYING_TOTAL_CASES}
         subtitle="Track the overall number of cases and view their current status distribution at a glance."
         title="Total Cases"
+        onViewDetails={() => onViewReport('total-cases')}
       />
       <DonutCard
         centerCaption="Total Cases"
@@ -442,6 +531,7 @@ function BuyingDashboard({ isDark }: { isDark: boolean }) {
         slices={lawFirmAllocationSlices}
         subtitle="Distribution of total case volume across assigned legal firms."
         title="Law Firm Case Allocation"
+        onViewDetails={() => onViewReport('law-firm-allocation')}
       />
       <DonutCard
         centerCaption="Total Cases"
@@ -451,6 +541,7 @@ function BuyingDashboard({ isDark }: { isDark: boolean }) {
         slices={facilityAllocationSlices}
         subtitle="Distribution of total case volume across assigned healthcare facilities."
         title="Medical Facility Case Allocation"
+        onViewDetails={() => onViewReport('medical-facility-allocation')}
       />
     </>
   );
@@ -471,11 +562,17 @@ function StatGrid({ isDark, stats }: { isDark: boolean; stats: StatCardData[] })
             elevation: 2,
           }}
         >
-          <Text className={cx(TYPE.statLabel, 'text-[#8d9098] dark:text-[#8f929b]')}>{stat.label}</Text>
-          <Text className={cx(TYPE.statValue, 'mt-4 text-[#22252b] dark:text-[#f4f4f5]')}>{stat.value}</Text>
+          <Text className={cx(TYPE.statLabel, 'text-[#8d9098] dark:text-[#8f929b]')}>
+            {stat.label}
+          </Text>
+          <Text className={cx(TYPE.statValue, 'mt-4 text-[#22252b] dark:text-[#f4f4f5]')}>
+            {stat.value}
+          </Text>
           <View
             className={`mt-2 self-start rounded-full px-2 py-1 ${
-              stat.trendTone === 'positive' ? 'bg-[#e8f8ef] dark:bg-[#133225]' : 'bg-[#fde9ea] dark:bg-[#3a1f24]'
+              stat.trendTone === 'positive'
+                ? 'bg-[#e8f8ef] dark:bg-[#133225]'
+                : 'bg-[#fde9ea] dark:bg-[#3a1f24]'
             }`}
           >
             <Text
@@ -503,7 +600,9 @@ function CardShell({
 }) {
   return (
     <View
-      className={['mt-5 rounded-[16px] bg-white p-5 dark:bg-[#191a1f]', className].filter(Boolean).join(' ')}
+      className={['mt-5 rounded-[16px] bg-white p-5 dark:bg-[#191a1f]', className]
+        .filter(Boolean)
+        .join(' ')}
       style={{
         shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
         shadowOpacity: isDark ? 0.18 : 0.45,
@@ -532,7 +631,9 @@ function SectionTitle({
         <Ionicons color={MUTED} name={icon} size={17} />
         <Text className={cx(TYPE.cardTitle, 'text-[#24272d] dark:text-[#f5f5f5]')}>{title}</Text>
       </View>
-      <Text className={cx(TYPE.cardDescription, 'mt-2 text-[#8d9098] dark:text-[#8f929b]')}>{subtitle}</Text>
+      <Text className={cx(TYPE.cardDescription, 'mt-2 text-[#8d9098] dark:text-[#8f929b]')}>
+        {subtitle}
+      </Text>
     </View>
   );
 }
@@ -545,6 +646,7 @@ function DonutCard({
   slices,
   subtitle,
   summaryRows,
+  onViewDetails,
   title,
 }: {
   centerCaption: string;
@@ -554,6 +656,7 @@ function DonutCard({
   slices: DonutSlice[];
   subtitle: string;
   summaryRows?: Array<{ label: string; value: string }>;
+  onViewDetails?: () => void;
   title: string;
 }) {
   return (
@@ -569,15 +672,29 @@ function DonutCard({
         <View className="mt-3 gap-4 border-t border-[#ececf0] pt-4 dark:border-[#292a2f]">
           {summaryRows.map((row) => (
             <View className="flex-row items-center justify-between" key={row.label}>
-              <Text className={cx(TYPE.rowLabel, 'text-[#535762] dark:text-[#c7c8cc]')}>{row.label}</Text>
-              <Text className={cx(TYPE.rowLabel, 'text-[#22252b] dark:text-[#f4f4f5]')}>{row.value}</Text>
+              <Text className={cx(TYPE.rowLabel, 'text-[#535762] dark:text-[#c7c8cc]')}>
+                {row.label}
+              </Text>
+              <Text className={cx(TYPE.rowLabel, 'text-[#22252b] dark:text-[#f4f4f5]')}>
+                {row.value}
+              </Text>
             </View>
           ))}
         </View>
       ) : null}
-      <View className="mt-5 h-9 items-center justify-center rounded-full bg-[#ececee] dark:bg-[#2a2b30]">
-        <Text className={cx(TYPE.cta, 'text-[#555964] dark:text-[#e7e7e9]')}>View Details</Text>
-      </View>
+      {onViewDetails ? (
+        <Pressable
+          accessibilityRole="button"
+          className="mt-5 h-9 items-center justify-center rounded-full bg-[#ececee] dark:bg-[#2a2b30]"
+          onPress={onViewDetails}
+        >
+          <Text className={cx(TYPE.cta, 'text-[#555964] dark:text-[#e7e7e9]')}>View Details</Text>
+        </Pressable>
+      ) : (
+        <View className="mt-5 h-9 items-center justify-center rounded-full bg-[#ececee] dark:bg-[#2a2b30]">
+          <Text className={cx(TYPE.cta, 'text-[#555964] dark:text-[#e7e7e9]')}>View Details</Text>
+        </View>
+      )}
     </CardShell>
   );
 }
@@ -623,11 +740,16 @@ function DonutChart({
             );
           })}
         </Svg>
-        <View
-          className="absolute h-[86px] w-[86px] items-center justify-center rounded-full bg-white dark:bg-[#191a1f]"
-        >
-          <Text className={cx(TYPE.donutValue, 'text-center text-[#25282e] dark:text-white')}>{centerValue}</Text>
-          <Text className={cx(TYPE.donutCaption, 'mt-0.5 text-center text-[#767a84] dark:text-[#a1a1aa]')}>
+        <View className="absolute h-[86px] w-[86px] items-center justify-center rounded-full bg-white dark:bg-[#191a1f]">
+          <Text className={cx(TYPE.donutValue, 'text-center text-[#25282e] dark:text-white')}>
+            {centerValue}
+          </Text>
+          <Text
+            className={cx(
+              TYPE.donutCaption,
+              'mt-0.5 text-center text-[#767a84] dark:text-[#a1a1aa]'
+            )}
+          >
             {centerCaption}
           </Text>
         </View>
@@ -638,11 +760,15 @@ function DonutChart({
 
 function LegendRow({ isLast, slice }: { isLast: boolean; slice: DonutSlice }) {
   return (
-    <View className={`${isLast ? '' : 'border-b border-dashed border-[#e8e8ec] dark:border-[#292a2f]'} py-3`}>
+    <View
+      className={`${isLast ? '' : 'border-b border-dashed border-[#e8e8ec] dark:border-[#292a2f]'} py-3`}
+    >
       <View className="flex-row items-center justify-between gap-3">
         <View className="flex-row items-center gap-3">
           <View className="h-4 w-1.5 rounded-full" style={{ backgroundColor: slice.color }} />
-          <Text className={cx(TYPE.rowLabel, 'text-[#4d515c] dark:text-[#e1e1e4]')}>{slice.label}</Text>
+          <Text className={cx(TYPE.rowLabel, 'text-[#4d515c] dark:text-[#e1e1e4]')}>
+            {slice.label}
+          </Text>
         </View>
         <Text className={cx(TYPE.rowValue, 'text-[#6e727c] dark:text-[#a3a4ab]')}>
           {slice.amount} {slice.percent}
@@ -650,8 +776,12 @@ function LegendRow({ isLast, slice }: { isLast: boolean; slice: DonutSlice }) {
       </View>
       {slice.details?.map((detail) => (
         <View className="mt-3 flex-row items-center justify-between pl-8" key={detail.label}>
-          <Text className={cx(TYPE.rowMuted, 'text-[#8b8f99] dark:text-[#8f929b]')}>{detail.label}</Text>
-          <Text className={cx(TYPE.rowValue, 'text-[#8b8f99] dark:text-[#a3a4ab]')}>{detail.value}</Text>
+          <Text className={cx(TYPE.rowMuted, 'text-[#8b8f99] dark:text-[#8f929b]')}>
+            {detail.label}
+          </Text>
+          <Text className={cx(TYPE.rowValue, 'text-[#8b8f99] dark:text-[#a3a4ab]')}>
+            {detail.value}
+          </Text>
         </View>
       ))}
     </View>
@@ -687,10 +817,21 @@ function LineChartCard({ isDark }: { isDark: boolean }) {
               </LinearGradient>
             </Defs>
             {[0, 1, 2, 3, 4].map((index) => (
-              <Path d={`M0 ${index * 27 + 8} H220`} key={index} stroke={gridColor} strokeWidth="1" />
+              <Path
+                d={`M0 ${index * 27 + 8} H220`}
+                key={index}
+                stroke={gridColor}
+                strokeWidth="1"
+              />
             ))}
             <Path d={chart.areaPath} fill="url(#lineFill)" />
-            <Polyline fill="none" points={chart.pointsString} stroke={BLUE} strokeLinecap="round" strokeWidth="3" />
+            <Polyline
+              fill="none"
+              points={chart.pointsString}
+              stroke={BLUE}
+              strokeLinecap="round"
+              strokeWidth="3"
+            />
             {chart.points.map((point) => (
               <Circle cx={point.x} cy={point.y} fill={BLUE} key={`${point.x}-${point.y}`} r="3" />
             ))}
@@ -721,7 +862,9 @@ function buildLineChart(width: number, height: number, values: number[]) {
   const pointsString = points.map((point) => `${point.x},${point.y}`).join(' ');
   const first = points[0];
   const last = points[points.length - 1];
-  const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x},${point.y}`).join(' ');
+  const linePath = points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x},${point.y}`)
+    .join(' ');
   const areaPath = `${linePath} L ${last.x},${bottom} L ${first.x},${bottom} Z`;
 
   return { areaPath, points, pointsString };
@@ -740,12 +883,20 @@ function TopBalanceCard({ isDark }: { isDark: boolean }) {
           <View className="flex-row items-center" key={item.name}>
             <BrandMark variant={item.mark} />
             <View className="ml-3 flex-1">
-              <Text className={cx(TYPE.rowLabel, 'text-[#2e3138] dark:text-[#f5f5f5]')}>{item.name}</Text>
-              <Text className={cx(TYPE.microMeta, 'mt-0.5 text-[#8d9098] dark:text-[#8f929b]')}>{item.subtitle}</Text>
+              <Text className={cx(TYPE.rowLabel, 'text-[#2e3138] dark:text-[#f5f5f5]')}>
+                {item.name}
+              </Text>
+              <Text className={cx(TYPE.microMeta, 'mt-0.5 text-[#8d9098] dark:text-[#8f929b]')}>
+                {item.subtitle}
+              </Text>
             </View>
             <View className="items-end">
-              <Text className={cx(TYPE.rowLabel, 'text-[#2e3138] dark:text-[#f5f5f5]')}>{item.balance}</Text>
-              <Text className={cx(TYPE.microMeta, 'mt-0.5 text-[#8d9098] dark:text-[#8f929b]')}>{item.share}</Text>
+              <Text className={cx(TYPE.rowLabel, 'text-[#2e3138] dark:text-[#f5f5f5]')}>
+                {item.balance}
+              </Text>
+              <Text className={cx(TYPE.microMeta, 'mt-0.5 text-[#8d9098] dark:text-[#8f929b]')}>
+                {item.share}
+              </Text>
             </View>
           </View>
         ))}
@@ -768,7 +919,11 @@ function BrandMark({ variant }: { variant: string }) {
       ) : variant === 'wave' ? (
         <View className="flex-row items-center gap-0.5">
           {[22, 18, 24].map((height) => (
-            <View className="w-2 rotate-[-30deg] rounded-full bg-[#6254ff]" key={height} style={{ height }} />
+            <View
+              className="w-2 rotate-[-30deg] rounded-full bg-[#6254ff]"
+              key={height}
+              style={{ height }}
+            />
           ))}
         </View>
       ) : variant === 'v' ? (
@@ -797,41 +952,68 @@ function AgingSellerCard({ isDark }: { isDark: boolean }) {
       />
       <View className="mt-5">
         {SELLING_SELLERS.map((seller, index) => (
-          <SellerRiskRow expanded={index === 0} isLast={index === SELLING_SELLERS.length - 1} key={seller.name} seller={seller} />
+          <SellerRiskRow
+            expanded={index === 0}
+            isLast={index === SELLING_SELLERS.length - 1}
+            key={seller.name}
+            seller={seller}
+          />
         ))}
       </View>
     </CardShell>
   );
 }
 
-function SellerRiskRow({ expanded, isLast, seller }: { expanded: boolean; isLast: boolean; seller: SellerRisk }) {
+function SellerRiskRow({
+  expanded,
+  isLast,
+  seller,
+}: {
+  expanded: boolean;
+  isLast: boolean;
+  seller: SellerRisk;
+}) {
   const riskClass =
-    seller.risk === 'High'
-      ? 'bg-[#fde8e9] dark:bg-[#3a1f24]'
-      : 'bg-[#fff4d6] dark:bg-[#3a301c]';
+    seller.risk === 'High' ? 'bg-[#fde8e9] dark:bg-[#3a1f24]' : 'bg-[#fff4d6] dark:bg-[#3a301c]';
   const riskTextClass = seller.risk === 'High' ? 'text-[#de4b54]' : 'text-[#a77912]';
 
   return (
-    <View className={`${isLast ? '' : 'border-b border-[#ececf0] dark:border-[#292a2f]'} pb-4 ${expanded ? '' : 'pt-4'}`}>
+    <View
+      className={`${isLast ? '' : 'border-b border-[#ececf0] dark:border-[#292a2f]'} pb-4 ${expanded ? '' : 'pt-4'}`}
+    >
       <View className="flex-row items-center">
-        <Ionicons color={MUTED} name={expanded ? 'chevron-up-outline' : 'chevron-down-outline'} size={15} />
+        <Ionicons
+          color={MUTED}
+          name={expanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+          size={15}
+        />
         <View className="ml-3 flex-1">
-          <Text className={cx(TYPE.rowLabel, 'text-[#3a3d44] dark:text-[#f4f4f5]')}>{seller.name}</Text>
-          <Text className={cx(TYPE.rowMeta, 'mt-2 text-[#8d9098] dark:text-[#8f929b]')}>{seller.balance}</Text>
+          <Text className={cx(TYPE.rowLabel, 'text-[#3a3d44] dark:text-[#f4f4f5]')}>
+            {seller.name}
+          </Text>
+          <Text className={cx(TYPE.rowMeta, 'mt-2 text-[#8d9098] dark:text-[#8f929b]')}>
+            {seller.balance}
+          </Text>
         </View>
         <View className="items-end">
           <View className={`rounded-full px-2 py-1 ${riskClass}`}>
             <Text className={`${TYPE.microStrong} ${riskTextClass}`}>● {seller.risk}</Text>
           </View>
-          <Text className={cx(TYPE.rowMeta, 'mt-2 text-[#767a84] dark:text-[#a3a4ab]')}>{seller.share}</Text>
+          <Text className={cx(TYPE.rowMeta, 'mt-2 text-[#767a84] dark:text-[#a3a4ab]')}>
+            {seller.share}
+          </Text>
         </View>
       </View>
       {expanded && seller.rows ? (
         <View className="mt-4 gap-4 pl-7">
           {seller.rows.map((row) => (
             <View className="flex-row justify-between" key={row.label}>
-              <Text className={cx(TYPE.rowMeta, 'text-[#8d9098] dark:text-[#8f929b]')}>{row.label}</Text>
-              <Text className={cx(TYPE.rowLabel, 'text-[#424650] dark:text-[#e6e6e8]')}>{row.value}</Text>
+              <Text className={cx(TYPE.rowMeta, 'text-[#8d9098] dark:text-[#8f929b]')}>
+                {row.label}
+              </Text>
+              <Text className={cx(TYPE.rowLabel, 'text-[#424650] dark:text-[#e6e6e8]')}>
+                {row.value}
+              </Text>
             </View>
           ))}
         </View>

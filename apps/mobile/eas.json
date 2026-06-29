@@ -9,14 +9,16 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "development",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net"
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
+        "SENTRY_ALLOW_FAILURE": "true"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "qa",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net"
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
+        "SENTRY_ALLOW_FAILURE": "true"
       }
     },
     "qa": {
@@ -24,7 +26,8 @@
       "channel": "qa",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "qa",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net"
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
+        "SENTRY_ALLOW_FAILURE": "true"
       }
     },
     "production": {
@@ -32,7 +35,8 @@
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net"
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
+        "SENTRY_ALLOW_FAILURE": "true"
       }
     }
   },
