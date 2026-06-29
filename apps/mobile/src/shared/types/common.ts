@@ -8,6 +8,10 @@ export interface FeatureFlags {
   enableOffers: boolean;
 }
 
+export interface DashboardSettings {
+  useDummyData: boolean;
+}
+
 export interface TimestampedEntity {
   id: string;
   createdAt: string;

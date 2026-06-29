@@ -6,4 +6,9 @@ export type DashboardReportType =
   | 'law-firm-allocation'
   | 'medical-facility-allocation';
 
+export type DashboardDateRange = {
+  startDate: string;
+  endDate: string;
+};
+
 export type { DashboardSummary };

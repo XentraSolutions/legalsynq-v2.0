@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,15 +9,20 @@ import Svg, { Circle } from 'react-native-svg';
 import {
   useDashboardLawFirmCaseReport,
   useDashboardMedicalProviderReport,
-  useDashboardPiechart,
+  useDashboardTotalCaseReport,
+  useDashboardTotalLienReport,
 } from '@/features/dashboard/hooks';
 import type { DashboardReportType } from '@/features/dashboard/types/types';
 import type { MainStackParamList } from '@/navigation/types/navigation';
 import type {
   DashboardLawFirmCaseReportRow,
   DashboardMedicalProviderReportRow,
-  DashboardPiechart,
+  DashboardTotalCaseReportRow,
+  DashboardTotalLienReportRow,
+  ReportFilterRequest,
 } from '@/shared/api/endpoints/Cases';
+import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
+import type { PagedResult } from '@/shared/types/api';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
 
 type DetailRoute = RouteProp<MainStackParamList, 'DashboardReportDetail'>;
@@ -51,12 +56,35 @@ type ReportModel = {
   breakdownItems: BreakdownItem[];
 };
 
+type LienReportStatus = 'Open' | 'Close';
+
+type LienReportStatusSummary = {
+  billing: number;
+  count: number;
+  purchase: number;
+};
+
+type TotalLienReportSummary = {
+  byStatus: Record<LienReportStatus, LienReportStatusSummary>;
+  totalBilling: number;
+  totalLiens: number;
+  totalPurchase: number;
+};
+
+type ReportPaginationMeta = {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+};
+
 const ORANGE = '#f97332';
 const BLUE = '#3b82f6';
 const GREEN = '#22c55e';
 const YELLOW = '#f5b800';
 const RED = '#ef4444';
 const SLICE_COLORS = [BLUE, ORANGE, GREEN, YELLOW, RED];
+const DETAIL_PAGE_SIZE = 5;
 
 const TOTAL_LIEN_FALLBACK: DetailSlice[] = [
   {
@@ -118,18 +146,178 @@ const LIEN_BREAKDOWN: BreakdownItem[] = [
   createLienBreakdownItem('55093', 'Open', '26-49381', 'Thomas Brewer'),
 ];
 
+function formatDateForDisplay(value: string): string {
+  return value.split('/').join(' / ');
+}
+
+function formatDateRangeLabel(dateRange: { endDate: string; startDate: string }): string {
+  if (dateRange.startDate === dateRange.endDate) {
+    return formatDateForDisplay(dateRange.startDate);
+  }
+
+  return `${formatDateForDisplay(dateRange.startDate)} - ${formatDateForDisplay(dateRange.endDate)}`;
+}
+
+function buildDashboardReportFilter(
+  dateRange: { endDate: string; startDate: string },
+  page: number
+): ReportFilterRequest {
+  return {
+    page,
+    limit: DETAIL_PAGE_SIZE,
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+  };
+}
+
+function getReportPagination(
+  reportType: DashboardReportType,
+  totalLienReport: PagedResult<DashboardTotalLienReportRow> | undefined,
+  totalCaseReport: PagedResult<DashboardTotalCaseReportRow> | undefined,
+  lawFirmReport: PagedResult<DashboardLawFirmCaseReportRow> | undefined,
+  medicalProviderReport: PagedResult<DashboardMedicalProviderReportRow> | undefined
+): ReportPaginationMeta | undefined {
+  if (reportType === 'total-cases') {
+    return totalCaseReport;
+  }
+
+  if (reportType === 'law-firm-allocation') {
+    return lawFirmReport;
+  }
+
+  if (reportType === 'medical-facility-allocation') {
+    return medicalProviderReport;
+  }
+
+  return totalLienReport;
+}
+
+function getDummyReportPagination(reportType: DashboardReportType): ReportPaginationMeta {
+  const totalCount = {
+    'law-firm-allocation': LAW_FIRM_FALLBACK.length,
+    'medical-facility-allocation': FACILITY_FALLBACK.length,
+    'total-cases': TOTAL_CASES_FALLBACK.length,
+    'total-liens': LIEN_BREAKDOWN.length,
+  }[reportType];
+
+  return {
+    page: 1,
+    pageSize: DETAIL_PAGE_SIZE,
+    totalCount,
+    totalPages: Math.max(1, Math.ceil(totalCount / DETAIL_PAGE_SIZE)),
+  };
+}
+
+function normalizePagination(
+  pagination: ReportPaginationMeta | undefined,
+  fallbackPage: number
+): ReportPaginationMeta {
+  const totalCount = Math.max(0, pagination?.totalCount ?? 0);
+  const pageSize = Math.max(1, pagination?.pageSize ?? DETAIL_PAGE_SIZE);
+  const totalPages = Math.max(1, (pagination?.totalPages ?? Math.ceil(totalCount / pageSize)) || 1);
+  const page = Math.min(Math.max(1, pagination?.page ?? fallbackPage), totalPages);
+
+  return { page, pageSize, totalCount, totalPages };
+}
+
+function formatPaginationRange(pagination: ReportPaginationMeta): string {
+  if (pagination.totalCount === 0) {
+    return 'No records';
+  }
+
+  const start = (pagination.page - 1) * pagination.pageSize + 1;
+  const end = Math.min(pagination.page * pagination.pageSize, pagination.totalCount);
+  return `Showing ${start}-${end} of ${pagination.totalCount}`;
+}
+
 export function DashboardReportDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<DetailRoute>();
   const { colorScheme } = useNativeWindColorScheme();
   const isDark = colorScheme === 'dark';
-  const { data: piechartData } = useDashboardPiechart();
-  const { data: lawFirmReport = [] } = useDashboardLawFirmCaseReport();
-  const { data: medicalProviderReport = [] } = useDashboardMedicalProviderReport();
-  const report = useMemo(
-    () => buildReport(route.params.reportType, piechartData, lawFirmReport, medicalProviderReport),
-    [lawFirmReport, medicalProviderReport, piechartData, route.params.reportType]
+  const { hydrated: dashboardSettingsHydrated, settings: dashboardSettings } =
+    useDashboardSettings();
+  const useDashboardDummyData = dashboardSettings.useDummyData;
+  const reportsEnabled = dashboardSettingsHydrated && !useDashboardDummyData;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [route.params.dateRange.endDate, route.params.dateRange.startDate, route.params.reportType]);
+
+  const reportFilter = useMemo(
+    () => buildDashboardReportFilter(route.params.dateRange, currentPage),
+    [currentPage, route.params.dateRange]
   );
+  const reportPeriodLabel = useMemo(
+    () => formatDateRangeLabel(route.params.dateRange),
+    [route.params.dateRange]
+  );
+  const { data: totalLienReport } = useDashboardTotalLienReport(reportFilter, reportsEnabled);
+  const { data: totalCaseReport } = useDashboardTotalCaseReport(reportFilter, reportsEnabled);
+  const { data: lawFirmReport } = useDashboardLawFirmCaseReport(reportFilter, reportsEnabled);
+  const { data: medicalProviderReport } = useDashboardMedicalProviderReport(
+    reportFilter,
+    reportsEnabled
+  );
+  const pagination = useMemo(
+    () =>
+      useDashboardDummyData
+        ? getDummyReportPagination(route.params.reportType)
+        : getReportPagination(
+            route.params.reportType,
+            totalLienReport,
+            totalCaseReport,
+            lawFirmReport,
+            medicalProviderReport
+          ),
+    [
+      lawFirmReport,
+      medicalProviderReport,
+      route.params.reportType,
+      totalCaseReport,
+      totalLienReport,
+      useDashboardDummyData,
+    ]
+  );
+  const normalizedPagination = normalizePagination(pagination, currentPage);
+  const canGoPrevious = normalizedPagination.page > 1;
+  const canGoNext = normalizedPagination.page < normalizedPagination.totalPages;
+  const report = useMemo(
+    () =>
+      buildReport(
+        route.params.reportType,
+        totalLienReport?.items ?? [],
+        totalCaseReport?.items ?? [],
+        lawFirmReport?.items ?? [],
+        medicalProviderReport?.items ?? [],
+        reportPeriodLabel,
+        useDashboardDummyData
+      ),
+    [
+      lawFirmReport?.items,
+      medicalProviderReport?.items,
+      reportPeriodLabel,
+      route.params.reportType,
+      totalCaseReport?.items,
+      totalLienReport?.items,
+      useDashboardDummyData,
+    ]
+  );
+
+  useEffect(() => {
+    if (currentPage > normalizedPagination.totalPages) {
+      setCurrentPage(normalizedPagination.totalPages);
+    }
+  }, [currentPage, normalizedPagination.totalPages]);
+
+  const goToPreviousPage = () => {
+    setCurrentPage((page) => Math.max(1, page - 1));
+  };
+
+  const goToNextPage = () => {
+    setCurrentPage((page) => Math.min(normalizedPagination.totalPages, page + 1));
+  };
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-[#f7f7f8] dark:bg-[#050506]">
@@ -160,13 +348,21 @@ export function DashboardReportDetailScreen() {
               slices={report.slices}
             />
             <View className="mt-5 w-full">
-              {report.slices.map((slice, index) => (
-                <DetailLegendRow
-                  key={slice.label}
-                  isLast={index === report.slices.length - 1}
-                  slice={slice}
-                />
-              ))}
+              {report.slices.length > 0 ? (
+                report.slices.map((slice, index) => (
+                  <DetailLegendRow
+                    key={slice.label}
+                    isLast={index === report.slices.length - 1}
+                    slice={slice}
+                  />
+                ))
+              ) : (
+                <Text
+                  className={cx(TYPE.rowMuted, 'text-center text-[#8d9098] dark:text-[#8f929b]')}
+                >
+                  No report data available for the selected date range.
+                </Text>
+              )}
             </View>
           </ReportCard>
         </View>
@@ -187,25 +383,51 @@ export function DashboardReportDetailScreen() {
               />
             </View>
 
-            {report.breakdownItems.map((item, index) => (
-              <BreakdownCard
-                isLast={index === report.breakdownItems.length - 1}
-                item={item}
-                key={item.id}
-              />
-            ))}
+            {report.breakdownItems.length > 0 ? (
+              report.breakdownItems.map((item, index) => (
+                <BreakdownCard
+                  isLast={index === report.breakdownItems.length - 1}
+                  item={item}
+                  key={item.id}
+                />
+              ))
+            ) : (
+              <Text
+                className={cx(TYPE.rowMuted, 'py-6 text-center text-[#8d9098] dark:text-[#8f929b]')}
+              >
+                No detailed records available.
+              </Text>
+            )}
 
-            <View className="mt-4 flex-row items-center justify-between">
-              <View className="flex-row items-center gap-3">
-                <View className="h-8 w-8 items-center justify-center rounded-full bg-[#ebebec] dark:bg-[#2a2b30]">
-                  <Text className={cx(TYPE.rowValue, 'text-[#18181b] dark:text-white')}>1</Text>
+            <View className="mt-4 flex-row items-center justify-between gap-3">
+              <View className="flex-1">
+                <View className="flex-row items-center gap-3">
+                  <View className="h-8 min-w-[32px] items-center justify-center rounded-full bg-[#ebebec] px-3 dark:bg-[#2a2b30]">
+                    <Text className={cx(TYPE.rowValue, 'text-[#18181b] dark:text-white')}>
+                      {normalizedPagination.page}
+                    </Text>
+                  </View>
+                  <Text className={cx(TYPE.rowMuted, 'text-[#71717a] dark:text-[#a1a1aa]')}>
+                    of {normalizedPagination.totalPages}
+                  </Text>
                 </View>
-                <Text className={cx(TYPE.rowMuted, 'text-[#71717a] dark:text-[#a1a1aa]')}>...</Text>
-                <Text className={cx(TYPE.rowValue, 'text-[#18181b] dark:text-white')}>48</Text>
+                <Text className={cx(TYPE.microMeta, 'mt-1 text-[#8b8f99] dark:text-[#8f929b]')}>
+                  {formatPaginationRange(normalizedPagination)}
+                </Text>
               </View>
               <View className="flex-row gap-2">
-                <PaginationButton disabled icon="chevron-back-outline" label="Previous" />
-                <PaginationButton icon="chevron-forward-outline" label="Next" />
+                <PaginationButton
+                  disabled={!canGoPrevious}
+                  icon="chevron-back-outline"
+                  label="Previous"
+                  onPress={goToPreviousPage}
+                />
+                <PaginationButton
+                  disabled={!canGoNext}
+                  icon="chevron-forward-outline"
+                  label="Next"
+                  onPress={goToNextPage}
+                />
               </View>
             </View>
           </ReportCard>
@@ -424,11 +646,15 @@ function PaginationButton({
   disabled,
   icon,
   label,
+  onPress,
 }: {
   disabled?: boolean;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
+  onPress: () => void;
 }) {
+  const iconColor = disabled ? '#a1a1aa' : label === 'Next' ? '#18181b' : '#71717a';
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -437,87 +663,91 @@ function PaginationButton({
         disabled && 'opacity-50'
       )}
       disabled={disabled}
+      onPress={onPress}
     >
-      {label === 'Previous' ? <Ionicons color="#71717a" name={icon} size={14} /> : null}
+      {label === 'Previous' ? <Ionicons color={iconColor} name={icon} size={14} /> : null}
       <Text className={cx(TYPE.rowValue, 'text-[#18181b] dark:text-white')}>{label}</Text>
-      {label === 'Next' ? <Ionicons color="#18181b" name={icon} size={14} /> : null}
+      {label === 'Next' ? <Ionicons color={iconColor} name={icon} size={14} /> : null}
     </Pressable>
   );
 }
 
 function buildReport(
   reportType: DashboardReportType,
-  piechartData: DashboardPiechart | undefined,
+  totalLienRows: DashboardTotalLienReportRow[],
+  totalCaseRows: DashboardTotalCaseReportRow[],
   lawFirmReport: DashboardLawFirmCaseReportRow[],
-  medicalProviderReport: DashboardMedicalProviderReportRow[]
+  medicalProviderReport: DashboardMedicalProviderReportRow[],
+  reportPeriodLabel: string,
+  useDummyData: boolean
 ): ReportModel {
   if (reportType === 'total-cases') {
-    const slices = piechartData?.caseStatus.length
-      ? mapStatusesToSlices(piechartData.caseStatus)
-      : TOTAL_CASES_FALLBACK;
+    const reportData = useDummyData ? undefined : mapTotalCaseReportToDetail(totalCaseRows);
+    const slices = useDummyData ? TOTAL_CASES_FALLBACK : (reportData?.slices ?? []);
     return {
       title: 'Total Cases',
       subtitle:
         'Track the overall number of cases and view their current status distribution at a glance.',
-      centerValue: piechartData?.totalCases.toLocaleString() ?? '4,773',
+      centerValue: useDummyData ? '4,773' : (reportData?.totalCases.toLocaleString() ?? '0'),
       centerCaption: 'Total Cases',
       slices,
       breakdownTitle: 'Detailed Breakdown',
-      breakdownItems: slicesToBreakdownItems(slices, 'case'),
+      breakdownItems: slicesToBreakdownItems(slices, 'case', reportPeriodLabel),
     };
   }
 
   if (reportType === 'law-firm-allocation') {
-    const reportSlices = mapAllocationReportToSlices(
-      lawFirmReport,
-      getLawFirmLabel,
-      getLawFirmCaseCount
-    );
-    const hasLiveData = reportSlices.length > 0;
-    const slices = hasLiveData ? reportSlices : LAW_FIRM_FALLBACK;
+    const reportSlices = useDummyData
+      ? []
+      : mapAllocationReportToSlices(lawFirmReport, getLawFirmLabel, getLawFirmCaseCount);
+    const slices = useDummyData ? LAW_FIRM_FALLBACK : reportSlices;
     return {
       title: 'Law Firm Case Allocation',
       subtitle: 'Distribution of total case volume across assigned legal firms.',
-      centerValue: hasLiveData
-        ? reportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
-        : '175',
+      centerValue: useDummyData
+        ? '175'
+        : reportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString(),
       centerCaption: 'Total Cases',
       slices,
       breakdownTitle: 'Detailed Breakdown',
-      breakdownItems: slicesToBreakdownItems(slices, 'lawFirm'),
+      breakdownItems: slicesToBreakdownItems(slices, 'lawFirm', reportPeriodLabel),
     };
   }
 
   if (reportType === 'medical-facility-allocation') {
-    const reportSlices = mapAllocationReportToSlices(
-      medicalProviderReport,
-      getMedicalProviderLabel,
-      getMedicalProviderCaseCount
-    );
-    const hasLiveData = reportSlices.length > 0;
-    const slices = hasLiveData ? reportSlices : FACILITY_FALLBACK;
+    const reportSlices = useDummyData
+      ? []
+      : mapAllocationReportToSlices(
+          medicalProviderReport,
+          getMedicalProviderLabel,
+          getMedicalProviderCaseCount
+        );
+    const slices = useDummyData ? FACILITY_FALLBACK : reportSlices;
     return {
       title: 'Medical Facility Case Allocation',
       subtitle: 'Distribution of total case volume across assigned healthcare facilities.',
-      centerValue: hasLiveData
-        ? reportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
-        : '239',
+      centerValue: useDummyData
+        ? '239'
+        : reportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString(),
       centerCaption: 'Total MD Cases',
       slices,
       breakdownTitle: 'Detailed Breakdown',
-      breakdownItems: slicesToBreakdownItems(slices, 'facility'),
+      breakdownItems: slicesToBreakdownItems(slices, 'facility', reportPeriodLabel),
     };
   }
 
-  const slices = piechartData ? mapPiechartToLienSlices(piechartData) : TOTAL_LIEN_FALLBACK;
+  const reportData = useDummyData ? undefined : mapTotalLienReportToDetail(totalLienRows);
+  const slices = useDummyData ? TOTAL_LIEN_FALLBACK : (reportData?.slices ?? []);
   return {
     title: 'Total Lien',
     subtitle: 'Breakdown of open and closed claims with total purchase and billing values.',
-    centerValue: piechartData?.totalLiens.toLocaleString() ?? '239',
+    centerValue: useDummyData ? '239' : (reportData?.totalLiens.toLocaleString() ?? '0'),
     centerCaption: 'Total Liens',
     slices,
     breakdownTitle: 'Detailed Breakdown',
-    breakdownItems: LIEN_BREAKDOWN,
+    breakdownItems: useDummyData
+      ? LIEN_BREAKDOWN
+      : lienRowsToBreakdownItems(totalLienRows, reportPeriodLabel),
   };
 }
 
@@ -539,7 +769,8 @@ function createLienBreakdownItem(
 
 function slicesToBreakdownItems(
   slices: DetailSlice[],
-  kind: 'case' | 'lawFirm' | 'facility'
+  kind: 'case' | 'lawFirm' | 'facility',
+  reportPeriodLabel: string
 ): BreakdownItem[] {
   return slices
     .map((slice) => {
@@ -556,7 +787,7 @@ function slicesToBreakdownItems(
           label: 'Share',
           value: slice.percent?.replace(/[()]/g, '') ?? `${slice.value}%`,
         },
-        { icon: 'calendar-outline', label: 'Report Period', value: '10 / 27 / 2026' },
+        { icon: 'calendar-outline', label: 'Report Period', value: reportPeriodLabel },
       ];
 
       return {
@@ -566,59 +797,6 @@ function slicesToBreakdownItems(
       };
     })
     .slice(0, 5);
-}
-
-function mapPiechartToLienSlices(data: DashboardPiechart): DetailSlice[] {
-  const total = data.totalLiens || 1;
-  const closedCount = data.lienStatus
-    .filter((status) => {
-      const label = status.label.toLowerCase();
-      return label === 'closed' || label === 'close';
-    })
-    .reduce((sum, status) => sum + status.value, 0);
-  const openCount = total - closedCount;
-  const openPct = (openCount / total) * 100;
-  const closedPct = (closedCount / total) * 100;
-
-  return [
-    {
-      label: 'Open',
-      value: openPct,
-      amount: String(openCount),
-      percent: `(${openPct.toFixed(1)}%)`,
-      color: BLUE,
-      details: [
-        { label: 'Purchase', value: formatCurrency(data.totalLienValue * 0.25) },
-        { label: 'Billing', value: formatCurrency(data.totalLienValue) },
-      ],
-    },
-    {
-      label: 'Close',
-      value: closedPct,
-      amount: String(closedCount),
-      percent: `(${closedPct.toFixed(1)}%)`,
-      color: ORANGE,
-      details: [
-        { label: 'Purchase', value: formatCurrency(data.totalLienValue * 0.05) },
-        { label: 'Billing', value: formatCurrency(data.totalLienValue * 0.08) },
-      ],
-    },
-  ];
-}
-
-function mapStatusesToSlices(statuses: Array<{ label: string; value: number }>): DetailSlice[] {
-  const total = statuses.reduce((sum, status) => sum + status.value, 0) || 1;
-
-  return statuses.map((status, index) => {
-    const pct = (status.value / total) * 100;
-    return {
-      label: status.label,
-      value: status.value,
-      amount: status.value.toLocaleString(),
-      percent: `(${pct.toFixed(2)}%)`,
-      color: SLICE_COLORS[index % SLICE_COLORS.length],
-    };
-  });
 }
 
 function mapAllocationReportToSlices<Row>(
@@ -658,6 +836,254 @@ function numericValue(value: unknown): number | undefined {
   }
 
   return undefined;
+}
+
+function readReportText(row: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+
+  return undefined;
+}
+
+function readReportNumber(row: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = numericValue(row[key]);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeLienStatusLabel(label?: string): 'Open' | 'Close' {
+  const normalized = label?.trim().toLowerCase() ?? '';
+  return normalized.includes('close') ||
+    normalized.includes('settled') ||
+    normalized.includes('paid')
+    ? 'Close'
+    : 'Open';
+}
+
+function mapTotalLienReportToDetail(
+  rows: DashboardTotalLienReportRow[]
+):
+  | { slices: DetailSlice[]; totalBilling: number; totalLiens: number; totalPurchase: number }
+  | undefined {
+  if (!rows.length) {
+    return undefined;
+  }
+
+  const totals = rows.reduce<TotalLienReportSummary>(
+    (summary, row) => {
+      const record = row as Record<string, unknown>;
+      const status = normalizeLienStatusLabel(
+        readReportText(record, [
+          'status',
+          'lienStatus',
+          'lienStatusName',
+          'statusName',
+          'label',
+          'name',
+        ])
+      );
+      const count =
+        readReportNumber(record, [
+          'count',
+          'total',
+          'value',
+          'lienCount',
+          'liensCount',
+          'totalLiens',
+        ]) ?? 0;
+      const purchase =
+        readReportNumber(record, [
+          'purchase',
+          'purchaseAmount',
+          'totalPurchase',
+          'totalPurchaseAmount',
+        ]) ?? 0;
+      const billing =
+        readReportNumber(record, [
+          'billing',
+          'billingAmount',
+          'totalBilling',
+          'totalBillingAmount',
+        ]) ?? 0;
+
+      summary.byStatus[status].count += count;
+      summary.byStatus[status].purchase += purchase;
+      summary.byStatus[status].billing += billing;
+      summary.totalLiens += count;
+      summary.totalPurchase += purchase;
+      summary.totalBilling += billing;
+      return summary;
+    },
+    {
+      byStatus: {
+        Close: { billing: 0, count: 0, purchase: 0 },
+        Open: { billing: 0, count: 0, purchase: 0 },
+      },
+      totalBilling: 0,
+      totalLiens: 0,
+      totalPurchase: 0,
+    }
+  );
+
+  const totalLiens = totals.totalLiens || 1;
+  const slices = (['Open', 'Close'] as const)
+    .map((status) => {
+      const statusTotal = totals.byStatus[status];
+      const pct = (statusTotal.count / totalLiens) * 100;
+      return {
+        label: status,
+        value: statusTotal.count,
+        amount: statusTotal.count.toLocaleString(),
+        percent: `(${pct.toFixed(1)}%)`,
+        color: status === 'Open' ? BLUE : ORANGE,
+        details: [
+          { label: 'Purchase', value: formatCurrency(statusTotal.purchase) },
+          { label: 'Billing', value: formatCurrency(statusTotal.billing) },
+        ],
+      } satisfies DetailSlice;
+    })
+    .filter((slice) => slice.value > 0);
+
+  return {
+    slices,
+    totalBilling: totals.totalBilling,
+    totalLiens: totals.totalLiens,
+    totalPurchase: totals.totalPurchase,
+  };
+}
+
+function mapTotalCaseReportToDetail(
+  rows: DashboardTotalCaseReportRow[]
+): { slices: DetailSlice[]; totalCases: number } | undefined {
+  if (!rows.length) {
+    return undefined;
+  }
+
+  const rowsWithCounts = rows
+    .map((row) => {
+      const record = row as Record<string, unknown>;
+      return {
+        count:
+          readReportNumber(record, [
+            'count',
+            'total',
+            'value',
+            'caseCount',
+            'cases',
+            'totalCases',
+          ]) ?? 0,
+        label:
+          readReportText(record, [
+            'status',
+            'caseStatus',
+            'caseStatusName',
+            'statusName',
+            'label',
+            'name',
+          ]) ?? 'Unknown Status',
+      };
+    })
+    .filter((row) => row.count > 0);
+
+  if (!rowsWithCounts.length) {
+    return undefined;
+  }
+
+  const totalCases = rowsWithCounts.reduce((sum, row) => sum + row.count, 0);
+  const slices = rowsWithCounts.map((row, index) => {
+    const pct = (row.count / totalCases) * 100;
+    return {
+      label: row.label,
+      value: row.count,
+      amount: row.count.toLocaleString(),
+      percent: `(${pct.toFixed(2)}%)`,
+      color: SLICE_COLORS[index % SLICE_COLORS.length],
+    };
+  });
+
+  return { slices, totalCases };
+}
+
+function lienRowsToBreakdownItems(
+  rows: DashboardTotalLienReportRow[],
+  reportPeriodLabel: string
+): BreakdownItem[] {
+  return rows
+    .map((row, index) => {
+      const record = row as Record<string, unknown>;
+      const status = normalizeLienStatusLabel(
+        readReportText(record, [
+          'status',
+          'lienStatus',
+          'lienStatusName',
+          'statusName',
+          'label',
+          'name',
+        ])
+      );
+      const lienId =
+        readReportText(record, [
+          'lienId',
+          'liensId',
+          'lienCode',
+          'liensCode',
+          'lienNumber',
+          'id',
+        ]) ?? String(index + 1);
+      const purchase =
+        readReportNumber(record, [
+          'purchase',
+          'purchaseAmount',
+          'totalPurchase',
+          'totalPurchaseAmount',
+        ]) ?? 0;
+      const billing =
+        readReportNumber(record, [
+          'billing',
+          'billingAmount',
+          'totalBilling',
+          'totalBillingAmount',
+        ]) ?? 0;
+
+      const fields: BreakdownItem['fields'] = [
+        {
+          icon: 'briefcase-outline',
+          label: 'Case ID',
+          value:
+            readReportText(record, ['caseId', 'caseCode', 'caseNumber', 'caseNo', 'case']) ?? 'N/A',
+        },
+        {
+          icon: 'person-outline',
+          label: 'Plaintiff Name',
+          value:
+            readReportText(record, ['plaintiffName', 'plainTiffName', 'patientName', 'name']) ??
+            'N/A',
+        },
+        { icon: 'card-outline', label: 'Purchase', value: formatCurrency(purchase) },
+        { icon: 'receipt-outline', label: 'Billing', value: formatCurrency(billing) },
+        { icon: 'calendar-outline', label: 'Report Period', value: reportPeriodLabel },
+      ];
+
+      return {
+        id: `Lien ID: ${lienId}`,
+        status,
+        fields,
+      };
+    })
+    .slice(0, 5);
 }
 
 function getLawFirmCaseCount(row: DashboardLawFirmCaseReportRow): number {

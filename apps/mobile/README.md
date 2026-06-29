@@ -44,20 +44,22 @@ EXPO_PUBLIC_API_URL
 EXPO_PUBLIC_APP_ENV
 ```
 
-Default value:
+Default values:
 
 ```bash
-http://localhost:5010/api
+EXPO_PUBLIC_API_URL=https://core-qa.legalsynq.net
 ```
 
 Current EAS build values:
 
-| Environment | `EXPO_PUBLIC_APP_ENV` | `EXPO_PUBLIC_API_URL` |
-| --- | --- | --- |
-| QA | `qa` | `https://core-qa.legalsynq.net/identity/api` |
-| Production | `production` | `https://core-qa.legalsynq.net/identity/api` |
+| Environment | `EXPO_PUBLIC_APP_ENV` | `EXPO_PUBLIC_API_URL`           |
+| ----------- | --------------------- | ------------------------------- |
+| QA          | `qa`                  | `https://core-qa.legalsynq.net` |
+| Production  | `production`          | `https://core-qa.legalsynq.net` |
 
 `EXPO_PUBLIC_*` values are bundled into the app binary and must not contain secrets.
+
+Dashboard demo data is controlled at runtime from `Settings > Reports > Use Dummy Dashboard Data`. The setting is stored locally on the device and does not require rebuilding the app.
 
 Example local run against the gateway:
 

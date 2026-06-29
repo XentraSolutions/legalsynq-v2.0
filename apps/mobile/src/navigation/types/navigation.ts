@@ -1,6 +1,6 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
-import type { DashboardReportType } from '@/features/dashboard/types/types';
+import type { DashboardDateRange, DashboardReportType } from '@/features/dashboard/types/types';
 
 export type RootStackParamList = {
   Auth: NavigatorScreenParams<AuthStackParamList>;
@@ -25,6 +25,6 @@ export type MainStackParamList = {
   OfferDetail: { offerId: string };
   CaseDetail: { caseId: string };
   Settings: undefined;
-  DashboardReportDetail: { reportType: DashboardReportType };
+  DashboardReportDetail: { reportType: DashboardReportType; dateRange: DashboardDateRange };
   Placeholder: { title: string; subtitle?: string };
 };

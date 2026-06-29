@@ -79,42 +79,94 @@ export const reportFilterRequestSchema = z.object({
   limit: z.number().int().positive().optional(),
   filterType: z.string().optional(),
   filterId: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
 });
 
 const reportNumericSchema = z.union([z.number(), z.string()]);
 
-export const dashboardLawFirmCaseReportRowSchema = z.object({
-  lawFirm: z.string().optional(),
-  lawfirm: z.string().optional(),
-  lawFirmName: z.string().optional(),
-  name: z.string().optional(),
-  label: z.string().optional(),
-  totalCases: reportNumericSchema.optional(),
-  totalCase: reportNumericSchema.optional(),
-  caseCount: reportNumericSchema.optional(),
-  cases: reportNumericSchema.optional(),
-  count: reportNumericSchema.optional(),
-  total: reportNumericSchema.optional(),
-  value: reportNumericSchema.optional(),
-  percentage: reportNumericSchema.optional(),
-  percent: z.union([z.number(), z.string()]).optional(),
-}).passthrough();
+export const dashboardTotalLienReportRowSchema = z
+  .object({
+    label: z.string().optional(),
+    name: z.string().optional(),
+    status: z.string().optional(),
+    lienStatus: z.string().optional(),
+    lienStatusName: z.string().optional(),
+    statusName: z.string().optional(),
+    count: reportNumericSchema.optional(),
+    total: reportNumericSchema.optional(),
+    value: reportNumericSchema.optional(),
+    lienCount: reportNumericSchema.optional(),
+    liensCount: reportNumericSchema.optional(),
+    totalLiens: reportNumericSchema.optional(),
+    purchase: reportNumericSchema.optional(),
+    purchaseAmount: reportNumericSchema.optional(),
+    totalPurchase: reportNumericSchema.optional(),
+    totalPurchaseAmount: reportNumericSchema.optional(),
+    billing: reportNumericSchema.optional(),
+    billingAmount: reportNumericSchema.optional(),
+    totalBilling: reportNumericSchema.optional(),
+    totalBillingAmount: reportNumericSchema.optional(),
+    percentage: reportNumericSchema.optional(),
+    percent: reportNumericSchema.optional(),
+  })
+  .passthrough();
 
-export const dashboardMedicalProviderReportRowSchema = z.object({
-  medicalProvider: z.string().optional(),
-  medicalprovider: z.string().optional(),
-  medicalProviderName: z.string().optional(),
-  facilityName: z.string().optional(),
-  providerName: z.string().optional(),
-  name: z.string().optional(),
-  label: z.string().optional(),
-  totalCases: reportNumericSchema.optional(),
-  totalCase: reportNumericSchema.optional(),
-  caseCount: reportNumericSchema.optional(),
-  cases: reportNumericSchema.optional(),
-  count: reportNumericSchema.optional(),
-  total: reportNumericSchema.optional(),
-  value: reportNumericSchema.optional(),
-  percentage: reportNumericSchema.optional(),
-  percent: z.union([z.number(), z.string()]).optional(),
-}).passthrough();
+export const dashboardTotalCaseReportRowSchema = z
+  .object({
+    label: z.string().optional(),
+    name: z.string().optional(),
+    status: z.string().optional(),
+    caseStatus: z.string().optional(),
+    currentStatus: z.string().optional(),
+    statusName: z.string().optional(),
+    count: reportNumericSchema.optional(),
+    total: reportNumericSchema.optional(),
+    value: reportNumericSchema.optional(),
+    caseCount: reportNumericSchema.optional(),
+    cases: reportNumericSchema.optional(),
+    totalCases: reportNumericSchema.optional(),
+    percentage: reportNumericSchema.optional(),
+    percent: reportNumericSchema.optional(),
+  })
+  .passthrough();
+
+export const dashboardLawFirmCaseReportRowSchema = z
+  .object({
+    lawFirm: z.string().optional(),
+    lawfirm: z.string().optional(),
+    lawFirmName: z.string().optional(),
+    name: z.string().optional(),
+    label: z.string().optional(),
+    totalCases: reportNumericSchema.optional(),
+    totalCase: reportNumericSchema.optional(),
+    caseCount: reportNumericSchema.optional(),
+    cases: reportNumericSchema.optional(),
+    count: reportNumericSchema.optional(),
+    total: reportNumericSchema.optional(),
+    value: reportNumericSchema.optional(),
+    percentage: reportNumericSchema.optional(),
+    percent: z.union([z.number(), z.string()]).optional(),
+  })
+  .passthrough();
+
+export const dashboardMedicalProviderReportRowSchema = z
+  .object({
+    medicalProvider: z.string().optional(),
+    medicalprovider: z.string().optional(),
+    medicalProviderName: z.string().optional(),
+    facilityName: z.string().optional(),
+    providerName: z.string().optional(),
+    name: z.string().optional(),
+    label: z.string().optional(),
+    totalCases: reportNumericSchema.optional(),
+    totalCase: reportNumericSchema.optional(),
+    caseCount: reportNumericSchema.optional(),
+    cases: reportNumericSchema.optional(),
+    count: reportNumericSchema.optional(),
+    total: reportNumericSchema.optional(),
+    value: reportNumericSchema.optional(),
+    percentage: reportNumericSchema.optional(),
+    percent: z.union([z.number(), z.string()]).optional(),
+  })
+  .passthrough();

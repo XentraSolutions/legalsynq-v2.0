@@ -1,6 +1,7 @@
 export * from './Analytics';
 export * from './Authentication';
 export * from './Config';
+export * from './DashboardSettings';
 export * from './DeepLinking';
 export * from './DeviceSecurity';
 export * from './ErrorTracking';

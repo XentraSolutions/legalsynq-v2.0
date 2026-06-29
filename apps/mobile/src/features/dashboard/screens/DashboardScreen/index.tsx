@@ -1,6 +1,7 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import Svg, { Circle, Defs, LinearGradient, Path, Polyline, Stop } from 'react-native-svg';
@@ -10,17 +11,21 @@ import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
 import {
   useDashboardLawFirmCaseReport,
   useDashboardMedicalProviderReport,
-  useDashboardPiechart,
+  useDashboardTotalCaseReport,
+  useDashboardTotalLienReport,
 } from '@/features/dashboard/hooks';
-import type { DashboardReportType } from '@/features/dashboard/types/types';
+import type { DashboardDateRange, DashboardReportType } from '@/features/dashboard/types/types';
 import type { MainStackParamList } from '@/navigation/types/navigation';
 import { AppMenu } from '@/shared/components/AppMenu';
+import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
 import type {
-  DashboardPiechart,
   DashboardLawFirmCaseReportRow,
   DashboardMedicalProviderReportRow,
+  DashboardTotalCaseReportRow,
+  DashboardTotalLienReportRow,
+  ReportFilterRequest,
 } from '@/shared/api/endpoints/Cases';
 import { useAuth } from '@/shared';
 
@@ -194,15 +199,67 @@ const FACILITY_ALLOCATION: DonutSlice[] = [
 ];
 
 const LINE_POINTS = [2.4, 3.7, 2.6, 1.0, 2.5, 2.6];
+const DEFAULT_DASHBOARD_DATE = new Date(2026, 9, 27);
+
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function formatApiDate(date: Date): string {
+  return `${padDatePart(date.getMonth() + 1)}/${padDatePart(date.getDate())}/${date.getFullYear()}`;
+}
+
+function parseApiDate(value: string): Date {
+  const [month, day, year] = value.split('/').map((part) => Number(part));
+  if (!month || !day || !year) {
+    return DEFAULT_DASHBOARD_DATE;
+  }
+
+  return new Date(year, month - 1, day);
+}
+
+function createSingleDayRange(date: Date): DashboardDateRange {
+  const formatted = formatApiDate(date);
+  return { startDate: formatted, endDate: formatted };
+}
+
+function formatDateForDisplay(value: string): string {
+  return value.split('/').join(' / ');
+}
+
+function formatDateRangeLabel(dateRange: DashboardDateRange): string {
+  if (dateRange.startDate === dateRange.endDate) {
+    return formatDateForDisplay(dateRange.startDate);
+  }
+
+  return `${formatDateForDisplay(dateRange.startDate)} - ${formatDateForDisplay(dateRange.endDate)}`;
+}
+
+function buildDashboardReportFilter(dateRange: DashboardDateRange): ReportFilterRequest {
+  return {
+    page: 1,
+    limit: 500,
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+  };
+}
 
 export function DashboardScreen() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const { colorScheme } = useNativeWindColorScheme();
   const [accountMode] = useAtom(accountModeAtom);
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [dateFilterVisible, setDateFilterVisible] = useState(false);
+  const [dateRange, setDateRange] = useState<DashboardDateRange>(() =>
+    createSingleDayRange(DEFAULT_DASHBOARD_DATE)
+  );
   const isDark = colorScheme === 'dark';
+  const { hydrated: dashboardSettingsHydrated, settings: dashboardSettings } =
+    useDashboardSettings();
+  const useDashboardDummyData = dashboardSettings.useDummyData;
+  const reportFilter = useMemo(() => buildDashboardReportFilter(dateRange), [dateRange]);
   const handleViewReport = (reportType: DashboardReportType) => {
-    navigation.navigate('DashboardReportDetail', { reportType });
+    navigation.navigate('DashboardReportDetail', { reportType, dateRange });
   };
 
   return (
@@ -217,14 +274,31 @@ export function DashboardScreen() {
           isDark={isDark}
           onOpenMenu={() => setDrawerVisible(true)}
         />
-        <DatePill isDark={isDark} />
+        <DatePill
+          dateRange={dateRange}
+          isDark={isDark}
+          onPress={() => setDateFilterVisible(true)}
+        />
         {accountMode === 'selling' ? (
-          <SellingDashboard isDark={isDark} />
+          <SellingDashboard isDark={isDark} useDummyData={useDashboardDummyData} />
         ) : (
-          <BuyingDashboard isDark={isDark} onViewReport={handleViewReport} />
+          <BuyingDashboard
+            dashboardSettingsHydrated={dashboardSettingsHydrated}
+            isDark={isDark}
+            reportFilter={reportFilter}
+            useDummyData={useDashboardDummyData}
+            onViewReport={handleViewReport}
+          />
         )}
       </ScrollView>
       <AppMenu visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
+      <DateFilterModal
+        dateRange={dateRange}
+        isDark={isDark}
+        visible={dateFilterVisible}
+        onApply={setDateRange}
+        onClose={() => setDateFilterVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -299,9 +373,18 @@ function CircleButton({
   );
 }
 
-function DatePill({ isDark }: { isDark: boolean }) {
+function DatePill({
+  dateRange,
+  isDark,
+  onPress,
+}: {
+  dateRange: DashboardDateRange;
+  isDark: boolean;
+  onPress: () => void;
+}) {
   return (
-    <View
+    <Pressable
+      accessibilityRole="button"
       className="mt-4 h-9 flex-row items-center justify-between rounded-xl bg-white px-4 dark:bg-[#191a1f]"
       style={{
         shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
@@ -310,16 +393,136 @@ function DatePill({ isDark }: { isDark: boolean }) {
         shadowOffset: { height: 3, width: 0 },
         elevation: 1,
       }}
+      onPress={onPress}
     >
       <Text className={cx(TYPE.dateLabel, 'text-[#6f737d] dark:text-[#a1a1aa]')}>
-        10 / 27 / 2026
+        {formatDateRangeLabel(dateRange)}
       </Text>
       <Ionicons color={isDark ? '#a1a1aa' : '#6f737d'} name="calendar-clear-outline" size={16} />
+    </Pressable>
+  );
+}
+
+function DateFilterModal({
+  dateRange,
+  isDark,
+  visible,
+  onApply,
+  onClose,
+}: {
+  dateRange: DashboardDateRange;
+  isDark: boolean;
+  visible: boolean;
+  onApply: (dateRange: DashboardDateRange) => void;
+  onClose: () => void;
+}) {
+  const [draftStart, setDraftStart] = useState(() => parseApiDate(dateRange.startDate));
+  const [draftEnd, setDraftEnd] = useState(() => parseApiDate(dateRange.endDate));
+
+  useEffect(() => {
+    if (visible) {
+      setDraftStart(parseApiDate(dateRange.startDate));
+      setDraftEnd(parseApiDate(dateRange.endDate));
+    }
+  }, [dateRange.endDate, dateRange.startDate, visible]);
+
+  const handleStartChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (selectedDate) {
+      setDraftStart(selectedDate);
+    }
+  };
+
+  const handleEndChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (selectedDate) {
+      setDraftEnd(selectedDate);
+    }
+  };
+
+  const handleApply = () => {
+    const start = draftStart <= draftEnd ? draftStart : draftEnd;
+    const end = draftStart <= draftEnd ? draftEnd : draftStart;
+    onApply({
+      startDate: formatApiDate(start),
+      endDate: formatApiDate(end),
+    });
+    onClose();
+  };
+
+  return (
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <View className="flex-1 justify-end bg-black/35 px-4 pb-6 dark:bg-black/70">
+        <View
+          className="rounded-[20px] bg-white p-5 dark:bg-[#191a1f]"
+          style={{
+            shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
+            shadowOpacity: isDark ? 0.28 : 0.45,
+            shadowRadius: 12,
+            shadowOffset: { height: 6, width: 0 },
+            elevation: 4,
+          }}
+        >
+          <View className="mb-4 flex-row items-center justify-between">
+            <Text className={cx(TYPE.cardTitle, 'text-[#202228] dark:text-white')}>
+              Filter dashboard dates
+            </Text>
+            <Pressable accessibilityRole="button" hitSlop={12} onPress={onClose}>
+              <Ionicons color={isDark ? '#a1a1aa' : '#6f737d'} name="close-outline" size={22} />
+            </Pressable>
+          </View>
+
+          <DatePickerRow date={draftStart} label="Start date" onChange={handleStartChange} />
+          <DatePickerRow date={draftEnd} label="End date" onChange={handleEndChange} />
+
+          <View className="mt-5 flex-row gap-3">
+            <Pressable
+              accessibilityRole="button"
+              className="h-10 flex-1 items-center justify-center rounded-full bg-[#ececee] dark:bg-[#2a2b30]"
+              onPress={onClose}
+            >
+              <Text className={cx(TYPE.cta, 'text-[#555964] dark:text-[#e7e7e9]')}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              className="h-10 flex-1 items-center justify-center rounded-full bg-[#f97332]"
+              onPress={handleApply}
+            >
+              <Text className={cx(TYPE.cta, 'text-[#15161a]')}>Apply</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function DatePickerRow({
+  date,
+  label,
+  onChange,
+}: {
+  date: Date;
+  label: string;
+  onChange: (event: DateTimePickerEvent, selectedDate?: Date) => void;
+}) {
+  return (
+    <View className="mb-3 rounded-[14px] bg-[#f6f6f7] px-4 py-3 dark:bg-[#222328]">
+      <Text className={cx(TYPE.formLabel, 'mb-2 text-[#71717a] dark:text-[#a1a1aa]')}>{label}</Text>
+      <DateTimePicker mode="date" value={date} onChange={onChange} />
     </View>
   );
 }
 
-function SellingDashboard({ isDark }: { isDark: boolean }) {
+function SellingDashboard({ isDark, useDummyData }: { isDark: boolean; useDummyData: boolean }) {
+  if (!useDummyData) {
+    return (
+      <DashboardEmptyStateCard
+        isDark={isDark}
+        message="Selling report data is not available from the API yet."
+        title="No selling report data"
+      />
+    );
+  }
+
   return (
     <>
       <StatGrid isDark={isDark} stats={SELLING_STATS} />
@@ -349,36 +552,6 @@ function SellingDashboard({ isDark }: { isDark: boolean }) {
 }
 
 const SLICE_COLORS = [BLUE, ORANGE, GREEN, YELLOW, RED];
-
-function mapPiechartToLienSlices(data: DashboardPiechart): DonutSlice[] {
-  const total = data.totalLiens || 1;
-  const closedCount = data.lienStatus
-    .filter((s) => {
-      const label = s.label.toLowerCase();
-      return label === 'closed' || label === 'close';
-    })
-    .reduce((sum, s) => sum + s.value, 0);
-  const openCount = total - closedCount;
-  const openPct = (openCount / total) * 100;
-  const closedPct = (closedCount / total) * 100;
-
-  return [
-    {
-      label: 'Open',
-      value: openPct,
-      amount: String(openCount),
-      percent: `(${openPct.toFixed(1)}%)`,
-      color: BLUE,
-    },
-    {
-      label: 'Close',
-      value: closedPct,
-      amount: String(closedCount),
-      percent: `(${closedPct.toFixed(1)}%)`,
-      color: ORANGE,
-    },
-  ];
-}
 
 function formatCurrency(value: number): string {
   return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -464,47 +637,227 @@ function mapAllocationReportToSlices<Row>(
   });
 }
 
+function readReportText(row: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function readReportNumber(row: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = numericValue(row[key]);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeLienStatusLabel(label: string | undefined): 'Open' | 'Close' {
+  const normalized = label?.toLowerCase() ?? '';
+  return normalized.includes('close') ||
+    normalized.includes('settled') ||
+    normalized.includes('paid')
+    ? 'Close'
+    : 'Open';
+}
+
+function mapTotalLienReportToDashboard(rows: DashboardTotalLienReportRow[]):
+  | {
+      slices: DonutSlice[];
+      totalBilling: number;
+      totalLiens: number;
+      totalPurchase: number;
+    }
+  | undefined {
+  if (rows.length === 0) {
+    return undefined;
+  }
+
+  const grouped = new Map<'Open' | 'Close', { billing: number; count: number; purchase: number }>();
+
+  rows.forEach((row) => {
+    const record = row as Record<string, unknown>;
+    const status = normalizeLienStatusLabel(
+      readReportText(record, [
+        'status',
+        'lienStatus',
+        'lienStatusName',
+        'statusName',
+        'label',
+        'name',
+      ])
+    );
+    const current = grouped.get(status) ?? { billing: 0, count: 0, purchase: 0 };
+    current.count +=
+      readReportNumber(record, [
+        'totalLiens',
+        'liensCount',
+        'lienCount',
+        'count',
+        'total',
+        'value',
+      ]) ?? 1;
+    current.purchase +=
+      readReportNumber(record, [
+        'totalPurchaseAmount',
+        'totalPurchase',
+        'purchaseAmount',
+        'purchase',
+      ]) ?? 0;
+    current.billing +=
+      readReportNumber(record, [
+        'totalBillingAmount',
+        'totalBilling',
+        'billingAmount',
+        'billing',
+      ]) ?? 0;
+    grouped.set(status, current);
+  });
+
+  const totalLiens = Array.from(grouped.values()).reduce((sum, item) => sum + item.count, 0);
+  if (totalLiens <= 0) {
+    return undefined;
+  }
+
+  const orderedStatuses: Array<'Open' | 'Close'> = ['Open', 'Close'];
+  const slices = orderedStatuses.reduce<DonutSlice[]>((items, status, index) => {
+    const item = grouped.get(status);
+    if (!item || item.count <= 0) {
+      return items;
+    }
+
+    const percentage = (item.count / totalLiens) * 100;
+    items.push({
+      label: status,
+      value: item.count,
+      amount: item.count.toLocaleString(),
+      percent: `(${percentage.toFixed(1)}%)`,
+      color: index === 0 ? BLUE : ORANGE,
+      details: [
+        { label: 'Purchase', value: formatCurrency(item.purchase) },
+        { label: 'Billing', value: formatCurrency(item.billing) },
+      ],
+    });
+
+    return items;
+  }, []);
+
+  return {
+    slices,
+    totalBilling: Array.from(grouped.values()).reduce((sum, item) => sum + item.billing, 0),
+    totalLiens,
+    totalPurchase: Array.from(grouped.values()).reduce((sum, item) => sum + item.purchase, 0),
+  };
+}
+
+function mapTotalCaseReportToDashboard(rows: DashboardTotalCaseReportRow[]):
+  | {
+      slices: DonutSlice[];
+      totalCases: number;
+    }
+  | undefined {
+  if (rows.length === 0) {
+    return undefined;
+  }
+
+  const grouped = new Map<string, number>();
+
+  rows.forEach((row) => {
+    const record = row as Record<string, unknown>;
+    const label =
+      readReportText(record, [
+        'caseStatus',
+        'currentStatus',
+        'status',
+        'statusName',
+        'label',
+        'name',
+      ]) ?? 'Unknown';
+    const count =
+      readReportNumber(record, ['totalCases', 'caseCount', 'cases', 'count', 'total', 'value']) ??
+      1;
+    grouped.set(label, (grouped.get(label) ?? 0) + count);
+  });
+
+  const totalCases = Array.from(grouped.values()).reduce((sum, count) => sum + count, 0);
+  if (totalCases <= 0) {
+    return undefined;
+  }
+
+  const slices = Array.from(grouped.entries()).map(([label, count], index) => {
+    const percentage = (count / totalCases) * 100;
+    return {
+      label,
+      value: count,
+      amount: count.toLocaleString(),
+      percent: `(${percentage.toFixed(2)}%)`,
+      color: SLICE_COLORS[index % SLICE_COLORS.length],
+    };
+  });
+
+  return { slices, totalCases };
+}
+
 function BuyingDashboard({
+  dashboardSettingsHydrated,
   isDark,
+  reportFilter,
+  useDummyData,
   onViewReport,
 }: {
+  dashboardSettingsHydrated: boolean;
   isDark: boolean;
+  reportFilter: ReportFilterRequest;
+  useDummyData: boolean;
   onViewReport: (reportType: DashboardReportType) => void;
 }) {
-  const { data: piechartData } = useDashboardPiechart();
-  const { data: lawFirmReport = [] } = useDashboardLawFirmCaseReport();
-  const { data: medicalProviderReport = [] } = useDashboardMedicalProviderReport();
-  const lienSlices = piechartData ? mapPiechartToLienSlices(piechartData) : BUYING_TOTAL_LIENS;
-  const totalLiens = piechartData ? String(piechartData.totalLiens) : '239';
-  const totalLienValue = piechartData
-    ? formatCurrency(piechartData.totalLienValue)
-    : '$2,287,386.12';
+  const reportsEnabled = dashboardSettingsHydrated && !useDummyData;
+  const { data: totalLienReport } = useDashboardTotalLienReport(reportFilter, reportsEnabled);
+  const { data: totalCaseReport } = useDashboardTotalCaseReport(reportFilter, reportsEnabled);
+  const { data: lawFirmReport } = useDashboardLawFirmCaseReport(reportFilter, reportsEnabled);
+  const { data: medicalProviderReport } = useDashboardMedicalProviderReport(
+    reportFilter,
+    reportsEnabled
+  );
+  const totalLienModel = mapTotalLienReportToDashboard(totalLienReport?.items ?? []);
+  const totalCaseModel = mapTotalCaseReportToDashboard(totalCaseReport?.items ?? []);
+  const lienSlices = useDummyData ? BUYING_TOTAL_LIENS : (totalLienModel?.slices ?? []);
+  const totalLiens = useDummyData ? '239' : (totalLienModel?.totalLiens.toLocaleString() ?? '0');
+  const totalPurchaseValue = useDummyData
+    ? '$573,775.74'
+    : formatCurrency(totalLienModel?.totalPurchase ?? 0);
+  const totalLienValue = useDummyData
+    ? '$2,287,386.12'
+    : formatCurrency(totalLienModel?.totalBilling ?? 0);
   const lawFirmReportSlices = mapAllocationReportToSlices(
-    lawFirmReport,
+    lawFirmReport?.items ?? [],
     getLawFirmLabel,
     getLawFirmCaseCount
   );
-  const lawFirmAllocationSlices =
-    lawFirmReportSlices.length > 0 ? lawFirmReportSlices : LAW_FIRM_ALLOCATION;
-  const lawFirmTotalCases =
-    lawFirmReportSlices.length > 0
-      ? lawFirmReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
-      : '175';
+  const lawFirmAllocationSlices = useDummyData ? LAW_FIRM_ALLOCATION : lawFirmReportSlices;
+  const lawFirmTotalCases = useDummyData
+    ? '175'
+    : lawFirmReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString();
   const facilityReportSlices = mapAllocationReportToSlices(
-    medicalProviderReport,
+    medicalProviderReport?.items ?? [],
     getMedicalProviderLabel,
     getMedicalProviderCaseCount
   );
-  const facilityAllocationSlices =
-    facilityReportSlices.length > 0 ? facilityReportSlices : FACILITY_ALLOCATION;
-  const facilityTotalCases =
-    facilityReportSlices.length > 0
-      ? facilityReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString()
-      : '239';
+  const facilityAllocationSlices = useDummyData ? FACILITY_ALLOCATION : facilityReportSlices;
+  const facilityTotalCases = useDummyData
+    ? '239'
+    : facilityReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString();
 
   return (
     <>
-      <StatGrid isDark={isDark} stats={BUYING_STATS} />
+      {useDummyData ? <StatGrid isDark={isDark} stats={BUYING_STATS} /> : null}
       <DonutCard
         centerCaption="Total Liens"
         centerValue={totalLiens}
@@ -512,16 +865,19 @@ function BuyingDashboard({
         isDark={isDark}
         slices={lienSlices}
         subtitle="Breakdown of open and closed claims with total purchase and billing values."
-        summaryRows={[{ label: 'Total Billing Amount', value: totalLienValue }]}
+        summaryRows={[
+          { label: 'Total Purchase Amount', value: totalPurchaseValue },
+          { label: 'Total Billing Amount', value: totalLienValue },
+        ]}
         title="Total Liens"
         onViewDetails={() => onViewReport('total-liens')}
       />
       <DonutCard
         centerCaption="Total Cases"
-        centerValue="4,773"
+        centerValue={useDummyData ? '4,773' : (totalCaseModel?.totalCases.toLocaleString() ?? '0')}
         icon="time-outline"
         isDark={isDark}
-        slices={BUYING_TOTAL_CASES}
+        slices={useDummyData ? BUYING_TOTAL_CASES : (totalCaseModel?.slices ?? [])}
         subtitle="Track the overall number of cases and view their current status distribution at a glance."
         title="Total Cases"
         onViewDetails={() => onViewReport('total-cases')}
@@ -619,6 +975,37 @@ function CardShell({
   );
 }
 
+function DashboardEmptyStateCard({
+  isDark,
+  message,
+  title,
+}: {
+  isDark: boolean;
+  message: string;
+  title: string;
+}) {
+  return (
+    <CardShell isDark={isDark}>
+      <View className="items-center py-6">
+        <View className="h-12 w-12 items-center justify-center rounded-full bg-[#ececee] dark:bg-[#2a2b30]">
+          <Ionicons color={MUTED} name="analytics-outline" size={22} />
+        </View>
+        <Text className={cx(TYPE.cardTitle, 'mt-4 text-center text-[#24272d] dark:text-white')}>
+          {title}
+        </Text>
+        <Text
+          className={cx(
+            TYPE.cardDescription,
+            'mt-2 text-center text-[#8d9098] dark:text-[#8f929b]'
+          )}
+        >
+          {message}
+        </Text>
+      </View>
+    </CardShell>
+  );
+}
+
 function SectionTitle({
   icon,
   subtitle,
@@ -666,11 +1053,17 @@ function DonutCard({
     <CardShell isDark={isDark}>
       <SectionTitle icon={icon} subtitle={subtitle} title={title} />
       <DonutChart centerCaption={centerCaption} centerValue={centerValue} slices={slices} />
-      <View className="mt-4">
-        {slices.map((slice, index) => (
-          <LegendRow key={slice.label} isLast={index === slices.length - 1} slice={slice} />
-        ))}
-      </View>
+      {slices.length > 0 ? (
+        <View className="mt-4">
+          {slices.map((slice, index) => (
+            <LegendRow key={slice.label} isLast={index === slices.length - 1} slice={slice} />
+          ))}
+        </View>
+      ) : (
+        <Text className={cx(TYPE.rowMuted, 'mt-5 text-center text-[#8d9098] dark:text-[#8f929b]')}>
+          No report data available for the selected date range.
+        </Text>
+      )}
       {summaryRows ? (
         <View className="mt-3 gap-4 border-t border-[#ececf0] pt-4 dark:border-[#292a2f]">
           {summaryRows.map((row) => (
@@ -715,7 +1108,7 @@ function DonutChart({
   const strokeWidth = 28;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0) || 1;
   let accumulated = 0;
 
   return (

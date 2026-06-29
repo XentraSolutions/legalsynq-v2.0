@@ -8,6 +8,8 @@ import type {
   dashboardPiechartSchema,
   dashboardLawFirmCaseReportRowSchema,
   dashboardMedicalProviderReportRowSchema,
+  dashboardTotalCaseReportRowSchema,
+  dashboardTotalLienReportRowSchema,
   dashboardTaskSummarySchema,
   linkedLienSchema,
   noteSchema,
@@ -25,7 +27,11 @@ export type LinkedLien = z.infer<typeof linkedLienSchema>;
 export type UpdateCaseStatusRequest = z.infer<typeof updateCaseStatusRequestSchema>;
 export type PiechartStatus = z.infer<typeof piechartStatusSchema>;
 export type DashboardPiechart = z.infer<typeof dashboardPiechartSchema>;
+export type DashboardTotalLienReportRow = z.infer<typeof dashboardTotalLienReportRowSchema>;
+export type DashboardTotalCaseReportRow = z.infer<typeof dashboardTotalCaseReportRowSchema>;
 export type DashboardLawFirmCaseReportRow = z.infer<typeof dashboardLawFirmCaseReportRowSchema>;
-export type DashboardMedicalProviderReportRow = z.infer<typeof dashboardMedicalProviderReportRowSchema>;
+export type DashboardMedicalProviderReportRow = z.infer<
+  typeof dashboardMedicalProviderReportRowSchema
+>;
 export type DashboardTaskSummary = z.infer<typeof dashboardTaskSummarySchema>;
 export type ReportFilterRequest = z.infer<typeof reportFilterRequestSchema>;
