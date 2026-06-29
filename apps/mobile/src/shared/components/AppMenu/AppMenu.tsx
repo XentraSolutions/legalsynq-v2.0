@@ -12,6 +12,7 @@ import type { MainStackParamList } from '@/navigation/types/navigation';
 import { AuthenticationService } from '@/shared/services/Authentication';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT } from '@/shared/styles';
+import { useAuth } from '@/shared/hooks';
 
 export interface AppMenuProps {
   visible: boolean;
@@ -118,10 +119,14 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
   const [expandedSection, setExpandedSection] = useState<MenuSectionId | null>(null);
   const { colorScheme } = useNativeWindColorScheme();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const isDark = colorScheme === 'dark';
   const stripWidth = Math.min(72, Dimensions.get('window').width * 0.17);
   const iconColor = isDark ? '#a8a9b0' : '#737681';
   const sections = MENU_SECTIONS[accountMode];
+  const fullName = user ? `${user.firstName} ${user.lastName}`.trim() : '';
+  const initials = user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase() : '';
+  const role = user?.roles[0] ?? '';
 
   const navigateToRoute = (route: DirectRoute) => {
     onClose();
@@ -175,14 +180,14 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
             <View className="flex-row items-start justify-between">
               <View className="flex-row items-center">
                 <View className="h-[48px] w-[48px] items-center justify-center rounded-full bg-[#4a423a]">
-                  <Text className={cx(FIGMA_TEXT.avatarInitials, 'text-white')}>JD</Text>
+                  <Text className={cx(FIGMA_TEXT.avatarInitials, 'text-white')}>{initials}</Text>
                 </View>
                 <View className="ml-5">
                   <Text className={cx(FIGMA_TEXT.drawerName, 'text-[#202228] dark:text-white')}>
-                    John Doe
+                    {fullName}
                   </Text>
                   <Text className={cx(FIGMA_TEXT.drawerRole, 'text-[#777984] dark:text-[#a5a6ae]')}>
-                    Admin
+                    {role}
                   </Text>
                 </View>
               </View>
@@ -192,7 +197,7 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
             </View>
 
             <View className="mt-11">
-              <View className="flex-row items-center">
+              <View className="min-h-[52px] flex-row items-center px-4">
                 <Ionicons color={iconColor} name="people-outline" size={24} />
                 <Text
                   className={cx(FIGMA_TEXT.drawerHeading, 'ml-5 text-[#202228] dark:text-white')}
@@ -201,7 +206,7 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
                 </Text>
               </View>
 
-              <View className="ml-2 mt-5 border-l border-[#dedfe3] dark:border-[#2e3036]">
+              <View className="ml-[27px] mt-2 border-l border-[#dedfe3] dark:border-[#2e3036]">
                 <ModeChoice
                   label="Selling"
                   selected={accountMode === 'selling'}
@@ -408,23 +413,27 @@ function ExpandableMenuSection({
       </Pressable>
 
       <Animated.View style={[{ overflow: 'hidden' }, animatedStyle]}>
-        <View className="ml-[38px] pt-2">
+        <View className="ml-[27px] mt-2 border-l border-[#dedfe3] dark:border-[#2e3036]">
           {section.children.map((child) => (
-            <Pressable
-              accessibilityRole="button"
-              className="min-h-[44px] flex-row items-center rounded-xl px-4"
-              key={child.label}
-              onPress={() => onChildPress(child)}
-            >
-              <View className="h-1.5 w-1.5 rounded-full bg-[#cfd1d7] dark:bg-[#4a4c54]" />
-              <Text className="ml-4 flex-1 font-jakarta-medium text-[13px] text-[#383b44] dark:text-[#d8d9dd]">
-                {child.label}
-              </Text>
-              <Ionicons color={iconColor} name="chevron-forward-outline" size={16} />
-            </Pressable>
+            <MenuChildChoice child={child} key={child.label} onPress={() => onChildPress(child)} />
           ))}
         </View>
       </Animated.View>
     </View>
+  );
+}
+
+function MenuChildChoice({ child, onPress }: { child: MenuChild; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      className="min-h-[44px] flex-row items-center rounded-xl"
+      onPress={onPress}
+    >
+      <View className="mr-8 h-[34px] w-[2px] bg-transparent" />
+      <Text className="flex-1 font-jakarta-medium text-[13px] text-[#383b44] dark:text-[#d8d9dd]">
+        {child.label}
+      </Text>
+    </Pressable>
   );
 }

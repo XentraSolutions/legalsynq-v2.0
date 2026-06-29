@@ -22,6 +22,7 @@ import type {
   DashboardLawFirmCaseReportRow,
   DashboardMedicalProviderReportRow,
 } from '@/shared/api/endpoints/Cases';
+import { useAuth } from '@/shared';
 
 interface StatCardData {
   label: string;
@@ -237,6 +238,8 @@ function DashboardHeader({
   isDark: boolean;
   onOpenMenu: () => void;
 }) {
+  const { user } = useAuth();
+  const userName = user ? `${user.firstName}`.trim() : '';
   const subtitle = accountMode === 'selling' ? 'Lien selling dashboard' : 'Lien buying dashboard';
   const iconColor = isDark ? '#a1a1aa' : '#6f737d';
 
@@ -250,7 +253,7 @@ function DashboardHeader({
       />
       <View className="ml-3 flex-1">
         <Text className={cx(TYPE.dashboardGreeting, 'text-[#1f2329] dark:text-white')}>
-          Welcome, John
+          Welcome, {userName}
         </Text>
         <Text className={cx(TYPE.dashboardSubtitle, 'mt-0.5 text-[#8a8d96] dark:text-[#8d9099]')}>
           {subtitle}
