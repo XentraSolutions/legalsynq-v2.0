@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Liens.Application.DTOs;
 
@@ -35,4 +36,7 @@ public sealed class DIYReportRunRequest
     public int         Limit    { get; init; } = 50;
     public string?     SortBy   { get; init; }
     public string?     SortDir  { get; init; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; init; }
 }

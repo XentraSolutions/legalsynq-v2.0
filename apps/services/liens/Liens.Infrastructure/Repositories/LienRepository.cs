@@ -78,7 +78,14 @@ public class LienRepository : ILienRepository
     public async Task<(List<Lien> PageItems, List<Lien> AllItems, int TotalCount)> SearchReportAsync(
         Guid tenantId,
         string? search,
-        IReadOnlyCollection<string> statuses,
+        IReadOnlyCollection<string> lienStatuses,
+        IReadOnlyCollection<string> caseStatuses,
+        DateOnly? purchaseDateFrom,
+        DateOnly? purchaseDateTo,
+        DateTime? closedDateFrom,
+        DateTime? closedDateTo,
+        string? isBulk,
+        IReadOnlyCollection<Guid> caseIds,
         int page,
         int pageSize,
         CancellationToken ct = default)
@@ -95,10 +102,45 @@ public class LienRepository : ILienRepository
                 (l.Description != null && l.Description.Contains(term)));
         }
 
-        if (statuses.Count > 0)
+        if (lienStatuses.Count > 0)
         {
-            var statusList = statuses.ToList();
+            var statusList = lienStatuses.ToList();
             q = q.Where(l => statusList.Contains(l.Status));
+        }
+
+        if (caseStatuses.Count > 0)
+        {
+            var statusList = caseStatuses.ToList();
+            q = q.Where(l =>
+                l.CaseId.HasValue &&
+                _db.Cases.Any(c =>
+                    c.TenantId == tenantId &&
+                    c.Id == l.CaseId.Value &&
+                    statusList.Contains(c.Status)));
+        }
+
+        if (purchaseDateFrom.HasValue)
+            q = q.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value >= purchaseDateFrom.Value);
+
+        if (purchaseDateTo.HasValue)
+            q = q.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value <= purchaseDateTo.Value);
+
+        if (closedDateFrom.HasValue)
+            q = q.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value >= closedDateFrom.Value);
+
+        if (closedDateTo.HasValue)
+            q = q.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value <= closedDateTo.Value);
+
+        if (!string.IsNullOrWhiteSpace(isBulk))
+        {
+            var bulk = isBulk.Trim();
+            q = q.Where(l => l.IsBulk == bulk);
+        }
+
+        if (caseIds.Count > 0)
+        {
+            var ids = caseIds.ToList();
+            q = q.Where(l => l.CaseId.HasValue && ids.Contains(l.CaseId.Value));
         }
 
         var ordered = q.OrderByDescending(l => l.CreatedAtUtc);

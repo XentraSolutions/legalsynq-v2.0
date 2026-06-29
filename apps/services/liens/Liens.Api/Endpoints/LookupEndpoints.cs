@@ -4,6 +4,8 @@ using BuildingBlocks.Context;
 using Liens.Application.Interfaces;
 using Liens.Domain;
 using Liens.Domain.Enums;
+using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace Liens.Api.Endpoints;
 
@@ -60,7 +62,7 @@ public static class LookupEndpoints
             .RequirePermission(LiensPermissions.LienRead);
 
         // Procedure codes
-        legacy.MapGet("/medical/procedure/codes", (ILookupValueService s, ICurrentRequestContext c, CancellationToken ct) => LegacyGetByCategory(s, c, LookupCategory.ProcedureCode, ct))
+        legacy.MapGet("/medical/procedure/codes", GetLegacyProcedureCodes)
             .RequirePermission(LiensPermissions.LienRead);
         legacy.MapGet("/medical/procedure/costs/{code}", GetProcedureCost)
             .RequirePermission(LiensPermissions.LienRead);
@@ -70,11 +72,13 @@ public static class LookupEndpoints
             .RequirePermission(LiensPermissions.LienRead);
 
         // Contact-based lookups
-        legacy.MapGet("/contact",                 (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, null, ct))
+        legacy.MapGet("/contact",(IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, null, ct))
             .RequirePermission(LiensPermissions.LienRead);
         legacy.MapGet("/contact/lawfirm",         (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.LawFirm, ct))
             .RequirePermission(LiensPermissions.LienRead);
         legacy.MapGet("/contact/medical-provider",(IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.Provider, ct))
+            .RequirePermission(LiensPermissions.LienRead);
+        legacy.MapGet("/contact/medical-facility",(IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.MedicalFacility, ct))
             .RequirePermission(LiensPermissions.LienRead);
         legacy.MapGet("/contact/funding-company", (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.LienHolder, ct))
             .RequirePermission(LiensPermissions.LienRead);
@@ -154,14 +158,33 @@ public static class LookupEndpoints
 
     private static async Task<IResult> GetProcedureCost(
         string code,
-        ILookupValueService lookupService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
-        var result = await lookupService.GetByCodeAsync(ctx.TenantId, LookupCategory.ProcedureCode, code, ct);
-        return result is null
-            ? Results.NotFound(new { error = new { code = "not_found", message = $"Procedure code '{code}' not found." } })
-            : Results.Ok(result);
+        var tenantId = ctx.TenantId
+            ?? throw new UnauthorizedAccessException("Tenant context is required.");
+
+        var manualCosts = await db.ManualMedicalCodes
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.Code == code && m.Status == "A")
+            .Select(m => new
+            {
+                code = m.Code,
+                description = m.Description ?? string.Empty,
+                facilityType = m.FacilityType,
+                cost = m.Cost.ToString(),
+                copay = m.Copay.ToString(),
+                facilityTotal = m.FacilityTotal.ToString(),
+                physicianTotal = m.PhysicianTotal.ToString(),
+                total = m.Total.ToString(),
+            })
+            .ToListAsync(ct);
+
+        if (manualCosts.Count > 0)
+            return Results.Ok(new { isSuccess = true, message = "Retrieved from manual medical codes.", data = manualCosts });
+
+        return Results.NotFound(new { isSuccess = false, message = "Unable to get procedure cost." });
     }
 
     private static async Task<IResult> GetContactsByRole(
@@ -189,6 +212,41 @@ public static class LookupEndpoints
     {
         var result = await lookupService.GetByCategoryAsync(ctx.TenantId, category, ct);
         return Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetLegacyProcedureCodes(
+        ILookupValueService lookupService,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        var tenantId = ctx.TenantId
+            ?? throw new UnauthorizedAccessException("Tenant context is required.");
+
+        var lookupCodes = await lookupService.GetByCategoryAsync(tenantId, LookupCategory.ProcedureCode, ct);
+        var data = lookupCodes
+            .Select(l => new
+            {
+                code = l.Code,
+                description = l.Description ?? l.Name,
+            })
+            .ToList();
+
+        var manualCodes = await db.ManualMedicalCodes
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.Status == "A")
+            .OrderBy(m => m.Description)
+            .ThenBy(m => m.Code)
+            .Select(m => new
+            {
+                code = m.Code,
+                description = $"{m.Description ?? string.Empty} ({m.Code})",
+            })
+            .ToListAsync(ct);
+
+        data.AddRange(manualCodes);
+
+        return Results.Ok(new { isSuccess = true, message = string.Empty, data });
     }
 
     private static async Task<IResult> LegacyGetContactsByType(

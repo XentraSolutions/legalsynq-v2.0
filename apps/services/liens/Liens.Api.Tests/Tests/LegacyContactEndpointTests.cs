@@ -50,9 +50,30 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task GetMedicalFacilities_returns200()
+    {
+        var resp = await _client.GetAsync("/contact/medical-facility/");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task GetModernMedicalFacilities_returns200()
+    {
+        var resp = await _client.GetAsync("/api/liens/contacts/medical-facilities");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task GetFundingCompanies_returns200()
     {
         var resp = await _client.GetAsync("/contact/funding-company/");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task GetModernFundingCompanies_returns200()
+    {
+        var resp = await _client.GetAsync("/api/liens/contacts/funding-companies");
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -98,9 +119,33 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task SearchMedicalFacilitiesV3_returns200()
+    {
+        var resp = await _client.PostAsJsonAsync("/contact/medical-facility/v3",
+            new { page = 1, limit = 10 });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task SearchModernMedicalFacilities_returns200()
+    {
+        var resp = await _client.PostAsJsonAsync("/api/liens/contacts/medical-facilities/search",
+            new { page = 1, limit = 10 });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task SearchFundingCompaniesV3_returns200()
     {
         var resp = await _client.PostAsJsonAsync("/contact/funding-company/v3",
+            new { page = 1, limit = 10 });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task SearchModernFundingCompanies_returns200()
+    {
+        var resp = await _client.PostAsJsonAsync("/api/liens/contacts/funding-companies/search",
             new { page = 1, limit = 10 });
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -124,6 +169,32 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
             firstName    = "New",
             lastName     = "Firm",
             organization = "New Law Firm LLC",
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task CreateFundingCompanyContact_returns201()
+    {
+        var resp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType  = "FundingCompany",
+            firstName    = "Capital",
+            lastName     = "Partner",
+            organization = "Capital Partner Funding LLC",
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task CreateMedicalFacilityContact_returns201()
+    {
+        var resp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType  = "MedicalFacility",
+            firstName    = "Facility",
+            lastName     = "Coordinator",
+            organization = "Northside Medical Facility",
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }

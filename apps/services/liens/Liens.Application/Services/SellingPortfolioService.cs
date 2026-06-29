@@ -15,6 +15,9 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private readonly ILienRepository _lienRepo;
     private readonly ICaseRepository _caseRepo;
     private readonly IContactRepository _contactRepo;
+    private readonly ILienSettlementRepository _settlementRepo;
+    private readonly ISettlementPaymentDetailRepository _paymentDetailRepo;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly IAuditPublisher _audit;
     private readonly INotificationPublisher _notifications;
     private readonly ILienEligibilityValidator _eligibilityValidator;
@@ -25,6 +28,9 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         ILienRepository lienRepo,
         ICaseRepository caseRepo,
         IContactRepository contactRepo,
+        ILienSettlementRepository settlementRepo,
+        ISettlementPaymentDetailRepository paymentDetailRepo,
+        IUnitOfWork unitOfWork,
         IAuditPublisher audit,
         INotificationPublisher notifications,
         ILienEligibilityValidator eligibilityValidator,
@@ -34,6 +40,9 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         _lienRepo = lienRepo;
         _caseRepo = caseRepo;
         _contactRepo = contactRepo;
+        _settlementRepo = settlementRepo;
+        _paymentDetailRepo = paymentDetailRepo;
+        _unitOfWork = unitOfWork;
         _audit = audit;
         _notifications = notifications;
         _eligibilityValidator = eligibilityValidator;
@@ -105,7 +114,9 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             portfolioNumber,
             request.Name,
             actingUserId,
-            request.Description);
+            request.Description,
+            request.InternalNotes,
+            request.TargetGrouping);
 
         portfolio.AddInitialStatusHistory(actingUserId);
 
@@ -118,7 +129,18 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         foreach (var buyerOrgId in request.BuyerOrgIds.Distinct())
             portfolio.AddBuyer(buyerOrgId, actingUserId);
 
-        await _portfolioRepo.AddAsync(portfolio, ct);
+        await InTransactionAsync(async () =>
+        {
+            await _portfolioRepo.AddAsync(portfolio, ct);
+            await AddActivityAsync(
+                portfolio,
+                actingUserId,
+                "LIEN_SALE_PORTFOLIO_CREATED",
+                "SellingPortfolio",
+                $"Selling portfolio '{portfolio.PortfolioNumber}' created",
+                portfolio.Id.ToString(),
+                ct: ct);
+        }, ct);
 
         _logger.LogInformation(
             "Selling portfolio created: {PortfolioId} Number={PortfolioNumber} Tenant={TenantId}",
@@ -150,8 +172,19 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
         var portfolio = await RequirePortfolioAsync(tenantId, id, ct);
         EnsureSellerPortfolio(portfolio, sellerOrgId);
-        portfolio.Update(request.Name, actingUserId, request.Description);
-        await _portfolioRepo.UpdateAsync(portfolio, ct);
+        portfolio.Update(request.Name, actingUserId, request.Description, request.InternalNotes, request.TargetGrouping);
+        await InTransactionAsync(async () =>
+        {
+            await _portfolioRepo.UpdateAsync(portfolio, ct);
+            await AddActivityAsync(
+                portfolio,
+                actingUserId,
+                "LIEN_SALE_PORTFOLIO_UPDATED",
+                "SellingPortfolio",
+                $"Selling portfolio '{portfolio.PortfolioNumber}' updated",
+                portfolio.Id.ToString(),
+                ct: ct);
+        }, ct);
 
         _audit.Publish(
             eventType: "liens.selling_portfolio.updated",
@@ -255,7 +288,19 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
         if (results.Any(r => r.Success))
         {
-            await _portfolioRepo.UpdateAsync(portfolio, ct);
+            await InTransactionAsync(async () =>
+            {
+                await _portfolioRepo.UpdateAsync(portfolio, ct);
+                await AddActivityAsync(
+                    portfolio,
+                    actingUserId,
+                    "LIENS_ADDED_TO_PORTFOLIO",
+                    "SellingPortfolio",
+                    $"{results.Count(r => r.Success)} lien(s) assigned to selling portfolio '{portfolio.PortfolioNumber}'",
+                    portfolio.Id.ToString(),
+                    $"{{\"addedCount\":{results.Count(r => r.Success)},\"failedCount\":{results.Count(r => !r.Success)}}}",
+                    ct);
+            }, ct);
 
             var addedLienIds = string.Join(",", results.Where(r => r.Success).Select(r => r.LienId));
             _audit.Publish(
@@ -343,7 +388,19 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
         if (removed.Count > 0)
         {
-            await _portfolioRepo.UpdateAsync(portfolio, ct);
+            await InTransactionAsync(async () =>
+            {
+                await _portfolioRepo.UpdateAsync(portfolio, ct);
+                await AddActivityAsync(
+                    portfolio,
+                    actingUserId,
+                    "LIENS_REMOVED_FROM_PORTFOLIO",
+                    "SellingPortfolio",
+                    $"{removed.Count} lien(s) removed from selling portfolio '{portfolio.PortfolioNumber}'",
+                    portfolio.Id.ToString(),
+                    $"{{\"removedCount\":{removed.Count},\"failedCount\":{results.Count(r => !r.Success)}}}",
+                    ct);
+            }, ct);
 
             foreach (var removedLien in removed)
             {
@@ -388,7 +445,18 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         foreach (var buyerOrgId in request.BuyerOrgIds.Distinct())
             portfolio.AddBuyer(buyerOrgId, actingUserId);
 
-        await _portfolioRepo.UpdateAsync(portfolio, ct);
+        await InTransactionAsync(async () =>
+        {
+            await _portfolioRepo.UpdateAsync(portfolio, ct);
+            await AddActivityAsync(
+                portfolio,
+                actingUserId,
+                "BUYERS_ADDED_TO_PORTFOLIO",
+                "SellingPortfolio",
+                $"{request.BuyerOrgIds.Distinct().Count()} buyer organization(s) added to selling portfolio '{portfolio.PortfolioNumber}'",
+                portfolio.Id.ToString(),
+                ct: ct);
+        }, ct);
         return MapToResponse(portfolio);
     }
 
@@ -408,19 +476,115 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         EnsureSellerPortfolio(portfolio, sellerOrgId);
         var fromStatus = portfolio.Status;
         portfolio.TransitionStatus(request.Status.Trim(), actingUserId, request.Notes);
-        await _portfolioRepo.UpdateAsync(portfolio, ct);
+        var toStatus = portfolio.Status;
+
+        await InTransactionAsync(async () =>
+        {
+            await _portfolioRepo.UpdateAsync(portfolio, ct);
+            await AddActivityAsync(
+                portfolio,
+                actingUserId,
+                ResolveStatusActivityAction(toStatus),
+                "SellingPortfolio",
+                $"Selling portfolio '{portfolio.PortfolioNumber}' transitioned from {fromStatus} to {toStatus}",
+                portfolio.Id.ToString(),
+                $"{{\"fromStatus\":\"{fromStatus}\",\"toStatus\":\"{toStatus}\"}}",
+                ct);
+        }, ct);
 
         _audit.Publish(
             eventType: "liens.selling_portfolio.status_changed",
             action: "transition",
-            description: $"Selling portfolio '{portfolio.PortfolioNumber}' transitioned from {fromStatus} to {portfolio.Status}",
+            description: $"Selling portfolio '{portfolio.PortfolioNumber}' transitioned from {fromStatus} to {toStatus}",
             tenantId: tenantId,
             actorUserId: actingUserId,
             entityType: "SellingPortfolio",
             entityId: portfolio.Id.ToString(),
-            metadata: $"{{\"fromStatus\":\"{fromStatus}\",\"toStatus\":\"{portfolio.Status}\"}}");
+            metadata: $"{{\"fromStatus\":\"{fromStatus}\",\"toStatus\":\"{toStatus}\"}}");
 
         return MapToResponse(portfolio);
+    }
+
+    public async Task<SellingPortfolioResponse> PublishAsync(
+        Guid tenantId,
+        Guid id,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        string? notes = null,
+        CancellationToken ct = default)
+    {
+        var portfolio = await RequirePortfolioAsync(tenantId, id, ct);
+        EnsureSellerPortfolio(portfolio, sellerOrgId);
+
+        var transitions = new List<(string FromStatus, string ToStatus, string? Notes)>();
+
+        if (portfolio.Status == SellingPortfolioStatus.Draft)
+        {
+            var fromStatus = portfolio.Status;
+            portfolio.TransitionStatus(
+                SellingPortfolioStatus.ReadyForReview,
+                actingUserId,
+                "Ready for review before publishing");
+            transitions.Add((fromStatus, portfolio.Status, "Ready for review before publishing"));
+        }
+
+        var publishFromStatus = portfolio.Status;
+        portfolio.TransitionStatus(SellingPortfolioStatus.Published, actingUserId, notes);
+        transitions.Add((publishFromStatus, portfolio.Status, notes));
+
+        await InTransactionAsync(async () =>
+        {
+            await _portfolioRepo.UpdateAsync(portfolio, ct);
+
+            foreach (var transition in transitions)
+            {
+                await AddActivityAsync(
+                    portfolio,
+                    actingUserId,
+                    ResolveStatusActivityAction(transition.ToStatus),
+                    "SellingPortfolio",
+                    $"Selling portfolio '{portfolio.PortfolioNumber}' transitioned from {transition.FromStatus} to {transition.ToStatus}",
+                    portfolio.Id.ToString(),
+                    $"{{\"fromStatus\":\"{transition.FromStatus}\",\"toStatus\":\"{transition.ToStatus}\"}}",
+                    ct);
+            }
+        }, ct);
+
+        foreach (var transition in transitions)
+        {
+            _audit.Publish(
+                eventType: "liens.selling_portfolio.status_changed",
+                action: "transition",
+                description: $"Selling portfolio '{portfolio.PortfolioNumber}' transitioned from {transition.FromStatus} to {transition.ToStatus}",
+                tenantId: tenantId,
+                actorUserId: actingUserId,
+                entityType: "SellingPortfolio",
+                entityId: portfolio.Id.ToString(),
+                metadata: $"{{\"fromStatus\":\"{transition.FromStatus}\",\"toStatus\":\"{transition.ToStatus}\"}}");
+        }
+
+        return MapToResponse(portfolio);
+    }
+
+    public async Task<SellingPortfolioResponse> WithdrawAsync(
+        Guid tenantId,
+        Guid id,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        string? notes = null,
+        CancellationToken ct = default)
+    {
+        return await TransitionStatusAsync(
+            tenantId,
+            id,
+            sellerOrgId,
+            actingUserId,
+            new TransitionSellingPortfolioStatusRequest
+            {
+                Status = SellingPortfolioStatus.Withdrawn,
+                Notes = notes,
+            },
+            ct);
     }
 
     public async Task<IReadOnlyList<SellingPortfolioStatusHistoryResponse>> GetStatusHistoryAsync(
@@ -434,6 +598,65 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
         var history = await _portfolioRepo.GetStatusHistoryAsync(tenantId, id, ct);
         return history.Select(MapStatusHistory).ToList();
+    }
+
+    public async Task<IReadOnlyList<SellingPortfolioActivityResponse>> GetActivityAsync(
+        Guid tenantId,
+        Guid id,
+        Guid sellerOrgId,
+        CancellationToken ct = default)
+    {
+        var portfolio = await RequirePortfolioAsync(tenantId, id, ct);
+        EnsureSellerPortfolio(portfolio, sellerOrgId);
+
+        var activity = await _portfolioRepo.GetActivityAsync(tenantId, id, ct);
+        return activity.Select(MapActivity).ToList();
+    }
+
+    public async Task<SellingPortfolioAnalyticsResponse> GetAnalyticsAsync(
+        Guid tenantId,
+        Guid id,
+        Guid sellerOrgId,
+        CancellationToken ct = default)
+    {
+        var portfolio = await RequirePortfolioAsync(tenantId, id, ct);
+        EnsureSellerPortfolio(portfolio, sellerOrgId);
+
+        var lienIds = portfolio.Liens.Select(l => l.LienId).Distinct().ToList();
+        var payments = await _paymentDetailRepo.GetByLienIdsAsync(tenantId, lienIds, ct);
+        var settlements = await _settlementRepo.GetByLienIdsAsync(tenantId, lienIds, ct);
+        var paymentTotal = payments.Sum(p => p.Amount);
+        var scheduledSettlementTotal = settlements.Sum(s => s.Amount);
+        var balances = portfolio.Liens.Select(l => l.CurrentBalance ?? 0m).ToList();
+        var totalOutstanding = balances.Sum();
+        var lienCount = portfolio.Liens.Count;
+        var activityCount = (await _portfolioRepo.GetActivityAsync(tenantId, id, ct)).Count;
+        var settlementExposure = scheduledSettlementTotal > 0m
+            ? Math.Max(scheduledSettlementTotal - paymentTotal, 0m)
+            : Math.Max(totalOutstanding - paymentTotal, 0m);
+
+        return new SellingPortfolioAnalyticsResponse
+        {
+            PortfolioId = portfolio.Id,
+            Financial = new SellingPortfolioFinancialSummary
+            {
+                TotalReceivables = portfolio.Liens.Sum(l => l.OriginalAmount),
+                TotalOutstandingBalance = totalOutstanding,
+                SettlementExposure = settlementExposure,
+                PaymentTotal = paymentTotal,
+                AverageLienBalance = lienCount == 0 ? 0m : decimal.Round(totalOutstanding / lienCount, 2),
+            },
+            AgingBuckets = BuildAgingBuckets(portfolio.Liens),
+            Operational = new SellingPortfolioOperationalSummary
+            {
+                LienCount = lienCount,
+                Status = portfolio.Status,
+                PublishedAtUtc = portfolio.PublishedAtUtc,
+                ClosedAtUtc = portfolio.ClosedAtUtc,
+                ActivityCount = activityCount,
+            },
+            Concentrations = BuildConcentrations(portfolio.Liens),
+        };
     }
 
     public async Task<SendLienBuyerEmailResponse> SendBuyerEmailAsync(
@@ -716,6 +939,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             PortfolioNumber = entity.PortfolioNumber,
             Name = entity.Name,
             Description = entity.Description,
+            InternalNotes = entity.InternalNotes,
+            TargetGrouping = entity.TargetGrouping,
             Status = entity.Status,
             LienCount = entity.LienCount,
             OriginalAmountTotal = entity.OriginalAmountTotal,
@@ -773,5 +998,116 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         ChangedByUserId = entity.ChangedByUserId,
         ChangedAtUtc = entity.ChangedAtUtc,
         Notes = entity.Notes,
+    };
+
+    private async Task InTransactionAsync(Func<Task> operation, CancellationToken ct)
+    {
+        await using var transaction = await _unitOfWork.BeginTransactionAsync(ct);
+        try
+        {
+            await operation();
+            await transaction.CommitAsync(ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(ct);
+            throw;
+        }
+    }
+
+    private async Task AddActivityAsync(
+        SellingPortfolio portfolio,
+        Guid actorUserId,
+        string action,
+        string entityType,
+        string summary,
+        string? entityId = null,
+        string? metadataJson = null,
+        CancellationToken ct = default)
+    {
+        var activity = SellingPortfolioActivity.Create(
+            portfolio.TenantId,
+            portfolio.Id,
+            action,
+            entityType,
+            actorUserId,
+            summary,
+            entityId,
+            metadataJson);
+
+        await _portfolioRepo.AddActivityAsync(activity, ct);
+    }
+
+    private static string ResolveStatusActivityAction(string status) => status switch
+    {
+        SellingPortfolioStatus.Published => "LIEN_SALE_PORTFOLIO_PUBLISHED",
+        SellingPortfolioStatus.Withdrawn => "LIEN_SALE_PORTFOLIO_WITHDRAWN",
+        _ => "LIEN_SALE_PORTFOLIO_STATUS_CHANGED",
+    };
+
+    private static List<SellingPortfolioAgingBucket> BuildAgingBuckets(IEnumerable<SellingPortfolioLien> liens)
+    {
+        var buckets = new Dictionary<string, (int Count, decimal Balance)>
+        {
+            ["0-30"] = (0, 0m),
+            ["31-60"] = (0, 0m),
+            ["61-90"] = (0, 0m),
+            ["91-120"] = (0, 0m),
+            ["120+"] = (0, 0m),
+        };
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        foreach (var lien in liens)
+        {
+            var ageDays = lien.IncidentDate.HasValue
+                ? Math.Max(0, today.DayNumber - lien.IncidentDate.Value.DayNumber)
+                : Math.Max(0, (DateTime.UtcNow.Date - lien.CreatedAtUtc.Date).Days);
+            var bucket = ageDays switch
+            {
+                <= 30 => "0-30",
+                <= 60 => "31-60",
+                <= 90 => "61-90",
+                <= 120 => "91-120",
+                _ => "120+",
+            };
+            var current = buckets[bucket];
+            buckets[bucket] = (current.Count + 1, current.Balance + (lien.CurrentBalance ?? 0m));
+        }
+
+        return buckets.Select(kvp => new SellingPortfolioAgingBucket
+        {
+            Bucket = kvp.Key,
+            LienCount = kvp.Value.Count,
+            OutstandingBalance = kvp.Value.Balance,
+        }).ToList();
+    }
+
+    private static List<SellingPortfolioConcentrationItem> BuildConcentrations(IEnumerable<SellingPortfolioLien> liens)
+    {
+        return liens
+            .GroupBy(l => string.IsNullOrWhiteSpace(l.Jurisdiction) ? "Unknown" : l.Jurisdiction)
+            .Select(g => new SellingPortfolioConcentrationItem
+            {
+                Dimension = "Jurisdiction",
+                Value = g.Key!,
+                LienCount = g.Count(),
+                OutstandingBalance = g.Sum(l => l.CurrentBalance ?? 0m),
+            })
+            .OrderByDescending(item => item.OutstandingBalance)
+            .Take(10)
+            .ToList();
+    }
+
+    private static SellingPortfolioActivityResponse MapActivity(SellingPortfolioActivity entity) => new()
+    {
+        Id = entity.Id,
+        PortfolioId = entity.PortfolioId,
+        Action = entity.Action,
+        EntityType = entity.EntityType,
+        EntityId = entity.EntityId,
+        ActorUserId = entity.ActorUserId,
+        OccurredAtUtc = entity.OccurredAtUtc,
+        Summary = entity.Summary,
+        MetadataJson = entity.MetadataJson,
     };
 }

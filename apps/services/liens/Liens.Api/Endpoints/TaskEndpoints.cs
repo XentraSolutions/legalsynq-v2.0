@@ -31,6 +31,11 @@ public static class TaskEndpoints
         public string? description { get; init; }
     }
 
+    private sealed class LegacyGetAndUpdateTaskRequest
+    {
+        public string? StatusId { get; init; }
+    }
+
     public static void MapTaskEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/liens/tasks")
@@ -81,6 +86,22 @@ public static class TaskEndpoints
         // under the tasks base path becomes DELETE /api/liens/tasks/legacy/task/delete/{taskId}.
         group.MapDelete("/legacy/task/delete/{taskId}", DeleteTaskLegacy)
             .RequirePermission(LiensPermissions.TaskEditAll);
+
+        var caseLegacy = app.MapGroup("/api/liens/cases")
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(LiensPermissions.ProductCode)
+            .WithTags("Tasks");
+
+        caseLegacy.MapPost("/task/create", CreateTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskCreate);
+        caseLegacy.MapGet("/get-task/{caseId:guid}/{taskId?}", GetTasksLegacy)
+            .RequirePermission(LiensPermissions.TaskRead);
+        caseLegacy.MapPatch("/task/update", UpdateTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskEditAll);
+        caseLegacy.MapDelete("/task/delete/{taskId}", DeleteTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskEditAll);
+        caseLegacy.MapPost("/task/{taskId}", GetAndUpdateTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskEditOwn);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -475,6 +496,56 @@ public static class TaskEndpoints
             {
                 isSuccess = false,
                 message = ex.Message,
+            });
+        }
+    }
+
+    private static async Task<IResult> GetAndUpdateTaskLegacy(
+        string taskId,
+        LegacyGetAndUpdateTaskRequest request,
+        ILienTaskService taskService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(taskId, out var parsedTaskId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No tasks found",
+            });
+        }
+
+        try
+        {
+            var task = await taskService.UpdateStatusAsync(
+                tenantId,
+                parsedTaskId,
+                userId,
+                new UpdateTaskStatusRequest
+                {
+                    Status = string.IsNullOrWhiteSpace(request.StatusId)
+                        ? "Open"
+                        : request.StatusId.Trim(),
+                },
+                ct);
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Task updated successfully.",
+                data = task,
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No tasks found",
             });
         }
     }

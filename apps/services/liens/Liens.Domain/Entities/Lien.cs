@@ -34,6 +34,10 @@ public class Lien : AuditableEntity
     public string? Notes         { get; private set; }
 
     public DateOnly? IncidentDate { get; private set; }
+    public DateOnly? InitialServiceDate { get; private set; }
+    public DateOnly? EndServiceDate { get; private set; }
+    public string? IsBulk { get; private set; }
+    public string? IsServicing { get; private set; }
     public DateTime? OpenedAtUtc  { get; private set; }
     public DateTime? ClosedAtUtc  { get; private set; }
 
@@ -59,6 +63,10 @@ public class Lien : AuditableEntity
         bool isConfidential = false,
         string? jurisdiction = null,
         DateOnly? incidentDate = null,
+        DateOnly? initialServiceDate = null,
+        DateOnly? endServiceDate = null,
+        string? isBulk = null,
+        string? isServicing = null,
         string? description = null,
         string? notes = null)
     {
@@ -93,6 +101,10 @@ public class Lien : AuditableEntity
             CurrentBalance    = originalAmount,
             Jurisdiction      = jurisdiction?.Trim(),
             IncidentDate      = incidentDate,
+            InitialServiceDate = initialServiceDate,
+            EndServiceDate    = endServiceDate,
+            IsBulk            = isBulk?.Trim(),
+            IsServicing       = isServicing?.Trim(),
             Description       = description?.Trim(),
             Notes             = notes?.Trim(),
             OpenedAtUtc       = now,
@@ -114,6 +126,10 @@ public class Lien : AuditableEntity
         bool? isConfidential = null,
         string? jurisdiction = null,
         DateOnly? incidentDate = null,
+        DateOnly? initialServiceDate = null,
+        DateOnly? endServiceDate = null,
+        string? isBulk = null,
+        string? isServicing = null,
         string? description = null,
         string? notes = null)
     {
@@ -134,6 +150,10 @@ public class Lien : AuditableEntity
         if (isConfidential.HasValue) IsConfidential = isConfidential.Value;
         Jurisdiction      = jurisdiction?.Trim();
         IncidentDate      = incidentDate;
+        InitialServiceDate = initialServiceDate;
+        EndServiceDate    = endServiceDate;
+        IsBulk            = isBulk?.Trim();
+        IsServicing       = isServicing?.Trim();
         Description       = description?.Trim();
         Notes             = notes?.Trim();
         UpdatedByUserId   = updatedByUserId;
@@ -147,6 +167,19 @@ public class Lien : AuditableEntity
 
         if (!LienStatus.AllowedTransitions.TryGetValue(Status, out var allowed) || !allowed.Contains(newStatus))
             throw new InvalidOperationException($"Cannot transition from '{Status}' to '{newStatus}'.");
+
+        Status          = newStatus;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+
+        if (LienStatus.Terminal.Contains(newStatus))
+            ClosedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetLegacyMedicalStatus(string newStatus, Guid updatedByUserId)
+    {
+        if (!LienStatus.All.Contains(newStatus))
+            throw new ArgumentException($"Invalid lien status: '{newStatus}'.");
 
         Status          = newStatus;
         UpdatedByUserId = updatedByUserId;

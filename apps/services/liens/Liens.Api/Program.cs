@@ -158,6 +158,7 @@ app.MapLienEndpoints();
 app.MapLienOfferEndpoints();
 app.MapSellingEndpoints();
 app.MapBillOfSaleEndpoints();
+app.MapBatchUploadEndpoints();
 app.MapCaseEndpoints();
 // LS-LIENS-CASE-005 — Case Notes Backend & Persistence.
 app.MapCaseNoteEndpoints();
@@ -165,6 +166,7 @@ app.MapServicingEndpoints();
 app.MapContactEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettlementEndpoints();
+app.MapServiceLegacyEndpoints();
 app.MapReportEndpoints();
 // Lookup reference data (states, accident types, contact types, lien statuses, etc.)
 app.MapLookupEndpoints();

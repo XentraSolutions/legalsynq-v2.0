@@ -5,6 +5,8 @@ public sealed class CreateSellingPortfolioRequest
     public string PortfolioNumber { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
     public string? Description { get; init; }
+    public string? InternalNotes { get; init; }
+    public string? TargetGrouping { get; init; }
     public List<Guid> LienIds { get; init; } = [];
     public List<Guid> BuyerOrgIds { get; init; } = [];
 }
@@ -13,6 +15,8 @@ public sealed class UpdateSellingPortfolioRequest
 {
     public string Name { get; init; } = string.Empty;
     public string? Description { get; init; }
+    public string? InternalNotes { get; init; }
+    public string? TargetGrouping { get; init; }
 }
 
 public sealed class AddSellingPortfolioLiensRequest
@@ -110,6 +114,8 @@ public sealed class SellingPortfolioResponse
     public string PortfolioNumber { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
     public string? Description { get; init; }
+    public string? InternalNotes { get; init; }
+    public string? TargetGrouping { get; init; }
     public string Status { get; init; } = string.Empty;
     public int LienCount { get; init; }
     public decimal OriginalAmountTotal { get; init; }
@@ -166,4 +172,59 @@ public sealed class SellingPortfolioStatusHistoryResponse
     public Guid ChangedByUserId { get; init; }
     public DateTime ChangedAtUtc { get; init; }
     public string? Notes { get; init; }
+}
+
+public sealed class SellingPortfolioActivityResponse
+{
+    public Guid Id { get; init; }
+    public Guid PortfolioId { get; init; }
+    public string Action { get; init; } = string.Empty;
+    public string EntityType { get; init; } = string.Empty;
+    public string? EntityId { get; init; }
+    public Guid ActorUserId { get; init; }
+    public DateTime OccurredAtUtc { get; init; }
+    public string Summary { get; init; } = string.Empty;
+    public string? MetadataJson { get; init; }
+}
+
+public sealed class SellingPortfolioAnalyticsResponse
+{
+    public Guid PortfolioId { get; init; }
+    public SellingPortfolioFinancialSummary Financial { get; init; } = new();
+    public List<SellingPortfolioAgingBucket> AgingBuckets { get; init; } = [];
+    public SellingPortfolioOperationalSummary Operational { get; init; } = new();
+    public List<SellingPortfolioConcentrationItem> Concentrations { get; init; } = [];
+}
+
+public sealed class SellingPortfolioFinancialSummary
+{
+    public decimal TotalReceivables { get; init; }
+    public decimal TotalOutstandingBalance { get; init; }
+    public decimal SettlementExposure { get; init; }
+    public decimal PaymentTotal { get; init; }
+    public decimal AverageLienBalance { get; init; }
+}
+
+public sealed class SellingPortfolioAgingBucket
+{
+    public string Bucket { get; init; } = string.Empty;
+    public int LienCount { get; init; }
+    public decimal OutstandingBalance { get; init; }
+}
+
+public sealed class SellingPortfolioOperationalSummary
+{
+    public int LienCount { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public DateTime? PublishedAtUtc { get; init; }
+    public DateTime? ClosedAtUtc { get; init; }
+    public int ActivityCount { get; init; }
+}
+
+public sealed class SellingPortfolioConcentrationItem
+{
+    public string Dimension { get; init; } = string.Empty;
+    public string Value { get; init; } = string.Empty;
+    public int LienCount { get; init; }
+    public decimal OutstandingBalance { get; init; }
 }

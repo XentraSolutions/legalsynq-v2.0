@@ -19,34 +19,46 @@ public static class SellingEndpoints
         var portfolios = group.MapGroup("/portfolios");
 
         portfolios.MapGet("/", SearchPortfolios)
-            .RequirePermission(LiensPermissions.LienRead);
+            .RequirePermission(LiensPermissions.LienSaleRead);
 
         portfolios.MapGet("/{id:guid}", GetPortfolioById)
-            .RequirePermission(LiensPermissions.LienRead);
+            .RequirePermission(LiensPermissions.LienSaleRead);
 
         portfolios.MapPost("/", CreatePortfolio)
-            .RequirePermission(LiensPermissions.LienOffer);
+            .RequirePermission(LiensPermissions.LienSaleCreate);
 
         portfolios.MapPut("/{id:guid}", UpdatePortfolio)
-            .RequirePermission(LiensPermissions.LienOffer);
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
 
         portfolios.MapPost("/{id:guid}/liens", AddLiens)
-            .RequirePermission(LiensPermissions.LienOffer);
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
 
         portfolios.MapPost("/{id:guid}/liens/remove", RemoveLiens)
-            .RequirePermission(LiensPermissions.LienOffer);
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
 
         portfolios.MapPost("/{id:guid}/buyers", AddBuyers)
-            .RequirePermission(LiensPermissions.LienOffer);
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
 
         portfolios.MapPost("/{id:guid}/liens/{lienIdOrCode}/buyer-email", SendBuyerEmail)
             .RequirePermission(LiensPermissions.LienOffer);
 
         portfolios.MapPost("/{id:guid}/status", TransitionStatus)
-            .RequirePermission(LiensPermissions.LienOffer);
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
+
+        portfolios.MapPost("/{id:guid}/publish", Publish)
+            .RequirePermission(LiensPermissions.LienSalePublish);
+
+        portfolios.MapPost("/{id:guid}/withdraw", Withdraw)
+            .RequirePermission(LiensPermissions.LienSaleWithdraw);
 
         portfolios.MapGet("/{id:guid}/status-history", GetStatusHistory)
-            .RequirePermission(LiensPermissions.LienRead);
+            .RequirePermission(LiensPermissions.LienSaleRead);
+
+        portfolios.MapGet("/{id:guid}/activity", GetActivity)
+            .RequirePermission(LiensPermissions.LienSaleRead);
+
+        portfolios.MapGet("/{id:guid}/analytics", GetAnalytics)
+            .RequirePermission(LiensPermissions.LienSaleViewAnalytics);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx)
@@ -196,6 +208,34 @@ public static class SellingEndpoints
         return Results.Ok(result);
     }
 
+    private static async Task<IResult> Publish(
+        Guid id,
+        TransitionSellingPortfolioStatusRequest? request,
+        ISellingPortfolioService service,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var sellerOrgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await service.PublishAsync(tenantId, id, sellerOrgId, userId, request?.Notes, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> Withdraw(
+        Guid id,
+        TransitionSellingPortfolioStatusRequest? request,
+        ISellingPortfolioService service,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var sellerOrgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await service.WithdrawAsync(tenantId, id, sellerOrgId, userId, request?.Notes, ct);
+        return Results.Ok(result);
+    }
+
     private static async Task<IResult> GetStatusHistory(
         Guid id,
         ISellingPortfolioService service,
@@ -205,6 +245,30 @@ public static class SellingEndpoints
         var tenantId = RequireTenantId(ctx);
         var sellerOrgId = RequireOrgId(ctx);
         var result = await service.GetStatusHistoryAsync(tenantId, id, sellerOrgId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetActivity(
+        Guid id,
+        ISellingPortfolioService service,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var sellerOrgId = RequireOrgId(ctx);
+        var result = await service.GetActivityAsync(tenantId, id, sellerOrgId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetAnalytics(
+        Guid id,
+        ISellingPortfolioService service,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var sellerOrgId = RequireOrgId(ctx);
+        var result = await service.GetAnalyticsAsync(tenantId, id, sellerOrgId, ct);
         return Results.Ok(result);
     }
 }

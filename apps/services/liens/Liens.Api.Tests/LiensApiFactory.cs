@@ -4,6 +4,7 @@ using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -60,7 +61,9 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
                                     && a.FullName.Contains("LiensDbContext")))))
                 .ToList();
             foreach (var d in toRemove) services.Remove(d);
-            services.AddDbContext<LiensDbContext>(o => o.UseInMemoryDatabase(DbName));
+            services.AddDbContext<LiensDbContext>(o => o
+                .UseInMemoryDatabase(DbName)
+                .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
 
             // Stub out IFlowInstanceResolver so no Flow HTTP calls happen.
             services.RemoveAll<IFlowInstanceResolver>();

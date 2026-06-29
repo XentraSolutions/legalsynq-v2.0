@@ -16,7 +16,7 @@ public interface IDIYReportService
 public sealed class DIYReportRow
 {
     public Guid?   CaseId       { get; init; }
-    public Guid    LienId       { get; init; }
+    public Guid?   LienId       { get; init; }
     public string  CaseNumber   { get; init; } = string.Empty;
     public string  LienNumber   { get; init; } = string.Empty;
     public string  PlaintiffFirstName { get; init; } = string.Empty;
@@ -31,11 +31,15 @@ public sealed class DIYReportRow
     public decimal? PurchaseAmount { get; init; }
     public decimal? ReturnedAmount { get; init; }
     public decimal? LienTotal   { get; init; }
+    public int NumberOfLiens { get; init; }
+    public decimal? ToSettleAmount { get; init; }
+    public decimal? SettledAmount { get; init; }
     public Dictionary<string, object?> Extra { get; init; } = new();
 }
 
 public sealed class DIYReportSummaryTotals
 {
+    public int TotalCases { get; init; }
     public int TotalLiens { get; init; }
     public decimal TotalPurchaseAmt { get; init; }
     public decimal TotalBillingAmt { get; init; }
@@ -51,6 +55,7 @@ public sealed class DIYReportSummaryTotals
 
 public sealed class DIYReportResult
 {
+    public string ReportType { get; init; } = "LIENS";
     public List<DIYReportRow> Items { get; init; } = [];
     public int Page { get; init; }
     public int PageSize { get; init; }

@@ -11,7 +11,14 @@ public interface ILienRepository
     Task<(List<Lien> PageItems, List<Lien> AllItems, int TotalCount)> SearchReportAsync(
         Guid tenantId,
         string? search,
-        IReadOnlyCollection<string> statuses,
+        IReadOnlyCollection<string> lienStatuses,
+        IReadOnlyCollection<string> caseStatuses,
+        DateOnly? purchaseDateFrom,
+        DateOnly? purchaseDateTo,
+        DateTime? closedDateFrom,
+        DateTime? closedDateTo,
+        string? isBulk,
+        IReadOnlyCollection<Guid> caseIds,
         int page,
         int pageSize,
         CancellationToken ct = default);
