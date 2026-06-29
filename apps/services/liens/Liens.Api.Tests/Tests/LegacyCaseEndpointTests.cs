@@ -125,6 +125,22 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     }
 
     [Fact]
+    public async Task UploadLienDocument_rejects_non_form_payload_with_actionable_message()
+    {
+        var resp = await _client.PostAsJsonAsync("/api/liens/cases/liens/upload/document", new
+        {
+            liensId = SeedHelper.LienId,
+            DocFileTypeId = "14",
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+        var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("message").GetString()
+            .Should().Be("Content-Type must be multipart/form-data.");
+    }
+
+    [Fact]
     public async Task UploadDocument_uploads_case_document_and_records_legacy_metadata()
     {
         using var scope = _factory.Services.CreateScope();
@@ -164,6 +180,64 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         body.RootElement.GetProperty("data").GetProperty("url").GetString()
             .Should().Be($"/documents/{upload.DocumentId}");
+    }
+
+    [Fact]
+    public async Task PayoffQuote_accepts_legacy_misspelled_route()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var uploadClient = scope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>();
+        uploadClient.Clear();
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(SeedHelper.CaseId.ToString()), "caseId");
+        form.Add(new StringContent("14"), "DocFileTypeId");
+        form.Add(new StringContent("payoff-quote"), "DocName");
+        var file = new ByteArrayContent("%PDF-1.4 test"u8.ToArray());
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        form.Add(file, "file", "payoff-quote.pdf");
+
+        var uploadResp = await _client.PostAsync("/api/liens/cases/upload/document", form);
+        uploadResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await uploadResp.Content.ReadAsStringAsync()}");
+
+        var resp = await _client.GetAsync($"/api/liens/cases/payoff-qoute/{SeedHelper.CaseId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+        var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        body.RootElement.GetProperty("url").GetString()
+            .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
+    }
+
+    [Fact]
+    public async Task PayoffQuote_finds_document_uploaded_with_payoff_statement_lookup_type()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var uploadClient = scope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>();
+        uploadClient.Clear();
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(SeedHelper.CaseId.ToString()), "caseId");
+        form.Add(new StringContent(SeedHelper.PayoffStatementDocumentTypeId.ToString()), "DocFileTypeId");
+        form.Add(new StringContent("payoff-quote"), "DocName");
+        var file = new ByteArrayContent("%PDF-1.4 test"u8.ToArray());
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        form.Add(file, "file", "payoff-quote.pdf");
+
+        var uploadResp = await _client.PostAsync("/api/liens/cases/upload/document", form);
+        uploadResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await uploadResp.Content.ReadAsStringAsync()}");
+
+        var resp = await _client.GetAsync($"/api/liens/cases/payoff-qoute/{SeedHelper.CaseId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+        var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        body.RootElement.GetProperty("url").GetString()
+            .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
     }
 
     [Fact]

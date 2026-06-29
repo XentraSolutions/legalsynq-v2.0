@@ -58,6 +58,17 @@ public class LienSettlementRepository : ILienSettlementRepository
             .OrderByDescending(s => s.CreatedAtUtc)
             .ToListAsync(ct);
 
+    public Task<List<LienSettlement>> GetByLienIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> lienIds, CancellationToken ct = default)
+    {
+        if (lienIds.Count == 0)
+            return Task.FromResult(new List<LienSettlement>());
+
+        return _db.LienSettlements
+            .Where(s => s.TenantId == tenantId && lienIds.Contains(s.LienId) && !s.IsDeleted)
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .ToListAsync(ct);
+    }
+
     public async Task AddAsync(LienSettlement settlement, CancellationToken ct = default)
     {
         _db.LienSettlements.Add(settlement);
@@ -90,6 +101,17 @@ public class SettlementPaymentDetailRepository : ISettlementPaymentDetailReposit
             .Where(p => p.TenantId == tenantId && p.LienId == lienId && !p.IsDeleted)
             .OrderByDescending(p => p.PaymentDate)
             .ToListAsync(ct);
+
+    public Task<List<SettlementPaymentDetail>> GetByLienIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> lienIds, CancellationToken ct = default)
+    {
+        if (lienIds.Count == 0)
+            return Task.FromResult(new List<SettlementPaymentDetail>());
+
+        return _db.SettlementPaymentDetails
+            .Where(p => p.TenantId == tenantId && lienIds.Contains(p.LienId) && !p.IsDeleted)
+            .OrderByDescending(p => p.PaymentDate)
+            .ToListAsync(ct);
+    }
 
     public async Task AddAsync(SettlementPaymentDetail detail, CancellationToken ct = default)
     {

@@ -16,6 +16,9 @@ public class LiensDbContext : DbContext
     public DbSet<LienSettlement>          LienSettlements          => Set<LienSettlement>();
     public DbSet<SettlementPaymentDetail> SettlementPaymentDetails => Set<SettlementPaymentDetail>();
     public DbSet<DIYReportConfig>         DIYReportConfigs         => Set<DIYReportConfig>();
+    public DbSet<BatchTemplate> BatchTemplates => Set<BatchTemplate>();
+    public DbSet<BatchUpload> BatchUploads => Set<BatchUpload>();
+    public DbSet<BatchUploadDetail> BatchUploadDetails => Set<BatchUploadDetail>();
     public DbSet<ManualMedicalCode>       ManualMedicalCodes       => Set<ManualMedicalCode>();
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
     public DbSet<Lien> Liens => Set<Lien>();
@@ -24,6 +27,7 @@ public class LiensDbContext : DbContext
     public DbSet<SellingPortfolioLien> SellingPortfolioLiens => Set<SellingPortfolioLien>();
     public DbSet<SellingPortfolioBuyer> SellingPortfolioBuyers => Set<SellingPortfolioBuyer>();
     public DbSet<SellingPortfolioStatusHistory> SellingPortfolioStatusHistory => Set<SellingPortfolioStatusHistory>();
+    public DbSet<SellingPortfolioActivity> SellingPortfolioActivities => Set<SellingPortfolioActivity>();
     public DbSet<BillOfSale> BillsOfSale => Set<BillOfSale>();
     public DbSet<ServicingItem> ServicingItems => Set<ServicingItem>();
     public DbSet<LienTask> LienTasks => Set<LienTask>();

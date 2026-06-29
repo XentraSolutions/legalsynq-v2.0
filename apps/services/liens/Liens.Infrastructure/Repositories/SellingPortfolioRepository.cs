@@ -83,6 +83,14 @@ public class SellingPortfolioRepository : ISellingPortfolioRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<SellingPortfolioActivity>> GetActivityAsync(Guid tenantId, Guid portfolioId, CancellationToken ct = default)
+    {
+        return await _db.SellingPortfolioActivities
+            .Where(a => a.TenantId == tenantId && a.PortfolioId == portfolioId)
+            .OrderByDescending(a => a.OccurredAtUtc)
+            .ToListAsync(ct);
+    }
+
     public async Task<bool> IsLienAssignedToPortfolioAsync(Guid tenantId, Guid lienId, CancellationToken ct = default)
     {
         return await _db.SellingPortfolioLiens
@@ -130,6 +138,12 @@ public class SellingPortfolioRepository : ISellingPortfolioRepository
             }
         }
 
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task AddActivityAsync(SellingPortfolioActivity activity, CancellationToken ct = default)
+    {
+        await _db.SellingPortfolioActivities.AddAsync(activity, ct);
         await _db.SaveChangesAsync(ct);
     }
 }

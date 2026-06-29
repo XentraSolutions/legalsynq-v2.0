@@ -1,0 +1,2592 @@
+{
+  "info": {
+    "name": "LegalSynq Liens Legacy Compatibility",
+    "description": "Fresh Postman collection for the liens service in legalsynq-v2.0. Focuses on current v2.0 endpoints plus the legacy-compatible case, service, batch, lookup, contact, facility, settlement, and report routes that were regression-tested against the old SynqLiens surface.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set {{token}} before sending authenticated requests.",
+          "// Update {{baseUrl}} to your gateway or direct liens API URL.",
+          "// This collection targets both current /api/liens routes and legacy compatibility routes like /service, /Batch, /lookup, /contact, and /facility."
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5009"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "caseId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "newCaseId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "lienId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "taskId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "batchUploadId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "batchDetailId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "facilityId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "facilityContactId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "lawFirmId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "fundingCompanyId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "medicalId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "leadId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "noteId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "paymentId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "templateId",
+      "value": "UPDATE_CASE_TRACKING_STATUS"
+    },
+    {
+      "key": "reportId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "caseNumber",
+      "value": "CASE-TEST-001"
+    }
+  ],
+  "item": [
+    {
+      "name": "Runtime",
+      "item": [
+        {
+          "name": "GET health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Service health endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "GET info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/info",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "info"
+              ]
+            },
+            "description": "Service info endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "GET context",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/context",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "context"
+              ]
+            },
+            "description": "Authenticated request context and resolved capabilities."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Legacy Case Compatibility",
+      "item": [
+        {
+          "name": "POST case/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "create"
+              ]
+            },
+            "description": "Legacy case create compatibility route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"CASE-POSTMAN-001\",\n  \"firstname\": \"Maria\",\n  \"lastname\": \"Lopez\",\n  \"dob\": \"01/02/1990\",\n  \"address\": \"123 Main St\",\n  \"city\": \"Austin\",\n  \"state\": \"TX\",\n  \"zipcode\": \"78701\",\n  \"dateOfLoss\": \"06/01/2026\",\n  \"note\": \"Created from Postman\",\n  \"externalCaseId\": \"EXT-POSTMAN-001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data && body.data.id) pm.collectionVariables.set(\"newCaseId\", body.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH case/update/{id}",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/update/{{newCaseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "update",
+                "{{newCaseId}}"
+              ]
+            },
+            "description": "Legacy case update compatibility route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstname\": \"Maria\",\n  \"lastname\": \"Rivera\",\n  \"dob\": \"01/02/1990\",\n  \"address\": \"456 Elm St\",\n  \"city\": \"Dallas\",\n  \"state\": \"TX\",\n  \"zipcode\": \"75001\",\n  \"dateOfLoss\": \"06/05/2026\",\n  \"note\": \"Updated from Postman\",\n  \"externalCaseId\": \"EXT-POSTMAN-002\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/v2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/v2?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "v2"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Legacy v2 case listing route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST case/v3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/v3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "v3"
+              ]
+            },
+            "description": "Legacy v3 case listing/filter route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20,\n  \"sortBy\": \"\",\n  \"sortDirection\": \"\",\n  \"statusId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/getcaseinfo/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/getcaseinfo/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "getcaseinfo",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy case info payload."
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE case/delete/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/delete/{{newCaseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "delete",
+                "{{newCaseId}}"
+              ]
+            },
+            "description": "Legacy case delete route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST case/other",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/other",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "other"
+              ]
+            },
+            "description": "Legacy case other metadata route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"reductionsRate\": \"10\",\n  \"payment\": \"1500.25\",\n  \"adjustments\": \"100.50\",\n  \"reductionsDate\": \"06/20/2026\",\n  \"netProfit\": \"999.99\",\n  \"checkNumber\": \"CHK-100\",\n  \"netOutboundCheckNumber\": \"OUT-100\",\n  \"bulkPurchase\": \"Yes\",\n  \"bank\": \"Legacy Bank\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/get-other/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/get-other/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "get-other",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy case other metadata retrieval."
+          },
+          "response": []
+        },
+        {
+          "name": "POST case/add-note",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/add-note",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "add-note"
+              ]
+            },
+            "description": "Legacy add case note route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"note\": \"Note created from Postman legacy collection\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST case/get-notes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/get-notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "get-notes"
+              ]
+            },
+            "description": "Legacy case note filtered retrieval route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"showDeleted\": \"false\",\n  \"sort\": \"newest\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/notes/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/notes/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "notes",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy case note list route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST case/task/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/task/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "task",
+                "create"
+              ]
+            },
+            "description": "Legacy task create route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"title\": \"Legacy follow-up\",\n  \"description\": \"Call counsel\",\n  \"dueDate\": \"06/30/2026\",\n  \"priority\": \"Normal\",\n  \"status\": \"Open\",\n  \"assignedTo\": \"qa@test.local\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/get-task/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/get-task/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "get-task",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy task list route."
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE case/task/delete/{taskId}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/task/delete/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "task",
+                "delete",
+                "{{taskId}}"
+              ]
+            },
+            "description": "Legacy task delete route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST case/liens/payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/payment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "liens",
+                "payment"
+              ]
+            },
+            "description": "Legacy payee/outbound update route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"liensId\": \"{{lienId}}\",\n  \"payee\": \"Legacy Payee\",\n  \"outboundCheckNumber\": \"OB-9001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/liens/get-payee-outbound/{liensId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/get-payee-outbound/{{lienId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "liens",
+                "get-payee-outbound",
+                "{{lienId}}"
+              ]
+            },
+            "description": "Legacy payee/outbound retrieval route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/liens/get-medicaldocument/{liensId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/liens/get-medicaldocument/{{lienId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "liens",
+                "get-medicaldocument",
+                "{{lienId}}"
+              ]
+            },
+            "description": "Legacy lien document list route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/get-casedocument/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/get-casedocument/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "get-casedocument",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy case-only document list route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/get-allcasedocument/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/get-allcasedocument/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "get-allcasedocument",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy combined case+lien document list route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET case/payoff-quote/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/payoff-quote/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "payoff-quote",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy payoff quote route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST case/dashboard/deployed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/dashboard/deployed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "dashboard",
+                "deployed"
+              ]
+            },
+            "description": "Legacy dashboard deployed metric route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startDate\": \"01/01/2024\",\n  \"endDate\": \"12/31/2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST case/dashboard/cash-received",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/dashboard/cash-received",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "dashboard",
+                "cash-received"
+              ]
+            },
+            "description": "Legacy dashboard cash received metric route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startDate\": \"01/01/2024\",\n  \"endDate\": \"12/31/2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Legacy Service Compatibility",
+      "item": [
+        {
+          "name": "GET service/case",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/case",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "case"
+              ]
+            },
+            "description": "Legacy service case list route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST service/case/v3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/case/v3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "case",
+                "v3"
+              ]
+            },
+            "description": "Legacy service case v3 route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"page\": 1,\n  \"limit\": 20,\n  \"sortBy\": \"\",\n  \"sortDirection\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET service/all-liens/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/all-liens/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "all-liens",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy service all-liens route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST service/liens/v3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/liens/v3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "liens",
+                "v3"
+              ]
+            },
+            "description": "Legacy service liens v3 route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"page\": 1,\n  \"limit\": 20,\n  \"keyword\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET service/settlement/history/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/settlement/history/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "settlement",
+                "history",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy settlement history route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST service/settlement/history/v3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/settlement/history/v3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "settlement",
+                "history",
+                "v3"
+              ]
+            },
+            "description": "Legacy settlement history paged route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"page\": 1,\n  \"limit\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH service/update-details",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/update-details",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "update-details"
+              ]
+            },
+            "description": "Legacy servicing details update route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"caseStatusId\": \"Closed\",\n  \"isUCCFiled\": \"Y\",\n  \"switchedDate\": \"06/10/2026\",\n  \"attorney\": \"Legacy Counsel\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET service/liens/settlement/payment-details/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/liens/settlement/payment-details/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "liens",
+                "settlement",
+                "payment-details",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy settlement payment detail route."
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH service/liens/update/status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/liens/update/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "liens",
+                "update",
+                "status"
+              ]
+            },
+            "description": "Legacy single lien status update route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"liensId\": \"{{lienId}}\",\n  \"statusId\": \"Active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST service/update-liens-status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/update-liens-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "update-liens-status"
+              ]
+            },
+            "description": "Legacy bulk lien status update route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"lienIds\": \"{{lienId}}\",\n  \"lienStatus\": \"Settled\",\n  \"closedDate\": \"06/11/2026\",\n  \"note\": \"Closed from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET service/liens/settlement-details/{caseId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/liens/settlement-details/{{caseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "liens",
+                "settlement-details",
+                "{{caseId}}"
+              ]
+            },
+            "description": "Legacy settlement details route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST service/generate-csv",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/generate-csv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "generate-csv"
+              ]
+            },
+            "description": "Legacy service CSV generation route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST service/delete-payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service/delete-payment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service",
+                "delete-payment"
+              ]
+            },
+            "description": "Legacy delete-payment POST route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"paymentId\": \"{{paymentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Legacy Batch Upload",
+      "item": [
+        {
+          "name": "POST Batch/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "create"
+              ]
+            },
+            "description": "Legacy batch upload create route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Case tracking import\",\n  \"template\": \"UPDATE_CASE_TRACKING_STATUS\",\n  \"caseId\": \"{{caseId}}\",\n  \"file\": \"tracking.csv\",\n  \"date\": \"06/29/2026\",\n  \"rows\": 1,\n  \"dataContext\": \"Case Code*,Case Status*\\n{{caseNumber}},Open\\n\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set(\"batchUploadId\", body.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Batch/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "list"
+              ]
+            },
+            "description": "Legacy batch upload paged list route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page\": 1,\n  \"limit\": 20,\n  \"keyword\": \"\",\n  \"template\": \"\",\n  \"status\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET Batch/list/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/list/{{batchUploadId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "list",
+                "{{batchUploadId}}"
+              ]
+            },
+            "description": "Legacy batch upload get-by-id route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST Batch/data-context",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/data-context",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "data-context"
+              ]
+            },
+            "description": "Legacy batch data-context route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{batchUploadId}}\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Batch/update",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "update"
+              ]
+            },
+            "description": "Legacy batch upload update route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{batchUploadId}}\",\n  \"label\": \"Updated label\",\n  \"template\": \"ADD_LIENS_EXISTING_CASE\",\n  \"caseId\": \"{{caseId}}\",\n  \"file\": \"updated.csv\",\n  \"date\": \"06/30/2026\",\n  \"rows\": 1,\n  \"dataContext\": \"Case Code*,Lien Status*\\n{{caseNumber}},Active\\n\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Batch/process",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/process",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "process"
+              ]
+            },
+            "description": "Legacy batch upload process route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batchUploadId\": \"{{batchUploadId}}\",\n  \"templateId\": \"{{templateId}}\",\n  \"caseId\": \"{{caseId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET Batch/details/{batchUploadId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/details/{{batchUploadId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "details",
+                "{{batchUploadId}}"
+              ]
+            },
+            "description": "Legacy batch detail list route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Batch/download-template/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/download-template/{{templateId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "download-template",
+                "{{templateId}}"
+              ]
+            },
+            "description": "Legacy batch template CSV route."
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE Batch/delete/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/delete/{{batchUploadId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "delete",
+                "{{batchUploadId}}"
+              ]
+            },
+            "description": "Legacy batch upload delete route."
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE Batch/details/delete/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/Batch/details/delete/{{batchDetailId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "Batch",
+                "details",
+                "delete",
+                "{{batchDetailId}}"
+              ]
+            },
+            "description": "Legacy batch upload detail delete route."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Legacy Lookups",
+      "item": [
+        {
+          "name": "GET lookup/states",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/states",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lookup",
+                "states"
+              ]
+            },
+            "description": "Legacy lookup states route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET lookup/all",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lookup",
+                "all"
+              ]
+            },
+            "description": "Legacy lookup aggregate route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET lookup/document/type",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/document/type",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lookup",
+                "document",
+                "type"
+              ]
+            },
+            "description": "Legacy document type lookup route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET lookup/contact/type",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/contact/type",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lookup",
+                "contact",
+                "type"
+              ]
+            },
+            "description": "Legacy contact type lookup route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET lookup/medical/procedure/codes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/medical/procedure/codes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lookup",
+                "medical",
+                "procedure",
+                "codes"
+              ]
+            },
+            "description": "Legacy procedure codes lookup route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET lookup/task/status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/task/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lookup",
+                "task",
+                "status"
+              ]
+            },
+            "description": "Legacy task status lookup route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET lookup/task/priority",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lookup/task/priority",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lookup",
+                "task",
+                "priority"
+              ]
+            },
+            "description": "Legacy task priority lookup route."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Legacy Contacts and Facilities",
+      "item": [
+        {
+          "name": "GET contact/lawfirm",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contact/lawfirm/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contact",
+                "lawfirm"
+              ]
+            },
+            "description": "Legacy law firm list route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST contact/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contact/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contact",
+                "create"
+              ]
+            },
+            "description": "Legacy contact create route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactType\": \"LawFirm\",\n  \"firstName\": \"New\",\n  \"lastName\": \"Firm\",\n  \"organization\": \"New Law Firm LLC\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST facility/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/facility/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facility",
+                "create"
+              ]
+            },
+            "description": "Legacy facility create route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Test Clinic\",\n  \"city\": \"San Francisco\",\n  \"state\": \"CA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET facility/list/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/facility/list/{{facilityId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facility",
+                "list",
+                "{{facilityId}}"
+              ]
+            },
+            "description": "Legacy facility get route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET facility/get-contactperson/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/facility/get-contactperson/{{facilityId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facility",
+                "get-contactperson",
+                "{{facilityId}}"
+              ]
+            },
+            "description": "Legacy facility contact person route."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Legacy Reports",
+      "item": [
+        {
+          "name": "GET report/diy",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "report",
+                "diy"
+              ]
+            },
+            "description": "Legacy DIY report saved list route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST report/diy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "report",
+                "diy"
+              ]
+            },
+            "description": "Legacy DIY report run route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config\": {\n    \"status\": \"Open\"\n  },\n  \"page\": 1,\n  \"limit\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST report/diy/export",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "report",
+                "diy",
+                "export"
+              ]
+            },
+            "description": "Legacy DIY report export route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config\": {\n    \"status\": \"Open\"\n  },\n  \"page\": 1,\n  \"limit\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST report/diy/save",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/save",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "report",
+                "diy",
+                "save"
+              ]
+            },
+            "description": "Legacy DIY report save route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My New Report\",\n  \"config\": {\n    \"reportType\": \"LIENS\",\n    \"statusView\": \"ALL\",\n    \"columns\": [\n      {\n        \"key\": \"billing_amt\",\n        \"label\": \"Billing Amt\"\n      },\n      {\n        \"key\": \"case_id\",\n        \"label\": \"Case Id\"\n      }\n    ],\n    \"page\": 1,\n    \"limit\": 50\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set(\"reportId\", body.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET report/diy/saved",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/saved",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "report",
+                "diy",
+                "saved"
+              ]
+            },
+            "description": "Legacy DIY saved reports route."
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE report/diy/delete/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/delete/{{reportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "report",
+                "diy",
+                "delete",
+                "{{reportId}}"
+              ]
+            },
+            "description": "Legacy DIY delete alias route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET report/diy/columns",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/columns?reportType=LIENS",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "report",
+                "diy",
+                "columns"
+              ],
+              "query": [
+                {
+                  "key": "reportType",
+                  "value": "LIENS"
+                }
+              ]
+            },
+            "description": "Legacy report columns route."
+          },
+          "response": []
+        },
+        {
+          "name": "POST report/diy/filter-options",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/filter-options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "report",
+                "diy",
+                "filter-options"
+              ]
+            },
+            "description": "Legacy report filter options route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reportType\": \"CASES\",\n  \"filterType\": \"lawFirmIds\",\n  \"limit\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET report/diy/all-filters",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/diy/all-filters?reportType=CASES&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "report",
+                "diy",
+                "all-filters"
+              ],
+              "query": [
+                {
+                  "key": "reportType",
+                  "value": "CASES"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Legacy report all-filters route."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Modern Core Routes",
+      "item": [
+        {
+          "name": "GET api/liens/cases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases"
+              ]
+            },
+            "description": "Current case list route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET api/liens/liens",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/liens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "liens"
+              ]
+            },
+            "description": "Current lien list route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET api/liens/tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "tasks"
+              ]
+            },
+            "description": "Current task list route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET api/liens/servicing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/servicing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "servicing"
+              ]
+            },
+            "description": "Current servicing list route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET api/liens/lookups/contact-types",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/lookups/contact-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "lookups",
+                "contact-types"
+              ]
+            },
+            "description": "Current lookup route."
+          },
+          "response": []
+        },
+        {
+          "name": "GET api/liens/reports/diy/saved",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/reports/diy/saved",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "reports",
+                "diy",
+                "saved"
+              ]
+            },
+            "description": "Current DIY reports route."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

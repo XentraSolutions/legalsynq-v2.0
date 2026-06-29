@@ -45,6 +45,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             PortfolioNumber = $"PORT-{Guid.NewGuid():N}"[..20],
             Name = "June imaging sale pool",
             Description = "Initial Las Vegas Imaging sale portfolio",
+            InternalNotes = "Seller operations only",
+            TargetGrouping = "Imaging",
             LienIds = [lienId],
             BuyerOrgIds = [SeedHelper.FundingCompanyId],
         };
@@ -57,6 +59,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body.Should().NotBeNull();
         body!.Id.Should().NotBe(Guid.Empty);
         body.Status.Should().Be(SellingPortfolioStatus.Draft);
+        body.InternalNotes.Should().Be("Seller operations only");
+        body.TargetGrouping.Should().Be("Imaging");
         body.SellerOrgId.Should().Be(SeedHelper.OrgId);
         body.LienCount.Should().Be(1);
         body.OriginalAmountTotal.Should().Be(12345m);
@@ -76,6 +80,153 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         history.Should().ContainSingle();
         history![0].FromStatus.Should().BeNull();
         history[0].ToStatus.Should().Be(SellingPortfolioStatus.Draft);
+
+        var activityResponse = await _client.GetAsync($"/api/liens/selling/portfolios/{body.Id}/activity");
+        activityResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var activity = await activityResponse.Content.ReadFromJsonAsync<List<SellingPortfolioActivityResponse>>();
+        activity.Should().NotBeNull();
+        activity.Should().ContainSingle(a => a.Action == "LIEN_SALE_PORTFOLIO_CREATED");
+    }
+
+    [Fact]
+    public async Task Analytics_returns_financial_aging_and_activity_metrics()
+    {
+        var portfolio = await CreatePortfolioAsync();
+
+        var response = await _client.GetAsync($"/api/liens/selling/portfolios/{portfolio.Id}/analytics");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<SellingPortfolioAnalyticsResponse>();
+        body.Should().NotBeNull();
+        body!.PortfolioId.Should().Be(portfolio.Id);
+        body.Financial.TotalReceivables.Should().Be(12345m);
+        body.Financial.TotalOutstandingBalance.Should().Be(12345m);
+        body.Financial.AverageLienBalance.Should().Be(12345m);
+        body.Operational.LienCount.Should().Be(1);
+        body.Operational.ActivityCount.Should().BeGreaterThan(0);
+        body.AgingBuckets.Sum(b => b.LienCount).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Analytics_uses_settlement_payment_details_for_payment_totals_and_exposure()
+    {
+        var portfolio = await CreatePortfolioAsync();
+        var lien = portfolio.Liens.Single();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.LienSettlements.Add(LienSettlement.Create(
+                SeedHelper.TenantId,
+                lien.CaseId!.Value,
+                lien.LienId,
+                paymentNumber: 1,
+                amount: 10000m,
+                SeedHelper.UserId,
+                status: "Pending"));
+            db.SettlementPaymentDetails.Add(SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                lien.CaseId.Value,
+                lien.LienId,
+                paymentNumber: 1,
+                amount: 2500m,
+                SeedHelper.UserId,
+                paymentDate: new DateOnly(2026, 6, 1),
+                payee: "Provider"));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync($"/api/liens/selling/portfolios/{portfolio.Id}/analytics");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<SellingPortfolioAnalyticsResponse>();
+        body.Should().NotBeNull();
+        body!.Financial.PaymentTotal.Should().Be(2500m);
+        body.Financial.SettlementExposure.Should().Be(7500m);
+    }
+
+    [Fact]
+    public async Task Publish_endpoint_promotes_draft_to_published_and_records_activity()
+    {
+        var portfolio = await CreatePortfolioAsync();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/publish",
+            new TransitionSellingPortfolioStatusRequest { Notes = "Publish pool" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<SellingPortfolioResponse>();
+        body.Should().NotBeNull();
+        body!.Status.Should().Be(SellingPortfolioStatus.Published);
+        body.PublishedAtUtc.Should().NotBeNull();
+
+        var history = await _client.GetFromJsonAsync<List<SellingPortfolioStatusHistoryResponse>>(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/status-history");
+        history.Should().NotBeNull();
+        history!.Should().Contain(h => h.FromStatus == SellingPortfolioStatus.Draft && h.ToStatus == SellingPortfolioStatus.ReadyForReview);
+        history.Should().Contain(h => h.FromStatus == SellingPortfolioStatus.ReadyForReview && h.ToStatus == SellingPortfolioStatus.Published);
+
+        var activity = await _client.GetFromJsonAsync<List<SellingPortfolioActivityResponse>>(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/activity");
+        activity.Should().NotBeNull();
+        activity!.Should().Contain(a => a.Action == "LIEN_SALE_PORTFOLIO_PUBLISHED");
+    }
+
+    [Fact]
+    public async Task Publish_endpoint_accepts_empty_body()
+    {
+        var portfolio = await CreatePortfolioAsync();
+
+        var response = await _client.PostAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/publish",
+            content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<SellingPortfolioResponse>();
+        body.Should().NotBeNull();
+        body!.Status.Should().Be(SellingPortfolioStatus.Published);
+    }
+
+
+    [Fact]
+    public async Task Portfolio_lien_reuses_existing_case_reference_without_creating_duplicate_case()
+    {
+        var (caseId, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: "canonical-case",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}");
+
+        int caseCountBefore;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            caseCountBefore = db.Cases.Count(c => c.TenantId == SeedHelper.TenantId);
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/selling/portfolios",
+            new CreateSellingPortfolioRequest
+            {
+                PortfolioNumber = $"PORT-{Guid.NewGuid():N}"[..20],
+                Name = "Canonical case portfolio",
+                LienIds = [lienId],
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var portfolio = (await response.Content.ReadFromJsonAsync<SellingPortfolioResponse>())!;
+        portfolio.Liens.Should().ContainSingle();
+        portfolio.Liens[0].CaseId.Should().Be(caseId);
+        portfolio.Liens[0].CaseExternalId.Should().Be("canonical-case");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Count(c => c.TenantId == SeedHelper.TenantId).Should().Be(caseCountBefore);
+        }
     }
 
     [Fact]

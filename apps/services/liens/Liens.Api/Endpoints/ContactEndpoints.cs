@@ -41,7 +41,11 @@ public static class ContactEndpoints
             .RequirePermission(LiensPermissions.LienService);
         group.MapGet("/providers",       (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => ListByType(cs, c, ContactType.Provider, ct))
             .RequirePermission(LiensPermissions.LienService);
+        group.MapGet("/medical-facilities", (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => ListByType(cs, c, ContactType.MedicalFacility, ct))
+            .RequirePermission(LiensPermissions.LienService);
         group.MapGet("/lien-holders",    (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => ListByType(cs, c, ContactType.LienHolder, ct))
+            .RequirePermission(LiensPermissions.LienService);
+        group.MapGet("/funding-companies", (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => ListByType(cs, c, ContactType.FundingCompany, ct))
             .RequirePermission(LiensPermissions.LienService);
         group.MapGet("/leads",           (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => ListByType(cs, c, ContactType.Lead, ct))
             .RequirePermission(LiensPermissions.LienService);
@@ -53,7 +57,11 @@ public static class ContactEndpoints
             .RequirePermission(LiensPermissions.LienService);
         group.MapPost("/providers/search",    (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, CancellationToken ct) => SearchByType(r, cs, c, ContactType.Provider, ct))
             .RequirePermission(LiensPermissions.LienService);
+        group.MapPost("/medical-facilities/search", (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, CancellationToken ct) => SearchByType(r, cs, c, ContactType.MedicalFacility, ct))
+            .RequirePermission(LiensPermissions.LienService);
         group.MapPost("/lien-holders/search", (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, CancellationToken ct) => SearchByType(r, cs, c, ContactType.LienHolder, ct))
+            .RequirePermission(LiensPermissions.LienService);
+        group.MapPost("/funding-companies/search", (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, CancellationToken ct) => SearchByType(r, cs, c, ContactType.FundingCompany, ct))
             .RequirePermission(LiensPermissions.LienService);
         group.MapPost("/leads/search",        (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, CancellationToken ct) => SearchByType(r, cs, c, ContactType.Lead, ct))
             .RequirePermission(LiensPermissions.LienService);
@@ -78,6 +86,8 @@ public static class ContactEndpoints
             .RequirePermission(LiensPermissions.LienService);
         legacy.MapGet("/medical-provider/{id:guid?}",  (IContactService cs, ICurrentRequestContext c, Guid? id, CancellationToken ct) => LegacyListByType(cs, c, ContactType.Provider, id, ct))
             .RequirePermission(LiensPermissions.LienService);
+        legacy.MapGet("/medical-facility/{id:guid?}",  (IContactService cs, ICurrentRequestContext c, Guid? id, CancellationToken ct) => LegacyListByType(cs, c, ContactType.MedicalFacility, id, ct))
+            .RequirePermission(LiensPermissions.LienService);
         legacy.MapGet("/funding-company/{id:guid?}",   (IContactService cs, ICurrentRequestContext c, Guid? id, CancellationToken ct) => LegacyListByType(cs, c, ContactType.LienHolder, id, ct))
             .RequirePermission(LiensPermissions.LienService);
         legacy.MapGet("/leads/{id:guid?}",             (IContactService cs, ICurrentRequestContext c, Guid? id, CancellationToken ct) => LegacyListByType(cs, c, ContactType.Lead, id, ct))
@@ -88,6 +98,10 @@ public static class ContactEndpoints
         legacy.MapPost("/medical-provider/v3",     (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, CancellationToken ct) => SearchByType(r, cs, c, ContactType.Provider, ct))
             .RequirePermission(LiensPermissions.LienService);
         legacy.MapPost("/medical-provider/v3/{id:guid?}", (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, Guid? id, CancellationToken ct) => SearchByType(r, cs, c, ContactType.Provider, ct))
+            .RequirePermission(LiensPermissions.LienService);
+        legacy.MapPost("/medical-facility/v3",     (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, CancellationToken ct) => SearchByType(r, cs, c, ContactType.MedicalFacility, ct))
+            .RequirePermission(LiensPermissions.LienService);
+        legacy.MapPost("/medical-facility/v3/{id:guid?}", (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, Guid? id, CancellationToken ct) => SearchByType(r, cs, c, ContactType.MedicalFacility, ct))
             .RequirePermission(LiensPermissions.LienService);
         legacy.MapPost("/funding-company/v3",      (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, CancellationToken ct) => SearchByType(r, cs, c, ContactType.LienHolder, ct))
             .RequirePermission(LiensPermissions.LienService);

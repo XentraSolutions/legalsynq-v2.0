@@ -26,16 +26,23 @@ async function proxy(req: NextRequest, segments: string[]): Promise<NextResponse
   const token =
     cookieStore.get('portal_session')?.value ??
     cookieStore.get('platform_session')?.value;
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const incomingContentType = req.headers.get('Content-Type') ?? '';
+  const isMultipart = incomingContentType.startsWith('multipart/form-data');
+
+  const headers: Record<string, string> = {};
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  let body: string | undefined;
+  let body: ArrayBuffer | string | undefined;
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    try { body = await req.text(); } catch { /* no body */ }
+    if (isMultipart) {
+      headers['Content-Type'] = incomingContentType;
+      try { body = await req.arrayBuffer(); } catch { /* no body */ }
+    } else {
+      headers['Content-Type'] = 'application/json';
+      try { body = await req.text(); } catch { /* no body */ }
+    }
   }
 
   const res = await fetch(url, {

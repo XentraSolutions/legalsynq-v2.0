@@ -27,6 +27,12 @@ public class SellingPortfolioConfiguration : IEntityTypeConfiguration<SellingPor
         builder.Property(p => p.Description)
             .HasMaxLength(4000);
 
+        builder.Property(p => p.InternalNotes)
+            .HasMaxLength(4000);
+
+        builder.Property(p => p.TargetGrouping)
+            .HasMaxLength(100);
+
         builder.Property(p => p.Status)
             .IsRequired()
             .HasMaxLength(50);

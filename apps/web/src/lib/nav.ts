@@ -65,6 +65,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
       sellModeOnly: true,
       items: [
         { href: '/lien/my-liens',    label: 'My Liens',    icon: 'ri-price-tag-3-line',         requiredRoles: [ProductRole.SynqLienSeller] },
+        { href: '/lien/sales',       label: 'Lien Sales',  icon: 'ri-exchange-dollar-line',      requiredRoles: [ProductRole.SynqLienSeller] },
         { href: '/lien/marketplace', label: 'Marketplace', icon: 'ri-store-2-line',              requiredRoles: [ProductRole.SynqLienBuyer] },
         { href: '/lien/portfolio',   label: 'Portfolio',   icon: 'ri-briefcase-line',            requiredRoles: [ProductRole.SynqLienBuyer, ProductRole.SynqLienHolder] },
       ],

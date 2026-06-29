@@ -33,6 +33,12 @@ public static class JwtTokenHelper
             LiensPermissions.LienReadHeld,
             LiensPermissions.LienService,
             LiensPermissions.LienSettle,
+            LiensPermissions.LienSaleRead,
+            LiensPermissions.LienSaleCreate,
+            LiensPermissions.LienSaleUpdate,
+            LiensPermissions.LienSalePublish,
+            LiensPermissions.LienSaleWithdraw,
+            LiensPermissions.LienSaleViewAnalytics,
             LiensPermissions.CaseRead,
             LiensPermissions.CaseCreate,
             LiensPermissions.CaseUpdate,
@@ -44,6 +50,8 @@ public static class JwtTokenHelper
             LiensPermissions.TaskComplete,
             LiensPermissions.TaskCancel,
             LiensPermissions.WorkflowManage,
+            LiensPermissions.CaseNoteManage,
+            LiensPermissions.TaskNoteManage,
         };
         return CreateToken(tenantId, userId, allPermissions, orgId);
     }

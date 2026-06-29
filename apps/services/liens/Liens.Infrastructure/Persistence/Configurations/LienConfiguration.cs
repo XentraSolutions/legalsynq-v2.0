@@ -72,6 +72,18 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
         builder.Property(l => l.IncidentDate)
             .HasColumnType("date");
 
+        builder.Property(l => l.InitialServiceDate)
+            .HasColumnType("date");
+
+        builder.Property(l => l.EndServiceDate)
+            .HasColumnType("date");
+
+        builder.Property(l => l.IsBulk)
+            .HasMaxLength(10);
+
+        builder.Property(l => l.IsServicing)
+            .HasMaxLength(10);
+
         builder.Property(l => l.OpenedAtUtc);
         builder.Property(l => l.ClosedAtUtc);
 

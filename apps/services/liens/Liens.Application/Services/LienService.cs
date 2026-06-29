@@ -124,6 +124,10 @@ public sealed class LienService : ILienService
             isConfidential: request.IsConfidential,
             jurisdiction: request.Jurisdiction,
             incidentDate: request.IncidentDate,
+            initialServiceDate: request.InitialServiceDate,
+            endServiceDate: request.EndServiceDate,
+            isBulk: request.IsBulk,
+            isServicing: request.IsServicing,
             description: request.Description);
 
         await _lienRepo.AddAsync(entity, ct);
@@ -230,6 +234,10 @@ public sealed class LienService : ILienService
             isConfidential: request.IsConfidential,
             jurisdiction: request.Jurisdiction,
             incidentDate: request.IncidentDate,
+            initialServiceDate: request.InitialServiceDate ?? entity.InitialServiceDate,
+            endServiceDate: request.EndServiceDate ?? entity.EndServiceDate,
+            isBulk: request.IsBulk ?? entity.IsBulk,
+            isServicing: request.IsServicing ?? entity.IsServicing,
             description: request.Description);
 
         if (request.CaseId.HasValue)
@@ -247,6 +255,33 @@ public sealed class LienService : ILienService
             eventType: "liens.lien.updated",
             action: "update",
             description: $"Lien '{entity.LienNumber}' updated",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Lien",
+            entityId: entity.Id.ToString());
+
+        return MapToResponse(entity);
+    }
+
+    public async Task<LienResponse> SetLegacyMedicalStatusAsync(
+        Guid tenantId, Guid id, Guid actingUserId,
+        string status, CancellationToken ct = default)
+    {
+        var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
+
+        entity.SetLegacyMedicalStatus(status.Trim(), actingUserId);
+
+        await _lienRepo.UpdateAsync(entity, ct);
+
+        _logger.LogInformation(
+            "Legacy medical lien status updated: {LienId} Status={Status} Tenant={TenantId}",
+            entity.Id, entity.Status, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.lien.legacy_medical_status_updated",
+            action: "update",
+            description: $"Legacy medical status for lien '{entity.LienNumber}' updated to '{entity.Status}'",
             tenantId: tenantId,
             actorUserId: actingUserId,
             entityType: "Lien",
@@ -281,6 +316,10 @@ public sealed class LienService : ILienService
             BuyingOrgId = entity.BuyingOrgId,
             HoldingOrgId = entity.HoldingOrgId,
             IncidentDate = entity.IncidentDate,
+            InitialServiceDate = entity.InitialServiceDate,
+            EndServiceDate = entity.EndServiceDate,
+            IsBulk = entity.IsBulk,
+            IsServicing = entity.IsServicing,
             Description = entity.Description,
             OpenedAtUtc = entity.OpenedAtUtc,
             ClosedAtUtc = entity.ClosedAtUtc,
