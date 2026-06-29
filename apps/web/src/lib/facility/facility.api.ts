@@ -4,8 +4,10 @@ import {
   ContactPersonResponse,
   CreateFacilityRequest,
   CreateFacilityResponse,
+  FacilityGenericResponse,
   FacilityListResponse,
   GetContactPersonByFacilityResponse,
+  UpdateContactPersonRequest,
 } from "./facility.types";
 
 const BASE = "/lien/facility";
@@ -33,5 +35,11 @@ export const facilityApi = {
     return apiClient.get<GetContactPersonByFacilityResponse>(
       `${BASE}/get-contactperson/${facilityId}`,
     );
+  },
+  updateContactPerson(form: UpdateContactPersonRequest) {
+    return apiClient.post<ContactPersonResponse>(`${BASE}/update-contactperson`, form);
+  },
+  deleteContactPerson(id: string) {
+    return apiClient.delete<FacilityGenericResponse>(`${BASE}/delete-contactperson/${id}`);
   },
 };

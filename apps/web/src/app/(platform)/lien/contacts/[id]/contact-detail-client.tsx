@@ -8,6 +8,7 @@ import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
 import { contactsService, type ContactDetail } from '@/lib/contacts';
+import { MedicalFacilityStaffSection } from '@/components/lien/medical-facility-staff-section';
 
 export function ContactDetailClient({ id }: { id: string }) {
   const addToast = useLienStore((s) => s.addToast);
@@ -94,6 +95,10 @@ export function ContactDetailClient({ id }: { id: string }) {
           <h3 className="text-sm font-semibold text-gray-800 mb-2">Notes</h3>
           <p className="text-sm text-gray-600">{contact.notes}</p>
         </div>
+      )}
+
+      {contact.contactType === 'MedicalFacility' && (
+        <MedicalFacilityStaffSection facilityId={id} />
       )}
 
       <EntityTimeline entityType="Contact" entityId={id} />

@@ -21,12 +21,31 @@ export interface ContactPersonRequest {
   firstname: string
   lastname: string
   email: string
+  phone?: string
+  facilityId: string
+}
+
+export interface UpdateContactPersonRequest {
+  id: string
+  firstname: string
+  lastname: string
+  email: string
+  phone?: string
   facilityId: string
 }
 
 export interface ContactPersonResponse extends FacilityGenericResponse {}
 
-export interface GetContactPersonByFacilityResponse {
+export interface FacilityStaff {
+  id: string
   firstname: string
   lastname: string
+  email: string
+  phone: string
+  status: string
+  facilityId: string
+  roleId: string
+  activeCases?: number
 }
+
+export type GetContactPersonByFacilityResponse = FacilityStaff[]
