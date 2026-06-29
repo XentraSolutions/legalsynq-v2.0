@@ -46,6 +46,8 @@ interface LienTableProps {
   onRefresh?: () => void;
   /** Spins the refresh icon while a refetch is in progress. */
   isRefreshing?: boolean;
+  /** Set to false to hide the expand/collapse chevron column. Defaults to true. */
+  expandable?: boolean;
 }
 
 export function LienTable({
@@ -60,6 +62,7 @@ export function LienTable({
   loadedAt,
   onRefresh,
   isRefreshing,
+  expandable = true,
 }: LienTableProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -77,8 +80,8 @@ export function LienTable({
 
   const showLastLoaded = loadedAt !== undefined || onRefresh !== undefined;
 
-  // checkbox col (when selectable) + chevron col + data columns
-  const totalCols = (selectable ? 1 : 0) + 1 + columns.length;
+  // checkbox col (when selectable) + optional chevron col + data columns
+  const totalCols = (selectable ? 1 : 0) + (expandable ? 1 : 0) + columns.length;
 
   return (
     <div className={cn("border border-gray-100 rounded-lg overflow-hidden", className)}>
@@ -120,9 +123,11 @@ export function LienTable({
                   />
                 </th>
               )}
-              <th className="w-7">
-                <span className="sr-only">Expand</span>
-              </th>
+              {expandable && (
+                <th className="w-7">
+                  <span className="sr-only">Expand</span>
+                </th>
+              )}
               {columns.map((col) => (
                 <th
                   key={col.id}
@@ -161,21 +166,23 @@ export function LienTable({
                           />
                         </td>
                       )}
-                      <td className="pl-2 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => toggleExpand(lien.id)}
-                          aria-label={isExpanded ? "Collapse row" : "Expand row"}
-                          className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
-                        >
-                          <i
-                            className={cn(
-                              "ri-arrow-right-s-line text-sm transition-transform duration-150 leading-none",
-                              isExpanded && "rotate-90",
-                            )}
-                          />
-                        </button>
-                      </td>
+                      {expandable && (
+                        <td className="pl-2 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpand(lien.id)}
+                            aria-label={isExpanded ? "Collapse row" : "Expand row"}
+                            className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
+                          >
+                            <i
+                              className={cn(
+                                "ri-arrow-right-s-line text-sm transition-transform duration-150 leading-none",
+                                isExpanded && "rotate-90",
+                              )}
+                            />
+                          </button>
+                        </td>
+                      )}
                       {columns.map((col) => (
                         <td
                           key={col.id}
@@ -189,7 +196,7 @@ export function LienTable({
                       ))}
                     </tr>
 
-                    {isExpanded && (
+                    {expandable && isExpanded && (
                       <tr className="bg-gray-50/70 border-t-0">
                         <td colSpan={totalCols} className="px-4 pb-3 pt-2">
                           <div className="flex items-center flex-wrap gap-x-6 gap-y-1">

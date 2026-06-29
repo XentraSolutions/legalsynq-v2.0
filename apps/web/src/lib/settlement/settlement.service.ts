@@ -1,5 +1,5 @@
 import { settlementApi } from './settlement.api';
-import type { CreateLienReductionRequest, CreateLienReductionResponse, CreateLienSettlementRequest, CreateLienSettlementResponse, CreateLienSettlementV2Request, CreateLienSettlementV2Response, CreateSettlementPaymentRequest, CreateSettlementPaymentResponse, DeletePaymentRequest, GetSettlementHistoryResponse, SettlementGenericResponse, UpdateSettlementRequest, UpdateSettlementResponse } from './settlement.types';
+import type { CaseReduction, CreateLienReductionRequest, CreateLienReductionResponse, CreateLienSettlementRequest, CreateLienSettlementResponse, CreateLienSettlementV2Request, CreateLienSettlementV2Response, CreateSettlementPaymentRequest, CreateSettlementPaymentResponse, DeletePaymentRequest, GetSettlementHistoryResponse, LegacyCasePayment, LegacySaveReductionRequest, SettlementGenericResponse, UpdateSettlementRequest, UpdateSettlementResponse } from './settlement.types';
 
 export const settlementService = {
   async deletePayment(id: DeletePaymentRequest['caseId']): Promise<SettlementGenericResponse> {
@@ -31,6 +31,22 @@ export const settlementService = {
   },
   async createSettlementPayment(form: CreateSettlementPaymentRequest): Promise<CreateSettlementPaymentResponse> {
     const { data } = await settlementApi.createSettlementPayment(form)
+    return data
+  },
+  async legacySaveReduction(form: LegacySaveReductionRequest): Promise<CreateLienReductionResponse> {
+    const { data } = await settlementApi.legacySaveReduction(form)
+    return data
+  },
+  async getLienPaymentsByCase(caseId: string): Promise<LegacyCasePayment[]> {
+    const { data } = await settlementApi.getLienPaymentsByCase(caseId)
+    return data
+  },
+  async deleteSettlementPayment(id: string): Promise<SettlementGenericResponse> {
+    const { data } = await settlementApi.deleteSettlementPayment(id)
+    return data
+  },
+  async getLienReductionsByCase(caseId: string): Promise<CaseReduction[]> {
+    const { data } = await settlementApi.getLienReductionsByCase(caseId)
     return data
   },
 }

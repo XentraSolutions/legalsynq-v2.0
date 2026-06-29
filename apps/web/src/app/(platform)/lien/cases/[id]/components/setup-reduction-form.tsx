@@ -9,7 +9,10 @@ import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
 import { LienTable } from "@/components/lien/lien-table";
-import type { LienColumnDef, LienFooterCell } from "@/components/lien/lien-table";
+import type {
+  LienColumnDef,
+  LienFooterCell,
+} from "@/components/lien/lien-table";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "---";
@@ -57,17 +60,25 @@ export function SetupReductionForm({
   const [reductionInput, setReductionInput] = useState("");
   const [isPercent, setIsPercent] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
-  const [lienReductions, setLienReductions] = useState<Record<string, number>>({});
+  const [lienReductions, setLienReductions] = useState<Record<string, number>>(
+    {},
+  );
   const [lienInputs, setLienInputs] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm({ reductionDate: new Date().toISOString().slice(0, 10), note: "" });
+      setForm({
+        reductionDate: new Date().toISOString().slice(0, 10),
+        note: "",
+      });
       setIsPercent(false);
 
       const activeLiens = liens.filter(
-        (l) => l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
+        (l) =>
+          l.status !== "Closed" &&
+          l.status !== "Withdrawn" &&
+          l.status !== "Sold",
       );
 
       const preChecked = new Set<string>();
@@ -107,7 +118,11 @@ export function SetupReductionForm({
       const newReductions = { ...lienReductions };
       delete newReductions[id];
       setLienReductions(newReductions);
-      setLienInputs((prev) => { const n = { ...prev }; delete n[id]; return n; });
+      setLienInputs((prev) => {
+        const n = { ...prev };
+        delete n[id];
+        return n;
+      });
       if (Object.values(newReductions).some((v) => v > 0)) {
         updateParentFromRows(newReductions, next);
       }
@@ -118,7 +133,9 @@ export function SetupReductionForm({
   };
 
   const toggleAll = () => {
-    const next = allChecked ? new Set<string>() : new Set(openLiens.map((l) => l.id));
+    const next = allChecked
+      ? new Set<string>()
+      : new Set(openLiens.map((l) => l.id));
     if (allChecked) {
       setLienReductions({});
       setLienInputs({});
@@ -221,13 +238,12 @@ export function SetupReductionForm({
       0,
     );
     if (totalCheckedBilling === 0) return;
-    const totalDollar = isPercent
-      ? (val / 100) * totalCheckedBilling
-      : val;
+    const totalDollar = isPercent ? (val / 100) * totalCheckedBilling : val;
     const clampedTotal = Math.min(totalDollar, totalCheckedBilling);
     const updates = { ...lienReductions };
     for (const l of selectedLiens) {
-      updates[l.id] = ((l.originalAmount ?? 0) / totalCheckedBilling) * clampedTotal;
+      updates[l.id] =
+        ((l.originalAmount ?? 0) / totalCheckedBilling) * clampedTotal;
     }
     setLienReductions(updates);
     syncInputsFromReductions(updates);
@@ -257,15 +273,13 @@ export function SetupReductionForm({
     }
     setSaving(true);
     try {
-      await settlementService.createReductions(
-        liensToSave.map((l) => ({
-          caseId,
-          lienId: l.id,
-          reductionDate: form.reductionDate,
-          amount: Math.round((lienReductions[l.id] ?? 0) * 100) / 100,
-          note: form.note,
+      await settlementService.legacySaveReduction({
+        caseId,
+        data: liensToSave.map((l) => ({
+          liensId: l.id,
+          reductionAmount: Math.round((lienReductions[l.id] ?? 0) * 100) / 100,
         })),
-      );
+      });
       addToast({
         type: "success",
         title: "Reduction Saved",
@@ -502,7 +516,9 @@ export function SetupReductionForm({
                     : "border-gray-200"
                 }`}
               >
-                <div className={`relative ${isPercent ? "w-24 shrink-0" : "flex-1"}`}>
+                <div
+                  className={`relative ${isPercent ? "w-24 shrink-0" : "flex-1"}`}
+                >
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
                     {isPercent ? "%" : "$"}
                   </span>
@@ -513,15 +529,16 @@ export function SetupReductionForm({
                     onChange={(e) => handleParentInputChange(e.target.value)}
                     onBlur={() => {
                       const n = parseFloat(reductionInput);
-                      if (!isNaN(n) && n > 0)
-                        setReductionInput(n.toFixed(2));
+                      if (!isNaN(n) && n > 0) setReductionInput(n.toFixed(2));
                     }}
                     placeholder="0.00"
                     className="h-full pl-6 pr-3 border-0 rounded-none focus:ring-0"
                   />
                 </div>
 
-                <div className={`relative bg-gray-50 ${isPercent ? "flex-1" : "w-24 shrink-0"}`}>
+                <div
+                  className={`relative bg-gray-50 ${isPercent ? "flex-1" : "w-24 shrink-0"}`}
+                >
                   {isPercent && (
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
                       $
@@ -570,7 +587,8 @@ export function SetupReductionForm({
               </div>
               {parentExceedsChecked && (
                 <p className="mt-1 text-xs text-red-500">
-                  Amount exceeds selected liens' total billing ({formatCurrency(checkedBilling)})
+                  Amount exceeds selected liens' total billing (
+                  {formatCurrency(checkedBilling)})
                 </p>
               )}
               {parentExceeds100 && (

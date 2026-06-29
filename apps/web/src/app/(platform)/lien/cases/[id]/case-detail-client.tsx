@@ -51,7 +51,7 @@ import { LienSettlementForm } from "./components/lien-settlement-form";
 import { LienTable } from "@/components/lien/lien-table";
 import type { LienColumnDef, LienFooterCell } from "@/components/lien/lien-table";
 import { LienListItem, liensService } from "@/lib/liens";
-import { useCaseLiens } from "@/hooks/use-case-liens";
+import { useCaseLiens, useLienPaymentsByCase } from "@/hooks/use-case-liens";
 import { contactsService } from "@/lib/contacts";
 import MedicalLienInfo from "@/components/lien/forms/add-medical-lien/medical-lien-info";
 import MedicalFacilityProviderInfo from "@/components/lien/forms/add-medical-lien/medical-facility-provider-info";
@@ -113,6 +113,13 @@ export function CaseDetailClient({ id }: { id: string }) {
     isFetching: isLiensFetching,
   } = useCaseLiens(id);
   const relatedLiens = relatedLiensWithMetadata;
+
+  const {
+    data: casePayments = [],
+    dataUpdatedAt: paymentsUpdatedAt,
+    refetch: refetchPayments,
+    isFetching: isPaymentsFetching,
+  } = useLienPaymentsByCase(id);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
@@ -445,6 +452,10 @@ export function CaseDetailClient({ id }: { id: string }) {
             liensLoadedAt={liensUpdatedAt ? new Date(liensUpdatedAt) : null}
             onRefreshLiens={refetchLiens}
             isLiensFetching={isLiensFetching}
+            payments={casePayments}
+            paymentsLoadedAt={paymentsUpdatedAt ? new Date(paymentsUpdatedAt) : null}
+            onRefreshPayments={refetchPayments}
+            isPaymentsFetching={isPaymentsFetching}
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
           />
@@ -2597,20 +2608,6 @@ const TEMP_SERVICING_CLOSED_LIENS = [
 ];
 
 /* TEMP: visual fallback data for UI review only */
-const TEMP_PAYMENT_HISTORY = [
-  {
-    id: "ph-1",
-    date: "03/28/2026",
-    lienNumber: "LN-2025-0891",
-    facility: "Sunshine MRI Center",
-    amount: 2400,
-    method: "ACH",
-    reference: "PAY-2026-0312",
-    processedBy: "Sarah Mitchell",
-  },
-];
-
-/* TEMP: visual fallback data for UI review only */
 const TEMP_SERVICING_HISTORY = [
   {
     id: "sh-1",
@@ -2650,6 +2647,175 @@ const TEMP_SERVICING_HISTORY = [
   },
 ];
 
+function PaymentHistorySection({
+  payments,
+  liens,
+  paymentsLoadedAt,
+  onRefreshPayments,
+  isPaymentsFetching,
+}: {
+  payments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
+  liens: (CaseLienItem & CaseLienItemMetadata)[];
+  paymentsLoadedAt: Date | null;
+  onRefreshPayments: () => void;
+  isPaymentsFetching: boolean;
+}) {
+  const addToast = useLienStore((s) => s.addToast);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    setOpenMenuId(null);
+    try {
+      await settlementService.deleteSettlementPayment(id);
+      addToast({ type: "success", title: "Payment Deleted", description: "The payment record was removed." });
+      onRefreshPayments();
+    } catch {
+      addToast({ type: "error", title: "Delete Failed", description: "Failed to delete the payment." });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <CollapsibleSection title="Payment History" icon="ri-exchange-dollar-line">
+      <div className="flex items-center justify-between py-2 border-b border-gray-100 mb-3">
+        <span className="text-[11px] text-gray-400">
+          Last loaded:{" "}
+          {paymentsLoadedAt
+            ? paymentsLoadedAt.toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })
+            : "—"}
+        </span>
+        <button
+          type="button"
+          onClick={onRefreshPayments}
+          disabled={isPaymentsFetching}
+          className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <i className={`ri-refresh-line text-xs${isPaymentsFetching ? " animate-spin" : ""}`} />
+          {isPaymentsFetching ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
+      {payments.length === 0 ? (
+        <div className="text-center py-8">
+          <i className="ri-exchange-dollar-line text-2xl text-gray-300" />
+          <p className="text-sm text-gray-400 mt-2">No payment history</p>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto -mx-5 px-5">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  {/* <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Payment ID</th> */}
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien ID</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien Status</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Amt to Settle</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Check Amt</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Check Received</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Check #</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Settlement Type</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Settlement Status</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Date</th>
+                  <th className="pl-3 py-2 w-10" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {payments.map((p, idx) => {
+                  const rowKey = p.id ?? `${p.lienId}-${p.paymentNumber ?? idx}`;
+                  const lien = liens.find((l) => l.id === p.lienId);
+                  const isDeleting = deletingId === rowKey;
+                  const amtToSettle = p.amountToSettle != null ? parseFloat(String(p.amountToSettle)) : null;
+                  const checkAmt = p.checkAmount != null ? parseFloat(String(p.checkAmount)) : null;
+
+                  return (
+                    <tr key={rowKey} className="hover:bg-gray-50/50 transition-colors">
+                      {/* <td className="pr-3 py-2.5 text-xs font-mono text-gray-500 whitespace-nowrap">
+                        {p.paymentNumber != null ? `#${p.paymentNumber}` : "—"}
+                      </td> */}
+                      <td className="px-3 py-2.5 text-xs font-mono text-primary whitespace-nowrap">
+                        {p.lienCode ?? lien?.lienNumber ?? p.lienId ?? "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
+                        {p.lienStatus ?? "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right whitespace-nowrap">
+                        {amtToSettle != null ? formatCurrency(amtToSettle) : "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right whitespace-nowrap">
+                        {checkAmt != null ? formatCurrency(checkAmt) : "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                        {p.checkDate ?? "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs font-mono text-gray-500 whitespace-nowrap">
+                        {p.checkNumber ?? "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
+                        {p.type ?? p.settlementType ?? "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
+                        {p.status ?? p.settlementStatus ?? "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                        {p.date ?? "—"}
+                      </td>
+                      <td className="pl-3 py-2.5 text-center relative">
+                        {p.id ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={isDeleting}
+                              onClick={() => setOpenMenuId(openMenuId === rowKey ? null : rowKey)}
+                              className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40"
+                            >
+                              {isDeleting
+                                ? <i className="ri-loader-4-line text-sm animate-spin" />
+                                : <i className="ri-more-2-line text-sm" />}
+                            </button>
+                            {openMenuId === rowKey && (
+                              <div className="absolute right-0 top-full mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(p.id!)}
+                                  className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                                >
+                                  <i className="ri-delete-bin-line text-sm" />
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <p className="text-xs text-gray-400">
+              {payments.length} payment{payments.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+        </>
+      )}
+    </CollapsibleSection>
+  );
+}
+
 type ServicingSubTab = "servicing-details" | "settlement-details" | "history";
 
 const SERVICING_SUB_TABS: {
@@ -2677,6 +2843,10 @@ function ServicingTab({
   liensLoadedAt,
   onRefreshLiens,
   isLiensFetching,
+  payments,
+  paymentsLoadedAt,
+  onRefreshPayments,
+  isPaymentsFetching,
   panelMode,
   onPanelModeChange,
 }: {
@@ -2686,6 +2856,10 @@ function ServicingTab({
   liensLoadedAt: Date | null;
   onRefreshLiens: () => void;
   isLiensFetching: boolean;
+  payments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
+  paymentsLoadedAt: Date | null;
+  onRefreshPayments: () => void;
+  isPaymentsFetching: boolean;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
 }) {
@@ -2995,29 +3169,6 @@ function ServicingTab({
           </CollapsibleSection>
           */}
 
-          {/*
-            OLD PATTERN (commented out): Standalone "Payments" CollapsibleSection
-            from the legacy UX. The new design moves "Add Payment" as a
-            contextual action button on the Open Liens table below, which ties
-            the payment directly to the liens being paid and eliminates the
-            duplicate entry point. The Open Liens table already shows per-lien
-            Reduction / Payment / Balance columns making this section redundant.
-
-          <CollapsibleSection title="Payments" icon="ri-bank-card-line">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-gray-500">
-                {TEMP_PAYMENT_HISTORY.length} payment
-                {TEMP_PAYMENT_HISTORY.length !== 1 ? "s" : ""} recorded
-              </p>
-              <button
-                onClick={handleOpenStandardPayment}
-                className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1"
-              >
-                <i className="ri-add-line text-sm" />
-                Add Payment
-              </button>
-            </div>
-          </CollapsibleSection> */}
 
           <CollapsibleSection title="Open Liens" icon="ri-stack-line">
             {openLiens.length === 0 ? (
@@ -3123,87 +3274,13 @@ function ServicingTab({
             )}
           </CollapsibleSection>
 
-          <CollapsibleSection
-            title="Payment History"
-            icon="ri-exchange-dollar-line"
-          >
-            {TEMP_PAYMENT_HISTORY.length === 0 ? (
-              <div className="text-center py-8">
-                <i className="ri-exchange-dollar-line text-2xl text-gray-300" />
-                <p className="text-sm text-gray-400 mt-2">No payment history</p>
-              </div>
-            ) : (
-              <>
-                <div className="overflow-x-auto -mx-5 px-5">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Date
-                        </th>
-                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Lien ID
-                        </th>
-                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Facility
-                        </th>
-                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Amount
-                        </th>
-                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Method
-                        </th>
-                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Reference
-                        </th>
-                        <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Processed By
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {TEMP_PAYMENT_HISTORY.map((p) => (
-                        <tr
-                          key={p.id}
-                          className="hover:bg-gray-50/50 transition-colors"
-                        >
-                          <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                            {p.date}
-                          </td>
-                          <td className="px-3 py-2.5 text-xs font-mono text-primary">
-                            {p.lienNumber}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[140px]">
-                            {p.facility}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">
-                            {formatCurrency(p.amount)}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
-                              {p.method}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-xs font-mono text-gray-500">
-                            {p.reference}
-                          </td>
-                          <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">
-                            {p.processedBy}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-                  <p className="text-xs text-gray-400">
-                    {TEMP_PAYMENT_HISTORY.length} payment
-                    {TEMP_PAYMENT_HISTORY.length !== 1 ? "s" : ""}
-                  </p>
-                </div>
-              </>
-            )}
-          </CollapsibleSection>
+          <PaymentHistorySection
+            payments={payments}
+            liens={liens}
+            paymentsLoadedAt={paymentsLoadedAt}
+            onRefreshPayments={onRefreshPayments}
+            isPaymentsFetching={isPaymentsFetching}
+          />
         </div>
       )}
 

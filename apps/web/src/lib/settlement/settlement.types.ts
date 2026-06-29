@@ -42,6 +42,13 @@ export interface DeletePaymentRequest {
   caseId: string
   paymentId: string
 }
+export interface LegacySaveReductionRequest {
+  caseId: string
+  data: {
+    liensId: string,
+    reductionAmount: number
+  }[]
+}
 
 interface HistoryData {
   id: string
@@ -87,3 +94,54 @@ export interface CreateSettlementPaymentRequest {
 }
 
 export interface CreateSettlementPaymentResponse extends SettlementGenericResponse {}
+
+export interface CasePayment {
+  id: string
+  tenantId: string
+  caseId: string
+  lienId: string
+  paymentNumber: number
+  amount: number
+  paymentDate: string | null
+  payee: string | null
+  checkNumber: string | null
+  note: string | null
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
+/** Payment record returned by the legacy settlement payments endpoint */
+export interface LegacyCasePayment {
+  id?: string
+  caseId: string
+  lienId: string
+  lienCode?: string | null
+  lienStatus?: string | null
+  lienStatusId?: string | null
+  amount: string | number
+  amountToSettle?: string | number | null
+  checkAmount?: string | number | null
+  checkDate?: string | null
+  checkNumber?: string | null
+  typeId?: string | null
+  type?: string | null
+  statusId?: string | null
+  status?: string | null
+  payor?: string | null
+  netProfit?: string | number | null
+  note?: string | null
+  paymentNumber?: string | number | null
+  date?: string | null
+}
+
+export interface CaseReduction {
+  id: string
+  tenantId: string
+  caseId: string
+  lienId: string
+  reductionDate: string
+  amount: number
+  note: string
+  createdAtUtc: string
+  updatedAtUtc: string
+}

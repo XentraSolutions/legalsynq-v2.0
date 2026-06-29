@@ -139,6 +139,10 @@ export function AddPaymentForm({
       });
     } else {
       next.add(id);
+      const lien = openLiens.find((l) => l.id === id);
+      if (lien?.paymentAmount != null) {
+        setLienPayments((prev) => ({ ...prev, [id]: lien.paymentAmount!.toFixed(2) }));
+      }
     }
     setCheckedIds(next);
   };
@@ -149,6 +153,13 @@ export function AddPaymentForm({
       setLienPayments({});
     } else {
       setCheckedIds(new Set(openLiens.map((l) => l.id)));
+      const initialPayments: Record<string, string> = {};
+      for (const l of openLiens) {
+        if (l.paymentAmount != null) {
+          initialPayments[l.id] = l.paymentAmount.toFixed(2);
+        }
+      }
+      setLienPayments(initialPayments);
     }
   };
 
@@ -240,18 +251,15 @@ export function AddPaymentForm({
 
   const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
-  const totalAmountToSettle = selectedLiens.reduce(
-    (s, l) => s + (l.balance ?? 0),
-    0,
-  );
-  const totalCheckedBilling = selectedLiens.reduce(
-    (s, l) => s + (l.originalAmount ?? 0),
-    0,
-  );
-  const totalReceivedPayment = selectedLiens.reduce(
-    (s, l) => s + (parseFloat(lienPayments[l.id] || "0") || 0),
-    0,
-  );
+  const totalAmountToSettle = openLiens.reduce((s, l) => s + (l.balance ?? 0), 0);
+  const totalBilling = openLiens.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
+  const totalPurchase = openLiens.reduce((s, l) => s + (l.purchaseAmount ?? 0), 0);
+  const totalReceivedPayment = openLiens.reduce((s, l) => {
+    const val = checkedIds.has(l.id)
+      ? parseFloat(lienPayments[l.id] || "0") || 0
+      : l.paymentAmount ?? 0;
+    return s + val;
+  }, 0);
 
   const checkAmountNum = parseFloat(form.checkAmount) || 0;
   const receivedExceedsCheck =
@@ -291,14 +299,11 @@ export function AddPaymentForm({
       id: "toSettle",
       header: "Amount to Settle",
       align: "right",
-      cell: (l, isChecked) =>
-        isChecked ? (
-          <span className="text-sm text-gray-700 tabular-nums">
-            {formatCurrency(l.balance ?? 0)}
-          </span>
-        ) : (
-          <span className="text-sm text-gray-300">---</span>
-        ),
+      cell: (l) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency(l.balance ?? 0)}
+        </span>
+      ),
     },
     {
       id: "received",
@@ -306,7 +311,11 @@ export function AddPaymentForm({
       align: "right",
       cell: (l, isChecked) => {
         if (!isChecked)
-          return <span className="text-sm text-gray-300">---</span>;
+          return (
+            <span className="text-sm text-gray-700 tabular-nums">
+              {formatCurrency(l.paymentAmount ?? 0)}
+            </span>
+          );
         const inputVal = lienPayments[l.id] ?? "";
         const inputNumeric = parseFloat(inputVal) || 0;
         const rowExceedsBilling = inputNumeric > (l.balance ?? 0) && inputNumeric > 0;
@@ -361,7 +370,7 @@ export function AddPaymentForm({
       align: "right",
       content: (
         <span className="text-sm font-semibold text-gray-900 tabular-nums">
-          {formatCurrency(totalCheckedBilling)}
+          {formatCurrency(totalBilling)}
         </span>
       ),
     },
@@ -369,9 +378,7 @@ export function AddPaymentForm({
       align: "right",
       content: (
         <span className="text-sm font-semibold text-gray-900 tabular-nums">
-          {formatCurrency(
-            selectedLiens.reduce((s, l) => s + (l.purchaseAmount ?? 0), 0),
-          )}
+          {formatCurrency(totalPurchase)}
         </span>
       ),
     },

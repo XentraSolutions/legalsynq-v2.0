@@ -1,5 +1,6 @@
 import { apiClient } from '@/lib/api-client'
 import {
+  CaseReduction,
   CreateLienReductionRequest,
   CreateLienReductionResponse,
   CreateLienSettlementRequest,
@@ -10,6 +11,8 @@ import {
   CreateSettlementPaymentResponse,
   DeletePaymentRequest,
   GetSettlementHistoryResponse,
+  LegacyCasePayment,
+  LegacySaveReductionRequest,
   SettlementGenericResponse,
   UpdateSettlementRequest,
   UpdateSettlementResponse
@@ -34,6 +37,9 @@ export const settlementApi = {
   createReduction(form: CreateLienReductionRequest) {
     return apiClient.post<CreateLienReductionResponse>(`${BASE}/liens/update/reduction`, form)
   },
+  legacySaveReduction(form: LegacySaveReductionRequest) {
+    return apiClient.post<CreateLienReductionResponse>(`${BASE}/liens/update/reduction`, form)
+  },
   updateSettlement(form: UpdateSettlementRequest) {
     return apiClient.post<UpdateSettlementResponse>(`${BASE}/liens/update/settlement`, form)
   },
@@ -45,5 +51,14 @@ export const settlementApi = {
   },
   createSettlementPayment(form: CreateSettlementPaymentRequest) {
     return apiClient.post<CreateSettlementPaymentResponse>(`/lien/api/liens/settlement/payments`, form)
+  },
+  getLienPaymentsByCase(caseId: string) {
+    return apiClient.get<LegacyCasePayment[]>(`${BASE}/liens/settlement/payment-details/${caseId}`)
+  },
+  deleteSettlementPayment(id: string) {
+    return apiClient.delete<SettlementGenericResponse>(`/lien/api/liens/settlement/payments/${id}`)
+  },
+  getLienReductionsByCase(caseId: string) {
+    return apiClient.get<CaseReduction[]>(`/lien/api/liens/settlement/reductions/case/${caseId}`)
   },
 }
