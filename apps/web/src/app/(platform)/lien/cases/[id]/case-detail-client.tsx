@@ -454,7 +454,7 @@ export function CaseDetailClient({ id }: { id: string }) {
             isLiensFetching={isLiensFetching}
             payments={casePayments}
             paymentsLoadedAt={paymentsUpdatedAt ? new Date(paymentsUpdatedAt) : null}
-            onRefreshPayments={refetchPayments}
+            onRefreshPayments={async () => { await refetchPayments(); refetchLiens(); }}
             isPaymentsFetching={isPaymentsFetching}
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
@@ -2731,7 +2731,7 @@ function PaymentHistorySection({
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {payments.map((p, idx) => {
-                  const rowKey = p.id ?? `${p.lienId}-${p.paymentNumber ?? idx}`;
+                  const rowKey = `paymentHistory${idx}`
                   const lien = liens.find((l) => l.id === p.lienId);
                   const isDeleting = deletingId === rowKey;
                   const amtToSettle = p.amountToSettle != null ? parseFloat(String(p.amountToSettle)) : null;
@@ -3426,7 +3426,7 @@ function ServicingTab({
         liensLoadedAt={liensLoadedAt}
         onRefreshLiens={onRefreshLiens}
         isLiensFetching={isLiensFetching}
-        onSaved={() => { setIsAddPaymentOpen(false); onRefreshLiens(); }}
+        onSaved={() => { setIsAddPaymentOpen(false); onRefreshPayments(); }}
       />
       {/* <LienSettlementForm
         open={isLienSettlementOpen}

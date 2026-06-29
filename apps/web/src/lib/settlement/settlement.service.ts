@@ -39,7 +39,8 @@ export const settlementService = {
   },
   async getLienPaymentsByCase(caseId: string): Promise<LegacyCasePayment[]> {
     const { data } = await settlementApi.getLienPaymentsByCase(caseId)
-    return data
+    const items = Array.isArray(data) ? data : (data as any)?.data
+    return Array.isArray(items) ? items : []
   },
   async deleteSettlementPayment(id: string): Promise<SettlementGenericResponse> {
     const { data } = await settlementApi.deleteSettlementPayment(id)
