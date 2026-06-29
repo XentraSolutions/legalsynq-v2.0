@@ -9,6 +9,8 @@ import { ConfirmDialog } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
 import { contactsService, type ContactDetail } from '@/lib/contacts';
 import { MedicalFacilityStaffSection } from '@/components/lien/medical-facility-staff-section';
+import { LawFirmContactSection } from '@/components/lien/law-firm-contact-section';
+import { ContactCasesSection } from '@/components/lien/contact-cases-section';
 
 export function ContactDetailClient({ id }: { id: string }) {
   const addToast = useLienStore((s) => s.addToast);
@@ -100,6 +102,12 @@ export function ContactDetailClient({ id }: { id: string }) {
       {contact.contactType === 'MedicalFacility' && (
         <MedicalFacilityStaffSection facilityId={id} />
       )}
+
+      {contact.contactType === 'LawFirm' && (
+        <LawFirmContactSection lawFirmId={id} />
+      )}
+
+      <ContactCasesSection contactId={id} />
 
       <EntityTimeline entityType="Contact" entityId={id} />
 

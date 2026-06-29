@@ -1,5 +1,5 @@
 import { facilityApi } from './facility.api';
-import type { ContactPersonRequest, ContactPersonResponse, CreateFacilityRequest, CreateFacilityResponse, FacilityListResponse, GetContactPersonByFacilityResponse, UpdateContactPersonRequest } from './facility.types';
+import type { ContactPersonRequest, ContactPersonResponse, CreateFacilityRequest, CreateFacilityResponse, FacilityListResponse, GetContactPersonByFacilityResponse, LegacyFacilityItem, UpdateContactPersonRequest } from './facility.types';
 
 export const facilityService = {
   async createFacility(form: CreateFacilityRequest): Promise<CreateFacilityResponse> {
@@ -9,6 +9,10 @@ export const facilityService = {
   async getFacilityList(): Promise<FacilityListResponse> {
     const { data } = await facilityApi.getFacilityList()
     return data
+  },
+  async getFacility(id: string): Promise<LegacyFacilityItem> {
+    const { data } = await facilityApi.getFacility(id)
+    return data[0]
   },
   async contactPerson(form: ContactPersonRequest): Promise<ContactPersonResponse> {
     const { data } = await facilityApi.contactPerson(form)

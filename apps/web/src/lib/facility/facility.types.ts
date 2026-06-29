@@ -5,21 +5,42 @@ export interface FacilityGenericResponse {
 export interface CreateFacilityRequest {
   name: string
   email: string
-  address: string
+  phone?: string
+  addressLine1: string
   city: string
   state: string
-  zipcode: string
+  postalCode: string
 }
 
 export interface CreateFacilityResponse extends FacilityGenericResponse {}
 
+export interface LegacyFacilityItem {
+  id: string;
+  name: string;
+  code: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string;
+  state: string;
+  postalCode: string | null;
+  phone: string | null;
+  email: string;
+  fax: string | null;
+  isActive: boolean;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
 export interface FacilityListResponse {
-  phone: string
+  items: LegacyFacilityItem[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
 }
 
 export interface ContactPersonRequest {
-  firstname: string
-  lastname: string
+  firstName: string
+  lastName: string
   email: string
   phone?: string
   facilityId: string
@@ -27,8 +48,8 @@ export interface ContactPersonRequest {
 
 export interface UpdateContactPersonRequest {
   id: string
-  firstname: string
-  lastname: string
+  firstName: string
+  lastName: string
   email: string
   phone?: string
   facilityId: string
@@ -38,13 +59,15 @@ export interface ContactPersonResponse extends FacilityGenericResponse {}
 
 export interface FacilityStaff {
   id: string
-  firstname: string
-  lastname: string
+  facilityId: string
+  firstName: string
+  lastName: string
+  position: string | null
   email: string
   phone: string
-  status: string
-  facilityId: string
-  roleId: string
+  isActive: boolean
+  createdAtUtc: string
+  updatedAtUtc: string
   activeCases?: number
 }
 

@@ -1,6 +1,7 @@
 import { apiClient } from "@/lib/api-client";
 import type {
   ContactResponseDto,
+  ContactCaseDto,
   PaginatedResultDto,
   CreateContactRequestDto,
   UpdateContactRequestDto,
@@ -54,5 +55,9 @@ export const contactsApi = {
     return apiClient.post<ExportResponse>(`${BASE}/export-csv`, {
       ContactType: contactType,
     });
+  },
+
+  getCases(contactId: string) {
+    return apiClient.get<ContactCaseDto[]>(`${BASE}/${contactId}/cases`);
   },
 };

@@ -100,6 +100,22 @@ export interface ExportResponse {
   data: string;
 }
 
+export interface ContactCaseDto {
+  id: string;
+  caseNumber: string;
+  personName: string;
+  status: string;
+  billingAmount: number;
+}
+
+export interface ContactCaseSummary {
+  id: string;
+  caseNumber: string;
+  personName: string;
+  status: string;
+  billingAmount: number;
+}
+
 export interface PaginationMeta {
   page: number;
   pageSize: number;

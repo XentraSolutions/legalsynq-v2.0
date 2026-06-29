@@ -7,6 +7,7 @@ import {
   FacilityGenericResponse,
   FacilityListResponse,
   GetContactPersonByFacilityResponse,
+  LegacyFacilityItem,
   UpdateContactPersonRequest,
 } from "./facility.types";
 
@@ -27,6 +28,9 @@ export const facilityApi = {
   },
   getFacilityList() {
     return apiClient.post<FacilityListResponse>(`${BASE}/list/v3`, {});
+  },
+  getFacility(id: string) {
+    return apiClient.get<LegacyFacilityItem[]>(`${BASE}/list/${id}`);
   },
   contactPerson(form: ContactPersonRequest) {
     return apiClient.post<ContactPersonResponse>(`${BASE}/contactperson`, form);

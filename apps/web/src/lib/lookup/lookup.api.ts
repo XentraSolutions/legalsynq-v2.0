@@ -68,7 +68,7 @@ export const lookupApi = {
   },
 
   getContactTypes() {
-    return apiClient.get<LookupGenericResponse[]>(`${BASE}/contact/type`);
+    return apiClient.get<LookupData[]>(`${BASE}/contact/type`);
   },
 
   getStates() {
@@ -97,6 +97,7 @@ export const lookupApi = {
     );
   },
 
+  // Legacy: backed by facility/list/v3. Use the contacts API for new work.
   getMedicalFacility() {
     return apiClient.get<LookupGenericResponse[]>(`${BASE}/facility`);
   },

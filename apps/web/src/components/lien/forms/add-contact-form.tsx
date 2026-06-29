@@ -3,63 +3,94 @@
 import { useState } from "react";
 import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
-import { CONTACT_TYPE_LABELS } from "@/types/lien";
 import { contactsService } from "@/lib/contacts";
+import { facilityApi } from "@/lib/facility/facility.api";
+import type { LookupData } from "@/lib/lookup/lookup.types";
 
 interface AddContactFormProps {
   open: boolean;
+  defaultContactType?: string;
   data: {
-    id: "";
-    firstName: "";
-    lastName: "";
-    contactType: "";
-    organization: "";
-    email: "";
-    phone: "";
-    city: "";
-    state: "";
-    addressLine1: "";
-    postalCode: "";
-    contactTypes: Array<Record<string, string>>;
-    states: Array<Record<string, string>>;
+    id?: string;
+    firstName?: string;
+    lastName?: string;
+    contactType?: string;
+    organization?: string;
+    email?: string;
+    phone?: string;
+    city?: string;
+    state?: string;
+    addressLine1?: string;
+    postalCode?: string;
+    contactTypes: LookupData[];
+    states: LookupData[];
   };
   mode: "create" | "edit" | undefined;
   onClose: () => void;
   onCreated?: () => void;
 }
 
+const EMPTY_FORM = {
+  name: "",
+  firstName: "",
+  lastName: "",
+  contactType: "",
+  organization: "",
+  email: "",
+  phone: "",
+  city: "",
+  state: "",
+  addressLine1: "",
+  postalCode: "",
+};
+
+// MedicalFacility routes through the legacy facility API,
+// which uses a single "name" field rather than firstName/lastName.
+const LEGACY_FACILITY_TYPES = ["MedicalFacility"];
+
 export function AddContactForm({
   open,
   data,
+  defaultContactType,
   onClose,
   onCreated,
   mode = "create",
 }: AddContactFormProps) {
   const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState(
-    mode == "create"
-      ? {
-          firstName: "",
-          lastName: "",
-          contactType: "",
-          organization: "",
-          email: "",
-          phone: "",
-          city: "",
-          state: "",
-          addressLine1: "",
-          postalCode: "",
-        }
-      : data,
+    mode === "create"
+      ? { ...EMPTY_FORM, contactType: defaultContactType ?? "" }
+      : {
+          ...EMPTY_FORM,
+          firstName: data.firstName ?? "",
+          lastName: data.lastName ?? "",
+          contactType: data.contactType ?? "",
+          organization: data.organization ?? "",
+          email: data.email ?? "",
+          phone: data.phone ?? "",
+          city: data.city ?? "",
+          state: data.state ?? "",
+          addressLine1: data.addressLine1 ?? "",
+          postalCode: data.postalCode ?? "",
+        },
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  const isLegacyFacilityCreate =
+    mode === "create" && LEGACY_FACILITY_TYPES.includes(form.contactType);
+
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.firstName.trim()) e.firstName = "First name is required";
-    if (!form.lastName.trim()) e.lastName = "Last name is required";
     if (!form.contactType) e.contactType = "Type is required";
+
+    if (isLegacyFacilityCreate) {
+      if (!form.name.trim()) e.name = "Name is required";
+    } else {
+      if (!form.firstName.trim()) e.firstName = "First name is required";
+      if (!form.lastName.trim()) e.lastName = "Last name is required";
+    }
+
     if (form.email && !/\S+@\S+\.\S+/.test(form.email))
       e.email = "Invalid email format";
     setErrors(e);
@@ -70,7 +101,23 @@ export function AddContactForm({
     if (!validate()) return;
     try {
       setSubmitting(true);
-      if (mode == "create") {
+
+      if (isLegacyFacilityCreate) {
+        await facilityApi.createFacility({
+          name: form.name.trim(),
+          email: form.email || "",
+          phone: form.phone || undefined,
+          addressLine1: form.addressLine1 || "",
+          city: form.city || "",
+          state: form.state || "",
+          postalCode: form.postalCode || "",
+        });
+        addToast({
+          type: "success",
+          title: "Medical Facility Created",
+          description: form.name,
+        });
+      } else if (mode === "create") {
         await contactsService.createContact({
           firstName: form.firstName,
           lastName: form.lastName,
@@ -83,7 +130,7 @@ export function AddContactForm({
           addressLine1: form.addressLine1 || undefined,
           postalCode: form.postalCode || undefined,
           title: "",
-          fax: form.phone || undefined,
+          fax: undefined,
           website: "",
           notes: "",
         });
@@ -93,7 +140,7 @@ export function AddContactForm({
           description: `${form.firstName} ${form.lastName}`,
         });
       } else {
-        await contactsService.updateContact(data?.id, {
+        await contactsService.updateContact(data?.id ?? "", {
           firstName: form.firstName,
           lastName: form.lastName,
           contactType: form.contactType,
@@ -117,11 +164,11 @@ export function AddContactForm({
     } catch (err) {
       addToast({
         type: "error",
-        title: mode == "create" ? "Create Failed" : "Update Failed.",
+        title: mode === "create" ? "Create Failed" : "Update Failed",
         description:
           err instanceof Error
             ? err.message
-            : `Failed to ${mode == "create" ? "Create" : "Update"} contact`,
+            : `Failed to ${mode === "create" ? "create" : "update"} contact`,
       });
     } finally {
       setSubmitting(false);
@@ -129,28 +176,20 @@ export function AddContactForm({
   };
 
   const resetAndClose = () => {
-    setForm({
-      firstName: "",
-      lastName: "",
-      contactType: "",
-      organization: "",
-      email: "",
-      phone: "",
-      city: "",
-      state: "",
-      addressLine1: "",
-      postalCode: "",
-    });
+    setForm({ ...EMPTY_FORM });
     setErrors({});
     onClose();
   };
+
+  const inputCls = (field: string) =>
+    `w-full border rounded-lg px-3 py-2 text-sm ${errors[field] ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`;
 
   return (
     <FormModal
       open={open}
       onClose={resetAndClose}
       onSubmit={handleSubmit}
-      title={mode == "create" ? "Add Contact" : "Edit Contact"}
+      title={mode === "create" ? "Add Contact" : "Edit Contact"}
       submitLabel={
         submitting
           ? mode === "create"
@@ -158,178 +197,293 @@ export function AddContactForm({
             : "Updating..."
           : mode === "create"
             ? "Create Contact"
-            : "Edit Contact"
+            : "Save Changes"
       }
     >
       <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              First Name<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.firstName}
-              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-              placeholder="First name"
-              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.firstName ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`}
-            />
-            {errors.firstName && (
-              <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Last Name<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.lastName}
-              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-              placeholder="Last name"
-              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.lastName ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`}
-            />
-            {errors.lastName && (
-              <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
-            )}
-          </div>
+        {/* Contact Type */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Contact Type<span className="text-red-500 ml-0.5">*</span>
+          </label>
+          <select
+            value={form.contactType}
+            onChange={(e) => setForm({ ...form, contactType: e.target.value })}
+            disabled={mode === "edit"}
+            className={inputCls("contactType")}
+          >
+            <option value="">Select...</option>
+            {data?.contactTypes?.length > 0 &&
+              data.contactTypes.map((v) => (
+                <option key={v.id} value={v.code}>
+                  {v.name}
+                </option>
+              ))}
+          </select>
+          {errors.contactType && (
+            <p className="text-xs text-red-500 mt-1">{errors.contactType}</p>
+          )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contact Type<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <select
-              value={form.contactType}
-              onChange={(e) =>
-                setForm({ ...form, contactType: e.target.value })
-              }
-              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.contactType ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`}
-            >
-              <option value="">Select...</option>
-              {data?.contactTypes.length > 0 &&
-                data.contactTypes.map((v) => (
-                  <option key={v.id} value={v.code}>
-                    {v.name}
-                  </option>
-                ))}
-            </select>
-            {errors.contactType && (
-              <p className="text-xs text-red-500 mt-1">{errors.contactType}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Organization
-            </label>
-            <input
-              type="text"
-              value={form.organization}
-              onChange={(e) =>
-                setForm({ ...form, organization: e.target.value })
-              }
-              placeholder="Organization"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="email@example.com"
-              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.email ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`}
-            />
-            {errors.email && (
-              <p className="text-xs text-red-500 mt-1">{errors.email}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Phone
-            </label>
-            <input
-              type="text"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              placeholder="(555) 555-0000"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Address
-            </label>
-            <input
-              type="text"
-              value={form.addressLine1}
-              onChange={(e) =>
-                setForm({ ...form, addressLine1: e.target.value })
-              }
-              placeholder="Address"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              City
-            </label>
-            <input
-              type="text"
-              value={form.city}
-              onChange={(e) => setForm({ ...form, city: e.target.value })}
-              placeholder="City"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              State
-            </label>
-            <select
-              value={form.state}
-              onChange={(e) => setForm({ ...form, state: e.target.value })}
-              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.state ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`}
-            >
-              <option value="">Select...</option>
-              {data?.states?.length > 0 &&
-                data.states.map((v) => (
-                  <option key={v.id} value={v.code}>
-                    {v.code}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Zip Code
-            </label>
-            <input
-              type="text"
-              value={form.postalCode}
-              onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
-              placeholder="Zip Code"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-          <div></div>
-          {/* <input
-              type="text"
-              value={form.state}
-              onChange={(e) => setForm({ ...form, state: e.target.value })}
-              placeholder="e.g. NV"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            /> */}
-        </div>
+
+        {isLegacyFacilityCreate ? (
+          /* ── Legacy facility form (MedicalFacility + LawFirm route through facilityApi) ── */
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Name<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Facility name"
+                className={inputCls("name")}
+              />
+              {errors.name && (
+                <p className="text-xs text-red-500 mt-1">{errors.name}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="email@example.com"
+                  className={inputCls("email")}
+                />
+                {errors.email && (
+                  <p className="text-xs text-red-500 mt-1">{errors.email}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone
+                </label>
+                <input
+                  type="text"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="(555) 555-0000"
+                  className={inputCls("phone")}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Address
+              </label>
+              <input
+                type="text"
+                value={form.addressLine1}
+                onChange={(e) =>
+                  setForm({ ...form, addressLine1: e.target.value })
+                }
+                placeholder="Address"
+                className={inputCls("addressLine1")}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={form.city}
+                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  placeholder="City"
+                  className={inputCls("city")}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  State
+                </label>
+                <select
+                  value={form.state}
+                  onChange={(e) => setForm({ ...form, state: e.target.value })}
+                  className={inputCls("state")}
+                >
+                  <option value="">Select...</option>
+                  {data?.states?.length > 0 &&
+                    data.states.map((v) => (
+                      <option key={v.id} value={v.code}>
+                        {v.code}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Zip Code
+                </label>
+                <input
+                  type="text"
+                  value={form.postalCode}
+                  onChange={(e) =>
+                    setForm({ ...form, postalCode: e.target.value })
+                  }
+                  placeholder="Zip Code"
+                  className={inputCls("postalCode")}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          /* ── Standard contact form ── */
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  First Name<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.firstName}
+                  onChange={(e) =>
+                    setForm({ ...form, firstName: e.target.value })
+                  }
+                  placeholder="First name"
+                  className={inputCls("firstName")}
+                />
+                {errors.firstName && (
+                  <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Last Name<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.lastName}
+                  onChange={(e) =>
+                    setForm({ ...form, lastName: e.target.value })
+                  }
+                  placeholder="Last name"
+                  className={inputCls("lastName")}
+                />
+                {errors.lastName && (
+                  <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Organization
+              </label>
+              <input
+                type="text"
+                value={form.organization}
+                onChange={(e) =>
+                  setForm({ ...form, organization: e.target.value })
+                }
+                placeholder="Organization or company name"
+                className={inputCls("organization")}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="email@example.com"
+                  className={inputCls("email")}
+                />
+                {errors.email && (
+                  <p className="text-xs text-red-500 mt-1">{errors.email}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone
+                </label>
+                <input
+                  type="text"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="(555) 555-0000"
+                  className={inputCls("phone")}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Address
+              </label>
+              <input
+                type="text"
+                value={form.addressLine1}
+                onChange={(e) =>
+                  setForm({ ...form, addressLine1: e.target.value })
+                }
+                placeholder="Address"
+                className={inputCls("addressLine1")}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={form.city}
+                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  placeholder="City"
+                  className={inputCls("city")}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  State
+                </label>
+                <select
+                  value={form.state}
+                  onChange={(e) => setForm({ ...form, state: e.target.value })}
+                  className={inputCls("state")}
+                >
+                  <option value="">Select...</option>
+                  {data?.states?.length > 0 &&
+                    data.states.map((v) => (
+                      <option key={v.id} value={v.code}>
+                        {v.code}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Zip Code
+                </label>
+                <input
+                  type="text"
+                  value={form.postalCode}
+                  onChange={(e) =>
+                    setForm({ ...form, postalCode: e.target.value })
+                  }
+                  placeholder="Zip Code"
+                  className={inputCls("postalCode")}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </FormModal>
   );

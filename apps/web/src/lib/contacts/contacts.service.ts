@@ -8,6 +8,7 @@ import type {
   ContactsQuery,
   ContactListItem,
   ContactDetail,
+  ContactCaseSummary,
   PaginationMeta,
   CreateContactRequestDto,
   UpdateContactRequestDto,
@@ -66,5 +67,10 @@ export const contactsService = {
   async exportContacts(contactType: string): Promise<ExportResponse> {
     const { data } = await contactsApi.export(contactType);
     return data;
+  },
+
+  async getCasesByContact(contactId: string): Promise<ContactCaseSummary[]> {
+    const { data } = await contactsApi.getCases(contactId);
+    return Array.isArray(data) ? data : [];
   },
 };
