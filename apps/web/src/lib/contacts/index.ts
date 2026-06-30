@@ -4,6 +4,7 @@ export type {
   ContactsQuery,
   ContactListItem,
   ContactDetail,
+  ContactCaseSummary,
   PaginationMeta,
   CreateContactRequestDto,
   UpdateContactRequestDto,

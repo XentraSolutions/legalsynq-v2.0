@@ -77,7 +77,7 @@ export const lookupService = {
     };
   },
 
-  async getContactTypes(): Promise<{ items: LookupGenericResponse[] }> {
+  async getContactTypes(): Promise<{ items: LookupData[] }> {
     const { data } = await lookupApi.getContactTypes();
     return {
       items: data,
