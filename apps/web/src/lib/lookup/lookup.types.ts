@@ -16,6 +16,17 @@ export interface DocumentTypeResponse extends LookupGenericResponse {
   sortOrder: number;
 }
 
+export interface LiensStatusResponse extends LookupGenericResponse {
+  category: string;
+  code: string;
+  description: string;
+  id: string;
+  isActive: boolean;
+  isSystem: boolean;
+  name: string;
+  sortOrder: number;
+}
+
 export interface TaskStatusResponse extends LookupGenericResponse {}
 
 export interface AccidentTypeResponse extends LookupGenericResponse {}
@@ -23,6 +34,7 @@ export interface AccidentTypeResponse extends LookupGenericResponse {}
 export interface MedicalProcedureCodesResponse extends LookupGenericResponse {
   description: string;
   code: string;
+  data?: Array<Record<string, unknown>>;
 }
 
 export interface MedicalProcedureCostsResponse {
@@ -50,7 +62,7 @@ export interface LookupResponse {
   ContactType: LookupData[] | [];
   CurrentAttributes: LookupData[] | [];
   DocumentCategory: LookupData[] | [];
-  LiensStatus: LookupData[] | [];
+  LienStatus: LookupData[] | [];
   LienType: LookupData[] | [];
   MedicalStatus: LookupData[] | [];
   ProcedureCode: LookupData[] | [];

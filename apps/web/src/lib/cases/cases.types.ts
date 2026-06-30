@@ -12,6 +12,16 @@ export interface CaseResponseDto {
   clientPhone?: string | null;
   clientEmail?: string | null;
   clientAddress?: string | null;
+  clientStreetAddress: string;
+  clientCity: string;
+  clientState: string;
+  clientZipcode: string;
+  sex: string;
+  caseType: string;
+  currentMedicalStatus: string;
+  stateOfIncident: string;
+  trackingFollowUpDate: string;
+  leadId: string;
   insuranceCarrier?: string | null;
   policyNumber?: string | null;
   claimNumber?: string | null;
@@ -38,38 +48,62 @@ export interface CreateCaseRequestDto {
   lastname: string;
   externalReference?: string;
   title?: string;
-  clientDob?: string;
-  clientPhone?: string;
-  clientEmail?: string;
-  clientAddress?: string;
-  dateOfIncident?: string;
+  dob?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+  dateOfLoss?: string;
   insuranceCarrier?: string;
   policyNumber?: string;
   claimNumber?: string;
   description?: string;
   notes?: string;
+  caseStatusId: string | null;
+  caseManagerId?: string | null;
+  lawfirmId?: string | null;
+  stateId?: string | null;
+  accidentTypeId?: string | null;
+  accidentStateId?: string | null;
 }
 
 export interface UpdateCaseRequestDto {
-  firstName?: string;
-  lastName?: string;
-  clientFirstName: string;
-  clientLastName: string;
-  externalReference?: string;
-  title?: string;
-  clientDob?: string;
-  clientPhone?: string;
-  clientEmail?: string;
-  clientAddress?: string;
-  dateOfIncident?: string;
-  insuranceCarrier?: string;
-  policyNumber?: string;
-  claimNumber?: string;
-  description?: string;
-  notes?: string;
-  status?: string;
-  demandAmount?: number;
-  settlementAmount?: number;
+  // firstName?: string;
+  // lastName?: string;
+  // clientFirstName: string;
+  // clientLastName: string;
+  // externalReference?: string;
+  // title?: string;
+  // clientDob?: string;
+  // clientPhone?: string;
+  // clientEmail?: string;
+  // clientAddress?: string;
+  // dateOfIncident?: string;
+  // dateOfLoss?: string;
+  // accidentType?: string | undefined;
+  // insuranceCarrier?: string;
+  // policyNumber?: string;
+  // claimNumber?: string;
+  // description?: string;
+  // notes?: string;
+  // status?: string;
+  // demandAmount?: number;
+  // settlementAmount?: number;
+
+  caseId: string;
+  currentStatus: string;
+  currentMedicalStatus: string;
+  caseType: string;
+  stateOfIncident: string;
+  trackingFollowUp: string;
+  dateOfLoss: string;
+  leadId: string;
+  description: string | null;
+  notes: string | null;
+  demandAmount: number | string | null;
+  settlementAmount: number | string | null;
 }
 
 export interface UpdateCaseDetailsRequestDto {
@@ -90,14 +124,17 @@ export interface UpdateCaseDetailsRequestDto {
 }
 
 export interface UpdateCasePersonalRequestDto {
+  caseId: string;
   firstName: string;
   lastName: string;
-  externalReference?: string;
-  title?: string;
-  clientDob?: string;
-  clientPhone?: string;
-  clientEmail?: string;
-  clientAddress?: string;
+  sex: string;
+  dob?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
 }
 
 export interface CasesQuery {
@@ -151,6 +188,7 @@ export interface CaseListItem {
 
 export interface CaseDetail {
   id: string;
+  caseType: string;
   caseNumber: string;
   externalReference: string;
   title: string;
@@ -164,6 +202,15 @@ export interface CaseDetail {
   clientPhone: string;
   clientEmail: string;
   clientAddress: string;
+  clientStreetAddress: string;
+  clientCity: string;
+  clientState: string;
+  clientZipcode: string;
+  sex: string;
+  currentMedicalStatus: string;
+  stateOfIncident: string;
+  trackingFollowUpDate: string;
+  leadId: string;
   insuranceCarrier: string;
   policyNumber: string;
   claimNumber: string;
@@ -183,6 +230,11 @@ export interface CaseLienItem {
   lienType: string;
   status: string;
   originalAmount: number;
+  facility: string;
+  facilityName: string;
+  serviceDate: string;
+  purchaseDate: string;
+  purchaseAmount: number;
 }
 
 export interface CaseLienItemMetadata {
@@ -313,11 +365,29 @@ export interface CreateMedicalLiensDto {
   status: string;
   purchaseDate: string;
   initialServiceDate: string;
-  endServiceDate: null | string;
+  endServiceDate: string;
   note: string;
   isBulk: boolean | string;
   isServicing: boolean | string;
   fundingCompanyId: string;
+}
+
+export interface CreateMedicalLiensResponse {
+  id: null | string;
+  caseId: string;
+  status: string;
+  purchaseDate: string;
+  initialServiceDate: string;
+  endServiceDate: null | string;
+  note: string;
+  isBulk: boolean | string;
+  isServicing: boolean | string;
+  fundingCompany: string;
+  fundingCompanyId: string;
+  created?: string;
+  createdBy?: string;
+  updated?: string;
+  updatedBy?: string;
 }
 
 export interface CreateMedicalFacilityDto {
@@ -332,12 +402,14 @@ export interface CreateMedicalFacilityDto {
 }
 
 export interface CreateMedicalCodeLiensDto {
-  id: string;
+  id: string | null;
   liensId: string;
   code: string;
   medicareCost: string;
   billingAmount: string;
   purchaseAmount: string;
+  payee: string;
+  outboundCheckNumber: string;
 }
 
 export interface CreateMedicalPaymentDto {
@@ -351,4 +423,19 @@ export interface CreateMedicalCodeDto {
   liensId: string;
   payee: string;
   outboundCheckNumber: string;
+}
+
+export interface MedicalCodeLiensResponse {
+  billingAmount: string;
+  code: string;
+  created: string;
+  createdBy: string;
+  id: string;
+  liensId: string;
+  medicareCost: string;
+  outboundCheckNumber: string;
+  payee: string;
+  purchaseAmount: string;
+  updated: string;
+  updatedBy: string;
 }

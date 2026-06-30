@@ -55,28 +55,32 @@ export const casesApi = {
     return apiClient.post<CaseResponseDto>(`${BASE}/create`, request);
   },
 
-  updatePersonal(id: string, request: UpdateCaseDetailsRequestDto) {
-    return apiClient.patch<CaseResponseDto>(
-      `${BASE}/personal-update/${id}`,
-      request,
-    );
+  updatePersonal(request: UpdateCaseDetailsRequestDto) {
+    return apiClient.patch<CaseResponseDto>(`${BASE}/personal-update`, request);
   },
-  updateCase(id: string, request: UpdateCaseRequestDto) {
-    return apiClient.patch<CaseResponseDto>(`${BASE}/update/${id}`, request);
+  updateCase(request: UpdateCaseRequestDto) {
+    return apiClient.patch<CaseResponseDto>(`${BASE}/details-update`, request);
   },
 
   update(id: string, request: UpdateCaseRequestDto) {
     return apiClient.put<CaseResponseDto>(`${BASE}/${id}`, request);
   },
 
-  uploadDocument(request: any) {
-    const formData = new FormData();
-    formData.append("File", request.document ?? "");
-    formData.append("liensId", request.lienId);
-    formData.append("DocName", "Lien Document");
-    formData.append("DocDescription", "Legacy lien Document upload");
-    formData.append("DocFileTypeId", request.documentType);
-    return apiClient.postForm<any>(`${BASE}/liens/upload/document`, formData);
+  uploadDocument(request: FormData) {
+    console.log(request);
+    return apiClient.postForm<any>(`${BASE}/liens/upload/document`, request);
+  },
+
+  listDocumentsByLiens(id: string) {
+    return apiClient.get<CaseLiensApiResponse>(
+      `/lien/api/liens/cases/liens/get-medicaldocument/${id}`,
+    );
+  },
+
+  listDocumentsByCase(id: string) {
+    return apiClient.get<CaseLiensApiResponse>(
+      `/lien/api/liens/cases/liens/get-casedocument/${id}`,
+    );
   },
 
   listLiensByCase(request: CasePaginatedParams) {
@@ -142,6 +146,19 @@ export const casesApi = {
     return apiClient.post<ApiResponse>(`${BASE}/liens/medicalcode`, request);
   },
 
+  updateMedicalCodeLiens(request: CreateMedicalCodeLiensDto) {
+    return apiClient.post<ApiResponse>(
+      `${BASE}/liens/update-medicalcode`,
+      request,
+    );
+  },
+
+  deleteMedicalCodeLiens(id: string) {
+    return apiClient.delete<ApiResponse>(
+      `${BASE}/liens/delete-medicalcode/${id}`,
+    );
+  },
+
   updateMedicalLiens(request: CreateMedicalLiensDto) {
     return apiClient.post<ApiResponse>(`${BASE}/liens/update-medical`, request);
   },
@@ -150,10 +167,6 @@ export const casesApi = {
       `${BASE}/liens//update-facility`,
       request,
     );
-  },
-
-  updateMedicalCodeLiens(request: CreateMedicalCodeLiensDto) {
-    return apiClient.post<ApiResponse>(`${BASE}/liens/medicalcode`, request);
   },
 
   createMedicalCode(request: CreateMedicalCodeDto) {
@@ -178,8 +191,9 @@ export const casesApi = {
   },
 
   getMedicalDocument(lienId: string) {
-    return apiClient.get<ApiResponse>(
-      `${BASE}/liens/get-medicaldocument/${lienId}`,
+    return apiClient.post<ApiResponse>(
+      `${BASE}/liens/liens_get-medicaldocument`,
+      { id: lienId },
     );
   },
 

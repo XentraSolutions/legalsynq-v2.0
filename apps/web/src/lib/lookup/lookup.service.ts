@@ -5,6 +5,7 @@ import type {
   ContactsByIdResponse,
   DocumentTypeResponse,
   LawFirmListResponse,
+  LiensStatusResponse,
   LookupData,
   LookupGenericResponse,
   LookupResponse,
@@ -24,9 +25,11 @@ export const lookupService = {
     const { data } = await lookupApi.getTaskStatus();
     return data;
   },
-  async getMedicalProcedureCodes(): Promise<MedicalProcedureCodesResponse[]> {
+  async getMedicalProcedureCodes(): Promise<{
+    data: MedicalProcedureCodesResponse[];
+  }> {
     const { data } = await lookupApi.getMedicalProcedureCodes();
-    return data.data;
+    return { data: data.data };
   },
   async getMedicalProcedureCosts(
     code: MedicalProcedureCodesResponse["code"],
@@ -102,6 +105,21 @@ export const lookupService = {
     };
   },
 
+  async getCaseManagersByLawfirm(
+    id: string,
+  ): Promise<{ items: LookupGenericResponse[] }> {
+    const { data } = await lookupApi.getCaseManagersByLawfirm(id);
+    return {
+      items: data,
+    };
+  },
+
+  async getLawfirmRoles(): Promise<{ items: LookupGenericResponse[] }> {
+    const { data } = await lookupApi.getLawfirmRoles();
+    return {
+      items: data,
+    };
+  },
   async getMedicalFacility(): Promise<{ items: LookupGenericResponse[] }> {
     const { data } = await lookupApi.getMedicalFacility();
     return {

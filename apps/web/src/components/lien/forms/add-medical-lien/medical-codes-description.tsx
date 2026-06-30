@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Field from "../../field";
 import { lookupService } from "@/lib/lookup";
 import { CreateCaseForm } from "../create-case-form";
 import { CreateMedicalCode } from "../add-medical-code";
 import { casesService } from "@/lib/cases";
+import { ConfirmDialog } from "../../modal";
+import { useLienStore } from "@/stores/lien-store";
 
 export interface MedicalCodesDescriptionProps {
   caseId?: string;
@@ -52,6 +54,7 @@ export default function MedicalCodesDescription(
   props: MedicalCodesDescriptionProps,
 ) {
   const { data = {}, onFormValid } = props;
+  const addToast = useLienStore((s) => s.addToast);
 
   const [form, setForm] = useState({ ...INITIAL_FORM, ...data });
   const [procedureOptions, setProcedureOptions] = useState(
@@ -62,6 +65,10 @@ export default function MedicalCodesDescription(
   );
   const [editingId, setEditingId] = useState<string>("");
   const [showCreate, setShowCreate] = useState<boolean>(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
 
   useEffect(() => {
     loadProcedureCodes();
@@ -69,17 +76,12 @@ export default function MedicalCodesDescription(
 
   useEffect(() => {
     validateForm();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, rows]);
+  }, [form, rows, data?.codeRows]);
 
   async function loadProcedureCodes() {
     try {
-      const procedureRes = await casesService.getMedicalCodes(
-        props?.caseId ?? "",
-      );
       const codes = await lookupService.getMedicalProcedureCodes();
-      console.log(codes, "wenks");
-      const list = codes.map((item, index) => ({
+      const list = codes.data.map((item, index) => ({
         key: item.code + index,
         value: item.code,
         label: item.description,
@@ -90,9 +92,23 @@ export default function MedicalCodesDescription(
     }
   }
 
+  const getMedicalProcedureCosts = useCallback(
+    async (id: string) => {
+      try {
+        const cost = await lookupService.getMedicalProcedureCosts(id);
+        if (cost.facilityType == "asc") {
+          setForm({ ...form, medicareCost: cost?.total?.toString() });
+        }
+      } catch (e) {}
+    },
+    [form.procedureCode],
+  );
+
   function validateForm() {
-    const valid = rows.length > 0;
-    onFormValid?.(valid, { ...form, codeRows: rows });
+    const previousRows = Array.isArray(data?.codeRows) ? data.codeRows : [];
+    const rowsChanged = JSON.stringify(rows) !== JSON.stringify(previousRows);
+    const valid = rowsChanged ? rows.length > 0 : false;
+    if (valid) onFormValid?.(valid, { ...form, codeRows: rows });
   }
 
   const currentBilling = parseNumber(form.billingAmount);
@@ -105,18 +121,16 @@ export default function MedicalCodesDescription(
     return currentBilling * (currentPurchase / 100);
   }, [form.purchaseAmountType, form.purchaseAmount, form.billingAmount]);
 
-  const totals = useMemo(
-    () =>
-      rows.reduce(
-        (tot, row) => ({
-          medicare: tot.medicare + row.medicareCost,
-          billing: tot.billing + row.billingAmount,
-          purchase: tot.purchase + row.purchaseAmount,
-        }),
-        { medicare: 0, billing: 0, purchase: 0 },
-      ),
-    [rows],
-  );
+  const totals = useMemo(() => {
+    return rows.reduce(
+      (tot, row) => ({
+        medicare: tot.medicare + row.medicareCost,
+        billing: tot.billing + row.billingAmount,
+        purchase: tot.purchase + row.purchaseAmount,
+      }),
+      { medicare: 0, billing: 0, purchase: 0 },
+    );
+  }, [rows, data]);
 
   function resetLine() {
     setForm({
@@ -134,7 +148,7 @@ export default function MedicalCodesDescription(
       (option) => option.value === form.procedureCode,
     );
     const nextRow = {
-      id: editingId || `${Date.now()}`,
+      id: editingId || `temp-${Date.now()}`,
       code: form.procedureCode,
       description: selectedOption?.label ?? "",
       medicareCost: parseNumber(form.medicareCost),
@@ -173,9 +187,32 @@ export default function MedicalCodesDescription(
   }
 
   function handleDeleteRow(id: string) {
-    setRows((current) => current.filter((row) => row.id !== id));
+    // setRows((current) => current.filter((row) => row.id !== id));
     if (editingId === id) {
       resetLine();
+    }
+    setConfirmAction({ id: id, label: "Delete" });
+  }
+
+  async function deleteCode(id: string) {
+    try {
+      await casesService.deleteMedicalCodeLiens(id);
+      addToast({
+        type: "success",
+        title: `Deleted`,
+      });
+      setTimeout(() => {
+        loadProcedureCodes();
+      }, 500);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+
+      addToast({
+        type: "error",
+        title: `Deleted`,
+        description: reason,
+      });
+      setProcedureOptions([]);
     }
   }
 
@@ -198,10 +235,12 @@ export default function MedicalCodesDescription(
             <Field
               label="Medical Code & Description"
               value={form.procedureCode}
+              required
               options={procedureOptions}
-              onChange={(v) =>
-                setForm({ ...form, procedureCode: v.toString() })
-              }
+              onChange={(v) => {
+                setForm({ ...form, procedureCode: v.toString() });
+                getMedicalProcedureCosts(v.toString());
+              }}
               placeholder="Select a code"
               type="select"
             >
@@ -228,6 +267,7 @@ export default function MedicalCodesDescription(
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           <Field
             label="Billing Amount"
+            required
             value={form.billingAmount}
             onChange={(v) => setForm({ ...form, billingAmount: v.toString() })}
             placeholder="Billing Amount"
@@ -241,6 +281,7 @@ export default function MedicalCodesDescription(
             <div className="flex flex-col gap-2">
               <input
                 type="text"
+                required
                 value={form.purchaseAmount}
                 onChange={(e) => {
                   setForm({ ...form, purchaseAmount: e.target.value });
@@ -417,6 +458,21 @@ export default function MedicalCodesDescription(
             setShowCreate(false);
             loadProcedureCodes();
           }}
+        />
+      )}
+
+      {confirmAction && (
+        <ConfirmDialog
+          open
+          onClose={() => setConfirmAction(null)}
+          onConfirm={() => {
+            deleteCode(confirmAction.id);
+            setConfirmAction(null);
+          }}
+          title={`${confirmAction.label} Medical Code`}
+          description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this medical code?\n\nThis action is permanent and cannot be undone.`}
+          confirmLabel={confirmAction.label}
+          confirmVariant="danger"
         />
       )}
     </div>

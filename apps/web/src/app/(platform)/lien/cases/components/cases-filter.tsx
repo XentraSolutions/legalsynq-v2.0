@@ -7,13 +7,20 @@ import { contactsService } from "@/lib/contacts";
 import { useSessionContext } from "@/providers/session-provider";
 import Field from "@/components/lien/field";
 
+interface CasesFilterForm {
+  lawFirmId: string[];
+  accidentTypeId: string[];
+  caseManagerId: string[];
+  statusId: string[];
+}
+
 interface CasesFilterProps {
   open: boolean;
   onClose: () => void;
-  onApplyFilter?: (e: typeof INITIAL_FORM) => void;
+  onApplyFilter?: (e: CasesFilterForm) => void;
 }
 
-const INITIAL_FORM = {
+const INITIAL_FORM: CasesFilterForm = {
   lawFirmId: [],
   accidentTypeId: [],
   caseManagerId: [],
@@ -27,7 +34,7 @@ export function CasesFilter({
 }: CasesFilterProps) {
   const { lookup } = useSessionContext();
 
-  const [form, setForm] = useState({ ...INITIAL_FORM });
+  const [form, setForm] = useState<CasesFilterForm>({ ...INITIAL_FORM });
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
@@ -44,10 +51,10 @@ export function CasesFilter({
   };
 
   const [data, setData] = useState<{
-    status: [];
-    lawFirm: [];
-    caseManagers: [];
-    accidentType: [];
+    status: Array<{ key: string; value: string; label: string }>;
+    lawFirm: Array<{ key: string; value: string; label: string }>;
+    caseManagers: Array<{ key: string; value: string; label: string }>;
+    accidentType: Array<{ key: string; value: string; label: string }>;
   }>({
     status: [],
     lawFirm: [],
@@ -68,25 +75,25 @@ export function CasesFilter({
     ) {
       setData((prev: any) => ({
         ...prev,
-        caseStatus: lookup?.CaseStatus.map((c) => {
-          return { key: c.id, value: c.code, label: c.name };
-        }),
-
+        status:
+          lookup?.CaseStatus?.map((c) => {
+            return { key: c.id, value: c.code, label: c.name };
+          }) ?? [],
         lawFirm: lawfirmRes.value.items.map((c) => {
           return { key: c.id, value: c.id, label: c.organization };
         }),
         caseManagers: caseManagersRes.value.items.map((c) => {
           return { key: c.id, value: c.id, label: c.displayName };
         }),
-        accidentType: lookup?.AccidentType.map((c) => {
-          return { key: c.id, value: c.code, label: c.name };
-        }),
+        accidentType:
+          lookup?.AccidentType?.map((c) => {
+            return { key: c.id, value: c.code, label: c.name };
+          }) ?? [],
       }));
     }
   }, [open, setData]);
 
   useEffect(() => {
-    console.log(data.lawFirm, data.accidentType);
     fetchData();
   }, [fetchData, open]);
 
@@ -95,21 +102,26 @@ export function CasesFilter({
       open={open}
       onClose={reset}
       onSubmit={handleSubmit}
+      size="lg"
       title="Filter Cases"
       subtitle="Narrow down cases using filters to quickly find relevant results."
       submitLabel={submitting ? "Filtering..." : "Apply Filters"}
     >
-      <div className="space-y-4">
+      <div className="space-y-4 min-h-[250px]">
         <div className="grid grid-cols-2 gap-3">
           <Field
             label="Law Firm"
             value={form.lawFirmId}
             options={data.lawFirm ? data.lawFirm : []}
-            placeholder=""
+            placeholder="Select one or more"
             onChange={(v) => {
               setForm({
                 ...form,
-                lawFirmId: Array.isArray(v) ? v : v ? [v] : [],
+                lawFirmId: Array.isArray(v)
+                  ? v
+                  : typeof v === "string" && v
+                    ? [v]
+                    : [],
               });
             }}
             type="select"
@@ -120,11 +132,15 @@ export function CasesFilter({
             label="Accident Type"
             value={form.accidentTypeId}
             options={data.accidentType ? data.accidentType : []}
-            placeholder=""
+            placeholder="Select one or more"
             onChange={(v) => {
               setForm({
                 ...form,
-                accidentTypeId: Array.isArray(v) ? v : v ? [v] : [],
+                accidentTypeId: Array.isArray(v)
+                  ? v
+                  : typeof v === "string" && v
+                    ? [v]
+                    : [],
               });
             }}
             type="select"
@@ -136,11 +152,15 @@ export function CasesFilter({
             label="Case Manager"
             value={form.caseManagerId}
             options={data.caseManagers ? data.caseManagers : []}
-            placeholder="Select one or more case managers"
+            placeholder="Select one or more"
             onChange={(v) =>
               setForm({
                 ...form,
-                caseManagerId: Array.isArray(v) ? v : v ? [v] : [],
+                caseManagerId: Array.isArray(v)
+                  ? v
+                  : typeof v === "string" && v
+                    ? [v]
+                    : [],
               })
             }
             type="select"
@@ -150,12 +170,16 @@ export function CasesFilter({
           <Field
             label="Status"
             value={form.statusId}
-            options={data.caseStatus ? data.caseStatus : []}
-            placeholder=""
+            options={data.status}
+            placeholder="Select one or more"
             onChange={(v) => {
               setForm({
                 ...form,
-                statusId: Array.isArray(v) ? v : v ? [v] : [],
+                statusId: Array.isArray(v)
+                  ? v
+                  : typeof v === "string" && v
+                    ? [v]
+                    : [],
               });
             }}
             type="select"

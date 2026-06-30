@@ -39,8 +39,10 @@ import {
   CreateMedicalFacilityDto,
   CreateMedicalLiensDto,
   CreateMedicalPaymentDto,
+  UpdateCaseRequestDto,
 } from "@/lib/cases/cases.types";
 import { lookupService } from "@/lib/lookup";
+import type { DocumentTypeResponse } from "@/lib/lookup/lookup.types";
 import { GetSettlementHistoryResponse } from "@/lib/settlement/settlement.types";
 import { settlementService } from "@/lib/settlement";
 import { useSessionContext } from "@/providers/session-provider";
@@ -49,7 +51,10 @@ import { NoRecoveryForm } from "./components/no-recovery-form";
 import { AddPaymentForm } from "./components/add-payment-form";
 import { LienSettlementForm } from "./components/lien-settlement-form";
 import { LienTable } from "@/components/lien/lien-table";
-import type { LienColumnDef, LienFooterCell } from "@/components/lien/lien-table";
+import type {
+  LienColumnDef,
+  LienFooterCell,
+} from "@/components/lien/lien-table";
 import { LienListItem, liensService } from "@/lib/liens";
 import { useCaseLiens, useLienPaymentsByCase } from "@/hooks/use-case-liens";
 import { contactsService } from "@/lib/contacts";
@@ -58,6 +63,8 @@ import MedicalFacilityProviderInfo from "@/components/lien/forms/add-medical-lie
 import MedicalCodesDescription from "@/components/lien/forms/add-medical-lien/medical-codes-description";
 import UploadDocuments from "@/components/lien/forms/add-medical-lien/medical-upload-document";
 import Field from "@/components/lien/field";
+import { dateConverter, dateConvertertoIso } from "@/lib/cases/cases.mapper";
+import { PaginationMeta } from "@/lib/billofsale";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -102,7 +109,9 @@ export function CaseDetailClient({ id }: { id: string }) {
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [caseUpdates, setCaseUpdates] = useState<any | null>(null);
 
-  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
+  const [documentTypes, setDocumentTypes] = useState<DocumentTypeResponse[]>(
+    [],
+  );
 
   const [history, setHistory] = useState<any>();
 
@@ -111,7 +120,7 @@ export function CaseDetailClient({ id }: { id: string }) {
     dataUpdatedAt: liensUpdatedAt,
     refetch: refetchLiens,
     isFetching: isLiensFetching,
-  } = useCaseLiens(id);
+  } = useCaseLiens(id, { pageSize: 20 });
   const relatedLiens = relatedLiensWithMetadata;
 
   const {
@@ -165,6 +174,7 @@ export function CaseDetailClient({ id }: { id: string }) {
     setError(null);
     try {
       const types = await lookupService.getDocumentType();
+
       setDocumentTypes(types);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -199,7 +209,7 @@ export function CaseDetailClient({ id }: { id: string }) {
     fetchDocumentTypes();
     fetchHistory();
     fetchCaseUpdates();
-  }, [fetchCase, fetchDocumentTypes, fetchHistory, fetchCaseUpdates]);
+  }, []);
 
   const canEdit = ra.can("case:edit");
 
@@ -254,7 +264,6 @@ export function CaseDetailClient({ id }: { id: string }) {
   const generatePayoff = async () => {
     try {
       const response = await casesService.payoffQoute(id);
-      console.log(response);
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Failed to generate payoff";
@@ -317,7 +326,10 @@ export function CaseDetailClient({ id }: { id: string }) {
 
             <div className="flex-1 min-w-0">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
-                <HeaderMeta label="Case Type" value={d.title || "Lien Case"} />
+                <HeaderMeta
+                  label="Case Type"
+                  value={d.caseType || "Lien Case"}
+                />
                 <HeaderMeta label="Case Status">
                   <StatusBadge status={d.status} />
                 </HeaderMeta>
@@ -441,6 +453,7 @@ export function CaseDetailClient({ id }: { id: string }) {
             docTypes={docType}
             caseDetail={d}
             panelMode={panelMode}
+            lienid={id}
             onPanelModeChange={setPanelMode}
           />
         )}
@@ -453,8 +466,13 @@ export function CaseDetailClient({ id }: { id: string }) {
             onRefreshLiens={refetchLiens}
             isLiensFetching={isLiensFetching}
             payments={casePayments}
-            paymentsLoadedAt={paymentsUpdatedAt ? new Date(paymentsUpdatedAt) : null}
-            onRefreshPayments={async () => { await refetchPayments(); refetchLiens(); }}
+            paymentsLoadedAt={
+              paymentsUpdatedAt ? new Date(paymentsUpdatedAt) : null
+            }
+            onRefreshPayments={async () => {
+              await refetchPayments();
+              refetchLiens();
+            }}
             isPaymentsFetching={isPaymentsFetching}
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
@@ -642,13 +660,21 @@ function DetailsTab({
   const [pErrors, setPErrors] = useState<Record<string, string>>({});
 
   const [tTitle, setTTitle] = useState(d.title);
+  const [tAccident, setTAccident] = useState(d.caseType);
+
+  const formatted = dateConvertertoIso(d.dateOfIncident);
+
   const [tDescription, setTDescription] = useState(d.description);
-  const [tDateOfIncident, setTDateOfIncident] = useState(d.dateOfIncident);
+  const [tDateOfIncident, setTDateOfIncident] = useState(formatted);
   const [tStatus, setTStatus] = useState(d.status);
   const [tSaving, setTSaving] = useState(false);
   const [tErrors, setTErrors] = useState<Record<string, string>>({});
   const { lookup } = useSessionContext();
 
+  const accidentType =
+    lookup?.AccidentType?.map((c) => {
+      return { key: c.id, value: c.name, label: c.name };
+    }) ?? [];
   const resetPlaintiffForm = useCallback(() => {
     setPFirstName(d.clientFirstName);
     setPLastName(d.clientLastName);
@@ -660,9 +686,10 @@ function DetailsTab({
   }, [d]);
 
   const resetTrackingForm = useCallback(() => {
+    const formatted = dateConvertertoIso(d.dateOfIncident);
     setTTitle(d.title);
     setTDescription(d.description);
-    setTDateOfIncident(d.dateOfIncident);
+    setTDateOfIncident(formatted);
     setTStatus(d.status);
     setTErrors({});
   }, [d]);
@@ -675,7 +702,7 @@ function DetailsTab({
       errs.email = "Invalid email format";
     if (pPhone.trim() && !/^[\d\s()+-]{7,20}$/.test(pPhone.trim()))
       errs.phone = "Invalid phone format";
-    const pdob = dateConverter(pDob);
+    const pdob = dateConverter(pDob) ?? "";
     if (
       pdob.trim() &&
       !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(pdob.trim()) &&
@@ -702,50 +729,31 @@ function DetailsTab({
     return Object.keys(errs).length === 0;
   };
 
-  const dateConverter = (dateData: string) => {
-    if (!dateData) return;
-
-    const date = new Date(dateData);
-
-    // Format the date using the US locale to automatically get MM/DD/YYYY
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      month: "2-digit",
-      day: "2-digit",
-      year: "numeric",
-    });
-
-    const formattedDate = formatter.format(date);
-    return formattedDate;
-  };
-
   const handlePlaintiffSave = useCallback(async () => {
     if (!validatePlaintiff()) return;
     setPSaving(true);
     const payload = {
+      caseId: d.id,
       firstName: pFirstName.trim(),
       lastName: pLastName.trim(),
-      clientFirstName: pFirstName.trim(),
-      clientLastName: pLastName.trim(),
-      phone: pPhone.trim() || undefined,
-      email: pEmail.trim() || undefined,
-      dob: dateConverter(pDob) || undefined,
-      dateOfLoss: dateConverter(d.dateOfIncident) || undefined,
-      address: pAddress.trim() || undefined,
+      phone: pPhone.trim() || "",
+      email: pEmail.trim() || "",
+      dob: dateConverter(pDob) || "",
+      address: pAddress.trim() || "",
       status: d.status,
-      title: d.title || undefined || "",
-      description: d.description || undefined,
-      dateOfIncident: d.dateOfIncident || undefined,
-      externalReference: d.externalReference || undefined,
-      insuranceCarrier: d.insuranceCarrier || undefined,
-      policyNumber: d.policyNumber || undefined,
-      claimNumber: d.claimNumber || undefined,
-      notes: d.notes || undefined,
-      demandAmount: d.demandAmount ?? undefined,
-      settlementAmount: d.settlementAmount ?? undefined,
+      sex: "",
+      city: "",
+      state: "",
+      zipcode: "",
     };
     try {
-      const updated = await casesService.updateCase(d.id, payload);
-      onCaseUpdated({ ...d, payload });
+      const updated = await casesService.updateCasePersonal(payload);
+      onCaseUpdated({
+        ...d,
+        ...payload,
+        demandAmount: d.demandAmount ?? null,
+        settlementAmount: d.settlementAmount ?? null,
+      });
       setEditingPlaintiff(false);
       addToast({
         type: "success",
@@ -772,33 +780,29 @@ function DetailsTab({
   ]);
 
   const handleTrackingSave = useCallback(async () => {
-    if (!validateTracking()) return;
+    // if (!validateTracking()) return;
     setTSaving(true);
-    const payload = {
-      firstName: pFirstName.trim(),
-      lastName: pLastName.trim(),
-      clientFirstName: pFirstName.trim(),
-      clientLastName: pLastName.trim(),
-      clientPhone: d.clientPhone || undefined,
-      clientEmail: d.clientEmail || undefined,
-      clientDob: d.clientDob || undefined,
-      clientAddress: d.clientAddress || undefined,
-      status: tStatus,
-      title: tTitle.trim() || undefined,
-      description: tDescription.trim() || undefined,
-      dateOfIncident: dateConverter(tDateOfIncident) || undefined,
-      dateOfLoss: dateConverter(tDateOfIncident) || undefined,
-      externalReference: d.externalReference || undefined,
-      insuranceCarrier: d.insuranceCarrier || undefined,
-      policyNumber: d.policyNumber || undefined,
-      claimNumber: d.claimNumber || undefined,
-      notes: d.notes || undefined,
-      demandAmount: d.demandAmount ?? undefined,
-      settlementAmount: d.settlementAmount ?? undefined,
+    const payload: UpdateCaseRequestDto = {
+      caseId: d.id,
+      currentStatus: tStatus,
+      currentMedicalStatus: "",
+      caseType: tAccident,
+      stateOfIncident: "",
+      trackingFollowUp: "",
+      dateOfLoss: tDateOfIncident,
+      leadId: "",
+      description: tDescription,
+      notes: tDescription,
+      demandAmount: d.demandAmount ?? 0.0,
+      settlementAmount: d.settlementAmount ?? 0.0,
     };
     try {
-      const updated = await casesService.updateCase(d.id, payload);
-      onCaseUpdated({ ...d, payload });
+      const response = await casesService.updateCase(payload);
+      onCaseUpdated({
+        ...response,
+        demandAmount: d.demandAmount ?? null,
+        settlementAmount: d.settlementAmount ?? null,
+      });
       setEditingTracking(false);
       addToast({
         type: "success",
@@ -816,6 +820,7 @@ function DetailsTab({
     d,
     tStatus,
     tTitle,
+    tAccident,
     tDescription,
     tDateOfIncident,
     onCaseUpdated,
@@ -939,6 +944,41 @@ function DetailsTab({
                   className={inputCls}
                 />
               </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={pAddress}
+                  onChange={(e) => setPAddress(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  State
+                </label>
+                <input
+                  type="text"
+                  value={pAddress}
+                  onChange={(e) => setPAddress(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  Zip code
+                </label>
+                <input
+                  type="text"
+                  value={pAddress}
+                  onChange={(e) => setPAddress(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
             </div>
             <div className="flex items-center gap-2 pt-1">
               <button
@@ -979,6 +1019,8 @@ function DetailsTab({
             {/* TEMP: Sex field not supported by API */}
             <FieldItem label="Sex" value="---" />
             <FieldItem label="Address" value={d.clientAddress} />
+            <FieldItem label="City" value={d.clientCity} />
+            <FieldItem label="State" value={d.clientState} />
           </FieldGrid>
         )}
       </CollapsibleSection>
@@ -1027,6 +1069,17 @@ function DetailsTab({
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Case Type
                 </label>
+
+                <Field
+                  label=""
+                  value={tAccident}
+                  options={accidentType}
+                  placeholder=""
+                  onChange={(v) => {
+                    setTAccident(v.toString());
+                  }}
+                  type="select"
+                />
                 {/* <input
                   type="text"
                   value={tTitle}
@@ -1035,19 +1088,14 @@ function DetailsTab({
                 /> */}
               </div>
               <div>
-                {/* <input
-                  type="text"
-                  value={tDateOfIncident}
-                  onChange={(e) => setTDateOfIncident(e.target.value)}
-                  placeholder="MM/DD/YYYY"
-                  className={inputCls}
-                /> */}
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  Date of Loss
+                </label>
                 <Field
                   label=""
                   type="date"
                   value={tDateOfIncident}
                   onChange={(e) => {
-                    console.log(e);
                     setTDateOfIncident(e.toString());
                   }}
                   placeholder={tDateOfIncident}
@@ -1061,6 +1109,19 @@ function DetailsTab({
                 <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
                   Tracking Follow Up
                 </label>
+
+                <Field
+                  label=""
+                  type="date"
+                  value={tDateOfIncident}
+                  onChange={(e) => {
+                    setTDateOfIncident(e.toString());
+                  }}
+                  placeholder={tDateOfIncident}
+                />
+                {tErrors.tDateOfIncident && (
+                  <p className={errCls}>{tErrors.tDateOfIncident}</p>
+                )}
                 <input
                   type="text"
                   disabled
@@ -1162,7 +1223,7 @@ function DetailsTab({
               </div>
               {/* TEMP: Current Medical Status not supported by API */}
               <FieldItem label="Current Medical Status" value="---" />
-              <FieldItem label="Case Type" value={d.title || "---"} />
+              <FieldItem label="Case Type" value={d.caseType || "---"} />
               <FieldItem
                 label="Date of Incident"
                 value={d.dateOfIncident || "---"}
@@ -1344,6 +1405,7 @@ const TEMP_LIEN_EXTRAS: Record<
   string,
   {
     facility: string;
+    facilityName: string;
     serviceDate: string;
     purchaseDate: string;
     purchaseAmount: number;
@@ -1436,22 +1498,43 @@ function LiensTab({
   onAddMedicalLien: (m: boolean) => void;
 }) {
   const [search, setSearch] = useState("");
-  const [liensUpdates, setLiensUpdates] = useState<any>();
-  const [lienId, setSelectedId] = useState<string | null>();
+  type CaseLienUpdateRow = CaseUpdatesItem & { lienId?: string };
+
+  const [liensUpdates, setLiensUpdates] = useState<CaseLienUpdateRow[]>([]);
+  const [lienId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [forms, setForms] = useState<any>({
+  const [forms, setForms] = useState<Record<number, any>>({
+    [0]: undefined,
+    [1]: undefined,
+    [2]: undefined,
+  });
+
+  const [data, setData] = useState<Record<number, any>>({
     [0]: undefined,
     [1]: undefined,
     [2]: undefined,
   });
   const addToast = useLienStore((s) => s.addToast);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    pageSize: 20,
+    totalCount: 0,
+    totalPages: 1,
+  });
 
   const fetchData = useCallback(async () => {
-    const liensUpdates = await casesService.getCaseLiensUpdates(caseId);
-    setLiensUpdates(liensUpdates);
-  }, []);
+    const updates = await casesService.getCaseLiensUpdates(caseId);
+    setLiensUpdates(
+      Array.isArray(updates)
+        ? updates.map((item) => ({
+            ...item,
+            lienId: (item as CaseLienUpdateRow).lienId ?? undefined,
+          }))
+        : [],
+    );
+  }, [caseId]);
 
   const findValueById = (list: any[], id: any, field: string) => {
     const item = list.find((i) => String(i.id) === String(id));
@@ -1466,29 +1549,30 @@ function LiensTab({
           casesService.getMedicalInfo(lienId),
           casesService.getMedicalFacility(lienId),
           casesService.getMedicalCodes(lienId),
+          casesService.loadLiensDocuments(lienId),
           casesService.getPayee(lienId),
-          lookupService.getMedicalProcedureCodes(),
         ];
 
         // 2. Wait for ALL tasks to either resolve or reject
         const results = await Promise.allSettled(taskPromises);
-        const proceduralCodes = results[results.length - 1];
-        console.log(results);
+
         // 3. Process the results individually if needed
         results.forEach((result, index) => {
           if (result.status === "fulfilled") {
-            if (index == 1 && proceduralCodes.status == "fulfilled") {
-              setForms({
-                [index]: findValueById(
-                  proceduralCodes.value.data,
-                  result.value.data,
-                  "name",
-                ),
-              });
-            } else {
-              console.log({ [index]: result.value.data });
-              setForms((prev) => ({ ...prev, [index]: result.value.data }));
+            if (result.value.data) {
+              setData((prev) => ({
+                ...prev,
+                [index]: { ...result.value.data, hasInitialValue: true },
+              }));
             }
+            if (index == 3) {
+              setData((prev) => ({
+                ...prev,
+                [index]: result.value.data,
+              }));
+            }
+
+            // }
           } else {
             console.error(`Task ${index} failed due to:`, result.reason);
           }
@@ -1509,32 +1593,52 @@ function LiensTab({
   /* TEMP: visual fallback data for UI review only */
   const usingFallback = liens.length === 0;
   const displayLiens = liens.map((l) => {
-    const extras = TEMP_LIEN_EXTRAS[l.id] || {
-      facility: "---",
-      serviceDate: "---",
-      purchaseDate: "---",
-      purchaseAmount: 0,
-    };
     return {
       ...l,
-      facility: extras.facility || '(Blank)',
-      serviceDate: extras.serviceDate,
-      purchaseDate: extras.purchaseDate,
-      purchaseAmount: extras.purchaseAmount,
+      facility: l.facility || "---",
+      facilityName: l.facilityName || "---",
+      serviceDate: l.serviceDate || "---",
+      purchaseDate: l.purchaseDate || "---",
+      purchaseAmount: l.purchaseAmount || 0,
     };
   });
-  // : TEMP_LIEN_FALLBACK_ROWS;
 
-  const filtered = displayLiens.filter((l) => {
-    if (!search.trim()) return true;
+  const filtered = useMemo(() => {
+    if (!search.trim()) return displayLiens;
+
     const q = search.toLowerCase();
-    return (
-      l.lienNumber.toLowerCase().includes(q) ||
-      l.facility.toLowerCase().includes(q) ||
-      l.lienType.toLowerCase().includes(q) ||
-      l.status.toLowerCase().includes(q)
-    );
-  });
+    return displayLiens.filter((l) => {
+      return (
+        l.lienNumber.toLowerCase().includes(q) ||
+        l.facilityName.toLowerCase().includes(q) ||
+        l.lienType.toLowerCase().includes(q) ||
+        l.status.toLowerCase().includes(q)
+      );
+    });
+  }, [displayLiens, search]);
+
+  const paginatedLiens = useMemo(() => {
+    const startIndex = (pagination.page - 1) * pagination.pageSize;
+    return filtered.slice(startIndex, startIndex + pagination.pageSize);
+  }, [filtered, pagination.page, pagination.pageSize]);
+
+  useEffect(() => {
+    const totalCount = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / pagination.pageSize));
+    const safePage = Math.min(pagination.page, totalPages);
+
+    setPagination((prev) => {
+      if (
+        prev.totalCount === totalCount &&
+        prev.totalPages === totalPages &&
+        prev.page === safePage
+      ) {
+        return prev;
+      }
+
+      return { ...prev, totalCount, totalPages, page: safePage };
+    });
+  }, [filtered.length, pagination.page, pagination.pageSize]);
 
   const totalBilling = filtered.reduce(
     (sum, l) => sum + (l.originalAmount ?? 0),
@@ -1564,10 +1668,8 @@ function LiensTab({
     link.remove();
   };
 
-  function onFormValid(data?: any, index: number) {
-    console.log(data);
-    setForms((prev) => {
-      console.log(prev);
+  function onFormValid(data: any, index: number) {
+    setForms((prev: Record<number, any>) => {
       const copy = prev;
       copy[index] = data ?? copy[index];
       return copy;
@@ -1589,26 +1691,27 @@ function LiensTab({
     const formattedDate = formatter.format(date);
     return formattedDate;
   };
+
   async function save() {
     try {
       // Implement save logic here (API call)
       Promise.allSettled([
-        await updateMedicalLien({
+        await saveMedicalLien({
           ...forms[0],
           purchaseDate: dateConverter(forms[0].purchaseDate),
           initialServiceDate: dateConverter(forms[0].initialServiceDate),
           endServiceDate: dateConverter(forms[0].endServiceDate),
         }),
-        await updateMedicalFacilityLiens(forms[1]),
+        await saveMedicalFacilityLiens(forms[1]),
 
-        forms[2].codeRows.forEach(async (element) => {
+        forms[2]?.codeRows?.forEach(async (element: any) => {
           await updateMedicalCodeLiens({
             payee: forms[2].payee,
             outboundCheckNumber: forms[2].outboundCheckNumber,
             ...element,
           });
         }),
-        await updateMedicalPayee(forms[2]),
+        await saveMedicalPayee(forms[2]),
         await uploadDocuments(forms[3]),
       ]);
       addToast({
@@ -1622,8 +1725,7 @@ function LiensTab({
     }
   }
 
-  const updateMedicalLien = async (payload: CreateMedicalLiensDto) => {
-    console.log(payload);
+  const saveMedicalLien = async (payload: CreateMedicalLiensDto) => {
     try {
       const request: CreateMedicalLiensDto = {
         id: forms[0].id,
@@ -1637,7 +1739,10 @@ function LiensTab({
         isServicing: payload.isServicing == "true" ? "Yes" : "No",
         fundingCompanyId: payload.fundingCompanyId,
       };
-      await casesService.updateMedicalLiens(request);
+      !forms[0].hasInitialValue
+        ? await casesService.createMedicalLiens(request)
+        : await casesService.updateMedicalLiens(request);
+
       //
       setErrors({});
     } catch (err) {
@@ -1661,14 +1766,14 @@ function LiensTab({
     }
   };
 
-  const updateMedicalFacilityLiens = async (
+  const saveMedicalFacilityLiens = async (
     payload: CreateMedicalFacilityDto,
   ) => {
-    console.log(payload);
     if (!payload.facilityId) return;
     try {
+      if (!lienId) return;
+
       const request: CreateMedicalFacilityDto = {
-        id: caseId,
         liensId: lienId,
         facilityId: payload.facilityId,
         facility: payload.facility,
@@ -1678,7 +1783,9 @@ function LiensTab({
         medicalProviderId: payload.medicalProviderId,
         medicalProvider: payload.medicalProvider,
       };
-      await casesService.createMedicalFacilityLiens(request);
+      !forms[1].hasInitialValue
+        ? await casesService.createMedicalFacilityLiens(request)
+        : await casesService.updateMedicalFacilityLiens(request);
       addToast({
         type: "success",
         title: "Facility Updated",
@@ -1702,9 +1809,10 @@ function LiensTab({
     }
   };
 
-  const updateMedicalPayee = async (payload: CreateMedicalPaymentDto) => {
-    console.log(payload);
+  const saveMedicalPayee = async (payload: CreateMedicalPaymentDto) => {
     try {
+      if (!lienId) return;
+
       const request: CreateMedicalPaymentDto = {
         id: null,
         liensId: lienId,
@@ -1733,15 +1841,19 @@ function LiensTab({
         });
       }
     }
-    // finally {
-    //   setSubmitting(false);
-    // }
   };
 
   const uploadDocuments = async (payload: any) => {
-    console.log(payload);
+    if (!payload || payload.length == 0) return;
     try {
-      await casesService.uploadDocuments({ ...payload, lienId: lienId });
+      const formData = new FormData();
+      formData.append("File", payload.document ?? "");
+      formData.append("liensId", lienId);
+      formData.append("DocName", payload.document.name);
+      formData.append("DocDescription", "Legacy lien Document upload");
+      formData.append("DocFileTypeId", payload.documentType);
+
+      await casesService.uploadDocuments(formData);
       addToast({
         type: "success",
         title: "Document Uploaded",
@@ -1763,17 +1875,13 @@ function LiensTab({
         });
       }
     }
-    // finally {
-    //   setSubmitting(false);
-    // }
   };
 
   const updateMedicalCodeLiens = async (payload: CreateMedicalCodeLiensDto) => {
-    console.log(payload);
     try {
       const request: CreateMedicalCodeLiensDto = {
-        id: null,
-        liensId: lienId,
+        id: payload?.id?.includes("temp") ? null : payload.id,
+        liensId: lienId ?? "",
         code: payload.code,
         medicareCost: parseFloat(payload.medicareCost).toFixed(2),
         billingAmount: parseFloat(payload.billingAmount).toFixed(2),
@@ -1781,12 +1889,14 @@ function LiensTab({
         payee: payload.payee,
         outboundCheckNumber: payload.outboundCheckNumber,
       };
-      await casesService.createMedicalCodeLiens(request);
-      addToast({
-        type: "success",
-        title: "Medical Code Updated",
-        description: `Medical Code has been updated.`,
-      });
+      request.id == null
+        ? await casesService.createMedicalCodeLiens(request)
+        : await casesService.updateMedicalCodeLiens(request);
+      // addToast({
+      //   type: "success",
+      //   title: "Medical Code Updated",
+      //   description: `Medical Code has been updated.`,
+      // });
       setErrors({});
     } catch (err) {
       if (err instanceof ApiError) {
@@ -1819,7 +1929,10 @@ function LiensTab({
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
                   placeholder="Search liens..."
                   className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
                 />
@@ -1879,7 +1992,7 @@ function LiensTab({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {filtered.map((l) => (
+                    {paginatedLiens.map((l) => (
                       <tr
                         key={l.id}
                         className="hover:bg-gray-50/50 transition-colors"
@@ -1893,7 +2006,7 @@ function LiensTab({
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[160px]">
-                          {l.facility}
+                          {l.facilityName}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
                           {l.serviceDate}
@@ -1938,6 +2051,46 @@ function LiensTab({
                       </td>
                       <td colSpan={2} />
                     </tr>
+                    {/* <tr>
+                      <td colSpan={8} className="py-3">
+                        {pagination.totalPages > 0 && (
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs text-gray-500">
+                              Page {pagination.page} of {pagination.totalPages}{" "}
+                              · {pagination.totalCount} total
+                            </p>
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() =>
+                                  setPagination((p) => ({
+                                    ...p,
+                                    page: Math.max(1, p.page - 1),
+                                  }))
+                                }
+                                disabled={pagination.page <= 1}
+                                className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                              >
+                                Previous
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setPagination((p) => ({
+                                    ...p,
+                                    page: Math.min(p.totalPages, p.page + 1),
+                                  }))
+                                }
+                                disabled={
+                                  pagination.page >= pagination.totalPages
+                                }
+                                className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                              >
+                                Next
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr> */}
                   </tfoot>
                 </table>
               </div>
@@ -1978,7 +2131,7 @@ function LiensTab({
                           {u.timestamp}
                         </td>
                         <td className="px-3 py-2.5 text-xs font-mono text-primary">
-                          {u.lienId}
+                          {u.lienId ?? "—"}
                         </td>
                         <td className="px-3 py-2.5">
                           <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
@@ -2018,9 +2171,8 @@ function LiensTab({
                 <MedicalLienInfo
                   caseId={caseId}
                   lienId={lienId}
-                  data={forms[0]}
+                  data={data[0]}
                   onFormValid={(e: boolean, data?: any) => {
-                    console.log(e);
                     onFormValid(data, 0);
                   }}
                 />
@@ -2030,7 +2182,7 @@ function LiensTab({
                 <MedicalFacilityProviderInfo
                   caseId={caseId}
                   lienId={lienId}
-                  data={forms[1]}
+                  data={data[1]}
                   onFormValid={(e: boolean, data?: any) => onFormValid(data, 1)}
                 />
               </div>
@@ -2039,7 +2191,7 @@ function LiensTab({
                 <MedicalCodesDescription
                   caseId={caseId}
                   lienId={lienId}
-                  data={forms[2]}
+                  data={{ ...data[2], ...data[4] }}
                   onFormValid={(e: boolean, data?: any) => onFormValid(data, 2)}
                 />
               </div>
@@ -2048,7 +2200,7 @@ function LiensTab({
                 <UploadDocuments
                   caseId={caseId}
                   lienId={lienId}
-                  data={forms[3]}
+                  data={data[3]}
                   onFormValid={(e: boolean, data?: any) => onFormValid(data, 3)}
                 />
               </div>
@@ -2203,11 +2355,13 @@ function DocumentsTab({
   docTypes,
   caseDetail,
   panelMode,
+  lienid,
   onPanelModeChange,
 }: {
-  docTypes: string[];
+  docTypes: DocumentTypeResponse[];
   caseDetail: CaseDetail;
   panelMode: PanelMode;
+  lienid: string;
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const [selectedDocType, setSelectedDocType] = useState("");
@@ -2236,6 +2390,10 @@ function DocumentsTab({
     input.click();
   }, []);
 
+  useEffect(() => {
+    // const docs = await casesService.getMedicalDocument(lienid);
+  }, []);
+
   const leftContent = (
     <div className="space-y-4">
       <CollapsibleSection title="Upload Document" icon="ri-upload-cloud-2-line">
@@ -2250,13 +2408,13 @@ function DocumentsTab({
                 onChange={(e) => setSelectedDocType(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
               >
-                {/* <option value="">Select document type...</option>
+                <option value="">Select document type...</option>
                 {docTypes &&
-                  docTypes.map((t: string) => (
-                    <option key={t} value={t}>
-                      {t}
+                  docTypes.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
                     </option>
-                  ))} */}
+                  ))}
               </select>
               <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -2352,7 +2510,7 @@ function DocumentsTab({
                       <td className="pr-3 py-2.5">
                         <div className="flex items-center gap-2">
                           <i
-                            className={`${getFileIcon(doc.name)} text-sm text-gray-400`}
+                            className={`ri-file-text-line text-sm text-gray-400`}
                           />
                           <span className="text-sm text-gray-700 truncate max-w-[200px]">
                             {doc.name}
@@ -2444,9 +2602,7 @@ function DocumentsTab({
                     >
                       <td className="pr-3 py-2.5">
                         <div className="flex items-center gap-2">
-                          <i
-                            className={`${getFileIcon(doc.name)} text-sm text-gray-400`}
-                          />
+                          <i className={`ri-file-line text-sm text-gray-400`} />
                           <span className="text-sm text-gray-700 truncate max-w-[200px]">
                             {doc.name}
                           </span>
@@ -2545,15 +2701,15 @@ function DocumentsTab({
   );
 }
 
-function getFileIcon(filename: string): string {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  if (ext === "pdf") return "ri-file-pdf-2-line";
-  if (["doc", "docx"].includes(ext)) return "ri-file-word-2-line";
-  if (["xls", "xlsx"].includes(ext)) return "ri-file-excel-2-line";
-  if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext))
-    return "ri-image-line";
-  return "ri-file-text-line";
-}
+// function getFileIcon(filename: string): string {
+//   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+//   if (ext === "pdf") return "ri-file-pdf-2-line";
+//   if (["doc", "docx"].includes(ext)) return "ri-file-word-2-line";
+//   if (["xls", "xlsx"].includes(ext)) return "ri-file-excel-2-line";
+//   if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext))
+//     return "ri-image-line";
+//   return "ri-file-text-line";
+// }
 
 /* TEMP: visual fallback data for UI review only */
 const TEMP_SERVICING_OPEN_LIENS = [
@@ -2669,10 +2825,18 @@ function PaymentHistorySection({
     setOpenMenuId(null);
     try {
       await settlementService.deleteSettlementPayment(id);
-      addToast({ type: "success", title: "Payment Deleted", description: "The payment record was removed." });
+      addToast({
+        type: "success",
+        title: "Payment Deleted",
+        description: "The payment record was removed.",
+      });
       onRefreshPayments();
     } catch {
-      addToast({ type: "error", title: "Delete Failed", description: "Failed to delete the payment." });
+      addToast({
+        type: "error",
+        title: "Delete Failed",
+        description: "Failed to delete the payment.",
+      });
     } finally {
       setDeletingId(null);
     }
@@ -2700,7 +2864,9 @@ function PaymentHistorySection({
           disabled={isPaymentsFetching}
           className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <i className={`ri-refresh-line text-xs${isPaymentsFetching ? " animate-spin" : ""}`} />
+          <i
+            className={`ri-refresh-line text-xs${isPaymentsFetching ? " animate-spin" : ""}`}
+          />
           {isPaymentsFetching ? "Refreshing..." : "Refresh"}
         </button>
       </div>
@@ -2717,28 +2883,55 @@ function PaymentHistorySection({
               <thead>
                 <tr className="border-b border-gray-100">
                   {/* <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Payment ID</th> */}
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien ID</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien Status</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Amt to Settle</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Check Amt</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Check Received</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Check #</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Settlement Type</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Settlement Status</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Date</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Lien ID
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Lien Status
+                  </th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Amt to Settle
+                  </th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Check Amt
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Check Received
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Check #
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Settlement Type
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Settlement Status
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Date
+                  </th>
                   <th className="pl-3 py-2 w-10" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {payments.map((p, idx) => {
-                  const rowKey = `paymentHistory${idx}`
+                  const rowKey = `paymentHistory${idx}`;
                   const lien = liens.find((l) => l.id === p.lienId);
                   const isDeleting = deletingId === rowKey;
-                  const amtToSettle = p.amountToSettle != null ? parseFloat(String(p.amountToSettle)) : null;
-                  const checkAmt = p.checkAmount != null ? parseFloat(String(p.checkAmount)) : null;
+                  const amtToSettle =
+                    p.amountToSettle != null
+                      ? parseFloat(String(p.amountToSettle))
+                      : null;
+                  const checkAmt =
+                    p.checkAmount != null
+                      ? parseFloat(String(p.checkAmount))
+                      : null;
 
                   return (
-                    <tr key={rowKey} className="hover:bg-gray-50/50 transition-colors">
+                    <tr
+                      key={rowKey}
+                      className="hover:bg-gray-50/50 transition-colors"
+                    >
                       {/* <td className="pr-3 py-2.5 text-xs font-mono text-gray-500 whitespace-nowrap">
                         {p.paymentNumber != null ? `#${p.paymentNumber}` : "—"}
                       </td> */}
@@ -2749,7 +2942,9 @@ function PaymentHistorySection({
                         {p.lienStatus ?? "—"}
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right whitespace-nowrap">
-                        {amtToSettle != null ? formatCurrency(amtToSettle) : "—"}
+                        {amtToSettle != null
+                          ? formatCurrency(amtToSettle)
+                          : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right whitespace-nowrap">
                         {checkAmt != null ? formatCurrency(checkAmt) : "—"}
@@ -2761,10 +2956,10 @@ function PaymentHistorySection({
                         {p.checkNumber ?? "—"}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
-                        {p.type ?? p.settlementType ?? "—"}
+                        {p.type ?? "—"}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
-                        {p.status ?? p.settlementStatus ?? "—"}
+                        {p.status ?? "—"}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
                         {p.date ?? "—"}
@@ -2775,12 +2970,18 @@ function PaymentHistorySection({
                             <button
                               type="button"
                               disabled={isDeleting}
-                              onClick={() => setOpenMenuId(openMenuId === rowKey ? null : rowKey)}
+                              onClick={() =>
+                                setOpenMenuId(
+                                  openMenuId === rowKey ? null : rowKey,
+                                )
+                              }
                               className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40"
                             >
-                              {isDeleting
-                                ? <i className="ri-loader-4-line text-sm animate-spin" />
-                                : <i className="ri-more-2-line text-sm" />}
+                              {isDeleting ? (
+                                <i className="ri-loader-4-line text-sm animate-spin" />
+                              ) : (
+                                <i className="ri-more-2-line text-sm" />
+                              )}
                             </button>
                             {openMenuId === rowKey && (
                               <div className="absolute right-0 top-full mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
@@ -2930,7 +3131,9 @@ function ServicingTab({
       align: "right",
       cell: (l) => (
         <span className="text-sm text-gray-500 tabular-nums">
-          {l.reductionAmount !== null ? formatCurrency(l.reductionAmount) : "---"}
+          {l.reductionAmount !== null
+            ? formatCurrency(l.reductionAmount)
+            : "---"}
         </span>
       ),
     },
@@ -3169,7 +3372,6 @@ function ServicingTab({
           </CollapsibleSection>
           */}
 
-
           <CollapsibleSection title="Open Liens" icon="ri-stack-line">
             {openLiens.length === 0 ? (
               <div className="text-center py-8">
@@ -3187,14 +3389,39 @@ function ServicingTab({
                         colSpan: 2,
                         content: (
                           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            Totals ({openLiens.length} lien{openLiens.length !== 1 ? "s" : ""})
+                            Totals ({openLiens.length} lien
+                            {openLiens.length !== 1 ? "s" : ""})
                           </span>
                         ),
                       },
-                      { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(openLiensTotalBilling)}</span> },
-                      { align: "right", content: <span className="text-sm text-gray-400">---</span> },
-                      { align: "right", content: <span className="text-sm text-gray-400">---</span> },
-                      { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(openLiensTotalBalance)}</span> },
+                      {
+                        align: "right",
+                        content: (
+                          <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                            {formatCurrency(openLiensTotalBilling)}
+                          </span>
+                        ),
+                      },
+                      {
+                        align: "right",
+                        content: (
+                          <span className="text-sm text-gray-400">---</span>
+                        ),
+                      },
+                      {
+                        align: "right",
+                        content: (
+                          <span className="text-sm text-gray-400">---</span>
+                        ),
+                      },
+                      {
+                        align: "right",
+                        content: (
+                          <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                            {formatCurrency(openLiensTotalBalance)}
+                          </span>
+                        ),
+                      },
                     ]}
                     loadedAt={liensLoadedAt}
                     onRefresh={onRefreshLiens}
@@ -3256,14 +3483,43 @@ function ServicingTab({
                       colSpan: 2,
                       content: (
                         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          Totals ({closedLiens.length} lien{closedLiens.length !== 1 ? "s" : ""})
+                          Totals ({closedLiens.length} lien
+                          {closedLiens.length !== 1 ? "s" : ""})
                         </span>
                       ),
                     },
-                    { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(closedLiensTotalBilling)}</span> },
-                    { align: "right", content: <span className="text-sm font-semibold text-green-600 tabular-nums">{formatCurrency(closedLiensTotalReduction)}</span> },
-                    { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(closedLiensTotalPayment)}</span> },
-                    { align: "right", content: <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatCurrency(0)}</span> },
+                    {
+                      align: "right",
+                      content: (
+                        <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                          {formatCurrency(closedLiensTotalBilling)}
+                        </span>
+                      ),
+                    },
+                    {
+                      align: "right",
+                      content: (
+                        <span className="text-sm font-semibold text-green-600 tabular-nums">
+                          {formatCurrency(closedLiensTotalReduction)}
+                        </span>
+                      ),
+                    },
+                    {
+                      align: "right",
+                      content: (
+                        <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                          {formatCurrency(closedLiensTotalPayment)}
+                        </span>
+                      ),
+                    },
+                    {
+                      align: "right",
+                      content: (
+                        <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                          {formatCurrency(0)}
+                        </span>
+                      ),
+                    },
                   ]}
                   loadedAt={liensLoadedAt}
                   onRefresh={onRefreshLiens}
@@ -3406,7 +3662,10 @@ function ServicingTab({
         liensLoadedAt={liensLoadedAt}
         onRefreshLiens={onRefreshLiens}
         isLiensFetching={isLiensFetching}
-        onSaved={() => { showSetupReductionForm(false); onRefreshLiens(); }}
+        onSaved={() => {
+          showSetupReductionForm(false);
+          onRefreshLiens();
+        }}
       />
       <NoRecoveryForm
         open={isNoRecoveryOpen}
@@ -3416,7 +3675,10 @@ function ServicingTab({
         liensLoadedAt={liensLoadedAt}
         onRefreshLiens={onRefreshLiens}
         isLiensFetching={isLiensFetching}
-        onSaved={() => { setIsNoRecoveryOpen(false); onRefreshLiens(); }}
+        onSaved={() => {
+          setIsNoRecoveryOpen(false);
+          onRefreshLiens();
+        }}
       />
       <AddPaymentForm
         open={isAddPaymentOpen}
@@ -3426,7 +3688,10 @@ function ServicingTab({
         liensLoadedAt={liensLoadedAt}
         onRefreshLiens={onRefreshLiens}
         isLiensFetching={isLiensFetching}
-        onSaved={() => { setIsAddPaymentOpen(false); onRefreshPayments(); }}
+        onSaved={() => {
+          setIsAddPaymentOpen(false);
+          onRefreshPayments();
+        }}
       />
       {/* <LienSettlementForm
         open={isLienSettlementOpen}

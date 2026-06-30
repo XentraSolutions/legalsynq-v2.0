@@ -2,16 +2,19 @@ import { apiClient } from "@/lib/api-client";
 import {
   AccidentTypeResponse,
   ContactsByIdResponse,
+  DocumentTypeResponse,
   LawFirmListResponse,
   LookupGenericResponse,
   LookupResponse,
   MedicalProcedureCodesResponse,
   MedicalProcedureCostsResponse,
+  MedicalProvidersResponse,
   TaskStatusResponse,
   UserListResponse,
   type LookupData,
 } from "./lookup.types";
 import { CaseStatusResponse } from "../cases/cases.types";
+import { ApiResponse } from "@/types";
 
 const BASE = "/lien/lookup";
 
@@ -26,13 +29,13 @@ function toQs(params: Record<string, unknown>): string {
 
 export const lookupApi = {
   getDocumentType() {
-    return apiClient.get<LookupData[]>(`${BASE}/document/type`);
+    return apiClient.get<DocumentTypeResponse[]>(`${BASE}/document/type`);
   },
   getTaskStatus() {
     return apiClient.get<TaskStatusResponse>(`${BASE}/task/status`);
   },
   getMedicalProcedureCodes() {
-    return apiClient.get<MedicalProcedureCodesResponse[]>(
+    return apiClient.get<ApiResponse<MedicalProcedureCodesResponse[]>>(
       `${BASE}/medical/procedure/codes`,
     );
   },
@@ -76,7 +79,7 @@ export const lookupApi = {
   },
 
   getLiensStatus() {
-    return apiClient.get<LookupData[]>(`${BASE}/liens/status`);
+    return apiClient.get<LookupGenericResponse[]>(`${BASE}/liens/status`);
   },
 
   getFundingCompany() {
@@ -91,8 +94,18 @@ export const lookupApi = {
     );
   },
 
-  getMedicalProviders() {
+  getCaseManagersByLawfirm(id: string) {
+    return apiClient.get<LookupGenericResponse[]>(`${BASE}/casemanager/${id}`);
+  },
+
+  getLawfirmRoles() {
     return apiClient.get<LookupGenericResponse[]>(
+      `${BASE}/contact/lawfirm/role`,
+    );
+  },
+
+  getMedicalProviders() {
+    return apiClient.get<MedicalProvidersResponse[]>(
       `${BASE}/contact/medical-provider`,
     );
   },

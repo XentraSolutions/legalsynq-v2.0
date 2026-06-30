@@ -7,6 +7,7 @@ import {
   CreateMedicalCodeLiensDto,
   CreateMedicalFacilityDto,
   CreateMedicalLiensDto,
+  CreateMedicalPaymentDto,
 } from "@/lib/cases/cases.types";
 import { casesService } from "@/lib/cases";
 import { useLienStore } from "@/stores/lien-store";
@@ -14,12 +15,12 @@ import { ApiError } from "@/lib/api-client";
 import MedicalFacilityProviderInfo from "../../forms/add-medical-lien/medical-facility-provider-info";
 import MedicalCodesDescription from "../../forms/add-medical-lien/medical-codes-description";
 import UploadDocuments from "../../forms/add-medical-lien/medical-upload-document";
+import { dateConverter } from "@/lib/cases/cases.mapper";
 export interface MedicalLienComponentProps {
   caseId: string;
-  lienId?: string;
   caseInfo?: any;
   purchase?: any;
-  onClose?: () => void;
+  onClose: () => void;
 }
 
 const steps = [
@@ -96,14 +97,14 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
   const addToast = useLienStore((s) => s.addToast);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const { caseId, lienId, caseInfo, purchase, onClose } = props;
+  const { caseId, caseInfo, purchase, onClose } = props;
   const totalSteps = steps.length;
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [forms, setForms] = useState<any[]>(Array(totalSteps).fill(null));
   const [valid, setValid] = useState<Record<number, boolean>>({});
   const isLastStep = currentStep === steps.length;
-
+  const [liensId, setLiensId] = useState("");
   const notComplete = useMemo(() => !valid[currentStep], [valid, currentStep]);
 
   function closeModal() {
@@ -121,16 +122,16 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     if (currentStep > 0) {
       setCurrentStep((s) => s - 1);
     } else {
-      onClose();
+      onClose?.();
     }
   };
 
   const handleNextOrSubmit = async () => {
-    console.log(forms, currentStep);
+    let hasLiens;
     if (currentStep == 1) {
-      createMedicalLien(forms[0]);
+      hasLiens = await createMedicalLien(forms[0]);
     }
-
+    if (!hasLiens && currentStep == 1) return;
     if (currentStep == 4) {
       save();
     }
@@ -141,27 +142,28 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
   };
 
   const createMedicalLien = async (payload: CreateMedicalLiensDto) => {
-    console.log(payload);
     try {
       const request: CreateMedicalLiensDto = {
         id: null,
         caseId: caseId,
         status: payload.status,
-        purchaseDate: payload.purchaseDate,
-        initialServiceDate: payload.initialServiceDate,
-        endServiceDate: payload.endServiceDate,
+        purchaseDate: dateConverter(payload.purchaseDate),
+        initialServiceDate: dateConverter(payload.initialServiceDate),
+        endServiceDate: dateConverter(payload.endServiceDate),
         note: payload.note,
         isBulk: payload.isBulk == "true" ? "Y" : "N",
         isServicing: payload.isBulk == "true" ? "Y" : "N",
         fundingCompanyId: payload.fundingCompanyId,
       };
-      await casesService.createMedicalLiens(request);
+      const response = await casesService.createMedicalLiens(request);
+      setLiensId(response.data);
       addToast({
         type: "success",
         title: "Liens Created",
         description: `Liens has been created.`,
       });
       setErrors({});
+      return true;
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isConflict) {
@@ -180,16 +182,16 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
           description: "An unexpected error occurred",
         });
       }
+      return false;
     }
   };
 
   const createMedicalFacilityLiens = async (
     payload: CreateMedicalFacilityDto,
   ) => {
-    console.log(payload);
     try {
       const request: CreateMedicalFacilityDto = {
-        liensId: payload.liensId,
+        liensId: liensId,
         facilityId: payload.facilityId,
         facility: payload.facility,
         facilityContactId: payload.facilityContactId,
@@ -223,15 +225,16 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
   };
 
   const createMedicalCodeLiens = async (payload: CreateMedicalCodeLiensDto) => {
-    console.log(payload);
     try {
       const request: CreateMedicalCodeLiensDto = {
         id: payload.id,
-        liensId: payload.liensId,
+        liensId: liensId,
         code: payload.code,
-        medicareCost: payload.medicareCost,
-        billingAmount: payload.billingAmount,
-        purchaseAmount: payload.purchaseAmount,
+        medicareCost: parseFloat(payload.medicareCost).toFixed(2),
+        billingAmount: parseFloat(payload.billingAmount).toFixed(2),
+        purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
+        payee: payload.payee,
+        outboundCheckNumber: payload.outboundCheckNumber,
       };
       await casesService.createMedicalCodeLiens(request);
       addToast({
@@ -259,6 +262,81 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     //   setSubmitting(false);
     // }
   };
+  const saveMedicalPayee = async (payload: CreateMedicalPaymentDto) => {
+    try {
+      if (!liensId) return;
+
+      const request: CreateMedicalPaymentDto = {
+        id: null,
+        liensId: liensId,
+        payee: payload.payee,
+        outboundCheckNumber: payload.outboundCheckNumber,
+      };
+      await casesService.createMedicalPaymentLiens(request);
+      addToast({
+        type: "success",
+        title: "Payee Updated",
+        description: `Payee has been updated.`,
+      });
+      setErrors({});
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: err.message,
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    }
+    // finally {
+    //   setSubmitting(false);
+    // }
+  };
+
+  const uploadDocuments = async (payload: any) => {
+    if (payload?.length == 0 || payload == null) return;
+    console.log(payload);
+    return;
+    const formData = new FormData();
+    formData.append("File", payload.document ?? "");
+    formData.append("liensId", liensId);
+    formData.append("DocName", "Lien Document");
+    formData.append("DocDescription", "Legacy lien Document upload");
+    formData.append("DocFileTypeId", payload.documentType);
+
+    try {
+      await casesService.uploadDocuments(formData);
+      addToast({
+        type: "success",
+        title: "Document Uploaded",
+        description: `Document has been updated.`,
+      });
+      setErrors({});
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: err.message,
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    }
+    // finally {
+    //   setSubmitting(false);
+    // }
+  };
 
   function onFormValid(isValid: boolean, data?: any) {
     setValid((s) => ({ ...s, [currentStep]: !!isValid }));
@@ -270,28 +348,38 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
   }
 
   async function save() {
-    if (notComplete) return;
     startLoading();
     try {
       // Implement save logic here (API call)
       Promise.allSettled([
         await createMedicalFacilityLiens(forms[1]),
-        await createMedicalCodeLiens(forms[2]),
-        await createMedicalCodeLiens(forms[3]),
+        forms[2]?.codeRows?.forEach(async (element: any) => {
+          await createMedicalCodeLiens({
+            payee: forms[2].payee,
+            outboundCheckNumber: forms[2].outboundCheckNumber,
+            ...element,
+            id: null,
+          });
+        }),
+        await saveMedicalPayee(forms[2]),
+        await uploadDocuments(forms[3]),
       ]);
+
       closeModal();
     } finally {
       stopLoading();
     }
   }
 
+  useEffect(() => {}, [liensId]);
+
   return (
     <div>
       <Modal
         open={true}
         onClose={onClose}
-        title="Create Report"
-        subtitle="Configure your report step by step"
+        title="Medical Lien Details"
+        subtitle=""
         size="lg"
         footer={
           <div className="flex justify-between w-full">
@@ -337,32 +425,32 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
             {currentStep === 1 && (
               <MedicalLienInfo
                 caseId={caseId}
-                lienId={lienId}
+                lienId={liensId}
                 data={forms[0]}
                 onFormValid={onFormValid}
               />
             )}
-            {currentStep === 2 && (
+            {currentStep === 2 && liensId && (
               <MedicalFacilityProviderInfo
                 caseId={caseId}
-                lienId={lienId}
+                lienId={liensId}
                 data={forms[1]}
                 onFormValid={onFormValid}
               />
             )}
-            {currentStep === 3 && (
+            {currentStep === 3 && liensId && (
               <MedicalCodesDescription
                 caseId={caseId}
-                lienId={lienId}
+                lienId={liensId}
                 data={forms[2]}
                 onFormValid={onFormValid}
               />
             )}
-            {currentStep === 4 && (
+            {currentStep === 4 && liensId && (
               <UploadDocuments
                 data={forms[3]}
                 caseId={caseId}
-                lienId={lienId}
+                lienId={liensId}
                 onFormValid={onFormValid}
               />
             )}

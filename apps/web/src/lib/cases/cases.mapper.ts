@@ -7,6 +7,8 @@ import type {
   PaginatedResultDto,
   PaginationMeta,
   UpdateCaseRequestDto,
+  CreateMedicalLiensResponse,
+  MedicalCodeLiensResponse,
 } from "./cases.types";
 
 const CASE_STATUS_LABELS: Record<string, string> = {
@@ -21,7 +23,7 @@ function safeString(val: string | null | undefined): string {
   return val ?? "";
 }
 
-function formatDateField(val: string | null | undefined): string {
+export function formatDateField(val: string | null | undefined): string {
   if (!val) return "";
   try {
     const d = new Date(val);
@@ -35,6 +37,27 @@ function formatDateField(val: string | null | undefined): string {
     return val;
   }
 }
+export const dateConverter = (dateData: string) => {
+  if (!dateData) return "";
+
+  const date = new Date(dateData);
+
+  // Format the date using the US locale to automatically get MM/DD/YYYY
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
+
+  const formattedDate = formatter.format(date);
+  return formattedDate;
+};
+
+export const dateConvertertoIso = (dateData: string) => {
+  if (!dateData) return "";
+  const d = new Date(dateData);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 export function mapCaseToListItem(dto: CaseResponseDto): CaseListItem {
   return {
@@ -78,6 +101,16 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     clientPhone: safeString(dto.clientPhone),
     clientEmail: safeString(dto.clientEmail),
     clientAddress: safeString(dto.clientAddress),
+    clientStreetAddress: safeString(dto.clientStreetAddress),
+    clientCity: safeString(dto.clientCity),
+    clientState: safeString(dto.clientState),
+    clientZipcode: safeString(dto.clientZipcode),
+    sex: safeString(dto.sex),
+    caseType: safeString(dto.caseType),
+    currentMedicalStatus: safeString(dto.currentMedicalStatus),
+    stateOfIncident: safeString(dto.stateOfIncident),
+    trackingFollowUpDate: safeString(dto.trackingFollowUpDate),
+    leadId: safeString(dto.leadId),
     insuranceCarrier: safeString(dto.insuranceCarrier),
     policyNumber: safeString(dto.policyNumber),
     claimNumber: safeString(dto.claimNumber),
@@ -118,11 +151,11 @@ export function mapDtoToUpdateRequest(
     insuranceCarrier: dto.insuranceCarrier ?? undefined,
     policyNumber: dto.policyNumber ?? undefined,
     claimNumber: dto.claimNumber ?? undefined,
-    description: dto.description ?? undefined,
-    notes: dto.notes ?? undefined,
+    description: dto.description ?? null,
+    notes: dto.notes ?? null,
     status: dto.status,
-    demandAmount: dto.demandAmount ?? undefined,
-    settlementAmount: dto.settlementAmount ?? undefined,
+    demandAmount: dto.demandAmount ?? null,
+    settlementAmount: dto.settlementAmount ?? null,
   };
 }
 
@@ -134,5 +167,40 @@ export function mapPagination<T>(
     pageSize: result.pageSize,
     totalCount: result.totalCount,
     totalPages: Math.ceil(result.totalCount / Math.max(result.pageSize, 1)),
+  };
+}
+
+export function mapMedicalInfo(
+  result: CreateMedicalLiensResponse,
+): CreateMedicalLiensResponse {
+  return {
+    id: result.id,
+    caseId: result.caseId,
+    status: result.status,
+    purchaseDate: dateConvertertoIso(result.purchaseDate),
+    initialServiceDate: dateConvertertoIso(result.initialServiceDate),
+    endServiceDate: result.endServiceDate
+      ? dateConvertertoIso(result.endServiceDate)
+      : "",
+    note: result.note,
+    isBulk: result.isBulk == "Yes" ? "true" : "false",
+    isServicing: result.isBulk == "Yes" ? "true" : "false",
+    fundingCompany: result.fundingCompany,
+    fundingCompanyId: result.fundingCompanyId,
+  };
+}
+
+export function mapMedicalCodes(result: MedicalCodeLiensResponse[]): {
+  codeRows: MedicalCodeLiensResponse;
+} {
+  return {
+    codeRows: result.map((r) => {
+      return {
+        ...r,
+        billingAmount: +r.billingAmount,
+        medicareCost: +r.medicareCost,
+        purchaseAmount: +r.purchaseAmount,
+      };
+    }),
   };
 }

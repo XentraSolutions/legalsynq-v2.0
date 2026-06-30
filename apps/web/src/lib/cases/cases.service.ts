@@ -7,6 +7,8 @@ import {
   mapLienToListItem,
   mapPagination,
   mapDtoToUpdateRequest,
+  mapMedicalInfo,
+  mapMedicalCodes,
 } from "./cases.mapper";
 import type {
   CasesQuery,
@@ -30,6 +32,7 @@ import type {
   CaseLiensFilters,
   UpdateCasePersonalRequestDto,
   UpdateCaseDetailsRequestDto,
+  MedicalCodeLiensResponse,
 } from "./cases.types";
 
 export const casesService = {
@@ -59,18 +62,14 @@ export const casesService = {
   },
 
   async updateCasePersonal(
-    caseId: string,
     request: UpdateCasePersonalRequestDto,
   ): Promise<CaseDetail> {
-    const { data } = await casesApi.updatePersonal(caseId, request);
+    const { data } = await casesApi.updatePersonal(request);
     return mapCaseToDetail(data);
   },
 
-  async updateCase(
-    caseId: string,
-    request: UpdateCaseRequestDto,
-  ): Promise<CaseDetail> {
-    const { data } = await casesApi.update(caseId, request);
+  async updateCase(request: UpdateCaseRequestDto): Promise<CaseDetail> {
+    const { data } = await casesApi.updateCase(request);
     return mapCaseToDetail(data);
   },
 
@@ -99,7 +98,7 @@ export const casesService = {
 
   async getCaseUpdates(caseId: string): Promise<any> {
     const { data } = await casesApi.getCaseUpdates({
-      CaseId: caseId,
+      caseId: caseId,
       page: 1,
       limit: 10,
     });
@@ -179,8 +178,13 @@ export const casesService = {
 
   async updateMedicalCodeLiens(
     request: CreateMedicalCodeLiensDto,
-  ): Promise<any> {
+  ): Promise<ApiResponse> {
     const { data } = await casesApi.updateMedicalCodeLiens(request);
+    return data;
+  },
+
+  async deleteMedicalCodeLiens(id: string): Promise<ApiResponse> {
+    const { data } = await casesApi.deleteMedicalCodeLiens(id);
     return data;
   },
 
@@ -191,7 +195,7 @@ export const casesService = {
 
   async getMedicalInfo(lienId: string): Promise<any> {
     const { data } = await casesApi.getMedicalInfo(lienId);
-    return data;
+    return { data: mapMedicalInfo(data.data) };
   },
 
   async getMedicalFacility(lienId: string): Promise<any> {
@@ -199,9 +203,11 @@ export const casesService = {
     return data;
   },
 
-  async getMedicalCodes(lienId: string): Promise<any> {
+  async getMedicalCodes(
+    lienId: string,
+  ): Promise<{ data: { codeRows: MedicalCodeLiensResponse } }> {
     const { data } = await casesApi.getMedicalCode(lienId);
-    return data;
+    return { data: mapMedicalCodes(data.data) };
   },
 
   async getMedicalDocument(lienId: string): Promise<any> {
@@ -217,5 +223,15 @@ export const casesService = {
   async uploadDocuments(request: any): Promise<any> {
     const { data } = await casesApi.uploadDocument(request);
     return mapCaseToDetail(data);
+  },
+
+  async loadDocuments(request: any): Promise<any> {
+    const { data } = await casesApi.listDocumentsByCase(request);
+    return data;
+  },
+
+  async loadLiensDocuments(liensId: string): Promise<any> {
+    const { data } = await casesApi.listDocumentsByLiens(liensId);
+    return data;
   },
 };

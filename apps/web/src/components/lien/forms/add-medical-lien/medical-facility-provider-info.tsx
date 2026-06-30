@@ -31,9 +31,10 @@ type DropdownData = {
 export default function MedicalFacilityProviderInfo(
   props: MedicalFacilityProviderInfoProps,
 ) {
-  const { data = {}, onFormValid, openAddFundingCompanyModal } = props;
-
-  const [form, setForm] = useState(data ?? { ...INITIAL_FORM });
+  const { data = {}, lienId, onFormValid, openAddFundingCompanyModal } = props;
+  const [form, setForm] = useState(
+    data ? { ...data, lienId: lienId } : { ...INITIAL_FORM, lienId: lienId },
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [facilityContactList, setFacilityContactList] = useState<any[]>([]);
@@ -42,15 +43,16 @@ export default function MedicalFacilityProviderInfo(
   const [providerList, setProviderList] =
     useState<Array<Record<string, string>>>();
   const [showCreate, setShowCreate] = useState<boolean>(false);
+  const [showCreateContact, setShowCreateContact] = useState<boolean>(false);
 
   useEffect(() => {
     loadFacilities();
     loadMedicalProviders();
 
-    if (form.facility) {
+    if (form.facilityId) {
       loadContactPersons();
     }
-  }, [form.facility]);
+  }, [form.facilityId]);
 
   useEffect(() => {
     validateForm();
@@ -69,7 +71,15 @@ export default function MedicalFacilityProviderInfo(
           label: `${c.firstName} ${c.lastName}`,
         };
       });
-      console.log(list);
+      if (form.facilityContactId) {
+        const currentFacilityContact = list.find(
+          (f) => f.id == form.facilityContactId,
+        );
+        setForm((prev) => ({
+          ...prev,
+          facilityContact: currentFacilityContact?.label,
+        }));
+      }
       setFacilityContactList(list ?? []);
     } catch (e) {
       setFacilityContactList([]);
@@ -82,6 +92,11 @@ export default function MedicalFacilityProviderInfo(
       const list = facilityRes.items.map((c) => {
         return { key: c.id, value: c.id, label: c.name };
       });
+
+      if (form.facilityId) {
+        const currentFacility = list.find((f) => f.key == form.facilityId);
+        setForm((prev) => ({ ...prev, facility: currentFacility?.label }));
+      }
       setFacilityList(list ?? []);
     } catch (e) {
       setFacilityList([]);
@@ -141,6 +156,7 @@ export default function MedicalFacilityProviderInfo(
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 mx-2">
           <Field
             label="Facility Name"
+            required
             value={form.facility}
             options={facilityList}
             onChange={(v) => {
@@ -180,7 +196,7 @@ export default function MedicalFacilityProviderInfo(
             <button
               type="button"
               onClick={() => {
-                setShowCreate(!showCreate);
+                setShowCreateContact(!showCreate);
               }}
               className="inline-flex items-center justify-center rounded-lg px-2 py-2 text-sm font-semibold text-primary disabled:cursor-not-allowed disabled:bg-gray-300"
             >
@@ -228,15 +244,15 @@ export default function MedicalFacilityProviderInfo(
           }}
         />
       )}
-      {showCreate && (
+      {showCreateContact && (
         <CreateMedicalFacilityContactPerson
-          open={showCreate}
+          open={showCreateContact}
           data={facilityList}
-          onClose={() => setShowCreate(false)}
+          onClose={() => setShowCreateContact(false)}
           onCreated={() => {
             loadFacilities();
             loadContactPersons();
-            setShowCreate(false);
+            setShowCreateContact(false);
           }}
         />
       )}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 export interface UploadDocumentComponentProps {
-  onUploaded: (e: any) => void;
+  onUploaded: (e: File | null) => void;
 }
 
 export function UploadDocumentComponent({
@@ -44,8 +44,9 @@ export function UploadDocumentComponent({
           ref={fileInputRef}
           type="file"
           className="hidden"
-          accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
+          accept=".pdf,.jpg,.png,.docx,.xlsx,.xls,.csv"
           onChange={(e) => handleFileSelect(e.target.files)}
+          multiple
         />
         <div
           className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${dragOver ? "border-primary bg-primary/5" : file ? "border-green-300 bg-green-50" : "border-gray-200"}`}
@@ -90,7 +91,7 @@ export function UploadDocumentComponent({
                 Click or drag file to upload
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                PDF, DOCX, XLSX, Images (max 10MB)
+                ".pdf,.jpg,.png,.docx,.xlsx,.xls,.csv" (max 10MB)
               </p>
             </>
           )}

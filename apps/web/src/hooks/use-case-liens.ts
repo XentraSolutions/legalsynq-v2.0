@@ -1,10 +1,15 @@
 "use client";
 
-import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { liensService, type LienListItem } from "@/lib/liens";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { LiensQuery, liensService, type LienListItem } from "@/lib/liens";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { settlementService } from "@/lib/settlement";
 import type { LegacyCasePayment } from "@/lib/settlement/settlement.types";
+import { lookupService } from "@/lib/lookup";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -25,10 +30,11 @@ export function useLienPaymentsByCase(caseId: string) {
 
 async function fetchCaseLiens(
   caseId: string,
+  query: LiensQuery,
   queryClient: QueryClient,
 ): Promise<CaseLienRow[]> {
-  const [liensResult, payments, reductions] = await Promise.all([
-    liensService.getLiens({ caseId }).catch(() => ({
+  const [liensResult, payments, reductions, facilities] = await Promise.all([
+    liensService.getLiens({ caseId, ...query }).catch(() => ({
       items: [] as LienListItem[],
       pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
     })),
@@ -41,6 +47,7 @@ async function fetchCaseLiens(
           .catch(() => [] as LegacyCasePayment[]),
     }),
     settlementService.getLienReductionsByCase(caseId).catch(() => []),
+    lookupService.getMedicalFacility().catch(() => []),
   ]);
 
   // Sum all payments per lienId (amount may come back as a string from the legacy endpoint)
@@ -54,12 +61,18 @@ async function fetchCaseLiens(
   const latestReductionByLien = new Map<string, number>();
   const sortedReductions = [...reductions].sort((a, b) => {
     const dateDiff = b.reductionDate.localeCompare(a.reductionDate);
-    return dateDiff !== 0 ? dateDiff : b.createdAtUtc.localeCompare(a.createdAtUtc);
+    return dateDiff !== 0
+      ? dateDiff
+      : b.createdAtUtc.localeCompare(a.createdAtUtc);
   });
   for (const r of sortedReductions) {
     if (!latestReductionByLien.has(r.lienId)) {
       latestReductionByLien.set(r.lienId, r.amount);
     }
+  }
+  function facilityName(facilityId: string | null) {
+    if (!facilityId) return "";
+    return facilities.items.find((f) => f.id == facilityId)?.name;
   }
 
   return liensResult.items.map((lien) => {
@@ -72,9 +85,12 @@ async function fetchCaseLiens(
     return {
       ...lien,
       facility: ext.facility ?? "(Blank)",
+      facilityName: facilityName(ext.facilityId ?? "") ?? "(Blank)",
+      serviceDate: ext.initialServiceDate,
+      purchaseDateDate: ext.purchaseDate,
       originalAmount,
       reductionAmount,
-      purchaseAmount: ext.purchaseAmount ?? null,
+      purchaseAmount: ext.purchaseAmount ?? 0,
       paymentAmount,
       balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
       closedAtUtc: ext.closedAtUtc ?? null,
@@ -82,11 +98,11 @@ async function fetchCaseLiens(
   });
 }
 
-export function useCaseLiens(caseId: string) {
+export function useCaseLiens(caseId: string, query: LiensQuery) {
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["case-liens", caseId],
-    queryFn: () => fetchCaseLiens(caseId, queryClient),
+    queryFn: () => fetchCaseLiens(caseId, query, queryClient),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });

@@ -67,7 +67,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
       label: d.name,
     };
   });
-  const [documents, setDocuments] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<any[]>(data ?? []);
   const [files, setFiles] = useState<any[]>([]);
 
   useEffect(() => {}, []);
@@ -101,6 +101,16 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
       setFiles(e);
     }
   }, []);
+
+  function download(file: any) {
+    window.open(file.url || URL.createObjectURL(file as any), "_blank");
+  }
+
+  function deleteFile(file: any) {
+    console.log(file);
+    return "";
+  }
+
   useEffect(() => {
     if (onFormValid && documents.length > 0)
       onFormValid(true, { ...form, document: files });
@@ -127,8 +137,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         />
         <div className="mt-4">
           <UploadDocumentComponent
-            onUploaded={(e) => {
-              console.log(e);
+            onUploaded={(e: File | null) => {
               setForm((prev) => ({ ...prev, document: e }));
               listDocument(e);
             }}
@@ -177,9 +186,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                     >
                       <td className="pr-3 py-2.5">
                         <div className="flex items-center gap-2">
-                          <i
-                            className={`${getFileIcon(doc.name)} text-sm text-gray-400`}
-                          />
+                          <i className={`ri-file-line text-sm text-gray-400`} />
                           <span className="text-sm text-gray-700 truncate max-w-[200px]">
                             {doc.name}
                           </span>
@@ -198,12 +205,14 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                           <button
                             className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
                             title="Download"
+                            onClick={() => download(doc)}
                           >
                             <i className="ri-download-2-line text-sm" />
                           </button>
                           <button
                             className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors"
                             title="Delete"
+                            onClick={() => deleteFile(doc)}
                           >
                             <i className="ri-delete-bin-6-line text-sm" />
                           </button>

@@ -71,7 +71,6 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
   function validateForm() {
     // const valid =
     //   !!form.status && !!form.purchaseDate && !!form.initialServiceDate;
-    console.log(form);
     onFormValid?.(true, form);
   }
 
@@ -89,6 +88,7 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           <Field
+            required
             label="Lien Status"
             value={form.status}
             options={statusList}
@@ -100,6 +100,7 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
 
           <Field
             type="date"
+            required
             label="Purchase Date"
             value={form.purchaseDate}
             onChange={(v) => setForm({ ...form, purchaseDate: v.toString() })}
@@ -108,6 +109,7 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           <Field
             type="date"
+            required
             label="Initial Service Date"
             value={form.initialServiceDate}
             onChange={(v) =>
