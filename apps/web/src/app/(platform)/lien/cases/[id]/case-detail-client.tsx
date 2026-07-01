@@ -65,6 +65,7 @@ import UploadDocuments from "@/components/lien/forms/add-medical-lien/medical-up
 import Field from "@/components/lien/field";
 import { dateConverter, dateConvertertoIso } from "@/lib/cases/cases.mapper";
 import { PaginationMeta } from "@/lib/billofsale";
+import { servicingService } from "@/lib/servicing";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -3052,6 +3053,7 @@ function ServicingTab({
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
 }) {
+  const addToast = useLienStore((s) => s.addToast);
   const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [isNoRecoveryOpen, setIsNoRecoveryOpen] = useState(false);
@@ -3070,6 +3072,16 @@ function ServicingTab({
   const [currentLawyer, setCurrentLawyer] = useState("Robert Chen");
   const [currentCaseManager, setCurrentCaseManager] =
     useState("Sarah Mitchell");
+
+  const [lawyerList, setLawyerList] = useState<
+    { key: string; value: string; label: string }[]
+  >([]);
+  const [caseManagerList, setCaseManagerList] = useState<
+    { key: string; value: string; label: string }[]
+  >([]);
+  const [lawFirmList, setLawFirmList] = useState<
+    { key: string; value: string; label: string }[]
+  >([]);
   const saveDisabled = true;
 
   let openLiens = liens.filter((i) => i.closedAtUtc === null);
@@ -3197,6 +3209,65 @@ function ServicingTab({
     },
   ];
 
+  const caseStatusList = lookup?.CaseStatus.map((s) => {
+    return { key: s.id, value: s.code, label: s.name };
+  });
+  const fetchDataLawfirms = useCallback(async () => {
+    const lawfirms = await lookupService.getLawfirm();
+    setLawFirmList(
+      lawfirms.items.map((lf) => ({
+        key: lf.id,
+        value: lf.id,
+        label: lf.displayName,
+      })) ?? [],
+    );
+  }, []);
+  const fetchDataLawyers = useCallback(async () => {
+    const lawyers = await contactsService.getContacts({
+      ContactType: "Lawyer",
+    });
+    setLawyerList(
+      lawyers.items.map((lf) => ({
+        key: lf.id,
+        value: lf.id,
+        label: lf.displayName,
+      })) ?? [],
+    );
+  }, []);
+
+  const fetchDataCaseManagers = useCallback(async () => {
+    const caseManagers = await contactsService.getContacts({
+      ContactType: "CaseManager",
+    });
+    setCaseManagerList(
+      caseManagers.items.map((lf) => ({
+        key: lf.id,
+        value: lf.id,
+        label: lf.displayName,
+      })) ?? [],
+    );
+  }, []);
+
+  const handleSaveServicingDetails = async () => {
+    const payload = {
+      caseId: caseDetail.id,
+      caseStatusId: caseStatus,
+      isUCCFiled: switchedLawFirm ? "Yes" : "No",
+      switchedDate: switchedDate || new Date().toISOString(),
+      lawFirmId: currentLawFirm,
+      attorney: currentLawyer,
+      caseManager: currentCaseManager,
+    };
+
+    await servicingService.updateDetails(payload);
+    addToast({
+      type: "success",
+      title: "Servicing Details Saved",
+      description: "Your servicing details were saved.",
+    });
+    setSwitchedLawFirm(false);
+  };
+
   const leftContent = (
     <div className="space-y-4">
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -3219,12 +3290,12 @@ function ServicingTab({
         </div>
       </div>
 
-      <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
+      {/* <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
         <p className="text-xs text-amber-700">
           <i className="ri-information-line mr-1" />
           Sample data shown for UI review. Real data will load from the API.
         </p>
-      </div>
+      </div> */}
 
       {subTab === "servicing-details" && (
         <CollapsibleSection title="Servicing Details" icon="ri-settings-3-line">
@@ -3233,20 +3304,13 @@ function ServicingTab({
               <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
                 Case Status
               </label>
-              <div className="relative">
-                <select
-                  value={caseStatus}
-                  onChange={(e) => setCaseStatus(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
-                >
-                  {lookup?.CaseStatus.map((s) => (
-                    <option key={s.id} value={s.code}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
+              <Field
+                label=""
+                value={caseStatus}
+                type="select"
+                options={caseStatusList}
+                onChange={(e) => setCaseStatus(e.toString())}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -3281,11 +3345,16 @@ function ServicingTab({
               <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
                 Current Law Firm
               </label>
-              <input
-                type="text"
+              <Field
+                label=""
+                disabled={!switchedLawFirm}
                 value={currentLawFirm}
-                onChange={(e) => setCurrentLawFirm(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                type="select"
+                options={lawFirmList}
+                onChange={(e) => setCurrentLawFirm(e.toString())}
+                onClick={() => {
+                  fetchDataLawfirms();
+                }}
               />
             </div>
 
@@ -3294,44 +3363,45 @@ function ServicingTab({
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
                   Current Lawyer
                 </label>
-                <input
-                  type="text"
+                <Field
+                  label=""
+                  disabled={!switchedLawFirm}
                   value={currentLawyer}
-                  onChange={(e) => setCurrentLawyer(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                  type="select"
+                  options={lawyerList}
+                  onChange={(e) => setCurrentLawyer(e.toString())}
+                  onClick={() => {
+                    fetchDataLawyers();
+                  }}
                 />
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
                   Current Case Manager
                 </label>
-                <input
-                  type="text"
+                <Field
+                  label=""
+                  disabled={!switchedLawFirm}
                   value={currentCaseManager}
-                  onChange={(e) => setCurrentCaseManager(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                  type="select"
+                  options={caseManagerList}
+                  onChange={(e) => setCurrentCaseManager(e.toString())}
+                  onClick={() => {
+                    fetchDataCaseManagers();
+                  }}
                 />
               </div>
             </div>
 
             <div className="pt-2 flex items-center gap-3">
               <button
-                disabled={saveDisabled}
+                disabled={!switchedLawFirm}
+                onClick={() => handleSaveServicingDetails()}
                 className="px-6 py-2.5 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={
-                  saveDisabled
-                    ? "Save is not yet connected to the API"
-                    : undefined
-                }
               >
                 <i className="ri-save-line text-sm" />
                 Save
               </button>
-              {saveDisabled && (
-                <span className="text-xs text-gray-400 italic">
-                  Not yet connected to API
-                </span>
-              )}
             </div>
           </div>
         </CollapsibleSection>

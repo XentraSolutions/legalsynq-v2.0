@@ -4,6 +4,8 @@ export default function Field({
   label,
   value,
   onChange,
+  onFocus,
+  onClick,
   error,
   placeholder,
   type = "text",
@@ -14,10 +16,13 @@ export default function Field({
   multiple,
   isChecked,
   children,
+  disabled,
 }: {
   label: string;
   value: string | string[] | null;
   onChange: (v: string | string[] | boolean) => void;
+  onFocus?: () => void;
+  onClick?: () => void;
   error?: string;
   placeholder?: string;
   type?: string;
@@ -28,6 +33,7 @@ export default function Field({
   multiple?: boolean;
   isChecked?: boolean;
   children?: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <div
@@ -45,15 +51,20 @@ export default function Field({
         <textarea
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          onFocus={onFocus}
+          onClick={onClick}
           placeholder={placeholder}
           className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
           children={children}
+          disabled={disabled}
         />
       ) : type === "select" ? (
         <SelectField
           label={label}
           value={value ?? ""}
           onChange={onChange}
+          onFocus={onFocus}
+          onClick={onClick}
           placeholder={placeholder}
           error={error}
           options={options}
@@ -61,6 +72,7 @@ export default function Field({
           optionLabelKey={optionLabelKey}
           multiple={multiple}
           children={children}
+          disabled={disabled}
         />
       ) : type === "checkbox" ? (
         <input
@@ -71,13 +83,17 @@ export default function Field({
           placeholder={placeholder}
           className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary mb-1"
           children={children}
+          disabled={disabled}
         />
       ) : (
         <input
           type={type}
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          onFocus={onFocus}
+          onClick={onClick}
           placeholder={placeholder}
+          disabled={disabled}
           className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
         />
       )}
@@ -90,6 +106,8 @@ export default function Field({
 function SelectField({
   value,
   onChange,
+  onFocus,
+  onClick,
   placeholder,
   error,
   options,
@@ -97,10 +115,13 @@ function SelectField({
   optionLabelKey = "label",
   multiple,
   children,
+  disabled,
 }: {
   label: string;
   value: string | string[] | null;
   onChange: (v: string | string[]) => void;
+  onFocus?: () => void;
+  onClick?: () => void;
   placeholder?: string;
   error?: string;
   options?: Array<{ key: string; value: string; label: string }>;
@@ -108,6 +129,7 @@ function SelectField({
   optionLabelKey?: string;
   multiple?: boolean;
   children?: React.ReactNode;
+  disabled?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -177,7 +199,11 @@ function SelectField({
     <div className="relative overflow-visible" ref={containerRef}>
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          onClick?.();
+          setOpen((current) => !current);
+        }}
+        disabled={disabled}
         className={`w-full text-left border rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
       >
         <div className="flex items-center justify-between gap-2">

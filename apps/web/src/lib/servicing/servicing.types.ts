@@ -45,6 +45,15 @@ export interface UpdateServicingItemRequestDto {
   notes?: string;
   resolution?: string;
 }
+export interface UpdateServicingDetailsRequestDto {
+  caseId: string;
+  caseStatusId: string;
+  isUCCFiled: string;
+  switchedDate: string;
+  lawFirmId?: string;
+  attorney?: string;
+  caseManager?: string;
+}
 
 export interface UpdateServicingStatusRequestDto {
   status: string;
