@@ -18,6 +18,12 @@ const INITIAL_FORM = {
   documentType: "",
 };
 
+type UploadForm = {
+  documentType: string;
+  document?: File | File[] | null;
+  [key: string]: any;
+};
+
 const TEMP_CASE_DOCUMENTS = [
   {
     id: "doc-1",
@@ -57,7 +63,11 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   const { data = {}, onFormValid, openAddFundingCompanyModal } = props;
   const { lookup } = useSessionContext();
 
-  const [form, setForm] = useState(data ?? { ...INITIAL_FORM });
+  const initialForm: UploadForm = {
+    ...INITIAL_FORM,
+    ...(data as Partial<UploadForm>),
+  };
+  const [form, setForm] = useState<UploadForm>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const documentTypes = lookup?.DocumentCategory.map((d) => {
@@ -68,7 +78,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     };
   });
   const [documents, setDocuments] = useState<any[]>(data ?? []);
-  const [files, setFiles] = useState<any[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
 
   useEffect(() => {}, []);
 
@@ -82,25 +92,23 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     return "ri-file-text-line";
   }
 
-  const listDocument = useCallback((e) => {
-    console.log(e);
-
-    if (e) {
-      const newDoc = [
-        {
+  const listDocument = useCallback(
+    (e: File | File[] | null) => {
+      if (e) {
+        const filesArray = Array.isArray(e) ? e : [e];
+        const newDoc = filesArray.map((f) => ({
           id: new Date().toISOString(),
-          name: e.name,
+          name: f.name,
           documentType: form.documentType,
-          size: e.size,
-        },
-      ];
-      setDocuments((prev) => [...prev, ...newDoc]);
-      console.log(documents, newDoc, {
-        newDoc,
-      });
-      setFiles(e);
-    }
-  }, []);
+          size: f.size,
+          lastUpdate: new Date().toLocaleDateString(),
+        }));
+        setDocuments((prev) => [...prev, ...newDoc]);
+        setFiles((prev) => [...prev, ...filesArray]);
+      }
+    },
+    [form],
+  );
 
   function download(file: any) {
     window.open(file.url || URL.createObjectURL(file as any), "_blank");
@@ -179,47 +187,50 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {documents?.map((doc) => (
-                    <tr
-                      key={doc.id}
-                      className="hover:bg-gray-50/50 transition-colors"
-                    >
-                      <td className="pr-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <i className={`ri-file-line text-sm text-gray-400`} />
-                          <span className="text-sm text-gray-700 truncate max-w-[200px]">
-                            {doc.name}
+                  {documents.length > 0 &&
+                    documents?.map((doc) => (
+                      <tr
+                        key={doc.id}
+                        className="hover:bg-gray-50/50 transition-colors"
+                      >
+                        <td className="pr-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <i
+                              className={`ri-file-line text-sm text-gray-400`}
+                            />
+                            <span className="text-sm text-gray-700 truncate max-w-[200px]">
+                              {doc.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
+                            {doc.documentType}
                           </span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
-                          {doc.documentType}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                        {doc.lastUpdate}
-                      </td>
-                      <td className="pl-3 py-2.5 text-center">
-                        <div className="inline-flex items-center gap-1">
-                          <button
-                            className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
-                            title="Download"
-                            onClick={() => download(doc)}
-                          >
-                            <i className="ri-download-2-line text-sm" />
-                          </button>
-                          <button
-                            className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors"
-                            title="Delete"
-                            onClick={() => deleteFile(doc)}
-                          >
-                            <i className="ri-delete-bin-6-line text-sm" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                          {doc.lastUpdate}
+                        </td>
+                        <td className="pl-3 py-2.5 text-center">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
+                              title="Download"
+                              onClick={() => download(doc)}
+                            >
+                              <i className="ri-download-2-line text-sm" />
+                            </button>
+                            <button
+                              className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors"
+                              title="Delete"
+                              onClick={() => deleteFile(doc)}
+                            >
+                              <i className="ri-delete-bin-6-line text-sm" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
