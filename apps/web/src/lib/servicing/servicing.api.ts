@@ -47,7 +47,7 @@ export const servicingApi = {
 
   updateDetails(request: UpdateServicingDetailsRequestDto) {
     return apiClient.patch<ServicingItemResponseDto>(
-      `/lien/api/liens/service/update-details`,
+      `/lien/service/update-details`,
       request,
     );
   },
