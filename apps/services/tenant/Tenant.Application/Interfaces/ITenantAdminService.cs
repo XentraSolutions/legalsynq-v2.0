@@ -49,6 +49,7 @@ public interface ITenantAdminService
     /// </summary>
     Task<AdminCreateTenantResponse> CreateTenantAsync(
         AdminCreateTenantRequest request,
+        Guid? createdByUserId,
         CancellationToken ct = default);
 
     /// <summary>

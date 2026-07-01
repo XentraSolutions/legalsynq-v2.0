@@ -1,8 +1,11 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using BuildingBlocks.Commerce;
+using BuildingBlocks.Exceptions;
 using Contracts.Commerce;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Tenant.Application.Configuration;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Application.Services;
@@ -44,6 +47,7 @@ public class TenantAdminServiceGetAdminDetailTests
             settingRepo          ?? new StubSettingRepository(),
             identityCompat       ?? new StubIdentityCompatAdapter(),
             identityProvisioning ?? new StubIdentityProvisioningAdapter(),
+            Options.Create(new PlatformRoutingOptions()),
             new StubCommerceLifecycleNotifier(),
             NullLogger<TenantAdminService>.Instance);
     }
@@ -82,6 +86,62 @@ public class TenantAdminServiceGetAdminDetailTests
         Assert.True(result.IsActive);
         Assert.Equal("acme",             result.Subdomain);
         Assert.Equal("support@acme.com", result.Email);
+    }
+
+    [Fact]
+    public async Task CreateTenantAsync_StoresCanonicalSubdomainRoutingMetadata()
+    {
+        var tenantRepo = new StubTenantRepository();
+        var provisioning = new StubIdentityProvisioningAdapter(new IdentityProvisioningResult(
+            Success: true,
+            AdminUserId: Guid.CreateVersion7().ToString(),
+            AdminEmail: "owner@acme.com",
+            TemporaryPassword: "Temp#1234",
+            ProvisioningStatus: "Provisioned",
+            Hostname: "ignored.identity.example",
+            Subdomain: "different-from-canonical",
+            Warnings: new List<string>(),
+            Errors: new List<string>()));
+
+        var svc = BuildService(
+            tenantRepo: tenantRepo,
+            identityProvisioning: provisioning);
+
+        var createdByUserId = Guid.CreateVersion7();
+        var result = await svc.CreateTenantAsync(new AdminCreateTenantRequest(
+            Name: "Acme Law Group",
+            Code: " Acme Law ",
+            AdminEmail: "owner@acme.com",
+            AdminFirstName: "Jane",
+            AdminLastName: "Smith"), createdByUserId);
+
+        Assert.NotNull(tenantRepo.LastAddedTenant);
+        var createdTenant = tenantRepo.LastAddedTenant!;
+        Assert.Equal("acme-law", createdTenant.Code);
+        Assert.Equal("acme-law", createdTenant.Subdomain);
+        Assert.Equal("acme-law.legalsynq.com", createdTenant.WorkspaceUrl);
+        Assert.Equal(createdByUserId, createdTenant.CreatedByUserId);
+        Assert.Equal(result.TenantKey, createdTenant.Code);
+        Assert.Equal(result.WorkspaceUrl, createdTenant.WorkspaceUrl);
+        Assert.Equal(result.Subdomain, createdTenant.Subdomain);
+        Assert.Equal(result.Hostname, createdTenant.WorkspaceUrl);
+        Assert.Equal(createdByUserId.ToString(), result.CreatedBy);
+    }
+
+    [Fact]
+    public async Task CreateTenantAsync_ThrowsConflict_WhenSubdomainAlreadyExists()
+    {
+        var tenantRepo = new StubTenantRepository(subdomainExists: true);
+        var svc = BuildService(tenantRepo: tenantRepo);
+
+        await Assert.ThrowsAsync<ConflictException>(() => svc.CreateTenantAsync(
+            new AdminCreateTenantRequest(
+                Name: "Acme Law Group",
+                Code: "acme",
+                AdminEmail: "owner@acme.com",
+                AdminFirstName: "Jane",
+                AdminLastName: "Smith"),
+            createdByUserId: Guid.CreateVersion7()));
     }
 
     [Fact]
@@ -584,7 +644,15 @@ public class TenantAdminServiceGetAdminDetailTests
     private sealed class StubTenantRepository : ITenantRepository
     {
         private readonly Domain.Tenant? _tenant;
-        public StubTenantRepository(Domain.Tenant? tenant = null) => _tenant = tenant;
+        private readonly bool _subdomainExists;
+
+        public StubTenantRepository(Domain.Tenant? tenant = null, bool subdomainExists = false)
+        {
+            _tenant = tenant;
+            _subdomainExists = subdomainExists;
+        }
+
+        public Domain.Tenant? LastAddedTenant { get; private set; }
 
         public Task<Domain.Tenant?> GetByIdAsync(Guid id, CancellationToken ct = default)
             => Task.FromResult(_tenant);
@@ -599,13 +667,16 @@ public class TenantAdminServiceGetAdminDetailTests
             => Task.FromResult(false);
 
         public Task<bool> ExistsBySubdomainAsync(string subdomain, Guid? excludeId, CancellationToken ct = default)
-            => Task.FromResult(false);
+            => Task.FromResult(_subdomainExists);
 
         public Task<(List<Domain.Tenant> Items, int Total)> ListAsync(int page, int pageSize, CancellationToken ct = default)
             => Task.FromResult((new List<Domain.Tenant>(), 0));
 
         public Task AddAsync(Domain.Tenant tenant, CancellationToken ct = default)
-            => Task.CompletedTask;
+        {
+            LastAddedTenant = tenant;
+            return Task.CompletedTask;
+        }
 
         public Task UpdateAsync(Domain.Tenant tenant, CancellationToken ct = default)
             => Task.CompletedTask;
@@ -763,11 +834,16 @@ public class TenantAdminServiceGetAdminDetailTests
 
     private sealed class StubIdentityProvisioningAdapter : IIdentityProvisioningAdapter
     {
-        public Task<IdentityProvisioningResult> ProvisionAsync(IdentityProvisioningRequest request, CancellationToken ct = default)
-            => Task.FromResult(new IdentityProvisioningResult(
+        private readonly IdentityProvisioningResult _provisionResult;
+
+        public StubIdentityProvisioningAdapter(IdentityProvisioningResult? provisionResult = null)
+            => _provisionResult = provisionResult ?? new IdentityProvisioningResult(
                 Success: false, AdminUserId: null, AdminEmail: null,
                 TemporaryPassword: null, ProvisioningStatus: null, Hostname: null,
-                Subdomain: null, Warnings: new List<string>(), Errors: new List<string>()));
+                Subdomain: null, Warnings: new List<string>(), Errors: new List<string>());
+
+        public Task<IdentityProvisioningResult> ProvisionAsync(IdentityProvisioningRequest request, CancellationToken ct = default)
+            => Task.FromResult(_provisionResult);
 
         public Task<ProvisioningRetryResult> RetryProvisioningAsync(Guid tenantId, CancellationToken ct = default)
             => Task.FromResult(new ProvisioningRetryResult(false, "Unknown", null, null, null));

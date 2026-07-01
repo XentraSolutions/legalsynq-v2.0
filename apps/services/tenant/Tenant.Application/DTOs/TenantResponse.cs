@@ -26,4 +26,6 @@ public record TenantResponse(
     // BLK-TS-02 — provisioning state
     string    ProvisioningStatus    = "Unknown",
     DateTime? ProvisionedAtUtc      = null,
-    string?   LastProvisioningError = null);
+    string?   LastProvisioningError = null,
+    string?   WorkspaceUrl          = null,
+    Guid?     CreatedByUserId       = null);

@@ -1,7 +1,9 @@
+using BuildingBlocks.Context;
 using BuildingBlocks.Commerce;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Tenant.Application.Configuration;
 using Tenant.Application.Metrics;
 using Tenant.Application.Interfaces;
 using Tenant.Application.Services;
@@ -35,6 +37,15 @@ public static class DependencyInjection
         // ── TENANT-B08: In-process memory cache (BCL; no new package dependency) ──
         services.AddMemoryCache();
         services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
+        services.Configure<PlatformRoutingOptions>(options =>
+        {
+            options.BaseDomain = NormalizeBaseDomain(
+                configuration["PLATFORM_BASE_DOMAIN"]
+                ?? configuration[$"{PlatformRoutingOptions.SectionName}:BaseDomain"]
+                ?? configuration["Platform:BaseDomain"]
+                ?? "legalsynq.com");
+        });
 
         // ── TENANT-B08: Runtime metrics singleton ─────────────────────────────
         services.AddSingleton<TenantRuntimeMetrics>();
@@ -97,4 +108,12 @@ public static class DependencyInjection
 
         return services;
     }
+
+    private static string NormalizeBaseDomain(string value) =>
+        value.Trim()
+            .ToLowerInvariant()
+            .Replace("https://", string.Empty, StringComparison.Ordinal)
+            .Replace("http://", string.Empty, StringComparison.Ordinal)
+            .Trim('/')
+            .Trim('.');
 }

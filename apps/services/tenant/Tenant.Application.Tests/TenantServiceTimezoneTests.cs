@@ -2,6 +2,8 @@ using BuildingBlocks.Commerce;
 using BuildingBlocks.Exceptions;
 using Contracts.Commerce;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Tenant.Application.Configuration;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Application.Services;
@@ -130,7 +132,12 @@ public class TenantServiceTimezoneTests
         BuildService(repo, new CapturingSettingRepository());
 
     private static TenantService BuildService(ITenantRepository repo, ISettingRepository settings) =>
-        new(repo, settings, new NoOpCommerceNotifier(), NullLogger<TenantService>.Instance);
+        new(
+            repo,
+            settings,
+            Options.Create(new PlatformRoutingOptions()),
+            new NoOpCommerceNotifier(),
+            NullLogger<TenantService>.Instance);
 
     // ── Stubs ─────────────────────────────────────────────────────────────────
 

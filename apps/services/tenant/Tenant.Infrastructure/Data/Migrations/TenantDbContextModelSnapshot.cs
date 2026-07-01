@@ -166,6 +166,9 @@ namespace Tenant.Infrastructure.Data.Migrations
                         .HasMaxLength(2)
                         .HasColumnType("varchar(2)");
 
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -241,6 +244,10 @@ namespace Tenant.Infrastructure.Data.Migrations
                     b.Property<string>("WebsiteUrl")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<string>("WorkspaceUrl")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
 
                     b.Property<Guid?>("OwnerUserId")
                         .HasColumnType("char(36)");

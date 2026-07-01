@@ -19,6 +19,8 @@ public record TenantAdminSummaryResponse(
     int     UserCount,
     int     OrgCount,
     string? Subdomain,
+    string? WorkspaceUrl,
+    Guid?   CreatedByUserId,
     DateTime CreatedAtUtc);
 
 /// <summary>
@@ -43,6 +45,8 @@ public record TenantAdminDetailResponse(
     int     LinkedOrgCount,
     string? Email,
     string? Subdomain,
+    string? WorkspaceUrl,
+    Guid?   CreatedByUserId,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     Guid?   LogoDocumentId,

@@ -9,7 +9,11 @@ export interface CreateTenantResult {
     tenantId:            string;
     displayName:         string;
     code:                string;
+    tenantKey:           string;
     subdomain?:          string;
+    workspaceUrl?:       string;
+    createdBy?:          string;
+    createdDate:         string;
     provisioningStatus?: string;
     hostname?:           string;
   };
@@ -46,7 +50,11 @@ export async function createTenantAction(data: {
         tenantId:            result.tenantId,
         displayName:         result.displayName,
         code:                result.code,
+        tenantKey:           result.tenantKey,
         subdomain:           result.subdomain,
+        workspaceUrl:        result.workspaceUrl,
+        createdBy:           result.createdBy,
+        createdDate:         result.createdDate,
         provisioningStatus:  result.provisioningStatus,
         hostname:            result.hostname,
       },

@@ -43,6 +43,9 @@ public class TenantConfiguration : IEntityTypeConfiguration<Domain.Tenant>
             .IsUnique()
             .HasFilter("`Subdomain` IS NOT NULL");
 
+        builder.Property(t => t.WorkspaceUrl)
+            .HasMaxLength(255);
+
         // ── BLK-TS-02: Provisioning state ────────────────────────────────────
 
         builder.Property(t => t.ProvisioningStatus)
@@ -106,6 +109,8 @@ public class TenantConfiguration : IEntityTypeConfiguration<Domain.Tenant>
 
         builder.HasIndex(t => t.OwnerUserId)
             .HasFilter("`OwnerUserId` IS NOT NULL");
+
+        builder.Property(t => t.CreatedByUserId);
 
         // ── Timestamps ────────────────────────────────────────────────────────
 

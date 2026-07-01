@@ -253,6 +253,7 @@ export function mapTenantSummary(raw: unknown): TenantSummary {
   return {
     id,
     code:               str(r, 'code',                 'code',               '',        'mapTenantSummary.code'),
+    tenantKey:          optStr(r, 'tenant_key',        'tenantKey') ?? str(r, 'code', 'code', '', 'mapTenantSummary.tenantKey'),
     displayName:        str(r, 'display_name',          'displayName',         '',        'mapTenantSummary.displayName'),
     type:               normalizeTenantType(r),
     status:             oneOf(r, 'status',              'status',             TENANT_STATUSES, 'Inactive', 'mapTenantSummary.status'),
@@ -262,6 +263,9 @@ export function mapTenantSummary(raw: unknown): TenantSummary {
     orgCount:           num(r,  'org_count',             'orgCount',           0),
     createdAtUtc:       str(r, 'created_at',            'createdAtUtc',       new Date().toISOString()),
     subdomain:          optStr(r, 'subdomain',          'subdomain'),
+    workspaceUrl:       optStr(r, 'workspace_url',      'workspaceUrl'),
+    createdBy:          optStr(r, 'created_by',         'createdBy')
+      ?? optStr(r, 'created_by_user_id', 'createdByUserId'),
     provisioningStatus: (r['provisioning_status'] ?? r['provisioningStatus']) as ProvisioningStatus | undefined
       ? oneOf(r, 'provisioning_status', 'provisioningStatus', PROVISIONING_STATUSES, 'Pending', 'mapTenantSummary.provisioningStatus')
       : undefined,

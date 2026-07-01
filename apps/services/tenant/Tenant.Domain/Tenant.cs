@@ -97,6 +97,9 @@ public class Tenant
     /// <summary>Assigned subdomain slug (unique).</summary>
     public string? Subdomain { get; private set; }
 
+    /// <summary>Canonical tenant workspace host without scheme.</summary>
+    public string? WorkspaceUrl { get; private set; }
+
     // ── Provisioning state ────────────────────────────────────────────────────
 
     /// <summary>
@@ -158,6 +161,12 @@ public class Tenant
     /// </summary>
     public Guid? OwnerUserId { get; private set; }
 
+    /// <summary>
+    /// Platform admin or service actor that created the canonical tenant record.
+    /// Cross-service reference — no FK constraint enforced (different DB).
+    /// </summary>
+    public Guid? CreatedByUserId { get; private set; }
+
     // ── Timestamps ────────────────────────────────────────────────────────────
 
     public DateTime CreatedAtUtc { get; private set; }
@@ -188,7 +197,9 @@ public class Tenant
         string? city            = null,
         string? stateOrProvince = null,
         string? postalCode      = null,
-        string? countryCode     = null)
+        string? countryCode     = null,
+        string? workspaceUrl    = null,
+        Guid?   createdByUserId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
@@ -203,6 +214,7 @@ public class Tenant
             Description     = description?.Trim(),
             Status          = TenantStatus.Active,
             Subdomain       = subdomain?.Trim().ToLowerInvariant(),
+            WorkspaceUrl    = workspaceUrl?.Trim().ToLowerInvariant(),
             WebsiteUrl      = websiteUrl?.Trim(),
             TimeZone        = timeZone,
             Locale          = locale,
@@ -214,6 +226,7 @@ public class Tenant
             StateOrProvince = stateOrProvince?.Trim(),
             PostalCode      = postalCode?.Trim(),
             CountryCode     = countryCode?.Trim().ToUpperInvariant(),
+            CreatedByUserId = createdByUserId,
             CreatedAtUtc    = now,
             UpdatedAtUtc    = now
         };
@@ -231,7 +244,9 @@ public class Tenant
         Guid?        logoWhiteDocumentId = null,
         string?      timeZone            = null,
         DateTime?    createdAtUtc        = null,
-        DateTime?    updatedAtUtc        = null)
+        DateTime?    updatedAtUtc        = null,
+        string?      workspaceUrl        = null,
+        Guid?        createdByUserId     = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
@@ -245,9 +260,11 @@ public class Tenant
             LegalName           = legalName?.Trim(),
             Status              = status,
             Subdomain           = subdomain?.Trim().ToLowerInvariant(),
+            WorkspaceUrl        = workspaceUrl?.Trim().ToLowerInvariant(),
             LogoDocumentId      = logoDocumentId,
             LogoWhiteDocumentId = logoWhiteDocumentId,
             TimeZone            = timeZone,
+            CreatedByUserId     = createdByUserId,
             CreatedAtUtc        = createdAtUtc ?? now,
             UpdatedAtUtc        = updatedAtUtc ?? now
         };
@@ -306,6 +323,12 @@ public class Tenant
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    public void SetWorkspaceUrl(string? workspaceUrl)
+    {
+        WorkspaceUrl = workspaceUrl?.Trim().ToLowerInvariant();
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public void SetLogo(Guid? documentId)
     {
         LogoDocumentId = documentId;
@@ -330,6 +353,15 @@ public class Tenant
             throw new ArgumentException("ownerUserId must not be empty.", nameof(ownerUserId));
         OwnerUserId  = ownerUserId;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetCreatedBy(Guid? createdByUserId)
+    {
+        if (createdByUserId == Guid.Empty)
+            throw new ArgumentException("createdByUserId must not be empty.", nameof(createdByUserId));
+
+        CreatedByUserId = createdByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
     }
 
     public void SetProvisioningStatus(TenantProvisioningStatus status, string? error = null)

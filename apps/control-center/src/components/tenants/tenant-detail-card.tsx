@@ -111,6 +111,18 @@ export function TenantDetailCard({ tenant, portalBaseDomain }: TenantDetailCardP
               ? <code className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{tenant.subdomain}</code>
               : <span className="text-gray-400 italic">Not set</span>
           } />
+          {tenant.workspaceUrl && (
+            <InfoRow label="Workspace URL" value={
+              <a
+                href={`https://${tenant.workspaceUrl}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded hover:underline hover:bg-blue-100 transition-colors"
+              >
+                {tenant.workspaceUrl}
+              </a>
+            } />
+          )}
           <InfoRow label="Provisioning" value={
             <div className="flex items-center gap-2">
               {provisioningStatusBadge(tenant.provisioningStatus)}

@@ -4,6 +4,8 @@ using BuildingBlocks.Commerce;
 using BuildingBlocks.Exceptions;
 using Contracts.Commerce;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Tenant.Application.Configuration;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Domain;
@@ -21,6 +23,7 @@ public class TenantService : ITenantService
     private readonly ISettingRepository          _settings;
     private readonly ICommerceLifecycleNotifier  _commerceNotifier;
     private readonly ILogger<TenantService>      _logger;
+    private readonly string                      _platformBaseDomain;
 
     private const string HostPlatformKey        = "legalsynq";
     private const string DefaultTimezone        = TenantDefaults.Timezone;
@@ -30,13 +33,15 @@ public class TenantService : ITenantService
     public TenantService(
         ITenantRepository          repository,
         ISettingRepository         settings,
+        IOptions<PlatformRoutingOptions> routingOptions,
         ICommerceLifecycleNotifier commerceNotifier,
         ILogger<TenantService>     logger)
     {
-        _repository       = repository;
-        _settings         = settings;
-        _commerceNotifier = commerceNotifier;
-        _logger           = logger;
+        _repository         = repository;
+        _settings           = settings;
+        _platformBaseDomain = NormalizeBaseDomain(routingOptions.Value.BaseDomain);
+        _commerceNotifier   = commerceNotifier;
+        _logger             = logger;
     }
 
     // ── BLK-TS-01: Tenant code format rules ──────────────────────────────────
@@ -112,10 +117,11 @@ public class TenantService : ITenantService
             throw new ConflictException($"The subdomain '{subdomain}' is already taken.");
 
         var tenant = Domain.Tenant.Create(
-            code:        code,
-            displayName: request.TenantName.Trim(),
-            subdomain:   subdomain,
-            timeZone:    DefaultTimezone);
+            code:         code,
+            displayName:  request.TenantName.Trim(),
+            subdomain:    subdomain,
+            timeZone:     DefaultTimezone,
+            workspaceUrl: ComposeWorkspaceUrl(subdomain));
 
         if (request.OwnerUserId.HasValue)
             tenant.SetOwner(request.OwnerUserId.Value);
@@ -179,11 +185,17 @@ public class TenantService : ITenantService
         if (await _repository.ExistsByCodeAsync(code, ct))
             throw new ConflictException($"A tenant with code '{code}' already exists.");
 
+        string? normalizedSubdomain = null;
+
         if (request.Subdomain is not null)
         {
-            var sub = request.Subdomain.Trim().ToLowerInvariant();
-            if (await _repository.ExistsBySubdomainAsync(sub, null, ct))
-                throw new ConflictException($"The subdomain '{sub}' is already taken.");
+            normalizedSubdomain = request.Subdomain.Trim().ToLowerInvariant();
+            if (await _repository.ExistsBySubdomainAsync(normalizedSubdomain, null, ct))
+                throw new ConflictException($"The subdomain '{normalizedSubdomain}' is already taken.");
+        }
+        else
+        {
+            normalizedSubdomain = code;
         }
 
         ValidateOptionalEmail(request.SupportEmail, "supportEmail", errors);
@@ -197,7 +209,7 @@ public class TenantService : ITenantService
             code,
             request.DisplayName,
             request.LegalName,
-            request.Subdomain,
+            normalizedSubdomain,
             request.Description,
             request.WebsiteUrl,
             request.TimeZone ?? DefaultTimezone,
@@ -209,7 +221,8 @@ public class TenantService : ITenantService
             request.City,
             request.StateOrProvince,
             request.PostalCode,
-            request.CountryCode);
+            request.CountryCode,
+            workspaceUrl: normalizedSubdomain is null ? null : ComposeWorkspaceUrl(normalizedSubdomain));
 
         await _repository.AddAsync(tenant, ct);
 
@@ -270,7 +283,11 @@ public class TenantService : ITenantService
             request.CountryCode);
 
         if (request.Subdomain is not null)
-            tenant.SetSubdomain(request.Subdomain);
+        {
+            var normalizedSubdomain = request.Subdomain.Trim().ToLowerInvariant();
+            tenant.SetSubdomain(normalizedSubdomain);
+            tenant.SetWorkspaceUrl(ComposeWorkspaceUrl(normalizedSubdomain));
+        }
 
         if (request.Status is not null)
         {
@@ -533,5 +550,18 @@ public class TenantService : ITenantService
         // BLK-TS-02 — provisioning state
         ProvisioningStatus:    t.ProvisioningStatus.ToString(),
         ProvisionedAtUtc:      t.ProvisionedAtUtc,
-        LastProvisioningError: t.LastProvisioningError);
+        LastProvisioningError: t.LastProvisioningError,
+        WorkspaceUrl:          t.WorkspaceUrl,
+        CreatedByUserId:       t.CreatedByUserId);
+
+    private string ComposeWorkspaceUrl(string subdomain) =>
+        $"{subdomain}.{_platformBaseDomain}";
+
+    private static string NormalizeBaseDomain(string value) =>
+        value.Trim()
+            .ToLowerInvariant()
+            .Replace("https://", string.Empty, StringComparison.Ordinal)
+            .Replace("http://", string.Empty, StringComparison.Ordinal)
+            .Trim('/')
+            .Trim('.');
 }

@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Context;
 using BuildingBlocks.Exceptions;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
@@ -42,10 +43,11 @@ public static class TenantAdminEndpoints
 
         group.MapPost("/", async (
             AdminCreateTenantRequest body,
+            ICurrentRequestContext   requestContext,
             ITenantAdminService      svc,
             CancellationToken        ct) =>
         {
-            var result = await svc.CreateTenantAsync(body, ct);
+            var result = await svc.CreateTenantAsync(body, requestContext.UserId, ct);
             return Results.Created($"/api/v1/admin/tenants/{result.TenantId}", result);
         });
 

@@ -1,18 +1,18 @@
 'use client';
 
-import { useState, useRef, useId, useEffect, useCallback } from 'react';
-import { useRouter }                                        from 'next/navigation';
-import { createTenantAction }                               from '@/app/tenants/actions';
-import type { CreateTenantResult }                          from '@/app/tenants/actions';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createTenantAction } from '@/app/tenants/actions';
+import type { CreateTenantResult } from '@/app/tenants/actions';
 
 interface AddressSuggestion {
-  displayName:  string;
+  displayName: string;
   addressLine1: string;
-  city:         string;
-  state:        string;
-  postalCode:   string;
-  latitude:     number;
-  longitude:    number;
+  city: string;
+  state: string;
+  postalCode: string;
+  latitude: number;
+  longitude: number;
 }
 
 interface CreateTenantModalProps {
@@ -20,71 +20,121 @@ interface CreateTenantModalProps {
   portalBaseDomain?: string;
 }
 
-type Step = 'form' | 'success';
+type Step = 'form' | 'provisioning' | 'success';
+type ResultState = NonNullable<CreateTenantResult['adminUser']> & NonNullable<CreateTenantResult['tenant']>;
+
+const FLOW_STAGES = ['Tenant', 'Owner', 'Workspace', 'Provision', 'Done'] as const;
+const PROVISIONING_STEPS = [
+  'Creating tenant',
+  'Creating owner account',
+  'Assigning owner membership',
+  'Creating default roles & permissions',
+  'Applying default configuration',
+  'Preparing workspace home',
+  'Finalizing',
+] as const;
+const PROVISIONING_ADVANCE_MS = [500, 900, 1300, 1800, 2300, 2900];
+const MIN_PROVISIONING_DURATION_MS = 2400;
 
 export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantModalProps) {
   const titleId = useId();
-  const router  = useRouter();
+  const router = useRouter();
 
-  const [step, setStep]          = useState<Step>('form');
+  const [step, setStep] = useState<Step>('form');
   const [isPending, setIsPending] = useState(false);
-  const [error, setError]        = useState<string | null>(null);
-  const [result, setResult]      = useState<NonNullable<CreateTenantResult['adminUser']> & NonNullable<CreateTenantResult['tenant']> | null>(null);
-  const [copied, setCopied]      = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<ResultState | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [provisioningIndex, setProvisioningIndex] = useState(0);
+  const [provisioningRunId, setProvisioningRunId] = useState(0);
 
   const firstInputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addrInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const progressionTimeoutsRef = useRef<number[]>([]);
+  const copyTimeoutRef = useRef<number | null>(null);
 
   const [form, setForm] = useState({
-    name:           '',
-    code:           '',
-    orgType:        'LAW_FIRM',
-    adminEmail:     '',
+    name: '',
+    code: '',
+    orgType: 'LAW_FIRM',
+    adminEmail: '',
     adminFirstName: '',
-    adminLastName:  '',
+    adminLastName: '',
   });
 
   const [address, setAddress] = useState({
-    raw:          '',
+    raw: '',
     addressLine1: '',
-    city:         '',
-    state:        '',
-    postalCode:   '',
-    latitude:     null as number | null,
-    longitude:    null as number | null,
+    city: '',
+    state: '',
+    postalCode: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
   });
 
-  const [suggestions, setSuggestions]     = useState<AddressSuggestion[]>([]);
-  const [addrLoading, setAddrLoading]     = useState(false);
-  const [showDropdown, setShowDropdown]   = useState(false);
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
-  const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addrInputRef  = useRef<HTMLInputElement>(null);
-  const dropdownRef   = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { firstInputRef.current?.focus(); }, []);
+  const clearProgressionTimers = useCallback(() => {
+    progressionTimeoutsRef.current.forEach(window.clearTimeout);
+    progressionTimeoutsRef.current = [];
+  }, []);
 
   useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !isPending) onClose();
+    if (step === 'form') firstInputRef.current?.focus();
+  }, [step]);
+
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !isPending) onClose();
     }
+
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [onClose, isPending]);
+  }, [isPending, onClose]);
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
+    function handleClickOutside(event: MouseEvent) {
       if (
         dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node) &&
+        !dropdownRef.current.contains(event.target as Node) &&
         addrInputRef.current &&
-        !addrInputRef.current.contains(e.target as Node)
+        !addrInputRef.current.contains(event.target as Node)
       ) {
         setShowDropdown(false);
       }
     }
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (step !== 'provisioning' || !isPending) {
+      clearProgressionTimers();
+      return;
+    }
+
+    clearProgressionTimers();
+    PROVISIONING_ADVANCE_MS.forEach((delay, index) => {
+      const timeoutId = window.setTimeout(() => {
+        setProvisioningIndex(Math.min(index + 1, PROVISIONING_STEPS.length - 2));
+      }, delay);
+      progressionTimeoutsRef.current.push(timeoutId);
+    });
+
+    return clearProgressionTimers;
+  }, [clearProgressionTimers, isPending, provisioningRunId, step]);
+
+  useEffect(() => () => {
+    clearProgressionTimers();
+    if (copyTimeoutRef.current !== null) window.clearTimeout(copyTimeoutRef.current);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, [clearProgressionTimers]);
 
   function deriveCode(name: string) {
     return name
@@ -97,26 +147,27 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
       .slice(0, 63);
   }
 
-  function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const name = e.target.value;
-    setForm(f => ({
-      ...f,
+  function handleNameChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const name = event.target.value;
+    setForm(current => ({
+      ...current,
       name,
-      code: f.code === deriveCode(f.name) ? deriveCode(name) : f.code,
+      code: current.code === deriveCode(current.name) ? deriveCode(name) : current.code,
     }));
   }
 
-  const fetchSuggestions = useCallback(async (q: string) => {
-    if (q.trim().length < 3) {
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (query.trim().length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
       return;
     }
+
     setAddrLoading(true);
     try {
-      const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(q)}`);
-      if (!res.ok) return;
-      const data: AddressSuggestion[] = await res.json();
+      const response = await fetch(`/api/geocode/address?q=${encodeURIComponent(query)}`);
+      if (!response.ok) return;
+      const data: AddressSuggestion[] = await response.json();
       setSuggestions(data);
       setShowDropdown(data.length > 0);
       setSelectedIndex(-1);
@@ -127,86 +178,115 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
     }
   }, []);
 
-  function handleAddressInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const val = e.target.value;
-    setAddress(a => ({ ...a, raw: val, addressLine1: '', city: '', state: '', postalCode: '', latitude: null, longitude: null }));
+  function handleAddressInput(event: React.ChangeEvent<HTMLInputElement>) {
+    const value = event.target.value;
+    setAddress(current => ({
+      ...current,
+      raw: value,
+      addressLine1: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      latitude: null,
+      longitude: null,
+    }));
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchSuggestions(val), 300);
+    debounceRef.current = setTimeout(() => fetchSuggestions(value), 300);
   }
 
-  function handleAddressKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function handleAddressKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (!showDropdown || suggestions.length === 0) return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex(i => Math.min(i + 1, suggestions.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex(i => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter' && selectedIndex >= 0) {
-      e.preventDefault();
-      selectSuggestion(suggestions[selectedIndex]);
-    } else if (e.key === 'Escape') {
-      setShowDropdown(false);
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setSelectedIndex(index => Math.min(index + 1, suggestions.length - 1));
+      return;
     }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSelectedIndex(index => Math.max(index - 1, 0));
+      return;
+    }
+
+    if (event.key === 'Enter' && selectedIndex >= 0) {
+      event.preventDefault();
+      selectSuggestion(suggestions[selectedIndex]);
+      return;
+    }
+
+    if (event.key === 'Escape') setShowDropdown(false);
   }
 
-  function selectSuggestion(s: AddressSuggestion) {
-    // Nominatim often omits the house number from street-level results.
-    // If the user typed a leading number and it's absent from the suggestion, recover it.
+  function selectSuggestion(suggestion: AddressSuggestion) {
     const typedLeading = address.raw.trim().match(/^(\d+[-\w]*)\s+/);
-    const suggestionHasNumber = /^\d/.test(s.addressLine1);
+    const suggestionHasNumber = /^\d/.test(suggestion.addressLine1);
     const addressLine1 =
       typedLeading && !suggestionHasNumber
-        ? `${typedLeading[1]} ${s.addressLine1}`
-        : s.addressLine1;
+        ? `${typedLeading[1]} ${suggestion.addressLine1}`
+        : suggestion.addressLine1;
 
     const displayName = [
       addressLine1,
-      s.city,
-      s.postalCode ? `${s.state} ${s.postalCode}` : s.state,
+      suggestion.city,
+      suggestion.postalCode ? `${suggestion.state} ${suggestion.postalCode}` : suggestion.state,
     ].filter(Boolean).join(', ');
 
     setAddress({
-      raw:          displayName,
+      raw: displayName,
       addressLine1,
-      city:         s.city,
-      state:        s.state,
-      postalCode:   s.postalCode,
-      latitude:     s.latitude,
-      longitude:    s.longitude,
+      city: suggestion.city,
+      state: suggestion.state,
+      postalCode: suggestion.postalCode,
+      latitude: suggestion.latitude,
+      longitude: suggestion.longitude,
     });
     setSuggestions([]);
     setShowDropdown(false);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function buildPayload() {
+    return {
+      ...form,
+      ...(address.addressLine1 ? {
+        addressLine1: address.addressLine1,
+        city: address.city,
+        state: address.state,
+        postalCode: address.postalCode,
+        latitude: address.latitude ?? undefined,
+        longitude: address.longitude ?? undefined,
+        geoPointSource: 'nominatim',
+      } : {}),
+    };
+  }
+
+  async function submitTenant() {
+    setCopied(false);
     setError(null);
+    setResult(null);
+    setProvisioningIndex(0);
+    setProvisioningRunId(current => current + 1);
+    setStep('provisioning');
     setIsPending(true);
 
+    const startedAt = Date.now();
+
     try {
-      const payload = {
-        ...form,
-        ...(address.addressLine1 ? {
-          addressLine1:   address.addressLine1,
-          city:           address.city,
-          state:          address.state,
-          postalCode:     address.postalCode,
-          latitude:       address.latitude ?? undefined,
-          longitude:      address.longitude ?? undefined,
-          geoPointSource: 'nominatim',
-        } : {}),
-      };
-      const res = await createTenantAction(payload);
-      if (!res.success || !res.tenant || !res.adminUser) {
-        setError(res.error ?? 'Something went wrong. Please try again.');
+      const response = await createTenantAction(buildPayload());
+      const remainingDelay = Math.max(0, MIN_PROVISIONING_DURATION_MS - (Date.now() - startedAt));
+      if (remainingDelay > 0) await delay(remainingDelay);
+
+      if (!response.success || !response.tenant || !response.adminUser) {
+        setError(response.error ?? 'Something went wrong. Please try again.');
         return;
       }
-      setResult({ ...res.tenant, ...res.adminUser });
+
+      setProvisioningIndex(PROVISIONING_STEPS.length - 1);
+      setResult({ ...response.tenant, ...response.adminUser });
       setStep('success');
       router.refresh();
     } catch (err) {
-      // Re-throw Next.js internal errors (redirect, notFound) so the framework handles them.
       if (err && typeof err === 'object' && 'digest' in err) throw err;
       setError(err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.');
     } finally {
@@ -214,16 +294,21 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
     }
   }
 
-  async function handleCopy() {
-    if (!result || !result.temporaryPassword) return;
-    await navigator.clipboard.writeText(result.temporaryPassword);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    await submitTenant();
   }
 
-  const previewFqdn = form.code
-    ? buildTenantHostname(form.code, portalBaseDomain)
-    : null;
+  async function handleCopy() {
+    if (!result?.temporaryPassword) return;
+    await navigator.clipboard.writeText(result.temporaryPassword);
+    setCopied(true);
+    if (copyTimeoutRef.current !== null) window.clearTimeout(copyTimeoutRef.current);
+    copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 2500);
+  }
+
+  const previewFqdn = form.code ? buildTenantHostname(form.code, portalBaseDomain) : null;
+  const workspaceUrl = result?.workspaceUrl ?? result?.hostname ?? previewFqdn;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -237,12 +322,11 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-xl shadow-xl border border-gray-200 max-h-[90vh] overflow-y-auto"
+        className="relative z-10 w-full max-w-2xl mx-4 bg-white rounded-xl shadow-xl border border-gray-200 max-h-[90vh] overflow-y-auto"
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
           <h2 id={titleId} className="text-sm font-semibold text-gray-900">
-            {step === 'form' ? 'Create Tenant' : 'Tenant Created'}
+            {step === 'form' ? 'Create Tenant' : step === 'provisioning' ? 'Provision Workspace' : 'Workspace Ready'}
           </h2>
           <button
             type="button"
@@ -257,10 +341,8 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
           </button>
         </div>
 
-        {/* Form step */}
         {step === 'form' && (
           <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
-            {/* Tenant info */}
             <fieldset className="space-y-3">
               <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Tenant Information
@@ -291,19 +373,21 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                   required
                   minLength={2}
                   maxLength={63}
-                  pattern="[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?"
+                  pattern="[a-z0-9]([a-z0-9\\-]{0,61}[a-z0-9])?"
                   value={form.code}
-                  onChange={e => setForm(f => ({ ...f, code: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-/, '') }))}
+                  onChange={event => setForm(current => ({
+                    ...current,
+                    code: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-/, ''),
+                  }))}
                   placeholder="e.g. acme-law"
                   className={`${inputClass} font-mono`}
                 />
                 <p className="mt-1 text-[11px] text-gray-400">
-                  Lowercase letters, numbers, and hyphens. This will also be the tenant's subdomain
-                  ({' '}
+                  Lowercase letters, numbers, and hyphens. This becomes the tenant key and workspace host
+                  {' '}
                   <span className="font-mono">
-                    {previewFqdn ?? `${form.code || '...'}.${portalBaseDomain || 'your-domain.example'}`}
-                  </span>
-                  {' '}). Cannot be changed later.
+                    {previewFqdn ?? `${form.code || '...'}.${portalBaseDomain || 'legalsynq.com'}`}
+                  </span>.
                 </p>
               </div>
 
@@ -313,7 +397,7 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                 </label>
                 <select
                   value={form.orgType}
-                  onChange={e => setForm(f => ({ ...f, orgType: e.target.value }))}
+                  onChange={event => setForm(current => ({ ...current, orgType: event.target.value }))}
                   className={selectClass}
                 >
                   <option value="LAW_FIRM">Law Firm</option>
@@ -322,15 +406,13 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                   <option value="LIEN_OWNER">Lien Owner</option>
                 </select>
                 <p className="mt-1 text-[11px] text-gray-400">
-                  Determines what the tenant can do on the platform.
+                  Determines the default platform setup for this workspace.
                 </p>
               </div>
             </fieldset>
 
-            {/* Divider */}
             <div className="border-t border-gray-100" />
 
-            {/* Address */}
             <fieldset className="space-y-3">
               <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Address <span className="text-gray-400 font-normal normal-case">(optional)</span>
@@ -371,19 +453,19 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                     ref={dropdownRef}
                     className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg overflow-hidden"
                   >
-                    {suggestions.map((s, i) => (
+                    {suggestions.map((suggestion, index) => (
                       <button
-                        key={s.displayName}
+                        key={suggestion.displayName}
                         type="button"
-                        onMouseDown={e => { e.preventDefault(); selectSuggestion(s); }}
+                        onMouseDown={event => { event.preventDefault(); selectSuggestion(suggestion); }}
                         className={[
                           'w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 transition-colors',
-                          i === selectedIndex ? 'bg-indigo-50 text-indigo-900' : 'text-gray-800',
-                          i > 0 ? 'border-t border-gray-100' : '',
+                          index === selectedIndex ? 'bg-indigo-50 text-indigo-900' : 'text-gray-800',
+                          index > 0 ? 'border-t border-gray-100' : '',
                         ].join(' ')}
                       >
-                        <span className="font-medium">{s.addressLine1}</span>
-                        <span className="text-gray-500 ml-1">{s.city}, {s.state} {s.postalCode}</span>
+                        <span className="font-medium">{suggestion.addressLine1}</span>
+                        <span className="text-gray-500 ml-1">{suggestion.city}, {suggestion.state} {suggestion.postalCode}</span>
                       </button>
                     ))}
                   </div>
@@ -397,7 +479,7 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                     <input
                       type="text"
                       value={address.city}
-                      onChange={e => setAddress(a => ({ ...a, city: e.target.value }))}
+                      onChange={event => setAddress(current => ({ ...current, city: event.target.value }))}
                       className={inputClass}
                     />
                   </div>
@@ -407,7 +489,7 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                       type="text"
                       maxLength={2}
                       value={address.state}
-                      onChange={e => setAddress(a => ({ ...a, state: e.target.value.toUpperCase() }))}
+                      onChange={event => setAddress(current => ({ ...current, state: event.target.value.toUpperCase() }))}
                       className={`${inputClass} font-mono uppercase`}
                     />
                   </div>
@@ -417,25 +499,16 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                       type="text"
                       maxLength={10}
                       value={address.postalCode}
-                      onChange={e => setAddress(a => ({ ...a, postalCode: e.target.value }))}
+                      onChange={event => setAddress(current => ({ ...current, postalCode: event.target.value }))}
                       className={`${inputClass} font-mono`}
                     />
                   </div>
                 </div>
               )}
-
-              {address.latitude !== null && address.longitude !== null && (
-                <p className="text-[11px] text-gray-400">
-                  Coordinates captured:{' '}
-                  <span className="font-mono">{address.latitude.toFixed(5)}, {address.longitude.toFixed(5)}</span>
-                </p>
-              )}
             </fieldset>
 
-            {/* Divider */}
             <div className="border-t border-gray-100" />
 
-            {/* Admin user */}
             <fieldset className="space-y-3">
               <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Default Admin User
@@ -451,7 +524,7 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                     required
                     maxLength={80}
                     value={form.adminFirstName}
-                    onChange={e => setForm(f => ({ ...f, adminFirstName: e.target.value }))}
+                    onChange={event => setForm(current => ({ ...current, adminFirstName: event.target.value }))}
                     placeholder="Jane"
                     className={inputClass}
                   />
@@ -465,7 +538,7 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                     required
                     maxLength={80}
                     value={form.adminLastName}
-                    onChange={e => setForm(f => ({ ...f, adminLastName: e.target.value }))}
+                    onChange={event => setForm(current => ({ ...current, adminLastName: event.target.value }))}
                     placeholder="Smith"
                     className={inputClass}
                   />
@@ -481,21 +554,19 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                   required
                   maxLength={200}
                   value={form.adminEmail}
-                  onChange={e => setForm(f => ({ ...f, adminEmail: e.target.value }))}
+                  onChange={event => setForm(current => ({ ...current, adminEmail: event.target.value }))}
                   placeholder="jane.smith@acme.com"
                   className={inputClass}
                 />
               </div>
             </fieldset>
 
-            {/* Error */}
             {error && (
               <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2.5 text-xs text-red-700">
                 {error}
               </div>
             )}
 
-            {/* Actions */}
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
@@ -510,72 +581,128 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                 disabled={isPending}
                 className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
               >
-                {isPending ? (
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" aria-hidden="true" />
-                    Creating…
-                  </span>
-                ) : (
-                  'Create Tenant'
-                )}
+                Create Tenant
               </button>
             </div>
           </form>
         )}
 
-        {/* Success step */}
+        {step === 'provisioning' && (
+          <div className="px-6 py-5 space-y-5">
+            <ProvisioningFlowStepper currentStage={3} />
+
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="px-6 py-6 sm:px-7 space-y-6">
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-semibold text-gray-900">Setting up your workspace</h3>
+                  <p className="text-sm text-gray-500">
+                    This usually takes a few moments. Please keep this modal open while the workspace is provisioned.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {PROVISIONING_STEPS.map((label, index) => {
+                    const isComplete = !error && (index < provisioningIndex || (!isPending && !!result));
+                    const isCurrent = !error && isPending && index === provisioningIndex;
+                    const isFailed = !!error && index === provisioningIndex;
+
+                    return (
+                      <div key={label} className="flex items-center gap-3">
+                        <ProvisioningStatusIcon
+                          stepNumber={index + 1}
+                          isComplete={isComplete}
+                          isCurrent={isCurrent}
+                          isFailed={isFailed}
+                        />
+                        <span className={[
+                          'text-sm',
+                          isComplete || isCurrent ? 'text-gray-900' : 'text-gray-400',
+                          isCurrent ? 'font-medium' : '',
+                          isFailed ? 'text-red-700 font-medium' : '',
+                        ].join(' ')}>
+                          {label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                  <p className="text-xs font-medium text-gray-700">Workspace host</p>
+                  <p className="mt-1 font-mono text-sm text-gray-900">
+                    {previewFqdn ?? `${form.code || '...'}.${portalBaseDomain || 'legalsynq.com'}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {error ? (
+              <div className="space-y-4">
+                <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {error}
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void submitTenant(); }}
+                    className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">
+                Owner credentials and the canonical workspace URL will appear here as soon as setup completes.
+              </p>
+            )}
+          </div>
+        )}
+
         {step === 'success' && result && (
           <div className="px-6 py-5 space-y-5">
-            {/* Success banner */}
+            <ProvisioningFlowStepper currentStage={4} />
+
             <div className="flex items-start gap-3 rounded-md bg-green-50 border border-green-200 px-4 py-3">
               <svg className="h-4 w-4 text-green-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
-              <div className="text-xs text-green-800">
-                <p className="font-semibold">Tenant created successfully</p>
-                <p className="mt-0.5 text-green-700">
-                  <span className="font-mono bg-green-100 px-1 rounded">{result.code}</span>
+              <div className="text-sm text-green-800">
+                <p className="font-semibold">Workspace provisioned</p>
+                <p className="mt-1 text-green-700">
+                  <span className="font-mono bg-green-100 px-1 rounded">{result.tenantKey}</span>
                   {' '}— {result.displayName}
                 </p>
               </div>
             </div>
 
-            {result.provisioningStatus && (
-              <div className="space-y-3">
-                <div className={`flex items-start gap-3 rounded-md px-4 py-3 border ${getProvisioningBannerClass(result.provisioningStatus)}`}>
-                  <div className="text-xs">
-                    <p className={`font-semibold ${getProvisioningTitleClass(result.provisioningStatus)}`}>
-                      Subdomain: {getProvisioningLabel(result.provisioningStatus)}
-                    </p>
-                    {result.hostname && (
-                      <p className="mt-0.5 text-blue-700">
-                        <span className="font-mono bg-blue-100 px-1 rounded">{result.hostname}</span>
-                      </p>
-                    )}
-                    {getProvisioningMessage(result.provisioningStatus) && (
-                      <p className={`mt-0.5 ${getProvisioningMessageClass(result.provisioningStatus)}`}>
-                        {getProvisioningMessage(result.provisioningStatus)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <DnsSetupInstructions
-                  subdomain={result.subdomain || result.code || form.code}
-                  hostname={result.hostname}
-                  portalBaseDomain={portalBaseDomain}
-                  status={result.provisioningStatus}
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="grid gap-4 px-5 py-5 sm:grid-cols-2">
+                <SummaryItem label="Tenant Key" value={result.tenantKey} mono />
+                <SummaryItem label="Subdomain" value={result.subdomain ?? result.tenantKey} mono />
+                <SummaryItem
+                  label="Workspace URL"
+                  value={workspaceUrl ?? `${result.tenantKey}.${portalBaseDomain || 'legalsynq.com'}`}
+                  mono
+                  href={workspaceUrl ? `https://${workspaceUrl}` : undefined}
                 />
+                <SummaryItem label="Status" value={result.provisioningStatus ?? 'Provisioned'} />
               </div>
-            )}
+            </div>
 
-            {/* Temp password notice */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-700">
                 Temporary password for <span className="font-mono text-gray-900">{result.adminEmail}</span>
               </p>
               <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                This password is shown <strong>once only</strong>. Copy it now and share it securely with the admin user — they should change it on first login.
+                This password is shown once. Share it securely with the owner and require a password change on first login.
               </p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 font-mono text-sm bg-gray-100 border border-gray-200 rounded-md px-3 py-2 text-gray-900 tracking-widest select-all">
@@ -596,7 +723,6 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
               </div>
             </div>
 
-            {/* Close */}
             <div className="flex justify-end pt-1">
               <button
                 type="button"
@@ -613,6 +739,98 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
   );
 }
 
+function ProvisioningFlowStepper({ currentStage }: { currentStage: number }) {
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-5 gap-2">
+        {FLOW_STAGES.map((label, index) => {
+          const isComplete = index < currentStage;
+          const isCurrent = index === currentStage;
+          return (
+            <div key={label} className="space-y-2">
+              <div className={`h-1 rounded-full ${isComplete || isCurrent ? 'bg-indigo-600' : 'bg-gray-200'}`} />
+              <p className={`text-center text-xs ${isCurrent ? 'text-indigo-700 font-semibold' : 'text-gray-500'}`}>
+                {label}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProvisioningStatusIcon({
+  stepNumber,
+  isComplete,
+  isCurrent,
+  isFailed,
+}: {
+  stepNumber: number;
+  isComplete: boolean;
+  isCurrent: boolean;
+  isFailed: boolean;
+}) {
+  if (isComplete) {
+    return (
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-green-100 text-green-700">
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (isFailed) {
+    return (
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-red-700">
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (isCurrent) {
+    return (
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-700">
+        <span className="h-3.5 w-3.5 rounded-full border-2 border-indigo-300 border-t-indigo-700 animate-spin" />
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-gray-400 text-xs font-medium">
+      {stepNumber}
+    </span>
+  );
+}
+
+function SummaryItem({
+  label,
+  value,
+  href,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  href?: string;
+  mono?: boolean;
+}) {
+  const content = href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-700 hover:underline">
+      {value}
+    </a>
+  ) : value;
+
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`${mono ? 'font-mono text-sm' : 'text-sm'} text-gray-900 break-all`}>{content}</p>
+    </div>
+  );
+}
+
 const inputClass = [
   'w-full text-sm border border-gray-200 rounded-md px-3 py-1.5',
   'text-gray-900 placeholder-gray-400',
@@ -625,167 +843,11 @@ const selectClass = [
   'focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400',
 ].join(' ');
 
-function getProvisioningLabel(status?: string): string {
-  switch (status) {
-    case 'Active':
-      return 'Provisioned';
-    case 'InProgress':
-      return 'Provisioning in progress';
-    case 'Provisioned':
-      return 'Provisioned, verifying';
-    case 'Verifying':
-      return 'Verification in progress';
-    case 'Pending':
-      return 'Queued';
-    default:
-      return status || 'Pending';
-  }
-}
-
-function getProvisioningBannerClass(status?: string): string {
-  switch (status) {
-    case 'Failed':
-      return 'bg-red-50 border-red-200';
-    case 'Active':
-      return 'bg-blue-50 border-blue-200';
-    default:
-      return 'bg-amber-50 border-amber-200';
-  }
-}
-
-function getProvisioningTitleClass(status?: string): string {
-  switch (status) {
-    case 'Failed':
-      return 'text-red-800';
-    case 'Active':
-      return 'text-blue-800';
-    default:
-      return 'text-amber-800';
-  }
-}
-
-function getProvisioningMessageClass(status?: string): string {
-  switch (status) {
-    case 'Failed':
-      return 'text-red-700';
-    default:
-      return 'text-amber-700';
-  }
-}
-
-function getProvisioningMessage(status?: string): string | null {
-  switch (status) {
-    case 'Active':
-      return null;
-    case 'Pending':
-    case 'InProgress':
-    case 'Provisioned':
-    case 'Verifying':
-      return 'Subdomain setup is still in progress. You can monitor or retry verification from the tenant detail page.';
-    case 'Failed':
-      return 'Subdomain setup failed. Open the tenant detail page to review the failure reason and retry.';
-    default:
-      return 'Subdomain setup needs attention. Open the tenant detail page to review status and retry if needed.';
-  }
-}
-
-function DnsSetupInstructions({
-  subdomain,
-  hostname,
-  portalBaseDomain,
-  status,
-}: {
-  subdomain: string;
-  hostname?: string;
-  portalBaseDomain?: string;
-  status: string;
-}) {
-  const fqdn = hostname || buildTenantHostname(subdomain, portalBaseDomain);
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-gray-100 transition-colors"
-      >
-        <span className="text-xs font-semibold text-gray-700">DNS Setup Instructions</span>
-        <svg
-          className={`h-3.5 w-3.5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-gray-200">
-          <div className="pt-3">
-            <p className="text-xs font-medium text-gray-700 mb-1.5">Platform Subdomain (Automatic)</p>
-            <p className="text-[11px] text-gray-600 leading-relaxed">
-              The platform automatically creates a DNS record for this tenant.
-              {status === 'Active' ? ' The subdomain is live and ready to use.' : ' DNS propagation typically takes 1–5 minutes.'}
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[11px] text-gray-500 shrink-0">URL:</span>
-              <code className="text-[11px] font-mono bg-white border border-gray-200 px-2 py-1 rounded text-gray-800 select-all">
-                https://{fqdn}
-              </code>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-200 pt-3">
-            <p className="text-xs font-medium text-gray-700 mb-1.5">Custom Domain (Optional)</p>
-            <p className="text-[11px] text-gray-600 leading-relaxed">
-              If this tenant wants to use their own domain (e.g. <code className="text-[10px] bg-white px-0.5 rounded">app.acmelaw.com</code>),
-              they need to add a <strong>CNAME</strong> record with their DNS provider:
-            </p>
-            <div className="mt-2 bg-white border border-gray-200 rounded-md overflow-x-auto">
-              <table className="w-full text-[11px] min-w-[320px]">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">Type</th>
-                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">Name</th>
-                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">Value</th>
-                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">TTL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="px-3 py-1.5 font-mono text-gray-800">CNAME</td>
-                    <td className="px-3 py-1.5 font-mono text-gray-800">app</td>
-                    <td className="px-3 py-1.5 font-mono text-blue-700 select-all break-all">{fqdn}</td>
-                    <td className="px-3 py-1.5 font-mono text-gray-800">300</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-2 text-[11px] text-gray-500 leading-relaxed">
-              Replace <code className="text-[10px] bg-white px-0.5 rounded">app</code> with the desired subdomain prefix
-              on the tenant's own domain. After the CNAME is set, contact platform support to enable the custom domain on LegalSynq.
-            </p>
-          </div>
-
-          <div className="border-t border-gray-200 pt-3">
-            <p className="text-xs font-medium text-gray-700 mb-1.5">Verification</p>
-            <p className="text-[11px] text-gray-600 leading-relaxed">
-              The platform automatically verifies that the DNS record resolves correctly and the tenant portal is reachable.
-              If verification fails, you can retry from the tenant detail page. Common causes of failure:
-            </p>
-            <ul className="mt-1.5 text-[11px] text-gray-600 space-y-1 list-disc list-inside">
-              <li>DNS propagation hasn't completed yet (wait 5–10 minutes and retry)</li>
-              <li>Conflicting DNS records on the domain (A/AAAA records override CNAME)</li>
-              <li>Firewall or proxy blocking verification requests</li>
-            </ul>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function buildTenantHostname(slug: string, portalBaseDomain?: string): string {
   const baseDomain = portalBaseDomain?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
   return baseDomain ? `${slug}.${baseDomain}` : slug;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
 }

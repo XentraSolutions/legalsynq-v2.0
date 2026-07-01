@@ -12,6 +12,7 @@ export type ProvisioningFailureStage = 'None' | 'DnsProvisioning' | 'DnsVerifica
 export interface TenantSummary {
   id:                 string;
   code:               string;
+  tenantKey?:         string;
   displayName:        string;
   type:               TenantType;
   status:             TenantStatus;
@@ -21,6 +22,8 @@ export interface TenantSummary {
   orgCount:           number;
   createdAtUtc:       string;
   subdomain?:         string;
+  workspaceUrl?:      string;
+  createdBy?:         string;
   provisioningStatus?: ProvisioningStatus;
 }
 

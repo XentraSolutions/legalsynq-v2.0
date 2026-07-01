@@ -2,6 +2,8 @@ using BuildingBlocks.Commerce;
 using BuildingBlocks.Exceptions;
 using Contracts.Commerce;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Tenant.Application.Configuration;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Domain;
@@ -36,6 +38,7 @@ public class TenantAdminService : ITenantAdminService
     private readonly IIdentityProvisioningAdapter _identityProvisioning;
     private readonly ICommerceLifecycleNotifier   _commerceNotifier;
     private readonly ILogger<TenantAdminService>  _logger;
+    private readonly string                       _platformBaseDomain;
 
     private const string HostPlatformKey = "legalsynq";
     private static readonly Dictionary<string, string> CanonicalProductCodes = new(StringComparer.OrdinalIgnoreCase)
@@ -64,6 +67,7 @@ public class TenantAdminService : ITenantAdminService
         ISettingRepository           settingRepo,
         IIdentityCompatAdapter       identityCompat,
         IIdentityProvisioningAdapter identityProvisioning,
+        IOptions<PlatformRoutingOptions> routingOptions,
         ICommerceLifecycleNotifier   commerceNotifier,
         ILogger<TenantAdminService>  logger)
     {
@@ -75,6 +79,7 @@ public class TenantAdminService : ITenantAdminService
         _settingRepo          = settingRepo;
         _identityCompat       = identityCompat;
         _identityProvisioning = identityProvisioning;
+        _platformBaseDomain   = NormalizeBaseDomain(routingOptions.Value.BaseDomain);
         _commerceNotifier     = commerceNotifier;
         _logger               = logger;
     }
@@ -152,6 +157,8 @@ public class TenantAdminService : ITenantAdminService
             LinkedOrgCount:      0,
             Email:               tenant.SupportEmail,
             Subdomain:           tenant.Subdomain,
+            WorkspaceUrl:        tenant.WorkspaceUrl,
+            CreatedByUserId:     tenant.CreatedByUserId,
             CreatedAtUtc:        tenant.CreatedAtUtc,
             UpdatedAtUtc:        tenant.UpdatedAtUtc,
             LogoDocumentId:      logoDocumentId,
@@ -211,6 +218,7 @@ public class TenantAdminService : ITenantAdminService
 
     public async Task<AdminCreateTenantResponse> CreateTenantAsync(
         AdminCreateTenantRequest request,
+        Guid? createdByUserId,
         CancellationToken ct = default)
     {
         // ── Validate inputs ────────────────────────────────────────────────────
@@ -235,20 +243,34 @@ public class TenantAdminService : ITenantAdminService
                 new Dictionary<string, string[]> { ["adminLastName"] = ["Admin last name is required."] });
 
         // Normalize code to slug
-        var code = request.Code.Trim().ToLowerInvariant().Replace(' ', '-').Replace('_', '-');
+        var code = NormalizeTenantKey(request.Code);
+
+        if (code.Length < 2 || code.Length > 63)
+            throw new ValidationException("Tenant code is invalid.",
+                new Dictionary<string, string[]>
+                {
+                    ["code"] = ["Tenant code must normalize to 2-63 lowercase letters, numbers, or hyphens."]
+                });
 
         // Check for existing tenant with same code
         var existing = await _tenantRepo.GetByCodeAsync(code, ct);
         if (existing is not null)
             throw new ConflictException($"A tenant with code '{code}' already exists.");
 
+        if (await _tenantRepo.ExistsBySubdomainAsync(code, null, ct))
+            throw new ConflictException($"The subdomain '{code}' is already taken.");
+
+        var workspaceUrl = ComposeWorkspaceUrl(code);
+
         // ── Step 1: Create canonical Tenant record ─────────────────────────────
         var tenant = Domain.Tenant.Create(
-            code:        code,
-            displayName: request.Name.Trim(),
-            subdomain:   code,
-            timeZone:    null,
-            locale:      null);
+            code:            code,
+            displayName:     request.Name.Trim(),
+            subdomain:       code,
+            timeZone:        null,
+            locale:          null,
+            workspaceUrl:    workspaceUrl,
+            createdByUserId: createdByUserId);
 
         await _tenantRepo.AddAsync(tenant, ct);
 
@@ -279,9 +301,16 @@ public class TenantAdminService : ITenantAdminService
 
         tenant.SetProvisioningStatus(newProvStatus, provError);
 
-        // If provisioning succeeded and returned a subdomain/hostname, update the Tenant record.
-        if (provResult.Success && !string.IsNullOrWhiteSpace(provResult.Subdomain))
-            tenant.SetSubdomain(provResult.Subdomain);
+        if (provResult.Success
+            && !string.IsNullOrWhiteSpace(provResult.Subdomain)
+            && !string.Equals(provResult.Subdomain, tenant.Subdomain, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(
+                "Identity provisioning returned a non-canonical subdomain for tenant {TenantId}. Expected {ExpectedSubdomain}, got {ReturnedSubdomain}. Canonical routing metadata was preserved.",
+                tenant.Id,
+                tenant.Subdomain,
+                provResult.Subdomain);
+        }
 
         if (provResult.Success
             && !string.IsNullOrWhiteSpace(provResult.AdminUserId)
@@ -311,13 +340,17 @@ public class TenantAdminService : ITenantAdminService
             TenantId:            tenant.Id.ToString(),
             DisplayName:         tenant.DisplayName,
             Code:                tenant.Code,
+            TenantKey:           tenant.Code,
             Status:              tenant.Status.ToString(),
             AdminUserId:         provResult.AdminUserId,
             AdminEmail:          provResult.AdminEmail ?? request.AdminEmail,
             TemporaryPassword:   provResult.TemporaryPassword,
-            Subdomain:           provResult.Subdomain ?? tenant.Subdomain,
+            Subdomain:           tenant.Subdomain,
+            WorkspaceUrl:        tenant.WorkspaceUrl,
+            CreatedBy:           tenant.CreatedByUserId?.ToString(),
+            CreatedDate:         tenant.CreatedAtUtc,
             ProvisioningStatus:  provResult.ProvisioningStatus ?? (provResult.Success ? "Provisioned" : "Failed"),
-            Hostname:            provResult.Hostname,
+            Hostname:            tenant.WorkspaceUrl ?? provResult.Hostname,
             TenantCreated:       true,
             IdentityProvisioned: provResult.Success,
             NextAction:          nextAction,
@@ -453,6 +486,25 @@ public class TenantAdminService : ITenantAdminService
             ? canonical
             : productCode;
 
+    private string ComposeWorkspaceUrl(string subdomain) =>
+        $"{subdomain}.{_platformBaseDomain}";
+
+    private static string NormalizeBaseDomain(string value) =>
+        value.Trim()
+            .ToLowerInvariant()
+            .Replace("https://", string.Empty, StringComparison.Ordinal)
+            .Replace("http://", string.Empty, StringComparison.Ordinal)
+            .Trim('/')
+            .Trim('.');
+
+    private static string NormalizeTenantKey(string value)
+    {
+        var normalized = value.Trim().ToLowerInvariant();
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @"[^a-z0-9-]+", "-");
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @"-{2,}", "-");
+        return normalized.Trim('-');
+    }
+
     // ── Mapping ───────────────────────────────────────────────────────────────
 
     private static TenantAdminSummaryResponse ToSummary(Domain.Tenant t) =>
@@ -467,5 +519,7 @@ public class TenantAdminService : ITenantAdminService
             UserCount:          0,
             OrgCount:           0,
             Subdomain:          t.Subdomain,
+            WorkspaceUrl:       t.WorkspaceUrl,
+            CreatedByUserId:    t.CreatedByUserId,
             CreatedAtUtc:       t.CreatedAtUtc);
 }
