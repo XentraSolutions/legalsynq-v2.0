@@ -205,11 +205,11 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                         </td>
                         <td className="px-3 py-2.5">
                           <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
-                            {doc.documentType}
+                            {doc.filename}
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                          {doc.lastUpdate}
+                          {doc.updated}
                         </td>
                         <td className="pl-3 py-2.5 text-center">
                           <div className="inline-flex items-center gap-1">
