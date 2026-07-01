@@ -32,7 +32,9 @@ export default function Field({
   return (
     <div
       className={
-        type == "checkbox" ? "flex items-center gap-3 cursor-pointer" : ""
+        type == "checkbox"
+          ? "flex items-center gap-3 cursor-pointer"
+          : "overflow-visible"
       }
     >
       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -172,7 +174,7 @@ function SelectField({
   };
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative overflow-visible" ref={containerRef}>
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}

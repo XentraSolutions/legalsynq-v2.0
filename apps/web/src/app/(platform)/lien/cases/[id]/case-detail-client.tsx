@@ -434,7 +434,7 @@ export function CaseDetailClient({ id }: { id: string }) {
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
             canEdit={canEdit}
-            onCaseUpdated={setCaseDetail}
+            onCaseUpdated={() => fetchCase()}
             u={caseUpdates}
           />
         )}
@@ -549,7 +549,7 @@ function CollapsibleSection({
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
       <div
         className="flex items-center justify-between px-5 py-3 cursor-pointer select-none hover:bg-gray-50/50 transition-colors"
         onClick={() => setExpanded(!expanded)}
@@ -662,35 +662,49 @@ function DetailsTab({
   const [tTitle, setTTitle] = useState(d.title);
   const [tAccident, setTAccident] = useState(d.caseType);
 
-  const formatted = dateConvertertoIso(d.dateOfIncident);
+  const formattedDoI = dateConvertertoIso(d.dateOfIncident);
+  const formattedFd = dateConvertertoIso(d.trackingFollowUpDate);
 
   const [tDescription, setTDescription] = useState(d.description);
-  const [tDateOfIncident, setTDateOfIncident] = useState(formatted);
+  const [tDateOfIncident, setTDateOfIncident] = useState(formattedDoI);
+  const [tTrackingFollowUpDate, setTTrackingFollowUpDate] =
+    useState(formattedFd);
+
   const [tStatus, setTStatus] = useState(d.status);
   const [tSaving, setTSaving] = useState(false);
   const [tErrors, setTErrors] = useState<Record<string, string>>({});
+
+  const [form, setForm] = useState({ ...d });
+
   const { lookup } = useSessionContext();
+
+  const updateField = (field: keyof typeof d, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+    // setTouched((prev) => ({ ...prev, [field]: true }));
+  };
 
   const accidentType =
     lookup?.AccidentType?.map((c) => {
-      return { key: c.id, value: c.name, label: c.name };
+      return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
+  const state =
+    lookup?.State?.map((c) => {
+      return { key: c.id, value: c.code, label: c.code };
+    }) ?? [];
+  const medicalStatus =
+    lookup?.MedicalStatus?.map((c) => {
+      return { key: c.id, value: c.code, label: c.name };
+    }) ?? [];
+
   const resetPlaintiffForm = useCallback(() => {
-    setPFirstName(d.clientFirstName);
-    setPLastName(d.clientLastName);
-    setPPhone(d.clientPhone);
-    setPEmail(d.clientEmail);
-    setPDob(d.clientDob);
-    setPAddress(d.clientAddress);
+    setForm({ ...d });
     setPErrors({});
   }, [d]);
 
   const resetTrackingForm = useCallback(() => {
-    const formatted = dateConvertertoIso(d.dateOfIncident);
-    setTTitle(d.title);
-    setTDescription(d.description);
-    setTDateOfIncident(formatted);
-    setTStatus(d.status);
+    setTDateOfIncident(dateConvertertoIso(d.dateOfIncident));
+    setTTrackingFollowUpDate(dateConvertertoIso(d.trackingFollowUpDate));
+    setForm({ ...d });
     setTErrors({});
   }, [d]);
 
@@ -734,26 +748,23 @@ function DetailsTab({
     setPSaving(true);
     const payload = {
       caseId: d.id,
-      firstName: pFirstName.trim(),
-      lastName: pLastName.trim(),
-      phone: pPhone.trim() || "",
-      email: pEmail.trim() || "",
-      dob: dateConverter(pDob) || "",
-      address: pAddress.trim() || "",
-      status: d.status,
-      sex: "",
-      city: "",
-      state: "",
-      zipcode: "",
+      firstName: form.clientFirstName.trim(),
+      lastName: form.clientLastName.trim(),
+      phone: form.clientPhone.trim() || "",
+      email: form.clientEmail.trim() || "",
+      dob: dateConverter(form.clientDob) || "",
+      address: form.clientStreetAddress.trim() || "",
+      sex: form.sex || "",
+      city: form.clientCity,
+      state: form.clientState,
+      zipcode: form.clientZipcode,
     };
     try {
-      const updated = await casesService.updateCasePersonal(payload);
-      onCaseUpdated({
-        ...d,
-        ...payload,
-        demandAmount: d.demandAmount ?? null,
-        settlementAmount: d.settlementAmount ?? null,
-      });
+      await casesService.updateCasePersonal(payload);
+      setTimeout(() => {
+        onCaseUpdated({ ...d, ...payload });
+      }, 100);
+
       setEditingPlaintiff(false);
       addToast({
         type: "success",
@@ -767,42 +778,31 @@ function DetailsTab({
     } finally {
       setPSaving(false);
     }
-  }, [
-    d,
-    pFirstName,
-    pLastName,
-    pPhone,
-    pEmail,
-    pDob,
-    pAddress,
-    onCaseUpdated,
-    addToast,
-  ]);
+  }, [d, form, onCaseUpdated, addToast]);
 
   const handleTrackingSave = useCallback(async () => {
     // if (!validateTracking()) return;
     setTSaving(true);
     const payload: UpdateCaseRequestDto = {
       caseId: d.id,
-      currentStatus: tStatus,
-      currentMedicalStatus: "",
-      caseType: tAccident,
-      stateOfIncident: "",
-      trackingFollowUp: "",
-      dateOfLoss: tDateOfIncident,
-      leadId: "",
-      description: tDescription,
-      notes: tDescription,
+      currentStatus: form.status,
+      currentMedicalStatus: form.currentMedicalStatus,
+      caseType: form.caseType,
+      stateOfIncident: form.stateOfIncident,
+      trackingFollowUp: dateConverter(form.trackingFollowUpDate),
+      dateOfLoss: dateConverter(form.dateOfIncident),
+      leadId: form.leadId,
+      description: form.description || "",
+      notes: form.notes || "",
       demandAmount: d.demandAmount ?? 0.0,
       settlementAmount: d.settlementAmount ?? 0.0,
     };
     try {
-      const response = await casesService.updateCase(payload);
-      onCaseUpdated({
-        ...response,
-        demandAmount: d.demandAmount ?? null,
-        settlementAmount: d.settlementAmount ?? null,
-      });
+      await casesService.updateCase(payload);
+      setTimeout(() => {
+        onCaseUpdated({ ...d });
+      }, 100);
+
       setEditingTracking(false);
       addToast({
         type: "success",
@@ -818,11 +818,9 @@ function DetailsTab({
     }
   }, [
     d,
-    tStatus,
-    tTitle,
-    tAccident,
-    tDescription,
     tDateOfIncident,
+    tTrackingFollowUpDate,
+    form,
     onCaseUpdated,
     addToast,
   ]);
@@ -853,95 +851,83 @@ function DetailsTab({
 
         {editingPlaintiff ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3 relative">
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   First Name *
                 </label>
-                <input
-                  type="text"
-                  value={pFirstName}
-                  onChange={(e) => setPFirstName(e.target.value)}
-                  className={inputCls}
+                <Field
+                  label=""
+                  value={form.clientFirstName}
+                  onChange={(e) => updateField("clientFirstName", e.toString())}
                 />
-                {pErrors.firstName && (
-                  <p className={errCls}>{pErrors.firstName}</p>
-                )}
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Last Name *
                 </label>
-                <input
-                  type="text"
-                  value={pLastName}
-                  onChange={(e) => setPLastName(e.target.value)}
-                  className={inputCls}
+                <Field
+                  label=""
+                  value={form.clientLastName}
+                  onChange={(e) => updateField("clientLastName", e.toString())}
                 />
-                {pErrors.lastName && (
-                  <p className={errCls}>{pErrors.lastName}</p>
-                )}
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Phone Number
                 </label>
-                <input
-                  type="tel"
-                  value={pPhone}
-                  onChange={(e) => setPPhone(e.target.value)}
-                  placeholder="(555) 123-4567"
-                  className={inputCls}
+                <Field
+                  label=""
+                  value={form.clientPhone}
+                  onChange={(e) => updateField("clientPhone", e.toString())}
                 />
-                {pErrors.phone && <p className={errCls}>{pErrors.phone}</p>}
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Email
                 </label>
-                <input
-                  type="email"
-                  value={pEmail}
-                  onChange={(e) => setPEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  className={inputCls}
+                <Field
+                  label=""
+                  value={form.clientEmail}
+                  onChange={(e) => updateField("clientEmail", e.toString())}
                 />
-                {pErrors.email && <p className={errCls}>{pErrors.email}</p>}
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  Birthdate
+                  Date of Birth
                 </label>
                 <Field
                   label=""
                   type="date"
-                  value={pDob}
-                  onChange={(e) => setPDob(e.toString())}
-                  placeholder={pDob}
+                  value={form.clientDob}
+                  onChange={(e) => updateField("clientDob", e.toString())}
                 />
-                {pErrors.dob && <p className={errCls}>{pErrors.dob}</p>}
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
                   Sex
                 </label>
-                <input
-                  type="text"
-                  disabled
-                  value=""
-                  placeholder="Not yet supported"
-                  className={`${inputCls} opacity-50 cursor-not-allowed`}
+                <Field
+                  label=""
+                  value={form.sex}
+                  type="select"
+                  options={[
+                    { key: "male", value: "male", label: "Male" },
+                    { key: "female", value: "female", label: "Female" },
+                  ]}
+                  onChange={(e) => updateField("sex", e.toString())}
                 />
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Address
                 </label>
-                <input
-                  type="text"
-                  value={pAddress}
-                  onChange={(e) => setPAddress(e.target.value)}
-                  className={inputCls}
+                <Field
+                  label=""
+                  value={form.clientStreetAddress}
+                  onChange={(e) =>
+                    updateField("clientStreetAddress", e.toString())
+                  }
                 />
               </div>
 
@@ -949,22 +935,25 @@ function DetailsTab({
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   City
                 </label>
-                <input
-                  type="text"
-                  value={pAddress}
-                  onChange={(e) => setPAddress(e.target.value)}
-                  className={inputCls}
+                <Field
+                  label=""
+                  value={form.clientCity}
+                  onChange={(e) => updateField("clientCity", e.toString())}
                 />
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   State
                 </label>
-                <input
-                  type="text"
-                  value={pAddress}
-                  onChange={(e) => setPAddress(e.target.value)}
-                  className={inputCls}
+                <Field
+                  label=""
+                  value={form.clientState}
+                  type="select"
+                  options={state}
+                  onChange={(e) => {
+                    console.log(e);
+                    updateField("clientState", e.toString());
+                  }}
                 />
               </div>
 
@@ -972,11 +961,10 @@ function DetailsTab({
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Zip code
                 </label>
-                <input
-                  type="text"
-                  value={pAddress}
-                  onChange={(e) => setPAddress(e.target.value)}
-                  className={inputCls}
+                <Field
+                  label=""
+                  value={form.clientZipcode}
+                  onChange={(e) => updateField("clientZipcode", e.toString())}
                 />
               </div>
             </div>
@@ -1016,11 +1004,8 @@ function DetailsTab({
             <FieldItem label="Phone Number" value={d.clientPhone} />
             <FieldItem label="Email" value={d.clientEmail} />
             <FieldItem label="Birthdate" value={d.clientDob} />
-            {/* TEMP: Sex field not supported by API */}
-            <FieldItem label="Sex" value="---" />
+            <FieldItem label="Sex" value={d.sex} />
             <FieldItem label="Address" value={d.clientAddress} />
-            <FieldItem label="City" value={d.clientCity} />
-            <FieldItem label="State" value={d.clientState} />
           </FieldGrid>
         )}
       </CollapsibleSection>
@@ -1047,13 +1032,31 @@ function DetailsTab({
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-x-8 gap-y-3">
               <div>
+                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
+                  Tracking Follow Up
+                </label>
+
+                <Field
+                  label=""
+                  type="date"
+                  value={tTrackingFollowUpDate}
+                  onChange={(e) => {
+                    updateField("trackingFollowUpDate", e.toString());
+                    setTTrackingFollowUpDate(e.toString());
+                  }}
+                />
+              </div>
+
+              <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Case Status
                 </label>
                 <div className="relative">
                   <select
-                    value={tStatus}
-                    onChange={(e) => setTStatus(e.target.value)}
+                    value={form.status}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, status: e.target.value }))
+                    }
                     className={`${inputCls} appearance-none cursor-pointer`}
                   >
                     {lookup?.CaseStatus.map((s) => (
@@ -1065,6 +1068,22 @@ function DetailsTab({
                   <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
+                  Current Medical Status
+                </label>
+                <Field
+                  label=""
+                  value={form.currentMedicalStatus}
+                  options={medicalStatus}
+                  onChange={(v) =>
+                    updateField("currentMedicalStatus", v.toString())
+                  }
+                  placeholder="Medical Status"
+                  type="select"
+                />
+              </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Case Type
@@ -1072,21 +1091,16 @@ function DetailsTab({
 
                 <Field
                   label=""
-                  value={tAccident}
+                  value={form.caseType}
                   options={accidentType}
                   placeholder=""
                   onChange={(v) => {
-                    setTAccident(v.toString());
+                    updateField("caseType", v.toString());
                   }}
                   type="select"
                 />
-                {/* <input
-                  type="text"
-                  value={tTitle}
-                  onChange={(e) => setTTitle(e.target.value)}
-                  className={inputCls}
-                /> */}
               </div>
+
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Date of Loss
@@ -1097,73 +1111,35 @@ function DetailsTab({
                   value={tDateOfIncident}
                   onChange={(e) => {
                     setTDateOfIncident(e.toString());
+                    updateField("dateOfIncident", e.toString());
                   }}
                   placeholder={tDateOfIncident}
-                />
-                {tErrors.tDateOfIncident && (
-                  <p className={errCls}>{tErrors.tDateOfIncident}</p>
-                )}
-              </div>
-              {/* Fields below not supported by current API */}
-              <div>
-                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
-                  Tracking Follow Up
-                </label>
-
-                <Field
-                  label=""
-                  type="date"
-                  value={tDateOfIncident}
-                  onChange={(e) => {
-                    setTDateOfIncident(e.toString());
-                  }}
-                  placeholder={tDateOfIncident}
-                />
-                {tErrors.tDateOfIncident && (
-                  <p className={errCls}>{tErrors.tDateOfIncident}</p>
-                )}
-                <input
-                  type="text"
-                  disabled
-                  value=""
-                  placeholder="Not yet supported"
-                  className={`${inputCls} opacity-50 cursor-not-allowed`}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
-                  Current Medical Status
-                </label>
-                <input
-                  type="text"
-                  disabled
-                  value=""
-                  placeholder="Not yet supported"
-                  className={`${inputCls} opacity-50 cursor-not-allowed`}
                 />
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
                   State of Incident
                 </label>
-                <input
-                  type="text"
-                  disabled
-                  value=""
-                  placeholder="Not yet supported"
-                  className={`${inputCls} opacity-50 cursor-not-allowed`}
+                <Field
+                  label=""
+                  value={form.stateOfIncident}
+                  options={state}
+                  onChange={(v) => updateField("stateOfIncident", v.toString())}
+                  placeholder="State"
+                  type="select"
                 />
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
                   Lead
                 </label>
-                <input
-                  type="text"
-                  disabled
-                  value=""
-                  placeholder="Not yet supported"
-                  className={`${inputCls} opacity-50 cursor-not-allowed`}
+                <Field
+                  label=""
+                  value={form.leadId}
+                  options={[]}
+                  onChange={(v) => updateField("leadId", v.toString())}
+                  placeholder="Lead"
+                  type="select"
                 />
               </div>
             </div>
@@ -1171,11 +1147,12 @@ function DetailsTab({
               <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                 Case Tracking Note
               </label>
-              <textarea
-                value={tDescription}
-                onChange={(e) => setTDescription(e.target.value)}
-                rows={3}
-                className={`${inputCls} resize-none`}
+              <Field
+                label=""
+                value={form.notes}
+                type="textarea"
+                onChange={(v) => updateField("notes", v.toString())}
+                placeholder=""
               />
             </div>
             <div className="flex items-center gap-2 pt-1">
@@ -1212,7 +1189,10 @@ function DetailsTab({
           <>
             <FieldGrid>
               {/* TEMP: Tracking Follow Up not supported by API */}
-              <FieldItem label="Tracking Follow Up" value="---" />
+              <FieldItem
+                label="Tracking Follow Up"
+                value={d.trackingFollowUpDate || "---"}
+              />
               <div>
                 <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">
                   Current Status
@@ -1222,13 +1202,19 @@ function DetailsTab({
                 </dd>
               </div>
               {/* TEMP: Current Medical Status not supported by API */}
-              <FieldItem label="Current Medical Status" value="---" />
+              <FieldItem
+                label="Current Medical Status"
+                value={d.currentMedicalStatus || "---"}
+              />
               <FieldItem label="Case Type" value={d.caseType || "---"} />
               <FieldItem
                 label="Date of Incident"
                 value={d.dateOfIncident || "---"}
               />
-              <FieldItem label="State of Incident" value="---" />
+              <FieldItem
+                label="State of Incident"
+                value={d.stateOfIncident || "---"}
+              />
               <FieldItem label="Lead" value="---" />
             </FieldGrid>
 
@@ -1237,7 +1223,7 @@ function DetailsTab({
                 Case Tracking Note
               </dt>
               <dd className="text-sm text-gray-600 mt-1.5 leading-relaxed">
-                {d.description || "---"}
+                {d.description || d.notes || "---"}
               </dd>
             </div>
           </>
@@ -1714,11 +1700,13 @@ function LiensTab({
         await saveMedicalPayee(forms[2]),
         await uploadDocuments(forms[3]),
       ]);
+
       addToast({
         type: "success",
         title: "Liens Updated",
         description: `Liens has been updated.`,
       });
+      setSelectedId(null);
       // closeModal();
     } finally {
       // stopLoading();

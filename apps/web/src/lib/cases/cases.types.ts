@@ -100,7 +100,7 @@ export interface UpdateCaseRequestDto {
   trackingFollowUp: string;
   dateOfLoss: string;
   leadId: string;
-  description: string | null;
+  description?: string | null;
   notes: string | null;
   demandAmount: number | string | null;
   settlementAmount: number | string | null;
@@ -216,8 +216,9 @@ export interface CaseDetail {
   claimNumber: string;
   demandAmount: number | null;
   settlementAmount: number | null;
-  description: string;
-  notes: string;
+  description: string | null;
+  notes: string | null;
+  trackingFollowUp: string;
   openedAt: string;
   closedAt: string;
   createdAt: string;

@@ -109,7 +109,7 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     caseType: safeString(dto.caseType),
     currentMedicalStatus: safeString(dto.currentMedicalStatus),
     stateOfIncident: safeString(dto.stateOfIncident),
-    trackingFollowUpDate: safeString(dto.trackingFollowUpDate),
+    trackingFollowUpDate: formatDateField(dto.trackingFollowUpDate),
     leadId: safeString(dto.leadId),
     insuranceCarrier: safeString(dto.insuranceCarrier),
     policyNumber: safeString(dto.policyNumber),

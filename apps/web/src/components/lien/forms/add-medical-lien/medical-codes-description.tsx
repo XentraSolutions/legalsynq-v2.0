@@ -155,7 +155,7 @@ export default function MedicalCodesDescription(
       billingAmount: currentBilling,
       purchaseAmount:
         form.purchaseAmountType === "amount"
-          ? currentPurchase
+          ? parseNumber(currentPurchase)
           : currentBilling * (currentPurchase / 100),
     };
 
