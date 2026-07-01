@@ -54,6 +54,9 @@ export function mapContactToDetail(dto: ContactResponseDto): ContactDetail {
     postalCode: safeString(dto.postalCode),
     notes: safeString(dto.notes),
     updatedAt: formatDateField(dto.updatedAtUtc),
+    contactSubtype: dto.contactSubtype ?? null,
+    facilityId: dto.facilityId ?? null,
+    lawFirmId: dto.lawFirmId ?? null,
   };
 }
 

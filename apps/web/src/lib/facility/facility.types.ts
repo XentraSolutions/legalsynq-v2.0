@@ -39,20 +39,24 @@ export interface FacilityListResponse {
 }
 
 export interface ContactPersonRequest {
+  facilityId: string
   firstName: string
   lastName: string
+  position?: string
   email: string
   phone?: string
-  facilityId: string
+  isActive?: boolean
 }
 
 export interface UpdateContactPersonRequest {
-  id: string
+  contactPersonId: string
+  facilityId: string
   firstName: string
   lastName: string
+  position?: string
   email: string
   phone?: string
-  facilityId: string
+  isActive?: boolean
 }
 
 export interface ContactPersonResponse extends FacilityGenericResponse {}

@@ -40,8 +40,8 @@ export const facilityApi = {
       `${BASE}/get-contactperson/${facilityId}`,
     );
   },
-  updateContactPerson(form: UpdateContactPersonRequest) {
-    return apiClient.post<ContactPersonResponse>(`${BASE}/update-contactperson`, form);
+  updateContactPerson({ contactPersonId, ...form }: UpdateContactPersonRequest) {
+    return apiClient.put<ContactPersonResponse>(`${BASE}/contactperson/${contactPersonId}`, form);
   },
   deleteContactPerson(id: string) {
     return apiClient.delete<FacilityGenericResponse>(`${BASE}/delete-contactperson/${id}`);

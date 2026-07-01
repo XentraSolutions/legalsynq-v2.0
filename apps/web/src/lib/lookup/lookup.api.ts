@@ -122,4 +122,8 @@ export const lookupApi = {
   getSettlementType() {
     return apiClient.get<LookupData[]>(`${BASE}/settlement/type`);
   },
+
+  getLawFirmContactRoles() {
+    return apiClient.get<LookupData[]>(`${BASE}/contact/lawfirm/role`);
+  },
 };

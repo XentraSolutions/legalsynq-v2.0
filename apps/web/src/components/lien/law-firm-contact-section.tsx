@@ -1,69 +1,112 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useLienStore } from '@/stores/lien-store';
-import { FormModal, ConfirmDialog } from '@/components/lien/modal';
-import { ActionMenu } from '@/components/lien/action-menu';
-import Field from '@/components/lien/field';
-
-// Temp constants — replace with API enum once available
-const LAW_FIRM_ROLES = ['CASE_MANAGER', 'ATTORNEY', 'OTHERS'] as const;
-type LawFirmRole = (typeof LAW_FIRM_ROLES)[number];
-
-const ROLE_LABELS: Record<LawFirmRole, string> = {
-  CASE_MANAGER: 'Case Manager',
-  ATTORNEY: 'Attorney',
-  OTHERS: 'Others',
-};
-
-interface LawFirmContact {
-  id: string;
-  firstName: string;
-  lastName: string;
-  role: LawFirmRole;
-  email: string;
-  phone: string;
-}
+import { useState, useEffect, useCallback } from "react";
+import { useLienStore } from "@/stores/lien-store";
+import { contactsApi } from "@/lib/contacts/contacts.api";
+import { lookupApi } from "@/lib/lookup/lookup.api";
+import { type ContactResponseDto } from "@/lib/contacts/contacts.types";
+import { type LookupData } from "@/lib/lookup/lookup.types";
+import { ApiError } from "@/lib/api-client";
+import { FormModal, ConfirmDialog } from "@/components/lien/modal";
+import { ActionMenu } from "@/components/lien/action-menu";
 
 interface Props {
   lawFirmId: string;
 }
 
-const INITIAL_FORM = { firstName: '', lastName: '', role: 'CASE_MANAGER' as LawFirmRole, email: '', phone: '' };
+const CONTACT_TYPE = "LawFirm";
+const INITIAL_FORM = {
+  firstName: "",
+  lastName: "",
+  contactSubtype: "",
+  organization: "",
+  email: "",
+  phone: "",
+  addressLine1: "",
+  city: "",
+  state: "",
+  postalCode: "",
+};
 const PAGE_SIZE = 12;
 
-let _nextId = 1;
-
-export function LawFirmContactSection({ lawFirmId: _lawFirmId }: Props) {
+export function LawFirmContactSection({ lawFirmId }: Props) {
   const addToast = useLienStore((s) => s.addToast);
-  const [contacts, setContacts] = useState<LawFirmContact[]>([]);
-  const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile');
+  const [contacts, setContacts] = useState<ContactResponseDto[]>([]);
+  const [roles, setRoles] = useState<LookupData[]>([]);
+  const [states, setStates] = useState<LookupData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"tile" | "list">("tile");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<LawFirmContact | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<LawFirmContact | null>(null);
+  const [editTarget, setEditTarget] = useState<ContactResponseDto | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ContactResponseDto | null>(
+    null,
+  );
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  const fetchContacts = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data } = await contactsApi.list({
+        LawFirmId: lawFirmId,
+        ContactType: CONTACT_TYPE,
+      });
+      setContacts(Array.isArray(data.items) ? data.items : []);
+    } catch {
+      setContacts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [lawFirmId]);
+
+  useEffect(() => {
+    fetchContacts();
+    Promise.allSettled([
+      lookupApi.getLawFirmContactRoles(),
+      lookupApi.getStates(),
+    ]).then(([rolesRes, statesRes]) => {
+      if (rolesRes.status === "fulfilled")
+        setRoles(Array.isArray(rolesRes.value.data) ? rolesRes.value.data : []);
+      if (statesRes.status === "fulfilled")
+        setStates(
+          Array.isArray(statesRes.value.data) ? statesRes.value.data : [],
+        );
+    });
+  }, [fetchContacts]);
+
   const openAdd = () => {
     setEditTarget(null);
-    setForm({ ...INITIAL_FORM });
+    setForm({ ...INITIAL_FORM, contactSubtype: roles[0]?.code ?? "" });
     setErrors({});
     setModalOpen(true);
   };
 
-  const openEdit = (c: LawFirmContact) => {
+  const openEdit = (c: ContactResponseDto) => {
     setEditTarget(c);
-    setForm({ firstName: c.firstName, lastName: c.lastName, role: c.role, email: c.email, phone: c.phone });
+    setForm({
+      firstName: c.firstName,
+      lastName: c.lastName,
+      contactSubtype: c.contactSubtype ?? "",
+      organization: c.organization ?? "",
+      email: c.email ?? "",
+      phone: c.phone ?? "",
+      addressLine1: c.addressLine1 ?? "",
+      city: c.city ?? "",
+      state: c.state ?? "",
+      postalCode: c.postalCode ?? "",
+    });
     setErrors({});
     setModalOpen(true);
   };
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.firstName.trim()) e.firstName = 'First Name is required';
-    if (!form.lastName.trim()) e.lastName = 'Last Name is required';
+    if (!form.firstName.trim()) e.firstName = "First Name is required";
+    if (!form.lastName.trim()) e.lastName = "Last Name is required";
+    if (form.email && !/\S+@\S+\.\S+/.test(form.email))
+      e.email = "Invalid email format";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -72,39 +115,82 @@ export function LawFirmContactSection({ lawFirmId: _lawFirmId }: Props) {
     if (!validate()) return;
     setSubmitting(true);
     try {
+      const payload = {
+        contactType: CONTACT_TYPE,
+        lawFirmId,
+        contactSubtype: form.contactSubtype || undefined,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        organization: form.organization.trim() || undefined,
+        email: form.email.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        addressLine1: form.addressLine1.trim() || undefined,
+        city: form.city.trim() || undefined,
+        state: form.state || undefined,
+        postalCode: form.postalCode.trim() || undefined,
+      };
       if (editTarget) {
-        setContacts((prev) =>
-          prev.map((c) =>
-            c.id === editTarget.id
-              ? { ...c, firstName: form.firstName.trim(), lastName: form.lastName.trim(), role: form.role, email: form.email.trim(), phone: form.phone.trim() }
-              : c
-          )
-        );
-        addToast({ type: 'success', title: 'Contact Updated', description: 'Law firm contact has been updated.' });
+        await contactsApi.update(editTarget.id, payload);
+        addToast({
+          type: "success",
+          title: "Contact Updated",
+          description: "Law firm contact has been updated.",
+        });
       } else {
-        const newContact: LawFirmContact = {
-          id: String(_nextId++),
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          role: form.role,
-          email: form.email.trim(),
-          phone: form.phone.trim(),
-        };
-        setContacts((prev) => [...prev, newContact]);
-        addToast({ type: 'success', title: 'Contact Added', description: 'Law firm contact has been added.' });
+        await contactsApi.create(payload);
+        addToast({
+          type: "success",
+          title: "Contact Added",
+          description: "Law firm contact has been added.",
+        });
       }
       setModalOpen(false);
+      fetchContacts();
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: editTarget ? "Update Failed" : "Create Failed",
+        description:
+          err instanceof ApiError
+            ? err.message
+            : "An unexpected error occurred",
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    setContacts((prev) => prev.filter((c) => c.id !== deleteTarget.id));
-    addToast({ type: 'success', title: 'Contact Removed', description: `${deleteTarget.firstName} ${deleteTarget.lastName} has been removed.` });
-    setDeleteTarget(null);
+    try {
+      await contactsApi.delete(deleteTarget.id);
+      addToast({
+        type: "success",
+        title: "Contact Removed",
+        description: `${deleteTarget.firstName} ${deleteTarget.lastName} has been removed.`,
+      });
+      setDeleteTarget(null);
+      fetchContacts();
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Delete Failed",
+        description:
+          err instanceof ApiError
+            ? err.message
+            : "An unexpected error occurred",
+      });
+      setDeleteTarget(null);
+    }
   };
+
+  const getRoleLabel = (code: string | null | undefined) => {
+    if (!code) return "—";
+    return roles.find((r) => r.code === code)?.name ?? code;
+  };
+
+  const inputCls = (field: string) =>
+    `w-full border rounded-lg px-3 py-2 text-sm ${errors[field] ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`;
 
   const totalPages = Math.ceil(contacts.length / PAGE_SIZE);
   const paged = contacts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -114,21 +200,27 @@ export function LawFirmContactSection({ lawFirmId: _lawFirmId }: Props) {
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <i className="ri-scales-3-line text-gray-500" />
-          <h3 className="text-sm font-semibold text-gray-800">Law Firm Contacts</h3>
-          <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{contacts.length}</span>
+          <h3 className="text-sm font-semibold text-gray-800">
+            Law Firm Contacts
+          </h3>
+          {!loading && (
+            <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+              {contacts.length}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setViewMode('tile')}
+            onClick={() => setViewMode("tile")}
             title="Tile view"
-            className={`p-1.5 rounded-lg transition-colors ${viewMode === 'tile' ? 'bg-primary/10 text-primary' : 'text-gray-400 hover:bg-gray-100'}`}
+            className={`p-1.5 rounded-lg transition-colors ${viewMode === "tile" ? "bg-primary/10 text-primary" : "text-gray-400 hover:bg-gray-100"}`}
           >
             <i className="ri-layout-grid-line text-base" />
           </button>
           <button
-            onClick={() => setViewMode('list')}
+            onClick={() => setViewMode("list")}
             title="List view"
-            className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-gray-400 hover:bg-gray-100'}`}
+            className={`p-1.5 rounded-lg transition-colors ${viewMode === "list" ? "bg-primary/10 text-primary" : "text-gray-400 hover:bg-gray-100"}`}
           >
             <i className="ri-list-unordered text-base" />
           </button>
@@ -143,12 +235,28 @@ export function LawFirmContactSection({ lawFirmId: _lawFirmId }: Props) {
       </div>
 
       <div className="p-5">
-        {contacts.length === 0 ? (
-          <div className="text-center py-10 text-sm text-gray-400">No contacts yet. Add the first one.</div>
-        ) : viewMode === 'tile' ? (
-          <TileView contacts={paged} onEdit={openEdit} onDelete={setDeleteTarget} />
+        {loading ? (
+          <div className="text-center py-10 text-sm text-gray-400">
+            Loading contacts...
+          </div>
+        ) : contacts.length === 0 ? (
+          <div className="text-center py-10 text-sm text-gray-400">
+            No contacts yet. Add the first one.
+          </div>
+        ) : viewMode === "tile" ? (
+          <TileView
+            contacts={paged}
+            getRoleLabel={getRoleLabel}
+            onEdit={openEdit}
+            onDelete={setDeleteTarget}
+          />
         ) : (
-          <ListView contacts={paged} onEdit={openEdit} onDelete={setDeleteTarget} />
+          <ListView
+            contacts={paged}
+            getRoleLabel={getRoleLabel}
+            onEdit={openEdit}
+            onDelete={setDeleteTarget}
+          />
         )}
 
         {totalPages > 1 && (
@@ -160,7 +268,9 @@ export function LawFirmContactSection({ lawFirmId: _lawFirmId }: Props) {
             >
               Previous
             </button>
-            <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+            <span className="text-sm text-gray-500">
+              Page {page} of {totalPages}
+            </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
@@ -176,54 +286,181 @@ export function LawFirmContactSection({ lawFirmId: _lawFirmId }: Props) {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSubmit={handleSubmit}
-        title={editTarget ? 'Edit Law Firm Contact' : 'Add New Law Firm Contact'}
+        title={editTarget ? "Edit Law Firm Contact" : "Add Law Firm Contact"}
         subtitle="Law Firm Contact"
-        submitLabel={submitting ? (editTarget ? 'Saving...' : 'Creating...') : 'Save'}
+        submitLabel={
+          submitting ? (editTarget ? "Saving..." : "Creating...") : "Save"
+        }
         submitDisabled={submitting || !form.firstName || !form.lastName}
       >
         <div className="space-y-4">
-          <Field
-            label="First Name"
-            required
-            value={form.firstName}
-            onChange={(v) => setForm({ ...form, firstName: v.toString() })}
-            error={errors.firstName}
-            placeholder=""
-          />
-          <Field
-            label="Last Name"
-            required
-            value={form.lastName}
-            onChange={(v) => setForm({ ...form, lastName: v.toString() })}
-            error={errors.lastName}
-            placeholder=""
-          />
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-700">Role</label>
-            <select
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value as LawFirmRole })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary/30"
-            >
-              {LAW_FIRM_ROLES.map((r) => (
-                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-              ))}
-            </select>
+          {/* Role */}
+          {roles.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Role
+              </label>
+              <select
+                value={form.contactSubtype}
+                onChange={(e) =>
+                  setForm({ ...form, contactSubtype: e.target.value })
+                }
+                className={inputCls("contactSubtype")}
+              >
+                <option value="">— Select Role —</option>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.code}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Name */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                First Name<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.firstName}
+                onChange={(e) =>
+                  setForm({ ...form, firstName: e.target.value })
+                }
+                placeholder="First name"
+                className={inputCls("firstName")}
+              />
+              {errors.firstName && (
+                <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Last Name<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.lastName}
+                onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                placeholder="Last name"
+                className={inputCls("lastName")}
+              />
+              {errors.lastName && (
+                <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
+              )}
+            </div>
           </div>
-          <Field
-            label="Telephone Number"
-            type="tel"
-            value={form.phone}
-            onChange={(v) => setForm({ ...form, phone: v.toString() })}
-            placeholder=""
-          />
-          <Field
-            label="Email Address"
-            type="email"
-            value={form.email}
-            onChange={(v) => setForm({ ...form, email: v.toString() })}
-            placeholder=""
-          />
+
+          {/* Organization */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Organization
+            </label>
+            <input
+              type="text"
+              value={form.organization}
+              onChange={(e) =>
+                setForm({ ...form, organization: e.target.value })
+              }
+              placeholder="Organization or company name"
+              className={inputCls("organization")}
+            />
+          </div>
+
+          {/* Contact */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="email@example.com"
+                className={inputCls("email")}
+              />
+              {errors.email && (
+                <p className="text-xs text-red-500 mt-1">{errors.email}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Phone
+              </label>
+              <input
+                type="text"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                placeholder="(555) 555-0000"
+                className={inputCls("phone")}
+              />
+            </div>
+          </div>
+
+          {/* Address */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Address
+            </label>
+            <input
+              type="text"
+              value={form.addressLine1}
+              onChange={(e) =>
+                setForm({ ...form, addressLine1: e.target.value })
+              }
+              placeholder="Address"
+              className={inputCls("addressLine1")}
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City
+              </label>
+              <input
+                type="text"
+                value={form.city}
+                onChange={(e) => setForm({ ...form, city: e.target.value })}
+                placeholder="City"
+                className={inputCls("city")}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                State
+              </label>
+              <select
+                value={form.state}
+                onChange={(e) => setForm({ ...form, state: e.target.value })}
+                className={inputCls("state")}
+              >
+                <option value="">Select...</option>
+                {states.map((s) => (
+                  <option key={s.id} value={s.code}>
+                    {s.code}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Zip Code
+              </label>
+              <input
+                type="text"
+                value={form.postalCode}
+                onChange={(e) =>
+                  setForm({ ...form, postalCode: e.target.value })
+                }
+                placeholder="Zip Code"
+                className={inputCls("postalCode")}
+              />
+            </div>
+          </div>
         </div>
       </FormModal>
 
@@ -244,40 +481,60 @@ export function LawFirmContactSection({ lawFirmId: _lawFirmId }: Props) {
 
 function TileView({
   contacts,
+  getRoleLabel,
   onEdit,
   onDelete,
 }: {
-  contacts: LawFirmContact[];
-  onEdit: (c: LawFirmContact) => void;
-  onDelete: (c: LawFirmContact) => void;
+  contacts: ContactResponseDto[];
+  getRoleLabel: (code: string | null | undefined) => string;
+  onEdit: (c: ContactResponseDto) => void;
+  onDelete: (c: ContactResponseDto) => void;
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {contacts.map((c) => (
-        <div key={c.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
+        <div
+          key={c.id}
+          className="border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow"
+        >
           <div className="flex items-start justify-between mb-3">
             <div>
               <p className="text-sm font-semibold text-gray-900 leading-snug">
                 {c.firstName} {c.lastName}
               </p>
-              <span className="inline-block mt-0.5 text-xs text-primary bg-primary/10 rounded-full px-2 py-0.5">
-                {ROLE_LABELS[c.role]}
-              </span>
+              {c.contactSubtype && (
+                <span className="inline-block mt-0.5 text-xs text-primary bg-primary/10 rounded-full px-2 py-0.5">
+                  {getRoleLabel(c.contactSubtype)}
+                </span>
+              )}
             </div>
             <ActionMenu
               items={[
-                { label: 'Edit Contact', icon: 'ri-edit-line', onClick: () => onEdit(c) },
-                { label: 'Delete', icon: 'ri-delete-bin-line', onClick: () => onDelete(c), variant: 'danger', divider: true },
+                {
+                  label: "Edit Contact",
+                  icon: "ri-edit-line",
+                  onClick: () => onEdit(c),
+                },
+                {
+                  label: "Delete",
+                  icon: "ri-delete-bin-line",
+                  onClick: () => onDelete(c),
+                  variant: "danger",
+                  divider: true,
+                },
               ]}
             />
           </div>
+          {c.organization && (
+            <p className="text-xs text-gray-500 mb-1.5">{c.organization}</p>
+          )}
           <div className="flex items-center gap-2 text-xs text-gray-500 mb-1.5">
             <i className="ri-mail-line text-gray-400 shrink-0" />
-            <span className="truncate">{c.email || '--'}</span>
+            <span className="truncate">{c.email || "--"}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <i className="ri-phone-line text-gray-400 shrink-0" />
-            <span>{c.phone || '--'}</span>
+            <span>{c.phone || "--"}</span>
           </div>
         </div>
       ))}
@@ -287,41 +544,74 @@ function TileView({
 
 function ListView({
   contacts,
+  getRoleLabel,
   onEdit,
   onDelete,
 }: {
-  contacts: LawFirmContact[];
-  onEdit: (c: LawFirmContact) => void;
-  onDelete: (c: LawFirmContact) => void;
+  contacts: ContactResponseDto[];
+  getRoleLabel: (code: string | null | undefined) => string;
+  onEdit: (c: ContactResponseDto) => void;
+  onDelete: (c: ContactResponseDto) => void;
 }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-100">
-            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">First Name</th>
-            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">Last Name</th>
-            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">Role</th>
-            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">Email</th>
-            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">Phone</th>
+            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">
+              Name
+            </th>
+            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">
+              Role
+            </th>
+            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">
+              Organization
+            </th>
+            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">
+              Email
+            </th>
+            <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500">
+              Phone
+            </th>
             <th className="px-3 py-2.5" />
           </tr>
         </thead>
         <tbody>
           {contacts.map((c) => (
-            <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-              <td className="px-3 py-3 text-gray-900 font-medium">{c.firstName}</td>
-              <td className="px-3 py-3 text-gray-700">{c.lastName}</td>
-              <td className="px-3 py-3">
-                <span className="text-xs text-primary bg-primary/10 rounded-full px-2 py-0.5">{ROLE_LABELS[c.role]}</span>
+            <tr
+              key={c.id}
+              className="border-b border-gray-50 hover:bg-gray-50/50"
+            >
+              <td className="px-3 py-3 text-gray-900 font-medium">
+                {c.firstName} {c.lastName}
               </td>
-              <td className="px-3 py-3 text-gray-500">{c.email || '—'}</td>
-              <td className="px-3 py-3 text-gray-500">{c.phone || '—'}</td>
+              <td className="px-3 py-3">
+                {c.contactSubtype && (
+                  <span className="text-xs text-primary bg-primary/10 rounded-full px-2 py-0.5">
+                    {getRoleLabel(c.contactSubtype)}
+                  </span>
+                )}
+              </td>
+              <td className="px-3 py-3 text-gray-500">
+                {c.organization || "—"}
+              </td>
+              <td className="px-3 py-3 text-gray-500">{c.email || "—"}</td>
+              <td className="px-3 py-3 text-gray-500">{c.phone || "—"}</td>
               <td className="px-3 py-3">
                 <ActionMenu
                   items={[
-                    { label: 'Edit Contact', icon: 'ri-edit-line', onClick: () => onEdit(c) },
-                    { label: 'Delete', icon: 'ri-delete-bin-line', onClick: () => onDelete(c), variant: 'danger', divider: true },
+                    {
+                      label: "Edit Contact",
+                      icon: "ri-edit-line",
+                      onClick: () => onEdit(c),
+                    },
+                    {
+                      label: "Delete",
+                      icon: "ri-delete-bin-line",
+                      onClick: () => onDelete(c),
+                      variant: "danger",
+                      divider: true,
+                    },
                   ]}
                 />
               </td>

@@ -71,20 +71,20 @@ export default function ContactsPage() {
       }
 
       const [contactTypesRes, result] = await Promise.allSettled([
-        await lookupService.getContactTypes(),
-        await contactsService.getContacts({
+        lookupService.getContactTypes(),
+        contactsService.getContacts({
           keyword: search || undefined,
           ContactType: typeFilter || undefined,
           pageSize: 100,
         }),
       ]);
-      if (result.status == "fulfilled") {
-        setContacts(result.value.items);
-      }
-      if (contactTypesRes.status == "fulfilled") {
+      if (contactTypesRes.status === "fulfilled") {
         setContactTypes(contactTypesRes.value.items);
       }
-      setTotalCount(result.value.pagination.totalCount);
+      if (result.status === "fulfilled") {
+        setContacts(result.value.items);
+        setTotalCount(result.value.pagination.totalCount);
+      }
     } catch (err) {
       addToast({
         type: "error",
