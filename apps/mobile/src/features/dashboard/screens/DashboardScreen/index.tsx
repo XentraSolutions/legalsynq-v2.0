@@ -199,7 +199,7 @@ const FACILITY_ALLOCATION: DonutSlice[] = [
 ];
 
 const LINE_POINTS = [2.4, 3.7, 2.6, 1.0, 2.5, 2.6];
-const DEFAULT_DASHBOARD_DATE = new Date(2026, 9, 27);
+const DEFAULT_DASHBOARD_DATE = new Date();
 
 function padDatePart(value: number): string {
   return String(value).padStart(2, '0');
@@ -219,8 +219,10 @@ function parseApiDate(value: string): Date {
 }
 
 function createSingleDayRange(date: Date): DashboardDateRange {
-  const formatted = formatApiDate(date);
-  return { startDate: formatted, endDate: formatted };
+  const end = formatApiDate(date);
+  const start = new Date(date);
+  const lastMonth = new Date(start.setMonth(start.getMonth() - 1));
+  return { startDate: formatApiDate(lastMonth), endDate: end };
 }
 
 function formatDateForDisplay(value: string): string {
@@ -570,49 +572,108 @@ function numericValue(value: unknown): number | undefined {
   return undefined;
 }
 
-function getLawFirmCaseCount(row: DashboardLawFirmCaseReportRow): number {
-  return (
-    numericValue(row.totalCases) ??
-    numericValue(row.totalCase) ??
-    numericValue(row.caseCount) ??
-    numericValue(row.cases) ??
-    numericValue(row.count) ??
-    numericValue(row.total) ??
-    numericValue(row.value) ??
-    0
-  );
+const SKIP_COUNT_KEYS = new Set(['percentage', 'percent', 'pct', 'share', 'ratio', 'page', 'limit', 'pagesize', 'totalpages', 'id']);
+
+function scanFirstPositiveInt(r: Record<string, unknown>): number {
+  for (const [key, val] of Object.entries(r)) {
+    if (SKIP_COUNT_KEYS.has(key.toLowerCase())) continue;
+    const num = numericValue(val);
+    if (num !== undefined && num > 0 && Number.isInteger(num)) return num;
+  }
+  return 0;
 }
 
-function getLawFirmLabel(row: DashboardLawFirmCaseReportRow): string {
-  return (
-    row.lawFirm ?? row.lawfirm ?? row.lawFirmName ?? row.name ?? row.label ?? 'Unknown Law Firm'
-  );
+function readLawFirmId(row: DashboardLawFirmCaseReportRow): string {
+  const r = row as Record<string, unknown>;
+  for (const key of ['lawFirmId', 'lawfirmId', 'lawFirmOrgId', 'organizationId', 'orgId', 'firmId']) {
+    const val = r[key];
+    if (typeof val === 'string' && val.trim()) return val;
+    if (typeof val === 'number') return String(val);
+  }
+  return readLawFirmName(row);
+}
+
+function readLawFirmName(row: DashboardLawFirmCaseReportRow): string {
+  const r = row as Record<string, unknown>;
+  const candidates = [
+    row.lawFirm, row.lawfirm, row.lawFirmName, row.firmName, row.name,
+  ];
+  for (const val of candidates) {
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  for (const key of ['organization', 'organizationName', 'orgName', 'contactName', 'firm', 'title', 'lawFirmTitle']) {
+    const val = r[key];
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  // scan all string fields longer than 2 chars, skipping known non-name fields
+  const skipStringKeys = new Set(['label', 'status', 'type', 'id', 'tenantId', 'createdAt', 'updatedAt']);
+  for (const [key, val] of Object.entries(r)) {
+    if (skipStringKeys.has(key)) continue;
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  return row.label ?? 'Unknown Law Firm';
+}
+
+function mapLawFirmReportGrouped(rows: DashboardLawFirmCaseReportRow[]): DonutSlice[] {
+  const groups = new Map<string, { label: string; count: number }>();
+  for (const row of rows) {
+    const id = readLawFirmId(row);
+    const name = readLawFirmName(row);
+    const existing = groups.get(id);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      groups.set(id, { label: name, count: 1 });
+    }
+  }
+  const entries = Array.from(groups.values()).filter((g) => g.count > 0);
+  const total = entries.reduce((sum, g) => sum + g.count, 0) || 1;
+  return entries.map((g, i) => {
+    const pct = (g.count / total) * 100;
+    return {
+      label: g.label,
+      value: g.count,
+      amount: g.count.toLocaleString(),
+      percent: `(${pct.toFixed(2)}%)`,
+      color: SLICE_COLORS[i % SLICE_COLORS.length],
+    };
+  });
 }
 
 function getMedicalProviderCaseCount(row: DashboardMedicalProviderReportRow): number {
-  return (
+  const r = row as Record<string, unknown>;
+  const typed =
     numericValue(row.totalCases) ??
     numericValue(row.totalCase) ??
     numericValue(row.caseCount) ??
     numericValue(row.cases) ??
     numericValue(row.count) ??
     numericValue(row.total) ??
-    numericValue(row.value) ??
-    0
-  );
+    numericValue(row.value);
+  if (typed !== undefined) return typed;
+  for (const key of ['numberOfCases', 'caseTotal', 'totalCount', 'numCases', 'casesCount']) {
+    const val = numericValue(r[key]);
+    if (val !== undefined) return val;
+  }
+  return scanFirstPositiveInt(r);
 }
 
 function getMedicalProviderLabel(row: DashboardMedicalProviderReportRow): string {
-  return (
+  const r = row as Record<string, unknown>;
+  const typed =
     row.facilityName ??
     row.medicalProvider ??
     row.medicalprovider ??
     row.medicalProviderName ??
     row.providerName ??
     row.name ??
-    row.label ??
-    'Unknown Facility'
-  );
+    row.label;
+  if (typed) return typed;
+  for (const key of ['organization', 'organizationName', 'orgName', 'provider', 'facility', 'medicalFacility', 'title']) {
+    const val = r[key];
+    if (typeof val === 'string' && val.trim()) return val;
+  }
+  return 'Unknown Facility';
 }
 
 function mapAllocationReportToSlices<Row>(
@@ -836,11 +897,7 @@ function BuyingDashboard({
   const totalLienValue = useDummyData
     ? '$2,287,386.12'
     : formatCurrency(totalLienModel?.totalBilling ?? 0);
-  const lawFirmReportSlices = mapAllocationReportToSlices(
-    lawFirmReport?.items ?? [],
-    getLawFirmLabel,
-    getLawFirmCaseCount
-  );
+  const lawFirmReportSlices = mapLawFirmReportGrouped(lawFirmReport?.items ?? []);
   const lawFirmAllocationSlices = useDummyData ? LAW_FIRM_ALLOCATION : lawFirmReportSlices;
   const lawFirmTotalCases = useDummyData
     ? '175'

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { CasesApi } from '@/shared/api/endpoints/Cases';
 import type { ReportFilterRequest } from '@/shared/api/endpoints/Cases';
@@ -13,6 +13,7 @@ export function useDashboardLawFirmCaseReport(filter: ReportFilterRequest, enabl
   return useQuery({
     queryKey: dashboardLawFirmCaseReportKeys.filtered(filter),
     queryFn: () => CasesApi.getDashboardLawFirmCaseReportV3(filter),
+    placeholderData: keepPreviousData,
     enabled,
   });
 }

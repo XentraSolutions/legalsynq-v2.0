@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { CasesApi } from '@/shared/api/endpoints/Cases';
 import type { ReportFilterRequest } from '@/shared/api/endpoints/Cases';
@@ -12,6 +12,7 @@ export function useDashboardTotalLienReport(filter: ReportFilterRequest, enabled
   return useQuery({
     queryKey: dashboardTotalLienReportKeys.filtered(filter),
     queryFn: () => CasesApi.getDashboardTotalLienReportV3(filter),
+    placeholderData: keepPreviousData,
     enabled,
   });
 }

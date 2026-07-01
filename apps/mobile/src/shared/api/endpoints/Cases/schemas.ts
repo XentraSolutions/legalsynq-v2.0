@@ -133,9 +133,14 @@ export const dashboardTotalCaseReportRowSchema = z
 
 export const dashboardLawFirmCaseReportRowSchema = z
   .object({
+    lawFirmId: z.string().optional(),
+    lawfirmId: z.string().optional(),
+    lawFirmOrgId: z.string().optional(),
+    organizationId: z.string().optional(),
     lawFirm: z.string().optional(),
     lawfirm: z.string().optional(),
     lawFirmName: z.string().optional(),
+    firmName: z.string().optional(),
     name: z.string().optional(),
     label: z.string().optional(),
     totalCases: reportNumericSchema.optional(),

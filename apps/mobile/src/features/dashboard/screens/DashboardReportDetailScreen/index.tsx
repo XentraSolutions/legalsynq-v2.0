@@ -9,6 +9,7 @@ import Svg, { Circle } from 'react-native-svg';
 import {
   useDashboardLawFirmCaseReport,
   useDashboardMedicalProviderReport,
+  useDashboardPiechart,
   useDashboardTotalCaseReport,
   useDashboardTotalLienReport,
 } from '@/features/dashboard/hooks';
@@ -17,6 +18,7 @@ import type { MainStackParamList } from '@/navigation/types/navigation';
 import type {
   DashboardLawFirmCaseReportRow,
   DashboardMedicalProviderReportRow,
+  DashboardPiechart,
   DashboardTotalCaseReportRow,
   DashboardTotalLienReportRow,
   ReportFilterRequest,
@@ -170,6 +172,25 @@ function buildDashboardReportFilter(
   };
 }
 
+function countUniqueLawFirms(items: DashboardLawFirmCaseReportRow[]): number {
+  const ids = new Set<string>();
+  for (const row of items) {
+    const r = row as Record<string, unknown>;
+    const id =
+      (typeof r.lawFirmId === 'string' ? r.lawFirmId : undefined) ??
+      (typeof r.lawfirmId === 'string' ? r.lawfirmId : undefined) ??
+      (typeof r.lawFirmOrgId === 'string' ? r.lawFirmOrgId : undefined) ??
+      (typeof r.organizationId === 'string' ? r.organizationId : undefined) ??
+      (typeof r.orgId === 'string' ? r.orgId : undefined);
+    if (id) {
+      ids.add(id);
+    } else {
+      ids.add(`row-${ids.size}`);
+    }
+  }
+  return ids.size;
+}
+
 function getReportPagination(
   reportType: DashboardReportType,
   totalLienReport: PagedResult<DashboardTotalLienReportRow> | undefined,
@@ -182,7 +203,10 @@ function getReportPagination(
   }
 
   if (reportType === 'law-firm-allocation') {
-    return lawFirmReport;
+    if (!lawFirmReport) return undefined;
+    const count = countUniqueLawFirms(lawFirmReport.items ?? []);
+    if (!count) return undefined;
+    return { page: 1, pageSize: count, totalCount: count, totalPages: 1 };
   }
 
   if (reportType === 'medical-facility-allocation') {
@@ -254,12 +278,21 @@ export function DashboardReportDetailScreen() {
     [route.params.dateRange]
   );
   const { data: totalLienReport } = useDashboardTotalLienReport(reportFilter, reportsEnabled);
-  const { data: totalCaseReport } = useDashboardTotalCaseReport(reportFilter, reportsEnabled);
-  const { data: lawFirmReport } = useDashboardLawFirmCaseReport(reportFilter, reportsEnabled);
+  const totalCaseAllRowsFilter = useMemo(
+    () => ({ ...buildDashboardReportFilter(route.params.dateRange, 1), limit: 10000 }),
+    [route.params.dateRange]
+  );
+  const { data: totalCaseReport } = useDashboardTotalCaseReport(totalCaseAllRowsFilter, reportsEnabled);
+  const lawFirmAllRowsFilter = useMemo(
+    () => ({ ...buildDashboardReportFilter(route.params.dateRange, 1), limit: 10000 }),
+    [route.params.dateRange]
+  );
+  const { data: lawFirmReport } = useDashboardLawFirmCaseReport(lawFirmAllRowsFilter, reportsEnabled);
   const { data: medicalProviderReport } = useDashboardMedicalProviderReport(
     reportFilter,
     reportsEnabled
   );
+  const { data: piechartData } = useDashboardPiechart();
   const pagination = useMemo(
     () =>
       useDashboardDummyData
@@ -292,11 +325,13 @@ export function DashboardReportDetailScreen() {
         lawFirmReport?.items ?? [],
         medicalProviderReport?.items ?? [],
         reportPeriodLabel,
-        useDashboardDummyData
+        useDashboardDummyData,
+        piechartData
       ),
     [
       lawFirmReport?.items,
       medicalProviderReport?.items,
+      piechartData,
       reportPeriodLabel,
       route.params.reportType,
       totalCaseReport?.items,
@@ -672,6 +707,47 @@ function PaginationButton({
   );
 }
 
+function mapPiechartCaseSlices(data: DashboardPiechart): DetailSlice[] {
+  const total = data.totalCases || 1;
+  return data.caseStatus.map((s, i) => {
+    const pct = (s.value / total) * 100;
+    return {
+      label: s.label,
+      value: s.value,
+      amount: s.value.toLocaleString(),
+      percent: `(${pct.toFixed(2)}%)`,
+      color: SLICE_COLORS[i % SLICE_COLORS.length],
+    };
+  });
+}
+
+function mapPiechartLienSlices(data: DashboardPiechart): DetailSlice[] {
+  const total = data.totalLiens || 1;
+  const closedCount = data.lienStatus
+    .filter((s) => s.label.toLowerCase() === 'closed')
+    .reduce((sum, s) => sum + s.value, 0);
+  const openCount = total - closedCount;
+  const openPct = (openCount / total) * 100;
+  const closedPct = (closedCount / total) * 100;
+
+  return [
+    {
+      label: 'Open',
+      value: openCount,
+      amount: openCount.toLocaleString(),
+      percent: `(${openPct.toFixed(1)}%)`,
+      color: BLUE,
+    },
+    {
+      label: 'Close',
+      value: closedCount,
+      amount: closedCount.toLocaleString(),
+      percent: `(${closedPct.toFixed(1)}%)`,
+      color: ORANGE,
+    },
+  ];
+}
+
 function buildReport(
   reportType: DashboardReportType,
   totalLienRows: DashboardTotalLienReportRow[],
@@ -679,16 +755,22 @@ function buildReport(
   lawFirmReport: DashboardLawFirmCaseReportRow[],
   medicalProviderReport: DashboardMedicalProviderReportRow[],
   reportPeriodLabel: string,
-  useDummyData: boolean
+  useDummyData: boolean,
+  piechartData: DashboardPiechart | undefined
 ): ReportModel {
   if (reportType === 'total-cases') {
     const reportData = useDummyData ? undefined : mapTotalCaseReportToDetail(totalCaseRows);
-    const slices = useDummyData ? TOTAL_CASES_FALLBACK : (reportData?.slices ?? []);
+    const piechartSlices =
+      !useDummyData && piechartData ? mapPiechartCaseSlices(piechartData) : undefined;
+    const slices = useDummyData ? TOTAL_CASES_FALLBACK : (reportData?.slices ?? piechartSlices ?? []);
+    const centerValue = useDummyData
+      ? '4,773'
+      : (reportData?.totalCases.toLocaleString() ?? piechartData?.totalCases.toLocaleString() ?? '0');
     return {
       title: 'Total Cases',
       subtitle:
         'Track the overall number of cases and view their current status distribution at a glance.',
-      centerValue: useDummyData ? '4,773' : (reportData?.totalCases.toLocaleString() ?? '0'),
+      centerValue,
       centerCaption: 'Total Cases',
       slices,
       breakdownTitle: 'Detailed Breakdown',
@@ -697,9 +779,7 @@ function buildReport(
   }
 
   if (reportType === 'law-firm-allocation') {
-    const reportSlices = useDummyData
-      ? []
-      : mapAllocationReportToSlices(lawFirmReport, getLawFirmLabel, getLawFirmCaseCount);
+    const reportSlices = useDummyData ? [] : mapLawFirmReportGrouped(lawFirmReport);
     const slices = useDummyData ? LAW_FIRM_FALLBACK : reportSlices;
     return {
       title: 'Law Firm Case Allocation',
@@ -737,11 +817,16 @@ function buildReport(
   }
 
   const reportData = useDummyData ? undefined : mapTotalLienReportToDetail(totalLienRows);
-  const slices = useDummyData ? TOTAL_LIEN_FALLBACK : (reportData?.slices ?? []);
+  const piechartLienSlices =
+    !useDummyData && piechartData ? mapPiechartLienSlices(piechartData) : undefined;
+  const slices = useDummyData ? TOTAL_LIEN_FALLBACK : (reportData?.slices ?? piechartLienSlices ?? []);
+  const centerValue = useDummyData
+    ? '239'
+    : (reportData?.totalLiens.toLocaleString() ?? piechartData?.totalLiens.toLocaleString() ?? '0');
   return {
     title: 'Total Lien',
     subtitle: 'Breakdown of open and closed claims with total purchase and billing values.',
-    centerValue: useDummyData ? '239' : (reportData?.totalLiens.toLocaleString() ?? '0'),
+    centerValue,
     centerCaption: 'Total Liens',
     slices,
     breakdownTitle: 'Detailed Breakdown',
@@ -938,6 +1023,10 @@ function mapTotalLienReportToDetail(
     }
   );
 
+  if (totals.totalLiens === 0) {
+    return undefined;
+  }
+
   const totalLiens = totals.totalLiens || 1;
   const slices = (['Open', 'Close'] as const)
     .map((status) => {
@@ -1086,47 +1175,103 @@ function lienRowsToBreakdownItems(
     .slice(0, 5);
 }
 
-function getLawFirmCaseCount(row: DashboardLawFirmCaseReportRow): number {
-  return (
-    numericValue(row.totalCases) ??
-    numericValue(row.totalCase) ??
-    numericValue(row.caseCount) ??
-    numericValue(row.cases) ??
-    numericValue(row.count) ??
-    numericValue(row.total) ??
-    numericValue(row.value) ??
-    0
-  );
+const SKIP_COUNT_KEYS = new Set(['percentage', 'percent', 'pct', 'share', 'ratio', 'page', 'limit', 'pagesize', 'totalpages', 'id']);
+
+function scanFirstPositiveInt(r: Record<string, unknown>): number {
+  for (const [key, val] of Object.entries(r)) {
+    if (SKIP_COUNT_KEYS.has(key.toLowerCase())) continue;
+    const num = numericValue(val);
+    if (num !== undefined && num > 0 && Number.isInteger(num)) return num;
+  }
+  return 0;
 }
 
-function getLawFirmLabel(row: DashboardLawFirmCaseReportRow): string {
-  return (
-    row.lawFirm ?? row.lawfirm ?? row.lawFirmName ?? row.name ?? row.label ?? 'Unknown Law Firm'
-  );
+function readLawFirmId(row: DashboardLawFirmCaseReportRow): string {
+  const r = row as Record<string, unknown>;
+  for (const key of ['lawFirmId', 'lawfirmId', 'lawFirmOrgId', 'organizationId', 'orgId', 'firmId']) {
+    const val = r[key];
+    if (typeof val === 'string' && val.trim()) return val;
+    if (typeof val === 'number') return String(val);
+  }
+  return readLawFirmName(row);
+}
+
+function readLawFirmName(row: DashboardLawFirmCaseReportRow): string {
+  const r = row as Record<string, unknown>;
+  const candidates = [row.lawFirm, row.lawfirm, row.lawFirmName, row.firmName, row.name];
+  for (const val of candidates) {
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  for (const key of ['organization', 'organizationName', 'orgName', 'contactName', 'firm', 'title', 'lawFirmTitle']) {
+    const val = r[key];
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  const skipStringKeys = new Set(['label', 'status', 'type', 'id', 'tenantId', 'createdAt', 'updatedAt']);
+  for (const [key, val] of Object.entries(r)) {
+    if (skipStringKeys.has(key)) continue;
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  return row.label ?? 'Unknown Law Firm';
+}
+
+function mapLawFirmReportGrouped(rows: DashboardLawFirmCaseReportRow[]): DetailSlice[] {
+  const groups = new Map<string, { label: string; count: number }>();
+  for (const row of rows) {
+    const id = readLawFirmId(row);
+    const name = readLawFirmName(row);
+    const existing = groups.get(id);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      groups.set(id, { label: name, count: 1 });
+    }
+  }
+  const entries = Array.from(groups.values()).filter((g) => g.count > 0);
+  const total = entries.reduce((sum, g) => sum + g.count, 0) || 1;
+  return entries.map((g, i) => {
+    const pct = (g.count / total) * 100;
+    return {
+      label: g.label,
+      value: g.count,
+      amount: g.count.toLocaleString(),
+      percent: `(${pct.toFixed(2)}%)`,
+      color: SLICE_COLORS[i % SLICE_COLORS.length],
+    };
+  });
 }
 
 function getMedicalProviderCaseCount(row: DashboardMedicalProviderReportRow): number {
-  return (
+  const r = row as Record<string, unknown>;
+  const typed =
     numericValue(row.totalCases) ??
     numericValue(row.totalCase) ??
     numericValue(row.caseCount) ??
     numericValue(row.cases) ??
     numericValue(row.count) ??
     numericValue(row.total) ??
-    numericValue(row.value) ??
-    0
-  );
+    numericValue(row.value);
+  if (typed !== undefined) return typed;
+  for (const key of ['numberOfCases', 'caseTotal', 'totalCount', 'numCases', 'casesCount']) {
+    const val = numericValue(r[key]);
+    if (val !== undefined) return val;
+  }
+  return scanFirstPositiveInt(r);
 }
 
 function getMedicalProviderLabel(row: DashboardMedicalProviderReportRow): string {
-  return (
+  const r = row as Record<string, unknown>;
+  const typed =
     row.facilityName ??
     row.medicalProvider ??
     row.medicalprovider ??
     row.medicalProviderName ??
     row.providerName ??
     row.name ??
-    row.label ??
-    'Unknown Facility'
-  );
+    row.label;
+  if (typed) return typed;
+  for (const key of ['organization', 'organizationName', 'orgName', 'provider', 'facility', 'medicalFacility', 'title']) {
+    const val = r[key];
+    if (typeof val === 'string' && val.trim()) return val;
+  }
+  return 'Unknown Facility';
 }
