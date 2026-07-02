@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/lien/page-header";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/lien/action-menu";
@@ -9,13 +11,15 @@ import { SideDrawer } from "@/components/lien/side-drawer";
 import { AddContactForm } from "@/components/lien/forms/add-contact-form";
 import { useLienStore } from "@/stores/lien-store";
 import { useRoleAccess } from "@/hooks/use-role-access";
-import type { LookupData } from "@/lib/lookup/lookup.types";
 import { contactsService, type ContactListItem } from "@/lib/contacts";
-import { lookupService } from "@/lib/lookup";
+import { useContacts, useContactTypes, useDeleteContact } from "@/hooks/use-contacts";
 import { useSessionContext } from "@/providers/session-provider";
 import { ConfirmDialog } from "@/components/lien/modal";
 import { useRouter } from "next/navigation";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
+
+const PAGE_SIZE = 10;
 
 export const dynamic = "force-dynamic";
 
@@ -23,16 +27,15 @@ export default function ContactsPage() {
   const addToast = useLienStore((s) => s.addToast);
   const router = useRouter();
   const ra = useRoleAccess();
+  const queryClient = useQueryClient();
 
-  const [contacts, setContacts] = useState<ContactListItem[]>([]);
   const [contactData, setContactData] = useState<ContactListItem>();
-  const [contactTypes, setContactTypes] = useState<LookupData[]>([]);
   const { lookup } = useSessionContext();
   const [states, setStates] = useState(lookup?.State);
 
-  const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [showCreate, setShowCreate] = useState<{
     open: boolean;
@@ -46,45 +49,50 @@ export default function ContactsPage() {
     label: string;
     contact: ContactListItem;
   } | null>(null);
-  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const [reassignTarget, setReassignTarget] = useState<ContactListItem | null>(null);
   const [reassignSelectedId, setReassignSelectedId] = useState("");
 
-  const fetchContacts = useCallback(async () => {
-    try {
-      setLoading(true);
+  // Debounce search input before it drives the query, so we don't refetch on every keystroke.
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
-      const [contactTypesRes, result] = await Promise.allSettled([
-        lookupService.getContactTypes(),
-        contactsService.getContacts({
-          keyword: search || undefined,
-          ContactType: typeFilter || undefined,
-          pageSize: 100,
-        }),
-      ]);
-      if (contactTypesRes.status === "fulfilled") {
-        setContactTypes(contactTypesRes.value.items);
-      }
-      if (result.status === "fulfilled") {
-        setContacts(result.value.items);
-        setTotalCount(result.value.pagination.totalCount);
-      }
-    } catch (err) {
+  useEffect(() => {
+    setPage(1);
+  }, [search, typeFilter]);
+
+  const contactsQuery = useContacts({
+    search: search || undefined,
+    ContactType: typeFilter || undefined,
+    page,
+    pageSize: PAGE_SIZE,
+  });
+  const contactTypesQuery = useContactTypes();
+  const deleteContactMutation = useDeleteContact();
+
+  const contacts = useMemo(() => contactsQuery.data?.items ?? [], [contactsQuery.data]);
+  const totalCount = contactsQuery.data?.pagination.totalCount ?? 0;
+  const totalPages = contactsQuery.data?.pagination.totalPages ?? 0;
+  // isLoading only covers the very first fetch (no cached/placeholder data yet);
+  // isFetching also covers refetches, so the table can stay mounted and just show a subtle refreshing state.
+  const loading = contactsQuery.isLoading;
+  const refreshing = contactsQuery.isFetching && !contactsQuery.isLoading;
+  const contactTypes = useMemo(() => contactTypesQuery.data?.items ?? [], [contactTypesQuery.data]);
+
+  useEffect(() => {
+    if (contactsQuery.isError) {
       addToast({
         type: "error",
         title: "Load Failed",
         description:
-          err instanceof Error ? err.message : "Failed to load contacts",
+          contactsQuery.error instanceof Error
+            ? contactsQuery.error.message
+            : "Failed to load contacts",
       });
-    } finally {
-      setLoading(false);
     }
-  }, [search, typeFilter, addToast]);
-
-  useEffect(() => {
-    fetchContacts();
-  }, [fetchContacts]);
+  }, [contactsQuery.isError, contactsQuery.error, addToast]);
 
   const previewContact = previewId
     ? contacts.find((c) => c.id === previewId)
@@ -132,30 +140,47 @@ export default function ContactsPage() {
   //   }
   // };
 
-  const handleConfirmAction = async () => {
-    if (!confirmAction) return;
-    setConfirmLoading(true);
-    try {
-      if (confirmAction.action === "delete") {
-        await contactsService.deleteContact(confirmAction.id);
-        addToast({
-          type: "success",
-          title: confirmAction.label,
-          description: `Contact has been deleted`,
+  // Runs (and retries) the delete request, driving a single toast through
+  // loading -> success/error like a background job. Passing the same toast
+  // id updates it in place; if the user already dismissed it, sonner just
+  // creates a fresh one instead, so completion is never silently lost.
+  const runDeleteContact = (contact: ContactListItem) => {
+    const toastId = toast.loading(`Deleting ${contact.displayName}...`);
+    deleteContactMutation.mutate(contact.id, {
+      onSuccess: () => {
+        toast.success("Contact deleted", {
+          id: toastId,
+          description: contact.displayName,
         });
-        setConfirmAction(null);
-        fetchContacts();
-      }
-    } catch (err) {
-      addToast({
-        type: "error",
-        title: "Action Failed",
-        description:
-          err instanceof Error ? err.message : "Failed to update status",
-      });
+      },
+      onError: (err) => {
+        toast.error("Couldn't delete contact", {
+          id: toastId,
+          description:
+            err instanceof Error ? err.message : contact.displayName,
+          action: {
+            label: "Retry",
+            onClick: () =>
+              setConfirmAction({
+                id: contact.id,
+                action: "delete",
+                label: "Delete",
+                contact,
+              }),
+          },
+        });
+      },
+    });
+  };
+
+  const handleConfirmAction = () => {
+    if (!confirmAction) return;
+    if (confirmAction.action === "delete") {
+      const { contact } = confirmAction;
+      // Close the dialog immediately so deletion feels instant; the toast
+      // takes over as the processing indicator from here.
       setConfirmAction(null);
-    } finally {
-      setConfirmLoading(false);
+      runDeleteContact(contact);
     }
   };
 
@@ -229,22 +254,8 @@ export default function ContactsPage() {
 
       <FilterToolbar
         searchPlaceholder="Search contacts by name, org, or email..."
-        onSearch={setSearch}
-        filters={
-          typeFilter === ""
-            ? [
-                {
-                  label: "All Types",
-                  value: typeFilter,
-                  onChange: setTypeFilter,
-                  options: contactTypes.map((v) => ({
-                    value: v.code,
-                    label: v.name,
-                  })),
-                },
-              ]
-            : []
-        }
+        onSearch={setSearchInput}
+        filters={[]}
       >
         <button
           onClick={() => exportContacts()}
@@ -254,7 +265,13 @@ export default function ContactsPage() {
         </button>
       </FilterToolbar>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden relative">
+        {refreshing && (
+          <div className="absolute top-2 right-3 flex items-center gap-1.5 text-xs text-gray-400">
+            <i className="ri-loader-4-line animate-spin text-sm" />
+            Refreshing...
+          </div>
+        )}
         {loading ? (
           <div className="p-10 text-center text-sm text-gray-400">
             Loading contacts...
@@ -272,42 +289,55 @@ export default function ContactsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contacts.map((c) => (
-                <TableRow
-                  key={c.id}
-                  className="cursor-pointer"
-                  onClick={() => setPreviewId(c.id)}
-                >
-                  <TableCell>
-                    <Link
-                      href={`/lien/contacts/${c.id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-sm font-medium text-gray-700 hover:text-primary"
-                    >
-                      {c.displayName}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-gray-50 text-gray-600 border-gray-200">
-                      {contactTypeMap[c.contactType] ?? c.contactType}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm text-gray-500">{c.email || "—"}</TableCell>
-                  <TableCell className="text-sm text-gray-500">0</TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <ActionMenu
-                      items={[
-                        { label: "View Details", icon: "ri-eye-line", onClick: () => router.push(`/lien/contacts/${c.id}`) },
-                        { label: "Reassign", icon: "ri-exchange-line", onClick: () => { setReassignTarget(c); setReassignSelectedId(""); } },
-                        { label: "Edit Contact", icon: "ri-pencil-line", onClick: () => { setContactData(c); showCreateForm("edit"); } },
-                        // Activate/Deactivate disabled: as far as we know, legacy has no active/inactive vs delete differentiation.
-                        // { label: c.isActive ? "Deactivate" : "Activate", icon: c.isActive ? "ri-user-unfollow-line" : "ri-user-follow-line", onClick: () => handleToggleActive(c) },
-                        { label: "Delete", icon: "ri-delete-bin-line", onClick: () => setConfirmAction({ id: c.id, action: "delete", label: "Delete", contact: c }) },
-                      ]}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {contacts.map((c) => {
+                const isDeleting =
+                  deleteContactMutation.isPending &&
+                  deleteContactMutation.variables === c.id;
+                return (
+                  <TableRow
+                    key={c.id}
+                    className={`cursor-pointer transition-opacity duration-200 ${
+                      isDeleting ? "opacity-40 bg-red-50/60 pointer-events-none" : ""
+                    }`}
+                    onClick={() => setPreviewId(c.id)}
+                  >
+                    <TableCell>
+                      <Link
+                        href={`/lien/contacts/${c.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className={`text-sm font-medium text-gray-700 hover:text-primary ${
+                          isDeleting ? "line-through" : ""
+                        }`}
+                      >
+                        {c.displayName}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-gray-50 text-gray-600 border-gray-200">
+                        {contactTypeMap[c.contactType] ?? c.contactType}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-500">{c.email || "—"}</TableCell>
+                    <TableCell className="text-sm text-gray-500">0</TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      {isDeleting ? (
+                        <i className="ri-loader-4-line animate-spin text-gray-400" />
+                      ) : (
+                        <ActionMenu
+                          items={[
+                            { label: "View Details", icon: "ri-eye-line", onClick: () => router.push(`/lien/contacts/${c.id}`) },
+                            { label: "Reassign", icon: "ri-exchange-line", onClick: () => { setReassignTarget(c); setReassignSelectedId(""); } },
+                            { label: "Edit Contact", icon: "ri-pencil-line", onClick: () => { setContactData(c); showCreateForm("edit"); } },
+                            // Activate/Deactivate disabled: as far as we know, legacy has no active/inactive vs delete differentiation.
+                            // { label: c.isActive ? "Deactivate" : "Activate", icon: c.isActive ? "ri-user-unfollow-line" : "ri-user-follow-line", onClick: () => handleToggleActive(c) },
+                            { label: "Delete", icon: "ri-delete-bin-line", onClick: () => setConfirmAction({ id: c.id, action: "delete", label: "Delete", contact: c }) },
+                          ]}
+                        />
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -318,6 +348,15 @@ export default function ContactsPage() {
         )}
       </div>
 
+      {!loading && totalCount > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500">
+            Page {page} of {totalPages} · {totalCount} total
+          </p>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        </div>
+      )}
+
       {showCreate.open && (
         <AddContactForm
           open={showCreate.open}
@@ -325,7 +364,7 @@ export default function ContactsPage() {
           defaultContactType={typeFilter || undefined}
           data={{ addressLine1: "", postalCode: "", ...contactData, contactTypes: activeContactTypes, states: states ?? [] }}
           onClose={() => setShowCreate({ open: false })}
-          onCreated={fetchContacts}
+          onCreated={() => queryClient.invalidateQueries({ queryKey: ["contacts"] })}
         />
       )}
 
@@ -347,7 +386,7 @@ export default function ContactsPage() {
           }
           confirmLabel="Delete"
           confirmVariant="danger"
-          loading={confirmLoading}
+          loading={deleteContactMutation.isPending}
           warningTitle="Warning: Deleting this contact will also remove:"
           warningItems={[
             ...(["LawFirm", "Facility"].includes(confirmAction.contact.contactType) && !(confirmAction.contact.lawFirmId || confirmAction.contact.facilityId)

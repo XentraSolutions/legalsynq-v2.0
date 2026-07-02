@@ -5,6 +5,7 @@ import { SessionProvider, type SerializableSession } from '@/providers/session-p
 import { ProviderModeProvider } from '@/providers/provider-mode-provider';
 import { QueryProvider } from '@/providers/query-provider';
 import { getServerSession } from '@/lib/session';
+import { Toaster } from '@/components/ui/sonner';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +49,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </QueryProvider>
           </SessionProvider>
         </TenantBrandingProvider>
+        <Toaster />
       </body>
     </html>
   );
