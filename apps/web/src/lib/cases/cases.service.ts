@@ -1,11 +1,15 @@
-import { casesApi } from './cases.api';
+import { ApiResponse } from "../liens/lien-report.types";
+import { lookupApi } from "../lookup/lookup.api";
+import { casesApi } from "./cases.api";
 import {
   mapCaseToListItem,
   mapCaseToDetail,
   mapLienToListItem,
   mapPagination,
   mapDtoToUpdateRequest,
-} from './cases.mapper';
+  mapMedicalInfo,
+  mapMedicalCodes,
+} from "./cases.mapper";
 import type {
   CasesQuery,
   CaseListItem,
@@ -14,24 +18,36 @@ import type {
   PaginationMeta,
   CreateCaseRequestDto,
   UpdateCaseRequestDto,
-} from './cases.types';
-
-export interface CaseListResult {
-  items: CaseListItem[];
-  pagination: PaginationMeta;
-}
-
-export interface CaseLiensResult {
-  items: CaseLienItem[];
-  pagination: PaginationMeta;
-}
+  DashboardStats,
+  CaseListResult,
+  CaseLiensResult,
+  CasePaginatedParams,
+  CasesFilters,
+  ExportResponse,
+  CreateMedicalLiensDto,
+  CreateMedicalFacilityDto,
+  CreateMedicalPaymentDto,
+  CreateMedicalCodeDto,
+  CreateMedicalCodeLiensDto,
+  CaseLiensFilters,
+  UpdateCasePersonalRequestDto,
+  UpdateCaseDetailsRequestDto,
+  MedicalCodeLiensResponse,
+} from "./cases.types";
 
 export const casesService = {
   async getCases(query: CasesQuery = {}): Promise<CaseListResult> {
-    const { data } = await casesApi.list(query);
+    const { data } = await casesApi.listBySearch(query);
+    const pagination = {
+      page: data.page,
+      pageSize: data.limit,
+      totalCount: data.totalCount,
+    };
     return {
-      items: data.items.map(mapCaseToListItem),
-      pagination: mapPagination(data),
+      items: data.data.map(mapCaseToListItem),
+      pagination: mapPagination({
+        ...pagination,
+      }),
     };
   },
 
@@ -45,12 +61,22 @@ export const casesService = {
     return mapCaseToDetail(data);
   },
 
-  async updateCase(caseId: string, request: UpdateCaseRequestDto): Promise<CaseDetail> {
-    const { data } = await casesApi.update(caseId, request);
+  async updateCasePersonal(
+    request: UpdateCasePersonalRequestDto,
+  ): Promise<CaseDetail> {
+    const { data } = await casesApi.updatePersonal(request);
     return mapCaseToDetail(data);
   },
 
-  async updateCaseStatus(caseId: string, newStatus: string): Promise<CaseDetail> {
+  async updateCase(request: UpdateCaseRequestDto): Promise<CaseDetail> {
+    const { data } = await casesApi.updateCase(request);
+    return mapCaseToDetail(data);
+  },
+
+  async updateCaseStatus(
+    caseId: string,
+    newStatus: string,
+  ): Promise<CaseDetail> {
     const { data: freshDto } = await casesApi.getById(caseId);
     const request = mapDtoToUpdateRequest(freshDto);
     request.status = newStatus;
@@ -58,10 +84,154 @@ export const casesService = {
   },
 
   async getCaseLiens(caseId: string): Promise<CaseLiensResult> {
-    const { data } = await casesApi.listLiensByCase(caseId);
+    const { data } = await casesApi.listLiensByCase({
+      CaseId: caseId,
+      page: 1,
+      limit: 10,
+    });
+
     return {
       items: data.items.map(mapLienToListItem),
-      pagination: mapPagination(data),
+      pagination: mapPagination({ ...data, pageSize: data.limit }),
     };
+  },
+
+  async getCaseUpdates(caseId: string): Promise<any> {
+    const { data } = await casesApi.getCaseUpdates({
+      caseId: caseId,
+      page: 1,
+      limit: 10,
+    });
+    return data;
+  },
+
+  async getCaseLiensUpdates(caseId: string): Promise<any> {
+    const { data } = await casesApi.listLiensUpdates({
+      CaseId: caseId,
+      page: 1,
+      limit: 10,
+    });
+    return data.data;
+  },
+
+  async getCaseStatus(): Promise<any> {
+    const { data } = await lookupApi.getCaseStatus();
+    return data.sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+  async getDashboardStats(): Promise<DashboardStats> {
+    const { data } = await casesApi.getDashboardStats();
+    return data.data;
+  },
+
+  async exportCases(request: CasesFilters): Promise<ExportResponse> {
+    const { data } = await casesApi.export(request);
+    return data;
+  },
+
+  async payoffQoute(caseId: string): Promise<ApiResponse> {
+    const { data } = await casesApi.payoffQoute(caseId);
+    return data;
+  },
+
+  async exportCaseLiens(request: CaseLiensFilters): Promise<ExportResponse> {
+    const { data } = await casesApi.exportCaseLiens(request);
+    return data;
+  },
+
+  async createMedicalLiens(request: CreateMedicalLiensDto): Promise<any> {
+    const { data } = await casesApi.createMedicalLiens(request);
+    return data;
+  },
+
+  async createMedicalFacilityLiens(
+    request: CreateMedicalFacilityDto,
+  ): Promise<any> {
+    const { data } = await casesApi.createMedicalFacilityLiens(request);
+    return data;
+  },
+
+  async updateMedicalLiens(request: CreateMedicalLiensDto): Promise<any> {
+    const { data } = await casesApi.updateMedicalLiens(request);
+    return data;
+  },
+
+  async updateMedicalFacilityLiens(
+    request: CreateMedicalFacilityDto,
+  ): Promise<any> {
+    const { data } = await casesApi.updateMedicalFacilityLiens(request);
+    return data;
+  },
+
+  async createMedicalPaymentLiens(
+    request: CreateMedicalPaymentDto,
+  ): Promise<any> {
+    const { data } = await casesApi.createMedicalPaymentLiens(request);
+    return data;
+  },
+
+  async createMedicalCodeLiens(
+    request: CreateMedicalCodeLiensDto,
+  ): Promise<any> {
+    const { data } = await casesApi.createMedicalCodeLiens(request);
+    return data;
+  },
+
+  async updateMedicalCodeLiens(
+    request: CreateMedicalCodeLiensDto,
+  ): Promise<ApiResponse> {
+    const { data } = await casesApi.updateMedicalCodeLiens(request);
+    return data;
+  },
+
+  async deleteMedicalCodeLiens(id: string): Promise<ApiResponse> {
+    const { data } = await casesApi.deleteMedicalCodeLiens(id);
+    return data;
+  },
+
+  async createMedicalCode(request: CreateMedicalCodeDto): Promise<any> {
+    const { data } = await casesApi.createMedicalCode(request);
+    return data;
+  },
+
+  async getMedicalInfo(lienId: string): Promise<any> {
+    const { data } = await casesApi.getMedicalInfo(lienId);
+    return { data: mapMedicalInfo(data.data) };
+  },
+
+  async getMedicalFacility(lienId: string): Promise<any> {
+    const { data } = await casesApi.getMedicalFacility(lienId);
+    return data;
+  },
+
+  async getMedicalCodes(
+    lienId: string,
+  ): Promise<{ data: { codeRows: MedicalCodeLiensResponse } }> {
+    const { data } = await casesApi.getMedicalCode(lienId);
+    return { data: mapMedicalCodes(data.data) };
+  },
+
+  async getMedicalDocument(lienId: string): Promise<any> {
+    const { data } = await casesApi.getMedicalDocument(lienId);
+    return data;
+  },
+
+  async getPayee(lienId: string): Promise<any> {
+    const { data } = await casesApi.getPayee(lienId);
+    return data;
+  },
+
+  async uploadDocuments(request: any): Promise<any> {
+    const { data } = await casesApi.uploadDocument(request);
+    return mapCaseToDetail(data);
+  },
+
+  async loadDocuments(request: any): Promise<any> {
+    const { data } = await casesApi.listDocumentsByCase(request);
+    return data;
+  },
+
+  async loadLiensDocuments(liensId: string): Promise<any> {
+    const { data } = await casesApi.listDocumentsByLiens(liensId);
+    return data;
   },
 };

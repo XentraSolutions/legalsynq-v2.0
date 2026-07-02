@@ -231,19 +231,27 @@ export interface ServicingDetail extends ServicingItem {
 // ── Contact ──────────────────────────────────────────────────────────────────
 
 export const ContactType = {
-  LawFirm:      'LawFirm',
-  Provider:     'Provider',
-  LienHolder:   'LienHolder',
-  CaseManager:  'CaseManager',
-  InternalUser: 'InternalUser',
+  LawFirm:         'LawFirm',
+  Provider:        'Provider',
+  LienHolder:      'LienHolder',
+  CaseManager:     'CaseManager',
+  InternalUser:    'InternalUser',
+  FundingCompany:  'FundingCompany',
+  Lead:            'Lead',
+  MedicalFacility: 'MedicalFacility',
 } as const;
 
+export type ContactTypeCode = typeof ContactType[keyof typeof ContactType];
+
 export const CONTACT_TYPE_LABELS: Record<string, string> = {
-  LawFirm:      'Law Firm',
-  Provider:     'Provider',
-  LienHolder:   'Lien Holder',
-  CaseManager:  'Case Manager',
-  InternalUser: 'Internal User',
+  LawFirm:         'Law Firm',
+  Provider:        'Medical Provider',
+  LienHolder:      'Lien Holder',
+  CaseManager:     'Case Manager',
+  InternalUser:    'Internal User',
+  FundingCompany:  'Funding Company',
+  Lead:            'Lead',
+  MedicalFacility: 'Medical Facility',
 };
 
 export interface ContactSummary {

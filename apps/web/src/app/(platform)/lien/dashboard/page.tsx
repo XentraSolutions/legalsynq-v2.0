@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { KpiCard } from '@/components/lien/kpi-card';
 import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
 import { useLienStore } from '@/stores/lien-store';
 import { formatCurrency } from '@/lib/lien-utils';
 import { CreateCaseForm } from '@/components/lien/forms/create-case-form';
+import { MetricCard } from '@/components/ui/metric-card';
 import {
   unifiedActivityService,
   getEntityHref,
@@ -16,6 +17,8 @@ import {
 } from '@/lib/unified-activity';
 import { useProviderMode } from '@/hooks/use-provider-mode';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { casesService } from '@/lib/cases';
+import { DashboardStats } from '@/lib/cases/cases.types';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +55,7 @@ export default function LienDashboardPage() {
   const [recentActivity, setRecentActivity] = useState<UnifiedActivityItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>();
 
   const loadActivity = useCallback(async () => {
     setActivityLoading(true);
@@ -68,8 +72,57 @@ export default function LienDashboardPage() {
 
   useEffect(() => { loadActivity(); }, [loadActivity]);
 
+  useEffect(() => {
+    const getDashboardStats = async () => {
+      try { 
+        const stats = await casesService.getDashboardStats();
+        setDashboardStats(stats);
+      } catch (error) {}
+    }
+
+    getDashboardStats()
+  }, []);
+
   const pendingTasks = servicing.filter((s) => s.status !== 'Completed');
   const overdueTasks = pendingTasks.filter((s) => new Date(s.dueDate) < new Date());
+
+  const lienAmountsByStatus = useMemo(() => {
+    const result: Record<string, { purchase: number; billing: number }> = {};
+    for (const lien of liens) {
+      const key = lien.status;
+      if (!result[key]) result[key] = { purchase: 0, billing: 0 };
+      result[key].purchase += lien.purchasePrice ?? 0;
+      result[key].billing += lien.originalAmount ?? 0;
+    }
+    return result;
+  }, [liens]);
+
+  const totalLienPurchase = liens.reduce((s, l) => s + (l.purchasePrice ?? 0), 0);
+  const totalLienBilling = liens.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
+
+  const ALLOC_COLORS = ['#22d3ee', '#818cf8', '#f472b6', '#34d399', '#f59e0b', '#6366f1', '#fb923c', '#a78bfa'];
+
+  const lawFirmSegments = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of cases) {
+      const key = c.lawFirm || 'Unknown';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, value], i) => ({ label, value, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
+  }, [cases]);
+
+  const facilitySegments = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of cases) {
+      const key = c.medicalFacility || 'Unknown';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, value], i) => ({ label, value, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
+  }, [cases]);
 
   return (
     <div className="space-y-6">
@@ -95,34 +148,106 @@ export default function LienDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="Total Liens" value={liens.length} change={`${liens.filter((l) => l.status === 'Draft').length} draft`} changeType="neutral" icon="ri-stack-line" iconColor="text-indigo-600" href="/lien/liens" />
-        <KpiCard title="Active Cases" value={cases.filter((c) => c.status !== 'Closed').length} change={`${cases.length} total`} changeType="neutral" icon="ri-folder-open-line" iconColor="text-blue-600" href="/lien/cases" />
+        <KpiCard title="Total Liens" value={dashboardStats?.totalLiens ?? 0} change={`${dashboardStats?.lienStatus?.find((ls) => ls.label === 'Draft')?.value ?? 0} draft`} changeType="neutral" icon="ri-stack-line" iconColor="text-indigo-600" href="/lien/liens" />
+        <KpiCard title="Active Cases" value={dashboardStats?.totalActiveCases ?? 0} change={`${dashboardStats?.totalCases ?? 0} total`} changeType="neutral" icon="ri-folder-open-line" iconColor="text-blue-600" href="/lien/cases" />
         <KpiCard title="Pending Tasks" value={pendingTasks.length} change={overdueTasks.length > 0 ? `${overdueTasks.length} overdue` : 'All on track'} changeType={overdueTasks.length > 0 ? 'down' : 'up'} icon="ri-task-line" iconColor="text-amber-600" href="/lien/servicing" />
-        <KpiCard title="Monthly Volume" value={formatCurrency(liens.reduce((s, l) => s + l.originalAmount, 0))} change="All liens" changeType="neutral" icon="ri-money-dollar-circle-line" iconColor="text-emerald-600" />
+        <KpiCard title="Monthly Volume" value={formatCurrency(dashboardStats?.totalLienValue ?? 0)} change="All liens" changeType="neutral" icon="ri-money-dollar-circle-line" iconColor="text-emerald-600" />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <MetricCard
+          title="Cash Deployed"
+          value={1675.00}
+          subtitle="Based on Purchase Date"
+          icon="ri-money-dollar-circle-line"
+          iconBgColor="bg-blue-50"
+          iconColor="text-blue-500"
+          valueColor="text-blue-600"
+          subtitleColor="text-gray-900"
+        />
+        <MetricCard
+          title="Cash Received"
+          value={29110.00}
+          subtitle="Based on Payment Date"
+          icon="ri-cash-line"
+          iconBgColor="bg-green-50"
+          iconColor="text-green-500"
+          valueColor="text-green-600"
+          subtitleColor="text-gray-900"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <StatCard
           title="Total Liens"
-          total={liens.length}
+          total={dashboardStats?.totalLiens ?? 0}
+          additionalStats={[
+            { label: 'Total Purchase Amount', value: formatCurrency(totalLienPurchase) },
+            { label: 'Total Billing Amount', value: formatCurrency(totalLienBilling) },
+          ]}
           segments={[
-            { label: 'Draft', value: liens.filter((l) => l.status === 'Draft').length, color: '#94a3b8' },
-            { label: 'Offered', value: liens.filter((l) => l.status === 'Offered').length, color: '#4f46e5' },
-            { label: 'Sold', value: liens.filter((l) => l.status === 'Sold').length, color: '#10b981' },
-            { label: 'Withdrawn', value: liens.filter((l) => l.status === 'Withdrawn').length, color: '#f59e0b' },
+            {
+              label: 'Draft', color: '#94a3b8',
+              value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Draft')?.value ?? 0,
+              subStats: [
+                { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Draft']?.purchase ?? 0) },
+                { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Draft']?.billing ?? 0) },
+              ],
+            },
+            {
+              label: 'Offered', color: '#4f46e5',
+              value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Offered')?.value ?? 0,
+              subStats: [
+                { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Offered']?.purchase ?? 0) },
+                { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Offered']?.billing ?? 0) },
+              ],
+            },
+            {
+              label: 'Sold', color: '#10b981',
+              value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Sold')?.value ?? 0,
+              subStats: [
+                { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Sold']?.purchase ?? 0) },
+                { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Sold']?.billing ?? 0) },
+              ],
+            },
+            {
+              label: 'Withdrawn', color: '#f59e0b',
+              value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Withdrawn')?.value ?? 0,
+              subStats: [
+                { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Withdrawn']?.purchase ?? 0) },
+                { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Withdrawn']?.billing ?? 0) },
+              ],
+            },
           ]}
           href="/lien/liens"
         />
         <StatCard
           title="Total Cases"
-          total={cases.length}
+          total={dashboardStats?.totalCases ?? 0}
           segments={[
-            { label: 'Pre-Demand', value: cases.filter((c) => c.status === 'PreDemand').length, color: '#f472b6' },
-            { label: 'Demand Sent', value: cases.filter((c) => c.status === 'DemandSent').length, color: '#6366f1' },
-            { label: 'In Negotiation', value: cases.filter((c) => c.status === 'InNegotiation').length, color: '#3b82f6' },
-            { label: 'Settled', value: cases.filter((c) => c.status === 'CaseSettled').length, color: '#10b981' },
-            { label: 'Closed', value: cases.filter((c) => c.status === 'Closed').length, color: '#94a3b8' },
+            { label: 'Pre-Demand', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'PreDemand')?.value ?? 0, color: '#f472b6' },
+            { label: 'Demand Sent', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'DemandSent')?.value ?? 0, color: '#6366f1' },
+            { label: 'In Negotiation', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'InNegotiation')?.value ?? 0, color: '#3b82f6' },
+            { label: 'Settled', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'CaseSettled')?.value ?? 0, color: '#10b981' },
+            { label: 'Closed', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'Closed')?.value ?? 0, color: '#94a3b8' },
           ]}
+          href="/lien/cases"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <StatCard
+          title="Law Firm Case Allocation"
+          icon="ri-scales-3-line"
+          total={cases.length}
+          segments={lawFirmSegments}
+          href="/lien/cases"
+        />
+        <StatCard
+          title="Medical Facility Case Allocation"
+          icon="ri-hospital-line"
+          total={cases.length}
+          segments={facilitySegments}
           href="/lien/cases"
         />
       </div>
@@ -233,9 +358,18 @@ export default function LienDashboardPage() {
   );
 }
 
-interface Segment { label: string; value: number; color: string; }
+interface SubStat { label: string; value: string | number; }
+interface Segment { label: string; value: number; color: string; subStats?: SubStat[]; }
+interface AdditionalStat { label: string; value: string | number; }
 
-function StatCard({ title, total, segments, href }: { title: string; total: number; segments: Segment[]; href: string }) {
+function StatCard({ title, total, segments, href, additionalStats, icon = 'ri-todo-line' }: {
+  title: string;
+  total: number;
+  segments: Segment[];
+  href: string;
+  additionalStats?: AdditionalStat[];
+  icon?: string;
+}) {
   const filteredSegments = segments.filter((s) => s.value > 0);
   const grandTotal = filteredSegments.reduce((s, seg) => s + seg.value, 0);
   const dominant = filteredSegments.length > 0 ? filteredSegments.reduce((a, b) => a.value > b.value ? a : b) : { value: 0 };
@@ -250,17 +384,47 @@ function StatCard({ title, total, segments, href }: { title: string; total: numb
           View Details
         </Link>
       </div>
-      <div className="flex items-center gap-6">
-        <div className="flex flex-col gap-3 flex-1 min-w-0">
-          <p className="text-[32px] font-bold text-gray-900 leading-none">{total.toLocaleString()}</p>
-          <ul className="space-y-1.5">
+      <div className="flex items-start gap-6">
+        <div className="flex flex-col flex-1 min-w-0">
+          <div className="space-y-3 mb-4">
+            <div className="flex items-start gap-2">
+              <i className={`${icon} text-gray-400 text-sm mt-0.5 shrink-0`} />
+              <div>
+                <p className="text-xs text-gray-500">{title}</p>
+                <p className="text-2xl font-bold text-blue-600 leading-tight">{total.toLocaleString()}</p>
+              </div>
+            </div>
+            {additionalStats?.map((stat, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <i className={`${icon} text-gray-400 text-sm mt-0.5 shrink-0`} />
+                <div>
+                  <p className="text-xs text-gray-500">{stat.label}</p>
+                  <p className="text-sm font-bold text-blue-600">{stat.value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {filteredSegments.length > 0 && <hr className="border-gray-100 mb-3" />}
+          <ul className="space-y-2">
             {filteredSegments.map((seg, i) => (
-              <li key={i} className="flex items-center justify-between gap-4 text-xs text-gray-600">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-                  {seg.label}
-                </span>
-                <span className="font-medium text-gray-700 tabular-nums">{seg.value.toLocaleString()}</span>
+              <li key={i}>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
+                    <span className="text-gray-700 font-medium">{seg.label}</span>
+                  </span>
+                  <span className="font-medium text-gray-700 tabular-nums">{seg.value.toLocaleString()}</span>
+                </div>
+                {seg.subStats && seg.subStats.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 pl-3.5">
+                    {seg.subStats.map((sub, j) => (
+                      <li key={j} className="flex items-center justify-between text-xs text-gray-400">
+                        <span>{sub.label}</span>
+                        <span className="tabular-nums">{sub.value}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>
@@ -274,24 +438,39 @@ function StatCard({ title, total, segments, href }: { title: string; total: numb
 }
 
 function DonutChart({ segments, pctLabel }: { segments: Segment[]; pctLabel: string }) {
+  const [tooltip, setTooltip] = useState<{ label: string; value: number } | null>(null);
   const SIZE = 120; const CX = SIZE / 2; const CY = SIZE / 2; const R = 44; const SW = 18;
   const CIRC = 2 * Math.PI * R;
   const total = segments.reduce((s, seg) => s + seg.value, 0);
-  const arcs: { offset: number; dash: string; color: string }[] = [];
+  const arcs: { offset: number; dash: string; color: string; label: string; value: number }[] = [];
   let cumulative = 0;
   for (const seg of segments) {
     const fraction = total > 0 ? seg.value / total : 0;
     const arcLen = fraction * CIRC;
-    arcs.push({ color: seg.color, dash: `${arcLen} ${CIRC - arcLen}`, offset: CIRC / 4 - cumulative });
+    arcs.push({ color: seg.color, dash: `${arcLen} ${CIRC - arcLen}`, offset: CIRC / 4 - cumulative, label: seg.label, value: seg.value });
     cumulative += arcLen;
   }
   return (
-    <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-      <circle cx={CX} cy={CY} r={R} fill="none" stroke="#f3f4f6" strokeWidth={SW} />
-      {arcs.map((arc, i) => (
-        <circle key={i} cx={CX} cy={CY} r={R} fill="none" stroke={arc.color} strokeWidth={SW} strokeDasharray={arc.dash} strokeDashoffset={arc.offset} strokeLinecap="butt" />
-      ))}
-      <text x={CX} y={CY + 4} textAnchor="middle" fontSize="12" fontWeight="600" fill="#374151">{pctLabel}</text>
-    </svg>
+    <div className="relative">
+      {tooltip && (
+        <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none">
+          {tooltip.label}: {tooltip.value}
+        </div>
+      )}
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="#f3f4f6" strokeWidth={SW} />
+        {arcs.map((arc, i) => (
+          <circle
+            key={i} cx={CX} cy={CY} r={R} fill="none"
+            stroke={arc.color} strokeWidth={SW}
+            strokeDasharray={arc.dash} strokeDashoffset={arc.offset}
+            strokeLinecap="butt" className="cursor-pointer"
+            onMouseEnter={() => setTooltip({ label: arc.label, value: arc.value })}
+            onMouseLeave={() => setTooltip(null)}
+          />
+        ))}
+        <text x={CX} y={CY + 4} textAnchor="middle" fontSize="12" fontWeight="600" fill="#374151">{pctLabel}</text>
+      </svg>
+    </div>
   );
 }

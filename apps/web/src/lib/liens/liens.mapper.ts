@@ -7,37 +7,42 @@ import type {
   PaginatedResultDto,
   PaginationMeta,
   UpdateLienRequestDto,
-} from './liens.types';
+} from "./liens.types";
 
 const LIEN_TYPE_LABELS: Record<string, string> = {
-  MedicalLien: 'Medical Lien',
-  AttorneyLien: 'Attorney Lien',
-  SettlementAdvance: 'Settlement Advance',
+  MedicalLien: "Medical Lien",
+  AttorneyLien: "Attorney Lien",
+  SettlementAdvance: "Settlement Advance",
   WorkersCompLien: "Workers' Comp Lien",
-  PropertyLien: 'Property Lien',
-  Other: 'Other',
+  PropertyLien: "Property Lien",
+  Other: "Other",
 };
 
 function safeString(val: string | null | undefined): string {
-  return val ?? '';
+  return val ?? "";
 }
 
 function formatDateField(val: string | null | undefined): string {
-  if (!val) return '';
+  if (!val) return "";
   try {
     const d = new Date(val);
     if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
   } catch {
     return val;
   }
 }
 
 function buildSubjectName(dto: LienResponseDto): string {
-  if (dto.isConfidential) return 'Confidential';
+  if (dto.isConfidential) return "Confidential";
   if (dto.subjectDisplayName) return dto.subjectDisplayName;
   const parts = [dto.subjectFirstName, dto.subjectLastName].filter(Boolean);
-  return parts.length ? parts.join(' ') : '';
+  return parts.length ? parts.join(" ") : "";
 }
 
 export function mapLienToListItem(dto: LienResponseDto): LienListItem {
@@ -46,6 +51,10 @@ export function mapLienToListItem(dto: LienResponseDto): LienListItem {
     lienNumber: dto.lienNumber,
     lienType: dto.lienType,
     lienTypeLabel: LIEN_TYPE_LABELS[dto.lienType] ?? dto.lienType,
+    facility: dto.facilityId ?? null,
+    facilityId: dto.facilityId ?? null,
+    initialServiceDate: dto.initialServiceDate,
+    purchaseDate: formatDateField(dto.purchaseDate),
     status: dto.status,
     caseId: safeString(dto.caseId),
     originalAmount: dto.originalAmount,
@@ -110,7 +119,9 @@ export function mapOfferToItem(dto: LienOfferResponseDto): LienOfferItem {
   };
 }
 
-export function mapDtoToUpdateRequest(dto: LienResponseDto): UpdateLienRequestDto {
+export function mapDtoToUpdateRequest(
+  dto: LienResponseDto,
+): UpdateLienRequestDto {
   return {
     externalReference: dto.externalReference ?? undefined,
     lienType: dto.lienType,
@@ -126,7 +137,9 @@ export function mapDtoToUpdateRequest(dto: LienResponseDto): UpdateLienRequestDt
   };
 }
 
-export function mapPagination<T>(result: PaginatedResultDto<T>): PaginationMeta {
+export function mapPagination<T>(
+  result: PaginatedResultDto<T>,
+): PaginationMeta {
   return {
     page: result.page,
     pageSize: result.pageSize,

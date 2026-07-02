@@ -11,17 +11,20 @@ import {
   type ReactNode,
 } from "react";
 import type { PlatformSession } from "@/types";
+import { LookupResponse } from "@/lib/lookup/lookup.types";
+import { lookupService } from "@/lib/lookup";
 import { useRouter } from "next/navigation";
 
 interface SessionContextValue {
   session: PlatformSession | null;
+  lookup: LookupResponse | null;
   isLoading: boolean;
   refresh: () => Promise<void>;
   clearSession: () => void;
   logout: (url?: string) => Promise<void>;
 }
 
-const SessionContext = createContext<SessionContextValue | null>(null);
+export const SessionContext = createContext<SessionContextValue | null>(null);
 
 const PLATFORM_DEFAULT_TIMEOUT_MINUTES = 30;
 const WARNING_LEAD_SECONDS = 60;
@@ -92,6 +95,7 @@ export function SessionProvider({
   const seeded = initialSession ? deserializeSession(initialSession) : null;
   const [session, setSession] = useState<PlatformSession | null>(seeded);
   const [isLoading, setIsLoading] = useState(initialSession == null);
+  const [lookup, setLookup] = useState<LookupResponse | null>(null);
   const [showWarning, setShowWarning] = useState(false);
   const [countdown, setCountdown] = useState(WARNING_LEAD_SECONDS);
 
@@ -271,6 +275,7 @@ export function SessionProvider({
 
   const clearSession = useCallback(() => {
     setSession(null);
+    setLookup(null);
     sessionRef.current = null;
   }, []);
 
@@ -363,15 +368,25 @@ export function SessionProvider({
     };
   }, [session, resetIdleTimer]);
 
+  useEffect(() => {
+    if (!session || lookup) return;
+
+    void (async () => {
+      const data = await lookupService.getLookupAll();
+      setLookup(data);
+    })();
+  }, [session, lookup]);
+
   const ctxValue = useMemo(
     () => ({
       session,
+      lookup,
       isLoading,
       refresh: fetchSession,
       clearSession,
       logout,
     }),
-    [session, isLoading, fetchSession, clearSession, logout],
+    [session, lookup, isLoading, fetchSession, clearSession, logout],
   );
 
   return (

@@ -7,36 +7,67 @@ import type {
   PaginatedResultDto,
   PaginationMeta,
   UpdateCaseRequestDto,
-} from './cases.types';
+  CreateMedicalLiensResponse,
+  MedicalCodeLiensResponse,
+} from "./cases.types";
 
 const CASE_STATUS_LABELS: Record<string, string> = {
-  PreDemand: 'Pre-Demand',
-  DemandSent: 'Demand Sent',
-  InNegotiation: 'In Negotiation',
-  CaseSettled: 'Case Settled',
-  Closed: 'Closed',
+  PreDemand: "Pre-Demand",
+  DemandSent: "Demand Sent",
+  InNegotiation: "In Negotiation",
+  CaseSettled: "Case Settled",
+  Closed: "Closed",
 };
 
 function safeString(val: string | null | undefined): string {
-  return val ?? '';
+  return val ?? "";
 }
 
-function formatDateField(val: string | null | undefined): string {
-  if (!val) return '';
+export function formatDateField(val: string | null | undefined): string {
+  if (!val) return "";
   try {
     const d = new Date(val);
     if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
   } catch {
     return val;
   }
 }
+export const dateConverter = (dateData: string) => {
+  if (!dateData) return "";
+
+  const date = new Date(dateData);
+
+  // Format the date using the US locale to automatically get MM/DD/YYYY
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
+
+  const formattedDate = formatter.format(date);
+  return formattedDate;
+};
+
+export const dateConvertertoIso = (dateData: string) => {
+  if (!dateData) return "";
+  const d = new Date(dateData);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 export function mapCaseToListItem(dto: CaseResponseDto): CaseListItem {
   return {
     id: dto.id,
+    caseId: dto.id,
     caseNumber: dto.caseNumber,
-    clientName: dto.clientDisplayName || `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
+    clientName:
+      dto.clientDisplayName ||
+      `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
     title: safeString(dto.title || dto.externalReference),
     status: dto.status,
     statusLabel: CASE_STATUS_LABELS[dto.status] ?? dto.status,
@@ -59,7 +90,9 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     caseNumber: dto.caseNumber,
     externalReference: safeString(dto.externalReference),
     title: safeString(dto.title),
-    clientName: dto.clientDisplayName || `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
+    clientName:
+      dto.clientDisplayName ||
+      `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
     clientFirstName: dto.clientFirstName,
     clientLastName: dto.clientLastName,
     status: dto.status,
@@ -69,6 +102,19 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     clientPhone: safeString(dto.clientPhone),
     clientEmail: safeString(dto.clientEmail),
     clientAddress: safeString(dto.clientAddress),
+    clientStreetAddress: safeString(dto.clientStreetAddress),
+    clientCity: safeString(dto.clientCity),
+    clientState: safeString(dto.clientState),
+    clientZipcode: safeString(dto.clientZipcode),
+    sex: safeString(dto.sex),
+    caseType: safeString(dto.caseType),
+    currentMedicalStatus: safeString(dto.currentMedicalStatus),
+    stateOfIncident: safeString(dto.stateOfIncident),
+    trackingFollowUpDate: formatDateField(dto.trackingFollowUpDate),
+    trackingFollowUp: safeString(
+      dto.trackingFollowUp ?? dto.trackingFollowUpDate,
+    ),
+    leadId: safeString(dto.leadId),
     insuranceCarrier: safeString(dto.insuranceCarrier),
     policyNumber: safeString(dto.policyNumber),
     claimNumber: safeString(dto.claimNumber),
@@ -90,11 +136,28 @@ export function mapLienToListItem(dto: LienResponseDto): CaseLienItem {
     lienType: dto.lienType,
     status: dto.status,
     originalAmount: dto.originalAmount,
+    facility: dto.facility ?? "",
+    facilityName: dto.facilityName ?? dto.facility ?? "",
+    serviceDate: dto.serviceDate ?? "",
+    purchaseDate: dto.purchaseDate ?? "",
+    purchaseAmount: dto.purchaseAmount ?? dto.purchasePrice ?? 0,
   };
 }
 
-export function mapDtoToUpdateRequest(dto: CaseResponseDto): UpdateCaseRequestDto {
+export function mapDtoToUpdateRequest(
+  dto: CaseResponseDto,
+): UpdateCaseRequestDto {
   return {
+    caseId: dto.id,
+    currentStatus: dto.status,
+    currentMedicalStatus: dto.currentMedicalStatus ?? "",
+    caseType: dto.caseType ?? "",
+    stateOfIncident: dto.stateOfIncident ?? "",
+    trackingFollowUp: safeString(
+      dto.trackingFollowUp ?? dto.trackingFollowUpDate,
+    ),
+    dateOfLoss: dto.dateOfIncident ?? "",
+    leadId: dto.leadId ?? "",
     clientFirstName: dto.clientFirstName,
     clientLastName: dto.clientLastName,
     externalReference: dto.externalReference ?? undefined,
@@ -107,19 +170,54 @@ export function mapDtoToUpdateRequest(dto: CaseResponseDto): UpdateCaseRequestDt
     insuranceCarrier: dto.insuranceCarrier ?? undefined,
     policyNumber: dto.policyNumber ?? undefined,
     claimNumber: dto.claimNumber ?? undefined,
-    description: dto.description ?? undefined,
-    notes: dto.notes ?? undefined,
+    description: dto.description ?? null,
+    notes: dto.notes ?? null,
     status: dto.status,
-    demandAmount: dto.demandAmount ?? undefined,
-    settlementAmount: dto.settlementAmount ?? undefined,
+    demandAmount: dto.demandAmount ?? null,
+    settlementAmount: dto.settlementAmount ?? null,
   };
 }
 
-export function mapPagination<T>(result: PaginatedResultDto<T>): PaginationMeta {
+export function mapPagination<T>(
+  result: PaginatedResultDto<T>,
+): PaginationMeta {
   return {
     page: result.page,
     pageSize: result.pageSize,
     totalCount: result.totalCount,
     totalPages: Math.ceil(result.totalCount / Math.max(result.pageSize, 1)),
+  };
+}
+
+export function mapMedicalInfo(
+  result: CreateMedicalLiensResponse,
+): CreateMedicalLiensResponse {
+  return {
+    id: result.id,
+    caseId: result.caseId,
+    status: result.status,
+    purchaseDate: dateConvertertoIso(result.purchaseDate),
+    initialServiceDate: dateConvertertoIso(result.initialServiceDate),
+    endServiceDate: result.endServiceDate
+      ? dateConvertertoIso(result.endServiceDate)
+      : "",
+    note: result.note,
+    isBulk: result.isBulk == "Yes" ? "true" : "false",
+    isServicing: result.isBulk == "Yes" ? "true" : "false",
+    fundingCompany: result.fundingCompany,
+    fundingCompanyId: result.fundingCompanyId,
+  };
+}
+
+export function mapMedicalCodes(result: MedicalCodeLiensResponse[]): {
+  codeRows: MedicalCodeLiensResponse[];
+} {
+  return {
+    codeRows: result.map((r) => ({
+      ...r,
+      billingAmount: +r.billingAmount,
+      medicareCost: +r.medicareCost,
+      purchaseAmount: +r.purchaseAmount,
+    })),
   };
 }

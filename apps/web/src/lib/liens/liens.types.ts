@@ -6,10 +6,16 @@ export interface LienResponseDto {
   status: string;
   caseId?: string | null;
   facilityId?: string | null;
+  facility: string | null;
+  facilityName?: string | null;
+  serviceDate?: string | null;
+  purchaseDate?: string | null;
+  purchaseAmount?: number | null;
   originalAmount: number;
   currentBalance?: number | null;
   offerPrice?: number | null;
   purchasePrice?: number | null;
+  initialServiceDate: string;
   payoffAmount?: number | null;
   jurisdiction?: string | null;
   isConfidential: boolean;
@@ -121,7 +127,11 @@ export interface LienListItem {
   lienType: string;
   lienTypeLabel: string;
   status: string;
+  facility: string | null;
+  facilityId: string | null;
   caseId: string;
+  initialServiceDate: string;
+  purchaseDate: string;
   originalAmount: number;
   currentBalance: number | null;
   offerPrice: number | null;

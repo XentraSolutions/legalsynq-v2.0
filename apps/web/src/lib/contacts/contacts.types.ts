@@ -18,6 +18,9 @@ export interface ContactResponseDto {
   isActive: boolean;
   createdAtUtc: string;
   updatedAtUtc: string;
+  contactSubtype?: string | null;
+  lawFirmId?: string | null;
+  facilityId?: string | null;
 }
 
 export interface PaginatedResultDto<T> {
@@ -42,6 +45,9 @@ export interface CreateContactRequestDto {
   state?: string;
   postalCode?: string;
   notes?: string;
+  contactSubtype?: string;
+  lawFirmId?: string;
+  facilityId?: string;
 }
 
 export interface UpdateContactRequestDto {
@@ -59,18 +65,25 @@ export interface UpdateContactRequestDto {
   state?: string;
   postalCode?: string;
   notes?: string;
+  contactSubtype?: string;
+  lawFirmId?: string;
+  facilityId?: string;
 }
 
 export interface ContactsQuery {
-  search?: string;
-  contactType?: string;
+  keyword?: string;
+  ContactType?: string;
   isActive?: boolean;
   page?: number;
   pageSize?: number;
+  LawFirmId?: string;
+  FacilityId?: string;
 }
 
 export interface ContactListItem {
   id: string;
+  firstName: string;
+  lastName: string;
   contactType: string;
   displayName: string;
   organization: string;
@@ -92,6 +105,29 @@ export interface ContactDetail extends ContactListItem {
   postalCode: string;
   notes: string;
   updatedAt: string;
+  contactSubtype: string | null;
+  facilityId: string | null;
+  lawFirmId: string | null;
+}
+
+export interface ExportResponse {
+  data: string;
+}
+
+export interface ContactCaseDto {
+  id: string;
+  caseNumber: string;
+  personName: string;
+  status: string;
+  billingAmount: number;
+}
+
+export interface ContactCaseSummary {
+  id: string;
+  caseNumber: string;
+  personName: string;
+  status: string;
+  billingAmount: number;
 }
 
 export interface PaginationMeta {

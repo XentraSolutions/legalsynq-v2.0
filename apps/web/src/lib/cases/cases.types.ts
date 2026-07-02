@@ -6,12 +6,23 @@ export interface CaseResponseDto {
   clientFirstName: string;
   clientLastName: string;
   clientDisplayName: string;
+  trackingFollowUp?: string | null;
   status: string;
   dateOfIncident?: string | null;
   clientDob?: string | null;
   clientPhone?: string | null;
   clientEmail?: string | null;
   clientAddress?: string | null;
+  clientStreetAddress: string;
+  clientCity: string;
+  clientState: string;
+  clientZipcode: string;
+  sex: string;
+  caseType: string;
+  currentMedicalStatus: string;
+  stateOfIncident: string;
+  trackingFollowUpDate: string;
+  leadId: string;
   insuranceCarrier?: string | null;
   policyNumber?: string | null;
   claimNumber?: string | null;
@@ -26,16 +37,54 @@ export interface CaseResponseDto {
 }
 
 export interface PaginatedResultDto<T> {
-  items: T[];
+  items?: T[];
   page: number;
   pageSize: number;
   totalCount: number;
 }
 
 export interface CreateCaseRequestDto {
-  caseNumber: string;
-  clientFirstName: string;
-  clientLastName: string;
+  caseNumber?: string;
+  firstname: string;
+  lastname: string;
+  externalReference?: string;
+  title?: string;
+  dob?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+  dateOfLoss?: string;
+  insuranceCarrier?: string;
+  policyNumber?: string;
+  claimNumber?: string;
+  description?: string;
+  notes?: string;
+  caseStatusId: string | null;
+  caseManagerId?: string | null;
+  lawfirmId?: string | null;
+  stateId?: string | null;
+  accidentTypeId?: string | null;
+  accidentStateId?: string | null;
+}
+
+export interface UpdateCaseRequestDto {
+  caseId: string;
+  currentStatus: string;
+  currentMedicalStatus: string;
+  caseType: string;
+  stateOfIncident: string;
+  trackingFollowUp: string;
+  dateOfLoss: string;
+  leadId: string;
+  description?: string | null;
+  notes: string | null;
+  demandAmount: number | string | null;
+  settlementAmount: number | string | null;
+  clientFirstName?: string;
+  clientLastName?: string;
   externalReference?: string;
   title?: string;
   clientDob?: string;
@@ -46,19 +95,15 @@ export interface CreateCaseRequestDto {
   insuranceCarrier?: string;
   policyNumber?: string;
   claimNumber?: string;
-  description?: string;
-  notes?: string;
+  status?: string;
 }
 
-export interface UpdateCaseRequestDto {
-  clientFirstName: string;
-  clientLastName: string;
+export interface UpdateCaseDetailsRequestDto {
+  firstname: string;
+  lastname: string;
+
   externalReference?: string;
   title?: string;
-  clientDob?: string;
-  clientPhone?: string;
-  clientEmail?: string;
-  clientAddress?: string;
   dateOfIncident?: string;
   insuranceCarrier?: string;
   policyNumber?: string;
@@ -70,11 +115,30 @@ export interface UpdateCaseRequestDto {
   settlementAmount?: number;
 }
 
+export interface UpdateCasePersonalRequestDto {
+  caseId: string;
+  firstName: string;
+  lastName: string;
+  sex: string;
+  dob?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+}
+
 export interface CasesQuery {
-  search?: string;
-  status?: string;
   page?: number;
-  pageSize?: number;
+  limit?: number;
+  lawFirmId?: string | null;
+  accidentTypeId?: string | null;
+  statusId?: number | string;
+  caseManagerId?: string | null;
+  keyword?: string | null;
+  sortBy?: string | null;
+  sortDirection?: string | null;
 }
 
 export interface LienResponseDto {
@@ -83,6 +147,11 @@ export interface LienResponseDto {
   lienType: string;
   status: string;
   caseId?: string | null;
+  facility?: string | null;
+  facilityName?: string | null;
+  serviceDate?: string | null;
+  purchaseDate?: string | null;
+  purchaseAmount?: number | null;
   originalAmount: number;
   currentBalance?: number | null;
   offerPrice?: number | null;
@@ -96,6 +165,7 @@ export interface LienResponseDto {
 
 export interface CaseListItem {
   id: string;
+  caseId: string;
   caseNumber: string;
   clientName: string;
   title: string;
@@ -115,6 +185,7 @@ export interface CaseListItem {
 
 export interface CaseDetail {
   id: string;
+  caseType: string;
   caseNumber: string;
   externalReference: string;
   title: string;
@@ -128,13 +199,23 @@ export interface CaseDetail {
   clientPhone: string;
   clientEmail: string;
   clientAddress: string;
+  clientStreetAddress: string;
+  clientCity: string;
+  clientState: string;
+  clientZipcode: string;
+  sex: string;
+  currentMedicalStatus: string;
+  stateOfIncident: string;
+  trackingFollowUpDate: string;
+  leadId: string;
   insuranceCarrier: string;
   policyNumber: string;
   claimNumber: string;
   demandAmount: number | null;
   settlementAmount: number | null;
-  description: string;
-  notes: string;
+  description: string | null;
+  notes: string | null;
+  trackingFollowUp: string;
   openedAt: string;
   closedAt: string;
   createdAt: string;
@@ -147,6 +228,57 @@ export interface CaseLienItem {
   lienType: string;
   status: string;
   originalAmount: number;
+  facility: string;
+  facilityName: string;
+  serviceDate: string;
+  purchaseDate: string;
+  purchaseAmount: number;
+}
+
+export interface CaseLienItemMetadata {
+  facility: string;
+  closedAtUtc: string | null;
+  reductionAmount: number | null;
+  purchaseAmount: number | null;
+  paymentAmount: number | null;
+  balance: number;
+}
+export interface CaseUpdatesItem {
+  id: string;
+  timestamp: string;
+  action: string;
+  description: string;
+  updatedBy: string;
+}
+
+export interface CaseUpdatesDto {
+  id: string;
+  timestamp: string;
+  action: string;
+  description: string;
+  updatedBy: string;
+}
+
+export interface CaseStatusResponse {
+  category: string;
+  code: string;
+  description: string;
+  id: string;
+  isActive: boolean;
+  isSystem: boolean;
+  name: string;
+  sortOrder: number;
+}
+export interface SearchMeta {
+  page: number;
+  limit: number;
+  lawFirmId: string | null;
+  accidentTypeId: string | null;
+  statusId: number;
+  caseManagerId: string | null;
+  keyword: string | null;
+  sortBy: string | null;
+  sortDirection: string | null;
 }
 
 export interface PaginationMeta {
@@ -154,4 +286,154 @@ export interface PaginationMeta {
   pageSize: number;
   totalCount: number;
   totalPages: number;
+}
+
+export interface DashboardStats {
+  totalActiveCases: number;
+  totalCases: number;
+  totalLienValue: number;
+  totalLiens: number;
+  caseStatus: StatusData[];
+  lienStatus: StatusData[];
+}
+
+interface StatusData {
+  label: string;
+  value: number;
+}
+export interface CasePaginatedParams {
+  CaseId: string;
+  page: number;
+  limit: number;
+}
+
+export interface CasePaginatedResult {
+  data: CaseResponseDto[];
+  pagination?: PaginationMeta;
+  limit: number;
+  page: number;
+  totalCount: number;
+}
+
+export interface CaseListResult {
+  items: CaseListItem[];
+  pagination: PaginationMeta;
+}
+
+export interface CaseLiensResult {
+  items: CaseLienItem[];
+  pagination?: PaginationMeta;
+}
+
+export interface PaginatedWithLimitResultDto<T> {
+  items: T[];
+  page: number;
+  limit: number;
+  totalCount: number;
+}
+
+export type CaseLiensApiResponse = PaginatedWithLimitResultDto<LienResponseDto>;
+
+export interface CasesFilters {
+  caseId: string | null;
+  keyword: string;
+  lawFirmId: string | null;
+  accidentTypeId: string | null;
+  statusId: string | null;
+  caseManagerId: string | null;
+}
+
+export interface CaseLiensFilters {
+  caseId: string;
+  liensId: null;
+  lawFirmId: null;
+  medicalFacilityId: null;
+  purchaseDate: null;
+  caseManagerId: null;
+  lienStatusId: null;
+}
+
+export interface ExportResponse {
+  data: Array<{ base64: string; export_format: string; filename: string }>;
+}
+
+export interface CreateMedicalLiensDto {
+  id: null | string;
+  caseId: string;
+  status: string;
+  purchaseDate: string;
+  initialServiceDate: string;
+  endServiceDate: string;
+  note: string;
+  isBulk: boolean | string;
+  isServicing: boolean | string;
+  fundingCompanyId: string;
+}
+
+export interface CreateMedicalLiensResponse {
+  id: null | string;
+  caseId: string;
+  status: string;
+  purchaseDate: string;
+  initialServiceDate: string;
+  endServiceDate: null | string;
+  note: string;
+  isBulk: boolean | string;
+  isServicing: boolean | string;
+  fundingCompany: string;
+  fundingCompanyId: string;
+  created?: string;
+  createdBy?: string;
+  updated?: string;
+  updatedBy?: string;
+}
+
+export interface CreateMedicalFacilityDto {
+  liensId: string;
+  facilityId: string;
+  facility: string;
+  facilityContactId: string;
+  facilityContact: string;
+  email: string;
+  medicalProviderId: string;
+  medicalProvider: string;
+}
+
+export interface CreateMedicalCodeLiensDto {
+  id: string | null;
+  liensId: string;
+  code: string;
+  medicareCost: string;
+  billingAmount: string;
+  purchaseAmount: string;
+  payee: string;
+  outboundCheckNumber: string;
+}
+
+export interface CreateMedicalPaymentDto {
+  id: null;
+  liensId: string;
+  payee: string;
+  outboundCheckNumber: string;
+}
+
+export interface CreateMedicalCodeDto {
+  liensId: string;
+  payee: string;
+  outboundCheckNumber: string;
+}
+
+export interface MedicalCodeLiensResponse {
+  billingAmount: string | number;
+  code: string;
+  created: string;
+  createdBy: string;
+  id: string;
+  liensId: string;
+  medicareCost: string | number;
+  outboundCheckNumber: string;
+  payee: string;
+  purchaseAmount: string | number;
+  updated: string;
+  updatedBy: string;
 }
