@@ -280,7 +280,7 @@ export default function ControlCenterTaskTemplatesPage() {
                           {t.defaultRoleId && <span>Role: {t.defaultRoleId}</span>}
                         </div>
                         <div className="text-xs text-gray-300 mt-1">
-                          v{t.version} · {new Date(t.lastUpdatedAt).toLocaleDateString()}
+                          v{t.version} · {new Date(t.lastUpdatedAt).toLocaleDateString('en-US', { timeZone: 'UTC' })}
                           {t.lastUpdatedByName && ` by ${t.lastUpdatedByName}`}
                           {' '}· {t.lastUpdatedSource}
                         </div>

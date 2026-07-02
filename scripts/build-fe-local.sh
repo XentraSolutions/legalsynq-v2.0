@@ -78,7 +78,7 @@ build_web() {
   NEXT_PUBLIC_TENANT_CODE="${NEXT_PUBLIC_TENANT_CODE:-}" \
   GATEWAY_URL="${GATEWAY_URL:-http://127.0.0.1:5010}" \
   CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
-  node "$next_bin" build
+  node "$next_bin" build --webpack
 
   mkdir -p "$DIST_ROOT"
   package_runtime_artifact "$app_dir" "$DIST_ROOT/web" "web"
@@ -106,7 +106,7 @@ build_control_center() {
   REPORTS_SERVICE_URL="${REPORTS_SERVICE_URL:-http://127.0.0.1:5029}" \
   COMMERCE_SERVICE_URL="${COMMERCE_SERVICE_URL:-http://127.0.0.1:5030}" \
   BILLING_SERVICE_URL="${BILLING_SERVICE_URL:-http://127.0.0.1:5031}" \
-  node "$next_bin" build
+  node "$next_bin" build --webpack
 
   mkdir -p "$DIST_ROOT"
   package_runtime_artifact "$app_dir" "$DIST_ROOT/control-center" "control-center"

@@ -1,6 +1,7 @@
 // CC2-INT-B03: Documents + Notifications Integration Tests
 // Covers: upload → documentId persisted, signed URL retrieval, scope enforcement,
 // token HMAC hard-fails outside Development, PROVIDER_ASSIGNED notification.
+using BuildingBlocks.Exceptions;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
@@ -144,10 +145,11 @@ public class DocumentsIntegrationTests
     [Fact]
     public async Task ReferralAttachmentService_Upload_SuccessfulUpload_PersistsDocumentId()
     {
-        var tenantId   = Guid.CreateVersion7();
-        var userId     = Guid.CreateVersion7();
-        var documentId = Guid.CreateVersion7().ToString();
-        var referral   = CreateMinimalReferral(tenantId);
+        var tenantId       = Guid.CreateVersion7();
+        var userId         = Guid.CreateVersion7();
+        var referringOrgId = Guid.CreateVersion7();
+        var documentId     = Guid.CreateVersion7().ToString();
+        var referral       = CreateMinimalReferral(tenantId, referringOrgId: referringOrgId);
 
         var referralRepo   = new Mock<IReferralRepository>();
         var attachmentRepo = new Mock<IReferralAttachmentRepository>();
@@ -172,7 +174,7 @@ public class DocumentsIntegrationTests
 
         await using var stream = new MemoryStream([1, 2, 3]);
         await svc.UploadAsync(
-            tenantId, referral.Id, userId, stream,
+            tenantId, referral.Id, userId, referringOrgId, null, false, stream,
             "test.pdf", "application/pdf", 3,
             new UploadAttachmentRequest { Scope = AttachmentScope.Shared });
 
@@ -208,9 +210,65 @@ public class DocumentsIntegrationTests
 
         await using var stream = new MemoryStream([1, 2, 3]);
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            svc.UploadAsync(tenantId, referral.Id, null, stream,
+            svc.UploadAsync(tenantId, referral.Id, null, null, null, true, stream,
                 "test.pdf", "application/pdf", 3,
                 new UploadAttachmentRequest()));
+    }
+
+    [Fact]
+    public async Task ReferralAttachmentService_Upload_ReceivingParticipant_Succeeds()
+    {
+        var tenantId      = Guid.CreateVersion7();
+        var receivingOrgId = Guid.CreateVersion7();
+        var documentId    = Guid.CreateVersion7().ToString();
+        var referral      = CreateMinimalReferral(tenantId, receivingOrgId: receivingOrgId);
+
+        var referralRepo   = new Mock<IReferralRepository>();
+        var attachmentRepo = new Mock<IReferralAttachmentRepository>();
+        var docClient      = new Mock<IDocumentServiceClient>();
+
+        referralRepo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        docClient.Setup(d => d.UploadAsync(
+                It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<long>(), It.IsAny<Guid>(), It.IsAny<string>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentUploadResult(true, documentId, null));
+
+        var svc = new ReferralAttachmentService(attachmentRepo.Object, referralRepo.Object, docClient.Object);
+
+        await using var stream = new MemoryStream([1, 2, 3]);
+        var result = await svc.UploadAsync(
+            tenantId, referral.Id, null, receivingOrgId, null, false, stream,
+            "receiver.pdf", "application/pdf", 3,
+            new UploadAttachmentRequest { Scope = AttachmentScope.Shared });
+
+        Assert.Equal("receiver.pdf", result.FileName);
+    }
+
+    [Fact]
+    public async Task ReferralAttachmentService_Upload_NonParticipant_ThrowsNotFound()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var referral = CreateMinimalReferral(tenantId, referringOrgId: Guid.CreateVersion7(), receivingOrgId: Guid.CreateVersion7());
+
+        var referralRepo   = new Mock<IReferralRepository>();
+        var attachmentRepo = new Mock<IReferralAttachmentRepository>();
+        var docClient      = new Mock<IDocumentServiceClient>();
+
+        referralRepo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var svc = new ReferralAttachmentService(attachmentRepo.Object, referralRepo.Object, docClient.Object);
+
+        await using var stream = new MemoryStream([1, 2, 3]);
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            svc.UploadAsync(
+                tenantId, referral.Id, null, Guid.CreateVersion7(), null, false, stream,
+                "blocked.pdf", "application/pdf", 3,
+                new UploadAttachmentRequest { Scope = AttachmentScope.Shared }));
     }
 
     // ── Signed URL: scope enforcement ─────────────────────────────────────────
@@ -227,7 +285,7 @@ public class DocumentsIntegrationTests
 
         var (svc, docClient) = BuildAttachmentService(referral, [attachment]);
 
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/doc", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -249,12 +307,12 @@ public class DocumentsIntegrationTests
         var documentId   = "doc-456";
         var orgId        = Guid.CreateVersion7();
 
-        var referral   = CreateMinimalReferral(tenantId, referringOrgId: orgId);
+        var referral   = CreateMinimalReferral(tenantId, receivingOrgId: orgId);
         var attachment = CreateAttachment(attachmentId, tenantId, referral.Id, documentId, AttachmentScope.Shared);
 
         var (svc, docClient) = BuildAttachmentService(referral, [attachment]);
 
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/shared-doc", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -265,6 +323,70 @@ public class DocumentsIntegrationTests
             isDownload:    false);
 
         Assert.NotNull(result);
+    }
+
+    [Fact]
+    public async Task GetByReferralAsync_SharedDoc_ReceivingParticipant_CanListAttachments()
+    {
+        var tenantId       = Guid.CreateVersion7();
+        var receivingOrgId = Guid.CreateVersion7();
+        var attachmentId   = Guid.CreateVersion7();
+
+        var referral   = CreateMinimalReferral(tenantId, receivingOrgId: receivingOrgId);
+        var attachment = CreateAttachment(attachmentId, tenantId, referral.Id, "doc-list-1", AttachmentScope.Shared);
+
+        var (svc, _) = BuildAttachmentService(referral, [attachment]);
+
+        var result = await svc.GetByReferralAsync(
+            tenantId,
+            referral.Id,
+            callerOrgId: receivingOrgId,
+            isAdmin: false);
+
+        Assert.Single(result);
+        Assert.Equal(attachmentId, result[0].Id);
+    }
+
+    [Fact]
+    public async Task GetByReferralAsync_SelfRegisteredNoOrgReferral_ReferrerEmailMatch_CanListAttachments()
+    {
+        // Bug repro: a referral submitted publicly (no referring org) is only accessible
+        // via the referrer-email fallback in CanAccessReferral. GetByReferralAsync must be
+        // given the caller's email — omitting it (as the GET /attachments endpoint used to)
+        // makes every such referral appear "not found" when its Documents tab is opened.
+        var tenantId   = Guid.CreateVersion7();
+        var referral   = Referral.Create(
+            tenantId:                  tenantId,
+            referringOrganizationId:   null,
+            receivingOrganizationId:   Guid.CreateVersion7(),
+            providerId:                Guid.CreateVersion7(),
+            subjectPartyId:            null,
+            subjectNameSnapshot:       null,
+            subjectDobSnapshot:        null,
+            clientFirstName:           "Jane",
+            clientLastName:            "Doe",
+            clientDob:                 null,
+            clientPhone:               "555-0001",
+            clientEmail:               "jane@example.com",
+            caseNumber:                null,
+            requestedService:          "Counselling",
+            urgency:                   Referral.ValidUrgencies.Normal,
+            notes:                     null,
+            createdByUserId:           null,
+            organizationRelationshipId: null,
+            referrerEmail:             "referrer@example.com",
+            referrerName:              "Self Referrer");
+
+        var (svc, _) = BuildAttachmentService(referral, []);
+
+        var result = await svc.GetByReferralAsync(
+            tenantId,
+            referral.Id,
+            callerOrgId: null,
+            isAdmin: false,
+            callerEmail: "referrer@example.com");
+
+        Assert.Empty(result);
     }
 
     [Fact]
@@ -300,7 +422,7 @@ public class DocumentsIntegrationTests
 
         var (svc, docClient) = BuildAttachmentService(referral, [attachment]);
 
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/prov-doc", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -870,7 +992,7 @@ public class DocumentsIntegrationTests
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, documentId, AttachmentScope.Shared);
 
         var (svc, docClient) = BuildAppointmentAttachmentService(appointment, [attachment]);
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/appt-shared", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -916,7 +1038,7 @@ public class DocumentsIntegrationTests
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, documentId, AttachmentScope.ProviderSpecific);
 
         var (svc, docClient) = BuildAppointmentAttachmentService(appointment, [attachment]);
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/appt-prov", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -962,7 +1084,7 @@ public class DocumentsIntegrationTests
         var attachment  = CreateAppointmentAttachment(attachmentId, tenantId, appointment.Id, documentId, AttachmentScope.ProviderSpecific);
 
         var (svc, docClient) = BuildAppointmentAttachmentService(appointment, [attachment]);
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/appt-lawfirm", 300));
 
         var result = await svc.GetSignedUrlAsync(
@@ -987,7 +1109,7 @@ public class DocumentsIntegrationTests
         var attachment = CreateAttachment(attachmentId, tenantId, referral.Id, documentId, AttachmentScope.ProviderSpecific);
 
         var (svc, docClient) = BuildAttachmentService(referral, [attachment]);
-        docClient.Setup(d => d.GetSignedUrlAsync(documentId, false, It.IsAny<CancellationToken>()))
+        docClient.Setup(d => d.GetSignedUrlAsync(tenantId, documentId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/ref-lawfirm", 300));
 
         var result = await svc.GetSignedUrlAsync(

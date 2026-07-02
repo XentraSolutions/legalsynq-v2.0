@@ -13,6 +13,7 @@ import {
 import type { PlatformSession } from "@/types";
 import { LookupResponse } from "@/lib/lookup/lookup.types";
 import { lookupService } from "@/lib/lookup";
+import { useRouter } from "next/navigation";
 
 interface SessionContextValue {
   session: PlatformSession | null;
@@ -20,6 +21,7 @@ interface SessionContextValue {
   isLoading: boolean;
   refresh: () => Promise<void>;
   clearSession: () => void;
+  logout: (url?: string) => Promise<void>;
 }
 
 export const SessionContext = createContext<SessionContextValue | null>(null);
@@ -89,9 +91,9 @@ export function SessionProvider({
 }: SessionProviderProps) {
   // Seed state from the SSR-resolved session so the UI is populated instantly.
   // isLoading starts false when we already have data; true only on a cold client load.
+  const router = useRouter();
   const seeded = initialSession ? deserializeSession(initialSession) : null;
   const [session, setSession] = useState<PlatformSession | null>(seeded);
-  const [lookup, setLookup] = useState<LookupResponse | null>(null);
   const [isLoading, setIsLoading] = useState(initialSession == null);
   const [showWarning, setShowWarning] = useState(false);
   const [countdown, setCountdown] = useState(WARNING_LEAD_SECONDS);
@@ -276,6 +278,15 @@ export function SessionProvider({
     sessionRef.current = null;
   }, []);
 
+  const logout = useCallback(async (url?: string) => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    router.replace(url ?? "/login");
+    router.refresh();
+    setTimeout(() => {
+      clearSession();
+    }, 1000);
+  }, []);
+
   // ── Idle timeout ────────────────────────────────────────────────────────────
 
   const doLogout = useCallback(async () => {
@@ -366,8 +377,15 @@ export function SessionProvider({
   }, [session, lookup]);
 
   const ctxValue = useMemo(
-    () => ({ session, lookup, isLoading, refresh: fetchSession, clearSession }),
-    [session, lookup, isLoading, fetchSession, clearSession],
+    () => ({
+      session,
+      lookup,
+      isLoading,
+      refresh: fetchSession,
+      clearSession,
+      logout,
+    }),
+    [session, lookup, isLoading, fetchSession, clearSession, logout],
   );
 
   return (

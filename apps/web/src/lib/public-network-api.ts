@@ -178,6 +178,26 @@ export async function resolveTenantFromCode(
   return null;
 }
 
+/**
+ * Returns whether the given product is active for the tenant.
+ * Calls the anonymous Tenant service entitlement endpoint; returns false
+ * on any error so that a failed/unavailable check fails closed (hides networks).
+ */
+export async function isProductActiveForTenant(
+  tenantId: string,
+  productKey: string,
+): Promise<boolean> {
+  try {
+    const url = `${GATEWAY_URL}/tenant/api/v1/public/resolve/${encodeURIComponent(tenantId)}/product-active/${encodeURIComponent(productKey)}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.isActive === true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Public network endpoints ───────────────────────────────────────────────
 
 /**
@@ -229,8 +249,11 @@ export async function fetchPublicNetworkDetail(
 
 export interface PublicReferralRequest {
   providerId:            string;
-  senderName:            string;
+  senderFirstName:       string;
+  senderLastName?:       string;
   senderEmail:           string;
+  senderFirmName?:       string;
+  senderPhone?:          string;
   patientFirstName:      string;
   patientLastName:       string;
   patientPhone:          string;
@@ -240,6 +263,8 @@ export interface PublicReferralRequest {
   patientAddress?:       string;
   serviceType?:          string;
   notes?:                string;
+  urgency?:              string;
+  treatmentTypeId?:      string;
 }
 
 export interface PublicReferralResponse {

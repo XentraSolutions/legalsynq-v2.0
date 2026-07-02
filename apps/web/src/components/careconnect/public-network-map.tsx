@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useMapProvider, googleMapsKey } from '@/lib/use-map-provider';
+import { googleMapsKey } from '@/lib/use-map-provider';
 import { useSettings } from '@/contexts/settings-context';
 import type { PublicProviderMarker } from '@/lib/public-network-api';
 
@@ -30,10 +30,9 @@ const GoogleMap = dynamic(
 
 export function PublicNetworkMap(props: PublicNetworkMapProps) {
   const { careConnect } = useSettings();
-  const [provider] = useMapProvider(careConnect.defaultMapProvider);
   const hasGoogleKey = !!googleMapsKey();
 
-  if (provider === 'google' && hasGoogleKey) {
+  if (careConnect.defaultMapProvider === 'google' && hasGoogleKey) {
     return <GoogleMap {...props} />;
   }
   return <LeafletMap {...props} />;

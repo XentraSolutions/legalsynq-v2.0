@@ -90,8 +90,8 @@ public class AutoProvisionTests
                 providerSvcMock, identityMock, activationsMock, auditMock);
     }
 
-    private static ViewTokenValidationResult TokenResult(Guid referralId, int version = 1) =>
-        new(referralId, version);
+    private static ReferralTokenValidationOutcome TokenResult(Guid referralId, int version = 1) =>
+        ReferralTokenValidationOutcome.Success(referralId, version);
 
     private static Referral BuildReferral(Guid tenantId, Guid providerId, int tokenVersion = 1)
     {
@@ -147,7 +147,8 @@ public class AutoProvisionTests
         var (sut, emailMock, _, _, _, _, _, _) = BuildSut();
         var referralId = Guid.CreateVersion7();
 
-        emailMock.Setup(e => e.ValidateViewToken("bad-token")).Returns((ViewTokenValidationResult?)null);
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("bad-token"))
+            .Returns(ReferralTokenValidationOutcome.Failure(ReferralTokenFailureReasons.Malformed));
 
         var result = await sut.ProvisionAsync(referralId, "bad-token", null, null);
 
@@ -165,7 +166,7 @@ public class AutoProvisionTests
         var requestedId = Guid.CreateVersion7();
         var tokenId     = Guid.CreateVersion7();  // Different
 
-        emailMock.Setup(e => e.ValidateViewToken("tok"))
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("tok"))
                  .Returns(TokenResult(tokenId));
 
         var result = await sut.ProvisionAsync(requestedId, "tok", null, null);
@@ -182,7 +183,7 @@ public class AutoProvisionTests
         var (sut, emailMock, referralsMock, _, _, _, _, _) = BuildSut();
         var id = Guid.CreateVersion7();
 
-        emailMock.Setup(e => e.ValidateViewToken("tok")).Returns(TokenResult(id));
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("tok")).Returns(TokenResult(id));
         referralsMock.Setup(r => r.GetByIdGlobalAsync(id, default)).ReturnsAsync((Referral?)null);
 
         var result = await sut.ProvisionAsync(id, "tok", null, null);
@@ -201,8 +202,8 @@ public class AutoProvisionTests
         var providerId = Guid.CreateVersion7();
         var referral   = BuildReferral(tenantId, providerId, tokenVersion: 2); // version = 2
 
-        emailMock.Setup(e => e.ValidateViewToken("tok"))
-                 .Returns(new ViewTokenValidationResult(referral.Id, 1)); // stale version
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("tok"))
+                 .Returns(ReferralTokenValidationOutcome.Success(referral.Id, 1)); // stale version
         referralsMock.Setup(r => r.GetByIdGlobalAsync(referral.Id, default)).ReturnsAsync(referral);
 
         var result = await sut.ProvisionAsync(referral.Id, "tok", null, null);
@@ -221,7 +222,7 @@ public class AutoProvisionTests
         var providerId = Guid.CreateVersion7();
         var referral   = BuildReferral(tenantId, providerId);
 
-        emailMock.Setup(e => e.ValidateViewToken("tok")).Returns(TokenResult(referral.Id));
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("tok")).Returns(TokenResult(referral.Id));
         referralsMock.Setup(r => r.GetByIdGlobalAsync(referral.Id, default)).ReturnsAsync(referral);
         providersMock.Setup(p => p.GetByIdCrossAsync(providerId, default)).ReturnsAsync((Provider?)null);
 
@@ -241,7 +242,7 @@ public class AutoProvisionTests
         var provider   = BuildProvider(linked: true);
         var referral   = BuildReferral(tenantId, provider.Id);
 
-        emailMock.Setup(e => e.ValidateViewToken("tok")).Returns(TokenResult(referral.Id));
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("tok")).Returns(TokenResult(referral.Id));
         referralsMock.Setup(r => r.GetByIdGlobalAsync(referral.Id, default)).ReturnsAsync(referral);
         providersMock.Setup(p => p.GetByIdCrossAsync(provider.Id, default)).ReturnsAsync(provider);
         activationsMock.Setup(a => a.UpsertAsync(
@@ -274,7 +275,7 @@ public class AutoProvisionTests
         var provider = BuildProvider(linked: false);
         var referral = BuildReferral(tenantId, provider.Id);
 
-        emailMock.Setup(e => e.ValidateViewToken("tok")).Returns(TokenResult(referral.Id));
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("tok")).Returns(TokenResult(referral.Id));
         referralsMock.Setup(r => r.GetByIdGlobalAsync(referral.Id, default)).ReturnsAsync(referral);
         providersMock.Setup(p => p.GetByIdCrossAsync(provider.Id, default)).ReturnsAsync(provider);
         identityMock.Setup(i => i.EnsureProviderOrganizationAsync(
@@ -312,7 +313,7 @@ public class AutoProvisionTests
         var referral = BuildReferral(tenantId, provider.Id);
         var orgId    = Guid.CreateVersion7();
 
-        emailMock.Setup(e => e.ValidateViewToken("tok")).Returns(TokenResult(referral.Id));
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("tok")).Returns(TokenResult(referral.Id));
         referralsMock.Setup(r => r.GetByIdGlobalAsync(referral.Id, default)).ReturnsAsync(referral);
         providersMock.Setup(p => p.GetByIdCrossAsync(provider.Id, default)).ReturnsAsync(provider);
         identityMock.Setup(i => i.EnsureProviderOrganizationAsync(
@@ -346,7 +347,7 @@ public class AutoProvisionTests
         var referral = BuildReferral(tenantId, provider.Id);
         var orgId    = Guid.CreateVersion7();
 
-        emailMock.Setup(e => e.ValidateViewToken("tok")).Returns(TokenResult(referral.Id));
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("tok")).Returns(TokenResult(referral.Id));
         referralsMock.Setup(r => r.GetByIdGlobalAsync(referral.Id, default)).ReturnsAsync(referral);
         providersMock.Setup(p => p.GetByIdCrossAsync(provider.Id, default)).ReturnsAsync(provider);
         identityMock.Setup(i => i.EnsureProviderOrganizationAsync(
@@ -375,6 +376,7 @@ public class AutoProvisionTests
         Assert.NotNull(result.LoginUrl);
         Assert.StartsWith("https://myapp.example.com/login", result.LoginUrl);
         Assert.Contains("activation-complete", result.LoginUrl);
+        Assert.Contains("%2Fprovider%2Freferrals%2F", result.LoginUrl);
 
         // Provider link must have been called once
         providerSvcMock.Verify(
@@ -394,7 +396,7 @@ public class AutoProvisionTests
         var referral = BuildReferral(tenantId, provider.Id);
         var orgId    = Guid.CreateVersion7();
 
-        emailMock.Setup(e => e.ValidateViewToken("tok")).Returns(TokenResult(referral.Id));
+        emailMock.Setup(e => e.ValidateViewTokenDetailed("tok")).Returns(TokenResult(referral.Id));
         referralsMock.Setup(r => r.GetByIdGlobalAsync(referral.Id, default)).ReturnsAsync(referral);
         providersMock.Setup(p => p.GetByIdCrossAsync(provider.Id, default)).ReturnsAsync(provider);
         identityMock.Setup(i => i.EnsureProviderOrganizationAsync(

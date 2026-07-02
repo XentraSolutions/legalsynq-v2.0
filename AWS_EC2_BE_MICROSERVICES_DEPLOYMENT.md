@@ -459,6 +459,51 @@ Notifications__ScanCompletion__Redis__StreamMaxLength=10000
 Cors__Origins=https://app.yourdomain.com
 ```
 
+Documents malware scanning requires a reachable local `clamd` listener when `Scanner__Provider=ClamAv`. With the env block above, the Documents service will connect to `127.0.0.1:3310` for each scan job. If nothing is listening there, uploads will persist metadata and storage successfully but the scan step will fail with `Connection refused`, and access remains blocked when `Documents__RequireCleanScanForAccess=true`.
+
+Install and configure ClamAV on the Documents host:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y clamav clamav-daemon
+sudo systemctl stop clamav-daemon clamav-freshclam
+sudo sed -i 's/^Example/#Example/' /etc/clamav/clamd.conf
+sudo sed -i 's/^#\?TCPSocket.*/TCPSocket 3310/' /etc/clamav/clamd.conf
+sudo sed -i 's/^#\?TCPAddr.*/TCPAddr 127.0.0.1/' /etc/clamav/clamd.conf
+sudo sed -i 's/^#\?MaxScanSize.*/MaxScanSize 100M/' /etc/clamav/clamd.conf
+sudo sed -i 's/^#\?MaxFileSize.*/MaxFileSize 100M/' /etc/clamav/clamd.conf
+sudo sed -i 's/^#\?PCREMaxFileSize.*/PCREMaxFileSize 100M/' /etc/clamav/clamd.conf
+sudo sed -i 's/^#\?StreamMaxLength.*/StreamMaxLength 100M/' /etc/clamav/clamd.conf
+sudo systemctl start clamav-freshclam clamav-daemon
+```
+
+The size limits above must stay aligned with the Documents application policy. This runbook configures Documents to scan up to `100 MB`, so `clamd.conf` must not keep smaller values such as `25M` for `MaxFileSize`, `PCREMaxFileSize`, or `StreamMaxLength`, otherwise the app will accept the upload and ClamAV will reject the scan.
+
+Validate before starting or restarting `legalsynq-documents`:
+
+```bash
+systemctl status clamav-daemon
+ss -ltnp | rg 3310
+nc -vz 127.0.0.1 3310
+journalctl -u clamav-daemon --since today
+rg -n "^(MaxScanSize|MaxFileSize|PCREMaxFileSize|StreamMaxLength)" /etc/clamav/clamd.conf
+```
+
+Expected result:
+
+- `ss` shows `127.0.0.1:3310` listening
+- `nc` reports a successful connection
+- `journalctl` shows `clamd` started cleanly and loaded signatures
+
+Temporary QA-only fallback when real ClamAV is not yet available:
+
+```bash
+Scanner__Provider=Mock
+Scanner__Mock__MockResult=Clean
+```
+
+Do not use the mock scanner in environments that require real malware scanning.
+
 `/etc/legalsynq/audit.env`:
 
 ```bash

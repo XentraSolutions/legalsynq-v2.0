@@ -1,5 +1,7 @@
+using System.Security.Claims;
 using BuildingBlocks.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Tenant.Application;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 
@@ -7,12 +9,16 @@ namespace Tenant.Api.Endpoints;
 
 public static class SettingEndpoints
 {
+    private const string MapProviderKey     = "careconnect.map-provider";
+    private const string MapProviderProduct = "careconnect";
+    private const string TimezoneDefault    = TenantDefaults.Timezone;
+
     public static WebApplication MapSettingEndpoints(this WebApplication app)
     {
+        // ── Platform-admin CRUD (unchanged) ──────────────────────────────────
+
         var group = app.MapGroup("/api/tenants/{tenantId:guid}/settings")
             .RequireAuthorization(Policies.AdminOnly);
-
-        // ── List ──────────────────────────────────────────────────────────────
 
         group.MapGet("/", async (
             Guid tenantId,
@@ -22,8 +28,6 @@ public static class SettingEndpoints
             var result = await service.ListByTenantAsync(tenantId, ct);
             return Results.Ok(result);
         });
-
-        // ── Get by id ─────────────────────────────────────────────────────────
 
         group.MapGet("/{id:guid}", async (
             Guid tenantId,
@@ -35,8 +39,6 @@ public static class SettingEndpoints
             return Results.Ok(result);
         });
 
-        // ── Upsert ────────────────────────────────────────────────────────────
-
         group.MapPut("/", async (
             Guid tenantId,
             [FromBody] UpsertSettingRequest request,
@@ -46,8 +48,6 @@ public static class SettingEndpoints
             var result = await service.UpsertAsync(tenantId, request, ct);
             return Results.Ok(result);
         });
-
-        // ── Delete ────────────────────────────────────────────────────────────
 
         group.MapDelete("/{id:guid}", async (
             Guid tenantId,
@@ -59,6 +59,126 @@ public static class SettingEndpoints
             return Results.NoContent();
         });
 
+        // ── TenantAdmin: map-provider setting ─────────────────────────────────
+        // GET  /api/tenants/{tenantId}/settings/map-provider  — read current value
+        // PUT  /api/tenants/{tenantId}/settings/map-provider  — write value ("google"|"osm")
+
+        var mapGroup = app.MapGroup("/api/tenants/{tenantId:guid}/settings/map-provider")
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        mapGroup.MapGet("/", async (
+            Guid tenantId,
+            ClaimsPrincipal user,
+            ISettingService service,
+            CancellationToken ct) =>
+        {
+            var scopeError = EnforceTenantScope(user, tenantId);
+            if (scopeError is not null) return scopeError;
+
+            var setting = await service.GetByKeyAsync(tenantId, MapProviderKey, MapProviderProduct, ct);
+            return Results.Ok(new MapProviderResponse(setting?.SettingValue ?? "google"));
+        });
+
+        mapGroup.MapPut("/", async (
+            Guid tenantId,
+            ClaimsPrincipal user,
+            [FromBody] SetMapProviderRequest request,
+            ISettingService service,
+            CancellationToken ct) =>
+        {
+            var scopeError = EnforceTenantScope(user, tenantId);
+            if (scopeError is not null) return scopeError;
+
+            if (request.Value != "google" && request.Value != "osm")
+                return Results.BadRequest(new { error = "Value must be 'google' or 'osm'." });
+
+            var result = await service.UpsertAsync(tenantId, new UpsertSettingRequest(
+                MapProviderKey,
+                request.Value,
+                "String",
+                MapProviderProduct), ct);
+
+            return Results.Ok(new MapProviderResponse(result.SettingValue));
+        });
+
+        var publicGroup = app.MapGroup("/api/v1/public/tenants/{tenantId:guid}/settings");
+
+        publicGroup.MapGet("/map-provider", async (
+            Guid tenantId,
+            ISettingService service,
+            CancellationToken ct) =>
+        {
+            var setting = await service.GetByKeyAsync(tenantId, MapProviderKey, MapProviderProduct, ct);
+            var value = setting?.SettingValue is "osm" or "google"
+                ? setting.SettingValue
+                : "google";
+
+            return Results.Ok(new MapProviderResponse(value));
+        })
+        .AllowAnonymous();
+
+        // ── TenantAdmin: timezone setting ─────────────────────────────────────
+        // GET  /api/tenants/{tenantId}/settings/timezone  — read current value
+        // PUT  /api/tenants/{tenantId}/settings/timezone  — write IANA timezone
+
+        var tzGroup = app.MapGroup("/api/tenants/{tenantId:guid}/settings/timezone")
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        tzGroup.MapGet("/", async (
+            Guid tenantId,
+            ClaimsPrincipal user,
+            ITenantService tenantService,
+            CancellationToken ct) =>
+        {
+            var scopeError = EnforceTenantScope(user, tenantId);
+            if (scopeError is not null) return scopeError;
+
+            var timezone = await tenantService.GetTimezoneAsync(tenantId, ct);
+            return Results.Ok(new TimezoneResponse(timezone ?? TimezoneDefault));
+        });
+
+        tzGroup.MapPut("/", async (
+            Guid tenantId,
+            ClaimsPrincipal user,
+            [FromBody] SetTimezoneRequest request,
+            ITenantService tenantService,
+            CancellationToken ct) =>
+        {
+            var scopeError = EnforceTenantScope(user, tenantId);
+            if (scopeError is not null) return scopeError;
+
+            var updated = await tenantService.UpdateTimezoneAsync(tenantId, request.Value, ct);
+            return Results.Ok(new TimezoneResponse(updated));
+        });
+
+        // Public (anonymous): allows CareConnect public portal to read tenant timezone
+        publicGroup.MapGet("/timezone", async (
+            Guid tenantId,
+            ITenantService tenantService,
+            CancellationToken ct) =>
+        {
+            var timezone = await tenantService.GetTimezoneAsync(tenantId, ct);
+            return Results.Ok(new TimezoneResponse(timezone ?? TimezoneDefault));
+        })
+        .AllowAnonymous();
+
         return app;
     }
+
+    private static IResult? EnforceTenantScope(ClaimsPrincipal user, Guid tenantId)
+    {
+        if (user.IsInRole(Roles.PlatformAdmin)) return null;
+        if (!user.IsInRole(Roles.TenantAdmin))  return Results.Forbid();
+
+        var tenantClaim = user.FindFirstValue("tenant_id") ?? user.FindFirstValue("tid");
+        if (!Guid.TryParse(tenantClaim, out var callerTenantId))
+            throw new InvalidOperationException("TenantAdmin caller is missing the tenant_id claim.");
+
+        return callerTenantId == tenantId ? null : Results.Forbid();
+    }
 }
+
+public record MapProviderResponse(string Value);
+public record SetMapProviderRequest(string Value);
+public record TimezoneResponse(string Value);
+public record SetTimezoneRequest(string Value);

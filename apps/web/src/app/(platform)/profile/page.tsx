@@ -1,9 +1,11 @@
 import { headers } from 'next/headers';
 import { requireOrg } from '@/lib/auth-guards';
+import { tenantServerApi } from '@/lib/tenant-api';
 import { AvatarUpload } from '@/components/avatar/AvatarUpload';
 import { PhoneEditor } from '@/components/profile/PhoneEditor';
 import { CopyableValue } from '@/components/profile/CopyableValue';
 import { getServerPortalConfig } from '@/lib/portal';
+import { isEligibleForCareConnectCommonPortal } from '@/lib/careconnect-common-portal-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +20,11 @@ export default async function ProfilePage() {
   const hdrs = await headers();
   const rawHost = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '';
   const portalConfig = getServerPortalConfig(rawHost);
-  const isCareConnectPortal = portalConfig?.productId === 'careconnect';
   const session = await requireOrg();
+  const tzResult = await tenantServerApi.getTimezoneSetting(session.tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
+  const isCareConnectPortal = portalConfig?.productId === 'careconnect';
+  const hideActivityActions = isEligibleForCareConnectCommonPortal(session);
 
   const initials = (session.orgName?.slice(0, 2) ?? session.email?.slice(0, 2) ?? '??').toUpperCase();
 
@@ -114,7 +119,7 @@ export default async function ProfilePage() {
         <div className="bg-white border border-gray-200 rounded-xl px-6 py-5">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Session</h2>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-            <InfoRow label="Session expires" value={formatLocalDate(session.expiresAt)} />
+            <InfoRow label="Session expires" value={formatLocalDate(session.expiresAt, tenantTimezone)} />
           </dl>
         </div>
 
@@ -127,13 +132,15 @@ export default async function ProfilePage() {
             <i className="ri-settings-3-line text-sm" />
             Account Settings
           </a>
-          <a
-            href="/activity?actorId=me"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors"
-          >
-            <i className="ri-history-line text-sm" />
-            My Activity
-          </a>
+          {!hideActivityActions && (
+            <a
+              href="/activity?actorId=me"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors"
+            >
+              <i className="ri-history-line text-sm" />
+              My Activity
+            </a>
+          )}
         </div>
 
       </div>
@@ -179,11 +186,11 @@ function InfoRow({
   );
 }
 
-function formatLocalDate(d: Date): string {
+function formatLocalDate(d: Date, timezone: string): string {
   try {
     return d.toLocaleString('en-US', {
       year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+      hour: '2-digit', minute: '2-digit', timeZone: timezone,
     });
   } catch {
     return String(d);

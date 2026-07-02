@@ -1,46 +1,61 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useRef, useEffect, type FormEvent } from 'react';
-import { sendOtp, registerEnrollment, registerFirmEnrollment, type EnrollmentPrefill } from './actions';
-import { useRouter } from 'next/navigation';
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  type FormEvent,
+} from "react";
+import {
+  sendOtp,
+  registerEnrollment,
+  registerFirmEnrollment,
+  type EnrollmentPrefill,
+} from "./actions";
+import { formatPhoneInput, isValidPhone, stripPhone } from "@/lib/phone";
+import { isValidUsZipCode } from "@/lib/address";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 // ── Address suggestion (from /api/geocode/address) ────────────────────────────
 
 interface AddressSuggestion {
   displayName: string;
   addressLine1: string;
-  city:         string;
-  state:        string;
-  postalCode:   string;
+  city: string;
+  state: string;
+  postalCode: string;
+  addressSelectionToken: string;
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface ReferralPrefill {
   companyName: string;
-  email:       string;
-  phone:       string;
-  firstName:   string;
-  lastName:    string;
+  email: string;
+  phone: string;
+  firstName: string;
+  lastName: string;
   addressLine1: string;
-  city:         string;
-  state:        string;
-  postalCode:   string;
+  city: string;
+  state: string;
+  postalCode: string;
 }
 
 interface AuthenticatedOrgPrefill {
   companyName: string;
   companyType: string;
-  email:       string;
-  phone:       string;
+  email: string;
+  phone: string;
 }
 
 interface EnrollmentFormProps {
   authenticatedOrgPrefill?: AuthenticatedOrgPrefill | null;
-  prefill:           EnrollmentPrefill | null;
-  providerId:        string | null;
-  tenantId:          string | null;
-  referralPrefill:   ReferralPrefill | null;
+  prefill: EnrollmentPrefill | null;
+  providerId: string | null;
+  tenantId: string | null;
+  referralPrefill: ReferralPrefill | null;
   isFirmEnrollment?: boolean;
 }
 
@@ -61,74 +76,105 @@ export function EnrollmentForm({
   //   2. provider prefill
   //   3. referral token prefill
   //   4. empty defaults
-  const initialCompanyName = authenticatedOrgPrefill?.companyName
-    ?? prefill?.companyName
-    ?? referralPrefill?.companyName
-    ?? '';
-  const companyType = authenticatedOrgPrefill?.companyType
-    ?? prefill?.companyType
-    ?? 'LawFirm';
-  const initialEmail = authenticatedOrgPrefill?.email
-    ?? prefill?.email
-    ?? referralPrefill?.email
-    ?? '';
-  const initialPhone = authenticatedOrgPrefill?.phone
-    ?? prefill?.phone
-    ?? referralPrefill?.phone
-    ?? '';
+  const initialCompanyName =
+    authenticatedOrgPrefill?.companyName ??
+    prefill?.companyName ??
+    referralPrefill?.companyName ??
+    "";
+  const companyType =
+    authenticatedOrgPrefill?.companyType ?? prefill?.companyType ?? "LawFirm";
+  const initialEmail =
+    authenticatedOrgPrefill?.email ??
+    prefill?.email ??
+    referralPrefill?.email ??
+    "";
+  const initialPhone = formatPhoneInput(
+    authenticatedOrgPrefill?.phone ??
+      prefill?.phone ??
+      referralPrefill?.phone ??
+      "",
+  );
 
-  const [companyName,  setCompanyName]  = useState(initialCompanyName);
-  const [email,        setEmail]        = useState(initialEmail);
-  const [phone,        setPhone]        = useState(initialPhone);
-  const initialAddressLine1 = prefill?.addressLine1 ?? referralPrefill?.addressLine1 ?? '';
-  const initialCity         = prefill?.city         ?? referralPrefill?.city         ?? '';
-  const initialState        = prefill?.state        ?? referralPrefill?.state        ?? '';
-  const initialPostalCode   = prefill?.postalCode   ?? referralPrefill?.postalCode   ?? '';
+  const [companyName, setCompanyName] = useState(initialCompanyName);
+  const [email, setEmail] = useState(initialEmail);
+  const [phone, setPhone] = useState(initialPhone);
+  const initialAddressLine1 =
+    prefill?.addressLine1 ?? referralPrefill?.addressLine1 ?? "";
+  const initialCity = prefill?.city ?? referralPrefill?.city ?? "";
+  const initialState = prefill?.state ?? referralPrefill?.state ?? "";
+  const initialPostalCode =
+    prefill?.postalCode ?? referralPrefill?.postalCode ?? "";
   const [addressLine1, setAddressLine1] = useState(initialAddressLine1);
-  const [city,         setCity]         = useState(initialCity);
-  const [state,        setState]        = useState(initialState);
-  const [postalCode,   setPostalCode]   = useState(initialPostalCode);
-  const initialFirstName = referralPrefill?.firstName ?? '';
-  const initialLastName  = referralPrefill?.lastName  ?? '';
-  const [firstName,    setFirstName]    = useState(initialFirstName);
-  const [lastName,     setLastName]     = useState(initialLastName);
-  const [password,     setPassword]     = useState('');
-  const [confirmPwd,   setConfirmPwd]   = useState('');
-  const [agreeTerms,   setAgreeTerms]   = useState(false);
+  const [city, setCity] = useState(initialCity);
+  const [state, setState] = useState(initialState);
+  const [postalCode, setPostalCode] = useState(initialPostalCode);
+  const initialFirstName =
+    prefill?.firstName ?? referralPrefill?.firstName ?? "";
+  const initialLastName = prefill?.lastName ?? referralPrefill?.lastName ?? "";
+  const [firstName, setFirstName] = useState(initialFirstName);
+  const [lastName, setLastName] = useState(initialLastName);
+  const [password, setPassword] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [agreeTerms, setAgreeTerms] = useState(false);
 
   // Fields locked when pre-filled from a signed referral token — should not be edited.
-  const companyNameLocked = !!authenticatedOrgPrefill?.companyName || (!!referralPrefill?.companyName && !prefill);
-  const emailLocked       = !!authenticatedOrgPrefill?.email       || (!!referralPrefill?.email && !prefill);
-  const phoneLocked       = !!initialPhone;
-  const firstNameLocked   = !!initialFirstName;
-  const lastNameLocked    = !!initialLastName;
+  const companyNameLocked = !!initialCompanyName.trim();
+  const emailLocked = !!initialEmail.trim();
+  const phoneLocked = !!initialPhone;
+  const firstNameLocked = !!initialFirstName;
+  const lastNameLocked = !!initialLastName;
   const addressLine1Locked = !!initialAddressLine1;
-  const cityLocked         = !!initialCity;
-  const stateLocked        = !!initialState;
-  const postalCodeLocked   = !!initialPostalCode;
+  const cityLocked = !!initialCity;
+  const stateLocked = !!initialState;
+  const postalCodeLocked = !!initialPostalCode;
 
   // OTP state — firm enrollments skip OTP (new account, no existing email on record)
   const originalEmail = initialEmail;
-  const emailChanged  = !isFirmEnrollment && !emailLocked && email.trim().toLowerCase() !== originalEmail.trim().toLowerCase();
-  const [otpSent,      setOtpSent]      = useState(false);
-  const [otpCode,      setOtpCode]      = useState('');
-  const [otpVerified,  setOtpVerified]  = useState(false);
-  const [sendingOtp,   setSendingOtp]   = useState(false);
-  const [otpError,     setOtpError]     = useState('');
+  const emailChanged =
+    !isFirmEnrollment &&
+    !emailLocked &&
+    email.trim().toLowerCase() !== originalEmail.trim().toLowerCase();
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [otpError, setOtpError] = useState("");
 
   // Address autocomplete
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-  const [showSuggestions,    setShowSuggestions]    = useState(false);
-  const [addressLoading,     setAddressLoading]     = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<
+    AddressSuggestion[]
+  >([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [addressSelectionToken, setAddressSelectionToken] = useState<
+    string | null
+  >(null);
+  const [selectedPostalCode, setSelectedPostalCode] = useState<string | null>(
+    null,
+  );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Password visibility
-  const [showPwd,     setShowPwd]     = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   // Submission
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  const [submitError, setSubmitError] = useState("");
+  const hasPhoneValue = phone.trim().length > 0;
+  const hasInvalidPhone = hasPhoneValue && !isValidPhone(phone);
+  const hasPostalCodeValue = postalCode.trim().length > 0;
+  const hasInvalidPostalCode =
+    hasPostalCodeValue && !isValidUsZipCode(postalCode);
+  const matchesSelectedPostalCode =
+    postalCode.trim() === (selectedPostalCode ?? "").trim();
+  const hasAutoFilledZipMismatch =
+    !!addressSelectionToken && !matchesSelectedPostalCode;
+
+  const clearSelectedAddress = useCallback(() => {
+    setAddressSelectionToken(null);
+    setSelectedPostalCode(null);
+  }, []);
 
   // ── Address autocomplete ─────────────────────────────────────────────────
 
@@ -136,19 +182,26 @@ export function EnrollmentForm({
     setAddressLine1(value);
     setShowSuggestions(false);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (value.trim().length < 4) { setAddressSuggestions([]); return; }
+    if (value.trim().length < 4) {
+      setAddressSuggestions([]);
+      return;
+    }
 
     debounceRef.current = setTimeout(async () => {
       setAddressLoading(true);
       try {
-        const q   = encodeURIComponent(value);
+        const q = encodeURIComponent(value);
         const res = await fetch(`/api/geocode/address?q=${q}`);
         if (res.ok) {
-          const data = await res.json() as AddressSuggestion[];
+          const data = (await res.json()) as AddressSuggestion[];
           setAddressSuggestions(data.slice(0, 5));
           setShowSuggestions(data.length > 0);
         }
-      } catch { /* ignore */ } finally { setAddressLoading(false); }
+      } catch {
+        /* ignore */
+      } finally {
+        setAddressLoading(false);
+      }
     }, 350);
   }, []);
 
@@ -157,6 +210,8 @@ export function EnrollmentForm({
     setCity(s.city);
     setState(s.state);
     setPostalCode(s.postalCode);
+    setAddressSelectionToken(s.addressSelectionToken || null);
+    setSelectedPostalCode(s.postalCode);
     setAddressSuggestions([]);
     setShowSuggestions(false);
   };
@@ -168,22 +223,22 @@ export function EnrollmentForm({
     if (otpSent || otpVerified) {
       setOtpSent(false);
       setOtpVerified(false);
-      setOtpCode('');
-      setOtpError('');
+      setOtpCode("");
+      setOtpError("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email]);
 
   const handleSendOtp = async () => {
     if (!tenantId || !providerId) return;
-    setOtpError('');
+    setOtpError("");
     setSendingOtp(true);
     const result = await sendOtp(email, providerId, tenantId);
     setSendingOtp(false);
     if (result.ok) {
       setOtpSent(true);
     } else {
-      setOtpError(result.error ?? 'Failed to send code.');
+      setOtpError(result.error ?? "Failed to send code.");
     }
   };
 
@@ -193,14 +248,20 @@ export function EnrollmentForm({
   // ── Validation ────────────────────────────────────────────────────────────
 
   function validate(): string | null {
-    if (!companyName.trim()) return 'Company name is required.';
-    if (!email.trim())       return 'Email is required.';
-    if (!firstName.trim())   return 'First name is required.';
-    if (!password)           return 'Password is required.';
-    if (password.length < 8) return 'Password must be at least 8 characters.';
-    if (password !== confirmPwd) return 'Passwords do not match.';
-    if (!agreeTerms) return 'You must agree to the Terms & Conditions to continue.';
-    if (!isFirmEnrollment && emailChanged && !otpCode.trim()) return 'Enter the verification code sent to your new email address.';
+    if (!companyName.trim()) return "Company name is required.";
+    if (!email.trim()) return "Email is required.";
+    if (hasInvalidPhone) return "Phone number must be 10 digits.";
+    if (hasInvalidPostalCode) return "ZIP code must be 5 digits or 5+4 format.";
+    if (hasAutoFilledZipMismatch)
+      return "ZIP code must match the selected address.";
+    if (!firstName.trim()) return "First name is required.";
+    if (!password) return "Password is required.";
+    if (password.length < 8) return "Password must be at least 8 characters.";
+    if (password !== confirmPwd) return "Passwords do not match.";
+    if (!agreeTerms)
+      return "You must agree to the Terms & Conditions to continue.";
+    if (!isFirmEnrollment && emailChanged && !otpCode.trim())
+      return "Enter the verification code sent to your new email address.";
     return null;
   }
 
@@ -208,10 +269,13 @@ export function EnrollmentForm({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setSubmitError('');
+    setSubmitError("");
 
     const validationError = validate();
-    if (validationError) { setSubmitError(validationError); return; }
+    if (validationError) {
+      setSubmitError(validationError);
+      return;
+    }
 
     setSubmitting(true);
 
@@ -220,54 +284,64 @@ export function EnrollmentForm({
       // Law firm coming from referral status page — use firm-specific enrollment endpoint
       result = await registerFirmEnrollment({
         tenantId,
-        companyName:  companyName.trim(),
-        email:        email.trim(),
+        companyName: companyName.trim(),
+        email: email.trim(),
         password,
-        firstName:    firstName.trim(),
-        lastName:     lastName.trim() || undefined,
-        phone:        phone.trim() || undefined,
+        firstName: firstName.trim(),
+        lastName: lastName.trim() || undefined,
+        phone: stripPhone(phone) || undefined,
         addressLine1: addressLine1.trim() || undefined,
-        city:         city.trim() || undefined,
-        state:        state.trim() || undefined,
-        postalCode:   postalCode.trim() || undefined,
+        city: city.trim() || undefined,
+        state: state.trim() || undefined,
+        postalCode: postalCode.trim() || undefined,
+        addressSelectionToken: matchesSelectedPostalCode
+          ? (addressSelectionToken ?? undefined)
+          : undefined,
       });
     } else if (providerId && tenantId) {
       // Provider self-enrollment from network directory
       result = await registerEnrollment({
         providerId,
-        companyName:  companyName.trim(),
-        email:        email.trim(),
+        companyName: companyName.trim(),
+        email: email.trim(),
         password,
-        firstName:    firstName.trim(),
-        lastName:     lastName.trim() || undefined,
-        phone:        phone.trim() || undefined,
+        firstName: firstName.trim(),
+        lastName: lastName.trim() || undefined,
+        phone: stripPhone(phone) || undefined,
         addressLine1: addressLine1.trim() || undefined,
-        city:         city.trim() || undefined,
-        state:        state.trim() || undefined,
-        postalCode:   postalCode.trim() || undefined,
-        otpCode:      emailChanged ? otpCode.trim() : undefined,
+        city: city.trim() || undefined,
+        state: state.trim() || undefined,
+        postalCode: postalCode.trim() || undefined,
+        addressSelectionToken: matchesSelectedPostalCode
+          ? (addressSelectionToken ?? undefined)
+          : undefined,
+        otpCode: emailChanged ? otpCode.trim() : undefined,
         tenantId,
       });
     } else {
       setSubmitting(false);
-      setSubmitError('Missing provider or tenant context. Please return to the network directory and try again.');
+      setSubmitError(
+        "Missing provider or tenant context. Please return to the network directory and try again.",
+      );
       return;
     }
 
     setSubmitting(false);
 
     if (result.ok) {
-      router.push('/enroll/welcome');
+      router.push("/enroll/welcome");
     } else {
-      setSubmitError(result.error ?? 'Registration failed. Please try again.');
+      setSubmitError(result.error ?? "Registration failed. Please try again.");
     }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-5">
-
+    <form
+      onSubmit={handleSubmit}
+      className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-5"
+    >
       {/* ── Company section ─────────────────────────────────────────────── */}
       <div>
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
@@ -281,20 +355,24 @@ export function EnrollmentForm({
             <input
               type="text"
               value={companyName}
-              onChange={e => !companyNameLocked && setCompanyName(e.target.value)}
-              placeholder="Your organization name"
+              onChange={(e) =>
+                !companyNameLocked && setCompanyName(e.target.value)
+              }
+              placeholder="Enter company name"
               required
               disabled={companyNameLocked}
               className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 companyNameLocked
-                  ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                  : 'border-gray-300'
+                  ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                  : "border-gray-300"
               }`}
             />
           </div>
 
           <div className="col-span-2 sm:col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Company Type</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Company Type
+            </label>
             <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500">
               {companyType}
             </div>
@@ -308,7 +386,6 @@ export function EnrollmentForm({
           Contact Information
         </h2>
         <div className="space-y-4">
-
           {/* Email row */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -318,14 +395,14 @@ export function EnrollmentForm({
               <input
                 type="email"
                 value={email}
-                onChange={e => !emailLocked && setEmail(e.target.value)}
-                placeholder="you@example.com"
+                onChange={(e) => !emailLocked && setEmail(e.target.value)}
+                placeholder="Enter email address"
                 required
                 disabled={emailLocked}
                 className={`flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   emailLocked
-                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                    : 'border-gray-300'
+                    ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                    : "border-gray-300"
                 }`}
               />
               {emailChanged && (
@@ -335,14 +412,15 @@ export function EnrollmentForm({
                   disabled={sendingOtp || !email.trim()}
                   className="flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-colors"
                 >
-                  {sendingOtp ? 'Sending…' : otpSent ? 'Resend Code' : 'Verify'}
+                  {sendingOtp ? "Sending…" : otpSent ? "Resend Code" : "Verify"}
                 </button>
               )}
             </div>
             {emailChanged && (
               <p className="text-xs text-amber-600 mt-1">
                 <i className="ri-information-line mr-1" />
-                You changed your email. Click <strong>Verify</strong> to receive a confirmation code.
+                You changed your email. Click <strong>Verify</strong> to receive
+                a confirmation code.
               </p>
             )}
           </div>
@@ -358,30 +436,45 @@ export function EnrollmentForm({
                 inputMode="numeric"
                 maxLength={6}
                 value={otpCode}
-                onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="6-digit code"
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                placeholder="Enter 6-digit code"
                 className="w-40 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-xs text-gray-400 mt-1">Check your email — the code expires in 10 minutes.</p>
-              {otpError && <p className="text-xs text-red-500 mt-1">{otpError}</p>}
+              <p className="text-xs text-gray-400 mt-1">
+                Check your email — the code expires in 10 minutes.
+              </p>
+              {otpError && (
+                <p className="text-xs text-red-500 mt-1">{otpError}</p>
+              )}
             </div>
           )}
 
           {/* Phone */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Phone Number
+            </label>
             <input
               type="tel"
               value={phone}
-              onChange={e => !phoneLocked && setPhone(e.target.value)}
-              placeholder="(555) 000-0000"
+              onChange={(e) =>
+                !phoneLocked && setPhone(formatPhoneInput(e.target.value))
+              }
+              placeholder="Enter 10-digit phone number"
               disabled={phoneLocked}
-              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
                 phoneLocked
-                  ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                  : 'border-gray-300'
+                  ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                  : hasInvalidPhone
+                    ? "border-red-300 focus:ring-red-400"
+                    : "border-gray-300 focus:ring-blue-500"
               }`}
             />
+            {hasInvalidPhone && (
+              <p className="text-xs text-red-500 mt-1">
+                Phone number must be 10 digits.
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -394,20 +487,30 @@ export function EnrollmentForm({
         <div className="space-y-4">
           {/* Address Line 1 with autocomplete */}
           <div className="relative">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Street Address
+            </label>
             <input
               type="text"
               value={addressLine1}
-              onChange={e => !addressLine1Locked && handleAddressInput(e.target.value)}
+              onChange={(e) => {
+                if (addressLine1Locked) return;
+                clearSelectedAddress();
+                handleAddressInput(e.target.value);
+              }}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-              onFocus={() => !addressLine1Locked && addressSuggestions.length > 0 && setShowSuggestions(true)}
-              placeholder="123 Main St"
+              onFocus={() =>
+                !addressLine1Locked &&
+                addressSuggestions.length > 0 &&
+                setShowSuggestions(true)
+              }
+              placeholder="Enter street address"
               autoComplete="off"
               disabled={addressLine1Locked}
               className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 addressLine1Locked
-                  ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                  : 'border-gray-300'
+                  ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                  : "border-gray-300"
               }`}
             />
             {addressLoading && (
@@ -432,51 +535,79 @@ export function EnrollmentForm({
 
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City
+              </label>
               <input
                 type="text"
                 value={city}
-                onChange={e => !cityLocked && setCity(e.target.value)}
-                placeholder="City"
+                onChange={(e) => {
+                  if (cityLocked) return;
+                  clearSelectedAddress();
+                  setCity(e.target.value);
+                }}
+                placeholder="Enter city"
                 disabled={cityLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   cityLocked
-                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                    : 'border-gray-300'
+                    ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                    : "border-gray-300"
                 }`}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                State
+              </label>
               <input
                 type="text"
                 value={state}
-                onChange={e => !stateLocked && setState(e.target.value)}
-                placeholder="CA"
+                onChange={(e) => {
+                  if (stateLocked) return;
+                  clearSelectedAddress();
+                  setState(e.target.value);
+                }}
+                placeholder="Enter state"
                 maxLength={2}
                 disabled={stateLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   stateLocked
-                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                    : 'border-gray-300'
+                    ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                    : "border-gray-300"
                 }`}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ZIP</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                ZIP
+              </label>
               <input
                 type="text"
                 value={postalCode}
-                onChange={e => !postalCodeLocked && setPostalCode(e.target.value)}
-                placeholder="90210"
+                onChange={(e) => {
+                  if (!postalCodeLocked)
+                    setPostalCode(
+                      e.target.value.replace(/[^\d-]/g, "").slice(0, 10),
+                    );
+                }}
+                placeholder="Enter ZIP code"
                 maxLength={10}
                 disabled={postalCodeLocked}
-                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
                   postalCodeLocked
-                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                    : 'border-gray-300'
+                    ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                    : hasInvalidPostalCode || hasAutoFilledZipMismatch
+                      ? "border-red-300 focus:ring-red-400"
+                      : "border-gray-300 focus:ring-blue-500"
                 }`}
               />
+              {(hasInvalidPostalCode || hasAutoFilledZipMismatch) && (
+                <p className="text-xs text-red-500 mt-1">
+                  {hasAutoFilledZipMismatch
+                    ? "ZIP code must match the selected address."
+                    : "ZIP code must be 5 digits or 5+4 format."}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -496,29 +627,33 @@ export function EnrollmentForm({
               <input
                 type="text"
                 value={firstName}
-                onChange={e => !firstNameLocked && setFirstName(e.target.value)}
-                placeholder="First"
+                onChange={(e) =>
+                  !firstNameLocked && setFirstName(e.target.value)
+                }
+                placeholder="Enter first name"
                 required
                 disabled={firstNameLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   firstNameLocked
-                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                    : 'border-gray-300'
+                    ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                    : "border-gray-300"
                 }`}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Last Name
+              </label>
               <input
                 type="text"
                 value={lastName}
-                onChange={e => !lastNameLocked && setLastName(e.target.value)}
-                placeholder="Last"
+                onChange={(e) => !lastNameLocked && setLastName(e.target.value)}
+                placeholder="Enter last name"
                 disabled={lastNameLocked}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   lastNameLocked
-                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                    : 'border-gray-300'
+                    ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                    : "border-gray-300"
                 }`}
               />
             </div>
@@ -531,21 +666,21 @@ export function EnrollmentForm({
             </label>
             <div className="relative">
               <input
-                type={showPwd ? 'text' : 'password'}
+                type={showPwd ? "text" : "password"}
                 autoComplete="new-password"
                 value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Create password"
                 required
                 minLength={8}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
                 type="button"
-                onClick={() => setShowPwd(v => !v)}
+                onClick={() => setShowPwd((v) => !v)}
                 className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
               >
-                <i className={showPwd ? 'ri-eye-off-line' : 'ri-eye-line'} />
+                <i className={showPwd ? "ri-eye-off-line" : "ri-eye-line"} />
               </button>
             </div>
           </div>
@@ -557,29 +692,33 @@ export function EnrollmentForm({
             </label>
             <div className="relative">
               <input
-                type={showConfirm ? 'text' : 'password'}
+                type={showConfirm ? "text" : "password"}
                 autoComplete="new-password"
                 value={confirmPwd}
-                onChange={e => setConfirmPwd(e.target.value)}
+                onChange={(e) => setConfirmPwd(e.target.value)}
                 placeholder="Re-enter password"
                 required
                 className={[
-                  'w-full border rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2',
+                  "w-full border rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2",
                   confirmPwd && password !== confirmPwd
-                    ? 'border-red-300 focus:ring-red-400'
-                    : 'border-gray-300 focus:ring-blue-500',
-                ].join(' ')}
+                    ? "border-red-300 focus:ring-red-400"
+                    : "border-gray-300 focus:ring-blue-500",
+                ].join(" ")}
               />
               <button
                 type="button"
-                onClick={() => setShowConfirm(v => !v)}
+                onClick={() => setShowConfirm((v) => !v)}
                 className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
               >
-                <i className={showConfirm ? 'ri-eye-off-line' : 'ri-eye-line'} />
+                <i
+                  className={showConfirm ? "ri-eye-off-line" : "ri-eye-line"}
+                />
               </button>
             </div>
             {confirmPwd && password !== confirmPwd && (
-              <p className="text-xs text-red-500 mt-1">Passwords do not match.</p>
+              <p className="text-xs text-red-500 mt-1">
+                Passwords do not match.
+              </p>
             )}
           </div>
         </div>
@@ -591,19 +730,31 @@ export function EnrollmentForm({
           type="checkbox"
           id="agreeTerms"
           checked={agreeTerms}
-          onChange={e => setAgreeTerms(e.target.checked)}
+          onChange={(e) => setAgreeTerms(e.target.checked)}
           className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
         />
-        <label htmlFor="agreeTerms" className="text-sm text-gray-600 leading-snug">
-          I agree to the{' '}
-          <a href="/terms" target="_blank" className="text-blue-600 hover:underline">
+        <label
+          htmlFor="agreeTerms"
+          className="text-sm text-gray-600 leading-snug"
+        >
+          I agree to the{" "}
+          <Link
+            href="/coming-soon"
+            target="_blank"
+            className="text-blue-600 hover:underline"
+          >
             Terms of Service
-          </a>{' '}
-          and{' '}
-          <a href="/privacy" target="_blank" className="text-blue-600 hover:underline">
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/coming-soon"
+            target="_blank"
+            className="text-blue-600 hover:underline"
+          >
             Privacy Policy
-          </a>
-          . I confirm I am authorized to create this account on behalf of the organization.
+          </Link>
+          . I confirm I am authorized to create this account on behalf of the
+          organization.
         </label>
       </div>
 
@@ -622,9 +773,15 @@ export function EnrollmentForm({
         className="w-full py-3 px-6 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
       >
         {submitting ? (
-          <><i className="ri-loader-4-line animate-spin" />Creating your account…</>
+          <>
+            <i className="ri-loader-4-line animate-spin" />
+            Creating your account…
+          </>
         ) : (
-          <><i className="ri-shield-check-line" />Activate My Portal Access</>
+          <>
+            <i className="ri-shield-check-line" />
+            Activate My Portal Access
+          </>
         )}
       </button>
     </form>

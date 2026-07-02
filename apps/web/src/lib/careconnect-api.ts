@@ -85,8 +85,8 @@ export const careConnectApi = {
     postComment: (id: string, body: CreateReferralCommentRequest) =>
       apiClient.post<ReferralComment>(`/careconnect/api/referrals/${id}/comments`, body),
 
-    /** PUT /api/referrals/{id} — update status (Accept / Decline / Cancel / etc.) */
-    update: (id: string, body: { requestedService: string; urgency: string; status: string; notes?: string }) =>
+    /** PUT /api/referrals/{id} — update status, fields, or treatment type. Omit status for treatment-type-only updates. */
+    update: (id: string, body: { requestedService?: string; urgency: string; status?: string; notes?: string; declineNotes?: string; treatmentTypeId?: string | null }) =>
       apiClient.put<ReferralDetail>(`/careconnect/api/referrals/${id}`, body),
 
     /** GET /api/referrals/{id}/history — status change audit log */
@@ -117,6 +117,19 @@ export const careConnectApi = {
     /** GET /api/referrals/{id}/audit — operational audit timeline (LSCC-005-02) */
     getAuditTimeline: (id: string) =>
       apiClient.get<ReferralAuditEvent[]>(`/careconnect/api/referrals/${id}/audit`),
+  },
+
+  adminReferrals: {
+    getHistory: (id: string) =>
+      apiClient.get<ReferralHistoryItem[]>(`/careconnect/api/admin/referrals/${id}/history`),
+
+    listAttachments: (referralId: string) =>
+      apiClient.get<AttachmentSummary[]>(`/careconnect/api/admin/referrals/${referralId}/attachments`),
+
+    getAttachmentSignedUrl: (referralId: string, attachmentId: string, download = false) =>
+      apiClient.get<SignedUrlResponse>(
+        `/careconnect/api/admin/referrals/${referralId}/attachments/${attachmentId}/url${download ? '?download=true' : ''}`,
+      ),
   },
 
   appointments: {

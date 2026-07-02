@@ -30,11 +30,15 @@ public class CareConnectParticipantHelperTests
     private static ICurrentRequestContext MakeCtx(
         bool isPlatformAdmin = false,
         string? tenantAdminRole = null,
-        Guid? orgId = null)
+        Guid? orgId = null,
+        string? orgType = null,
+        params string[] productRoles)
     {
         var mock = new Mock<ICurrentRequestContext>();
         mock.Setup(c => c.IsPlatformAdmin).Returns(isPlatformAdmin);
         mock.Setup(c => c.OrgId).Returns(orgId);
+        mock.Setup(c => c.OrgType).Returns(orgType);
+        mock.Setup(c => c.ProductRoles).Returns(productRoles);
 
         var roles = tenantAdminRole is not null
             ? new[] { tenantAdminRole }
@@ -100,6 +104,30 @@ public class CareConnectParticipantHelperTests
     {
         var ctx = MakeCtx(orgId: OrgA);
         Assert.False(CareConnectParticipantHelper.IsAdmin(ctx));
+    }
+
+    [Fact]
+    public void IsReceiverContext_Returns_True_For_Receiver_ProductRole()
+    {
+        var ctx = MakeCtx(orgId: OrgA, productRoles: ["SYNQ_CARECONNECT:CARECONNECT_RECEIVER"]);
+
+        Assert.True(CareConnectParticipantHelper.IsReceiverContext(ctx));
+    }
+
+    [Fact]
+    public void IsReceiverContext_Falls_Back_To_Provider_OrgType()
+    {
+        var ctx = MakeCtx(orgId: OrgA, orgType: OrgType.Provider);
+
+        Assert.True(CareConnectParticipantHelper.IsReceiverContext(ctx));
+    }
+
+    [Fact]
+    public void IsReceiverContext_Returns_False_For_NonReceiver_Context()
+    {
+        var ctx = MakeCtx(orgId: OrgA, orgType: OrgType.LawFirm);
+
+        Assert.False(CareConnectParticipantHelper.IsReceiverContext(ctx));
     }
 
     // ── IsReferralParticipant ─────────────────────────────────────────────────

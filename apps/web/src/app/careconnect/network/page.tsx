@@ -1,11 +1,13 @@
 import { headers }                  from 'next/headers';
 import { PublicNetworkView }        from '@/components/careconnect/public-network-view';
 import { AccessCodeGate }           from '@/components/careconnect/access-code-gate';
+import { PublicNetworkShell }       from '@/components/careconnect/public-network-shell';
 import { getCareConnectLoginUrlFromEnv } from '@/lib/careconnect-login-url';
 import {
   resolveTenantFromCode,
   fetchPublicNetworks,
   fetchPublicNetworkDetail,
+  isProductActiveForTenant,
   type PublicNetworkDetail,
 } from '@/lib/public-network-api';
 
@@ -40,6 +42,16 @@ export default async function PublicNetworkPage() {
     );
   }
 
+  // ── Product entitlement gate ─────────────────────────────────────────────
+  const careConnectActive = await isProductActiveForTenant(tenant.tenantId, 'synq_careconnect');
+  if (!careConnectActive) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-sm text-gray-500">This network directory is currently unavailable.</p>
+      </div>
+    );
+  }
+
   // ── Load first (preferred) network + its providers ───────────────────────
   let detail: PublicNetworkDetail | null = null;
 
@@ -61,14 +73,16 @@ export default async function PublicNetworkPage() {
 
   return (
     <div className="h-screen overflow-hidden">
-      <AccessCodeGate tenantId={tenant.tenantId}>
-        <PublicNetworkView
-          detail={detail}
-          tenantCode={tenant.tenantCode}
-          tenantId={tenant.tenantId}
-          loginUrl={loginUrl}
-        />
-      </AccessCodeGate>
+      <PublicNetworkShell tenantId={tenant.tenantId}>
+        <AccessCodeGate tenantId={tenant.tenantId}>
+          <PublicNetworkView
+            detail={detail}
+            tenantCode={tenant.tenantCode}
+            tenantId={tenant.tenantId}
+            loginUrl={loginUrl}
+          />
+        </AccessCodeGate>
+      </PublicNetworkShell>
     </div>
   );
 }

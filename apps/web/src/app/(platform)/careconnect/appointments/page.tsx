@@ -5,6 +5,7 @@ import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { AppointmentListTable } from '@/components/careconnect/appointment-list-table';
 import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
+import { tenantServerApi } from '@/lib/tenant-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,10 +24,14 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
   const searchParamsData = await searchParams;
   const session = await requireOrg();
 
+  const tzResult = await tenantServerApi.getTimezoneSetting(session.tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
+
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
+  const isTenantAdminView = session.isTenantAdmin && !session.isPlatformAdmin;
 
-  if (!isReferrer && !isReceiver) {
+  if (!isReferrer && !isReceiver && !isTenantAdminView) {
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-700">
         You do not have a CareConnect role. Contact your administrator to gain access.
@@ -44,19 +49,32 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
   let fetchError: string | null = null;
 
   try {
-    result = await careConnectServerApi.appointments.search({
-      status:     searchParamsData.status     || undefined,
-      providerId: searchParamsData.providerId || undefined,
-      from,
-      to,
-      page,
-      pageSize: 20,
-    });
+    result = isTenantAdminView
+      ? await careConnectServerApi.adminAppointments.search({
+          status:     searchParamsData.status     || undefined,
+          providerId: searchParamsData.providerId || undefined,
+          from,
+          to,
+          page,
+          pageSize: 20,
+        })
+      : await careConnectServerApi.appointments.search({
+          status:     searchParamsData.status     || undefined,
+          providerId: searchParamsData.providerId || undefined,
+          from,
+          to,
+          page,
+          pageSize: 20,
+        });
   } catch (err) {
     fetchError = err instanceof ServerApiError ? err.message : 'Failed to load appointments.';
   }
 
-  const heading = isReferrer ? 'Sent Appointments' : 'Incoming Appointments';
+  const heading = isTenantAdminView
+    ? 'Tenant Appointments'
+    : isReferrer
+    ? 'Sent Appointments'
+    : 'Incoming Appointments';
   const hasDateFilter = !!(from || to);
 
   const STATUS_FILTERS = ['', 'Pending', 'Confirmed', 'Rescheduled', 'Completed', 'Cancelled', 'NoShow'];
@@ -67,15 +85,13 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{heading}</h1>
 
-        {isReferrer && (
-          <Link
-            href="/careconnect/providers"
-            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
-          >
-            Book Appointment
-          </Link>
-        )}
       </div>
+
+      {isTenantAdminView && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+          Read-only tenant-wide appointment activity for CareConnect.
+        </div>
+      )}
 
       {/* Active date filter indicator */}
       {hasDateFilter && (
@@ -127,6 +143,7 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
           totalCount={result.totalCount}
           page={result.page}
           pageSize={result.pageSize}
+          timezone={tenantTimezone}
         />
       )}
     </div>

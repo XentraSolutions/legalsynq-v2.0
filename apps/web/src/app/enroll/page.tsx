@@ -1,9 +1,18 @@
-import { fetchEnrollmentPrefill, decodeEnrollmentToken, fetchExistingEnrollmentPrefill } from './actions';
-import { EnrollmentForm }                               from './enrollment-form';
-import { getServerSession }                             from '@/lib/session';
-import { OrgType, ProductRole }                         from '@/types';
+import { fetchEnrollmentPrefill, decodeEnrollmentToken, fetchExistingEnrollmentPrefill, checkPortalAccessStatus } from './actions';
+import { EnrollmentForm }                         from './enrollment-form';
+import { buildCareConnectLoginUrl }              from '@/lib/careconnect-login-url';
+import { getServerSession }                      from '@/lib/session';
+import { OrgType, ProductRole }                  from '@/types';
 
 export const dynamic = 'force-dynamic';
+
+function coalesceName(primary?: string, fallback?: string): string {
+  return primary?.trim() || fallback?.trim() || '';
+}
+
+function normalizeNameForComparison(value?: string | null): string {
+  return value?.trim().replace(/\s+/g, ' ').toLowerCase() ?? '';
+}
 
 interface AuthenticatedOrgPrefill {
   companyName: string;
@@ -25,12 +34,16 @@ interface PageProps {
 export default async function EnrollPage({ searchParams }: PageProps) {
   const { id: providerId, tenantId, token } = await searchParams;
   const session = await getServerSession();
+  const careConnectLoginUrl = buildCareConnectLoginUrl(process.env.CC_COMMON_PORTAL_HOSTNAME);
 
   let prefill = null;
+  let providerAlreadyEnrolled = false;
 
   if (providerId && tenantId) {
     try {
-      prefill = await fetchEnrollmentPrefill(providerId, tenantId);
+      const prefillResult = await fetchEnrollmentPrefill(providerId, tenantId);
+      prefill = prefillResult.data;
+      providerAlreadyEnrolled = prefillResult.status === 'already_enrolled';
     } catch {
       // prefill stays null — form shows empty
     }
@@ -51,18 +64,28 @@ export default async function EnrollPage({ searchParams }: PageProps) {
       : null;
 
   // Referral prefill from decoded token only (no raw URL params accepted for PII).
-  const contact = (claims?.contact ?? '').trim();
-  const parts    = contact.split(/\s+/).filter(Boolean);
-  const refFirst = parts[0] ?? '';
-  const refLast  = parts.slice(1).join(' ');
+  // Prefer the split contactFirstName/contactLastName claims (no full-name slicing
+  // ambiguity); fall back to splitting the legacy single `contact` claim only for
+  // tokens issued before the split existed.
+  let refFirst = (claims?.contactFirstName ?? '').trim();
+  let refLast  = (claims?.contactLastName ?? '').trim();
+  const legacyContactMatchesFirm =
+    !!claims?.contact &&
+    !!claims?.firm &&
+    normalizeNameForComparison(claims.contact) === normalizeNameForComparison(claims.firm);
+  if (!refFirst && !refLast && claims?.contact && !legacyContactMatchesFirm) {
+    const parts = claims.contact.trim().split(/\s+/).filter(Boolean);
+    refFirst = parts[0] ?? '';
+    refLast  = parts.slice(1).join(' ');
+  }
   const referralPrefill = claims ? (
     existingEnrollmentPrefill
       ? {
-          companyName:  existingEnrollmentPrefill.companyName,
+          companyName:  existingEnrollmentPrefill.companyName || claims.firm || '',
           email:        existingEnrollmentPrefill.email,
-          phone:        existingEnrollmentPrefill.phone,
-          firstName:    existingEnrollmentPrefill.firstName,
-          lastName:     existingEnrollmentPrefill.lastName,
+          phone:        existingEnrollmentPrefill.phone || claims.phone || '',
+          firstName:    coalesceName(existingEnrollmentPrefill.firstName, refFirst),
+          lastName:     coalesceName(existingEnrollmentPrefill.lastName, refLast),
           addressLine1: existingEnrollmentPrefill.addressLine1,
           city:         existingEnrollmentPrefill.city,
           state:        existingEnrollmentPrefill.state,
@@ -102,6 +125,58 @@ export default async function EnrollPage({ searchParams }: PageProps) {
         }
       : null;
 
+  // Check if the user from the firm/referral token is already actively enrolled.
+  const firmAlreadyEnrolled =
+    isFirmEnrollment && claims?.email && effectiveTenantId
+      ? (await checkPortalAccessStatus(effectiveTenantId, claims.email)) === 'active_in_tenant'
+      : false;
+
+  const alreadyEnrolled = providerAlreadyEnrolled || firmAlreadyEnrolled;
+
+  if (alreadyEnrolled) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
+        <div className="max-w-md mx-auto px-4 py-12 text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 mb-4">
+            <i className="ri-shield-check-line text-2xl text-blue-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">Account Already Created</h1>
+          <p className="mt-2 text-gray-500">
+            An account with this email address has already been set up.
+            You can sign in to access your portal.
+          </p>
+          <a
+            href={careConnectLoginUrl}
+            className="inline-block mt-6 px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors"
+          >
+            Sign In to Your Portal
+          </a>
+        </div>
+      </main>
+    );
+  }
+
+  // This is a token-gated enrollment form — not a self-serve signup page.
+  // The provider flow only counts as valid if the backend actually found a matching
+  // provider/tenant prefill record — id+tenantId alone are unauthenticated user input.
+  const hasValidAccess = !!(providerId && tenantId && prefill) || !!claims || !!authenticatedOrgPrefill;
+  if (!hasValidAccess) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
+        <div className="max-w-md mx-auto px-4 py-12 text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-100 mb-4">
+            <i className="ri-error-warning-line text-2xl text-red-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">Invalid or Expired Link</h1>
+          <p className="mt-2 text-gray-500">
+            This enrollment link is invalid or has expired. Please request a new link or sign in to your account.
+          </p>
+          <a href={careConnectLoginUrl} className="inline-block mt-6 text-blue-600 hover:underline">Sign in</a>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       <div className="max-w-2xl mx-auto px-4 py-12">
@@ -129,7 +204,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
 
         <p className="text-center text-xs text-gray-400 mt-6">
           Already have an account?{' '}
-          <a href="/login" className="text-blue-600 hover:underline">Sign in</a>
+          <a href={careConnectLoginUrl} className="text-blue-600 hover:underline">Sign in</a>
         </p>
       </div>
     </main>

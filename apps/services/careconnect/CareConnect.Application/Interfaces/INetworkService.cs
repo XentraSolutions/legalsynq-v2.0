@@ -23,4 +23,12 @@ public interface INetworkService
 
     /// <summary>CC2-INT-B06-01: Search the shared global provider registry.</summary>
     Task<List<ProviderSearchResult>> SearchProvidersAsync(string? name, string? phone, string? npi, string? city, CancellationToken ct = default);
+
+    Task<ProviderImportSummaryResponse> ImportProvidersAsync(
+        Guid networkId,
+        Stream fileStream,
+        string fileName,
+        bool dryRun,
+        Guid? userId,
+        CancellationToken ct = default);
 }

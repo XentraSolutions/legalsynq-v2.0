@@ -172,6 +172,17 @@ test('referralAttachments.getSignedUrl: calls the correct endpoint', async () =>
   assert.ok(url.includes('/careconnect/api/referrals/ref-1/attachments/att-1/url'), `bad URL: ${url}`);
 });
 
+test('referralAttachments.getSignedUrl: does not force a JSON content-type on GET', async () => {
+  const api = await getCareConnectApi();
+  let contentType: string | undefined;
+  await withFetch((u, i) => {
+    const headers = i?.headers as Record<string, string> | undefined;
+    contentType = headers?.['Content-Type'];
+    return makeOk(SIGNED_URL)(u, i);
+  }, () => api.referralAttachments.getSignedUrl('ref-1', 'att-1'));
+  assert.equal(contentType, undefined);
+});
+
 test('referralAttachments.getSignedUrl: each call hits the network independently', async () => {
   const api = await getCareConnectApi();
   let calls = 0;

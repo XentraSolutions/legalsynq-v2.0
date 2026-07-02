@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireOrg } from '@/lib/auth-guards';
+import { tenantServerApi } from '@/lib/tenant-api';
 import {
   notificationsServerApi,
   PRODUCT_TYPES,
@@ -11,10 +12,10 @@ import {
   type OverrideStatus,
 } from '@/lib/notifications-server-api';
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string, timezone: string): string {
   try {
     return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
+      month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone,
     });
   } catch { return iso; }
 }
@@ -54,6 +55,9 @@ export default async function TemplateListPage({
 }) {
   const session = await requireOrg();
   const { productType } = await params;
+
+  const tzResult = await tenantServerApi.getTimezoneSetting(session.tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
 
   if (!PRODUCT_TYPES.includes(productType as ProductType)) {
     redirect('/notifications/templates');
@@ -174,7 +178,7 @@ export default async function TemplateListPage({
                         {badge.label}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{fmtDate(t.updatedAt)}</td>
+                    <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{fmtDate(t.updatedAt, tenantTimezone)}</td>
                     <td className="px-5 py-3 text-right">
                       <Link
                         href={`/notifications/templates/${pt}/${t.id}`}

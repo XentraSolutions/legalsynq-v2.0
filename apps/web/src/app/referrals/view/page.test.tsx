@@ -1,13 +1,21 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 
-const { redirectMock } = vi.hoisted(() => ({
+const { redirectMock, headersMock } = vi.hoisted(() => ({
   redirectMock: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
   }),
+  headersMock: vi.fn(async () => new Headers([
+    ['host', 'rl-liens1.legalsynq.net'],
+    ['x-forwarded-proto', 'https'],
+  ])),
 }));
 
 vi.mock('next/navigation', () => ({
   redirect: redirectMock,
+}));
+
+vi.mock('next/headers', () => ({
+  headers: headersMock,
 }));
 
 import ReferralViewPage from './page';
@@ -19,6 +27,7 @@ function expectRedirectTo(action: () => Promise<unknown>, expectedUrl: string) {
 describe('ReferralViewPage', () => {
   beforeEach(() => {
     redirectMock.mockClear();
+    headersMock.mockClear();
     vi.unstubAllGlobals();
   });
 
@@ -37,7 +46,7 @@ describe('ReferralViewPage', () => {
 
     await expectRedirectTo(
       () => ReferralViewPage({ searchParams: Promise.resolve({ token: 'abc123' }) }),
-      '/login?returnTo=%2Fcareconnect%2Freferrals%2Fref-123&reason=referral-view',
+      '/referrals/thread?token=abc123',
     );
   });
 
@@ -49,19 +58,19 @@ describe('ReferralViewPage', () => {
 
     await expectRedirectTo(
       () => ReferralViewPage({ searchParams: Promise.resolve({ token: 'xyz789' }) }),
-      '/login?returnTo=%2Fcareconnect%2Freferrals%2Fref-456&reason=referral-view',
+      '/referrals/thread?token=xyz789',
     );
   });
 
   test('redirects invalid tokens to the invalid page', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ routeType: 'invalid', referralId: null }),
+      json: async () => ({ routeType: 'invalid', referralId: null, failureReason: 'expired' }),
     }));
 
     await expectRedirectTo(
       () => ReferralViewPage({ searchParams: Promise.resolve({ token: 'expired' }) }),
-      '/referrals/accept/invalid?reason=expired-or-invalid',
+      '/referrals/accept/invalid?reason=expired',
     );
   });
 });

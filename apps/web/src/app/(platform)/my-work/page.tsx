@@ -1,4 +1,4 @@
-import { requireOrg } from '@/lib/auth-guards';
+import { requireAdmin } from '@/lib/auth-guards';
 import { getServerSession } from '@/lib/session';
 import { WorkAreaClient } from '@/components/my-work/work-area-client';
 
@@ -25,8 +25,8 @@ export const dynamic = 'force-dynamic';
  * crafts.
  */
 export default async function MyWorkPage() {
-  await requireOrg();
-  // requireOrg above already redirects on missing session, so the
+  await requireAdmin();
+  // requireAdmin above redirects non-admins to /dashboard; the
   // session is non-null here. We read it again locally to derive
   // the capability flags. getServerSession is cheap (single
   // /auth/me call) and shares the same upstream cookie cache.

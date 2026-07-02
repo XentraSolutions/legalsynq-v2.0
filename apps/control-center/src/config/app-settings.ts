@@ -21,6 +21,8 @@ export interface Appearance {
 
 export interface AppSettings {
   appearance: Appearance;
+  /** Control Center always displays timestamps in UTC. */
+  timezone:   string;
 }
 
 // ── Global defaults ────────────────────────────────────────────────────────────
@@ -32,4 +34,5 @@ export const GLOBAL_DEFAULTS: AppSettings = {
       activeBg:    '#fff7ed',   // orange-50
     },
   },
+  timezone: 'UTC',
 };

@@ -19,10 +19,14 @@ public static class ReferralThreadEndpoints
             IReferralThreadService threadService,
             CancellationToken   ct) =>
         {
-            var thread = await threadService.GetPublicThreadAsync(token, ct);
-            if (thread is null)
-                return Results.Problem(statusCode: 404, detail: "Token is invalid or expired.");
-            return Results.Ok(thread);
+            var result = await threadService.GetPublicThreadAccessAsync(token, ct);
+            if (result.Data is not null)
+                return Results.Ok(result.Data);
+
+            if (result.FailureReason == CareConnect.Application.DTOs.ReferralTokenFailureReasons.ReferralNotFound)
+                return Results.Json(new { reason = result.FailureReason }, statusCode: StatusCodes.Status404NotFound);
+
+            return Results.Json(new { reason = result.FailureReason }, statusCode: StatusCodes.Status401Unauthorized);
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── POST /api/public/referrals/thread/comments?token=... ────────────
@@ -37,16 +41,12 @@ public static class ReferralThreadEndpoints
                 (req.SenderType != "referrer" && req.SenderType != "provider"))
                 return Results.BadRequest(new { error = "senderType must be 'referrer' or 'provider'." });
 
-            if (string.IsNullOrWhiteSpace(req.SenderName) || req.SenderName.Length > 200)
-                return Results.BadRequest(new { error = "senderName is required and must be 200 characters or fewer." });
-
             if (string.IsNullOrWhiteSpace(req.Message) || req.Message.Length > 4000)
                 return Results.BadRequest(new { error = "message is required and must be 4000 characters or fewer." });
 
             var comment = await threadService.PostPublicCommentAsync(
                 token,
                 req.SenderType,
-                req.SenderName,
                 req.Message,
                 ct);
             if (comment is null)
@@ -58,10 +58,10 @@ public static class ReferralThreadEndpoints
                 comment.SenderType,
                 comment.SenderName,
                 comment.Message,
-                comment.CreatedAt,
+                comment.CreatedAtUtc,
             });
         }).AllowAnonymous().RequireRateLimiting("public-referral-limit");
     }
 
-    private sealed record PostCommentRequest(string SenderType, string SenderName, string Message);
+    private sealed record PostCommentRequest(string SenderType, string Message);
 }

@@ -82,3 +82,5 @@ replit.nix
 .cache/
 .local/state/
 /.github/prompts
+/.claude/worktrees
+/.playwright-mcp

@@ -9,6 +9,7 @@ import { useSessionContext } from '@/providers/session-provider';
 import { usePermission } from '@/hooks/use-permission';
 import { PermissionCodes } from '@/lib/permission-codes';
 import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
+import { useTimezone } from '@/lib/use-timezone';
 
 function parseCronToFormData(schedule: ScheduleDto) {
   const parts = schedule.cronExpression.split(' ');
@@ -69,6 +70,7 @@ export function ScheduleDetailClient({ scheduleId }: Props) {
   const searchParams = useSearchParams();
   const { session } = useSessionContext();
   const tenantId = session?.tenantId ?? '';
+  const timezone = useTimezone();
   const userId = session?.userId ?? '';
   const isNew = scheduleId === 'new';
   const templateIdParam = searchParams?.get('templateId');
@@ -273,7 +275,7 @@ export function ScheduleDetailClient({ scheduleId }: Props) {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
-                        {new Date(run.startedAtUtc).toLocaleString()}
+                        {new Date(run.startedAtUtc).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: timezone })}
                       </td>
                       <td className="px-4 py-3 text-gray-600">
                         {run.executionDurationMs}ms

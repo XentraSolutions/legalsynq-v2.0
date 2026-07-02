@@ -15,9 +15,11 @@ public interface IServiceTokenIssuer
 
     /// <summary>
     /// Mint a token for the configured service. The <paramref name="tenantId"/>
-    /// is required so Flow's tenant filter resolves correctly; the
+    /// is required so tenant-scoped downstream filters resolve correctly; the
     /// <paramref name="actorUserId"/> is optional and recorded as the
     /// <c>actor</c> claim for audit (does not change authorization).
+    /// When <paramref name="audience"/> is null, the configured default
+    /// audience is used.
     /// </summary>
-    string IssueToken(string tenantId, string? actorUserId = null);
+    string IssueToken(string tenantId, string? actorUserId = null, string? audience = null);
 }

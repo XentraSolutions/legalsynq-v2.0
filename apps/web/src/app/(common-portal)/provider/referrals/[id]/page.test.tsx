@@ -40,7 +40,9 @@ vi.mock('@/components/careconnect/referral-timeline', () => ({
 }));
 
 vi.mock('@/components/careconnect/attachment-panel', () => ({
-  AttachmentPanel: () => <div>Attachment panel</div>,
+  AttachmentPanel: ({ readOnly }: { readOnly?: boolean }) => (
+    <div>Attachment panel:{String(!!readOnly)}</div>
+  ),
 }));
 
 vi.mock('@/components/careconnect/referral-message-thread', () => ({
@@ -77,7 +79,7 @@ describe('Provider referral detail page', () => {
     expect(screen.getByRole('heading', { name: 'Jane Doe' })).toBeInTheDocument();
     expect(screen.getByText('Referral detail panel')).toBeInTheDocument();
     expect(screen.getByText('Status actions')).toBeInTheDocument();
-    expect(screen.getByText('Attachment panel')).toBeInTheDocument();
+    expect(screen.getByText('Attachment panel:true')).toBeInTheDocument();
     expect(screen.getByText('Timeline')).toBeInTheDocument();
     expect(screen.queryByText('Message thread')).not.toBeInTheDocument();
     expect(careConnectServerApi.referrals.getComments).not.toHaveBeenCalled();

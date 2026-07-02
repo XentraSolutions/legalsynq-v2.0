@@ -23,13 +23,13 @@
  */
 
 import { headers } from 'next/headers';
+import { PublicNetworkShell } from '@/components/careconnect/public-network-shell';
 import {
   resolveTenantFromCode,
   fetchPublicNetworks,
   fetchPublicNetworkDetail,
   type PublicNetworkSummary,
   type PublicNetworkDetail,
-  type ResolvedTenant,
 } from '@/lib/public-network-api';
 import { PublicNetworkView } from '@/components/careconnect/public-network-view';
 import { getCareConnectLoginUrlFromEnv } from '@/lib/careconnect-login-url';
@@ -75,35 +75,37 @@ export default async function PublicNetworkPage({ searchParams }: PageProps) {
   const detail = await fetchPublicNetworkDetail(tenant.tenantId, selectedNetwork.id);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">
-          {tenant.displayName}
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Provider Network Directory
-        </p>
+    <PublicNetworkShell tenantId={tenant.tenantId}>
+      <div className="space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            {tenant.displayName}
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Provider Network Directory
+          </p>
+        </div>
+
+        {/* Network selector (shown only when there are multiple networks) */}
+        {networks.length > 1 && (
+          <NetworkSelector
+            networks={networks}
+            selectedId={selectedNetwork.id}
+            tenantCode={tenantCode}
+          />
+        )}
+
+        {/* Main view — interactive provider list + map */}
+        {detail ? (
+          <PublicNetworkView detail={detail} tenantCode={tenantCode} tenantId={tenant.tenantId} loginUrl={loginUrl} />
+        ) : (
+          <p className="text-sm text-gray-500">
+            This network has no providers yet.
+          </p>
+        )}
       </div>
-
-      {/* Network selector (shown only when there are multiple networks) */}
-      {networks.length > 1 && (
-        <NetworkSelector
-          networks={networks}
-          selectedId={selectedNetwork.id}
-          tenantCode={tenantCode}
-        />
-      )}
-
-      {/* Main view — interactive provider list + map */}
-      {detail ? (
-        <PublicNetworkView detail={detail} tenantCode={tenantCode} tenantId={tenant.tenantId} loginUrl={loginUrl} />
-      ) : (
-        <p className="text-sm text-gray-500">
-          This network has no providers yet.
-        </p>
-      )}
-    </div>
+    </PublicNetworkShell>
   );
 }
 

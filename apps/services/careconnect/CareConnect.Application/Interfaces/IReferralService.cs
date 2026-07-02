@@ -32,7 +32,10 @@ public interface IReferralService
     // LSCC-005: Public token-based endpoints (no auth context)
     Task<ReferralViewTokenRouteResponse> ResolveViewTokenAsync(string token, CancellationToken ct = default);
     Task<ReferralResponse> AcceptByTokenAsync(Guid referralId, string token, CancellationToken ct = default);
-    Task<ReferralResponse> DeclineByTokenAsync(Guid referralId, string token, CancellationToken ct = default);
+    Task<ReferralResponse> DeclineByTokenAsync(Guid referralId, string token, CancellationToken ct = default, string? declineNotes = null);
+    Task<ReferralResponse> CompleteByTokenAsync(Guid referralId, string token, CancellationToken ct = default);
+    Task<ReferralResponse> CancelByTokenAsync(Guid referralId, string token, CancellationToken ct = default);
+    Task<ReferralResponse> UpdateTreatmentTypeByTokenAsync(Guid referralId, string token, Guid? treatmentTypeId, CancellationToken ct = default);
 
     // LSCC-005-01: Hardening — resend, revoke, notification history
     /// <inheritdoc cref="GetByIdAsync"/>
@@ -46,6 +49,7 @@ public interface IReferralService
     Task<List<ReferralAuditEventResponse>> GetAuditTimelineAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false);
 
     // LSCC-008: Provider activation funnel — public, token-gated
+    Task<PublicReferralAccessResult<ReferralPublicSummaryResponse>> GetPublicSummaryAccessAsync(Guid referralId, string token, CancellationToken ct = default);
     /// <summary>Returns limited referral context for the public activation landing page. Returns null when the token is invalid/revoked.</summary>
     Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(Guid referralId, string token, CancellationToken ct = default);
     /// <summary>

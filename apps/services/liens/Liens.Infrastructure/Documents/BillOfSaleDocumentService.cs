@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using BuildingBlocks.Authentication.ServiceTokens;
+using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
@@ -11,18 +13,25 @@ public sealed class BillOfSaleDocumentService : IBillOfSaleDocumentService
 {
     private static readonly Guid BillOfSaleDocumentTypeId =
         Guid.Parse("00000000-0000-0000-0000-000000000B05");
+    private const string DocumentsServiceAudience = "documents-service";
 
     private readonly IBillOfSalePdfGenerator _pdfGenerator;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IServiceTokenIssuer _serviceTokenIssuer;
+    private readonly ICurrentRequestContext _requestContext;
     private readonly ILogger<BillOfSaleDocumentService> _logger;
 
     public BillOfSaleDocumentService(
         IBillOfSalePdfGenerator pdfGenerator,
         IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ICurrentRequestContext requestContext,
         ILogger<BillOfSaleDocumentService> logger)
     {
         _pdfGenerator = pdfGenerator;
         _httpClientFactory = httpClientFactory;
+        _serviceTokenIssuer = serviceTokenIssuer;
+        _requestContext = requestContext;
         _logger = logger;
     }
 
@@ -62,7 +71,12 @@ public sealed class BillOfSaleDocumentService : IBillOfSaleDocumentService
             content.Add(fileContent, "file", fileName);
 
             var client = _httpClientFactory.CreateClient("DocumentsService");
-            var response = await client.PostAsync("/documents", content, ct);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/documents")
+            {
+                Content = content
+            };
+            ApplyDocumentsAuthorization(request, bos.TenantId, actingUserId);
+            var response = await client.SendAsync(request, ct);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -111,9 +125,19 @@ public sealed class BillOfSaleDocumentService : IBillOfSaleDocumentService
         try
         {
             var client = _httpClientFactory.CreateClient("DocumentsService");
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"/documents/{documentId}/content?type=download");
+            if (_requestContext.TenantId.HasValue)
+            {
+                ApplyDocumentsAuthorization(
+                    request,
+                    _requestContext.TenantId.Value,
+                    _requestContext.UserId);
+            }
 
-            response = await client.GetAsync(
-                $"/documents/{documentId}/content?type=download",
+            response = await client.SendAsync(
+                request,
                 HttpCompletionOption.ResponseHeadersRead,
                 ct);
 
@@ -174,6 +198,26 @@ public sealed class BillOfSaleDocumentService : IBillOfSaleDocumentService
                 "Unexpected error retrieving document DocumentId={DocumentId}",
                 documentId);
             return null;
+        }
+    }
+
+    private void ApplyDocumentsAuthorization(HttpRequestMessage request, Guid tenantId, Guid? actorUserId)
+    {
+        if (!_serviceTokenIssuer.IsConfigured)
+            return;
+
+        try
+        {
+            var token = _serviceTokenIssuer.IssueToken(
+                tenantId.ToString(),
+                actorUserId?.ToString(),
+                DocumentsServiceAudience);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to mint Documents service token for tenant {TenantId}", tenantId);
         }
     }
 }

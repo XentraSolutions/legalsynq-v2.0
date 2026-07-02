@@ -1,6 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import type { ReferralSummary } from '@/types/careconnect';
 import { formatTimestamp } from '@/lib/format-date';
+import { useBrowserTimezone } from '@/lib/use-timezone';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { ReferralQuickActions } from './referral-quick-actions';
 
@@ -13,6 +16,7 @@ interface ReferralListTableProps {
   isReceiver: boolean;
   orgId?:     string;
   currentQs?: string;
+  timezone?:  string;
 }
 
 function rowHighlight(status: string): string {
@@ -20,12 +24,20 @@ function rowHighlight(status: string): string {
   if (status === 'NewOpened')  return 'bg-sky-50/40 hover:bg-sky-50 border-l-4 border-l-sky-400';
   if (status === 'Accepted')   return 'hover:bg-gray-50 border-l-4 border-l-teal-400';
   if (status === 'InProgress') return 'bg-amber-50/30 hover:bg-amber-50/60 border-l-4 border-l-amber-400';
+  if (status === 'Completed')  return 'bg-green-50/30 hover:bg-green-50/60 border-l-4 border-l-green-400';
+  if (status === 'Declined')   return 'bg-red-50/30 hover:bg-red-50/60 border-l-4 border-l-red-400';
+  if (status === 'Cancelled')  return 'bg-gray-50/60 hover:bg-gray-100 border-l-4 border-l-gray-400';
   return 'hover:bg-gray-50 border-l-4 border-l-transparent';
 }
 
 function normalizeNetworkDisplay(networkName?: string | null): string | null {
   const value = networkName?.trim();
   return value && value !== '-' ? value : null;
+}
+
+function normalizeParticipantDisplay(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 export function ReferralListTable({
@@ -37,7 +49,12 @@ export function ReferralListTable({
   isReceiver,
   orgId,
   currentQs = '',
+  timezone,
 }: ReferralListTableProps) {
+  const browserTimezone = useBrowserTimezone();
+  const resolvedTimezone = timezone ?? browserTimezone;
+  const participantColumnLabel = isReceiver ? 'Referrer' : 'Provider';
+
   if (referrals.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
@@ -54,7 +71,7 @@ export function ReferralListTable({
           <thead>
             <tr className="bg-gray-50">
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Client</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Provider</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{participantColumnLabel}</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">Service</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden lg:table-cell">Network</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Urgency</th>
@@ -66,6 +83,12 @@ export function ReferralListTable({
           <tbody className="divide-y divide-gray-100">
             {referrals.map(r => {
               const networkDisplay = normalizeNetworkDisplay(r.networkName);
+              const participantDisplay = isReceiver
+                ? normalizeParticipantDisplay(r.referringOrganizationName)
+                  ?? normalizeParticipantDisplay(r.referrerName)
+                  ?? normalizeParticipantDisplay(r.referrerEmail)
+                  ?? '—'
+                : r.providerName;
 
               return (
                 <tr key={r.id} className={`transition-colors ${rowHighlight(r.status)}`}>
@@ -79,9 +102,9 @@ export function ReferralListTable({
                   )}
                 </td>
 
-                {/* Provider */}
+                {/* Provider / Referrer */}
                 <td className="px-4 py-3">
-                  <p className="text-sm text-gray-700 truncate max-w-[160px]">{r.providerName}</p>
+                  <p className="text-sm text-gray-700 truncate max-w-[160px]">{participantDisplay}</p>
                 </td>
 
                 {/* Service */}
@@ -118,7 +141,7 @@ export function ReferralListTable({
 
                 {/* Created */}
                 <td className="px-4 py-3 whitespace-nowrap hidden lg:table-cell">
-                  {(() => { const ts = formatTimestamp(r.createdAtUtc); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
+                  {(() => { const ts = formatTimestamp(r.createdAtUtc, resolvedTimezone); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
                 </td>
 
                 {/* Quick actions */}

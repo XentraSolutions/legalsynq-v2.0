@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Notifications;
+using BuildingBlocks.Exceptions;
 using Liens.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -81,5 +82,101 @@ public sealed class NotificationPublisher : INotificationPublisher
                 "Notification publish failed: Type={NotificationType} Tenant={TenantId}",
                 notificationType, tenantId);
         }
+    }
+
+    public async Task<NotificationEmailSendResult> SendEmailAsync(
+        string notificationType,
+        Guid tenantId,
+        string recipientEmail,
+        string subject,
+        string body,
+        Dictionary<string, string> metadata,
+        CancellationToken ct = default)
+    {
+        var client = _httpClientFactory.CreateClient("NotificationsService");
+
+        var request = new NotificationsProducerRequest
+        {
+            Channel      = "email",
+            ProductKey   = "liens",
+            EventKey     = notificationType,
+            SourceSystem = "liens-service",
+            Subject      = subject,
+            Recipient    = new NotificationsRecipient
+            {
+                Mode     = "Email",
+                TenantId = tenantId.ToString(),
+                Email    = recipientEmail,
+            },
+            Message = new
+            {
+                type = notificationType,
+                subject,
+                body,
+            },
+            Metadata = metadata,
+        };
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/notifications");
+        httpRequest.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        httpRequest.Content = JsonContent.Create(request, options: JsonOpts);
+
+        using var response = await client.SendAsync(httpRequest, ct);
+        var responseBody = await response.Content.ReadAsStringAsync(ct);
+
+        NotificationEmailSendResult? result = null;
+        if (!string.IsNullOrWhiteSpace(responseBody))
+        {
+            try
+            {
+                var dto = JsonSerializer.Deserialize<NotificationResultDto>(responseBody, JsonOpts);
+                if (dto is not null)
+                {
+                    result = new NotificationEmailSendResult(
+                        dto.Id == Guid.Empty ? null : dto.Id,
+                        dto.Status,
+                        dto.BlockedByPolicy,
+                        dto.BlockedReasonCode,
+                        dto.FailureCategory,
+                        dto.LastErrorMessage);
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex,
+                    "Notification email response could not be parsed: Type={NotificationType} Tenant={TenantId} Body={Body}",
+                    notificationType, tenantId, responseBody);
+            }
+        }
+
+        if (!response.IsSuccessStatusCode && result is null)
+        {
+            throw new ServiceUnavailableException(
+                $"Notifications service returned {(int)response.StatusCode} while sending buyer lien email.");
+        }
+
+        result ??= new NotificationEmailSendResult(
+            null,
+            response.IsSuccessStatusCode ? "accepted" : "failed",
+            false,
+            null,
+            null,
+            response.IsSuccessStatusCode ? null : responseBody);
+
+        _logger.LogInformation(
+            "Notification email submitted: Type={NotificationType} Tenant={TenantId} Status={Status} NotificationId={NotificationId}",
+            notificationType, tenantId, result.Status, result.NotificationId);
+
+        return result;
+    }
+
+    private sealed class NotificationResultDto
+    {
+        public Guid Id { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public bool BlockedByPolicy { get; set; }
+        public string? BlockedReasonCode { get; set; }
+        public string? FailureCategory { get; set; }
+        public string? LastErrorMessage { get; set; }
     }
 }

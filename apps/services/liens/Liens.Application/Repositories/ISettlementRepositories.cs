@@ -16,6 +16,7 @@ public interface ILienSettlementRepository
     Task<LienSettlement?>      GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<List<LienSettlement>> GetByCaseIdAsync(Guid tenantId, Guid caseId, CancellationToken ct = default);
     Task<List<LienSettlement>> GetByLienIdAsync(Guid tenantId, Guid lienId, CancellationToken ct = default);
+    Task<List<LienSettlement>> GetByLienIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> lienIds, CancellationToken ct = default);
     Task AddAsync(LienSettlement settlement, CancellationToken ct = default);
     Task UpdateAsync(LienSettlement settlement, CancellationToken ct = default);
 }
@@ -25,6 +26,7 @@ public interface ISettlementPaymentDetailRepository
     Task<SettlementPaymentDetail?>      GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<List<SettlementPaymentDetail>> GetByCaseIdAsync(Guid tenantId, Guid caseId, CancellationToken ct = default);
     Task<List<SettlementPaymentDetail>> GetByLienIdAsync(Guid tenantId, Guid lienId, CancellationToken ct = default);
+    Task<List<SettlementPaymentDetail>> GetByLienIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> lienIds, CancellationToken ct = default);
     Task AddAsync(SettlementPaymentDetail detail, CancellationToken ct = default);
     Task SoftDeleteAsync(SettlementPaymentDetail detail, CancellationToken ct = default);
 }

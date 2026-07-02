@@ -12,6 +12,7 @@ import type {
   TemplatePreviewResult,
 } from '@/lib/notifications-shared';
 import { PRODUCT_TYPE_LABELS } from '@/lib/notifications-shared';
+import { useTimezone } from '@/lib/use-timezone';
 import {
   previewTemplateVersion,
   createTenantOverride,
@@ -44,11 +45,11 @@ interface TemplateDetailClientProps {
   overrideVersions: TenantTemplateVersion[];
 }
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string, timezone: string): string {
   try {
     return new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit',
+      hour: 'numeric', minute: '2-digit', timeZone: timezone,
     });
   } catch { return iso; }
 }
@@ -70,6 +71,7 @@ export function TemplateDetailClient({
   overrideVersions: initialOverrideVersions,
 }: TemplateDetailClientProps) {
   const router = useRouter();
+  const timezone = useTimezone();
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialOverride ? 'override' : 'global');
   const [override, setOverride] = useState(initialOverride);
   const [overrideVersions, setOverrideVersions] = useState(initialOverrideVersions);
@@ -400,6 +402,7 @@ function GlobalTabContent({
   pending: boolean;
   productType: ProductType;
 }) {
+  const timezone = useTimezone();
   return (
     <div className="space-y-4">
       <div className="rounded-md bg-gray-50 border border-gray-200 px-4 py-2.5">
@@ -446,7 +449,7 @@ function GlobalTabContent({
                       </span>
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-600 truncate max-w-[200px]">{v.subjectTemplate || '—'}</td>
-                    <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{fmtDate(v.createdAt)}</td>
+                    <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{fmtDate(v.createdAt, timezone)}</td>
                     <td className="px-5 py-3 text-right">
                       <button
                         type="button"
@@ -586,6 +589,7 @@ function OverrideTabContent({
   pending: boolean;
   setShowEditor: (v: boolean) => void;
 }) {
+  const timezone = useTimezone();
   if (!override) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 py-16 text-center">
@@ -684,7 +688,7 @@ function OverrideTabContent({
                       </span>
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-600 truncate max-w-[200px]">{v.subjectTemplate || '—'}</td>
-                    <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{fmtDate(v.createdAt)}</td>
+                    <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{fmtDate(v.createdAt, timezone)}</td>
                     <td className="px-5 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {v.status === 'draft' && (

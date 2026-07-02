@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation';
+import { mapFailureReasonToInvalidReason } from '../lib/public-referral-error';
+import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,17 +17,12 @@ export const dynamic = 'force-dynamic';
  * authenticated referral detail page. Direct token-only acceptance
  * is no longer supported.
  *
- *   "pending" provider (OrganizationId = null)
- *     → /login?returnTo=/careconnect/referrals/{referralId}&reason=referral-view
- *
- *   "active" tenant provider (OrganizationId != null)
- *     → /login?returnTo=/careconnect/referrals/{referralId}&reason=referral-view
+ *   valid token
+ *     → /referrals/thread?token=...
  *
  *   "invalid" / "notfound" token
  *     → /referrals/accept/invalid  (error page)
  */
-
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 interface Props {
   searchParams: Promise<{ token?: string }>;
@@ -39,31 +36,30 @@ export default async function ReferralViewPage({ searchParams }: Props) {
     redirect('/referrals/accept/invalid?reason=missing-token');
   }
 
-  let routeType = 'invalid';
-  let referralId: string | null = null;
+  let failureReason: string | null = null;
+  let shouldOpenThread = false;
 
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/referrals/resolve-view-token?token=${encodeURIComponent(token)}`,
-      { cache: 'no-store' },
+    const resp = await fetchPublicCareConnect(
+      `/api/referrals/resolve-view-token?token=${encodeURIComponent(token)}`,
     );
 
     if (resp.ok) {
       const data = await resp.json();
-      routeType  = data.routeType  ?? 'invalid';
-      referralId = data.referralId ?? null;
+      const routeType = data.routeType ?? 'invalid';
+      failureReason = data.failureReason ?? null;
+
+      if (routeType === 'pending' || routeType === 'active') {
+        shouldOpenThread = true;
+      }
     }
   } catch {
-    routeType = 'invalid';
+    // fall through to invalid screen
   }
 
-  // LSCC-01-002-01:
-  // Both pending and active providers go to login; returnTo lands them in the
-  // authenticated CareConnect referral detail flow.
-  if ((routeType === 'pending' || routeType === 'active') && referralId) {
-    const returnTo = encodeURIComponent(`/careconnect/referrals/${referralId}`);
-    redirect(`/login?returnTo=${returnTo}&reason=referral-view`);
+  if (shouldOpenThread) {
+    redirect(`/referrals/thread?token=${encodeURIComponent(token)}`);
   }
 
-  redirect('/referrals/accept/invalid?reason=expired-or-invalid');
+  redirect(`/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`);
 }

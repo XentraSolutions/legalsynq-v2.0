@@ -77,11 +77,20 @@ public sealed class PublicReferralRequest
     /// <summary>Target provider (from the public directory card).</summary>
     public Guid ProviderId { get; set; }
 
-    /// <summary>Name of the person submitting the referral (law firm staff).</summary>
-    public string SenderName { get; set; } = string.Empty;
+    /// <summary>First name of the person submitting the referral (law firm staff).</summary>
+    public string SenderFirstName { get; set; } = string.Empty;
+
+    /// <summary>Last name of the person submitting the referral (optional).</summary>
+    public string? SenderLastName { get; set; }
 
     /// <summary>Email of the person submitting (used for confirmation).</summary>
     public string SenderEmail { get; set; } = string.Empty;
+
+    /// <summary>Law firm / organization name (optional — stored for enrollment pre-fill).</summary>
+    public string? SenderFirmName { get; set; }
+
+    /// <summary>Referrer phone number (optional — stored for enrollment pre-fill).</summary>
+    public string? SenderPhone { get; set; }
 
     /// <summary>Patient first name.</summary>
     public string PatientFirstName { get; set; } = string.Empty;
@@ -112,6 +121,15 @@ public sealed class PublicReferralRequest
 
     /// <summary>Additional case notes (optional).</summary>
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Urgency level (optional). Must be one of <c>Referral.ValidUrgencies.All</c>
+    /// (Low, Normal, Urgent, Emergency). Falls back to "Normal" when omitted or invalid.
+    /// </summary>
+    public string? Urgency { get; set; }
+
+    /// <summary>Treatment type ID selected from the treatment types list (optional).</summary>
+    public Guid? TreatmentTypeId { get; set; }
 }
 
 /// <summary>

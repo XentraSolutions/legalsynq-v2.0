@@ -14,6 +14,7 @@ public class ReferralThreadService : IReferralThreadService
     private readonly IReferralCommentRepository _comments;
     private readonly IReferralAttachmentRepository _attachments;
     private readonly IReferralEmailService _emailService;
+    private readonly IIdentityOrganizationService _identityOrgService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ReferralThreadService> _logger;
 
@@ -22,6 +23,7 @@ public class ReferralThreadService : IReferralThreadService
         IReferralCommentRepository comments,
         IReferralAttachmentRepository attachments,
         IReferralEmailService emailService,
+        IIdentityOrganizationService identityOrgService,
         IServiceScopeFactory scopeFactory,
         ILogger<ReferralThreadService> logger)
     {
@@ -29,24 +31,33 @@ public class ReferralThreadService : IReferralThreadService
         _comments = comments;
         _attachments = attachments;
         _emailService = emailService;
+        _identityOrgService = identityOrgService;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
-    public async Task<PublicReferralThreadResponse?> GetPublicThreadAsync(string token, CancellationToken ct = default)
+    public async Task<PublicReferralAccessResult<PublicReferralThreadResponse>> GetPublicThreadAccessAsync(string token, CancellationToken ct = default)
     {
-        var referral = await GetReferralByTokenAsync(token, ct);
-        if (referral is null)
-            return null;
+        var access = await GetReferralByTokenAsync(token, ct);
+        if (access.Referral is null)
+            return PublicReferralAccessResult<PublicReferralThreadResponse>.Failure(
+                access.FailureReason ?? ReferralTokenFailureReasons.Malformed);
+
+        var referral = access.Referral;
 
         var comments = await _comments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
         var attachments = await _attachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
+        var treatmentTypeName = referral.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(referral.TreatmentTypeId.Value, ct)
+            : null;
 
         var providerName = BuildProviderName(referral);
-        return new PublicReferralThreadResponse
+        var referrerFirmName = await ResolveReferrerFirmNameAsync(referral, ct);
+        return PublicReferralAccessResult<PublicReferralThreadResponse>.Success(new PublicReferralThreadResponse
         {
             ReferralId = referral.Id,
             TenantId = referral.TenantId,
+            ProviderId = referral.Provider?.Id ?? referral.ProviderId,
             Status = referral.Status,
             ClientName = $"{referral.ClientFirstName} {referral.ClientLastName}".Trim(),
             ClientPhone = referral.ClientPhone,
@@ -58,12 +69,26 @@ public class ReferralThreadService : IReferralThreadService
             Service = referral.RequestedService,
             Urgency = referral.Urgency,
             Notes = referral.Notes,
+            DateOfAccident = referral.DateOfAccident?.ToString("yyyy-MM-dd"),
             ProviderName = providerName,
+            ProviderFirstName = referral.Provider?.FirstName,
+            ProviderLastName = referral.Provider?.LastName,
+            ProviderEmail = referral.Provider?.Email ?? string.Empty,
+            ProviderPhone = referral.Provider?.Phone ?? string.Empty,
+            ProviderAddressLine1 = referral.Provider?.AddressLine1 ?? string.Empty,
+            ProviderCity = referral.Provider?.City ?? string.Empty,
+            ProviderState = referral.Provider?.State ?? string.Empty,
+            ProviderPostalCode = referral.Provider?.PostalCode ?? string.Empty,
+            ReferrerFirmName = referrerFirmName,
+            ReferrerPhone = referral.ReferrerPhone,
             ReferrerName = referral.ReferrerName,
+            ReferrerFirstName = referral.ReferrerFirstName,
+            ReferrerLastName = referral.ReferrerLastName,
             ReferrerEmail = referral.ReferrerEmail,
-            CreatedAt = referral.CreatedAtUtc,
-            ProviderHasAccount = referral.Provider is not null &&
-                                 ProviderAccessStage.IsAtLeast(referral.Provider.AccessStage, ProviderAccessStage.CommonPortal),
+            CreatedAtUtc = referral.CreatedAtUtc,
+            TreatmentTypeId   = referral.TreatmentTypeId,
+            TreatmentTypeName = treatmentTypeName,
+            ProviderHasAccount = ProviderHasPortalAccount(referral.Provider),
             Comments = comments.Select(MapComment).ToList(),
             Attachments = attachments
                 .OrderBy(a => a.CreatedAtUtc)
@@ -75,19 +100,29 @@ public class ReferralThreadService : IReferralThreadService
                     FileSizeBytes = a.FileSizeBytes,
                 })
                 .ToList(),
-        };
+        });
+    }
+
+    public async Task<PublicReferralThreadResponse?> GetPublicThreadAsync(string token, CancellationToken ct = default)
+    {
+        var result = await GetPublicThreadAccessAsync(token, ct);
+        return result.Data;
     }
 
     public async Task<ReferralCommentResponse?> PostPublicCommentAsync(
         string token,
         string senderType,
-        string senderName,
         string message,
         CancellationToken ct = default)
     {
-        var referral = await GetReferralByTokenAsync(token, ct);
-        if (referral is null)
+        var access = await GetReferralByTokenAsync(token, ct);
+        if (access.Referral is null)
             return null;
+        var referral = access.Referral;
+
+        var resolvedSenderName = senderType == "provider"
+            ? referral.Provider?.Name ?? "Provider"
+            : referral.ReferrerName ?? "Referrer";
 
         var comment = new ReferralComment
         {
@@ -95,7 +130,7 @@ public class ReferralThreadService : IReferralThreadService
             TenantId = referral.TenantId,
             ReferralId = referral.Id,
             SenderType = senderType.Trim(),
-            SenderName = senderName.Trim(),
+            SenderName = resolvedSenderName,
             Message = message.Trim(),
             CreatedAt = DateTime.UtcNow,
         };
@@ -165,17 +200,56 @@ public class ReferralThreadService : IReferralThreadService
         return MapComment(comment);
     }
 
-    private async Task<Referral?> GetReferralByTokenAsync(string token, CancellationToken ct)
+    private async Task<TokenScopedReferralResult> GetReferralByTokenAsync(string token, CancellationToken ct)
     {
-        var tokenResult = _emailService.ValidateViewToken(token);
-        if (tokenResult is null)
-            return null;
+        var tokenValidation = _emailService.ValidateViewTokenDetailed(token);
+        if (!tokenValidation.IsValid)
+        {
+            LogPublicTokenFailure("thread", tokenValidation, null);
+            return new TokenScopedReferralResult(null, tokenValidation.FailureReason);
+        }
 
-        var referral = await _referrals.GetByIdGlobalAsync(tokenResult.ReferralId, ct);
-        if (referral is null || referral.TokenVersion != tokenResult.TokenVersion)
-            return null;
+        var referral = await _referrals.GetByIdGlobalAsync(tokenValidation.ReferralId!.Value, ct);
+        if (referral is null)
+        {
+            LogPublicTokenFailure(
+                "thread",
+                tokenValidation,
+                tokenValidation.ReferralId,
+                failureReasonOverride: ReferralTokenFailureReasons.ReferralNotFound);
+            return new TokenScopedReferralResult(null, ReferralTokenFailureReasons.ReferralNotFound);
+        }
 
-        return referral;
+        if (referral.TokenVersion != tokenValidation.TokenVersion)
+        {
+            LogPublicTokenFailure(
+                "thread",
+                tokenValidation,
+                referral.Id,
+                currentReferralTokenVersion: referral.TokenVersion,
+                failureReasonOverride: ReferralTokenFailureReasons.Revoked);
+            return new TokenScopedReferralResult(null, ReferralTokenFailureReasons.Revoked);
+        }
+
+        return new TokenScopedReferralResult(referral, null);
+    }
+
+    private void LogPublicTokenFailure(
+        string surface,
+        ReferralTokenValidationOutcome tokenValidation,
+        Guid? requestedReferralId,
+        int? currentReferralTokenVersion = null,
+        string? failureReasonOverride = null)
+    {
+        var failureReason = failureReasonOverride ?? tokenValidation.FailureReason ?? ReferralTokenFailureReasons.Malformed;
+        _logger.LogWarning(
+            "Public referral token rejected on surface {Surface}. FailureReason={FailureReason} RequestedReferralId={RequestedReferralId} TokenReferralId={TokenReferralId} TokenVersion={TokenVersion} CurrentReferralTokenVersion={CurrentReferralTokenVersion}",
+            surface,
+            failureReason,
+            requestedReferralId,
+            tokenValidation.ReferralId,
+            tokenValidation.TokenVersion,
+            currentReferralTokenVersion);
     }
 
     private async Task<Referral?> LoadAuthenticatedReferralAsync(
@@ -258,8 +332,32 @@ public class ReferralThreadService : IReferralThreadService
         SenderType = comment.SenderType,
         SenderName = comment.SenderName,
         Message = comment.Message,
-        CreatedAt = comment.CreatedAt,
+        CreatedAtUtc = NormalizeUtc(comment.CreatedAt),
     };
+
+    private static DateTime NormalizeUtc(DateTime value) =>
+        value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+
+    private async Task<string?> ResolveReferrerFirmNameAsync(Referral referral, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(referral.ReferrerFirmName))
+            return referral.ReferrerFirmName;
+
+        if (referral.ReferringOrganizationId.HasValue)
+        {
+            try
+            {
+                var orgName = await _identityOrgService.GetOrganizationNameAsync(referral.ReferringOrganizationId.Value, ct);
+                if (!string.IsNullOrWhiteSpace(orgName))
+                    return orgName;
+            }
+            catch { /* non-fatal */ }
+        }
+
+        return null;
+    }
 
     private static string BuildProviderName(Referral referral)
     {
@@ -270,6 +368,12 @@ public class ReferralThreadService : IReferralThreadService
             ? referral.Provider.Name
             : referral.Provider.OrganizationName;
     }
+
+    private static bool ProviderHasPortalAccount(Provider? provider) =>
+        provider is not null && (
+            ProviderAccessStage.IsAtLeast(provider.AccessStage, ProviderAccessStage.CommonPortal) ||
+            provider.OrganizationId.HasValue ||
+            provider.IdentityUserId.HasValue);
 
     private static bool IsAuthenticatedParticipant(Referral referral, Guid? callerOrganizationId, string? callerEmail)
     {
@@ -300,4 +404,5 @@ public class ReferralThreadService : IReferralThreadService
     }
 
     private sealed record AuthenticatedCommentParticipant(Referral Referral, string SenderType);
+    private sealed record TokenScopedReferralResult(Referral? Referral, string? FailureReason);
 }

@@ -69,6 +69,7 @@ public interface IIdentityOrganizationService
         string            password,
         string            firstName,
         string?           lastName,
+        string?           phone,
         CancellationToken ct = default);
 
     // ── CC2-ENROLL-FIRM: Law firm self-enrollment — org creation ─────────────
@@ -129,6 +130,15 @@ public interface IIdentityOrganizationService
     /// </summary>
     Task<bool> CheckAnyTenantOwnerEmailAsync(
         string            email,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves an Identity organization name by organization ID.
+    ///
+    /// Returns null when the organization is not found or Identity is unavailable.
+    /// </summary>
+    Task<string?> GetOrganizationNameAsync(
+        Guid              orgId,
         CancellationToken ct = default);
 }
 

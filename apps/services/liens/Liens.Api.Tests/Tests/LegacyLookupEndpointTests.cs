@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -39,11 +40,69 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     [Fact] public Task TaskStatus_returns200()        => GetOk("/lookup/task/status");
     [Fact] public Task TaskPriority_returns200()      => GetOk("/lookup/task/priority");
     [Fact] public Task ContactType_returns200()       => GetOk("/lookup/contact/type");
-    [Fact] public Task ProcedureCodes_returns200()    => GetOk("/lookup/medical/procedure/codes");
 
     [Fact]
-    public async Task ProcedureCost_returns200_for_seeded_code()
-        => await GetOk("/lookup/medical/procedure/costs/99213");
+    public async Task ContactType_includes_funding_company_and_lead()
+    {
+        var resp = await _client.GetAsync("/lookup/contact/type");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var codes = payload.AsArray()
+            .Select(item => item?["code"]?.GetValue<string>())
+            .ToHashSet(StringComparer.Ordinal);
+
+        codes.Should().Contain("FundingCompany");
+        codes.Should().Contain("Lead");
+    }
+
+    [Fact]
+    public async Task ProcedureCodes_includes_manual_medical_codes()
+    {
+        var resp = await _client.GetAsync("/lookup/medical/procedure/codes");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        payload["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+        payload["data"]!.AsArray()
+            .Any(item =>
+                item?["code"]?.GetValue<string>() == "MANUAL-001" &&
+                item?["description"]?.GetValue<string>() == "Manual Procedure (MANUAL-001)")
+            .Should()
+            .BeTrue();
+    }
+
+    [Fact]
+    public async Task ProcedureCost_returns404_when_external_cost_source_is_not_configured()
+    {
+        var resp = await _client.GetAsync("/lookup/medical/procedure/costs/99213");
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        payload["isSuccess"]!.GetValue<bool>().Should().BeFalse();
+        payload["message"]!.GetValue<string>().Should().Be("Unable to get procedure cost.");
+    }
+
+    [Fact]
+    public async Task ProcedureCost_returns_manual_medical_cost_before_lookup_value()
+    {
+        var resp = await _client.GetAsync("/lookup/medical/procedure/costs/MANUAL-001");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        payload["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+        payload["message"]!.GetValue<string>().Should().Be("Retrieved from manual medical codes.");
+
+        var item = payload["data"]!.AsArray().Should().ContainSingle().Subject!;
+        item["code"]!.GetValue<string>().Should().Be("MANUAL-001");
+        item["description"]!.GetValue<string>().Should().Be("Manual Procedure");
+        item["facilityType"]!.GetValue<string>().Should().Be("ASC");
+        item["cost"]!.GetValue<string>().Should().Be("100");
+        item["copay"]!.GetValue<string>().Should().Be("10");
+        item["facilityTotal"]!.GetValue<string>().Should().Be("70");
+        item["physicianTotal"]!.GetValue<string>().Should().Be("30");
+        item["total"]!.GetValue<string>().Should().Be("110");
+    }
 
     [Fact] public Task LookupAll_returns200()         => GetOk("/lookup/all");
     [Fact] public Task LookupContact_returns200()     => GetOk("/lookup/contact");

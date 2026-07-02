@@ -12,6 +12,7 @@ import {
   type NotifFanOutRecipient,
 } from '@/lib/notifications-server-api';
 import { PRODUCT_TYPE_LABELS, formatFailureCategory, type ProductType } from '@/lib/notifications-shared';
+import { tenantServerApi } from '@/lib/tenant-api';
 import DeliveryActionsClient from './delivery-actions-client';
 
 const STATUS_CLS: Record<string, string> = {
@@ -50,20 +51,20 @@ function ChannelBadge({ channel }: { channel: string }) {
   );
 }
 
-function fmtDateTime(iso: string): string {
+function fmtDateTime(iso: string, timezone: string): string {
   try {
     return new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', second: '2-digit',
+      hour: 'numeric', minute: '2-digit', second: '2-digit', timeZone: timezone,
     });
   } catch { return iso; }
 }
 
-function fmtTime(iso: string): string {
+function fmtTime(iso: string, timezone: string): string {
   try {
     return new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric',
-      hour: 'numeric', minute: '2-digit', second: '2-digit',
+      hour: 'numeric', minute: '2-digit', second: '2-digit', timeZone: timezone,
     });
   } catch { return iso; }
 }
@@ -354,7 +355,7 @@ function FailureReasonPanel({ notification }: { notification: NotifDetail }) {
   );
 }
 
-function EventTimeline({ events }: { events: NotifEvent[] }) {
+function EventTimeline({ events, tenantTimezone }: { events: NotifEvent[]; tenantTimezone: string }) {
   if (events.length === 0) return null;
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5">
@@ -382,7 +383,7 @@ function EventTimeline({ events }: { events: NotifEvent[] }) {
                     )}
                   </div>
                   <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">
-                    {fmtTime(evt.timestamp)}
+                    {fmtTime(evt.timestamp, tenantTimezone)}
                   </span>
                 </div>
               </li>
@@ -394,7 +395,7 @@ function EventTimeline({ events }: { events: NotifEvent[] }) {
   );
 }
 
-function IssuesList({ issues }: { issues: NotifIssue[] }) {
+function IssuesList({ issues, tenantTimezone }: { issues: NotifIssue[]; tenantTimezone: string }) {
   if (issues.length === 0) return null;
 
   const severityCls: Record<string, string> = {
@@ -417,8 +418,8 @@ function IssuesList({ issues }: { issues: NotifIssue[] }) {
             <p className="text-sm font-medium">{issue.message}</p>
             {issue.detail && <p className="text-xs mt-1 opacity-75">{issue.detail}</p>}
             <p className="text-[10px] text-gray-400 mt-2">
-              {fmtDateTime(issue.createdAt)}
-              {issue.resolvedAt && ` — Resolved ${fmtDateTime(issue.resolvedAt)}`}
+              {fmtDateTime(issue.createdAt, tenantTimezone)}
+              {issue.resolvedAt && ` — Resolved ${fmtDateTime(issue.resolvedAt, tenantTimezone)}`}
             </p>
           </div>
         ))}
@@ -480,6 +481,9 @@ export default async function NotificationDetailPage({
   const { notificationId } = await params;
   const session = await requireOrg();
   const { tenantId } = session;
+
+  const tzResult = await tenantServerApi.getTimezoneSetting(tenantId).catch(() => null);
+  const tenantTimezone = tzResult?.value ?? 'America/Los_Angeles';
 
   let notification: NotifDetail | null = null;
   let fetchErr: string | null = null;
@@ -588,10 +592,10 @@ export default async function NotificationDetailPage({
             </InfoRow>
           )}
           <InfoRow label="Created">
-            {fmtDateTime(notification.createdAt)}
+            {fmtDateTime(notification.createdAt, tenantTimezone)}
           </InfoRow>
           <InfoRow label="Last Updated">
-            {fmtDateTime(notification.updatedAt)}
+            {fmtDateTime(notification.updatedAt, tenantTimezone)}
           </InfoRow>
         </dl>
       </div>
@@ -606,7 +610,7 @@ export default async function NotificationDetailPage({
 
       <ContentPreview notification={notification} />
 
-      {events.length > 0 && <EventTimeline events={events} />}
+      {events.length > 0 && <EventTimeline events={events} tenantTimezone={tenantTimezone} />}
 
       {eventsUnavailable && (
         <div className="bg-gray-50 rounded-lg border border-gray-200 p-5 text-center">
@@ -615,7 +619,7 @@ export default async function NotificationDetailPage({
         </div>
       )}
 
-      {issues.length > 0 && <IssuesList issues={issues} />}
+      {issues.length > 0 && <IssuesList issues={issues} tenantTimezone={tenantTimezone} />}
 
       {issuesUnavailable && (
         <div className="bg-gray-50 rounded-lg border border-gray-200 p-5 text-center">

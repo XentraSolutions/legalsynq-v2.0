@@ -455,6 +455,7 @@ public class ProviderActivationFunnelTests
             notifications,
             notificationRepo,
             emailSvc,
+            new Mock<IIdentityOrganizationService>().Object,
             scopeFactory,
             relationshipResolver,
             auditClient,

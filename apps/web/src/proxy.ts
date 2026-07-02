@@ -1,12 +1,12 @@
-import { NextResponse, type NextRequest } from 'next/server';
-import { normalizeCareConnectPortalHost } from './lib/careconnect-login-url';
+import { NextResponse, type NextRequest } from "next/server";
+import { normalizeCareConnectPortalHost } from "./lib/careconnect-login-url";
 
 /**
  * Global Next.js proxy — route protection + hostname-based routing.
  *
  * Rules:
  *  1. Common portal hostname (CC_COMMON_PORTAL_HOSTNAME):
- *     - Root / → redirect to /provider/dashboard (common portal home).
+ *     - Root / → redirect to /careconnect/dashboard (common portal home).
  *     - All other paths follow the same public/protected logic below.
  *  2. Public routes (/login, /portal, static assets) — always allowed through.
  *  3. Protected routes — require the platform_session cookie to exist.
@@ -29,45 +29,51 @@ import { normalizeCareConnectPortalHost } from './lib/careconnect-login-url';
 // and law-firm portal (e.g. "careconnect-demo.legalsynq.com").
 // When a request arrives on this hostname, the root path / is redirected to the
 // common portal dashboard. All other path-level routing rules still apply.
-const CC_COMMON_PORTAL_HOSTNAME =
-  normalizeCareConnectPortalHost(process.env.CC_COMMON_PORTAL_HOSTNAME);
+const CC_COMMON_PORTAL_HOSTNAME = normalizeCareConnectPortalHost(
+  process.env.CC_COMMON_PORTAL_HOSTNAME,
+);
 
 const PUBLIC_PATHS = [
-  '/login',
-  '/no-org',
-  '/portal/login',
-  '/_next',
-  '/favicon.ico',
-  '/.well-known',
+  "/login",
+  "/coming-soon",
+  "/no-org",
+  "/portal/login",
+  "/_next",
+  "/favicon.ico",
+  "/.well-known",
   // Auth API endpoints must be reachable before a session cookie exists
-  '/api/auth/login',
-  '/api/auth/logout',
-  '/api/auth/forgot-password',
-  '/api/auth/reset-password',
-  '/forgot-password',
-  '/reset-password',
-  '/accept-invite',
-  '/api/auth/accept-invite',
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/forgot-password",
+  "/reset-password",
+  "/accept-invite",
+  "/api/auth/accept-invite",
   // Public branding / logo routes — no session required (used by login page)
-  '/api/branding',
-  '/api/identity/api/tenants/current/branding',
+  "/api/branding",
+  "/api/identity/api/tenants/current/branding",
   // Read-source-aware branding endpoint (B06: replaces identity-only call)
-  '/api/tenant-branding',
+  "/api/tenant-branding",
+  // Documents access-token redemption must remain public so token-gated
+  // referral links can open attachments without a platform session cookie.
+  "/api/documents/access/",
+  "/documents/access/",
   // LSCC-005: Public referral token routes — no session required
-  '/referrals/view',
-  '/referrals/accept',
-  '/referrals/thread',
+  "/referrals/view",
+  "/referrals/accept",
+  "/referrals/thread",
   // LSCC-008: Provider activation funnel — no session required
-  '/referrals/activate',
+  "/referrals/activate",
   // Law firm referral status email link — public, token-gated
-  '/referrals/firm-status',
+  "/referrals/firm-status",
   // CC2-INT-B07: Public tenant network directory — no session required
-  '/network',
-  '/careconnect/network',
-  '/api/public/',
+  "/network",
+  "/careconnect/network",
+  "/api/public/",
   // CC2-ENROLL: Provider self-enrollment form — no session required
-  '/enroll',
-  '/api/geocode/',
+  "/enroll",
+  "/api/geocode/",
 ];
 
 export function proxy(request: NextRequest) {
@@ -78,14 +84,16 @@ export function proxy(request: NextRequest) {
   // Host header. Strip the port so "careconnect-demo.legalsynq.com:443" still
   // matches the configured hostname.
   if (CC_COMMON_PORTAL_HOSTNAME) {
-    const forwardedHost = request.headers.get('x-forwarded-host') ?? '';
-    const rawHost      = request.headers.get('host') ?? '';
-    const incomingHost = (forwardedHost || rawHost).split(':')[0].toLowerCase();
+    const forwardedHost = request.headers.get("x-forwarded-host") ?? "";
+    const rawHost = request.headers.get("host") ?? "";
+    const incomingHost = (forwardedHost || rawHost).split(":")[0].toLowerCase();
 
     if (incomingHost === CC_COMMON_PORTAL_HOSTNAME) {
       // Root → common portal dashboard
-      if (pathname === '/') {
-        return NextResponse.redirect(new URL('/provider/dashboard', request.url));
+      if (pathname === "/") {
+        return NextResponse.redirect(
+          new URL("/careconnect/dashboard", request.url),
+        );
       }
       // /provider/* routes are served from the (common-portal) route group.
       // requireExternalPortal() inside those pages handles auth, so we let
@@ -94,25 +102,25 @@ export function proxy(request: NextRequest) {
   }
 
   // Allow public and Next.js internal routes
-  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
   // Portal sub-routes beyond /portal/login require portal_session
   // /portal/login handled above as PUBLIC; all other /portal/* need cookie
-  if (pathname.startsWith('/portal/')) {
-    const portalCookie = request.cookies.get('portal_session');
+  if (pathname.startsWith("/portal/")) {
+    const portalCookie = request.cookies.get("portal_session");
     if (!portalCookie) {
-      return NextResponse.redirect(new URL('/portal/login', request.url));
+      return NextResponse.redirect(new URL("/portal/login", request.url));
     }
     return NextResponse.next();
   }
 
   // All other routes require platform_session cookie
-  const sessionCookie = request.cookies.get('platform_session');
+  const sessionCookie = request.cookies.get("platform_session");
   if (!sessionCookie) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('reason', 'unauthenticated');
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("reason", "unauthenticated");
     return NextResponse.redirect(loginUrl);
   }
 
@@ -131,6 +139,6 @@ export const config = {
      * - Static file types  (images/fonts served from /public — must bypass auth
      *                       so the login page can load logos without a session)
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|otf)).*)',
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|otf)).*)",
   ],
 };

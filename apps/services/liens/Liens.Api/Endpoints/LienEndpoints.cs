@@ -340,8 +340,8 @@ public static class LienEndpoints
                     caseId = lien.CaseId?.ToString() ?? string.Empty,
                     status = lien.Status,
                     purchaseDate = FormatLegacyDate(lien.IncidentDate),
-                    initialServiceDate = string.Empty,
-                    endServiceDate = string.Empty,
+                    initialServiceDate = FormatLegacyDate(lien.InitialServiceDate),
+                    endServiceDate = FormatLegacyDate(lien.EndServiceDate),
                     note = lien.Description ?? string.Empty,
                     created = FormatLegacyTimestamp(lien.CreatedAtUtc),
                     createdBy = string.Empty,
@@ -349,8 +349,8 @@ public static class LienEndpoints
                     updatedBy = string.Empty,
                     fundingCompanyId = lien.ExternalReference ?? string.Empty,
                     fundingCompany = string.Empty,
-                    isBulk = string.Empty,
-                    isServicing = string.Empty,
+                    isBulk = lien.IsBulk ?? string.Empty,
+                    isServicing = lien.IsServicing ?? string.Empty,
                 });
 
                 if (lien.FacilityId.HasValue)

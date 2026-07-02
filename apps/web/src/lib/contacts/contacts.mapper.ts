@@ -19,6 +19,7 @@ function formatDateField(val: string | null | undefined): string {
       month: "short",
       day: "numeric",
       year: "numeric",
+      timeZone: "UTC",
     });
   } catch {
     return val;

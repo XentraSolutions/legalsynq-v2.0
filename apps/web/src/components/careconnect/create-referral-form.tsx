@@ -1,11 +1,18 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import type { CreateReferralRequest, ReferralUrgencyValue } from '@/types/careconnect';
+import { URGENCY_OPTIONS } from '@/types/careconnect';
 import { formatPhoneInput, stripPhone, isValidPhone } from '@/lib/phone';
+import { isValidIsoDate, hasReasonableYear } from '@/lib/daterange';
+
+interface TreatmentType {
+  id:   string;
+  name: string;
+}
 
 interface CreateReferralFormProps {
   /** Pre-selected provider — set when form opens from the provider detail page */
@@ -18,23 +25,18 @@ interface CreateReferralFormProps {
   referrerName?:  string;
 }
 
-const URGENCY_OPTIONS: { value: ReferralUrgencyValue; label: string }[] = [
-  { value: 'Low',       label: 'Low'       },
-  { value: 'Normal',    label: 'Normal'    },
-  { value: 'Urgent',    label: 'Urgent'    },
-  { value: 'Emergency', label: 'Emergency' },
-];
-
-const SERVICES = [
-  'Physical Therapy',
-  'Occupational Therapy',
-  'Chiropractic Care',
-  'Pain Management',
-  'Orthopedic Evaluation',
-  'Neurological Evaluation',
-  'Mental Health Counseling',
-  'Diagnostic Imaging',
-  'Other',
+const SERVICE_TYPES = [
+  'General Referral',
+  'Consultation',
+  'Initial Service',
+  'Diagnostic Service',
+  'Laboratory Service',
+  'Imaging/Radiology',
+  'Emergency Service',
+  'Home Health Service',
+  'Specialist Referral',
+  'Telehealth Service',
+  'Follow-up Service',
 ];
 
 export function CreateReferralForm({ providerId, providerName, onClose, referrerEmail, referrerName }: CreateReferralFormProps) {
@@ -47,15 +49,28 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
   const [clientPhone,      setClientPhone]      = useState('');
   const [clientEmail,      setClientEmail]      = useState('');
 
+  // Accident / case details
+  const [dateOfAccident,  setDateOfAccident]  = useState('');
+
   // Referral details
-  const [caseNumber,       setCaseNumber]       = useState('');
-  const [requestedService, setRequestedService] = useState('');
-  const [urgency,          setUrgency]          = useState<ReferralUrgencyValue>('Normal');
+  const [caseNumber,      setCaseNumber]      = useState('');
+  const [urgency,         setUrgency]         = useState<ReferralUrgencyValue>('Normal');
+  const [serviceType,     setServiceType]     = useState('General Referral');
+  const [treatmentTypeId, setTreatmentTypeId] = useState('');
   const [notes,            setNotes]            = useState('');
+
+  const [treatmentTypes,   setTreatmentTypes]   = useState<TreatmentType[]>([]);
 
   const [loading,          setLoading]          = useState(false);
   const [error,            setError]            = useState<string | null>(null);
   const [fieldErrors,      setFieldErrors]      = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    fetch('/api/careconnect/api/treatment-types')
+      .then(r => r.ok ? r.json() : [])
+      .then((data: TreatmentType[]) => setTreatmentTypes(data))
+      .catch(() => {});
+  }, []);
 
   function validate(): boolean {
     const errs: Record<string, string> = {};
@@ -63,8 +78,14 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
     if (!clientLastName.trim())  errs.clientLastName  = 'Last name is required';
     if (!clientPhone.trim())      errs.clientPhone = 'Phone is required';
     else if (!isValidPhone(clientPhone)) errs.clientPhone = 'Enter a valid 10-digit phone number';
-    if (!clientEmail.trim())     errs.clientEmail     = 'Email is required';
-    if (!requestedService)       errs.requestedService = 'Requested service is required';
+    if (!clientEmail.trim())     errs.clientEmail = 'Email is required';
+    if (!dateOfAccident)         errs.dateOfAccident = 'Date of accident is required';
+    else if (!isValidIsoDate(dateOfAccident)) errs.dateOfAccident = 'Enter a valid date';
+    else if (!hasReasonableYear(dateOfAccident)) errs.dateOfAccident = 'Please enter a valid year (1900 or later)';
+    else if (new Date(dateOfAccident) > new Date()) errs.dateOfAccident = 'Date of accident cannot be in the future';
+    if (clientDob && !isValidIsoDate(clientDob)) errs.clientDob = 'Enter a valid date of birth';
+    else if (clientDob && !hasReasonableYear(clientDob)) errs.clientDob = 'Please enter a valid year (1900 or later)';
+    else if (clientDob && new Date(clientDob) > new Date()) errs.clientDob = 'Date of birth cannot be in the future';
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -84,8 +105,10 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
       clientPhone:      stripPhone(clientPhone),
       clientEmail:      clientEmail.trim(),
       caseNumber:       caseNumber.trim() || undefined,
-      requestedService,
+      dateOfAccident:   dateOfAccident || undefined,
+      requestedService: serviceType || undefined,
       urgency,
+      treatmentTypeId:  treatmentTypeId || undefined,
       notes:            notes.trim() || undefined,
       referrerEmail:    referrerEmail || undefined,
       referrerName:     referrerName  || undefined,
@@ -111,6 +134,18 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
       setLoading(false);
     }
   }
+
+  const hasClientPhoneValue   = clientPhone.trim().length > 0;
+  const hasInvalidClientPhone = hasClientPhoneValue && !isValidPhone(clientPhone);
+
+  const canSubmit =
+    !!clientFirstName.trim() &&
+    !!clientLastName.trim() &&
+    hasClientPhoneValue && !hasInvalidClientPhone &&
+    !!clientEmail.trim() &&
+    !!dateOfAccident &&
+    (!dateOfAccident || (isValidIsoDate(dateOfAccident) && hasReasonableYear(dateOfAccident) && new Date(dateOfAccident) <= new Date())) &&
+    (!clientDob || (isValidIsoDate(clientDob) && hasReasonableYear(clientDob) && new Date(clientDob) <= new Date()));
 
   function InputError({ field }: { field: string }) {
     return fieldErrors[field]
@@ -189,9 +224,45 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                   <input
                     type="date"
                     value={clientDob}
-                    onChange={e => setClientDob(e.target.value)}
+                    min="1900-01-01"
+                    max={new Date().toISOString().split('T')[0]}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setClientDob(v);
+                      if (v && isValidIsoDate(v) && !hasReasonableYear(v))
+                        setFieldErrors(fe => ({ ...fe, clientDob: 'Please enter a valid year (1900 or later)' }));
+                      else if (v && isValidIsoDate(v) && new Date(v) > new Date())
+                        setFieldErrors(fe => ({ ...fe, clientDob: 'Date of birth cannot be in the future' }));
+                      else
+                        setFieldErrors(fe => ({ ...fe, clientDob: '' }));
+                    }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
+                  <InputError field="clientDob" />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date of accident <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={dateOfAccident}
+                    min="1900-01-01"
+                    max={new Date().toISOString().split('T')[0]}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setDateOfAccident(v);
+                      if (v && isValidIsoDate(v) && !hasReasonableYear(v))
+                        setFieldErrors(fe => ({ ...fe, dateOfAccident: 'Please enter a valid year (1900 or later)' }));
+                      else if (v && isValidIsoDate(v) && new Date(v) > new Date())
+                        setFieldErrors(fe => ({ ...fe, dateOfAccident: 'Date of accident cannot be in the future' }));
+                      else
+                        setFieldErrors(fe => ({ ...fe, dateOfAccident: '' }));
+                    }}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <InputError field="dateOfAccident" />
                 </div>
 
                 <div>
@@ -203,8 +274,15 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                     value={clientPhone}
                     placeholder="(555) 555-5555"
                     onChange={e => { setClientPhone(formatPhoneInput(e.target.value)); setFieldErrors(fe => ({ ...fe, clientPhone: '' })); }}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                      hasInvalidClientPhone
+                        ? 'border-red-300 focus:ring-red-400'
+                        : 'border-gray-300 focus:ring-primary'
+                    }`}
                   />
+                  {hasInvalidClientPhone && (
+                    <p className="text-xs text-red-500 mt-1">Phone number must be 10 digits.</p>
+                  )}
                   <InputError field="clientPhone" />
                 </div>
 
@@ -230,18 +308,14 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
               </legend>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Requested service <span className="text-red-500">*</span>
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Type of service</label>
                   <select
-                    value={requestedService}
-                    onChange={e => { setRequestedService(e.target.value); setFieldErrors(fe => ({ ...fe, requestedService: '' })); }}
+                    value={serviceType}
+                    onChange={e => setServiceType(e.target.value)}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
                   >
-                    <option value="">Select a service…</option>
-                    {SERVICES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
-                  <InputError field="requestedService" />
                 </div>
 
                 <div>
@@ -252,6 +326,18 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
                   >
                     {URGENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Type of treatment</label>
+                  <select
+                    value={treatmentTypeId}
+                    onChange={e => setTreatmentTypeId(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                  >
+                    <option value="">None</option>
+                    {treatmentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
 
@@ -291,8 +377,8 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
               </button>
               <button
                 type="submit"
-                disabled={loading}
-                className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-60 transition-opacity"
+                disabled={loading || !canSubmit}
+                className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
               >
                 {loading ? 'Creating…' : 'Create Referral'}
               </button>

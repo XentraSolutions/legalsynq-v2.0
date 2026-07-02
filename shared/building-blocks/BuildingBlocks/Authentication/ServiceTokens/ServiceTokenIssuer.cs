@@ -22,7 +22,7 @@ public sealed class ServiceTokenIssuer : IServiceTokenIssuer
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.SigningKey);
 
-    public string IssueToken(string tenantId, string? actorUserId = null)
+    public string IssueToken(string tenantId, string? actorUserId = null, string? audience = null)
     {
         if (!IsConfigured)
             throw new InvalidOperationException(
@@ -56,7 +56,7 @@ public sealed class ServiceTokenIssuer : IServiceTokenIssuer
 
         var jwt = new JwtSecurityToken(
             issuer: _options.Issuer,
-            audience: _options.Audience,
+            audience: string.IsNullOrWhiteSpace(audience) ? _options.Audience : audience,
             claims: claims,
             notBefore: now,
             expires: now.AddMinutes(lifetime),

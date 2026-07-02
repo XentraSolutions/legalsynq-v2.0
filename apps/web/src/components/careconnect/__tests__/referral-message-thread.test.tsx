@@ -18,7 +18,7 @@ const EXISTING_COMMENT = {
   senderType: 'referrer',
   senderName: 'Sarah Johnson',
   message: 'Can you see this patient this week?',
-  createdAt: '2026-06-09T10:00:00Z',
+  createdAtUtc: '2026-06-09T10:00:00Z',
 };
 
 function ok<T>(data: T) {
@@ -96,6 +96,20 @@ describe('ReferralMessageThread', () => {
     expect(screen.getByText('No messages yet. Start the conversation with the referring party below.')).toBeInTheDocument();
   });
 
+  test('hides the composer in read-only mode', () => {
+    render(
+      <ReferralMessageThread
+        referralId="ref-1"
+        initialComments={[]}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByText('No messages yet.')).toBeInTheDocument();
+    expect(screen.getByText('Tenant Admin view only. Messaging is disabled on this referral.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send Message' })).not.toBeInTheDocument();
+  });
+
   test('shows validation for blank message', async () => {
     const user = userEvent.setup();
     render(<ReferralMessageThread referralId="ref-1" initialComments={[]} />);
@@ -111,7 +125,7 @@ describe('ReferralMessageThread', () => {
       senderType: 'provider',
       senderName: 'Dr. Gray',
       message: 'Yes, we can see them Thursday.',
-      createdAt: '2026-06-09T11:00:00Z',
+      createdAtUtc: '2026-06-09T11:00:00Z',
     }));
 
     const user = userEvent.setup();

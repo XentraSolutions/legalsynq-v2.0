@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CareConnect.Api\CareConnect.Api.csproj" />
     <ProjectReference Include="..\CareConnect.Application\CareConnect.Application.csproj" />
     <ProjectReference Include="..\CareConnect.Domain\CareConnect.Domain.csproj" />
     <ProjectReference Include="..\CareConnect.Infrastructure\CareConnect.Infrastructure.csproj" />

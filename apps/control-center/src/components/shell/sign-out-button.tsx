@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * Sign-out button — Client Component.
@@ -6,8 +6,8 @@
  */
 export function SignOutButton() {
   async function handleSignOut() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    window.location.href = '/login';
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
   }
 
   return (

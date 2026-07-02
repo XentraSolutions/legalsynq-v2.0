@@ -15,6 +15,17 @@ namespace Liens.Api.Endpoints;
 /// </summary>
 public static class CaseNoteEndpoints
 {
+    private sealed class LegacyCreateCaseNoteRequest
+    {
+        public string? caseId { get; init; }
+        public string? note { get; init; }
+    }
+
+    private sealed class LegacyDeleteCaseNoteRequest
+    {
+        public string? noteId { get; init; }
+    }
+
     private sealed class LegacyCaseNotesRequest
     {
         public string? caseId { get; init; }
@@ -72,6 +83,14 @@ public static class CaseNoteEndpoints
         // Legacy: POST /case/get-notes
         legacyGroup.MapPost("/get-notes", GetCaseNotesFilteredLegacy)
             .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy: POST /case/add-note
+        legacyGroup.MapPost("/add-note", AddCaseNoteLegacy)
+            .RequirePermission(LiensPermissions.CaseNoteManage);
+
+        // Legacy: POST /case/delete-note
+        legacyGroup.MapPost("/delete-note", DeleteCaseNoteLegacy)
+            .RequirePermission(LiensPermissions.CaseNoteManage);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -278,5 +297,79 @@ public static class CaseNoteEndpoints
         var userId   = RequireUserId(ctx);
         var note     = await svc.UnpinNoteAsync(tenantId, caseId, noteId, userId, ct);
         return Results.Ok(note);
+    }
+
+    private static async Task<IResult> AddCaseNoteLegacy(
+        LegacyCreateCaseNoteRequest request,
+        ILienCaseNoteService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.caseId, out var caseId) || string.IsNullOrWhiteSpace(request.note))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "caseId and note are required.",
+            });
+        }
+
+        await svc.CreateNoteAsync(
+            tenantId,
+            caseId,
+            userId,
+            new CreateCaseNoteRequest
+            {
+                Content = request.note.Trim(),
+                Category = "general",
+                CreatedByName = ctx.Email ?? ctx.Name ?? userId.ToString(),
+            },
+            ct);
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Note added successfully.",
+        });
+    }
+
+    private static async Task<IResult> DeleteCaseNoteLegacy(
+        LegacyDeleteCaseNoteRequest request,
+        ILienCaseNoteRepository repo,
+        ILienCaseNoteService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.noteId, out var noteId))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "noteId is required.",
+            });
+        }
+
+        var note = await repo.GetByIdAsync(tenantId, noteId, ct);
+        if (note is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No notes found",
+            });
+        }
+
+        await svc.DeleteNoteAsync(tenantId, note.CaseId, noteId, userId, ct);
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Note deleted successfully.",
+        });
     }
 }

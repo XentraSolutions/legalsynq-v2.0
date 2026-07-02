@@ -119,6 +119,7 @@ public class ReferralSearchDisplayNameTests
             new Mock<INotificationService>().Object,
             new Mock<INotificationRepository>().Object,
             new Mock<IReferralEmailService>().Object,
+            new Mock<IIdentityOrganizationService>().Object,
             new Mock<IServiceScopeFactory>().Object,
             new Mock<IOrganizationRelationshipResolver>().Object,
             new Mock<IAuditEventClient>().Object,

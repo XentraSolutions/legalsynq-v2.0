@@ -5,6 +5,7 @@ import {
   type ProductWorkflowRow,
   type WorkflowInstanceDetail,
 } from '@/lib/workflow';
+import { useTimezone } from '@/lib/use-timezone';
 import { WorkflowStatusBadge } from './workflow-status-badge';
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function WorkflowSummary({ row, detail }: Props) {
+  const timezone = useTimezone();
   const currentStep = detail?.currentStepKey ?? null;
   const startedAt = detail?.startedAt ?? row.createdAt;
   const updatedAt = row.updatedAt ?? detail?.updatedAt ?? null;
@@ -31,10 +33,10 @@ export function WorkflowSummary({ row, detail }: Props) {
         <span className="text-gray-800">{currentStep ?? '—'}</span>
       </Row>
       <Row label="Started">
-        <span className="text-gray-800">{formatTimestamp(startedAt)}</span>
+        <span className="text-gray-800">{formatTimestamp(startedAt, timezone)}</span>
       </Row>
       <Row label="Last update">
-        <span className="text-gray-800">{formatTimestamp(updatedAt)}</span>
+        <span className="text-gray-800">{formatTimestamp(updatedAt, timezone)}</span>
       </Row>
       {assignedTo && (
         <Row label="Assignee">

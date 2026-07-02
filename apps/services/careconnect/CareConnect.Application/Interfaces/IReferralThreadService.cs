@@ -4,11 +4,11 @@ namespace CareConnect.Application.Interfaces;
 
 public interface IReferralThreadService
 {
+    Task<PublicReferralAccessResult<PublicReferralThreadResponse>> GetPublicThreadAccessAsync(string token, CancellationToken ct = default);
     Task<PublicReferralThreadResponse?> GetPublicThreadAsync(string token, CancellationToken ct = default);
     Task<ReferralCommentResponse?> PostPublicCommentAsync(
         string token,
         string senderType,
-        string senderName,
         string message,
         CancellationToken ct = default);
 

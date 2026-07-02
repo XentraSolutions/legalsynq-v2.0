@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
+import { useTimezone } from '@/lib/use-timezone';
 import type { AttachmentSummary } from '@/types/careconnect';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -18,6 +19,8 @@ interface AttachmentPanelProps {
   entityType: 'referral' | 'appointment';
   entityId:   string;
   canUpload?: boolean;
+  readOnly?: boolean;
+  adminReferralView?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -28,11 +31,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, timezone: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day:   'numeric',
-    year:  'numeric',
+    month:    'short',
+    day:      'numeric',
+    year:     'numeric',
+    timeZone: timezone,
   });
 }
 
@@ -130,7 +134,14 @@ function FilterBar({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function AttachmentPanel({ entityType, entityId, canUpload = false }: AttachmentPanelProps) {
+export function AttachmentPanel({
+  entityType,
+  entityId,
+  canUpload = false,
+  readOnly = false,
+  adminReferralView = false,
+}: AttachmentPanelProps) {
+  const timezone = useTimezone();
   const [attachments, setAttachments]     = useState<AttachmentSummary[]>([]);
   const [loadError,   setLoadError]       = useState<string | null>(null);
   const [uploading,   setUploading]       = useState(false);
@@ -153,9 +164,11 @@ export function AttachmentPanel({ entityType, entityId, canUpload = false }: Att
   const apiList = useCallback(
     () =>
       entityType === 'referral'
-        ? careConnectApi.referralAttachments.list(entityId)
+        ? adminReferralView
+          ? careConnectApi.adminReferrals.listAttachments(entityId)
+          : careConnectApi.referralAttachments.list(entityId)
         : careConnectApi.appointmentAttachments.list(entityId),
-    [entityType, entityId],
+    [adminReferralView, entityType, entityId],
   );
 
   const apiUpload = useCallback(
@@ -169,9 +182,11 @@ export function AttachmentPanel({ entityType, entityId, canUpload = false }: Att
   const apiGetSignedUrl = useCallback(
     (attachmentId: string) =>
       entityType === 'referral'
-        ? careConnectApi.referralAttachments.getSignedUrl(entityId, attachmentId)
+        ? adminReferralView
+          ? careConnectApi.adminReferrals.getAttachmentSignedUrl(entityId, attachmentId)
+          : careConnectApi.referralAttachments.getSignedUrl(entityId, attachmentId)
         : careConnectApi.appointmentAttachments.getSignedUrl(entityId, attachmentId),
-    [entityType, entityId],
+    [adminReferralView, entityType, entityId],
   );
 
   // ── Load attachments on mount ───────────────────────────────────────────────
@@ -327,7 +342,7 @@ export function AttachmentPanel({ entityType, entityId, canUpload = false }: Att
               {uploading ? 'Uploading…' : '+ Upload'}
             </label>
           </div>
-        ) : (
+        ) : !readOnly ? (
           <span
             title="You don't have permission to upload documents"
             className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded bg-gray-50 text-gray-400 cursor-not-allowed select-none"
@@ -335,7 +350,7 @@ export function AttachmentPanel({ entityType, entityId, canUpload = false }: Att
           >
             + Upload
           </span>
-        )}
+        ) : null}
       </div>
 
       {/* Upload error */}
@@ -379,7 +394,7 @@ export function AttachmentPanel({ entityType, entityId, canUpload = false }: Att
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">{a.fileName}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {formatBytes(a.fileSizeBytes)} · {formatDate(a.createdAtUtc)}
+                    {formatBytes(a.fileSizeBytes)} · {formatDate(a.createdAtUtc, timezone)}
                     {a.scope && (
                       <span
                         className={[

@@ -34,11 +34,12 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
 
   const hasReferrerRole = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const hasReceiverRole = session.productRoles.includes(ProductRole.CareConnectReceiver);
+  const isTenantAdminView = session.isTenantAdmin && !session.isPlatformAdmin;
 
   // LSCC-01-002-02: Enforce the admin-controlled access model.
   // Only users with a CareConnect role may enter the referral flow.
   // Referral details are NOT rendered in the blocked state.
-  if (!hasReferrerRole && !hasReceiverRole) {
+  if (!hasReferrerRole && !hasReceiverRole && !isTenantAdminView) {
     const readiness = checkCareConnectReceiverAccess(session);
     return <ReferralAccessBlocked reason={readiness.reason} />;
   }
@@ -49,7 +50,9 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
   let commentsError: string | null = null;
 
   try {
-    referral = await careConnectServerApi.referrals.getById(id);
+    referral = isTenantAdminView
+      ? await careConnectServerApi.adminDashboard.getReferralById(id)
+      : await careConnectServerApi.referrals.getById(id);
   } catch (err) {
     if (err instanceof ServerApiError) {
       if (err.isNotFound) notFound();
@@ -63,13 +66,17 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
     }
   }
 
-  if (referral) {
+  if (referral && !isTenantAdminView) {
     try {
       comments = await careConnectServerApi.referrals.getComments(id);
     } catch (err) {
-      commentsError = err instanceof ServerApiError
-        ? err.message
-        : 'Failed to load messages.';
+      if (err instanceof ServerApiError) {
+        commentsError = err.isForbidden
+          ? 'You do not have access to this referral conversation.'
+          : err.message;
+      } else {
+        commentsError = 'Failed to load messages.';
+      }
     }
   }
 
@@ -112,44 +119,50 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
           <ReferralPageHeader referral={referral} />
 
           {/* 2. Primary action area */}
-          <ReferralStatusActions
-            referral={referral}
-            isReceiver={isReceiverOfReferral}
-            isReferrer={isReferrerOfReferral}
-          />
+          {!isTenantAdminView && (
+            <ReferralStatusActions
+              referral={referral}
+              isReceiver={isReceiverOfReferral}
+              isReferrer={isReferrerOfReferral}
+            />
+          )}
 
           {/* LSCC-01-001-01: Book appointment prompt removed.
               Appointment scheduling is decoupled from referral status.
               Referrers can book via the provider availability page at any time. */}
 
-          {/* 3. Referral details — body only (header rendered above) */}
+          {/* 3. Referral details — body only (header rendered above). Treatment type editing is inline. */}
           <ReferralDetailPanel referral={referral} hideHeader />
 
           {/* 3b. Documents — CC2-INT-B03 */}
           <AttachmentPanel
             entityType="referral"
             entityId={referral.id}
-            canUpload={session.isPlatformAdmin || session.isTenantAdmin}
+            canUpload={!isTenantAdminView && (session.isPlatformAdmin || session.isTenantAdmin)}
+            readOnly={isTenantAdminView || (!session.isPlatformAdmin && !session.isTenantAdmin)}
+            adminReferralView={isTenantAdminView}
           />
 
-          <ReferralMessageThread
-            referralId={referral.id}
-            initialComments={comments}
-            initialError={commentsError}
-          />
+          {!isTenantAdminView && (
+            <ReferralMessageThread
+              referralId={referral.id}
+              initialComments={comments}
+              initialError={commentsError}
+            />
+          )}
 
           {/* 4. Delivery / access controls — referrers only */}
-          {isReferrerOfReferral && <ReferralDeliveryCard referral={referral} />}
+          {!isTenantAdminView && isReferrerOfReferral && <ReferralDeliveryCard referral={referral} />}
 
-          {/* 5. Audit timeline — referrers only */}
-          {isReferrerOfReferral && <ReferralAuditTimeline referralId={referral.id} />}
+          {/* 5. Operational audit timeline */}
+          <ReferralAuditTimeline referralId={referral.id} />
 
           {/* 5b. Activity / status history — all roles */}
           <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
               Activity
             </h3>
-            <ReferralTimeline referralId={referral.id} />
+            <ReferralTimeline referralId={referral.id} adminView={isTenantAdminView} />
           </div>
         </>;
       })()}

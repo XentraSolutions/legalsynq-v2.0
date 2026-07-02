@@ -73,8 +73,15 @@ export function parseDateRangeParams(
 /** Validate that a string looks like yyyy-MM-dd and is a real calendar date. */
 export function isValidIsoDate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, day] = s.split('-').map(Number);
   const d = new Date(s + 'T00:00:00');
-  return !isNaN(d.getTime());
+  if (isNaN(d.getTime())) return false;
+  return d.getFullYear() === y && d.getMonth() + 1 === m && d.getDate() === day;
+}
+
+export function hasReasonableYear(s: string): boolean {
+  const y = parseInt(s.split('-')[0], 10);
+  return y >= 1900;
 }
 
 /** Format yyyy-MM-dd for display (e.g. "Mar 1, 2026"). */

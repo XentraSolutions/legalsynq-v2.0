@@ -383,6 +383,113 @@ public class ReferralEmailServiceTests
             Times.Exactly(2));
     }
 
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_UsesLegacyReferralLink_ForPendingProvider()
+    {
+        var notifications = new Mock<INotificationRepository>();
+        var producer = new Mock<INotificationsProducer>();
+        producer
+            .Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        CareConnectNotification? providerNotification = null;
+        notifications
+            .Setup(n => n.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Callback<CareConnectNotification, CancellationToken>((notification, _) =>
+            {
+                if (notification.RecipientType == NotificationRecipientType.Provider)
+                    providerNotification = notification;
+            })
+            .ReturnsAsync(true);
+        notifications
+            .Setup(n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new ReferralEmailService(
+            notifications.Object,
+            producer.Object,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ReferralToken:Secret"] = TestSecret,
+                    ["AppBaseUrl"] = TestBaseUrl,
+                })
+                .Build(),
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
+            NullLogger<ReferralEmailService>.Instance);
+
+        var referral = BuildReferral(referrerEmail: "referrer@example.com");
+        var provider = BuildProvider();
+
+        await service.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None);
+
+        Assert.NotNull(providerNotification);
+        Assert.Contains("/referrals/thread?token=", providerNotification!.Message);
+    }
+
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_UsesViewLink_ForActiveProvider()
+    {
+        var notifications = new Mock<INotificationRepository>();
+        var producer = new Mock<INotificationsProducer>();
+        producer
+            .Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        CareConnectNotification? providerNotification = null;
+        notifications
+            .Setup(n => n.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Callback<CareConnectNotification, CancellationToken>((notification, _) =>
+            {
+                if (notification.RecipientType == NotificationRecipientType.Provider)
+                    providerNotification = notification;
+            })
+            .ReturnsAsync(true);
+        notifications
+            .Setup(n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new ReferralEmailService(
+            notifications.Object,
+            producer.Object,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ReferralToken:Secret"] = TestSecret,
+                    ["AppBaseUrl"] = TestBaseUrl,
+                })
+                .Build(),
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
+            NullLogger<ReferralEmailService>.Instance);
+
+        var referral = BuildReferral(referrerEmail: "referrer@example.com");
+        var provider = BuildProvider();
+        provider.LinkOrganization(Guid.CreateVersion7());
+
+        await service.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None);
+
+        Assert.NotNull(providerNotification);
+        Assert.Contains("/referrals/thread?token=", providerNotification!.Message);
+    }
+
     private static Referral BuildReferral(string? referrerEmail = null)
         => Referral.Create(
             tenantId:                   Guid.CreateVersion7(),

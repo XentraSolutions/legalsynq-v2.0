@@ -36,6 +36,8 @@ namespace CareConnect.Api.Endpoints;
 // Direct-to-service requests bypassing the gateway → rejected at Layer 1 (no gateway secret).
 public static class PublicNetworkEndpoints
 {
+    private const string DefaultPublicReferralService = "General Referral";
+
     public static void MapPublicNetworkEndpoints(this WebApplication app)
     {
         // All public routes share the /api/public/network prefix.
@@ -338,12 +340,16 @@ public static class PublicNetworkEndpoints
                     tenantId.Value,
                     referralId,
                     userId: null,
+                    callerOrgId: null,
+                    callerEmail: null,
+                    isAdmin: false,
                     stream,
                     file.FileName,
-                    file.ContentType,
+                    file.ContentType ?? "application/octet-stream",
                     file.Length,
                     uploadReq,
-                    ct);
+                    ct,
+                    bypassAccessCheck: true);
 
                 logger.LogInformation(
                     "Public referral document uploaded: ReferralId={ReferralId} AttachmentId={AttachmentId} File={FileName}",
@@ -370,12 +376,13 @@ public static class PublicNetworkEndpoints
         // checks whether the law firm's email already has active portal access in
         // this tenant.
         //
-        // Response: { hasPortalAccess: bool }
-        //   true  → show "Login to CareConnect to view your referrals"
-        //   false → show the default enrollment CTA
+        // Response: { hasPortalAccess: bool, status: string }
+        //   active_in_tenant           → login CTA
+        //   existing_user_other_tenant → link-account CTA
+        //   no_account                 → default enrollment CTA
         //
         // Delegates the tenant-aware user lookup to the Identity service. Any
-        // infrastructure failure → hasPortalAccess = false (safe default).
+        // infrastructure failure → no_account / hasPortalAccess = false (safe default).
         app.MapGet("/api/public/referrer-status", async (
             string?                    email,
             HttpContext                 http,
@@ -388,10 +395,18 @@ public static class PublicNetworkEndpoints
                 return Results.StatusCode(403);
 
             if (string.IsNullOrWhiteSpace(email))
-                return Results.Ok(new { hasPortalAccess = false });
+                return Results.Ok(new
+                {
+                    hasPortalAccess = false,
+                    status = ReferrerPortalAccessStatuses.NoAccount,
+                });
 
             var status = await identityOrgs.GetReferrerPortalAccessStatusAsync(tenantId.Value, email.Trim(), ct);
-            return Results.Ok(new { hasPortalAccess = status == ReferrerPortalAccessStatuses.ActiveInTenant });
+            return Results.Ok(new
+            {
+                hasPortalAccess = status == ReferrerPortalAccessStatuses.ActiveInTenant,
+                status,
+            });
         })
         .AllowAnonymous()
         .RequireRateLimiting("referrer-status-limit");
@@ -484,6 +499,27 @@ public static class PublicNetworkEndpoints
                 }
             }
 
+            // CC-PORTAL-ACCOUNT-CHECK: Block public referrals from senders who already
+            // have an active CareConnect portal account on this tenant.
+            // They should log in and use the authenticated referral flow instead.
+            if (!string.IsNullOrWhiteSpace(req.SenderEmail))
+            {
+                var portalStatus = await identityOrgs.GetReferrerPortalAccessStatusAsync(
+                    tenantId.Value, req.SenderEmail.Trim(), ct);
+                if (portalStatus == ReferrerPortalAccessStatuses.ActiveInTenant)
+                {
+                    logger.LogWarning(
+                        "Public referral rejected: sender email has active portal access " +
+                        "(tenantContext={TenantId}).",
+                        tenantId.Value);
+                    return Results.Conflict(new
+                    {
+                        message = "This email address is already associated with an active CareConnect account. Please log in to submit referrals.",
+                        code    = "ACTIVE_ACCOUNT_EXISTS",
+                    });
+                }
+            }
+
             // Input validation
             var errors = ValidatePublicReferralRequest(req);
             if (errors.Count > 0)
@@ -526,15 +562,6 @@ public static class PublicNetworkEndpoints
 
             // Map to the internal CreateReferralRequest.
             // ReferrerName/ReferrerEmail drive the signed-token email notification flow.
-            // Assemble structured notes: user-supplied notes + address + dates of accident.
-            var notesParts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(req.Notes))
-                notesParts.Add(req.Notes.Trim());
-            if (!string.IsNullOrWhiteSpace(req.PatientAddress))
-                notesParts.Add($"Patient Address: {req.PatientAddress.Trim()}");
-            if (req.PatientDateOfAccident.HasValue)
-                notesParts.Add($"Date of Accident: {req.PatientDateOfAccident.Value:yyyy-MM-dd}");
-
             var createReq = new CreateReferralRequest
             {
                 ProviderId              = req.ProviderId,
@@ -546,11 +573,18 @@ public static class PublicNetworkEndpoints
                                             ? req.PatientDateOfBirth.Value.ToDateTime(TimeOnly.MinValue)
                                             : null,
                 RequestedService        = string.IsNullOrWhiteSpace(req.ServiceType)
-                                            ? "General Referral"
+                                            ? DefaultPublicReferralService
                                             : req.ServiceType.Trim(),
-                Urgency                 = Referral.ValidUrgencies.Normal,
-                Notes                   = notesParts.Count > 0 ? string.Join("\n", notesParts) : null,
-                ReferrerName            = req.SenderName.Trim(),
+                Urgency                 = !string.IsNullOrWhiteSpace(req.Urgency) && Referral.ValidUrgencies.All.Contains(req.Urgency)
+                                            ? req.Urgency
+                                            : Referral.ValidUrgencies.Normal,
+                TreatmentTypeId         = req.TreatmentTypeId,
+                DateOfAccident          = req.PatientDateOfAccident,
+                Notes                   = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
+                ReferrerFirstName       = req.SenderFirstName.Trim(),
+                ReferrerLastName        = req.SenderLastName?.Trim(),
+                ReferrerFirmName        = req.SenderFirmName?.Trim(),
+                ReferrerPhone           = req.SenderPhone?.Trim(),
                 ReferrerEmail           = req.SenderEmail.Trim(),
                 ReferringOrganizationId = null,   // public — no org context
                 ReceivingOrganizationId = null,
@@ -738,10 +772,13 @@ public static class PublicNetworkEndpoints
         if (req.ProviderId == Guid.Empty)
             errors["providerId"] = "A valid provider ID is required.";
 
-        if (string.IsNullOrWhiteSpace(req.SenderName) || req.SenderName.Trim().Length < 2)
-            errors["senderName"] = "Your name is required (minimum 2 characters).";
-        else if (req.SenderName.Length > 200)
-            errors["senderName"] = "Name must not exceed 200 characters.";
+        if (string.IsNullOrWhiteSpace(req.SenderFirstName))
+            errors["senderFirstName"] = "Your first name is required.";
+        else if (req.SenderFirstName.Length > 100)
+            errors["senderFirstName"] = "First name must not exceed 100 characters.";
+
+        if (!string.IsNullOrWhiteSpace(req.SenderLastName) && req.SenderLastName.Length > 100)
+            errors["senderLastName"] = "Last name must not exceed 100 characters.";
 
         if (string.IsNullOrWhiteSpace(req.SenderEmail))
             errors["senderEmail"] = "Your email address is required.";
@@ -768,11 +805,15 @@ public static class PublicNetworkEndpoints
 
         if (!req.PatientDateOfBirth.HasValue)
             errors["patientDateOfBirth"] = "Patient date of birth is required.";
+        else if (req.PatientDateOfBirth.Value.Year < 1900)
+            errors["patientDateOfBirth"] = "Please enter a valid year (1900 or later).";
         else if (req.PatientDateOfBirth.Value > DateOnly.FromDateTime(DateTime.UtcNow))
             errors["patientDateOfBirth"] = "Date of birth cannot be in the future.";
 
         if (!req.PatientDateOfAccident.HasValue)
             errors["patientDateOfAccident"] = "Date of accident is required.";
+        else if (req.PatientDateOfAccident.Value.Year < 1900)
+            errors["patientDateOfAccident"] = "Please enter a valid year (1900 or later).";
         else if (req.PatientDateOfAccident.Value > DateOnly.FromDateTime(DateTime.UtcNow))
             errors["patientDateOfAccident"] = "Date of accident cannot be in the future.";
 

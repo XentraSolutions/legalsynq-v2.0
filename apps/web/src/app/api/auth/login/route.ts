@@ -78,6 +78,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
   }
 
+  if (email !== email.trim()) {
+    return NextResponse.json({ message: 'Invalid credentials.' }, { status: 401 });
+  }
+
   const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
   const incomingHost = rawHost.split(':')[0].toLowerCase();
   const rawSubdomain = extractRawSubdomain(rawHost);
@@ -144,7 +148,7 @@ export async function POST(request: NextRequest) {
 
   const outgoingBody = JSON.stringify({
     tenantCode: resolveByEmail ? null : resolvedTenantCode,
-    email,
+    email: email.trim(),
     password,
     subdomain: rawSubdomain,
     tenantId: resolvedTenantId,

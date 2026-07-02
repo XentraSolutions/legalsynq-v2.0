@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PublicNetworkView } from '../public-network-view';
 import type { PublicNetworkDetail } from '@/lib/public-network-api';
+import type { PrefillLawFirm } from '../public-network-view';
 
 vi.mock('next/dynamic', () => ({
   default: () => {
@@ -59,6 +60,11 @@ function jsonResponse(body: unknown): Response {
 
 describe('PublicNetworkView', () => {
   const originalFetch = global.fetch;
+  const authenticatedLawFirm: PrefillLawFirm = {
+    firmName: 'Acme Injury Law',
+    email: 'intake@firm.example',
+    contactName: 'Jane Intake',
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,7 +76,7 @@ describe('PublicNetworkView', () => {
       }
 
       if (url.includes('/api/public/careconnect/api/public/referrals')) {
-        return jsonResponse([{ referralId: 'ref-1', providerId: 'provider-1' }]);
+        return jsonResponse({ referralId: 'ref-1', providerId: 'provider-1' });
       }
 
       if (url.includes('/api/public/careconnect/api/public/referrer-status')) {
@@ -102,7 +108,8 @@ describe('PublicNetworkView', () => {
 
     await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
     await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
-    await user.type(screen.getByPlaceholderText('Jane Doe'), 'Jane Doe');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
     const phoneInputs = screen.getAllByPlaceholderText('(555) 555-5555');
     expect(phoneInputs).toHaveLength(2);
 
@@ -122,6 +129,367 @@ describe('PublicNetworkView', () => {
     expect(loginCta).toHaveAttribute('href', loginUrl);
     await waitFor(() =>
       expect(screen.getByText('You already have portal access')).toBeInTheDocument(),
+    );
+  });
+
+  test('public referral flow sends General Referral when no specific service is selected', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrals')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { serviceType?: string };
+        expect(body.serviceType).toBe('General Referral');
+        return jsonResponse({ referralId: 'ref-1', providerId: 'provider-1' });
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrer-status')) {
+        return jsonResponse({ hasPortalAccess: false });
+      }
+
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const { container } = render(
+      <PublicNetworkView
+        detail={DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select provider' }));
+
+    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
+    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
+    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    expect(dateInputs).toHaveLength(2);
+    fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
+    fireEvent.change(dateInputs[1], { target: { value: '2024-01-15' } });
+
+    await user.click(screen.getByRole('button', { name: 'Send Referral' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm & Send' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/public/careconnect/api/public/referrals',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
+  test('public referral flow sends split contact first/last name as senderFirstName/senderLastName', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrals')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          senderFirstName?: string;
+          senderLastName?: string;
+        };
+        expect(body.senderFirstName).toBe('Pat');
+        expect(body.senderLastName).toBe('Paralegal');
+        return jsonResponse({ referralId: 'ref-1', providerId: 'provider-1' });
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrer-status')) {
+        return jsonResponse({ hasPortalAccess: false });
+      }
+
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const { container } = render(
+      <PublicNetworkView
+        detail={DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select provider' }));
+
+    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
+    await user.type(screen.getByPlaceholderText('John'), 'Pat');
+    await user.type(screen.getAllByPlaceholderText('Doe')[0], 'Paralegal');
+    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
+    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
+    fireEvent.change(dateInputs[1], { target: { value: '2024-01-15' } });
+
+    await user.click(screen.getByRole('button', { name: 'Send Referral' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm & Send' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/public/careconnect/api/public/referrals',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
+  test('public referral flow falls back senderFirstName to the firm name when contact name is left blank', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrals')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          senderFirstName?: string;
+          senderLastName?: string;
+        };
+        expect(body.senderFirstName).toBe('Acme Injury Law');
+        expect(body.senderLastName).toBeUndefined();
+        return jsonResponse({ referralId: 'ref-1', providerId: 'provider-1' });
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrer-status')) {
+        return jsonResponse({ hasPortalAccess: false });
+      }
+
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const { container } = render(
+      <PublicNetworkView
+        detail={DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select provider' }));
+
+    // Contact first/last name left blank — senderFirstName should fall back to the firm name.
+    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
+    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
+    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
+    fireEvent.change(dateInputs[1], { target: { value: '2024-01-15' } });
+
+    await user.click(screen.getByRole('button', { name: 'Send Referral' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm & Send' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/public/careconnect/api/public/referrals',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
+  test('public referral flow sends patient first/last name as separate fields', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrals')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          patientFirstName?: string;
+          patientLastName?: string;
+        };
+        expect(body.patientFirstName).toBe('Prince');
+        expect(body.patientLastName).toBe('Rogers');
+        return jsonResponse({ referralId: 'ref-1', providerId: 'provider-1' });
+      }
+
+      if (url.includes('/api/public/careconnect/api/public/referrer-status')) {
+        return jsonResponse({ hasPortalAccess: false });
+      }
+
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const { container } = render(
+      <PublicNetworkView
+        detail={DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select provider' }));
+
+    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
+    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Jane'), 'Prince');
+    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Rogers');
+    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    expect(dateInputs).toHaveLength(2);
+    fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
+    fireEvent.change(dateInputs[1], { target: { value: '2024-01-15' } });
+
+    await user.click(screen.getByRole('button', { name: 'Send Referral' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm & Send' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/public/careconnect/api/public/referrals',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
+  test('authenticated referral flow shows an error when document upload fails after referral creation', async () => {
+    const user = userEvent.setup();
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse({ userId: 'user-1' });
+      }
+
+      if (url.includes('/api/careconnect/api/treatment-types')) {
+        return jsonResponse([]);
+      }
+
+      if (url.includes('/api/careconnect/api/referrals') && !url.includes('/attachments/upload')) {
+        return jsonResponse({ id: 'ref-1', providerId: 'provider-1' });
+      }
+
+      if (url.includes('/api/careconnect/api/referrals/ref-1/attachments/upload')) {
+        return new Response(JSON.stringify({ detail: 'Forbidden upload for test.' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    }) as typeof fetch;
+
+    const { container } = render(
+      <PublicNetworkView
+        detail={DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+        prefillLawFirm={authenticatedLawFirm}
+        referrerScopeSignature="signed-scope"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select provider' }));
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Doe'), 'Doe');
+    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[0], '5555555555');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    expect(dateInputs).toHaveLength(2);
+    fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
+    fireEvent.change(dateInputs[1], { target: { value: '2024-01-15' } });
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).not.toBeNull();
+    await user.upload(fileInput!, new File(['test'], 'records.pdf', { type: 'application/pdf' }));
+
+    await user.click(screen.getByRole('button', { name: 'Send Referral' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm & Send' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Submission failed')).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/Referral created, but the document upload failed:/)).toBeInTheDocument();
+    expect(screen.queryByText('Referral Sent!')).not.toBeInTheDocument();
+  });
+
+  test('authenticated referral flow uses the referral dto id when building the upload URL', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse({ userId: 'user-1' });
+      }
+
+      if (url.includes('/api/careconnect/api/treatment-types')) {
+        return jsonResponse([]);
+      }
+
+      if (url.includes('/api/careconnect/api/referrals') && !url.includes('/attachments/upload')) {
+        return jsonResponse({ id: 'ref-42', providerId: 'provider-1' });
+      }
+
+      if (url.includes('/api/careconnect/api/referrals/ref-42/attachments/upload')) {
+        return jsonResponse({ id: 'att-1' });
+      }
+
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const { container } = render(
+      <PublicNetworkView
+        detail={DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+        prefillLawFirm={authenticatedLawFirm}
+        referrerScopeSignature="signed-scope"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select provider' }));
+    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Doe'), 'Doe');
+    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[0], '5555555555');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
+    fireEvent.change(dateInputs[1], { target: { value: '2024-01-15' } });
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).not.toBeNull();
+    await user.upload(fileInput!, new File(['test'], 'records.pdf', { type: 'application/pdf' }));
+
+    await user.click(screen.getByRole('button', { name: 'Send Referral' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm & Send' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Referral Sent!')).toBeInTheDocument(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/careconnect/api/referrals/ref-42/attachments/upload'),
+      expect.objectContaining({ method: 'POST' }),
     );
   });
 });

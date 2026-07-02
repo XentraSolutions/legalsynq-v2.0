@@ -20,10 +20,11 @@ public class ProviderAvailabilityServiceTests
     private readonly Guid _facilityId = Guid.CreateVersion7();
 
     private readonly Mock<IProviderRepository>         _providerRepo = new();
+    private readonly Mock<IReferralRepository>         _referralRepo = new();
     private readonly Mock<IAppointmentSlotRepository>  _slotRepo     = new();
 
     private ProviderService BuildSut() =>
-        new ProviderService(_providerRepo.Object, _slotRepo.Object, NullLogger<ProviderService>.Instance);
+        new ProviderService(_providerRepo.Object, _referralRepo.Object, _slotRepo.Object, NullLogger<ProviderService>.Instance);
 
     private Provider MakeProvider() => Provider.Create(
         _tenantId, "Dr. Test", null, "test@example.com",

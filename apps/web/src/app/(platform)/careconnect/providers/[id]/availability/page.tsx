@@ -7,6 +7,7 @@ import { useSession } from '@/hooks/use-session';
 import { ProductRole } from '@/types';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
+import { useTimezone } from '@/lib/use-timezone';
 import { AvailabilityList } from '@/components/careconnect/availability-list';
 import { BookingPanel } from '@/components/careconnect/booking-panel';
 import type { AvailabilitySlot, ProviderAvailabilityResponse, ReferralDetail } from '@/types/careconnect';
@@ -41,6 +42,7 @@ export default function AvailabilityPage() {
   const params       = useParams<{ id: string }>();
   const router       = useRouter();
   const searchParams = useSearchParams();
+  const timezone     = useTimezone();
 
   const { session, isLoading: sessionLoading } = useSession();
   const isReferrer = session?.productRoles.includes(ProductRole.CareConnectReferrer) ?? false;
@@ -231,6 +233,7 @@ export default function AvailabilityPage() {
           slots={availability.slots}
           selectedSlotId={selectedSlot?.id ?? null}
           onSelectSlot={handleSlotSelect}
+          timezone={timezone}
         />
       )}
 

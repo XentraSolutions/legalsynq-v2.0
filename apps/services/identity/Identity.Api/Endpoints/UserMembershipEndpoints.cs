@@ -1,6 +1,8 @@
 using Identity.Application.Interfaces;
 using Identity.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using BuildingBlocks.Authorization;
+using System.Text.Json;
 
 namespace Identity.Api.Endpoints;
 
@@ -150,67 +152,7 @@ public static class UserMembershipEndpoints
         //
         // Auth: X-Provisioning-Token (same pattern as assign-tenant / assign-roles).
 
-        group.MapGet("/portal-access", async (
-            HttpContext       httpContext,
-            Guid?             tenantId,
-            string?           email,
-            IdentityDbContext db,
-            IConfiguration    configuration,
-            ILoggerFactory    loggerFactory,
-            CancellationToken ct) =>
-        {
-            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.PortalAccess");
-
-            if (!ValidateProvisioningToken(httpContext, configuration, log, "portal-access"))
-                return Results.Unauthorized();
-
-            if (tenantId is null || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
-                return Results.Ok(new { status = "no_account" });
-
-            var emailNorm = email.Trim().ToLowerInvariant();
-            var emailUser = await db.Users
-                .AsNoTracking()
-                .Where(u => u.Email.Trim().ToLower() == emailNorm)
-                .Select(u => new { u.Id, u.IsActive, u.PasswordHash })
-                .FirstOrDefaultAsync(ct);
-
-            if (emailUser is null)
-                return Results.Ok(new { status = "no_account" });
-
-            var hasTenantMembership = await db.UserTenants
-                .AsNoTracking()
-                .AnyAsync(ut => ut.UserId == emailUser.Id
-                             && ut.TenantId == tenantId.Value
-                             && ut.IsActive,
-                    ct);
-
-            var hasTenantLawFirmMembership = await db.UserOrganizationMemberships
-                .AsNoTracking()
-                .Where(m => m.UserId == emailUser.Id && m.IsActive)
-                .Join(
-                    db.Organizations.AsNoTracking().Where(o => (o.TenantId == tenantId.Value || o.TenantId == null)
-                                                             && o.OrgType == "LAW_FIRM"
-                                                             && o.IsActive),
-                    m => m.OrganizationId,
-                    o => o.Id,
-                    (_, _) => true)
-                .AnyAsync(ct);
-
-            if (emailUser.IsActive
-                && emailUser.PasswordHash != string.Empty
-                && hasTenantMembership
-                && hasTenantLawFirmMembership)
-            {
-                return Results.Ok(new { status = "active_in_tenant" });
-            }
-
-            return Results.Ok(new
-            {
-                status = hasTenantMembership
-                    ? "no_account"
-                    : "existing_user_other_tenant"
-            });
-        });
+        group.MapGet("/portal-access", HandlePortalAccessAsync);
 
         // ── GET /api/internal/users/enrollment-prefill?tenantId=xxx&email=xxx ─
         //
@@ -394,6 +336,89 @@ public static class UserMembershipEndpoints
             return Results.Ok(new { isTenantOwner = isOwner });
         });
     }
+
+    private static async Task<IResult> HandlePortalAccessAsync(
+        HttpContext httpContext,
+        Guid? tenantId,
+        string? email,
+        IdentityDbContext db,
+        IEffectiveAccessService effectiveAccessService,
+        IConfiguration configuration,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.PortalAccess");
+
+        if (!ValidateProvisioningToken(httpContext, configuration, log, "portal-access"))
+            return Results.Unauthorized();
+
+        if (tenantId is null || tenantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+            return CreatePortalAccessResult("no_account");
+
+        var emailNorm = email.Trim().ToLowerInvariant();
+        var emailUser = await db.Users
+            .AsNoTracking()
+            .Where(u => u.Email.Trim().ToLower() == emailNorm)
+            .Select(u => new { u.Id, u.IsActive, u.PasswordHash })
+            .FirstOrDefaultAsync(ct);
+
+        if (emailUser is null)
+            return CreatePortalAccessResult("no_account");
+
+        var hasTenantMembership = await db.UserTenants
+            .AsNoTracking()
+            .AnyAsync(ut => ut.UserId == emailUser.Id
+                         && ut.TenantId == tenantId.Value
+                         && ut.IsActive,
+                ct);
+        var hasActivePortalAccess = false;
+
+        if (emailUser.IsActive
+            && !string.IsNullOrWhiteSpace(emailUser.PasswordHash)
+            && hasTenantMembership)
+        {
+            var effectiveAccess = await effectiveAccessService.GetEffectiveAccessAsync(
+                tenantId.Value,
+                emailUser.Id,
+                ct);
+
+            hasActivePortalAccess = IsEligibleForCareConnectReferrerPortal(effectiveAccess);
+        }
+
+        if (hasActivePortalAccess)
+            return CreatePortalAccessResult("active_in_tenant");
+
+        return CreatePortalAccessResult(
+            hasTenantMembership
+                ? "no_account"
+                : "existing_user_other_tenant");
+    }
+
+    private static bool IsEligibleForCareConnectReferrerPortal(EffectiveAccessResult effectiveAccess)
+    {
+        if (effectiveAccess.TenantRoles.Count > 0)
+            return false;
+
+        var careConnectRoles = effectiveAccess.ProductRolesFlat
+            .Where(r => r.StartsWith(ProductCodes.SynqCareConnect + ":", StringComparison.OrdinalIgnoreCase))
+            .Select(r => r[(ProductCodes.SynqCareConnect.Length + 1)..])
+            .ToList();
+
+        if (careConnectRoles.Count == 0)
+            return false;
+
+        return careConnectRoles.All(role =>
+            string.Equals(role, ProductRoleCodes.CareConnectReceiver, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, ProductRoleCodes.CareConnectReferrer, StringComparison.OrdinalIgnoreCase))
+            && careConnectRoles.Any(role =>
+                string.Equals(role, ProductRoleCodes.CareConnectReferrer, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IResult CreatePortalAccessResult(string status) =>
+        Results.Text(
+            JsonSerializer.Serialize(new { status }),
+            "application/json",
+            statusCode: StatusCodes.Status200OK);
 
     // ── Shared token guard ────────────────────────────────────────────────────
 

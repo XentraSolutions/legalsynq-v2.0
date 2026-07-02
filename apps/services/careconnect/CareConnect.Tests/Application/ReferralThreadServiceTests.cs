@@ -55,6 +55,119 @@ public class ReferralThreadServiceTests
     }
 
     [Fact]
+    public async Task GetAuthenticatedCommentsAsync_NormalizesUnspecifiedCommentTimestampToUtc()
+    {
+        var referral = BuildReferral();
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var createdAt = new DateTime(2026, 6, 1, 10, 0, 0, DateTimeKind.Unspecified);
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new ReferralComment
+                {
+                    TenantId = referral.TenantId,
+                    ReferralId = referral.Id,
+                    SenderType = "provider",
+                    SenderName = "Dr. Gray",
+                    Message = "We can take this case.",
+                    CreatedAt = createdAt,
+                },
+            ]);
+
+        var sut = BuildService(repo, commentsRepo);
+
+        var result = await sut.GetAuthenticatedCommentsAsync(
+            TenantId,
+            referral.Id,
+            ReceivingOrgId,
+            callerEmail: null,
+            useGlobalLookup: true,
+            bypassParticipantCheck: false);
+
+        Assert.NotNull(result);
+        Assert.Single(result!);
+        Assert.Equal(DateTimeKind.Utc, result[0].CreatedAtUtc.Kind);
+        Assert.Equal(createdAt, result[0].CreatedAtUtc);
+    }
+
+    [Fact]
+    public async Task GetPublicThreadAccessAsync_ReturnsProviderPrefillFields()
+    {
+        var referral = BuildReferral(referringOrganizationId: null);
+        var provider = new ProviderStub
+        {
+            Name = "Dr. Gray",
+            OrganizationName = "Gray Clinic",
+            Email = "intake@gray.example",
+            AccessStage = ProviderAccessStage.Url,
+        }.ToDomain(null);
+        SetProvider(referral, provider);
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data);
+        Assert.Equal(provider.Id, result.Data!.ProviderId);
+        Assert.Equal("Gray Clinic", result.Data.ProviderName);
+        Assert.Equal("intake@gray.example", result.Data.ProviderEmail);
+        Assert.Equal("555-0101", result.Data.ProviderPhone);
+        Assert.Equal("123 Main", result.Data.ProviderAddressLine1);
+        Assert.Equal("Las Vegas", result.Data.ProviderCity);
+        Assert.Equal("NV", result.Data.ProviderState);
+        Assert.Equal("89101", result.Data.ProviderPostalCode);
+    }
+
+    [Fact]
+    public async Task GetPublicThreadAccessAsync_TreatsLegacyOrgLinkedProviderAsHavingAccount()
+    {
+        var referral = BuildReferral(referringOrganizationId: null);
+        var provider = new ProviderStub
+        {
+            Name = "Dr. Gray",
+            OrganizationName = "Gray Clinic",
+            Email = "intake@gray.example",
+            AccessStage = ProviderAccessStage.Url,
+        }.ToDomain(Guid.CreateVersion7());
+        SetProvider(referral, provider);
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data);
+        Assert.True(result.Data!.ProviderHasAccount);
+    }
+
+    [Fact]
     public async Task GetAuthenticatedCommentsAsync_ReturnsComments_ForPublicReferrerEmailMatch()
     {
         var referral = BuildReferral(referringOrganizationId: null);
@@ -211,6 +324,68 @@ public class ReferralThreadServiceTests
     }
 
     [Fact]
+    public async Task GetPublicThreadAccessAsync_WithTreatmentType_PopulatesNameInResponse()
+    {
+        var treatmentTypeId   = Guid.CreateVersion7();
+        var treatmentTypeName = "Physical Therapy";
+
+        var referral = BuildReferral(referringOrganizationId: null);
+        // Inject treatment type ID directly via reflection (domain keeps the setter private)
+        typeof(Referral).GetProperty(nameof(Referral.TreatmentTypeId))!
+            .SetValue(referral, treatmentTypeId,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null, null, null);
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+        repo.Setup(r => r.GetTreatmentTypeNameAsync(treatmentTypeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(treatmentTypeName);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data);
+        Assert.Equal(treatmentTypeId, result.Data!.TreatmentTypeId);
+        Assert.Equal(treatmentTypeName, result.Data.TreatmentTypeName);
+    }
+
+    [Fact]
+    public async Task GetPublicThreadAccessAsync_NoTreatmentType_LeavesFieldsNull()
+    {
+        var referral = BuildReferral(referringOrganizationId: null);
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data);
+        Assert.Null(result.Data!.TreatmentTypeId);
+        Assert.Null(result.Data.TreatmentTypeName);
+    }
+
+    [Fact]
     public async Task PostPublicCommentAsync_SendsNotification_ThroughSharedPath()
     {
         var referral = BuildReferral();
@@ -223,8 +398,8 @@ public class ReferralThreadServiceTests
         }.ToDomain(referral.ReceivingOrganizationId));
 
         var emailService = new Mock<IReferralEmailService>();
-        emailService.Setup(e => e.ValidateViewToken("valid-token"))
-            .Returns(new CareConnect.Application.DTOs.ViewTokenValidationResult(referral.Id, referral.TokenVersion));
+        emailService.Setup(e => e.ValidateViewTokenDetailed("valid-token"))
+            .Returns(CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
         emailService.Setup(e => e.SendCommentNotificationAsync(referral, It.IsAny<ReferralComment>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -239,7 +414,7 @@ public class ReferralThreadServiceTests
         var scopeFactory = BuildScopeFactory(emailService.Object);
         var sut = BuildService(repo, commentsRepo, emailService.Object, scopeFactory);
 
-        var result = await sut.PostPublicCommentAsync("valid-token", "referrer", "Sarah", "Checking status.");
+        var result = await sut.PostPublicCommentAsync("valid-token", "referrer", "Checking status.");
         await Task.Delay(50);
 
         Assert.NotNull(result);
@@ -286,7 +461,7 @@ public class ReferralThreadServiceTests
             .ReturnsAsync([]);
 
         emailService ??= Mock.Of<IReferralEmailService>(e =>
-            e.ValidateViewToken(It.IsAny<string>()) == null);
+            e.ValidateViewTokenDetailed(It.IsAny<string>()) == CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Failure(CareConnect.Application.DTOs.ReferralTokenFailureReasons.Malformed));
         scopeFactory ??= BuildScopeFactory(emailService);
 
         return new ReferralThreadService(
@@ -294,6 +469,7 @@ public class ReferralThreadServiceTests
             comments.Object,
             attachments.Object,
             emailService,
+            Mock.Of<IIdentityOrganizationService>(),
             scopeFactory,
             NullLogger<ReferralThreadService>.Instance);
     }

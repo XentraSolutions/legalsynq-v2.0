@@ -52,7 +52,7 @@ public static class AttachmentEndpoints
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var isAdmin  = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
 
-            var result = await service.GetByReferralAsync(tenantId, referralId, ctx.OrgId, isAdmin, ct);
+            var result = await service.GetByReferralAsync(tenantId, referralId, ctx.OrgId, isAdmin, ct, ctx.Email);
             return Results.Ok(result);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
@@ -105,16 +105,19 @@ public static class AttachmentEndpoints
                 tenantId,
                 referralId,
                 ctx.UserId,
+                ctx.OrgId,
+                ctx.Email,
+                isAdmin: ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase),
                 stream,
                 file.FileName,
-                file.ContentType,
+                file.ContentType ?? "application/octet-stream",
                 file.Length,
                 uploadRequest,
                 ct);
 
             return Results.Created($"/api/referrals/{referralId}/attachments/{result.Id}", result);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
         .DisableAntiforgery();
 
@@ -123,7 +126,7 @@ public static class AttachmentEndpoints
         app.MapGet("/api/referrals/{referralId:guid}/attachments/{attachmentId:guid}/url", async (
             Guid referralId,
             Guid attachmentId,
-            [FromQuery] bool download,
+            [FromQuery] bool? download,
             IReferralAttachmentService service,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
@@ -140,7 +143,7 @@ public static class AttachmentEndpoints
                     callerOrgId:   ctx.OrgId,
                     callerOrgType: ctx.OrgType,
                     isAdmin:       isAdmin,
-                    isDownload:    download,
+                    isDownload:    download ?? false,
                     ct:            ct);
 
                 if (result is null)
@@ -236,7 +239,7 @@ public static class AttachmentEndpoints
         app.MapGet("/api/appointments/{appointmentId:guid}/attachments/{attachmentId:guid}/url", async (
             Guid appointmentId,
             Guid attachmentId,
-            [FromQuery] bool download,
+            [FromQuery] bool? download,
             IAppointmentAttachmentService service,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
@@ -253,7 +256,7 @@ public static class AttachmentEndpoints
                     callerOrgId:   ctx.OrgId,
                     callerOrgType: ctx.OrgType,
                     isAdmin:       isAdmin,
-                    isDownload:    download,
+                    isDownload:    download ?? false,
                     ct:            ct);
 
                 if (result is null)

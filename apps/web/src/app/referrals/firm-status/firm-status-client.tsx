@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useRef } from 'react';
+import { useState, useEffect, useTransition, useRef } from 'react';
 import { postReferrerComment } from './actions';
 import { ReferrerPortalAccessStatuses, type ReferrerPortalAccessStatusValue } from '@/types/careconnect';
 
@@ -9,21 +9,27 @@ interface Comment {
   senderType: string;
   senderName: string;
   message:    string;
-  createdAt:  string;
+  createdAtUtc: string;
 }
 
 interface ThreadData {
-  referralId:    string;
-  tenantId:      string;
-  status:        string;
-  clientName:    string;
-  service:       string;
-  providerName:  string;
-  referrerName:  string | null;
-  referrerEmail: string | null;
-  notes:         string | null;
-  createdAt:     string;
-  comments:      Comment[];
+  referralId:         string;
+  tenantId:           string;
+  status:             string;
+  clientName:         string;
+  service:            string;
+  urgency?:           string;
+  providerName:       string;
+  referrerFirmName?:  string | null;
+  referrerName:       string | null;
+  referrerEmail:      string | null;
+  referrerPhone?:     string | null;
+  notes:              string | null;
+  dateOfAccident?:    string;
+  treatmentTypeId?:   string;
+  treatmentTypeName?: string;
+  createdAtUtc:       string;
+  comments:           Comment[];
 }
 
 interface Props {
@@ -34,24 +40,34 @@ interface Props {
   enrollToken:     string | null;
 }
 
-type StatusKey = 'New' | 'NewOpened' | 'Accepted' | 'Rejected' | 'Cancelled' | 'InProgress';
+type StatusKey = 'New' | 'NewOpened' | 'Accepted' | 'Completed' | 'Declined' | 'Rejected' | 'Cancelled' | 'InProgress';
 
 const STATUS_CONFIG: Record<StatusKey, { label: string; color: string; bg: string; border: string; step: number }> = {
   New:        { label: 'Awaiting Provider Response', color: '#92400e', bg: '#fffbeb', border: '#fcd34d', step: 1 },
   NewOpened:  { label: 'Opened by Provider',         color: '#1e40af', bg: '#eff6ff', border: '#93c5fd', step: 1 },
   InProgress: { label: 'In Progress',                color: '#5b21b6', bg: '#f5f3ff', border: '#c4b5fd', step: 2 },
   Accepted:   { label: 'Accepted by Provider',       color: '#065f46', bg: '#ecfdf5', border: '#6ee7b7', step: 3 },
+  Completed:  { label: 'Completed',                  color: '#065f46', bg: '#ecfdf5', border: '#6ee7b7', step: 4 },
+  Declined:   { label: 'Declined by Provider',       color: '#991b1b', bg: '#fef2f2', border: '#fca5a5', step: -1 },
   Rejected:   { label: 'Declined by Provider',       color: '#991b1b', bg: '#fef2f2', border: '#fca5a5', step: -1 },
   Cancelled:  { label: 'Cancelled',                  color: '#374151', bg: '#f9fafb', border: '#d1d5db', step: -1 },
 };
 
-function formatDate(iso: string) {
+function formatDate(iso: string, timezone: string) {
   try {
     return new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true,
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone,
     });
   } catch { return iso; }
+}
+
+function resolveBrowserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
 }
 
 const s: Record<string, React.CSSProperties> = {
@@ -87,12 +103,13 @@ const s: Record<string, React.CSSProperties> = {
 
 function StatusTracker({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status as StatusKey] ?? STATUS_CONFIG.New;
-  const declined = status === 'Rejected' || status === 'Cancelled';
+  const declined = status === 'Rejected' || status === 'Declined' || status === 'Cancelled';
 
   const steps = [
     { label: 'Submitted',         done: true },
     { label: 'Awaiting Response', done: cfg.step >= 2 || declined },
-    { label: declined ? cfg.label : 'Accepted', done: cfg.step >= 3 || declined },
+    { label: 'Accepted',          done: cfg.step >= 3 || declined },
+    { label: declined ? cfg.label : 'Completed', done: cfg.step >= 4 || declined },
   ];
 
   return (
@@ -152,15 +169,17 @@ function StatusTracker({ status }: { status: string }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, enrollToken }: Props) {
-  const [comments,  setComments]  = useState<Comment[]>(data.comments);
-  const [senderName, setSenderName] = useState(data.referrerName ?? '');
-  const [message,   setMessage]   = useState('');
+  const [timezone, setTimezone] = useState('UTC');
+  const [comments,  setComments] = useState<Comment[]>(data.comments);
+  const [message,   setMessage]  = useState('');
   const [formError, setFormError] = useState('');
   const [sent,      setSent]      = useState(false);
   const [isPending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const enrollUrl = enrollToken ? `/enroll?token=${enrollToken}` : '/enroll';
+  useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
+
+  const enrollUrl = enrollToken ? `/enroll?token=${enrollToken}` : '#';
   const hasPortalAccess = portalAccessStatus === ReferrerPortalAccessStatuses.ActiveInTenant;
   const isExistingCrossTenantUser = portalAccessStatus === ReferrerPortalAccessStatuses.ExistingUserOtherTenant;
   const portalCta = isExistingCrossTenantUser
@@ -178,19 +197,23 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
         title: 'See all your referrals in one place',
         description: 'Create a CareConnect portal account to track all referral statuses, view full patient records, communicate with providers, and generate reports.',
         primaryLabel: 'Get full portal access',
-        secondaryLabel: 'Already have access? Log in',
+        secondaryLabel: null,
         accent: '#1e3a8a',
         bg: '#fff',
         border: '#1a56db',
         note: null,
       };
 
+  useEffect(() => {
+    setTimezone(resolveBrowserTimezone());
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
     setSent(false);
     startTransition(async () => {
-      const result = await postReferrerComment(token, senderName, message);
+      const result = await postReferrerComment(token, message);
       if (!result.success) { setFormError(result.error ?? 'An error occurred.'); return; }
       if (result.comment) setComments(prev => [...prev, result.comment!]);
       setMessage('');
@@ -218,7 +241,10 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             <FieldBlock label="Patient"   value={data.clientName} />
             <FieldBlock label="Service"   value={data.service} />
             <FieldBlock label="Provider"  value={data.providerName} />
-            <FieldBlock label="Submitted" value={formatDate(data.createdAt)} />
+            <FieldBlock label="Submitted" value={formatDate(data.createdAtUtc, timezone)} />
+            <FieldBlock label="Urgency" value={data.urgency ?? '—'} />
+            <FieldBlock label="Type of Treatment" value={data.treatmentTypeName ?? '—'} />
+            <FieldBlock label="Date of Accident" value={data.dateOfAccident ?? '—'} />
           </div>
         </div>
 
@@ -250,11 +276,26 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
                   </p>
                 )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 160 }}>
-                <a href={enrollUrl} style={{ ...s.btnPrimary, background: portalCta.border }}>{portalCta.primaryLabel}</a>
-                <a href={loginUrl} style={{ ...s.btnOutline, color: portalCta.border, borderColor: portalCta.border, fontSize: 12, padding: '7px 16px' }}>
-                  {portalCta.secondaryLabel}
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column' as const,
+                gap: 8,
+                minWidth: 160,
+                alignItems: portalCta.secondaryLabel ? 'stretch' : 'center',
+                justifyContent: 'center',
+              }}>
+                <a
+                  href={enrollUrl}
+                  onClick={!enrollToken ? (e: React.MouseEvent) => e.preventDefault() : undefined}
+                  style={{ ...s.btnPrimary, background: portalCta.border }}
+                >
+                  {portalCta.primaryLabel}
                 </a>
+                {portalCta.secondaryLabel && (
+                  <a href={loginUrl} style={{ ...s.btnOutline, color: portalCta.border, borderColor: portalCta.border, fontSize: 12, padding: '7px 16px' }}>
+                    {portalCta.secondaryLabel}
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -263,16 +304,16 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
         {/* Message thread */}
         <div style={s.card}>
           <h2 style={s.cardTitle}>Messages</h2>
-          {comments.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 14, color: '#94a3b8', fontStyle: 'italic' }}>
-              No messages yet. Use the form below to send a message to the provider.
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {comments.map(c => <CommentBubble key={c.id} comment={c} />)}
-            </div>
-          )}
-          <div ref={bottomRef} />
+          <div style={{ height: 420, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {comments.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 14, color: '#94a3b8', fontStyle: 'italic' }}>
+                No messages yet. Use the form below to send a message to the provider.
+              </p>
+            ) : (
+              comments.map(c => <CommentBubble key={c.id} comment={c} timezone={timezone} />)
+            )}
+            <div ref={bottomRef} />
+          </div>
         </div>
 
         {/* Send message form — referrer side */}
@@ -289,18 +330,6 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             </div>
           )}
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Your Name *</label>
-              <input
-                style={s.input}
-                type="text"
-                value={senderName}
-                onChange={e => setSenderName(e.target.value)}
-                placeholder="e.g. Sarah Johnson"
-                maxLength={200}
-                required
-              />
-            </div>
             <div style={{ marginBottom: 18 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Message *</label>
               <textarea
@@ -337,10 +366,11 @@ function FieldBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CommentBubble({ comment }: { comment: Comment }) {
+function CommentBubble({ comment, timezone }: { comment: Comment; timezone: string }) {
   const isProvider = comment.senderType === 'provider';
+  const isSelf = !isProvider;
   return (
-    <div style={{ display: 'flex', flexDirection: isProvider ? 'row-reverse' : 'row', gap: 10, alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', flexDirection: isSelf ? 'row-reverse' : 'row', gap: 10, alignItems: 'flex-start' }}>
       <div style={{
         width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
         background: isProvider ? '#dbeafe' : '#fef3c7',
@@ -351,14 +381,14 @@ function CommentBubble({ comment }: { comment: Comment }) {
         {comment.senderName.charAt(0).toUpperCase()}
       </div>
       <div style={{ maxWidth: '80%' }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isProvider ? 'row-reverse' : 'row', marginBottom: 4 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexDirection: isSelf ? 'row-reverse' : 'row', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAt)}</span>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAtUtc, timezone)}</span>
         </div>
         <div style={{
-          background: isProvider ? '#eff6ff' : '#fafaf9',
-          border: `1px solid ${isProvider ? '#bfdbfe' : '#e7e5e4'}`,
-          borderRadius: isProvider ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
+          background: isProvider ? '#eff6ff' : '#fef3c7',
+          border: `1px solid ${isProvider ? '#bfdbfe' : '#fde68a'}`,
+          borderRadius: isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
           padding: '10px 14px',
         }}>
           <p style={{ margin: 0, fontSize: 14, color: '#111827', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{comment.message}</p>

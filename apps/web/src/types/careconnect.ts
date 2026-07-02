@@ -79,7 +79,7 @@ export interface ReferralComment {
   senderType: string;
   senderName: string;
   message:    string;
-  createdAt:  string;
+  createdAtUtc: string;
 }
 
 // ── Referral ──────────────────────────────────────────────────────────────────
@@ -111,6 +111,13 @@ export const ReferralUrgency = {
 } as const;
 export type ReferralUrgencyValue = typeof ReferralUrgency[keyof typeof ReferralUrgency];
 
+export const URGENCY_OPTIONS: { value: ReferralUrgencyValue; label: string }[] = [
+  { value: 'Low',       label: 'Low'       },
+  { value: 'Normal',    label: 'Normal'    },
+  { value: 'Urgent',    label: 'Urgent'    },
+  { value: 'Emergency', label: 'Emergency' },
+];
+
 export interface ReferralSummary {
   id:               string;
   tenantId:         string;
@@ -121,19 +128,27 @@ export interface ReferralSummary {
   clientDob?:       string;
   clientPhone:      string;
   clientEmail:      string;
-  caseNumber?:      string;
-  requestedService: string;
-  urgency:          string;
-  status:           string;
-  notes?:           string;
-  createdAtUtc:     string;
-  updatedAtUtc:     string;
+  caseNumber?:       string;
+  requestedService?: string;
+  urgency:           string;
+  status:            string;
+  notes?:            string;
+  declineNotes?:     string;
+  dateOfAccident?:   string;
+  createdAtUtc:      string;
+  updatedAtUtc:      string;
   // LSCC-005-01: org context
   referringOrganizationId?: string;
   receivingOrganizationId?:  string;
   organizationRelationshipId?: string;
+  referringOrganizationName?: string | null;
+  referrerName?: string | null;
+  referrerEmail?: string | null;
   /** Backend supplies the tenant name for the Network column, or '-' when unavailable. */
   networkName?: string | null;
+  // Type of Treatment — set by Referrer at creation.
+  treatmentTypeId?:   string;
+  treatmentTypeName?: string;
 }
 
 // LSCC-005-01 / LSCC-005-02: notification delivery record
@@ -192,14 +207,16 @@ export interface CreateReferralRequest {
   clientDob?:       string;
   clientPhone:      string;
   clientEmail:      string;
-  caseNumber?:      string;
-  requestedService: string;
-  urgency:          string;
-  notes?:           string;
+  caseNumber?:       string;
+  requestedService?: string;
+  urgency:           string;
+  treatmentTypeId?:  string;
+  dateOfAccident?:   string;
+  notes?:            string;
   referrerScopeSignature?: string;
   /** LSCC-005: referrer identity for the notification email */
-  referrerEmail?:   string;
-  referrerName?:    string;
+  referrerEmail?:    string;
+  referrerName?:     string;
 }
 
 export interface ReferralSearchParams {
@@ -509,16 +526,21 @@ export interface BlockedProviderLogPage {
 export interface AdminReferralItem {
   id:                      string;
   tenantId:                string;
+  providerId:              string;
   /** Backend may supply either tenantName or networkName for the Network column. */
   tenantName?:             string | null;
   networkName?:            string | null;
   status:                  string;
   urgency:                 string;
+  clientFirstName:         string;
+  clientLastName:          string;
+  caseNumber?:             string | null;
   requestedService:        string;
   providerName:            string | null;
   providerEmail:           string | null;
   referringOrganizationId: string | null;
   receivingOrganizationId: string | null;
+  referringOrganizationName?: string | null;
   referrerName:            string | null;
   referrerEmail:           string | null;
   createdAtUtc:            string;
@@ -621,7 +643,8 @@ export interface ProviderSearchResult {
 export interface AddProviderToNetworkRequest {
   existingProviderId?: string;
   newProvider?: {
-    name:                string;
+    firstName:           string;
+    lastName:            string;
     organizationName?:   string;
     email:               string;
     phone:               string;

@@ -17,6 +17,9 @@ public interface ICaseService
         int limit,
         string? sortBy,
         string? sortDirection,
+        Guid? lawFirmOrgId = null,
+        string? accidentTypeId = null,
+        string? caseManagerId = null,
         CancellationToken ct = default);
 
     Task<CaseResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);

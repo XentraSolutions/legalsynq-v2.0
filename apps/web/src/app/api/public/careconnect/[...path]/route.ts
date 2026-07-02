@@ -155,6 +155,8 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
   const gatewayPath = `/careconnect/${pathSegments.join('/')}`;
   const qs = request.nextUrl.searchParams.toString();
   const url = `${GATEWAY_URL}${gatewayPath}${qs ? `?${qs}` : ''}`;
+  const incomingContentType = request.headers.get('Content-Type') ?? '';
+  const isMultipart = incomingContentType.startsWith('multipart/form-data');
 
   // Resolve tenant ID server-side from the Host header — never from the client-supplied header.
   const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? request.nextUrl.host;
@@ -169,14 +171,20 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
   const sig = signTenantId(tenantId);
 
   const reqHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
     'X-Tenant-Id': tenantId,
     ...(sig ? { 'X-Tenant-Id-Sig': sig } : {}),
   };
 
-  let body: string | undefined;
+  let body: ArrayBuffer | string | undefined;
   if (!['GET', 'HEAD'].includes(request.method)) {
-    try { body = await request.text(); } catch { /* empty */ }
+    if (isMultipart) {
+      // Preserve the full multipart boundary and raw bytes for document uploads.
+      reqHeaders['Content-Type'] = incomingContentType;
+      try { body = await request.arrayBuffer(); } catch { /* empty body */ }
+    } else {
+      reqHeaders['Content-Type'] = 'application/json';
+      try { body = await request.text(); } catch { /* empty body */ }
+    }
   }
 
   let gatewayRes: Response;

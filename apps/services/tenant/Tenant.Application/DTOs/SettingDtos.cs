@@ -19,3 +19,4 @@ public record UpsertSettingRequest(
     string  SettingValue,
     string  ValueType,
     string? ProductKey = null);
+

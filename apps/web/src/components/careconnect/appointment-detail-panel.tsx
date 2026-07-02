@@ -2,9 +2,11 @@ import type { AppointmentDetail } from '@/types/careconnect';
 import { StatusBadge } from './status-badge';
 import { AppointmentTimeline } from './appointment-timeline';
 import { formatPhoneDisplay } from '@/lib/phone';
+import { formatDateOnly } from '@/lib/format-date';
 
 interface AppointmentDetailPanelProps {
   appointment: AppointmentDetail;
+  timezone:    string;
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -25,29 +27,30 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function formatDateTime(iso: string | undefined): string {
+function formatDateTime(iso: string | undefined, timezone: string): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('en-US', {
-    weekday: 'short',
-    month:   'long',
-    day:     'numeric',
-    year:    'numeric',
-    hour:    'numeric',
-    minute:  '2-digit',
-    hour12:  true,
+    weekday:  'short',
+    month:    'long',
+    day:      'numeric',
+    year:     'numeric',
+    hour:     'numeric',
+    minute:   '2-digit',
+    hour12:   true,
+    timeZone: timezone,
   });
 }
 
-function formatDate(iso: string | undefined): string {
+function formatDateOnlyField(iso: string | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', {
+  return formatDateOnly(iso, {
     month: 'long',
-    day:   'numeric',
-    year:  'numeric',
+    day: 'numeric',
+    year: 'numeric',
   });
 }
 
-export function AppointmentDetailPanel({ appointment: a }: AppointmentDetailPanelProps) {
+export function AppointmentDetailPanel({ appointment: a, timezone }: AppointmentDetailPanelProps) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg">
       {/* Header */}
@@ -69,10 +72,10 @@ export function AppointmentDetailPanel({ appointment: a }: AppointmentDetailPane
           <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
             <Field label="Provider"      value={a.providerName} />
             <Field label="Service"       value={a.serviceType} />
-            <Field label="Scheduled"     value={formatDateTime(a.scheduledAtUtc)} />
+            <Field label="Scheduled"     value={formatDateTime(a.scheduledAtUtc, timezone)} />
             <Field label="Duration"      value={`${a.durationMinutes} minutes`} />
             {a.scheduledEndAtUtc && (
-              <Field label="Ends at"     value={formatDateTime(a.scheduledEndAtUtc)} />
+              <Field label="Ends at"     value={formatDateTime(a.scheduledEndAtUtc, timezone)} />
             )}
             {a.location && (
               <Field label="Location"    value={a.location} />
@@ -84,7 +87,7 @@ export function AppointmentDetailPanel({ appointment: a }: AppointmentDetailPane
         <Section title="Client">
           <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
             <Field label="Name"    value={`${a.clientFirstName} ${a.clientLastName}`} />
-            <Field label="DOB"     value={a.clientDob   ? formatDate(a.clientDob) : undefined} />
+            <Field label="DOB"     value={a.clientDob ? formatDateOnlyField(a.clientDob) : undefined} />
             <Field label="Phone"   value={formatPhoneDisplay(a.clientPhone)} />
             <Field label="Email"   value={a.clientEmail} />
           </dl>
@@ -113,7 +116,7 @@ export function AppointmentDetailPanel({ appointment: a }: AppointmentDetailPane
 
         {/* Status history */}
         <Section title="Status history">
-          <AppointmentTimeline history={a.statusHistory ?? []} />
+          <AppointmentTimeline history={a.statusHistory ?? []} timezone={timezone} />
         </Section>
       </div>
     </div>

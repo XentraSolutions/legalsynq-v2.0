@@ -21,6 +21,7 @@ import { ApiError } from "@/lib/api-client";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { TaskPanel } from "@/components/lien/task-panel";
 import { CaseTaskManager } from "@/components/lien/case-task-manager";
+import { useTimezone } from "@/lib/use-timezone";
 
 import { ConfirmDialog } from "@/components/lien/modal";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
@@ -106,6 +107,7 @@ export function CaseDetailClient({ id }: { id: string }) {
 
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
+  const timezone = useTimezone();
 
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [caseUpdates, setCaseUpdates] = useState<any | null>(null);
@@ -3778,7 +3780,7 @@ const NOTE_CATEGORY_COLORS: Record<string, string> = {
   "follow-up": "bg-amber-50 text-amber-600 border-amber-200",
 };
 
-function formatNoteDate(iso: string): string {
+function formatNoteDate(iso: string, timezone: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
   const now = new Date();
@@ -3796,10 +3798,11 @@ function formatNoteDate(iso: string): string {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: timezone,
   });
 }
 
-function formatNoteTimestamp(iso: string): string {
+function formatNoteTimestamp(iso: string, timezone: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
   return d.toLocaleString("en-US", {
@@ -3809,6 +3812,7 @@ function formatNoteTimestamp(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+    timeZone: timezone,
   });
 }
 
@@ -3840,6 +3844,7 @@ function avatarColor(name: string): string {
 function NotesTab({ caseId }: { caseId: string }) {
   const addToast = useLienStore((s) => s.addToast);
   const { session } = useSession();
+  const timezone = useTimezone();
 
   const [notes, setNotes] = useState<CaseNoteResponse[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
@@ -4252,6 +4257,7 @@ function NotesTab({ caseId }: { caseId: string }) {
                               weekday: "long",
                               month: "short",
                               day: "numeric",
+                              timeZone: timezone,
                             })}
                           </span>
                           <div className="flex-1 h-px bg-gray-100" />
@@ -4341,7 +4347,7 @@ function NotesTab({ caseId }: { caseId: string }) {
                                     className="text-[10px] text-gray-400 italic"
                                     title={
                                       note.updatedAtUtc
-                                        ? `Edited ${formatNoteTimestamp(note.updatedAtUtc)}`
+                                        ? `Edited ${formatNoteTimestamp(note.updatedAtUtc, timezone)}`
                                         : "Edited"
                                     }
                                   >
@@ -4350,9 +4356,12 @@ function NotesTab({ caseId }: { caseId: string }) {
                                 )}
                                 <span
                                   className="text-[11px] text-gray-400 ml-auto"
-                                  title={formatNoteTimestamp(note.createdAtUtc)}
+                                  title={formatNoteTimestamp(
+                                    note.createdAtUtc,
+                                    timezone,
+                                  )}
                                 >
-                                  {formatNoteDate(note.createdAtUtc)}
+                                  {formatNoteDate(note.createdAtUtc, timezone)}
                                 </span>
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button

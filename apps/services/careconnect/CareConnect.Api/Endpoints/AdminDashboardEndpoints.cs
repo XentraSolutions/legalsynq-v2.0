@@ -11,7 +11,9 @@
 // BLK-GOV-02: Uses AdminTenantScope helpers — replaces fragile inline ternaries.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using BuildingBlocks.Exceptions;
 using CareConnect.Application.Cache;
+using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
@@ -39,6 +41,26 @@ public static class AdminDashboardEndpoints
 
         routes
             .MapGet("/api/admin/referrals", GetAdminReferralsAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
+            .MapGet("/api/admin/appointments", GetAdminAppointmentsAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
+            .MapGet("/api/admin/referrals/{id:guid}", GetAdminReferralByIdAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
+            .MapGet("/api/admin/referrals/{id:guid}/history", GetAdminReferralHistoryAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
+            .MapGet("/api/admin/referrals/{referralId:guid}/attachments", GetAdminReferralAttachmentsAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        routes
+            .MapGet("/api/admin/referrals/{referralId:guid}/attachments/{attachmentId:guid}/url", GetAdminReferralAttachmentSignedUrlAsync)
             .RequireAuthorization(Policies.PlatformOrTenantAdmin);
 
         return routes;
@@ -204,13 +226,15 @@ public static class AdminDashboardEndpoints
     //   ?page=1&pageSize=25
     //   ?status=New|Accepted|InProgress|Completed|Declined|Cancelled
     //   ?tenantId=<guid>  (PlatformAdmin only; ignored for TenantAdmin)
-    //   ?since=<ISO-datetime>
+    //   ?since=<ISO-datetime> / ?createdFrom=<ISO-datetime>
+    //   ?createdTo=<ISO-datetime>
     //
     // BLK-GOV-02: PlatformWide scope applied; optional tenantId filter for PlatformAdmin.
     //             TenantAdmin callerTenantId override is always ignored for safety.
     private static async Task<IResult> GetAdminReferralsAsync(
         CareConnectDbContext    db,
         ITenantServiceClient    tenantClient,
+        IIdentityOrganizationService identityOrganizationService,
         ICurrentRequestContext  ctx,
         HttpContext             http,
         [FromQuery] int      page     = 1,
@@ -218,6 +242,8 @@ public static class AdminDashboardEndpoints
         [FromQuery] string?  status   = null,
         [FromQuery] Guid?    tenantId = null,
         [FromQuery] string?  since    = null,
+        [FromQuery] string?  createdFrom = null,
+        [FromQuery] string?  createdTo   = null,
         CancellationToken    ct       = default)
     {
         var scope = AdminTenantScope.PlatformWide(ctx, http);
@@ -240,8 +266,12 @@ public static class AdminDashboardEndpoints
         if (appliedTenantId.HasValue)
             query = query.Where(r => r.TenantId == appliedTenantId.Value);
 
-        if (since is not null && DateTime.TryParse(since, out var parsedSince))
-            query = query.Where(r => r.CreatedAtUtc >= parsedSince.ToUniversalTime());
+        var effectiveCreatedFrom = createdFrom ?? since;
+        if (effectiveCreatedFrom is not null && DateTime.TryParse(effectiveCreatedFrom, out var parsedCreatedFrom))
+            query = query.Where(r => r.CreatedAtUtc >= parsedCreatedFrom.ToUniversalTime());
+
+        if (createdTo is not null && DateTime.TryParse(createdTo, out var parsedCreatedTo))
+            query = query.Where(r => r.CreatedAtUtc <= parsedCreatedTo.ToUniversalTime());
 
         query = query.OrderByDescending(r => r.CreatedAtUtc);
 
@@ -253,8 +283,12 @@ public static class AdminDashboardEndpoints
             {
                 id                      = r.Id,
                 tenantId                = r.TenantId,
+                providerId              = r.ProviderId,
                 status                  = r.Status,
                 urgency                 = r.Urgency,
+                clientFirstName         = r.ClientFirstName,
+                clientLastName          = r.ClientLastName,
+                caseNumber              = r.CaseNumber,
                 requestedService        = r.RequestedService,
                 providerName            = r.Provider != null ? r.Provider.Name : null,
                 providerEmail           = r.Provider != null ? r.Provider.Email : null,
@@ -272,18 +306,42 @@ public static class AdminDashboardEndpoints
             tenantClient,
             ct);
 
+        var referringOrgIds = items
+            .Select(x => x.referringOrganizationId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        var referringOrgNameTasks = referringOrgIds.ToDictionary(
+            id => id,
+            id => identityOrganizationService.GetOrganizationNameAsync(id, ct));
+
+        await Task.WhenAll(referringOrgNameTasks.Values);
+
+        var referringOrgNames = referringOrgNameTasks.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.Result);
+
         var resultItems = items.Select(x => new
         {
             x.id,
             x.tenantId,
+            x.providerId,
             networkName = tenantDisplayNames.GetValueOrDefault(x.tenantId, ReferralTenantNameResolver.Fallback),
             x.status,
             x.urgency,
+            x.clientFirstName,
+            x.clientLastName,
+            x.caseNumber,
             x.requestedService,
             x.providerName,
             x.providerEmail,
             x.referringOrganizationId,
             x.receivingOrganizationId,
+            referringOrganizationName = x.referringOrganizationId.HasValue
+                ? referringOrgNames.GetValueOrDefault(x.referringOrganizationId.Value)
+                : null,
             x.referrerName,
             x.referrerEmail,
             x.createdAtUtc,
@@ -297,5 +355,239 @@ public static class AdminDashboardEndpoints
             page,
             pageSize,
         });
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // GET /api/admin/appointments
+    // ──────────────────────────────────────────────────────────────────────────
+    // Appointment monitor for admins. Mirrors GET /api/appointments but with
+    // tenant-admin visibility rules instead of participant-org scoping.
+    // PlatformAdmin: platform-wide view (optional ?tenantId filter).
+    // TenantAdmin: restricted to their own tenant only.
+    // Supports:
+    //   ?page=1&pageSize=25
+    //   ?status=Scheduled|Confirmed|Rescheduled|Completed|Cancelled|NoShow
+    //   ?tenantId=<guid>  (PlatformAdmin only; ignored for TenantAdmin)
+    //   ?providerId=<guid>
+    //   ?from=<ISO-datetime>
+    //   ?to=<ISO-datetime>
+    private static async Task<IResult> GetAdminAppointmentsAsync(
+        CareConnectDbContext    db,
+        ICurrentRequestContext  ctx,
+        HttpContext             http,
+        [FromQuery] int         page     = 1,
+        [FromQuery] int         pageSize = 25,
+        [FromQuery] string?     status   = null,
+        [FromQuery] Guid?       tenantId = null,
+        [FromQuery] Guid?       providerId = null,
+        [FromQuery] DateTime?   from     = null,
+        [FromQuery] DateTime?   to       = null,
+        CancellationToken       ct       = default)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = db.Appointments
+            .Include(a => a.Provider)
+            .Include(a => a.ServiceOffering)
+            .Include(a => a.Referral)
+            .AsNoTracking()
+            .AsQueryable();
+
+        var appliedTenantId = scope.IsPlatformWide ? tenantId : scope.TenantId;
+        if (appliedTenantId.HasValue)
+            query = query.Where(a => a.TenantId == appliedTenantId.Value);
+
+        var statusFilter = status;
+        if (string.Equals(statusFilter, "Pending", StringComparison.OrdinalIgnoreCase))
+            statusFilter = "Scheduled";
+
+        if (!string.IsNullOrWhiteSpace(statusFilter))
+            query = query.Where(a => a.Status == statusFilter);
+
+        if (providerId.HasValue)
+            query = query.Where(a => a.ProviderId == providerId.Value);
+
+        if (from.HasValue)
+            query = query.Where(a => a.ScheduledStartAtUtc >= from.Value.ToUniversalTime());
+
+        if (to.HasValue)
+            query = query.Where(a => a.ScheduledStartAtUtc <= to.Value.ToUniversalTime());
+
+        query = query.OrderBy(a => a.ScheduledStartAtUtc);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        var resultItems = items.Select(a => new
+        {
+            id              = a.Id,
+            referralId      = a.ReferralId,
+            providerId      = a.ProviderId,
+            providerName    = a.Provider?.Name ?? string.Empty,
+            scheduledAtUtc  = a.ScheduledStartAtUtc,
+            durationMinutes = Math.Max(0, (int)Math.Round((a.ScheduledEndAtUtc - a.ScheduledStartAtUtc).TotalMinutes)),
+            status          = a.Status,
+            serviceType     = a.ServiceOffering?.Name,
+            clientFirstName = a.Referral?.ClientFirstName ?? string.Empty,
+            clientLastName  = a.Referral?.ClientLastName ?? string.Empty,
+            caseNumber      = a.Referral?.CaseNumber,
+            createdAtUtc    = a.CreatedAtUtc,
+            updatedAtUtc    = a.UpdatedAtUtc,
+        });
+
+        return Results.Ok(new
+        {
+            items = resultItems,
+            page,
+            pageSize,
+            totalCount = total,
+        });
+    }
+
+    private static async Task<IResult> GetAdminReferralByIdAsync(
+        Guid                    id,
+        IReferralService        referralService,
+        ICurrentRequestContext  ctx,
+        HttpContext             http,
+        CancellationToken       ct)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        var effectiveTenantId = scope.TenantId ?? Guid.Empty;
+
+        try
+        {
+            var referral = await referralService.GetByIdAsync(
+                effectiveTenantId,
+                id,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            return Results.Ok(referral);
+        }
+        catch (NotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    private static async Task<IResult> GetAdminReferralHistoryAsync(
+        Guid                    id,
+        IReferralService        referralService,
+        ICurrentRequestContext  ctx,
+        HttpContext             http,
+        CancellationToken       ct)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        try
+        {
+            var referral = await referralService.GetByIdAsync(
+                scope.TenantId ?? Guid.Empty,
+                id,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            var history = await referralService.GetHistoryAsync(
+                referral.TenantId,
+                id,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            return Results.Ok(history);
+        }
+        catch (NotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    private static async Task<IResult> GetAdminReferralAttachmentsAsync(
+        Guid                        referralId,
+        IReferralService            referralService,
+        IReferralAttachmentService  attachmentService,
+        ICurrentRequestContext      ctx,
+        HttpContext                 http,
+        CancellationToken           ct)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        try
+        {
+            var referral = await referralService.GetByIdAsync(
+                scope.TenantId ?? Guid.Empty,
+                referralId,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            var attachments = await attachmentService.GetByReferralAsync(
+                referral.TenantId,
+                referralId,
+                ctx.OrgId,
+                isAdmin: true,
+                ct);
+
+            return Results.Ok(attachments);
+        }
+        catch (NotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    private static async Task<IResult> GetAdminReferralAttachmentSignedUrlAsync(
+        Guid                        referralId,
+        Guid                        attachmentId,
+        [FromQuery] bool?           download,
+        IReferralService            referralService,
+        IReferralAttachmentService  attachmentService,
+        ICurrentRequestContext      ctx,
+        HttpContext                 http,
+        CancellationToken           ct)
+    {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
+        try
+        {
+            var referral = await referralService.GetByIdAsync(
+                scope.TenantId ?? Guid.Empty,
+                referralId,
+                ct,
+                isPlatformAdmin: scope.IsPlatformWide);
+
+            var result = await attachmentService.GetSignedUrlAsync(
+                referral.TenantId,
+                referralId,
+                attachmentId,
+                callerOrgId: ctx.OrgId,
+                callerOrgType: ctx.OrgType,
+                isAdmin: true,
+                isDownload: download ?? false,
+                ct: ct);
+
+            if (result is null)
+                return Results.Problem("The document is not currently accessible.", statusCode: 503);
+
+            return Results.Ok(result);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Results.Forbid();
+        }
+        catch (NotFoundException)
+        {
+            return Results.NotFound();
+        }
     }
 }

@@ -4,7 +4,8 @@ import dynamic from 'next/dynamic';
 import { useState, useRef } from 'react';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { AccessStageBadge } from '@/components/careconnect/status-badge';
-import { formatPhoneInput, stripPhone } from '@/lib/phone';
+import { formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
+import { isValidUsZipCode } from '@/lib/address';
 import type {
   NetworkDetail,
   NetworkProviderItem,
@@ -47,7 +48,7 @@ const PROVIDER_TYPES = [
 ] as const;
 
 const EMPTY_FORM = {
-  name: '', organizationName: '', email: '', phone: '',
+  firstName: '', lastName: '', organizationName: '', email: '', phone: '',
   addressLine1: '', city: '', state: '', postalCode: '',
   npi: '', isActive: true, acceptingReferrals: true,
   categoryCodes: [] as string[],
@@ -78,6 +79,9 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
   const [addingId, setAddingId] = useState<string | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const hasInvalidPhone = newForm.phone.trim().length > 0 && !isValidPhone(newForm.phone);
+  const hasInvalidPostalCode = newForm.postalCode.trim().length > 0 && !isValidUsZipCode(newForm.postalCode);
 
   // ── Search ──────────────────────────────────────────────────────────────────
 
@@ -130,12 +134,14 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (hasInvalidPhone || hasInvalidPostalCode) return;
     setCreating(true);
     setCreateError(null);
     try {
       const { data } = await careConnectApi.networks.addProvider(network.id, {
         newProvider: {
-          name:                newForm.name.trim(),
+          firstName:           newForm.firstName.trim(),
+          lastName:            newForm.lastName.trim(),
           organizationName:    newForm.organizationName.trim() || undefined,
           email:               newForm.email.trim(),
           phone:               stripPhone(newForm.phone),
@@ -325,13 +331,23 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">First name *</label>
                 <input
                   required
-                  value={newForm.name}
-                  onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))}
+                  value={newForm.firstName}
+                  onChange={e => setNewForm(f => ({ ...f, firstName: e.target.value }))}
                   className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                  placeholder="Dr. Jane Smith"
+                  placeholder="Jane"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Last name *</label>
+                <input
+                  required
+                  value={newForm.lastName}
+                  onChange={e => setNewForm(f => ({ ...f, lastName: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                  placeholder="Smith"
                 />
               </div>
               <div>
@@ -361,9 +377,16 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
                   type="tel"
                   value={newForm.phone}
                   onChange={e => setNewForm(f => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
-                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                  className={`w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none ${
+                    hasInvalidPhone
+                      ? 'border-red-300 focus:border-red-400'
+                      : 'border-gray-300 focus:border-blue-500'
+                  }`}
                   placeholder="(555) 555-5555"
                 />
+                {hasInvalidPhone && (
+                  <p className="text-xs text-red-500 mt-1">Phone number must be 10 digits.</p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">NPI Number</label>
@@ -412,9 +435,16 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
                     required
                     value={newForm.postalCode}
                     onChange={e => setNewForm(f => ({ ...f, postalCode: e.target.value }))}
-                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                    className={`w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none ${
+                      hasInvalidPostalCode
+                        ? 'border-red-300 focus:border-red-400'
+                        : 'border-gray-300 focus:border-blue-500'
+                    }`}
                     placeholder="90210"
                   />
+                  {hasInvalidPostalCode && (
+                    <p className="text-xs text-red-500 mt-1">ZIP code must be 5 digits or 5+4 format.</p>
+                  )}
                 </div>
               </div>
             </div>

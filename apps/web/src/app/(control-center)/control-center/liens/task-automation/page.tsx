@@ -364,7 +364,7 @@ function CCRuleRow({
               </span>
             </div>
             <p className="text-gray-300 mt-1">
-              v{rule.version} · {new Date(rule.lastUpdatedAt).toLocaleDateString()}
+              v{rule.version} · {new Date(rule.lastUpdatedAt).toLocaleDateString('en-US', { timeZone: 'UTC' })}
               {rule.lastUpdatedByName && ` · ${rule.lastUpdatedByName}`}
               {' '}· {rule.lastUpdatedSource}
             </p>

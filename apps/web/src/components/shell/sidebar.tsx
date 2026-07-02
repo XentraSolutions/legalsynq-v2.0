@@ -69,6 +69,10 @@ export function Sidebar() {
   const activeNavItem = allNavItems.find(
     item => currentPathname === item.href || currentPathname.startsWith(item.href + '/'),
   ) ?? null;
+  
+  const bottomNavItems = GLOBAL_BOTTOM_NAV.items
+              .filter(item => !(selectedProductId === 'lien' && item.href === '/my-work'))
+              .filter(item => !item.adminOnly || (session?.isPlatformAdmin || session?.isTenantAdmin))
 
   return (
     <aside
@@ -169,7 +173,7 @@ export function Sidebar() {
       </div>
 
       {/* ── Global bottom section (Account / Activity Log) ─────────────────── */}
-      {(portalConfig ? portalConfig.showBottomNav : true) && (
+      { bottomNavItems.length > 0 && (portalConfig ? portalConfig.showBottomNav : true) && (
         <div className="shrink-0 border-t border-gray-100 py-2">
           {GLOBAL_BOTTOM_NAV.heading && !collapsed && (
             <p className="px-5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
@@ -177,9 +181,7 @@ export function Sidebar() {
             </p>
           )}
           <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
-            {GLOBAL_BOTTOM_NAV.items
-              .filter(item => !(selectedProductId === 'lien' && item.href === '/my-work'))
-              .filter(item => !item.adminOnly || (session?.isPlatformAdmin || session?.isTenantAdmin))
+            {bottomNavItems
               .map(item => (
               <SidebarItem
                 key={item.href + item.label}

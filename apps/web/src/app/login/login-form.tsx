@@ -77,6 +77,12 @@ export function LoginForm() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (email !== email.trim()) {
+      setError('Invalid credentials.');
+      return;
+    }
+
     setLoading(true);
     try {
       const body: Record<string, string> = { email, password };
@@ -140,7 +146,11 @@ export function LoginForm() {
       {/* Email */}
       <Field label="Email address">
         <input
-          type="email"
+          type="text"
+          inputMode="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           required
           value={email}
           onChange={e => setEmail(e.target.value)}

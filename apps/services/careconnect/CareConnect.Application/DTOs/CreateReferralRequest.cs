@@ -15,8 +15,10 @@ public class CreateReferralRequest
     public string ClientPhone { get; set; } = string.Empty;
     public string ClientEmail { get; set; } = string.Empty;
     public string? CaseNumber { get; set; }
-    public string RequestedService { get; set; } = string.Empty;
+    public string? RequestedService { get; set; }
     public string Urgency { get; set; } = string.Empty;
+    public Guid? TreatmentTypeId { get; set; }
+    public DateOnly? DateOfAccident { get; set; }
     public string? Notes { get; set; }
 
     // Phase C: optional multi-org context.
@@ -29,6 +31,10 @@ public class CreateReferralRequest
     // Pre-filled from session on the frontend; optional for backward compatibility.
     public string? ReferrerEmail { get; set; }
     public string? ReferrerName  { get; set; }
+    public string? ReferrerFirstName { get; set; }
+    public string? ReferrerLastName  { get; set; }
+    public string? ReferrerFirmName  { get; set; }
+    public string? ReferrerPhone    { get; set; }
 
     /// <summary>
     /// HMAC signature proving the authenticated user selected the supplied

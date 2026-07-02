@@ -20,8 +20,7 @@ public static class JwtPrincipalExtractor
                        ?? user.FindFirstValue("tenant_id")
                        ?? throw new UnauthorizedAccessException("JWT missing 'tenantId' claim");
 
-        if (!Guid.TryParse(sub, out var userId))
-            userId = Guid.Empty;   // non-UUID subject — use empty (non-admin, non-scoped)
+        var userId = ResolveUserId(user, sub);
 
         if (!Guid.TryParse(tenantIdRaw, out var tenantId))
             throw new UnauthorizedAccessException("JWT 'tenantId' claim is not a valid UUID");
@@ -44,5 +43,21 @@ public static class JwtPrincipalExtractor
             Email    = email,
             Roles    = roles,
         };
+    }
+
+    private static Guid ResolveUserId(ClaimsPrincipal user, string sub)
+    {
+        if (Guid.TryParse(sub, out var userId))
+            return userId;
+
+        var actor = user.FindFirstValue("actor");
+        if (actor is not null &&
+            actor.StartsWith("user:", StringComparison.OrdinalIgnoreCase) &&
+            Guid.TryParse(actor.AsSpan(5), out var actorUserId))
+        {
+            return actorUserId;
+        }
+
+        return Guid.Empty;
     }
 }

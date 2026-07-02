@@ -19,6 +19,7 @@
 
 import { useMemo, useState } from 'react';
 import type { TimelineEvent } from '@/lib/timeline';
+import { useTimezone } from '@/lib/use-timezone';
 
 export interface TimelineProps {
   events: TimelineEvent[];
@@ -58,6 +59,7 @@ export function Timeline({
 // ── Single row ───────────────────────────────────────────────────────
 
 function TimelineRow({ event, dense }: { event: TimelineEvent; dense: boolean }) {
+  const timezone = useTimezone();
   const [open, setOpen] = useState(false);
   const meta = useMemo(() => filterDisplayMetadata(event.metadata), [event.metadata]);
   const hasDetails = meta.length > 0
@@ -66,7 +68,7 @@ function TimelineRow({ event, dense }: { event: TimelineEvent; dense: boolean })
 
   const summary = event.summary?.trim() || event.action;
   const actor   = formatActor(event);
-  const stamp   = formatStamp(event.occurredAtUtc);
+  const stamp   = formatStamp(event.occurredAtUtc, timezone);
 
   return (
     <div className="flex items-start gap-2.5">
@@ -188,9 +190,12 @@ function formatActor(e: TimelineEvent): string {
   return e.source ? `by ${e.source}` : 'by Unknown';
 }
 
-function formatStamp(iso: string): string {
+function formatStamp(iso: string, timezone: string): string {
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZone: timezone,
+    });
   } catch {
     return iso;
   }

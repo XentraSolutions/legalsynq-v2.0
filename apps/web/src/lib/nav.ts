@@ -65,6 +65,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
       sellModeOnly: true,
       items: [
         { href: '/lien/my-liens',    label: 'My Liens',    icon: 'ri-price-tag-3-line',         requiredRoles: [ProductRole.SynqLienSeller] },
+        { href: '/lien/sales',       label: 'Lien Sales',  icon: 'ri-exchange-dollar-line',      requiredRoles: [ProductRole.SynqLienSeller] },
         { href: '/lien/marketplace', label: 'Marketplace', icon: 'ri-store-2-line',              requiredRoles: [ProductRole.SynqLienBuyer] },
         { href: '/lien/portfolio',   label: 'Portfolio',   icon: 'ri-briefcase-line',            requiredRoles: [ProductRole.SynqLienBuyer, ProductRole.SynqLienHolder] },
       ],
@@ -223,11 +224,12 @@ export function orgTypeLabel(orgType: string | undefined): string {
 export const GLOBAL_BOTTOM_NAV: NavSection = {
   heading: 'ACCOUNT',
   items: [
-    { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line'                       },
-    { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line'                  },
-    { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line'                    },
+    { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line',                adminOnly: true },
+    { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line',           adminOnly: true },
+    { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line',             adminOnly: true },
     { href: '/support',                         label: 'Support',         icon: 'ri-customer-service-2-line', adminOnly: true },
     { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-shield-user-line',        adminOnly: true },
+    { href: '/tenant/settings',                 label: 'Tenant Settings', icon: 'ri-settings-3-line',         adminOnly: true },
   ],
 };
 

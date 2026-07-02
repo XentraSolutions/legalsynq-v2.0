@@ -1,6 +1,9 @@
 import { redirect }                 from 'next/navigation';
 import { FirmStatusClient }         from './firm-status-client';
 import { createEnrollmentToken }    from '@/app/enroll/actions';
+import { mapFailureReasonToInvalidReason, readPublicReferralFailureReason } from '../lib/public-referral-error';
+import { fetchPublicCareConnect } from '../lib/public-referral-proxy';
+import { buildCareConnectReferralLoginUrl } from '@/lib/careconnect-login-url';
 import {
   ReferrerPortalAccessStatuses,
   type ReferrerPortalAccessStatusValue,
@@ -8,11 +11,12 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-const GATEWAY_URL          = process.env.GATEWAY_URL          ?? 'http://127.0.0.1:5010';
-const PROVISIONING_TOKEN   = process.env.IdentityService__ProvisioningToken ?? '';
-
 interface Props {
   searchParams: Promise<{ token?: string }>;
+}
+
+function normalizeNameForComparison(value?: string | null): string {
+  return value?.trim().replace(/\s+/g, ' ').toLowerCase() ?? '';
 }
 
 /**
@@ -33,39 +37,34 @@ export default async function FirmStatusPage({ searchParams }: Props) {
   }
 
   let threadData = null;
+  let failureReason: string | null = null;
 
   try {
-    const resp = await fetch(
-      `${GATEWAY_URL}/careconnect/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
-      { cache: 'no-store' },
+    const resp = await fetchPublicCareConnect(
+      `/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
     );
 
     if (resp.ok) {
       threadData = await resp.json();
-    } else if (resp.status === 404) {
-      redirect('/referrals/accept/invalid?reason=expired-or-invalid');
+    } else {
+      failureReason = await readPublicReferralFailureReason(resp);
     }
   } catch {
     threadData = null;
   }
 
   if (!threadData) {
-    redirect('/referrals/accept/invalid?reason=expired-or-invalid');
+    redirect(`/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`);
   }
 
   // CC-PORTAL-CHECK: tenant-aware access status for the referrer email.
   // Failure → safe default (no_account) so the enrollment CTA is shown instead.
   let portalAccessStatus: ReferrerPortalAccessStatusValue = ReferrerPortalAccessStatuses.NoAccount;
   const referrerEmail = threadData.referrerEmail as string | null;
-  const referralTenantId = threadData.tenantId as string | null;
-  if (referrerEmail && referralTenantId) {
+  if (referrerEmail) {
     try {
-      const checkResp = await fetch(
-        `${GATEWAY_URL}/identity/api/internal/users/portal-access?tenantId=${encodeURIComponent(referralTenantId)}&email=${encodeURIComponent(referrerEmail)}`,
-        {
-          cache:   'no-store',
-          headers: { 'X-Provisioning-Token': PROVISIONING_TOKEN },
-        },
+      const checkResp = await fetchPublicCareConnect(
+        `/api/public/referrer-status?email=${encodeURIComponent(referrerEmail)}`,
       );
       if (checkResp.ok) {
         const checkData = await checkResp.json() as { status?: string };
@@ -78,18 +77,35 @@ export default async function FirmStatusPage({ searchParams }: Props) {
     }
   }
 
-  // Extract "Firm phone: xxx" embedded by public-network-view in the referral notes.
-  const notes = threadData.notes as string | null;
-  const referrerPhone = notes?.split('\n')
-    .find(l => l.trim().toLowerCase().startsWith('firm phone:'))
-    ?.slice('firm phone:'.length).trim() ?? null;
+  const firmName = (threadData.referrerFirmName as string | null)?.trim() || null;
+  const referrerPhone = (threadData.referrerPhone as string | null)?.trim() || null;
+
+  // Prefer the split ReferrerFirstName/ReferrerLastName fields (no full-name slicing
+  // ambiguity); fall back to the legacy single ReferrerName for referrals created
+  // before the split existed (e.g. via the authenticated/JWT path).
+  const hasSplitReferrerName = !!(threadData.referrerFirstName || threadData.referrerLastName);
+  const legacyReferrerName = (threadData.referrerName as string | null)?.trim() || null;
+  const shouldIncludeLegacyContact =
+    !!legacyReferrerName &&
+    normalizeNameForComparison(legacyReferrerName) !== normalizeNameForComparison(firmName);
 
   const enrollToken = await createEnrollmentToken({
     tenantId: threadData.tenantId as string,
-    ...(threadData.referrerEmail ? { email:   threadData.referrerEmail as string } : {}),
-    ...(threadData.referrerName  ? { contact: threadData.referrerName  as string } : {}),
-    ...(referrerPhone            ? { phone:   referrerPhone                      } : {}),
+    ...(threadData.referrerEmail ? { email: threadData.referrerEmail as string } : {}),
+    ...(firmName                 ? { firm:  firmName                          } : {}),
+    ...(hasSplitReferrerName
+      ? {
+          ...(threadData.referrerFirstName ? { contactFirstName: threadData.referrerFirstName as string } : {}),
+          ...(threadData.referrerLastName  ? { contactLastName:  threadData.referrerLastName  as string } : {}),
+        }
+      : (shouldIncludeLegacyContact ? { contact: legacyReferrerName } : {})),
+    ...(referrerPhone ? { phone: referrerPhone } : {}),
   }).catch((err) => { console.error('[firm-status] createEnrollmentToken failed:', err); return null; });
 
-  return <FirmStatusClient token={token} data={threadData} portalAccessStatus={portalAccessStatus} loginUrl="/login" enrollToken={enrollToken} />;
+  const loginUrl = buildCareConnectReferralLoginUrl(
+    process.env.CC_COMMON_PORTAL_HOSTNAME,
+    `/careconnect/referrals/${threadData.referralId as string}`,
+  );
+
+  return <FirmStatusClient token={token} data={threadData} portalAccessStatus={portalAccessStatus} loginUrl={loginUrl} enrollToken={enrollToken} />;
 }

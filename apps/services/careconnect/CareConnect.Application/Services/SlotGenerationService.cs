@@ -9,22 +9,26 @@ namespace CareConnect.Application.Services;
 public class SlotGenerationService : ISlotGenerationService
 {
     private const int MaxGenerationDays = 60;
+    private const string DefaultTimezone = "UTC";
 
     private readonly IProviderRepository _providers;
     private readonly IAvailabilityTemplateRepository _templates;
     private readonly IAppointmentSlotRepository _slots;
     private readonly IAvailabilityExceptionRepository _exceptions;
+    private readonly ITenantServiceClient _tenantClient;
 
     public SlotGenerationService(
         IProviderRepository providers,
         IAvailabilityTemplateRepository templates,
         IAppointmentSlotRepository slots,
-        IAvailabilityExceptionRepository exceptions)
+        IAvailabilityExceptionRepository exceptions,
+        ITenantServiceClient tenantClient)
     {
-        _providers  = providers;
-        _templates  = templates;
-        _slots      = slots;
-        _exceptions = exceptions;
+        _providers    = providers;
+        _templates    = templates;
+        _slots        = slots;
+        _exceptions   = exceptions;
+        _tenantClient = tenantClient;
     }
 
     public async Task<GenerateSlotsResponse> GenerateSlotsAsync(
@@ -65,8 +69,9 @@ public class SlotGenerationService : ISlotGenerationService
                 SlotsCreated = 0
             };
 
-        var rangeStart = fromDate;
-        var rangeEnd = toDate.AddDays(1);
+        var tenantTimezone = await ResolveTenantTimezoneAsync(tenantId, ct);
+        var rangeStart = ConvertLocalToUtc(fromDate, tenantTimezone);
+        var rangeEnd = ConvertLocalToUtc(toDate.AddDays(1), tenantTimezone);
 
         var existingByTemplate = new Dictionary<Guid, HashSet<DateTime>>();
         foreach (var tmpl in templates)
@@ -92,11 +97,21 @@ public class SlotGenerationService : ISlotGenerationService
 
                 var existing = existingByTemplate[tmpl.Id];
                 var slotStart = tmpl.StartTimeLocal;
+                var slotDuration = TimeSpan.FromMinutes(tmpl.SlotDurationMinutes);
 
-                while (slotStart + TimeSpan.FromMinutes(tmpl.SlotDurationMinutes) <= tmpl.EndTimeLocal)
+                while (slotStart + slotDuration <= tmpl.EndTimeLocal)
                 {
-                    var startAtUtc = date + slotStart;
-                    var endAtUtc = startAtUtc + TimeSpan.FromMinutes(tmpl.SlotDurationMinutes);
+                    var localStart = DateTime.SpecifyKind(date + slotStart, DateTimeKind.Unspecified);
+                    var localEnd = DateTime.SpecifyKind(date + slotStart + slotDuration, DateTimeKind.Unspecified);
+
+                    if (tenantTimezone.IsInvalidTime(localStart) || tenantTimezone.IsInvalidTime(localEnd))
+                    {
+                        slotStart += slotDuration;
+                        continue;
+                    }
+
+                    var startAtUtc = ConvertLocalToUtc(localStart, tenantTimezone);
+                    var endAtUtc = ConvertLocalToUtc(localEnd, tenantTimezone);
 
                     var blockedByException = activeExceptions.Any(ex =>
                         ex.OverlapsWith(startAtUtc, endAtUtc) &&
@@ -118,7 +133,7 @@ public class SlotGenerationService : ISlotGenerationService
                         existing.Add(startAtUtc);
                     }
 
-                    slotStart += TimeSpan.FromMinutes(tmpl.SlotDurationMinutes);
+                    slotStart += slotDuration;
                 }
             }
         }
@@ -134,4 +149,27 @@ public class SlotGenerationService : ISlotGenerationService
             SlotsCreated = newSlots.Count
         };
     }
+
+    private async Task<TimeZoneInfo> ResolveTenantTimezoneAsync(Guid tenantId, CancellationToken ct)
+    {
+        var timezone = await _tenantClient.GetTimezoneAsync(tenantId, ct) ?? DefaultTimezone;
+
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timezone);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+    }
+
+    private static DateTime ConvertLocalToUtc(DateTime localDateTime, TimeZoneInfo timezone)
+        => TimeZoneInfo.ConvertTimeToUtc(
+            DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified),
+            timezone);
 }

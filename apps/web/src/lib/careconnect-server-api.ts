@@ -169,9 +169,29 @@ export const careConnectServerApi = {
       status?:   string;
       tenantId?: string;
       since?:    string;
+      createdFrom?: string;
+      createdTo?: string;
     } = {}) =>
       serverApi.get<AdminReferralPage>(
         `/careconnect/api/admin/referrals${toQs(params as Record<string, unknown>)}`,
+      ),
+
+    getReferralById: (id: string) =>
+      serverApi.get<ReferralDetail>(`/careconnect/api/admin/referrals/${id}`),
+  },
+
+  adminAppointments: {
+    search: (params: {
+      page?: number;
+      pageSize?: number;
+      status?: string;
+      tenantId?: string;
+      providerId?: string;
+      from?: string;
+      to?: string;
+    } = {}) =>
+      serverApi.get<PagedResponse<AppointmentSummary>>(
+        `/careconnect/api/admin/appointments${toQs(params as Record<string, unknown>)}`,
       ),
   },
 

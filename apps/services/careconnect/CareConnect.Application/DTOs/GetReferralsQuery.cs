@@ -25,6 +25,15 @@ public class GetReferralsQuery
     public bool CrossTenantReceiver { get; set; }
 
     /// <summary>
+    /// Mirrors CrossTenantReceiver for the referring side: when set, the search matches
+    /// purely on ReferringOrgId/ReferrerEmail (like a provider's receiving-org match) instead
+    /// of first gating on TenantId. This keeps a law firm's referral list resilient to any
+    /// tenant-ID drift between the Tenant service and Identity (the same org ID is authoritative
+    /// in both), the same way the provider's cross-tenant receiver view already is.
+    /// </summary>
+    public bool CrossTenantReferrer { get; set; }
+
+    /// <summary>
     /// Optional multi-tenant referrer scope. When populated, search spans these tenant IDs
     /// instead of only the caller's active JWT tenant.
     /// </summary>

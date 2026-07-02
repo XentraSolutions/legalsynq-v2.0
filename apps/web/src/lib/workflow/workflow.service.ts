@@ -57,9 +57,16 @@ export function formatStatus(status: WorkflowStatus): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-export function formatTimestamp(iso?: string | null): string {
+export function formatTimestamp(iso?: string | null, timezone = 'UTC'): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.valueOf())) return '—';
-  return d.toLocaleString();
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: timezone,
+  });
 }

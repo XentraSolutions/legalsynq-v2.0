@@ -116,9 +116,9 @@ public class WorkflowIntegrationTests
     }
 
     [Fact]
-    public void ReferralWorkflowRules_AcceptedToDeclined_IsValidTransition()
+    public void ReferralWorkflowRules_AcceptedToDeclined_IsNotValidTransition()
     {
-        Assert.True(ReferralWorkflowRules.IsValidTransition(
+        Assert.False(ReferralWorkflowRules.IsValidTransition(
             Referral.ValidStatuses.Accepted,
             Referral.ValidStatuses.Declined));
     }

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { clearMyNetworkAccessCode, setMyNetworkAccessCode } from '@/app/(platform)/careconnect/my-network/actions';
+import { useTimezone } from '@/lib/use-timezone';
 import { ConfirmDialog } from '@/components/lien/modal';
 import type { CareConnectAccessCodeMetadata } from '@/lib/tenant-api';
 
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function PublicNetworkAccessCodePanel({ initialStatus }: Props) {
+  const timezone = useTimezone();
   const [status, setStatus] = useState(initialStatus);
   const [code, setCode] = useState('');
   const [revealedCode, setRevealedCode] = useState<string | null>(null);
@@ -113,7 +115,7 @@ export function PublicNetworkAccessCodePanel({ initialStatus }: Props) {
               <div className="flex items-start justify-between gap-4">
                 <dt className="text-sm text-gray-500">Last updated</dt>
                 <dd className="max-w-[11rem] text-right text-sm font-medium text-gray-900">
-                  {status.updatedAtUtc ? new Date(status.updatedAtUtc).toLocaleString() : 'Never'}
+                  {status.updatedAtUtc ? new Date(status.updatedAtUtc).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: timezone }) : 'Never'}
                 </dd>
               </div>
             </dl>

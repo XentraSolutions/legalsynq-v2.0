@@ -39,6 +39,7 @@ public class ServicingItemRepository : IServicingItemRepository
             var term = search.Trim();
             q = q.Where(s =>
                 s.TaskNumber.Contains(term) ||
+                s.TaskType.Contains(term) ||
                 s.Description.Contains(term) ||
                 s.AssignedTo.Contains(term));
         }

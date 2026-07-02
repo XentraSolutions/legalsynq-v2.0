@@ -1,10 +1,15 @@
+'use client';
+
 import type { ReferralDetail } from '@/types/careconnect';
+import { useBrowserTimezone } from '@/lib/use-timezone';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { formatPhoneDisplay } from '@/lib/phone';
+import { formatDateOnly } from '@/lib/format-date';
 
 interface ReferralDetailPanelProps {
   referral:    ReferralDetail;
   hideHeader?: boolean;
+  timezone?:   string;
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -27,16 +32,29 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function formatDate(iso: string | undefined): string {
+function formatDate(iso: string | undefined, timezone: string): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'long',
-    day:   'numeric',
-    year:  'numeric',
+    month:    'long',
+    day:      'numeric',
+    year:     'numeric',
+    timeZone: timezone,
   });
 }
 
-export function ReferralDetailPanel({ referral, hideHeader = false }: ReferralDetailPanelProps) {
+function formatDateOnlyField(iso: string | undefined): string {
+  if (!iso) return '—';
+  return formatDateOnly(iso, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+export function ReferralDetailPanel({ referral, hideHeader = false, timezone }: ReferralDetailPanelProps) {
+  const browserTimezone = useBrowserTimezone();
+  const resolvedTimezone = timezone ?? browserTimezone;
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg">
       {/* Header — omitted when used alongside ReferralPageHeader */}
@@ -61,18 +79,20 @@ export function ReferralDetailPanel({ referral, hideHeader = false }: ReferralDe
       <div className="px-6 py-5 space-y-0">
         {/* Referral */}
         <Section title="Referral">
-          <Field label="Provider"         value={referral.providerName} />
-          <Field label="Requested service" value={referral.requestedService} />
-          <Field label="Urgency"           value={<UrgencyBadge urgency={referral.urgency} />} />
-          <Field label="Status"            value={<StatusBadge status={referral.status} />} />
-          <Field label="Created"           value={formatDate(referral.createdAtUtc)} />
-          <Field label="Last updated"      value={formatDate(referral.updatedAtUtc)} />
+          <Field label="Provider"            value={referral.providerName} />
+          <Field label="Requested service"  value={referral.requestedService} />
+          <Field label="Urgency"            value={<UrgencyBadge urgency={referral.urgency} />} />
+          <Field label="Date of accident"   value={referral.dateOfAccident ? formatDateOnlyField(referral.dateOfAccident) : undefined} />
+          <Field label="Type of treatment"  value={referral.treatmentTypeName ?? '—'} />
+          <Field label="Status"             value={<StatusBadge status={referral.status} />} />
+          <Field label="Created"            value={formatDate(referral.createdAtUtc, resolvedTimezone)} />
+          <Field label="Last updated"       value={formatDate(referral.updatedAtUtc, resolvedTimezone)} />
         </Section>
 
         {/* Client / Subject party */}
         <Section title="Client">
           <Field label="Name"  value={`${referral.clientFirstName} ${referral.clientLastName}`} />
-          <Field label="DOB"   value={referral.clientDob ? formatDate(referral.clientDob) : undefined} />
+          <Field label="DOB"   value={referral.clientDob ? formatDateOnlyField(referral.clientDob) : undefined} />
           <Field label="Phone" value={formatPhoneDisplay(referral.clientPhone)} />
           <Field label="Email" value={referral.clientEmail} />
         </Section>

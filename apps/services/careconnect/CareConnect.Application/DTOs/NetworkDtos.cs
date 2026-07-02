@@ -91,7 +91,8 @@ public sealed record AddProviderToNetworkRequest(
     NewProviderData?       NewProvider);
 
 public sealed record NewProviderData(
-    string  Name,
+    string  FirstName,
+    string  LastName,
     string? OrganizationName,
     string  Email,
     string  Phone,
@@ -106,3 +107,66 @@ public sealed record NewProviderData(
     List<string>? CategoryCodes = null,
     /// <summary>The code of the default/primary provider type (must be present in CategoryCodes).</summary>
     string? PrimaryCategoryCode = null);
+
+// ── Provider import ──────────────────────────────────────────────────────────
+
+public sealed record ProviderImportParsedRow(
+    int     RowNumber,
+    string  SourceKey,
+    string? TenantId,
+    string? FirstName,
+    string? LastName,
+    string? OrganizationName,
+    string? Npi,
+    string? Email,
+    string? Phone,
+    string? AddressLine1,
+    string? City,
+    string? State,
+    string? PostalCode,
+    string? IsActiveRaw,
+    string? AcceptingReferralsRaw);
+
+public sealed record ProviderImportNormalizedRow(
+    Guid    TenantId,
+    string  FirstName,
+    string  LastName,
+    string? OrganizationName,
+    string? Npi,
+    string  Email,
+    string  Phone,
+    string  AddressLine1,
+    string  City,
+    string  State,
+    string  PostalCode,
+    bool    IsActive,
+    bool    AcceptingReferrals);
+
+public sealed record ProviderImportParseResult(
+    string FileName,
+    int TotalRows,
+    List<ProviderImportParsedRow> Rows);
+
+public sealed record ProviderImportRowResult(
+    int                          RowNumber,
+    string                       SourceKey,
+    string                       Status,
+    Guid?                        ProviderId,
+    string                       Message,
+    ProviderImportNormalizedRow? NormalizedProvider,
+    List<string>                 Errors);
+
+public sealed record ProviderImportSummaryResponse(
+    Guid                          TenantId,
+    Guid                          NetworkId,
+    string                        FileName,
+    bool                          DryRun,
+    int                           TotalRows,
+    int                           ValidRows,
+    int                           ProcessedRows,
+    int                           CreatedProviders,
+    int                           ReusedByNpi,
+    int                           ReusedByEmail,
+    int                           AlreadyInNetwork,
+    int                           FailedRows,
+    List<ProviderImportRowResult> Rows);
