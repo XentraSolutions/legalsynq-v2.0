@@ -280,7 +280,7 @@ export function SessionProvider({
     router.refresh();
     setTimeout(() => {
       clearSession();
-    }, 100);
+    }, 1000);
   }, []);
 
   // ── Idle timeout ────────────────────────────────────────────────────────────
