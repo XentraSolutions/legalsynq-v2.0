@@ -64,9 +64,9 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, description, co
     : 'bg-primary hover:bg-primary/90 text-white';
 
   return (
-    <Modal open={open} onClose={onClose} title={title} size="sm" footer={
+    <Modal open={open} onClose={loading ? () => {} : onClose} title={title} size="sm" footer={
       <>
-        <button onClick={onClose} className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">Cancel</button>
+        <button onClick={onClose} disabled={loading} className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50">Cancel</button>
         <button onClick={onConfirm} disabled={loading} className={`text-sm px-4 py-2 rounded-lg ${btnClass} disabled:opacity-50`}>
           {loading ? 'Processing...' : confirmLabel}
         </button>

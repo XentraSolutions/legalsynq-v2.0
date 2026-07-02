@@ -18,9 +18,30 @@ import {
 import { useProviderMode } from '@/hooks/use-provider-mode';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { casesService } from '@/lib/cases';
-import { DashboardStats } from '@/lib/cases/cases.types';
+import {
+  DashboardStats,
+  AllocationSegment,
+  CaseReportItem,
+  LienReportItem,
+  CashMetricResponse,
+} from '@/lib/cases/cases.types';
+import { DateRangePicker, type DateRangeValue } from '@/components/ui/date-range-picker';
 
 export const dynamic = 'force-dynamic';
+
+function toDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function last30DaysRange(): DateRangeValue {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 30);
+  return { from: toDateString(from), to: toDateString(to) };
+}
 
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -46,8 +67,6 @@ function getItemHref(item: UnifiedActivityItem): string | null {
 }
 
 export default function LienDashboardPage() {
-  const cases = useLienStore((s) => s.cases);
-  const liens = useLienStore((s) => s.liens);
   const servicing = useLienStore((s) => s.servicing);
   const [showCreateCase, setShowCreateCase] = useState(false);
   const { mode, isSellMode } = useProviderMode();
@@ -56,6 +75,16 @@ export default function LienDashboardPage() {
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>();
+  const [dashboardRange, setDashboardRange] = useState<DateRangeValue>(last30DaysRange);
+  const [lawFirmAllocation, setLawFirmAllocation] = useState<AllocationSegment[]>([]);
+  const [facilityAllocation, setFacilityAllocation] = useState<AllocationSegment[]>([]);
+  const [lienRows, setLienRows] = useState<LienReportItem[]>([]);
+  const [totalLienCount, setTotalLienCount] = useState(0);
+  const [caseRows, setCaseRows] = useState<CaseReportItem[]>([]);
+  const [totalCaseCount, setTotalCaseCount] = useState(0);
+  const [cashDeployed, setCashDeployed] = useState<CashMetricResponse>();
+  const [cashReceived, setCashReceived] = useState<CashMetricResponse>();
+  const [reportLoading, setReportLoading] = useState(false);
 
   const loadActivity = useCallback(async () => {
     setActivityLoading(true);
@@ -74,7 +103,7 @@ export default function LienDashboardPage() {
 
   useEffect(() => {
     const getDashboardStats = async () => {
-      try { 
+      try {
         const stats = await casesService.getDashboardStats();
         setDashboardStats(stats);
       } catch (error) {}
@@ -83,46 +112,97 @@ export default function LienDashboardPage() {
     getDashboardStats()
   }, []);
 
+  useEffect(() => {
+    const loadReports = async () => {
+      setReportLoading(true);
+      try {
+        const request = {
+          page: 1,
+          limit: 1000,
+          startDate: dashboardRange.from,
+          endDate: dashboardRange.to,
+        };
+        const [lawFirms, facilities, liens, cases, deployed, received] = await Promise.all([
+          casesService.getLawFirmCaseAllocation(request),
+          casesService.getMedicalFacilityCaseAllocation(request),
+          casesService.getTotalLienReportRows(request),
+          casesService.getTotalCaseReportRows(request),
+          casesService.getCashDeployed(request),
+          casesService.getCashReceived(request),
+        ]);
+        setLawFirmAllocation(lawFirms);
+        setFacilityAllocation(facilities);
+        setLienRows(liens.items);
+        setTotalLienCount(liens.totalCount);
+        setCaseRows(cases.items);
+        setTotalCaseCount(cases.totalCount);
+        setCashDeployed(deployed);
+        setCashReceived(received);
+      } catch (error) {
+        setLawFirmAllocation([]);
+        setFacilityAllocation([]);
+        setLienRows([]);
+        setTotalLienCount(0);
+        setCaseRows([]);
+        setTotalCaseCount(0);
+        setCashDeployed(undefined);
+        setCashReceived(undefined);
+      } finally {
+        setReportLoading(false);
+      }
+    };
+
+    loadReports();
+  }, [dashboardRange.from, dashboardRange.to]);
+
   const pendingTasks = servicing.filter((s) => s.status !== 'Completed');
   const overdueTasks = pendingTasks.filter((s) => new Date(s.dueDate) < new Date());
 
   const lienAmountsByStatus = useMemo(() => {
     const result: Record<string, { purchase: number; billing: number }> = {};
-    for (const lien of liens) {
-      const key = lien.status;
+    for (const lien of lienRows) {
+      const key = lien.status ?? 'Unknown';
       if (!result[key]) result[key] = { purchase: 0, billing: 0 };
       result[key].purchase += lien.purchasePrice ?? 0;
       result[key].billing += lien.originalAmount ?? 0;
     }
     return result;
-  }, [liens]);
+  }, [lienRows]);
 
-  const totalLienPurchase = liens.reduce((s, l) => s + (l.purchasePrice ?? 0), 0);
-  const totalLienBilling = liens.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
+  const lienStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const lien of lienRows) {
+      const key = lien.status ?? 'Unknown';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }, [lienRows]);
+
+  const caseStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of caseRows) {
+      const key = c.status ?? 'Unknown';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }, [caseRows]);
+
+  const totalLienPurchase = lienRows.reduce((s, l) => s + (l.purchasePrice ?? 0), 0);
+  const totalLienBilling = lienRows.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
 
   const ALLOC_COLORS = ['#22d3ee', '#818cf8', '#f472b6', '#34d399', '#f59e0b', '#6366f1', '#fb923c', '#a78bfa'];
 
   const lawFirmSegments = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const c of cases) {
-      const key = c.lawFirm || 'Unknown';
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, value], i) => ({ label, value, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
-  }, [cases]);
+    return [...lawFirmAllocation]
+      .sort((a, b) => b.value - a.value)
+      .map((seg, i) => ({ ...seg, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
+  }, [lawFirmAllocation]);
 
   const facilitySegments = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const c of cases) {
-      const key = c.medicalFacility || 'Unknown';
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, value], i) => ({ label, value, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
-  }, [cases]);
+    return [...facilityAllocation]
+      .sort((a, b) => b.value - a.value)
+      .map((seg, i) => ({ ...seg, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
+  }, [facilityAllocation]);
 
   return (
     <div className="space-y-6">
@@ -154,10 +234,21 @@ export default function LienDashboardPage() {
         <KpiCard title="Monthly Volume" value={formatCurrency(dashboardStats?.totalLienValue ?? 0)} change="All liens" changeType="neutral" icon="ri-money-dollar-circle-line" iconColor="text-emerald-600" />
       </div>
 
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-gray-800">Reporting Period</h2>
+        <div className="w-64">
+          <DateRangePicker
+            value={dashboardRange}
+            onChange={setDashboardRange}
+            placeholder="Filter by date range"
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <MetricCard
           title="Cash Deployed"
-          value={1675.00}
+          value={cashDeployed ? parseFloat(cashDeployed.totalAmount) : 0}
           subtitle="Based on Purchase Date"
           icon="ri-money-dollar-circle-line"
           iconBgColor="bg-blue-50"
@@ -167,7 +258,7 @@ export default function LienDashboardPage() {
         />
         <MetricCard
           title="Cash Received"
-          value={29110.00}
+          value={cashReceived ? parseFloat(cashReceived.totalAmount) : 0}
           subtitle="Based on Payment Date"
           icon="ri-cash-line"
           iconBgColor="bg-green-50"
@@ -180,7 +271,7 @@ export default function LienDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <StatCard
           title="Total Liens"
-          total={dashboardStats?.totalLiens ?? 0}
+          total={reportLoading ? 0 : totalLienCount}
           additionalStats={[
             { label: 'Total Purchase Amount', value: formatCurrency(totalLienPurchase) },
             { label: 'Total Billing Amount', value: formatCurrency(totalLienBilling) },
@@ -188,7 +279,7 @@ export default function LienDashboardPage() {
           segments={[
             {
               label: 'Draft', color: '#94a3b8',
-              value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Draft')?.value ?? 0,
+              value: lienStatusCounts['Draft'] ?? 0,
               subStats: [
                 { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Draft']?.purchase ?? 0) },
                 { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Draft']?.billing ?? 0) },
@@ -196,7 +287,7 @@ export default function LienDashboardPage() {
             },
             {
               label: 'Offered', color: '#4f46e5',
-              value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Offered')?.value ?? 0,
+              value: lienStatusCounts['Offered'] ?? 0,
               subStats: [
                 { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Offered']?.purchase ?? 0) },
                 { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Offered']?.billing ?? 0) },
@@ -204,7 +295,7 @@ export default function LienDashboardPage() {
             },
             {
               label: 'Sold', color: '#10b981',
-              value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Sold')?.value ?? 0,
+              value: lienStatusCounts['Sold'] ?? 0,
               subStats: [
                 { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Sold']?.purchase ?? 0) },
                 { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Sold']?.billing ?? 0) },
@@ -212,7 +303,7 @@ export default function LienDashboardPage() {
             },
             {
               label: 'Withdrawn', color: '#f59e0b',
-              value: dashboardStats?.lienStatus?.find((ls) => ls.label === 'Withdrawn')?.value ?? 0,
+              value: lienStatusCounts['Withdrawn'] ?? 0,
               subStats: [
                 { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Withdrawn']?.purchase ?? 0) },
                 { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Withdrawn']?.billing ?? 0) },
@@ -223,13 +314,13 @@ export default function LienDashboardPage() {
         />
         <StatCard
           title="Total Cases"
-          total={dashboardStats?.totalCases ?? 0}
+          total={reportLoading ? 0 : totalCaseCount}
           segments={[
-            { label: 'Pre-Demand', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'PreDemand')?.value ?? 0, color: '#f472b6' },
-            { label: 'Demand Sent', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'DemandSent')?.value ?? 0, color: '#6366f1' },
-            { label: 'In Negotiation', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'InNegotiation')?.value ?? 0, color: '#3b82f6' },
-            { label: 'Settled', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'CaseSettled')?.value ?? 0, color: '#10b981' },
-            { label: 'Closed', value: dashboardStats?.caseStatus?.find((ls) => ls.label === 'Closed')?.value ?? 0, color: '#94a3b8' },
+            { label: 'Pre-Demand', value: caseStatusCounts['PreDemand'] ?? 0, color: '#f472b6' },
+            { label: 'Demand Sent', value: caseStatusCounts['DemandSent'] ?? 0, color: '#6366f1' },
+            { label: 'In Negotiation', value: caseStatusCounts['InNegotiation'] ?? 0, color: '#3b82f6' },
+            { label: 'Settled', value: caseStatusCounts['CaseSettled'] ?? 0, color: '#10b981' },
+            { label: 'Closed', value: caseStatusCounts['Closed'] ?? 0, color: '#94a3b8' },
           ]}
           href="/lien/cases"
         />
@@ -239,14 +330,14 @@ export default function LienDashboardPage() {
         <StatCard
           title="Law Firm Case Allocation"
           icon="ri-scales-3-line"
-          total={cases.length}
+          total={reportLoading ? 0 : lawFirmSegments.reduce((s, seg) => s + seg.value, 0)}
           segments={lawFirmSegments}
           href="/lien/cases"
         />
         <StatCard
           title="Medical Facility Case Allocation"
           icon="ri-hospital-line"
-          total={cases.length}
+          total={reportLoading ? 0 : facilitySegments.reduce((s, seg) => s + seg.value, 0)}
           segments={facilitySegments}
           href="/lien/cases"
         />

@@ -24,6 +24,11 @@ import type {
   CasePaginatedParams,
   CasesFilters,
   ExportResponse,
+  CaseAllocationReportRequest,
+  CaseReportItem,
+  LienReportItem,
+  AllocationSegment,
+  CashMetricResponse,
   CreateMedicalLiensDto,
   CreateMedicalFacilityDto,
   CreateMedicalPaymentDto,
@@ -126,6 +131,48 @@ export const casesService = {
   async getDashboardStats(): Promise<DashboardStats> {
     const { data } = await casesApi.getDashboardStats();
     return data;
+  },
+
+  async getLawFirmCaseAllocation(
+    request: CaseAllocationReportRequest,
+  ): Promise<AllocationSegment[]> {
+    const { data } = await casesApi.getLawFirmCaseReport(request);
+    return groupAndCount(data.items ?? [], (item) => item.lawFirm);
+  },
+
+  async getMedicalFacilityCaseAllocation(
+    request: CaseAllocationReportRequest,
+  ): Promise<AllocationSegment[]> {
+    const { data } = await casesApi.getMedicalProviderCaseReport(request);
+    return groupAndCount(data.items ?? [], (item) => item.medicalFacility);
+  },
+
+  async getTotalLienReportRows(
+    request: CaseAllocationReportRequest,
+  ): Promise<{ items: LienReportItem[]; totalCount: number }> {
+    const { data } = await casesApi.getTotalLienReport(request);
+    return { items: data.items ?? [], totalCount: data.totalCount ?? 0 };
+  },
+
+  async getTotalCaseReportRows(
+    request: CaseAllocationReportRequest,
+  ): Promise<{ items: CaseReportItem[]; totalCount: number }> {
+    const { data } = await casesApi.getTotalCaseReport(request);
+    return { items: data.items ?? [], totalCount: data.totalCount ?? 0 };
+  },
+
+  async getCashReceived(
+    request: CaseAllocationReportRequest,
+  ): Promise<CashMetricResponse> {
+    const { data } = await casesApi.getCashReceived(request);
+    return data.data;
+  },
+
+  async getCashDeployed(
+    request: CaseAllocationReportRequest,
+  ): Promise<CashMetricResponse> {
+    const { data } = await casesApi.getCashDeployed(request);
+    return data.data;
   },
 
   async exportCases(request: CasesFilters): Promise<ExportResponse> {
@@ -242,3 +289,16 @@ export const casesService = {
     return data;
   },
 };
+
+function groupAndCount(
+  items: CaseReportItem[],
+  getKey: (item: CaseReportItem) => unknown,
+): AllocationSegment[] {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const raw = getKey(item);
+    const key = typeof raw === "string" && raw.trim() ? raw : "Unknown";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).map(([label, value]) => ({ label, value }));
+}
