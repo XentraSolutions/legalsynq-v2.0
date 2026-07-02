@@ -2341,6 +2341,15 @@ const TEMP_LIEN_DOCUMENTS = [
   },
 ];
 
+type DocumentType = {
+  id: string;
+  name: string;
+  documentType: string;
+  lastUpdate: string;
+  lienNumber: string;
+  size: string;
+};
+
 function DocumentsTab({
   docTypes,
   caseDetail,
@@ -2357,8 +2366,8 @@ function DocumentsTab({
   const [selectedDocType, setSelectedDocType] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [caseDocuments, setCaseDocuments] = useState([]);
-  const [liensDocuments, setLiensDocuments] = useState([]);
+  const [caseDocuments, setCaseDocuments] = useState<DocumentType[]>([]);
+  const [liensDocuments, setLiensDocuments] = useState<DocumentType[]>([]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
