@@ -71,7 +71,7 @@ export interface UpdateContactRequestDto {
 }
 
 export interface ContactsQuery {
-  keyword?: string;
+  search?: string;
   ContactType?: string;
   isActive?: boolean;
   page?: number;
