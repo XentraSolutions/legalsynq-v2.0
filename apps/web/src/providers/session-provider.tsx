@@ -95,6 +95,7 @@ export function SessionProvider({
   const seeded = initialSession ? deserializeSession(initialSession) : null;
   const [session, setSession] = useState<PlatformSession | null>(seeded);
   const [isLoading, setIsLoading] = useState(initialSession == null);
+  const [lookup, setLookup] = useState<LookupResponse | null>(null);
   const [showWarning, setShowWarning] = useState(false);
   const [countdown, setCountdown] = useState(WARNING_LEAD_SECONDS);
 
