@@ -427,10 +427,25 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
           onClose={() => setDeleteTarget(null)}
           onConfirm={handleDelete}
           title="Delete Staff Member"
-          description={`Are you sure you want to delete ${deleteTarget.firstName} ${deleteTarget.lastName}?`}
+          description={
+            <>
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-primary">
+                {deleteTarget.firstName} {deleteTarget.lastName}
+              </span>
+              ? This action cannot be undone and will permanently remove all
+              associated data.
+            </>
+          }
           confirmLabel="Delete"
           confirmVariant="danger"
           loading={deleting}
+          warningTitle="Warning: Deleting this staff member will also remove:"
+          warningItems={[
+            "All case associations",
+            "All uploaded documents",
+            "All activity history",
+          ]}
         />
       )}
     </div>

@@ -40,6 +40,8 @@ export function mapContactToListItem(dto: ContactResponseDto): ContactListItem {
     state: safeString(dto.state),
     isActive: dto.isActive,
     createdAt: formatDateField(dto.createdAtUtc),
+    lawFirmId: dto.lawFirmId ?? null,
+    facilityId: dto.facilityId ?? null,
   };
 }
 
