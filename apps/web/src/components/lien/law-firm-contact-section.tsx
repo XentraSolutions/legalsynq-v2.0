@@ -9,10 +9,16 @@ import { type LookupData } from "@/lib/lookup/lookup.types";
 import { ApiError } from "@/lib/api-client";
 import { FormModal, ConfirmDialog } from "@/components/lien/modal";
 import { ActionMenu } from "@/components/lien/action-menu";
+import { useSessionContext } from "@/providers/session-provider";
 
 interface Props {
   lawFirmId: string;
 }
+type DropdownOption = {
+  key: string;
+  value: string;
+  label: string;
+};
 
 const CONTACT_TYPE = "LawFirm";
 const INITIAL_FORM = {
@@ -30,10 +36,11 @@ const INITIAL_FORM = {
 const PAGE_SIZE = 12;
 
 export function LawFirmContactSection({ lawFirmId }: Props) {
+  const { lookup } = useSessionContext();
   const addToast = useLienStore((s) => s.addToast);
   const [contacts, setContacts] = useState<ContactResponseDto[]>([]);
   const [roles, setRoles] = useState<LookupData[]>([]);
-  const [states, setStates] = useState<LookupData[]>([]);
+  const [states, setStates] = useState<DropdownOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"tile" | "list">("tile");
   const [page, setPage] = useState(1);
@@ -63,17 +70,19 @@ export function LawFirmContactSection({ lawFirmId }: Props) {
 
   useEffect(() => {
     fetchContacts();
-    Promise.allSettled([
-      lookupApi.getLawFirmContactRoles(),
-      lookupApi.getStates(),
-    ]).then(([rolesRes, statesRes]) => {
-      if (rolesRes.status === "fulfilled")
-        setRoles(Array.isArray(rolesRes.value.data) ? rolesRes.value.data : []);
-      if (statesRes.status === "fulfilled")
-        setStates(
-          Array.isArray(statesRes.value.data) ? statesRes.value.data : [],
-        );
-    });
+    Promise.allSettled([lookupApi.getLawFirmContactRoles()]).then(
+      ([rolesRes]) => {
+        if (rolesRes.status === "fulfilled")
+          setRoles(
+            Array.isArray(rolesRes.value.data) ? rolesRes.value.data : [],
+          );
+      },
+    );
+    setStates(
+      lookup?.State?.map((c) => {
+        return { key: c.id, value: c.code, label: c.code };
+      }) ?? [],
+    );
   }, [fetchContacts]);
 
   const openAdd = () => {
@@ -440,8 +449,8 @@ export function LawFirmContactSection({ lawFirmId }: Props) {
               >
                 <option value="">Select...</option>
                 {states.map((s) => (
-                  <option key={s.id} value={s.code}>
-                    {s.code}
+                  <option key={s.key} value={s.value}>
+                    {s.label}
                   </option>
                 ))}
               </select>

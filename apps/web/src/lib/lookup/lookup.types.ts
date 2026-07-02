@@ -110,3 +110,9 @@ export interface LawFirmListResponse {
   updatedAtUtc: string;
   website: string | null;
 }
+
+export type DropdownOption = {
+  key: string;
+  value: string;
+  label: string;
+};

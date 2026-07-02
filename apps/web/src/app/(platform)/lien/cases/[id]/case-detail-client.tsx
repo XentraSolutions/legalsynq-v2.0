@@ -954,7 +954,6 @@ function DetailsTab({
                   type="select"
                   options={state}
                   onChange={(e) => {
-                    console.log(e);
                     updateField("clientState", e.toString());
                   }}
                 />

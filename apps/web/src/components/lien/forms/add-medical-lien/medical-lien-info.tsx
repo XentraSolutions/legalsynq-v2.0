@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Field from "../../field";
 import { lookupService } from "@/lib/lookup";
+import { useSessionContext } from "@/providers/session-provider";
 
 export interface MedicalLienInfoProps {
   caseId?: string;
@@ -27,6 +28,7 @@ type DropdownData = {
 };
 
 export default function MedicalLienInfo(props: MedicalLienInfoProps) {
+  const { lookup } = useSessionContext();
   const { data, onFormValid } = props;
   const [form, setForm] = useState(!data ? { ...INITIAL_FORM } : data);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -58,8 +60,7 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
 
   async function loadStatuses() {
     try {
-      const liensStatusesRes = await lookupService.getLiensStatus();
-      const list = liensStatusesRes.items.map((c) => {
+      const list = lookup?.LienStatus.map((c) => {
         return { key: c.id, value: c.code, label: c.name };
       });
       setStatusList(list ?? []);
@@ -148,7 +149,6 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
             isChecked={form.isServicing == "true"}
             value={form.isServicing}
             onChange={(v) => {
-              console.log(v);
               setForm({ ...form, isServicing: v.toString() });
             }}
           />

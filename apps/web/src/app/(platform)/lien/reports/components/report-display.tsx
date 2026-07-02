@@ -36,7 +36,6 @@ export default function ReportDisplay({
   onEdit,
   onSaved,
 }: ReportDisplayProps) {
-  console.log(report);
   const [loading, setLoading] = useState(true);
   const [cases, setCases] = useState<CaseListItem[]>(
     (report.items as CaseListItem[]) ?? [],

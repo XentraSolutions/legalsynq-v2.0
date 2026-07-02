@@ -67,7 +67,6 @@ export const casesApi = {
   },
 
   uploadDocument(request: FormData) {
-    console.log(request);
     return apiClient.postForm<any>(`${BASE}/liens/upload/document`, request);
   },
 

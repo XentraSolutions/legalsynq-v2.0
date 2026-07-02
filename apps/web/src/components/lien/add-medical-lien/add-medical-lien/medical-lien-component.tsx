@@ -301,8 +301,6 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
 
   const uploadDocuments = async (payload: any) => {
     if (payload?.length == 0 || payload == null) return;
-    console.log(payload);
-    return;
     const formData = new FormData();
     formData.append("File", payload.document ?? "");
     formData.append("liensId", liensId);
@@ -318,7 +316,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
         description: `Document has been updated.`,
       });
       setErrors({});
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof ApiError) {
         addToast({
           type: "error",

@@ -13,6 +13,17 @@ export interface MedicalFacilityProviderInfoProps {
   openAddFundingCompanyModal?: () => void;
 }
 
+interface MedicalFacilityFormState {
+  liensId: string;
+  facilityId: string;
+  facility: string;
+  facilityContactId: string;
+  facilityContact: string;
+  email: string;
+  medicalProviderId: string;
+  medicalProvider: string;
+}
+
 const INITIAL_FORM = {
   liensId: "",
   facilityId: "",
@@ -24,24 +35,26 @@ const INITIAL_FORM = {
   medicalProvider: "",
 };
 
-type DropdownData = {
-  status: Array<Record<string, string>>;
+type DropdownOption = {
+  key: string;
+  value: string;
+  label: string;
 };
 
 export default function MedicalFacilityProviderInfo(
   props: MedicalFacilityProviderInfoProps,
 ) {
   const { data = {}, lienId, onFormValid, openAddFundingCompanyModal } = props;
-  const [form, setForm] = useState(
+  const [form, setForm] = useState<MedicalFacilityFormState>(
     data ? { ...data, lienId: lienId } : { ...INITIAL_FORM, lienId: lienId },
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const [facilityContactList, setFacilityContactList] = useState<any[]>([]);
-  const [facilityList, setFacilityList] =
-    useState<Array<Record<string, string>>>();
-  const [providerList, setProviderList] =
-    useState<Array<Record<string, string>>>();
+  const [facilityContactList, setFacilityContactList] = useState<
+    DropdownOption[]
+  >([]);
+  const [facilityList, setFacilityList] = useState<DropdownOption[]>([]);
+  const [providerList, setProviderList] = useState<DropdownOption[]>([]);
   const [showCreate, setShowCreate] = useState<boolean>(false);
   const [showCreateContact, setShowCreateContact] = useState<boolean>(false);
 
@@ -64,21 +77,20 @@ export default function MedicalFacilityProviderInfo(
       const contactsRes = await facilityService.getContactPersonByFacility(
         form.facilityId,
       );
-      const list = contactsRes.map((c) => {
-        return {
-          key: c.id,
-          value: c.id,
-          label: `${c.firstName} ${c.lastName}`,
-        };
-      });
+      const list: DropdownOption[] = contactsRes.map((c) => ({
+        key: c.id,
+        value: c.id,
+        label: `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim(),
+      }));
       if (form.facilityContactId) {
         const currentFacilityContact = list.find(
-          (f) => f.id == form.facilityContactId,
+          (f) => f.key == form.facilityContactId,
         );
-        setForm((prev) => ({
-          ...prev,
-          facilityContact: currentFacilityContact?.label,
-        }));
+        if (currentFacilityContact)
+          setForm((prev) => ({
+            ...prev,
+            facilityContact: currentFacilityContact?.label,
+          }));
       }
       setFacilityContactList(list ?? []);
     } catch (e) {
@@ -89,13 +101,16 @@ export default function MedicalFacilityProviderInfo(
   async function loadFacilities() {
     try {
       const facilityRes = await lookupService.getMedicalFacility();
-      const list = facilityRes.items.map((c) => {
-        return { key: c.id, value: c.id, label: c.name };
-      });
+      const list: DropdownOption[] = facilityRes.items.map((c) => ({
+        key: c.id,
+        value: c.id,
+        label: String(c.name ?? ""),
+      }));
 
       if (form.facilityId) {
         const currentFacility = list.find((f) => f.key == form.facilityId);
-        setForm((prev) => ({ ...prev, facility: currentFacility?.label }));
+        if (currentFacility)
+          setForm((prev) => ({ ...prev, facility: currentFacility?.label }));
       }
       setFacilityList(list ?? []);
     } catch (e) {
@@ -106,9 +121,11 @@ export default function MedicalFacilityProviderInfo(
   async function loadMedicalProviders() {
     try {
       const providerRes = await lookupService.getMedicalProviders();
-      const list = providerRes.items.map((c) => {
-        return { key: c.id, value: c.id, label: c.organization };
-      });
+      const list: DropdownOption[] = providerRes.items.map((c) => ({
+        key: c.id,
+        value: c.id,
+        label: String(c.organization ?? ""),
+      }));
       setProviderList(list ?? []);
     } catch (e) {
       setProviderList([]);
@@ -116,26 +133,25 @@ export default function MedicalFacilityProviderInfo(
   }
 
   function validateForm() {
-    console.log(form);
     onFormValid?.(true, form);
   }
 
-  const getFacilityName = (id) => {
-    if (facilityList) {
-      return facilityList.find((f) => f.value == id).label;
-    }
+  const resolveSelectedValue = (value: string | string[] | boolean): string => {
+    if (Array.isArray(value)) return value[0] ?? "";
+    if (typeof value === "string") return value;
+    return "";
   };
 
-  const getContactName = (id) => {
-    if (facilityContactList) {
-      return facilityContactList.find((f) => f.value == id).label;
-    }
+  const getFacilityName = (id?: string | null): string => {
+    return facilityList.find((f) => f.value === id)?.label ?? "";
   };
 
-  const getProviderName = (id) => {
-    if (providerList) {
-      return providerList.find((f) => f.value == id).label;
-    }
+  const getContactName = (id?: string | null): string => {
+    return facilityContactList.find((f) => f.value === id)?.label ?? "";
+  };
+
+  const getProviderName = (id?: string | null): string => {
+    return providerList.find((f) => f.value === id)?.label ?? "";
   };
 
   return (
@@ -160,11 +176,11 @@ export default function MedicalFacilityProviderInfo(
             value={form.facility}
             options={facilityList}
             onChange={(v) => {
-              console.log(v);
+              const selectedValue = resolveSelectedValue(v);
               setForm({
                 ...form,
-                facility: getFacilityName(v.toString()),
-                facilityId: v.toString(),
+                facility: getFacilityName(selectedValue),
+                facilityId: selectedValue,
               });
             }}
             type="select"
@@ -185,10 +201,11 @@ export default function MedicalFacilityProviderInfo(
             value={form.facilityContact}
             options={facilityContactList}
             onChange={(v) => {
+              const selectedValue = resolveSelectedValue(v);
               setForm({
                 ...form,
-                facilityContact: getContactName(v.toString()),
-                facilityContactId: v,
+                facilityContact: getContactName(selectedValue),
+                facilityContactId: selectedValue,
               });
             }}
             type="select"
@@ -222,13 +239,14 @@ export default function MedicalFacilityProviderInfo(
             label="Provider Name"
             value={form.medicalProvider}
             options={providerList}
-            onChange={(v) =>
+            onChange={(v) => {
+              const selectedValue = resolveSelectedValue(v);
               setForm({
                 ...form,
-                medicalProvider: getProviderName(v.toString()),
-                medicalProviderId: v,
-              })
-            }
+                medicalProvider: getProviderName(selectedValue),
+                medicalProviderId: selectedValue,
+              });
+            }}
             type="select"
           />
         </div>

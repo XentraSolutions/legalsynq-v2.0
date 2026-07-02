@@ -100,7 +100,6 @@ export default function ReportDetailsPage() {
             setEditMode(false);
           }}
           onSaved={(data: any) => {
-            console.log("saved report:", data);
             setEditMode(false);
             setTemplate(data);
           }}

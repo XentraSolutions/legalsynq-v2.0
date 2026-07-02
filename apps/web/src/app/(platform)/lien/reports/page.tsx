@@ -149,7 +149,6 @@ export default function ReportsPage() {
           template={template}
           initialData={template}
           onSaved={(data: any) => {
-            console.log("saved report:", data);
             setShowCreate({ isOpen: false });
             setTemplate(data);
             setIsSettingTemplate(true);

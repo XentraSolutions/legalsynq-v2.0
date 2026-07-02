@@ -28,6 +28,7 @@ export interface ReportListResponse {
   name?: string;
   description?: string;
   columns?: Array<string>;
+  data?: ReportsResponse[];
   items: Array<unknown>;
   page?: number;
   pageSize?: number;
@@ -47,6 +48,7 @@ export interface ReportListResponse {
   updatedAt?: string;
   reportConfig?: ReportConfig;
   columnCount?: number;
+  summaryTotals?: ReportTotals;
 }
 
 export interface ReportConfigResponse {

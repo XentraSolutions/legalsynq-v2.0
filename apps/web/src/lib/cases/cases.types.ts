@@ -130,6 +130,8 @@ export interface UpdateCasePersonalRequestDto {
 }
 
 export interface CasesQuery {
+  search?: string | null;
+  pageSize?: number;
   page?: number;
   limit?: number;
   lawFirmId?: string | null;
@@ -181,6 +183,7 @@ export interface CaseListItem {
   settlementAmount: number | null;
   createdAt: string;
   updatedAt: string;
+  clientDisplayName?: string;
 }
 
 export interface CaseDetail {
@@ -417,10 +420,15 @@ export interface CreateMedicalPaymentDto {
   outboundCheckNumber: string;
 }
 
+// export interface CreateMedicalCodeDto {
+//   liensId: string;
+//   payee: string;
+//   outboundCheckNumber: string;
+// }
+
 export interface CreateMedicalCodeDto {
-  liensId: string;
-  payee: string;
-  outboundCheckNumber: string;
+  code: string;
+  description: string;
 }
 
 export interface MedicalCodeLiensResponse {
