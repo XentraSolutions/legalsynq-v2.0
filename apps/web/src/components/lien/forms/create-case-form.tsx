@@ -13,7 +13,7 @@ import { useSessionContext } from "@/providers/session-provider";
 import { dateConverter } from "@/lib/cases/cases.mapper";
 
 interface CreateCaseFormProps {
-  caseNumber: string;
+  caseNumber?: string;
   open: boolean;
   onClose: () => void;
   onCreated?: () => void;
@@ -54,7 +54,10 @@ export function CreateCaseForm({
   const { lookup } = useSessionContext();
 
   const addToast = useLienStore((s) => s.addToast);
-  const [form, setForm] = useState({ ...INITIAL_FORM, caseNumber: caseNumber });
+  const [form, setForm] = useState({
+    ...INITIAL_FORM,
+    caseNumber: caseNumber ?? "",
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [data, setData] = useState<{

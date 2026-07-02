@@ -64,7 +64,12 @@ export const casesService = {
   async updateCasePersonal(
     request: UpdateCasePersonalRequestDto,
   ): Promise<CaseDetail> {
-    const { data } = await casesApi.updatePersonal(request);
+    const dto: UpdateCaseDetailsRequestDto = {
+      firstname: request.firstName,
+      lastname: request.lastName,
+      ...(request.dob && { dateOfIncident: request.dob }),
+    };
+    const { data } = await casesApi.updatePersonal(dto);
     return mapCaseToDetail(data);
   },
 
@@ -80,7 +85,7 @@ export const casesService = {
     const { data: freshDto } = await casesApi.getById(caseId);
     const request = mapDtoToUpdateRequest(freshDto);
     request.status = newStatus;
-    return this.updateCase(caseId, request);
+    return this.updateCase(request);
   },
 
   async getCaseLiens(caseId: string): Promise<CaseLiensResult> {
@@ -98,7 +103,7 @@ export const casesService = {
 
   async getCaseUpdates(caseId: string): Promise<any> {
     const { data } = await casesApi.getCaseUpdates({
-      caseId: caseId,
+      CaseId: caseId,
       page: 1,
       limit: 10,
     });
@@ -111,7 +116,7 @@ export const casesService = {
       page: 1,
       limit: 10,
     });
-    return data.data;
+    return data;
   },
 
   async getCaseStatus(): Promise<any> {
@@ -120,22 +125,22 @@ export const casesService = {
   },
   async getDashboardStats(): Promise<DashboardStats> {
     const { data } = await casesApi.getDashboardStats();
-    return data.data;
+    return data;
   },
 
   async exportCases(request: CasesFilters): Promise<ExportResponse> {
     const { data } = await casesApi.export(request);
-    return data;
+    return data as ExportResponse;
   },
 
-  async payoffQoute(caseId: string): Promise<ApiResponse> {
+  async payoffQoute(caseId: string): Promise<DashboardStats> {
     const { data } = await casesApi.payoffQoute(caseId);
     return data;
   },
 
   async exportCaseLiens(request: CaseLiensFilters): Promise<ExportResponse> {
     const { data } = await casesApi.exportCaseLiens(request);
-    return data;
+    return data as unknown as ExportResponse;
   },
 
   async createMedicalLiens(request: CreateMedicalLiensDto): Promise<any> {
@@ -195,7 +200,8 @@ export const casesService = {
 
   async getMedicalInfo(lienId: string): Promise<any> {
     const { data } = await casesApi.getMedicalInfo(lienId);
-    return { data: mapMedicalInfo(data.data) };
+    const medicalData = (data as unknown as { data?: any }).data ?? data;
+    return { data: mapMedicalInfo(medicalData) };
   },
 
   async getMedicalFacility(lienId: string): Promise<any> {
@@ -205,9 +211,10 @@ export const casesService = {
 
   async getMedicalCodes(
     lienId: string,
-  ): Promise<{ data: { codeRows: MedicalCodeLiensResponse } }> {
+  ): Promise<{ data: { codeRows: MedicalCodeLiensResponse[] } }> {
     const { data } = await casesApi.getMedicalCode(lienId);
-    return { data: mapMedicalCodes(data.data) };
+    const codeData = (data as unknown as { data?: any }).data ?? data;
+    return { data: mapMedicalCodes(codeData) };
   },
 
   async getMedicalDocument(lienId: string): Promise<any> {

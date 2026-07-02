@@ -954,7 +954,6 @@ function DetailsTab({
                   type="select"
                   options={state}
                   onChange={(e) => {
-                    console.log(e);
                     updateField("clientState", e.toString());
                   }}
                 />
@@ -2342,6 +2341,15 @@ const TEMP_LIEN_DOCUMENTS = [
   },
 ];
 
+type DocumentType = {
+  id: string;
+  name: string;
+  documentType: string;
+  lastUpdate: string;
+  lienNumber: string;
+  size: string;
+};
+
 function DocumentsTab({
   docTypes,
   caseDetail,
@@ -2358,6 +2366,8 @@ function DocumentsTab({
   const [selectedDocType, setSelectedDocType] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [caseDocuments, setCaseDocuments] = useState<DocumentType[]>([]);
+  const [liensDocuments, setLiensDocuments] = useState<DocumentType[]>([]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -2458,7 +2468,7 @@ function DocumentsTab({
       </CollapsibleSection>
 
       <CollapsibleSection title="Case Documents" icon="ri-file-copy-2-line">
-        {TEMP_CASE_DOCUMENTS.length === 0 ? (
+        {caseDocuments.length === 0 ? (
           <div className="text-center py-8">
             <i className="ri-file-copy-2-line text-2xl text-gray-300" />
             <p className="text-sm text-gray-400 mt-2">
@@ -2493,7 +2503,7 @@ function DocumentsTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {TEMP_CASE_DOCUMENTS.map((doc) => (
+                  {caseDocuments.map((doc) => (
                     <tr
                       key={doc.id}
                       className="hover:bg-gray-50/50 transition-colors"
@@ -2539,8 +2549,8 @@ function DocumentsTab({
             </div>
             <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
               <p className="text-xs text-gray-400">
-                {TEMP_CASE_DOCUMENTS.length} document
-                {TEMP_CASE_DOCUMENTS.length !== 1 ? "s" : ""}
+                {caseDocuments.length} document
+                {caseDocuments.length !== 1 ? "s" : ""}
               </p>
             </div>
           </>
@@ -2548,7 +2558,7 @@ function DocumentsTab({
       </CollapsibleSection>
 
       <CollapsibleSection title="Lien Documents" icon="ri-attachment-2">
-        {TEMP_LIEN_DOCUMENTS.length === 0 ? (
+        {liensDocuments.length === 0 ? (
           <div className="text-center py-8">
             <i className="ri-attachment-2 text-2xl text-gray-300" />
             <p className="text-sm text-gray-400 mt-2">
@@ -2586,7 +2596,7 @@ function DocumentsTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {TEMP_LIEN_DOCUMENTS.map((doc) => (
+                  {liensDocuments.map((doc) => (
                     <tr
                       key={doc.id}
                       className="hover:bg-gray-50/50 transition-colors"
@@ -2633,8 +2643,8 @@ function DocumentsTab({
             </div>
             <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
               <p className="text-xs text-gray-400">
-                {TEMP_LIEN_DOCUMENTS.length} document
-                {TEMP_LIEN_DOCUMENTS.length !== 1 ? "s" : ""}
+                {liensDocuments.length} document
+                {liensDocuments.length !== 1 ? "s" : ""}
               </p>
             </div>
           </>

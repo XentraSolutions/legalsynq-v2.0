@@ -98,8 +98,10 @@ export function CreateMedicalFacilityContactPerson({
     onClose();
   };
 
-  const getFacilityName = (id) => {
-    return data.find((f) => f.value == id).label;
+  const getFacilityName = (id: string) => {
+    return data.find(
+      (f: { key: string; value: string; label: string }) => f.value == id,
+    ).label;
   };
 
   return (
@@ -151,7 +153,7 @@ export function CreateMedicalFacilityContactPerson({
             setForm({
               ...form,
               facilityId: v.toString(),
-              facilityName: getFacilityName(v),
+              facilityName: getFacilityName(v.toString()),
             })
           }
           error={errors.facilityId}

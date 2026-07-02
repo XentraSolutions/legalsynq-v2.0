@@ -47,7 +47,9 @@ async function fetchCaseLiens(
           .catch(() => [] as LegacyCasePayment[]),
     }),
     settlementService.getLienReductionsByCase(caseId).catch(() => []),
-    lookupService.getMedicalFacility().catch(() => []),
+    lookupService.getMedicalFacility().catch(() => ({
+      items: [],
+    })),
   ]);
 
   // Sum all payments per lienId (amount may come back as a string from the legacy endpoint)

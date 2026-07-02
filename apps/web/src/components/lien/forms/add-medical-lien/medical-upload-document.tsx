@@ -115,7 +115,6 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   }
 
   function deleteFile(file: any) {
-    console.log(file);
     return "";
   }
 

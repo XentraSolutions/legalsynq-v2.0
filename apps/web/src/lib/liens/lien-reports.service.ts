@@ -6,6 +6,7 @@ import {
   ReportListResponse,
   ReportsResponse,
   ReportTemplate,
+  ReportTotals,
   UpdateReportConfigRequest,
 } from "./lien-report.types";
 import { lienReportsApi } from "./lien-reports.api";
@@ -33,11 +34,13 @@ export const lienReportsService = {
   async generateTemplate(request: ReportTemplate | ReportsResponse): Promise<ReportListResponse> {
     const { data } = await lienReportsApi.createTemplate(request as ReportTemplate);
     if (!data) throw new Error("Failed to create report");
-    const payload = (data as unknown as { data?: unknown })?.data ?? data;
+    const payload = (data as unknown as { data?: unknown; summaryTotals?: ReportTotals })?.data ?? data;
     const items = Array.isArray(payload) ? payload : [];
     return {
       ...(data as unknown as Record<string, unknown>),
       items: items.map(mapReportToTemplate),
+      data: items as ReportsResponse[],
+      summaryTotals: (data as unknown as { summaryTotals?: ReportTotals }).summaryTotals,
     } as ReportListResponse;
   },
   async createReports(request: CreateReports): Promise<ApiResponse> {

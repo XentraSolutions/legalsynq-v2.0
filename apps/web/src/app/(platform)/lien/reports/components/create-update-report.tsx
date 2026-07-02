@@ -7,6 +7,7 @@ import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { casesService } from "@/lib/cases";
 import { lookupService } from "@/lib/lookup";
 import { contactsService } from "@/lib/contacts";
+import { ReportsResponse } from "@/lib/liens/lien-report.types";
 import Field from "@/components/lien/field";
 
 const AVAILABLE_COLUMNS = [
@@ -62,10 +63,9 @@ export default function CreateUpdateReport({
   template,
   initialData,
 }: any) {
-  console.log(template, initialData, mode);
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedCols, setSelectedCols] = useState<Array<ColsType>>([]);
-  const [available, setAvailable] = useState([]);
+  const [available, setAvailable] = useState<Array<ColsType>>([]);
 
   const [leftSearch, setLeftSearch] = useState("");
   const [rightSearch, setRightSearch] = useState("");
@@ -106,7 +106,6 @@ export default function CreateUpdateReport({
           liensStatus: [],
         },
   );
-  console.log(data);
 
   const fetchData = useCallback(async () => {
     const [
@@ -192,7 +191,7 @@ export default function CreateUpdateReport({
       AVAILABLE_COLUMNS.filter(
         (availableCol) =>
           !initialData?.config?.columns?.some(
-            (selectedCol) => selectedCol === availableCol.code,
+            (selectedCol: string) => selectedCol === availableCol.code,
           ),
       ) ?? [];
     setSelectedCols(filteredSelectedColumns);
@@ -239,7 +238,6 @@ export default function CreateUpdateReport({
       return;
     }
     const reportData = await createReportTemplate();
-    console.log("Generate report", { selectedCols }, reportData);
     onSaved(reportData);
   };
 
@@ -268,19 +266,20 @@ export default function CreateUpdateReport({
       page: "1",
       limit: "10",
     });
+    const reportRows = Array.isArray(reportDataRes.data)
+      ? reportDataRes.data
+      : [];
     return {
-      items: reportDataRes.data.map((c) => {
-        return {
-          id: c.l_id,
-          caseNumber: c.case_id,
-          clientName: c.plaintiff_first_name + c.plaintiff_last_name,
-          lawFirm: c.lawfirm,
-          caseManager: c.case_manager ? c.case_manager : [],
-          status: c.case_status,
-          accidentType: c.case_type,
-          dateOfIncident: c.date_of_loss,
-        };
-      }),
+      items: reportRows.map((c: ReportsResponse) => ({
+        id: c.l_id,
+        caseNumber: c.case_id,
+        clientName: `${c.plaintiff_first_name} ${c.plaintiff_last_name}`.trim(),
+        lawFirm: c.lawfirm,
+        caseManager: c.case_manager ? c.case_manager : [],
+        status: c.case_status,
+        accidentType: c.case_type,
+        dateOfIncident: c.date_of_loss,
+      })),
       summaryTotals: reportDataRes.summaryTotals,
       ...payload,
       config: { columns: selectedCols.map((c: ColsType) => c.code) },
@@ -406,7 +405,6 @@ export default function CreateUpdateReport({
               options={data.statusView ? data.statusView : []}
               placeholder=""
               onChange={(v) => {
-                console.log(v);
                 setForm({ ...form, statusView: v });
               }}
               type="select"

@@ -6,6 +6,7 @@ import { useLienStore } from "@/stores/lien-store";
 import { casesService, type CreateCaseRequestDto } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import Field from "../field";
+import { CreateMedicalCodeDto } from "@/lib/cases/cases.types";
 
 interface CreateMedicalCodeProps {
   open: boolean;
@@ -40,7 +41,7 @@ export function CreateMedicalCode({
     if (!validate()) return;
     setSubmitting(true);
     try {
-      const request: CreateMedicalCodeProps = {
+      const request: CreateMedicalCodeDto = {
         code: form.code.trim(),
         description: form.description.trim(),
       };
