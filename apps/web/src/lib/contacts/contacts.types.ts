@@ -93,6 +93,8 @@ export interface ContactListItem {
   state: string;
   isActive: boolean;
   createdAt: string;
+  facilityId: string | null;
+  lawFirmId: string | null;
 }
 
 export interface ContactDetail extends ContactListItem {

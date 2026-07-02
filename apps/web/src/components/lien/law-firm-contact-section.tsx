@@ -479,9 +479,24 @@ export function LawFirmContactSection({ lawFirmId }: Props) {
           onClose={() => setDeleteTarget(null)}
           onConfirm={handleDelete}
           title="Delete Contact"
-          description={`Are you sure you want to delete ${deleteTarget.firstName} ${deleteTarget.lastName}?`}
+          description={
+            <>
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-primary">
+                {deleteTarget.firstName} {deleteTarget.lastName}
+              </span>
+              ? This action cannot be undone and will permanently remove all
+              associated data.
+            </>
+          }
           confirmLabel="Delete"
           confirmVariant="danger"
+          warningTitle="Warning: Deleting this contact will also remove:"
+          warningItems={[
+            "All case associations",
+            "All uploaded documents",
+            "All activity history",
+          ]}
         />
       )}
     </div>

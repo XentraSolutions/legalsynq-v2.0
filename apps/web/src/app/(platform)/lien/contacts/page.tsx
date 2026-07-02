@@ -44,6 +44,7 @@ export default function ContactsPage() {
     id: string;
     action: string;
     label: string;
+    contact: ContactListItem;
   } | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
@@ -110,24 +111,26 @@ export default function ContactsPage() {
     link.click();
   };
 
-  const handleToggleActive = async (c: ContactListItem) => {
-    try {
-      if (c.isActive) {
-        await contactsService.deactivateContact(c.id);
-        addToast({ type: "success", title: "Deactivated", description: c.displayName });
-      } else {
-        await contactsService.reactivateContact(c.id);
-        addToast({ type: "success", title: "Activated", description: c.displayName });
-      }
-      fetchContacts();
-    } catch (err) {
-      addToast({
-        type: "error",
-        title: "Action Failed",
-        description: err instanceof Error ? err.message : "Failed to update status",
-      });
-    }
-  };
+  // As far as we know, legacy does not differentiate between deactivating and
+  // deleting a contact, so the active/inactive toggle is disabled for now.
+  // const handleToggleActive = async (c: ContactListItem) => {
+  //   try {
+  //     if (c.isActive) {
+  //       await contactsService.deactivateContact(c.id);
+  //       addToast({ type: "success", title: "Deactivated", description: c.displayName });
+  //     } else {
+  //       await contactsService.reactivateContact(c.id);
+  //       addToast({ type: "success", title: "Activated", description: c.displayName });
+  //     }
+  //     fetchContacts();
+  //   } catch (err) {
+  //     addToast({
+  //       type: "error",
+  //       title: "Action Failed",
+  //       description: err instanceof Error ? err.message : "Failed to update status",
+  //     });
+  //   }
+  // };
 
   const handleConfirmAction = async () => {
     if (!confirmAction) return;
@@ -264,7 +267,7 @@ export default function ContactsPage() {
                 <TableHead>Type</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Active Cases</TableHead>
-                <TableHead>Status</TableHead>
+                {/* Status column removed: as far as we know, legacy has no active/inactive vs delete differentiation, so only active contacts ever show up. */}
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -291,19 +294,15 @@ export default function ContactsPage() {
                   </TableCell>
                   <TableCell className="text-sm text-gray-500">{c.email || "—"}</TableCell>
                   <TableCell className="text-sm text-gray-500">0</TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${c.isActive ? "bg-green-50 text-green-700 border border-green-200" : "bg-gray-100 text-gray-500 border border-gray-200"}`}>
-                      {c.isActive ? "Active" : "Inactive"}
-                    </span>
-                  </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <ActionMenu
                       items={[
                         { label: "View Details", icon: "ri-eye-line", onClick: () => router.push(`/lien/contacts/${c.id}`) },
                         { label: "Reassign", icon: "ri-exchange-line", onClick: () => { setReassignTarget(c); setReassignSelectedId(""); } },
                         { label: "Edit Contact", icon: "ri-pencil-line", onClick: () => { setContactData(c); showCreateForm("edit"); } },
-                        { label: c.isActive ? "Deactivate" : "Activate", icon: c.isActive ? "ri-user-unfollow-line" : "ri-user-follow-line", onClick: () => handleToggleActive(c) },
-                        { label: "Delete", icon: "ri-delete-bin-line", onClick: () => setConfirmAction({ id: c.id, action: "delete", label: "Delete" }) },
+                        // Activate/Deactivate disabled: as far as we know, legacy has no active/inactive vs delete differentiation.
+                        // { label: c.isActive ? "Deactivate" : "Activate", icon: c.isActive ? "ri-user-unfollow-line" : "ri-user-follow-line", onClick: () => handleToggleActive(c) },
+                        { label: "Delete", icon: "ri-delete-bin-line", onClick: () => setConfirmAction({ id: c.id, action: "delete", label: "Delete", contact: c }) },
                       ]}
                     />
                   </TableCell>
@@ -330,16 +329,34 @@ export default function ContactsPage() {
         />
       )}
 
-      {confirmAction && (
+      {confirmAction && confirmAction.action === "delete" && (
         <ConfirmDialog
           open
           onClose={() => setConfirmAction(null)}
           onConfirm={handleConfirmAction}
-          title={confirmAction.label}
-          description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this contact?`}
-          confirmLabel={confirmAction.label}
-          confirmVariant="primary"
+          title="Delete Contact"
+          description={
+            <>
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-primary">
+                {confirmAction.contact.displayName}
+              </span>
+              ? This action cannot be undone and will permanently remove all
+              associated data.
+            </>
+          }
+          confirmLabel="Delete"
+          confirmVariant="danger"
           loading={confirmLoading}
+          warningTitle="Warning: Deleting this contact will also remove:"
+          warningItems={[
+            ...(["LawFirm", "Facility"].includes(confirmAction.contact.contactType) && !(confirmAction.contact.lawFirmId || confirmAction.contact.facilityId)
+              ? ["All associated staff/sub-contacts"]
+              : []),
+            "All case associations",
+            "All uploaded documents",
+            "All activity history",
+          ]}
         />
       )}
 

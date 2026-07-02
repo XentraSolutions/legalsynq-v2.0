@@ -6,6 +6,7 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
+  titleClassName?: string;
   subtitle?: string;
   children: ReactNode;
   footer?: ReactNode;
@@ -14,7 +15,7 @@ interface ModalProps {
 
 const SIZE_MAP = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
 
-export function Modal({ open, onClose, title, subtitle, children, footer, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, titleClassName, subtitle, children, footer, size = 'md' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,7 +34,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
       <div className={`relative bg-white rounded-xl shadow-xl w-full ${SIZE_MAP[size]} max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
-            <h2 id="modal-title" className="text-base font-semibold text-gray-900">{title}</h2>
+            <h2 id="modal-title" className={`text-base font-semibold ${titleClassName ?? 'text-gray-900'}`}>{title}</h2>
             {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
           </div>
           <button onClick={onClose} aria-label="Close dialog" className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
@@ -52,19 +53,21 @@ interface ConfirmDialogProps {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  description: string;
+  description: ReactNode;
   confirmLabel?: string;
   confirmVariant?: 'primary' | 'danger';
   loading?: boolean;
+  warningTitle?: string;
+  warningItems?: string[];
 }
 
-export function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = 'Confirm', confirmVariant = 'primary', loading }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = 'Confirm', confirmVariant = 'primary', loading, warningTitle, warningItems }: ConfirmDialogProps) {
   const btnClass = confirmVariant === 'danger'
     ? 'bg-red-600 hover:bg-red-700 text-white'
     : 'bg-primary hover:bg-primary/90 text-white';
 
   return (
-    <Modal open={open} onClose={loading ? () => {} : onClose} title={title} size="sm" footer={
+    <Modal open={open} onClose={loading ? () => {} : onClose} title={title} titleClassName={confirmVariant === 'danger' ? 'text-red-600' : undefined} size="sm" footer={
       <>
         <button onClick={onClose} disabled={loading} className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50">Cancel</button>
         <button onClick={onConfirm} disabled={loading} className={`text-sm px-4 py-2 rounded-lg ${btnClass} disabled:opacity-50`}>
@@ -73,6 +76,18 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, description, co
       </>
     }>
       <p className="text-sm text-gray-600">{description}</p>
+      {warningItems && warningItems.length > 0 && (
+        <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2.5">
+          {warningTitle && (
+            <p className="text-xs font-medium text-gray-400 mb-1.5">{warningTitle}</p>
+          )}
+          <ul className="space-y-1">
+            {warningItems.map((item) => (
+              <li key={item} className="text-xs text-gray-400">{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Modal>
   );
 }

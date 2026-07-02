@@ -5,7 +5,7 @@ import { useLienStore } from "@/stores/lien-store";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { CONTACT_TYPE_LABELS } from "@/types/lien";
 import { DetailHeader, DetailSection } from "@/components/lien/detail-section";
-import { ConfirmDialog } from "@/components/lien/modal";
+// import { ConfirmDialog } from "@/components/lien/modal";
 import { EntityTimeline } from "@/components/lien/entity-timeline";
 import { contactsService, type ContactDetail } from "@/lib/contacts";
 import { MedicalFacilityStaffSection } from "@/components/lien/medical-facility-staff-section";
@@ -17,10 +17,10 @@ export function ContactDetailClient({ id }: { id: string }) {
   const ra = useRoleAccess();
   const [contact, setContact] = useState<ContactDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [confirmAction, setConfirmAction] = useState<{
-    action: string;
-    label: string;
-  } | null>(null);
+  // const [confirmAction, setConfirmAction] = useState<{
+  //   action: string;
+  //   label: string;
+  // } | null>(null);
 
   const fetchContact = useCallback(async () => {
     try {
@@ -45,28 +45,30 @@ export function ContactDetailClient({ id }: { id: string }) {
 
   const canEdit = ra.can("contact:edit");
 
-  const handleStatusToggle = async () => {
-    if (!confirmAction || !contact) return;
-    try {
-      const updated =
-        confirmAction.action === "deactivate"
-          ? await contactsService.deactivateContact(id)
-          : await contactsService.reactivateContact(id);
-      setContact(updated);
-      addToast({ type: "success", title: confirmAction.label });
-      setConfirmAction(null);
-    } catch (err) {
-      addToast({
-        type: "error",
-        title: "Action Failed",
-        description:
-          err instanceof Error
-            ? err.message
-            : "Failed to update contact status",
-      });
-      setConfirmAction(null);
-    }
-  };
+  // As far as we know, legacy does not differentiate between deactivating and
+  // deleting a contact, so the active/inactive toggle is disabled for now.
+  // const handleStatusToggle = async () => {
+  //   if (!confirmAction || !contact) return;
+  //   try {
+  //     const updated =
+  //       confirmAction.action === "deactivate"
+  //         ? await contactsService.deactivateContact(id)
+  //         : await contactsService.reactivateContact(id);
+  //     setContact(updated);
+  //     addToast({ type: "success", title: confirmAction.label });
+  //     setConfirmAction(null);
+  //   } catch (err) {
+  //     addToast({
+  //       type: "error",
+  //       title: "Action Failed",
+  //       description:
+  //         err instanceof Error
+  //           ? err.message
+  //           : "Failed to update contact status",
+  //     });
+  //     setConfirmAction(null);
+  //   }
+  // };
 
   if (loading)
     return (
@@ -93,7 +95,7 @@ export function ContactDetailClient({ id }: { id: string }) {
         backLabel="Back to Contacts"
         meta={[
           ...(contact.title ? [{ label: "Title", value: contact.title }] : []),
-          { label: "Status", value: contact.isActive ? "Active" : "Inactive" },
+          // Status field removed: as far as we know, legacy has no active/inactive vs delete differentiation.
           { label: "Member Since", value: contact.createdAt },
         ]}
         actions={
@@ -107,7 +109,8 @@ export function ContactDetailClient({ id }: { id: string }) {
                   Send Email
                 </a>
               )}
-              {contact.isActive ? (
+              {/* Activate/Deactivate disabled: as far as we know, legacy has no active/inactive vs delete differentiation. */}
+              {/* {contact.isActive ? (
                 <button
                   onClick={() =>
                     setConfirmAction({
@@ -131,7 +134,7 @@ export function ContactDetailClient({ id }: { id: string }) {
                 >
                   Reactivate
                 </button>
-              )}
+              )} */}
             </div>
           ) : undefined
         }
@@ -192,7 +195,8 @@ export function ContactDetailClient({ id }: { id: string }) {
 
       <EntityTimeline entityType="Contact" entityId={id} />
 
-      {confirmAction && (
+      {/* Status confirm dialog disabled along with the deactivate/reactivate buttons above. */}
+      {/* {confirmAction && (
         <ConfirmDialog
           open
           onClose={() => setConfirmAction(null)}
@@ -201,7 +205,7 @@ export function ContactDetailClient({ id }: { id: string }) {
           description={`${confirmAction.label} for ${contact.displayName}?`}
           confirmLabel={confirmAction.label}
         />
-      )}
+      )} */}
     </div>
   );
 }
