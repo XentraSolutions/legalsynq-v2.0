@@ -25,13 +25,13 @@ export interface CreateReports {
 }
 
 export interface ReportListResponse {
-  name: string;
-  description: string;
-  columns: Array<string>;
-  items: CaseListItem[];
-  page: number;
+  name?: string;
+  description?: string;
+  columns?: Array<string>;
+  items: Array<unknown>;
+  page?: number;
   pageSize?: number;
-  reportId: string;
+  reportId?: string;
   totalCount?: number;
   reportName?: string;
   reportDescription?: string;
@@ -60,6 +60,7 @@ export interface ReportConfigResponse {
   id: string;
   name: string;
   reportDescription: string | undefined | null;
+  description?: string | null;
   reportConfig: {
     columns: Array<string>;
   };

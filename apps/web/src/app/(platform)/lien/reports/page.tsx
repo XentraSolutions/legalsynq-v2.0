@@ -51,7 +51,7 @@ export default function ReportsPage() {
     setError(null);
     try {
       const result = await lienReportsService.getReports();
-      setReports(result?.items);
+      setReports(result?.items as ReportListItem[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tasks");
     } finally {

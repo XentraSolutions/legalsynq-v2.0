@@ -54,6 +54,7 @@ export function mapLienToListItem(dto: LienResponseDto): LienListItem {
     facility: dto.facilityId ?? null,
     facilityId: dto.facilityId ?? null,
     initialServiceDate: dto.initialServiceDate,
+    purchaseDate: formatDateField(dto.purchaseDate),
     status: dto.status,
     caseId: safeString(dto.caseId),
     originalAmount: dto.originalAmount,

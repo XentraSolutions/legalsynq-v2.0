@@ -38,12 +38,14 @@ export default function ReportDisplay({
 }: ReportDisplayProps) {
   console.log(report);
   const [loading, setLoading] = useState(true);
-  const [cases, setCases] = useState<CaseListItem[]>(report.items ?? []);
+  const [cases, setCases] = useState<CaseListItem[]>(
+    (report.items as CaseListItem[]) ?? [],
+  );
   const addToast = useLienStore((s) => s.addToast);
-  const viewBy = report?.reportType ?? "cases"; // 'cases' | 'liens'
+  const viewBy = report?.reportType.toLowerCase() ?? "case"; // 'cases' | 'liens'
   report;
   const metrics =
-    viewBy === "cases"
+    viewBy === "case"
       ? [
           {
             label: "Total Cases",
@@ -119,7 +121,6 @@ export default function ReportDisplay({
         reportType: report.reportType,
         statusView: report.statusView,
       });
-
       if (response) {
         addToast({
           type: "success",
@@ -180,6 +181,12 @@ export default function ReportDisplay({
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    if (report.items) {
+      setCases(report.items as CaseListItem[]);
+    }
+  }, [report.items]);
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
       {/* HEADER */}
@@ -187,7 +194,7 @@ export default function ReportDisplay({
         <div>
           <h2 className="text-lg font-semibold">{report?.name}</h2>
           <p className="text-sm text-gray-500">
-            {viewBy === "cases" ? "Cases Report" : "Liens Report"}
+            {viewBy === "case" ? "Cases Report" : "Liens Report"}
           </p>
         </div>
 

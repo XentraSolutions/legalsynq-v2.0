@@ -5,6 +5,14 @@ export interface LookupGenericResponse {
   name: string;
 }
 
+export interface GenericPaginationData {
+  keyword: string;
+  page: number;
+  limit: number;
+  sortBy: string;
+  sortDirection: string;
+}
+
 export interface DocumentTypeResponse extends LookupGenericResponse {
   category: string;
   code: string;

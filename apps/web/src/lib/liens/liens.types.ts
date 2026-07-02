@@ -7,6 +7,10 @@ export interface LienResponseDto {
   caseId?: string | null;
   facilityId?: string | null;
   facility: string | null;
+  facilityName?: string | null;
+  serviceDate?: string | null;
+  purchaseDate?: string | null;
+  purchaseAmount?: number | null;
   originalAmount: number;
   currentBalance?: number | null;
   offerPrice?: number | null;

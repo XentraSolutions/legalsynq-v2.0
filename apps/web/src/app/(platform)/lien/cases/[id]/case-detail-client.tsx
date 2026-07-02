@@ -1839,7 +1839,7 @@ function LiensTab({
     try {
       const formData = new FormData();
       formData.append("File", payload.document ?? "");
-      formData.append("liensId", lienId);
+      formData.append("liensId", lienId ?? "");
       formData.append("DocName", payload.document.name);
       formData.append("DocDescription", "Legacy lien Document upload");
       formData.append("DocFileTypeId", payload.documentType);
@@ -3068,12 +3068,9 @@ function ServicingTab({
   );
   const [switchedLawFirm, setSwitchedLawFirm] = useState(false);
   const [switchedDate, setSwitchedDate] = useState("");
-  const [currentLawFirm, setCurrentLawFirm] = useState(
-    "AZ Injury Care - Law Firm",
-  );
-  const [currentLawyer, setCurrentLawyer] = useState("Robert Chen");
-  const [currentCaseManager, setCurrentCaseManager] =
-    useState("Sarah Mitchell");
+  const [currentLawFirm, setCurrentLawFirm] = useState("");
+  const [currentLawyer, setCurrentLawyer] = useState("");
+  const [currentCaseManager, setCurrentCaseManager] = useState("");
 
   const [lawyerList, setLawyerList] = useState<
     { key: string; value: string; label: string }[]
@@ -3269,6 +3266,22 @@ function ServicingTab({
     });
     setSwitchedLawFirm(false);
   };
+
+  const getCase = async () => {
+    const payload = {
+      keyword: "",
+      page: 1,
+      limit: 20,
+      sortBy: "",
+      sortDirection: "",
+    };
+
+    await servicingService.getCase(caseDetail.id);
+  };
+
+  useEffect(() => {
+    // getCase();
+  }, []);
 
   const leftContent = (
     <div className="space-y-4">

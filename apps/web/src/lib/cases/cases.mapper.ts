@@ -111,6 +111,9 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     currentMedicalStatus: safeString(dto.currentMedicalStatus),
     stateOfIncident: safeString(dto.stateOfIncident),
     trackingFollowUpDate: formatDateField(dto.trackingFollowUpDate),
+    trackingFollowUp: safeString(
+      dto.trackingFollowUp ?? dto.trackingFollowUpDate,
+    ),
     leadId: safeString(dto.leadId),
     insuranceCarrier: safeString(dto.insuranceCarrier),
     policyNumber: safeString(dto.policyNumber),
@@ -133,6 +136,11 @@ export function mapLienToListItem(dto: LienResponseDto): CaseLienItem {
     lienType: dto.lienType,
     status: dto.status,
     originalAmount: dto.originalAmount,
+    facility: dto.facility ?? "",
+    facilityName: dto.facilityName ?? dto.facility ?? "",
+    serviceDate: dto.serviceDate ?? "",
+    purchaseDate: dto.purchaseDate ?? "",
+    purchaseAmount: dto.purchaseAmount ?? dto.purchasePrice ?? 0,
   };
 }
 
@@ -140,6 +148,16 @@ export function mapDtoToUpdateRequest(
   dto: CaseResponseDto,
 ): UpdateCaseRequestDto {
   return {
+    caseId: dto.id,
+    currentStatus: dto.status,
+    currentMedicalStatus: dto.currentMedicalStatus ?? "",
+    caseType: dto.caseType ?? "",
+    stateOfIncident: dto.stateOfIncident ?? "",
+    trackingFollowUp: safeString(
+      dto.trackingFollowUp ?? dto.trackingFollowUpDate,
+    ),
+    dateOfLoss: dto.dateOfIncident ?? "",
+    leadId: dto.leadId ?? "",
     clientFirstName: dto.clientFirstName,
     clientLastName: dto.clientLastName,
     externalReference: dto.externalReference ?? undefined,
@@ -192,16 +210,14 @@ export function mapMedicalInfo(
 }
 
 export function mapMedicalCodes(result: MedicalCodeLiensResponse[]): {
-  codeRows: MedicalCodeLiensResponse;
+  codeRows: MedicalCodeLiensResponse[];
 } {
   return {
-    codeRows: result.map((r) => {
-      return {
-        ...r,
-        billingAmount: +r.billingAmount,
-        medicareCost: +r.medicareCost,
-        purchaseAmount: +r.purchaseAmount,
-      };
-    }),
+    codeRows: result.map((r) => ({
+      ...r,
+      billingAmount: +r.billingAmount,
+      medicareCost: +r.medicareCost,
+      purchaseAmount: +r.purchaseAmount,
+    })),
   };
 }

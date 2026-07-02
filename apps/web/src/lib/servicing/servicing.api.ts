@@ -8,6 +8,7 @@ import type {
   ServicingQuery,
   UpdateServicingDetailsRequestDto,
 } from "./servicing.types";
+import { GenericPaginationData } from "../lookup/lookup.types";
 
 function toQs(params: Record<string, unknown>): string {
   const pairs = Object.entries(params)
@@ -23,6 +24,9 @@ export const servicingApi = {
     return apiClient.get<PaginatedResultDto<ServicingItemResponseDto>>(
       `/lien/api/liens/servicing${toQs(query as Record<string, unknown>)}`,
     );
+  },
+  getCase(id: string) {
+    return apiClient.get<any>(`/lien/service/${id}`);
   },
 
   getById(id: string) {

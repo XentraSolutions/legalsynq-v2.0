@@ -169,18 +169,19 @@ function SelectField({
     return getOptionLabel(selectedValues[0]);
   };
 
-  const filteredOptions = opts?.filter((option) => {
-    const label = String(option[optionLabelKey] ?? "").toLowerCase();
-    const valueText = String(option[optionValueKey] ?? "").toLowerCase();
-    const keyText = String(option.key ?? "").toLowerCase();
-    const searchValue = search.toLowerCase();
+  const filteredOptions =
+    opts?.filter((option) => {
+      const label = String(option[optionLabelKey] ?? "").toLowerCase();
+      const valueText = String(option[optionValueKey] ?? "").toLowerCase();
+      const keyText = String(option.key ?? "").toLowerCase();
+      const searchValue = search.toLowerCase();
 
-    return (
-      label.includes(searchValue) ||
-      valueText.includes(searchValue) ||
-      keyText.includes(searchValue)
-    );
-  });
+      return (
+        label.includes(searchValue) ||
+        valueText.includes(searchValue) ||
+        keyText.includes(searchValue)
+      );
+    }) ?? [];
 
   const toggleOption = (optionValue: string) => {
     if (!multiple) {

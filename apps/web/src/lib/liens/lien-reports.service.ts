@@ -17,19 +17,28 @@ import {
 export const lienReportsService = {
   async getReports(): Promise<ReportListResponse> {
     const { data } = await lienReportsApi.list();
-    return { items: data.map(mapReportToListItem) };
+    const payload = (data as unknown as { data?: unknown })?.data ?? data;
+    const items = Array.isArray(payload) ? payload : [];
+    return {
+      ...(data as unknown as Record<string, unknown>),
+      items: items.map(mapReportToListItem),
+    } as ReportListResponse;
   },
 
   async getReportsById(id: string): Promise<ReportsResponse> {
     const { data } = await lienReportsApi.getById(id);
-    return data ?? [];
+    return (data as ReportsResponse) ?? ({} as ReportsResponse);
   },
 
-  async generateTemplate(request: ReportTemplate): Promise<ReportListResponse> {
-    const { data } = await lienReportsApi.createTemplate(request);
+  async generateTemplate(request: ReportTemplate | ReportsResponse): Promise<ReportListResponse> {
+    const { data } = await lienReportsApi.createTemplate(request as ReportTemplate);
     if (!data) throw new Error("Failed to create report");
-    console.log(data.data.map(mapReportToTemplate));
-    return { ...data, items: data.data.map(mapReportToTemplate) };
+    const payload = (data as unknown as { data?: unknown })?.data ?? data;
+    const items = Array.isArray(payload) ? payload : [];
+    return {
+      ...(data as unknown as Record<string, unknown>),
+      items: items.map(mapReportToTemplate),
+    } as ReportListResponse;
   },
   async createReports(request: CreateReports): Promise<ApiResponse> {
     const { data } = await lienReportsApi.createReport(request);

@@ -6,6 +6,7 @@ export interface CaseResponseDto {
   clientFirstName: string;
   clientLastName: string;
   clientDisplayName: string;
+  trackingFollowUp?: string | null;
   status: string;
   dateOfIncident?: string | null;
   clientDob?: string | null;
@@ -70,28 +71,6 @@ export interface CreateCaseRequestDto {
 }
 
 export interface UpdateCaseRequestDto {
-  // firstName?: string;
-  // lastName?: string;
-  // clientFirstName: string;
-  // clientLastName: string;
-  // externalReference?: string;
-  // title?: string;
-  // clientDob?: string;
-  // clientPhone?: string;
-  // clientEmail?: string;
-  // clientAddress?: string;
-  // dateOfIncident?: string;
-  // dateOfLoss?: string;
-  // accidentType?: string | undefined;
-  // insuranceCarrier?: string;
-  // policyNumber?: string;
-  // claimNumber?: string;
-  // description?: string;
-  // notes?: string;
-  // status?: string;
-  // demandAmount?: number;
-  // settlementAmount?: number;
-
   caseId: string;
   currentStatus: string;
   currentMedicalStatus: string;
@@ -104,6 +83,19 @@ export interface UpdateCaseRequestDto {
   notes: string | null;
   demandAmount: number | string | null;
   settlementAmount: number | string | null;
+  clientFirstName?: string;
+  clientLastName?: string;
+  externalReference?: string;
+  title?: string;
+  clientDob?: string;
+  clientPhone?: string;
+  clientEmail?: string;
+  clientAddress?: string;
+  dateOfIncident?: string;
+  insuranceCarrier?: string;
+  policyNumber?: string;
+  claimNumber?: string;
+  status?: string;
 }
 
 export interface UpdateCaseDetailsRequestDto {
@@ -155,6 +147,11 @@ export interface LienResponseDto {
   lienType: string;
   status: string;
   caseId?: string | null;
+  facility?: string | null;
+  facilityName?: string | null;
+  serviceDate?: string | null;
+  purchaseDate?: string | null;
+  purchaseAmount?: number | null;
   originalAmount: number;
   currentBalance?: number | null;
   offerPrice?: number | null;
@@ -427,16 +424,16 @@ export interface CreateMedicalCodeDto {
 }
 
 export interface MedicalCodeLiensResponse {
-  billingAmount: string;
+  billingAmount: string | number;
   code: string;
   created: string;
   createdBy: string;
   id: string;
   liensId: string;
-  medicareCost: string;
+  medicareCost: string | number;
   outboundCheckNumber: string;
   payee: string;
-  purchaseAmount: string;
+  purchaseAmount: string | number;
   updated: string;
   updatedBy: string;
 }

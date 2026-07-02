@@ -31,19 +31,19 @@ export interface ReportListItem {
 export interface ReportTemplate {
   reportType: string;
   statusView: string;
-  lienStatusIds: string;
-  purchaseDateFrom: string;
-  purchaseDateTo: string;
-  closedDateFrom: string;
-  closedDateTo: string;
+  lienStatusIds: string | string[];
+  purchaseDateFrom: string | null;
+  purchaseDateTo: string | null;
+  closedDateFrom: string | null;
+  closedDateTo: string | null;
   isBulk: string;
-  plaintiffCaseIds: string;
-  lawFirmIds: string;
-  attorneyIds: string;
-  fundingCompanyIds: string;
-  medicalFacilityIds: string;
-  caseManagerIds: string;
-  medicalProviderIds: string;
+  plaintiffCaseIds: string | string[];
+  lawFirmIds: string | string[];
+  attorneyIds: string | string[];
+  fundingCompanyIds: string | string[];
+  medicalFacilityIds: string | string[];
+  caseManagerIds: string | string[];
+  medicalProviderIds: string | string[];
   columns: Array<unknown>;
   page: string;
   limit: string;
@@ -75,6 +75,7 @@ export function mapReportToTemplate(dto: ReportsResponse): ReportTemplate {
     caseId: dto.case_id,
     caseNumber: dto.case_id,
     caseManager: dto.case_manager,
+    caseStatus: dto.case_status,
     status: dto.case_status,
     caseType: dto.case_type,
     dateClosed: dto.date_closed,
@@ -88,9 +89,25 @@ export function mapReportToTemplate(dto: ReportsResponse): ReportTemplate {
     firtsName: dto.plaintiff_first_name,
     lastName: dto.plaintiff_last_name,
     purchaseAmt: dto.purchase_amt,
-    purchaseDateFrom: dto.purchase_date,
+    purchaseDateFrom: dto.purchase_date ?? null,
+    purchaseDateTo: dto.purchase_date ?? null,
+    closedDateFrom: dto.date_closed ?? null,
+    closedDateTo: dto.date_closed ?? null,
+    statusView: dto.case_status ?? "ALL",
+    lienStatusIds: [],
+    isBulk: "N",
+    plaintiffCaseIds: [],
+    lawFirmIds: [],
+    attorneyIds: [],
+    fundingCompanyIds: [],
+    medicalFacilityIds: [],
+    caseManagerIds: [],
+    medicalProviderIds: [],
+    columns: [],
+    page: "1",
+    limit: "50",
     returnedAmt: dto.returned_amt,
-    clientName: dto.plaintiff_first_name + dto.plaintiff_last_name,
+    clientName: `${dto.plaintiff_first_name} ${dto.plaintiff_last_name}`.trim(),
     reportType: dto.reportType,
   };
 }
@@ -99,7 +116,7 @@ export function mapReportToListItem(dto: ReportConfigResponse): ReportListItem {
   return {
     id: dto.id,
     name: dto.name,
-    description: dto.description,
+    description: dto.description ?? dto.reportDescription ?? null,
     createdAt: formatDateField(dto.createdAtUtc),
     updatedAt: formatDateField(dto.updatedAtUtc),
     config: dto.config,

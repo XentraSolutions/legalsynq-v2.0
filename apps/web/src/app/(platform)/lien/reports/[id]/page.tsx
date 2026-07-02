@@ -39,7 +39,9 @@ export default function ReportDetailsPage() {
   const fetchReport = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await lienReportsService.getReportsById(id);
+      const result = await lienReportsService.getReportsById(
+        id?.toString() ?? "",
+      );
       const generatedTemplate =
         await lienReportsService.generateTemplate(result);
       setReport(result);
@@ -53,6 +55,8 @@ export default function ReportDetailsPage() {
     setLoading(true);
     fetchReport();
   }, [id]);
+
+  useEffect(() => {}, [template]);
 
   if (loading) {
     return <div className="p-6 text-sm text-gray-500">Loading report...</div>;
@@ -76,7 +80,7 @@ export default function ReportDetailsPage() {
     <div className="space-y-6">
       {template && (
         <ReportDisplay
-          report={{ ...template, reportId: id }}
+          report={{ ...report, ...template, reportId: id }}
           onBack={() => router.push("/lien/reports")}
           onEdit={() => setEditMode(true)}
           onSaved={() => {

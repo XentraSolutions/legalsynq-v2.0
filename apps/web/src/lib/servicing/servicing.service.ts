@@ -1,3 +1,4 @@
+import { GenericPaginationData } from "../lookup/lookup.types";
 import { servicingApi } from "./servicing.api";
 import {
   mapServicingToListItem,
@@ -26,6 +27,11 @@ export const servicingService = {
       items: data.items.map(mapServicingToListItem),
       pagination: mapServicingPagination(data),
     };
+  },
+
+  async getCase(query: string): Promise<ServicingListResult> {
+    const { data } = await servicingApi.getCase(query);
+    return data;
   },
 
   async getItem(id: string): Promise<ServicingDetail> {

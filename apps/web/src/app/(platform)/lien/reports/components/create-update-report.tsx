@@ -78,7 +78,7 @@ export default function CreateUpdateReport({
       ? {
           reportType: [
             { key: "LIENS", value: "LIENS", label: "LIENS" },
-            { key: "CASES", value: "CASES", label: "CASES" },
+            { key: "CASE", value: "CASE", label: "CASE" },
           ],
           statusView: "ALL",
           lawfirm: [],
@@ -93,7 +93,7 @@ export default function CreateUpdateReport({
       : {
           reportType: [
             { key: "LIENS", value: "LIENS", label: "LIENS" },
-            { key: "CASES", value: "CASES", label: "CASES" },
+            { key: "CASE", value: "CASE", label: "CASE" },
           ],
           statusView: "ALL",
           lawfirm: [],
@@ -263,13 +263,13 @@ export default function CreateUpdateReport({
       medicalProviderIds: form.medicalProviderIds ?? [],
       columns: selectedCols.map((c: ColsType) => c.code),
     };
-    const reportData = await lienReportsService.generateTemplate({
+    const reportDataRes = await lienReportsService.generateTemplate({
       ...payload,
       page: "1",
       limit: "10",
     });
     return {
-      items: reportData.data.map((c) => {
+      items: reportDataRes.data.map((c) => {
         return {
           id: c.l_id,
           caseNumber: c.case_id,
@@ -281,7 +281,7 @@ export default function CreateUpdateReport({
           dateOfIncident: c.date_of_loss,
         };
       }),
-      summaryTotals: reportData.summaryTotals,
+      summaryTotals: reportDataRes.summaryTotals,
       ...payload,
       config: { columns: selectedCols.map((c: ColsType) => c.code) },
       name: form.name,
