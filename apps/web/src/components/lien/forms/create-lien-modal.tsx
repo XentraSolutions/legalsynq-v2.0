@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { FormModal } from "@/components/lien/modal";
 import { ApiError } from "@/lib/api-client";
 import { liensService, type CreateLienRequestDto } from "@/lib/liens";
+import Field from "../field";
+import { CaseListItem, casesService } from "@/lib/cases";
+import { DropdownOption } from "@/lib/lookup/lookup.types";
+import { useSessionContext } from "@/providers/session-provider";
 
 interface CreateLienModalProps {
   open: boolean;
@@ -25,6 +29,7 @@ export function CreateLienModal({
   onClose,
   onCreated,
 }: CreateLienModalProps) {
+  const { lookup } = useSessionContext();
   const [form, setForm] = useState({
     lienNumber: "",
     lienType: "",
@@ -38,6 +43,25 @@ export function CreateLienModal({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [cases, setCases] = useState<DropdownOption[]>([]);
+  const state =
+    lookup?.State?.map((c) => {
+      return { key: c.id, value: c.code, label: c.code };
+    }) ?? [];
+
+  const lienTypes =
+    lookup?.LienType?.map((c) => {
+      return { key: c.id, value: c.code, label: c.name };
+    }) ?? [];
+  const fetchData = useCallback(async () => {
+    const casesRes = await casesService.getCases();
+
+    setCases(
+      casesRes.items.map((c) => {
+        return { key: c.id, value: c.id, label: c.caseNumber };
+      }) ?? [],
+    );
+  }, []);
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -70,7 +94,9 @@ export function CreateLienModal({
       };
       await liensService.createLien(request);
       resetForm();
-      onCreated?.();
+      setTimeout(() => {
+        onCreated?.();
+      }, 1000);
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Failed to create lien";
@@ -119,137 +145,98 @@ export function CreateLienModal({
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lien Number<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.lienNumber}
-              onChange={(e) => setForm({ ...form, lienNumber: e.target.value })}
-              placeholder="e.g. LN-2026-0001"
-              className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${errors.lienNumber ? "border-red-300" : "border-gray-200"}`}
-            />
-            {errors.lienNumber && (
-              <p className="text-xs text-red-500 mt-1">{errors.lienNumber}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lien Type<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <select
+            <Field
+              label="Lien Type"
+              required
               value={form.lienType}
-              onChange={(e) => setForm({ ...form, lienType: e.target.value })}
-              className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${errors.lienType ? "border-red-300" : "border-gray-200"}`}
-            >
-              <option value="">Select type...</option>
-              {LIEN_TYPE_OPTIONS.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            {errors.lienType && (
-              <p className="text-xs text-red-500 mt-1">{errors.lienType}</p>
-            )}
+              options={lienTypes}
+              placeholder="Select one case"
+              onChange={(v) =>
+                setForm({
+                  ...form,
+                  lienType: v.toString(),
+                })
+              }
+              onClick={() => fetchData()}
+              type="select"
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Case Number<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
+            <Field
+              label="Case"
+              required
               value={form.caseId}
-              onChange={(e) => setForm({ ...form, caseId: e.target.value })}
-              placeholder="e.g. LN-2026-0001"
-              className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${errors.caseId ? "border-red-300" : "border-gray-200"}`}
+              options={cases}
+              placeholder="Select one case"
+              onChange={(v) =>
+                setForm({
+                  ...form,
+                  caseId: v.toString(),
+                })
+              }
+              onClick={() => fetchData()}
+              type="select"
             />
-            {errors.caseId && (
-              <p className="text-xs text-red-500 mt-1">{errors.caseId}</p>
-            )}
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Original Amount<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-                $
-              </span>
-              <input
-                type="number"
-                value={form.originalAmount}
-                onChange={(e) =>
-                  setForm({ ...form, originalAmount: e.target.value })
-                }
-                placeholder="0.00"
-                className={`w-full border rounded-lg pl-7 pr-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${errors.originalAmount ? "border-red-300" : "border-gray-200"}`}
-              />
-            </div>
-            {errors.originalAmount && (
-              <p className="text-xs text-red-500 mt-1">
-                {errors.originalAmount}
-              </p>
-            )}
+            <Field
+              label="Original Amount"
+              required
+              value={form.originalAmount}
+              onChange={(v) =>
+                setForm({ ...form, originalAmount: v.toString() })
+              }
+              placeholder="0.00"
+              type="number"
+              error={errors.originalAmount}
+              prefix="$"
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Jurisdiction
-            </label>
-            <input
-              type="text"
+            <Field
+              label="Jurisdiction"
+              required
               value={form.jurisdiction}
-              onChange={(e) =>
-                setForm({ ...form, jurisdiction: e.target.value })
+              options={state}
+              onChange={(v) =>
+                setForm({
+                  ...form,
+                  jurisdiction: v.toString(),
+                })
               }
-              placeholder="e.g. Nevada"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              type="select"
+              placeholder="e.g. NV"
             />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Subject First Name
-            </label>
-            <input
-              type="text"
+            <Field
+              label="Subject First Name"
               value={form.subjectFirst}
-              onChange={(e) =>
-                setForm({ ...form, subjectFirst: e.target.value })
-              }
+              onChange={(v) => setForm({ ...form, subjectFirst: v.toString() })}
               placeholder="First name"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Subject Last Name
-            </label>
-            <input
-              type="text"
+            <Field
+              label="Subject Last Name"
               value={form.subjectLast}
-              onChange={(e) =>
-                setForm({ ...form, subjectLast: e.target.value })
-              }
+              onChange={(v) => setForm({ ...form, subjectLast: v.toString() })}
               placeholder="Last name"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Description
-          </label>
-          <textarea
+          <Field
+            label="Description"
             value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            onChange={(v) => setForm({ ...form, description: v.toString() })}
             placeholder="Optional description..."
-            rows={2}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            type="textarea"
           />
         </div>
         <div className="flex items-center gap-2">

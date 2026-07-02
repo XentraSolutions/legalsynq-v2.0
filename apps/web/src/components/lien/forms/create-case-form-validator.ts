@@ -30,8 +30,16 @@ const EMAIL_REGEX = /\S+@\S+\.\S+/;
 const PHONE_REGEX = /^[0-9()\-+\s]{7,20}$/;
 
 const fieldValidationConfigs: FieldValidationConfig[] = [
-  { field: "clientFirstName", required: true, requiredMessage: "First name is required" },
-  { field: "clientLastName", required: true, requiredMessage: "Last name is required" },
+  {
+    field: "clientFirstName",
+    required: true,
+    requiredMessage: "First name is required",
+  },
+  {
+    field: "clientLastName",
+    required: true,
+    requiredMessage: "Last name is required",
+  },
   {
     field: "clientDob",
     type: "date",
@@ -53,8 +61,11 @@ const fieldValidationConfigs: FieldValidationConfig[] = [
     requiredMessage: "Email is required",
     invalidMessage: "Please enter a valid email address",
   },
-  { field: "clientAddress", required: true, requiredMessage: "Client address is required" },
-  { field: "externalReference", required: true, requiredMessage: "External reference is required" },
+  {
+    field: "clientAddress",
+    required: true,
+    requiredMessage: "Client address is required",
+  },
 ];
 
 const getFieldError = (
@@ -79,7 +90,9 @@ const getFieldError = (
       return PHONE_REGEX.test(value) ? undefined : fieldConfig.invalidMessage;
     case "date": {
       const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? fieldConfig.invalidMessage : undefined;
+      return Number.isNaN(parsed.getTime())
+        ? fieldConfig.invalidMessage
+        : undefined;
     }
     default:
       return undefined;

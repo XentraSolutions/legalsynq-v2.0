@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export default function Field({
   label,
@@ -17,6 +17,8 @@ export default function Field({
   isChecked,
   children,
   disabled,
+  prefix,
+  suffix,
 }: {
   label: string;
   value: string | string[] | null;
@@ -32,9 +34,14 @@ export default function Field({
   optionLabelKey?: string;
   multiple?: boolean;
   isChecked?: boolean;
-  children?: React.ReactNode;
+  children?: ReactNode;
   disabled?: boolean;
+  prefix?: ReactNode;
+  suffix?: ReactNode;
 }) {
+  const hasAdornment = Boolean(prefix || suffix);
+  const inputPadding = `${prefix ? "pl-9" : "pl-3"} ${suffix ? "pr-9" : "pr-3"}`;
+
   return (
     <div
       className={
@@ -86,16 +93,28 @@ export default function Field({
           disabled={disabled}
         />
       ) : (
-        <input
-          type={type}
-          value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
-          onFocus={onFocus}
-          onClick={onClick}
-          placeholder={placeholder}
-          disabled={disabled}
-          className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
-        />
+        <div className={hasAdornment ? "relative" : ""}>
+          {prefix && (
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+              {prefix}
+            </span>
+          )}
+          <input
+            type={type}
+            value={value ?? ""}
+            onChange={(e) => onChange(e.target.value)}
+            onFocus={onFocus}
+            onClick={onClick}
+            placeholder={placeholder}
+            disabled={disabled}
+            className={`w-full border rounded-lg ${inputPadding} py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
+          />
+          {suffix && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+              {suffix}
+            </span>
+          )}
+        </div>
       )}
       {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </div>

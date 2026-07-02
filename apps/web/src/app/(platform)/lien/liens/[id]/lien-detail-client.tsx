@@ -244,7 +244,7 @@ export function LienDetailClient({ id }: { id: string }) {
                   value={linkedCase?.insuranceCarrier || ""}
                 />
                 {/* TEMP: UI mock data for visual review only */}
-                <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
+                <HeaderMeta label="Case Manager" value="" />
                 {canEdit && isSellMode && d.status === "Offered" ? (
                   <div className="flex items-end">
                     <button
