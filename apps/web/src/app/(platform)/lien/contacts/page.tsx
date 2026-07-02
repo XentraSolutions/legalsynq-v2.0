@@ -15,8 +15,6 @@ import { lookupService } from "@/lib/lookup";
 import { useSessionContext } from "@/providers/session-provider";
 import { ConfirmDialog } from "@/components/lien/modal";
 import { useRouter } from "next/navigation";
-import { facilityService } from "@/lib/facility";
-import type { LegacyFacilityItem } from "@/lib/facility/facility.types";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +26,6 @@ export default function ContactsPage() {
 
   const [contacts, setContacts] = useState<ContactListItem[]>([]);
   const [contactData, setContactData] = useState<ContactListItem>();
-  const [legacyFacilities, setLegacyFacilities] = useState<LegacyFacilityItem[]>([]);
   const [contactTypes, setContactTypes] = useState<LookupData[]>([]);
   const { lookup } = useSessionContext();
   const [states, setStates] = useState(lookup?.State);
@@ -37,7 +34,6 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const isLegacyTab = typeFilter === "MedicalFacility";
   const [showCreate, setShowCreate] = useState<{
     open: boolean;
     mode?: "create" | "edit" | undefined;
@@ -49,26 +45,14 @@ export default function ContactsPage() {
     action: string;
     label: string;
   } | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
-  const [reassignTarget, setReassignTarget] = useState<ContactListItem | LegacyFacilityItem | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<ContactListItem | null>(null);
   const [reassignSelectedId, setReassignSelectedId] = useState("");
 
   const fetchContacts = useCallback(async () => {
     try {
       setLoading(true);
-
-      if (isLegacyTab) {
-        const [contactTypesRes, facilityRes] = await Promise.allSettled([
-          lookupService.getContactTypes(),
-          facilityService.getFacilityList(),
-        ]);
-        if (contactTypesRes.status === "fulfilled") setContactTypes(contactTypesRes.value.items);
-        if (facilityRes.status === "fulfilled") {
-          setLegacyFacilities(facilityRes.value.items);
-          setTotalCount(facilityRes.value.totalCount);
-        }
-        return;
-      }
 
       const [contactTypesRes, result] = await Promise.allSettled([
         lookupService.getContactTypes(),
@@ -95,7 +79,7 @@ export default function ContactsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, typeFilter, isLegacyTab, addToast]);
+  }, [search, typeFilter, addToast]);
 
   useEffect(() => {
     fetchContacts();
@@ -147,6 +131,7 @@ export default function ContactsPage() {
 
   const handleConfirmAction = async () => {
     if (!confirmAction) return;
+    setConfirmLoading(true);
     try {
       if (confirmAction.action === "delete") {
         await contactsService.deleteContact(confirmAction.id);
@@ -166,6 +151,8 @@ export default function ContactsPage() {
           err instanceof Error ? err.message : "Failed to update status",
       });
       setConfirmAction(null);
+    } finally {
+      setConfirmLoading(false);
     }
   };
 
@@ -179,7 +166,7 @@ export default function ContactsPage() {
     [activeContactTypes],
   );
 
-  const KNOWN_TAB_CODES = ["LawFirm", "MedicalFacility", "Provider", "FundingCompany", "Lead"];
+  const KNOWN_TAB_CODES = ["LawFirm", "Facility", "Provider", "FundingCompany", "Lead"];
 
   const tabs = useMemo(
     () => [
@@ -197,16 +184,10 @@ export default function ContactsPage() {
 
   const reassignPool = useMemo(() => {
     if (!reassignTarget) return [];
-    if (isLegacyTab) {
-      return legacyFacilities
-        .filter((f) => f.id !== reassignTarget.id)
-        .map((f) => ({ id: f.id, label: f.name }));
-    }
-    const target = reassignTarget as ContactListItem;
     return contacts
-      .filter((c) => c.contactType === target.contactType && c.id !== target.id)
+      .filter((c) => c.contactType === reassignTarget.contactType && c.id !== reassignTarget.id)
       .map((c) => ({ id: c.id, label: c.displayName }));
-  }, [reassignTarget, contacts, legacyFacilities, isLegacyTab]);
+  }, [reassignTarget, contacts]);
 
   return (
     <div className="space-y-5">
@@ -273,55 +254,8 @@ export default function ContactsPage() {
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {loading ? (
           <div className="p-10 text-center text-sm text-gray-400">
-            Loading {isLegacyTab ? "facilities" : "contacts"}...
+            Loading contacts...
           </div>
-        ) : isLegacyTab ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{nameColumnLabel}</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Active Cases</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {legacyFacilities.map((f) => (
-                <TableRow key={f.id}>
-                  <TableCell>
-                    <Link href={`/lien/contacts/legacy/${f.id}`} className="text-sm font-medium text-gray-700 hover:text-primary">
-                      {f.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-gray-50 text-gray-600 border-gray-200">
-                      {contactTypeMap["MedicalFacility"] ?? "Medical Facility"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm text-gray-500">{f.email || "—"}</TableCell>
-                  <TableCell className="text-sm text-gray-500">0</TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${f.isActive ? "bg-green-50 text-green-700 border border-green-200" : "bg-gray-100 text-gray-500 border border-gray-200"}`}>
-                      {f.isActive ? "Active" : "Inactive"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <ActionMenu
-                      items={[
-                        { label: "View Details", icon: "ri-eye-line", onClick: () => router.push(`/lien/contacts/legacy/${f.id}`) },
-                        { label: "Reassign", icon: "ri-exchange-line", onClick: () => { setReassignTarget(f); setReassignSelectedId(""); } },
-                        { label: "Edit Contact", icon: "ri-pencil-line", onClick: () => addToast({ type: "info", title: "Edit", description: "Edit not available for legacy facilities" }) },
-                        { label: f.isActive ? "Deactivate" : "Activate", icon: f.isActive ? "ri-user-unfollow-line" : "ri-user-follow-line", onClick: () => addToast({ type: "info", title: "Status", description: "Status change not available for legacy facilities" }) },
-                        { label: "Delete", icon: "ri-delete-bin-line", onClick: () => setConfirmAction({ id: f.id, action: "delete", label: "Delete" }) },
-                      ]}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
         ) : (
           <Table>
             <TableHeader>
@@ -378,9 +312,9 @@ export default function ContactsPage() {
             </TableBody>
           </Table>
         )}
-        {!loading && (isLegacyTab ? legacyFacilities.length === 0 : contacts?.length === 0) && (
+        {!loading && contacts?.length === 0 && (
           <div className="p-10 text-center text-sm text-gray-400">
-            {isLegacyTab ? "No facilities found." : "No contacts found."}
+            No contacts found.
           </div>
         )}
       </div>
@@ -405,6 +339,7 @@ export default function ContactsPage() {
           description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this contact?`}
           confirmLabel={confirmAction.label}
           confirmVariant="primary"
+          loading={confirmLoading}
         />
       )}
 
@@ -416,9 +351,7 @@ export default function ContactsPage() {
               <h2 className="text-base font-semibold text-gray-800">Re-Assign Case</h2>
               <p className="text-sm text-gray-500 mt-1">
                 Select another{" "}
-                {isLegacyTab
-                  ? "facility"
-                  : contactTypeMap[(reassignTarget as ContactListItem).contactType]?.toLowerCase() ?? "contact"}{" "}
+                {contactTypeMap[reassignTarget.contactType]?.toLowerCase() ?? "contact"}{" "}
                 to assign this case to.
               </p>
             </div>

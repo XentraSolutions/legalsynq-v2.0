@@ -11,6 +11,11 @@ import type {
   CaseLiensApiResponse,
   CasesFilters,
   ExportResponse,
+  CaseAllocationReportRequest,
+  CaseReportItem,
+  LienReportItem,
+  ReportPaginatedResult,
+  CashMetricApiResponse,
   CreateMedicalLiensDto,
   CreateMedicalFacilityDto,
   CreateMedicalPaymentDto,
@@ -23,13 +28,23 @@ import type {
 import { ApiResponse } from "../liens/lien-report.types";
 
 const BASE = "/lien/api/liens/cases";
-function toQs(params: Record<string, unknown>): string {
-  const pairs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== null && v !== "")
-    .map(
-      ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
-    );
-  return pairs.length ? `?${pairs.join("&")}` : "";
+
+// Report endpoints expect MM/DD/YYYY; the date pickers hand us YYYY-MM-DD.
+function toApiDate(value?: string): string | undefined {
+  if (!value) return undefined;
+  const [y, m, d] = value.split("-");
+  if (!y || !m || !d) return value;
+  return `${m}/${d}/${y}`;
+}
+
+function withApiDates<T extends { startDate?: string; endDate?: string }>(
+  request: T,
+): T {
+  return {
+    ...request,
+    startDate: toApiDate(request.startDate),
+    endDate: toApiDate(request.endDate),
+  };
 }
 
 export const casesApi = {
@@ -121,6 +136,48 @@ export const casesApi = {
 
   getDashboardStats() {
     return apiClient.get<DashboardStats>(`${BASE}/dashboard/piechart`);
+  },
+
+  getLawFirmCaseReport(request: CaseAllocationReportRequest) {
+    return apiClient.post<ReportPaginatedResult<CaseReportItem>>(
+      `${BASE}/dashboard/lawfirm-case-report-export/v3`,
+      withApiDates(request),
+    );
+  },
+
+  getMedicalProviderCaseReport(request: CaseAllocationReportRequest) {
+    return apiClient.post<ReportPaginatedResult<CaseReportItem>>(
+      `${BASE}/dashboard/medical-provider-report-export/v3`,
+      withApiDates(request),
+    );
+  },
+
+  getTotalLienReport(request: CaseAllocationReportRequest) {
+    return apiClient.post<ReportPaginatedResult<LienReportItem>>(
+      `${BASE}/dashboard/total-lien-report-export/v3`,
+      withApiDates(request),
+    );
+  },
+
+  getTotalCaseReport(request: CaseAllocationReportRequest) {
+    return apiClient.post<ReportPaginatedResult<CaseReportItem>>(
+      `${BASE}/dashboard/total-case-report-export/v3`,
+      withApiDates(request),
+    );
+  },
+
+  getCashReceived(request: CaseAllocationReportRequest) {
+    return apiClient.post<CashMetricApiResponse>(
+      `${BASE}/dashboard/cash-received`,
+      withApiDates(request),
+    );
+  },
+
+  getCashDeployed(request: CaseAllocationReportRequest) {
+    return apiClient.post<CashMetricApiResponse>(
+      `${BASE}/dashboard/deployed`,
+      withApiDates(request),
+    );
   },
 
   export(request: CasesFilters) {

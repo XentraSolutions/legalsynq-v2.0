@@ -8,4 +8,9 @@ export type {
   PaginationMeta,
   CreateCaseRequestDto,
   UpdateCaseRequestDto,
+  CaseAllocationReportRequest,
+  AllocationSegment,
+  CaseReportItem,
+  LienReportItem,
+  CashMetricResponse,
 } from "./cases.types";

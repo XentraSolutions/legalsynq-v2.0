@@ -360,6 +360,92 @@ export interface ExportResponse {
   data: Array<{ base64: string; export_format: string; filename: string }>;
 }
 
+export interface CaseAllocationReportRequest {
+  page: number;
+  limit: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface CaseReportItem {
+  id: string;
+  caseNumber?: string;
+  clientFirstName?: string;
+  clientLastName?: string;
+  clientName?: string;
+  status?: string;
+  dateOfIncident?: string;
+  clientDob?: string;
+  lawFirmId?: string;
+  lawFirm?: string;
+  caseManagerId?: string;
+  caseManager?: string;
+  accidentTypeId?: string;
+  accidentType?: string;
+  medicalFacility?: string;
+  totalLienAmount?: number;
+  lienCount?: number;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
+  [key: string]: unknown;
+}
+
+export interface LienReportItem {
+  id: string;
+  lienNumber?: string;
+  status?: string;
+  lienType?: string;
+  caseId?: string;
+  caseNumber?: string;
+  clientName?: string;
+  lawFirmId?: string;
+  lawFirm?: string;
+  caseManagerId?: string;
+  caseManager?: string;
+  facilityId?: string;
+  facilityName?: string;
+  medicalProviderId?: string;
+  medicalProvider?: string;
+  fundingCompanyId?: string;
+  fundingCompany?: string;
+  incidentDate?: string;
+  initialServiceDate?: string;
+  endServiceDate?: string;
+  originalAmount?: number;
+  currentBalance?: number;
+  purchasePrice?: number;
+  totalPurchaseAmount?: number;
+  totalBillingAmount?: number;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
+  [key: string]: unknown;
+}
+
+export interface ReportPaginatedResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+}
+
+export interface CashMetricResponse {
+  periodStart: string;
+  periodEnd: string;
+  totalAmount: string;
+  totalCount: number;
+}
+
+export interface CashMetricApiResponse {
+  isSuccess: boolean;
+  message: string;
+  data: CashMetricResponse;
+}
+
+export interface AllocationSegment {
+  label: string;
+  value: number;
+}
+
 export interface CreateMedicalLiensDto {
   id: null | string;
   caseId: string;

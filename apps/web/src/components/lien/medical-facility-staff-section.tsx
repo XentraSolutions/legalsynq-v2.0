@@ -44,19 +44,15 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ContactResponseDto | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ContactResponseDto | null>(
-    null,
-  );
+  const [deleteTarget, setDeleteTarget] = useState<ContactResponseDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const fetchStaff = useCallback(async () => {
     try {
       setLoading(true);
-      const { data } = await contactsApi.list({
-        FacilityId: facilityId,
-        ContactType: CONTACT_TYPE,
-      });
+      const { data } = await contactsApi.list({ FacilityId:facilityId, ContactType: CONTACT_SUBTYPE });
       setStaff(Array.isArray(data.items) ? data.items : []);
     } catch {
       setStaff([]);
@@ -154,6 +150,7 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    setDeleting(true);
     try {
       await contactsApi.delete(deleteTarget.id);
       addToast({
@@ -173,6 +170,8 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
             : "An unexpected error occurred",
       });
       setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -431,6 +430,7 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
           description={`Are you sure you want to delete ${deleteTarget.firstName} ${deleteTarget.lastName}?`}
           confirmLabel="Delete"
           confirmVariant="danger"
+          loading={deleting}
         />
       )}
     </div>
