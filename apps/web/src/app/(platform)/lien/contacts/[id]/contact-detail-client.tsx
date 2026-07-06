@@ -182,16 +182,15 @@ export function ContactDetailClient({ id }: { id: string }) {
         </div>
       )}
 
-      {contact.contactType === "Facility" &&
-        !contact.contactSubtype && (
-          <MedicalFacilityStaffSection facilityId={id} />
-        )}
+      {contact.contactType === "MedicalFacility" && !contact.contactSubtype && (
+        <MedicalFacilityStaffSection facilityId={id} />
+      )}
 
       {contact.contactType === "LawFirm" && (
         <LawFirmContactSection lawFirmId={id} />
       )}
 
-      <ContactCasesSection contactId={id} />
+      <ContactCasesSection contactId={id} contactType={contact.contactType} />
 
       <EntityTimeline entityType="Contact" entityId={id} />
 

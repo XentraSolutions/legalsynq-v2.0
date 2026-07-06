@@ -78,6 +78,10 @@ export interface ContactsQuery {
   pageSize?: number;
   LawFirmId?: string;
   FacilityId?: string;
+  // Explicit "" (as opposed to omitting the field) tells the API to only
+  // return contacts with no subtype — i.e. main contacts, not sub-contacts
+  // like law firm staff or facility staff.
+  ContactSubtype?: string | null;
 }
 
 export interface ContactListItem {
@@ -116,20 +120,20 @@ export interface ExportResponse {
   data: string;
 }
 
-export interface ContactCaseDto {
-  id: string;
-  caseNumber: string;
-  personName: string;
-  status: string;
-  billingAmount: number;
-}
-
 export interface ContactCaseSummary {
   id: string;
   caseNumber: string;
   personName: string;
+  accidentType: string | null;
+  dateOfLoss: string | null;
+  dateOfBirth: string | null;
   status: string;
-  billingAmount: number;
+  // Lien-level fields — the case v3 endpoints (law/leads/medical/facility/funding)
+  // return case records only, with no lien id or amounts. Null until the
+  // API/type exposes them.
+  lienId: string | null;
+  billingAmount: number | null;
+  purchaseAmount: number | null;
 }
 
 export interface PaginationMeta {

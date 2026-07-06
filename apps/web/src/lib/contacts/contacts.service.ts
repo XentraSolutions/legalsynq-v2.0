@@ -1,4 +1,7 @@
 import { contactsApi } from "./contacts.api";
+import { casesApi } from "../cases/cases.api";
+import type { CaseResponseDto, CaseListApiResponse } from "../cases/cases.types";
+import { formatDateField } from "../cases/cases.mapper";
 import {
   mapContactToListItem,
   mapContactToDetail,
@@ -14,6 +17,37 @@ import type {
   UpdateContactRequestDto,
   ExportResponse,
 } from "./contacts.types";
+
+// Legacy cases are looked up through per-type endpoints, keyed by the
+// contact's own id (e.g. a LawFirm contact's id doubles as its lawFirmId).
+// Contact types with no known case-lookup endpoint simply return no cases.
+const CASE_LOOKUP_BY_CONTACT_TYPE: Record<
+  string,
+  (id: string) => Promise<{ data: CaseListApiResponse }>
+> = {
+  LawFirm: (id) => casesApi.listByLawFirm(id),
+  Lead: (id) => casesApi.listByLead(id),
+  MedicalFacility: (id) => casesApi.listByFacility(id),
+  Provider: (id) => casesApi.listByMedicalProvider(id),
+  FundingCompany: (id) => casesApi.listByFundingCompany(id),
+};
+
+function mapCaseToContactSummary(dto: CaseResponseDto): ContactCaseSummary {
+  return {
+    id: dto.id,
+    caseNumber: dto.caseNumber,
+    personName:
+      dto.clientDisplayName ||
+      `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
+    accidentType: dto.caseType || null,
+    dateOfLoss: dto.dateOfIncident ? formatDateField(dto.dateOfIncident) : null,
+    dateOfBirth: dto.clientDob ? formatDateField(dto.clientDob) : null,
+    status: dto.status,
+    lienId: null,
+    billingAmount: null,
+    purchaseAmount: null,
+  };
+}
 
 export interface ContactListResult {
   items: ContactListItem[];
@@ -69,8 +103,14 @@ export const contactsService = {
     return data;
   },
 
-  async getCasesByContact(contactId: string): Promise<ContactCaseSummary[]> {
-    const { data } = await contactsApi.getCases(contactId);
-    return Array.isArray(data) ? data : [];
+  async getCasesByContact(
+    contactId: string,
+    contactType: string,
+  ): Promise<ContactCaseSummary[]> {
+    const lookup = CASE_LOOKUP_BY_CONTACT_TYPE[contactType];
+    if (!lookup) return [];
+
+    const { data } = await lookup(contactId);
+    return (data.data ?? []).map(mapCaseToContactSummary);
   },
 };

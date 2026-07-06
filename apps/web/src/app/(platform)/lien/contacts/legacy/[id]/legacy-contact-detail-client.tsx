@@ -63,7 +63,7 @@ export function LegacyContactDetailClient({ id }: { id: string }) {
 
       <MedicalFacilityStaffSection facilityId={id} />
 
-      <ContactCasesSection contactId={id} />
+      <ContactCasesSection contactId={id} contactType="MedicalFacility" />
 
       <EntityTimeline entityType="Contact" entityId={id} />
     </div>

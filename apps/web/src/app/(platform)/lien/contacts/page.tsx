@@ -66,6 +66,9 @@ export default function ContactsPage() {
   const contactsQuery = useContacts({
     search: search || undefined,
     ContactType: typeFilter || undefined,
+    // Main list only shows top-level contacts, not sub-contacts (e.g. law
+    // firm staff, facility staff) — those live under their parent's detail page.
+    ContactSubtype: "",
     page,
     pageSize: PAGE_SIZE,
   });
@@ -194,7 +197,13 @@ export default function ContactsPage() {
     [activeContactTypes],
   );
 
-  const KNOWN_TAB_CODES = ["LawFirm", "Facility", "Provider", "FundingCompany", "Lead"];
+  const KNOWN_TAB_CODES = [
+    "LawFirm",
+    "MedicalFacility",
+    "Provider",
+    "FundingCompany",
+    "Lead",
+  ];
 
   const tabs = useMemo(
     () => [
@@ -389,7 +398,7 @@ export default function ContactsPage() {
           loading={deleteContactMutation.isPending}
           warningTitle="Warning: Deleting this contact will also remove:"
           warningItems={[
-            ...(["LawFirm", "Facility"].includes(confirmAction.contact.contactType) && !(confirmAction.contact.lawFirmId || confirmAction.contact.facilityId)
+            ...(["LawFirm", "MedicalFacility"].includes(confirmAction.contact.contactType) && !(confirmAction.contact.lawFirmId || confirmAction.contact.facilityId)
               ? ["All associated staff/sub-contacts"]
               : []),
             "All case associations",
