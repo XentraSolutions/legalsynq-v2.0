@@ -126,7 +126,7 @@ export default function ContactsPage() {
   };
 
   const exportContacts = async () => {
-    if (typeFilter == "Facility") return exportFacilityContacts();
+    // if (typeFilter == "Facility") return exportFacilityContacts();
     const response = await contactsService.exportContacts(typeFilter);
     const csv = atob(response.data);
 
@@ -143,19 +143,17 @@ export default function ContactsPage() {
   };
 
   const exportFacilityContacts = async () => {
-    const response = await contactsService.exportFacilityContacts("");
-    const csv = atob(response.data);
-
-    const now = new Date();
-    const date = now.toISOString().split("T")[0];
-    const time = now.toTimeString().split(" ")[0].replace(/:/g, "-");
-    const filename = `contacts_${date}_${time}.csv`;
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
+    // const response = await contactsService.exportFacilityContacts("");
+    // const csv = atob(response.data);
+    // const now = new Date();
+    // const date = now.toISOString().split("T")[0];
+    // const time = now.toTimeString().split(" ")[0].replace(/:/g, "-");
+    // const filename = `contacts_${date}_${time}.csv`;
+    // const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    // const link = document.createElement("a");
+    // link.href = URL.createObjectURL(blob);
+    // link.download = filename;
+    // link.click();
   };
 
   // As far as we know, legacy does not differentiate between deactivating and
