@@ -83,6 +83,20 @@ export const reportFilterRequestSchema = z.object({
   endDate: z.string().optional(),
 });
 
+export const dashboardStatRequestSchema = z.object({
+  fromDate: z.string(),
+  toDate: z.string(),
+});
+
+export const dashboardStatResponseSchema = z
+  .object({
+    totalAmount: z.number().optional(),
+    totalCount: z.number().optional(),
+    periodStart: z.string().optional(),
+    periodEnd: z.string().optional(),
+  })
+  .passthrough();
+
 const reportNumericSchema = z.union([z.number(), z.string()]);
 
 export const dashboardTotalLienReportRowSchema = z

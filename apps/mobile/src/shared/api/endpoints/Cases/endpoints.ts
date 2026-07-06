@@ -8,6 +8,8 @@ import type {
   DashboardPiechart,
   DashboardLawFirmCaseReportRow,
   DashboardMedicalProviderReportRow,
+  DashboardStatRequest,
+  DashboardStatResponse,
   DashboardTaskSummary,
   DashboardTotalCaseReportRow,
   DashboardTotalLienReportRow,
@@ -226,5 +228,21 @@ export const CasesApi = {
       body
     );
     return normalizePagedResult<DashboardMedicalProviderReportRow>(response.data);
+  },
+
+  async getDashboardDeployed(body: DashboardStatRequest): Promise<DashboardStatResponse> {
+    const response = await apiClient.post<unknown>(
+      `${CASES_BASE_PATH}/dashboard/deployed`,
+      body
+    );
+    return (response.data.data ?? {}) as DashboardStatResponse;
+  },
+
+  async getDashboardCashReceived(body: DashboardStatRequest): Promise<DashboardStatResponse> {
+    const response = await apiClient.post<unknown>(
+      `${CASES_BASE_PATH}/dashboard/cash-received`,
+      body
+    );
+    return (response.data.data ?? {}) as DashboardStatResponse;
   },
 };

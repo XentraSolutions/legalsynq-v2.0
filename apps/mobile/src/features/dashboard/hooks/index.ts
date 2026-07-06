@@ -1,4 +1,6 @@
 export * from './useDashboard';
+export * from './useDashboardCashReceived';
+export * from './useDashboardDeployed';
 export * from './useDashboardLawFirmCaseReport';
 export * from './useDashboardMedicalProviderReport';
 export * from './useDashboardPiechart';

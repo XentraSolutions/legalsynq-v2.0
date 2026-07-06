@@ -9,6 +9,8 @@ import { useAtom } from 'jotai';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
 
 import {
+  useDashboardCashReceived,
+  useDashboardDeployed,
   useDashboardLawFirmCaseReport,
   useDashboardMedicalProviderReport,
   useDashboardTotalCaseReport,
@@ -23,6 +25,8 @@ import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
 import type {
   DashboardLawFirmCaseReportRow,
   DashboardMedicalProviderReportRow,
+  DashboardStatRequest,
+  DashboardStatResponse,
   DashboardTotalCaseReportRow,
   DashboardTotalLienReportRow,
   ReportFilterRequest,
@@ -876,6 +880,20 @@ function mapTotalCaseReportToDashboard(rows: DashboardTotalCaseReportRow[]):
   return { slices, totalCases };
 }
 
+function readStatAmount(data: DashboardStatResponse | undefined): number | undefined {
+  if (!data) return undefined;
+  const r = data as Record<string, unknown>;
+  for (const key of ['totalAmount', 'total', 'amount', 'value', 'cashDeployed', 'deployed', 'cashReceived', 'received']) {
+    const raw = r[key];
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    if (typeof raw === 'string') {
+      const parsed = Number(raw.replace(/[^0-9.-]/g, ''));
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+  }
+  return undefined;
+}
+
 function BuyingDashboard({
   dashboardSettingsHydrated,
   isDark,
@@ -890,6 +908,30 @@ function BuyingDashboard({
   onViewReport: (reportType: DashboardReportType) => void;
 }) {
   const reportsEnabled = dashboardSettingsHydrated && !useDummyData;
+  const statRequest: DashboardStatRequest = {
+    fromDate: reportFilter.startDate ?? '',
+    toDate: reportFilter.endDate ?? '',
+  };
+  const { data: deployedData } = useDashboardDeployed(statRequest, reportsEnabled);
+  const { data: cashReceivedData } = useDashboardCashReceived(statRequest, reportsEnabled);
+  const cashDeployed = readStatAmount(deployedData);
+  const cashReceived = readStatAmount(cashReceivedData);
+  const buyingStats: StatCardData[] = useDummyData
+    ? BUYING_STATS
+    : [
+        {
+          label: 'Cash Deployed',
+          value: cashDeployed !== undefined ? formatCurrency(cashDeployed) : '—',
+          trend: '0%',
+          trendTone: 'positive',
+        },
+        {
+          label: 'Cash Received',
+          value: cashReceived !== undefined ? formatCurrency(cashReceived) : '—',
+          trend: '0%',
+          trendTone: 'positive',
+        },
+      ];
   const { data: totalLienReport } = useDashboardTotalLienReport(reportFilter, reportsEnabled);
   const { data: totalCaseReport } = useDashboardTotalCaseReport(reportFilter, reportsEnabled);
   const { data: lawFirmReport } = useDashboardLawFirmCaseReport(reportFilter, reportsEnabled);
@@ -920,7 +962,7 @@ function BuyingDashboard({
 
   return (
     <>
-      {useDummyData ? <StatGrid isDark={isDark} stats={BUYING_STATS} /> : null}
+      <StatGrid isDark={isDark} stats={buyingStats} />
       <DonutCard
         centerCaption="Total Liens"
         centerValue={totalLiens}
@@ -990,7 +1032,7 @@ function StatGrid({ isDark, stats }: { isDark: boolean; stats: StatCardData[] })
           <Text className={cx(TYPE.statValue, 'mt-4 text-[#22252b] dark:text-[#f4f4f5]')}>
             {stat.value}
           </Text>
-          <View
+          {/* <View
             className={`mt-2 self-start rounded-full px-2 py-1 ${
               stat.trendTone === 'positive'
                 ? 'bg-[#e8f8ef] dark:bg-[#133225]'
@@ -1004,7 +1046,7 @@ function StatGrid({ isDark, stats }: { isDark: boolean; stats: StatCardData[] })
             >
               {stat.trendTone === 'positive' ? '↑' : '↓'} {stat.trend}
             </Text>
-          </View>
+          </View> */}
         </View>
       ))}
     </View>
