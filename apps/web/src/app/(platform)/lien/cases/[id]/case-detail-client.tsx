@@ -71,9 +71,9 @@ import Field from "@/components/lien/field";
 import { dateConverter, dateConvertertoIso } from "@/lib/cases/cases.mapper";
 import { PaginationMeta } from "@/lib/billofsale";
 import { servicingService } from "@/lib/servicing";
-import FileDropzone, {
+import UploadDocumentComponent, {
   FileDropzoneRef,
-} from "@/components/lien/upload-document-dropzone";
+} from "@/components/lien/upload-document";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -2444,7 +2444,10 @@ function DocumentsTab({
             </div>
           </div>
 
-          <FileDropzone ref={dropzoneRef} onUploaded={(e) => onUploaded(e)} />
+          <UploadDocumentComponent
+            ref={dropzoneRef}
+            onUploaded={(e) => onUploaded(e)}
+          />
 
           <button
             disabled={selectedFiles != null && !selectedDocType}
