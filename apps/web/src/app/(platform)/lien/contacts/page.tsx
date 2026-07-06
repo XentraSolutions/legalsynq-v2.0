@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/lien/page-header";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/lien/action-menu";
@@ -12,11 +13,22 @@ import { AddContactForm } from "@/components/lien/forms/add-contact-form";
 import { useLienStore } from "@/stores/lien-store";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { contactsService, type ContactListItem } from "@/lib/contacts";
-import { useContacts, useContactTypes, useDeleteContact } from "@/hooks/use-contacts";
+import {
+  useContacts,
+  useContactTypes,
+  useDeleteContact,
+} from "@/hooks/use-contacts";
 import { useSessionContext } from "@/providers/session-provider";
 import { ConfirmDialog } from "@/components/lien/modal";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 
 const PAGE_SIZE = 10;
@@ -50,7 +62,9 @@ export default function ContactsPage() {
     contact: ContactListItem;
   } | null>(null);
 
-  const [reassignTarget, setReassignTarget] = useState<ContactListItem | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<ContactListItem | null>(
+    null,
+  );
   const [reassignSelectedId, setReassignSelectedId] = useState("");
 
   // Debounce search input before it drives the query, so we don't refetch on every keystroke.
@@ -75,14 +89,20 @@ export default function ContactsPage() {
   const contactTypesQuery = useContactTypes();
   const deleteContactMutation = useDeleteContact();
 
-  const contacts = useMemo(() => contactsQuery.data?.items ?? [], [contactsQuery.data]);
+  const contacts = useMemo(
+    () => contactsQuery.data?.items ?? [],
+    [contactsQuery.data],
+  );
   const totalCount = contactsQuery.data?.pagination.totalCount ?? 0;
   const totalPages = contactsQuery.data?.pagination.totalPages ?? 0;
   // isLoading only covers the very first fetch (no cached/placeholder data yet);
   // isFetching also covers refetches, so the table can stay mounted and just show a subtle refreshing state.
   const loading = contactsQuery.isLoading;
   const refreshing = contactsQuery.isFetching && !contactsQuery.isLoading;
-  const contactTypes = useMemo(() => contactTypesQuery.data?.items ?? [], [contactTypesQuery.data]);
+  const contactTypes = useMemo(
+    () => contactTypesQuery.data?.items ?? [],
+    [contactTypesQuery.data],
+  );
 
   useEffect(() => {
     if (contactsQuery.isError) {
@@ -107,7 +127,24 @@ export default function ContactsPage() {
   };
 
   const exportContacts = async () => {
+    if (typeFilter == "Facility") return exportFacilityContacts();
     const response = await contactsService.exportContacts(typeFilter);
+    const csv = atob(response.data);
+
+    const now = new Date();
+    const date = now.toISOString().split("T")[0];
+    const time = now.toTimeString().split(" ")[0].replace(/:/g, "-");
+    const filename = `contacts_${date}_${time}.csv`;
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+  };
+
+  const exportFacilityContacts = async () => {
+    const response = await contactsService.exportFacilityContacts("");
     const csv = atob(response.data);
 
     const now = new Date();
@@ -159,8 +196,7 @@ export default function ContactsPage() {
       onError: (err) => {
         toast.error("Couldn't delete contact", {
           id: toastId,
-          description:
-            err instanceof Error ? err.message : contact.displayName,
+          description: err instanceof Error ? err.message : contact.displayName,
           action: {
             label: "Retry",
             onClick: () =>
@@ -188,7 +224,10 @@ export default function ContactsPage() {
   };
 
   const activeContactTypes = useMemo(
-    () => contactTypes.filter((t) => t.isActive).sort((a, b) => a.sortOrder - b.sortOrder),
+    () =>
+      contactTypes
+        .filter((t) => t.isActive)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
     [contactTypes],
   );
 
@@ -222,7 +261,11 @@ export default function ContactsPage() {
   const reassignPool = useMemo(() => {
     if (!reassignTarget) return [];
     return contacts
-      .filter((c) => c.contactType === reassignTarget.contactType && c.id !== reassignTarget.id)
+      .filter(
+        (c) =>
+          c.contactType === reassignTarget.contactType &&
+          c.id !== reassignTarget.id,
+      )
       .map((c) => ({ id: c.id, label: c.displayName }));
   }, [reassignTarget, contacts]);
 
@@ -306,7 +349,9 @@ export default function ContactsPage() {
                   <TableRow
                     key={c.id}
                     className={`cursor-pointer transition-opacity duration-200 ${
-                      isDeleting ? "opacity-40 bg-red-50/60 pointer-events-none" : ""
+                      isDeleting
+                        ? "opacity-40 bg-red-50/60 pointer-events-none"
+                        : ""
                     }`}
                     onClick={() => setPreviewId(c.id)}
                   >
@@ -326,20 +371,54 @@ export default function ContactsPage() {
                         {contactTypeMap[c.contactType] ?? c.contactType}
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm text-gray-500">{c.email || "—"}</TableCell>
+                    <TableCell className="text-sm text-gray-500">
+                      {c.email || "—"}
+                    </TableCell>
                     <TableCell className="text-sm text-gray-500">0</TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <TableCell
+                      className="text-right"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {isDeleting ? (
                         <i className="ri-loader-4-line animate-spin text-gray-400" />
                       ) : (
                         <ActionMenu
                           items={[
-                            { label: "View Details", icon: "ri-eye-line", onClick: () => router.push(`/lien/contacts/${c.id}`) },
-                            { label: "Reassign", icon: "ri-exchange-line", onClick: () => { setReassignTarget(c); setReassignSelectedId(""); } },
-                            { label: "Edit Contact", icon: "ri-pencil-line", onClick: () => { setContactData(c); showCreateForm("edit"); } },
+                            {
+                              label: "View Details",
+                              icon: "ri-eye-line",
+                              onClick: () =>
+                                router.push(`/lien/contacts/${c.id}`),
+                            },
+                            {
+                              label: "Reassign",
+                              icon: "ri-exchange-line",
+                              onClick: () => {
+                                setReassignTarget(c);
+                                setReassignSelectedId("");
+                              },
+                            },
+                            {
+                              label: "Edit Contact",
+                              icon: "ri-pencil-line",
+                              onClick: () => {
+                                setContactData(c);
+                                showCreateForm("edit");
+                              },
+                            },
                             // Activate/Deactivate disabled: as far as we know, legacy has no active/inactive vs delete differentiation.
                             // { label: c.isActive ? "Deactivate" : "Activate", icon: c.isActive ? "ri-user-unfollow-line" : "ri-user-follow-line", onClick: () => handleToggleActive(c) },
-                            { label: "Delete", icon: "ri-delete-bin-line", onClick: () => setConfirmAction({ id: c.id, action: "delete", label: "Delete", contact: c }) },
+                            {
+                              label: "Delete",
+                              icon: "ri-delete-bin-line",
+                              onClick: () =>
+                                setConfirmAction({
+                                  id: c.id,
+                                  action: "delete",
+                                  label: "Delete",
+                                  contact: c,
+                                }),
+                            },
                           ]}
                         />
                       )}
@@ -362,7 +441,11 @@ export default function ContactsPage() {
           <p className="text-xs text-gray-500">
             Page {page} of {totalPages} · {totalCount} total
           </p>
-          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </div>
       )}
 
@@ -371,9 +454,17 @@ export default function ContactsPage() {
           open={showCreate.open}
           mode={showCreate.mode}
           defaultContactType={typeFilter || undefined}
-          data={{ addressLine1: "", postalCode: "", ...contactData, contactTypes: activeContactTypes, states: states ?? [] }}
+          data={{
+            addressLine1: "",
+            postalCode: "",
+            ...contactData,
+            contactTypes: activeContactTypes,
+            states: states ?? [],
+          }}
           onClose={() => setShowCreate({ open: false })}
-          onCreated={() => queryClient.invalidateQueries({ queryKey: ["contacts"] })}
+          onCreated={() =>
+            queryClient.invalidateQueries({ queryKey: ["contacts"] })
+          }
         />
       )}
 
@@ -398,7 +489,13 @@ export default function ContactsPage() {
           loading={deleteContactMutation.isPending}
           warningTitle="Warning: Deleting this contact will also remove:"
           warningItems={[
-            ...(["LawFirm", "MedicalFacility"].includes(confirmAction.contact.contactType) && !(confirmAction.contact.lawFirmId || confirmAction.contact.facilityId)
+            ...(["LawFirm", "MedicalFacility"].includes(
+              confirmAction.contact.contactType,
+            ) &&
+            !(
+              confirmAction.contact.lawFirmId ||
+              confirmAction.contact.facilityId
+            )
               ? ["All associated staff/sub-contacts"]
               : []),
             "All case associations",
@@ -413,10 +510,13 @@ export default function ContactsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md space-y-4">
             <div>
-              <h2 className="text-base font-semibold text-gray-800">Re-Assign Case</h2>
+              <h2 className="text-base font-semibold text-gray-800">
+                Re-Assign Case
+              </h2>
               <p className="text-sm text-gray-500 mt-1">
                 Select another{" "}
-                {contactTypeMap[reassignTarget.contactType]?.toLowerCase() ?? "contact"}{" "}
+                {contactTypeMap[reassignTarget.contactType]?.toLowerCase() ??
+                  "contact"}{" "}
                 to assign this case to.
               </p>
             </div>
@@ -437,7 +537,9 @@ export default function ContactsPage() {
                 ))}
               </select>
               {reassignPool.length === 0 && (
-                <p className="text-xs text-gray-400 mt-1">No other contacts of this type available.</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  No other contacts of this type available.
+                </p>
               )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -450,7 +552,11 @@ export default function ContactsPage() {
               <button
                 disabled={!reassignSelectedId}
                 onClick={() => {
-                  addToast({ type: "success", title: "Case Assigned", description: "Case has been reassigned." });
+                  addToast({
+                    type: "success",
+                    title: "Case Assigned",
+                    description: "Case has been reassigned.",
+                  });
                   setReassignTarget(null);
                 }}
                 className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg disabled:opacity-40 transition-colors"
@@ -471,7 +577,8 @@ export default function ContactsPage() {
         {previewContact && (
           <div className="space-y-4">
             <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-sm font-medium bg-gray-50 text-gray-600 border-gray-200">
-              {contactTypeMap[previewContact.contactType] ?? previewContact.contactType}
+              {contactTypeMap[previewContact.contactType] ??
+                previewContact.contactType}
             </span>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>

@@ -1,6 +1,9 @@
 import { contactsApi } from "./contacts.api";
 import { casesApi } from "../cases/cases.api";
-import type { CaseResponseDto, CaseListApiResponse } from "../cases/cases.types";
+import type {
+  CaseResponseDto,
+  CaseListApiResponse,
+} from "../cases/cases.types";
 import { formatDateField } from "../cases/cases.mapper";
 import {
   mapContactToListItem,

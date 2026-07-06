@@ -6,6 +6,7 @@ import {
   useCallback,
   useMemo,
   type ReactNode,
+  useRef,
 } from "react";
 import Link from "next/link";
 import { useLienStore } from "@/stores/lien-store";
@@ -43,7 +44,10 @@ import {
   UpdateCaseRequestDto,
 } from "@/lib/cases/cases.types";
 import { lookupService } from "@/lib/lookup";
-import type { DocumentTypeResponse } from "@/lib/lookup/lookup.types";
+import type {
+  DocumentTypeResponse,
+  DropdownOption,
+} from "@/lib/lookup/lookup.types";
 import { GetSettlementHistoryResponse } from "@/lib/settlement/settlement.types";
 import { settlementService } from "@/lib/settlement";
 import { useSessionContext } from "@/providers/session-provider";
@@ -67,6 +71,9 @@ import Field from "@/components/lien/field";
 import { dateConverter, dateConvertertoIso } from "@/lib/cases/cases.mapper";
 import { PaginationMeta } from "@/lib/billofsale";
 import { servicingService } from "@/lib/servicing";
+import FileDropzone, {
+  FileDropzoneRef,
+} from "@/components/lien/upload-document-dropzone";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -112,9 +119,7 @@ export function CaseDetailClient({ id }: { id: string }) {
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [caseUpdates, setCaseUpdates] = useState<any | null>(null);
 
-  const [documentTypes, setDocumentTypes] = useState<DocumentTypeResponse[]>(
-    [],
-  );
+  const [documentTypes, setDocumentTypes] = useState<DropdownOption[]>([]);
 
   const [history, setHistory] = useState<any>();
 
@@ -178,7 +183,11 @@ export function CaseDetailClient({ id }: { id: string }) {
     try {
       const types = await lookupService.getDocumentType();
 
-      setDocumentTypes(types);
+      setDocumentTypes(
+        types.map((t) => {
+          return { key: t.id, value: t.id, label: t.name };
+        }),
+      );
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.isNotFound ? "Document types not found." : err.message);
@@ -1574,6 +1583,23 @@ function LiensTab({
     }
   }, [lienId]);
 
+  const fetchLienDocuments = useCallback(async () => {
+    if (lienId) {
+      try {
+        const docs = await casesService.loadLiensDocuments(lienId);
+        setData((prev) => ({
+          ...prev,
+          [3]: docs.data,
+        }));
+      } catch (error) {
+        // Promise.allSettled itself rarely throws unless input is invalid
+        console.error("Unexpected execution error", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [forms[3], lienId]);
+
   useEffect(() => {
     fetchData();
     fetchLienDetails();
@@ -1627,6 +1653,8 @@ function LiensTab({
       return { ...prev, totalCount, totalPages, page: safePage };
     });
   }, [filtered.length, pagination.page, pagination.pageSize]);
+
+  useEffect(() => {}, [data[3]]);
 
   const totalBilling = filtered.reduce(
     (sum, l) => sum + (l.originalAmount ?? 0),
@@ -1700,7 +1728,6 @@ function LiensTab({
           });
         }),
         await saveMedicalPayee(forms[2]),
-        await uploadDocuments(forms[3]),
       ]);
 
       addToast({
@@ -1814,40 +1841,6 @@ function LiensTab({
         type: "success",
         title: "Payee Updated",
         description: `Payee has been updated.`,
-      });
-      setErrors({});
-    } catch (err) {
-      if (err instanceof ApiError) {
-        addToast({
-          type: "error",
-          title: "Update Failed",
-          description: err.message,
-        });
-      } else {
-        addToast({
-          type: "error",
-          title: "Update Failed",
-          description: "An unexpected error occurred",
-        });
-      }
-    }
-  };
-
-  const uploadDocuments = async (payload: any) => {
-    if (!payload || payload.length == 0) return;
-    try {
-      const formData = new FormData();
-      formData.append("File", payload.document ?? "");
-      formData.append("liensId", lienId ?? "");
-      formData.append("DocName", payload.document.name);
-      formData.append("DocDescription", "Legacy lien Document upload");
-      formData.append("DocFileTypeId", payload.documentType);
-
-      await casesService.uploadDocuments(formData);
-      addToast({
-        type: "success",
-        title: "Document Uploaded",
-        description: `Document has been updated.`,
       });
       setErrors({});
     } catch (err) {
@@ -1992,7 +1985,7 @@ function LiensTab({
                           onClick={() => setSelectedId(l.id)}
                         >
                           <span className="text-xs font-mono cursor-pointer text-primary hover:underline">
-                            {l.lienNumber}
+                            {l.id}
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[160px]">
@@ -2191,6 +2184,7 @@ function LiensTab({
                   caseId={caseId}
                   lienId={lienId}
                   data={data[3]}
+                  onUploaded={() => fetchLienDocuments()}
                   onFormValid={(e: boolean, data?: any) => onFormValid(data, 3)}
                 />
               </div>
@@ -2345,8 +2339,8 @@ type DocumentType = {
   id: string;
   name: string;
   documentType: string;
-  lastUpdate: string;
-  lienNumber: string;
+  updated: string;
+  liensId: string;
   size: string;
 };
 
@@ -2357,42 +2351,77 @@ function DocumentsTab({
   lienid,
   onPanelModeChange,
 }: {
-  docTypes: DocumentTypeResponse[];
+  docTypes: DropdownOption[];
   caseDetail: CaseDetail;
   panelMode: PanelMode;
   lienid: string;
   onPanelModeChange: (m: PanelMode) => void;
 }) {
+  const addToast = useLienStore((s) => s.addToast);
+  const dropzoneRef = useRef<FileDropzoneRef>(null);
+
   const [selectedDocType, setSelectedDocType] = useState("");
-  const [dragOver, setDragOver] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[] | null>(null);
+
   const [caseDocuments, setCaseDocuments] = useState<DocumentType[]>([]);
   const [liensDocuments, setLiensDocuments] = useState<DocumentType[]>([]);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  }, []);
-  const handleDragLeave = useCallback(() => setDragOver(false), []);
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) setSelectedFile(file);
+  const onUploaded = useCallback((e: File[] | null) => {
+    setSelectedFiles(e);
   }, []);
 
-  const handleFileSelect = useCallback(() => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) setSelectedFile(file);
-    };
-    input.click();
-  }, []);
+  const uploadCaseDocuments = async (payload: any) => {
+    if (!payload || payload.length == 0) return;
+    try {
+      payload.forEach(async (element: File) => {
+        const formData = new FormData();
+        formData.append("File", element ?? "");
+        formData.append("caseId", caseDetail.id ?? "");
+        formData.append("DocName", element.name);
+        formData.append("DocDescription", "Legacy Case Document upload");
+        formData.append("DocFileTypeId", selectedDocType);
+
+        await casesService.uploadCaseDocuments(formData);
+        addToast({
+          type: "success",
+          title: "Document Uploaded",
+          description: `Document has been updated.`,
+        });
+        setTimeout(() => {
+          dropzoneRef?.current?.reset();
+          setSelectedDocType("");
+          fetchDocuments();
+        }, 1000);
+      });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: err.message,
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Update Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    }
+  };
+
+  const fetchDocuments = async () => {
+    const docs = await casesService.loadDocuments(caseDetail.id);
+    setCaseDocuments(docs.caseDocuments);
+    setLiensDocuments(docs.liensDocuments);
+  };
+
+  function download(file: any) {
+    window.open(file.url || URL.createObjectURL(file as any), "_blank");
+  }
 
   useEffect(() => {
-    // const docs = await casesService.getMedicalDocument(lienid);
+    fetchDocuments();
   }, []);
 
   const leftContent = (
@@ -2404,62 +2433,30 @@ function DocumentsTab({
               Document Type
             </label>
             <div className="relative">
-              <select
+              <Field
+                label=""
                 value={selectedDocType}
-                onChange={(e) => setSelectedDocType(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
-              >
-                <option value="">Select document type...</option>
-                {docTypes &&
-                  docTypes.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-              </select>
-              <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                options={docTypes}
+                onChange={(v) => setSelectedDocType(v.toString())}
+                placeholder="Select document type..."
+                type="select"
+              />
             </div>
           </div>
 
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={[
-              "border-2 border-dashed rounded-lg p-6 text-center transition-colors",
-              dragOver
-                ? "border-primary bg-primary/5"
-                : "border-gray-200 bg-gray-50/30",
-            ].join(" ")}
-          >
-            <i className="ri-upload-cloud-2-line text-2xl text-gray-300" />
-            <p className="text-sm text-gray-500 mt-2">
-              {selectedFile ? (
-                <span className="text-gray-700 font-medium">
-                  {selectedFile.name}
-                </span>
-              ) : (
-                <>Drag and drop your file here</>
-              )}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">or</p>
-            <button
-              onClick={handleFileSelect}
-              className="mt-2 px-4 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5"
-            >
-              <i className="ri-folder-open-line text-sm" />
-              Choose File
-            </button>
-          </div>
+          <FileDropzone ref={dropzoneRef} onUploaded={(e) => onUploaded(e)} />
 
           <button
-            disabled={!selectedFile || !selectedDocType}
+            disabled={selectedFiles != null && !selectedDocType}
             className={[
               "w-full px-4 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2",
-              selectedFile && selectedDocType
+              selectedFiles && selectedDocType
                 ? "bg-primary text-white hover:bg-primary/90"
                 : "bg-gray-100 text-gray-400 cursor-not-allowed",
             ].join(" ")}
+            onClick={() => {
+              uploadCaseDocuments(selectedFiles);
+            }}
           >
             <i className="ri-add-line text-sm" />
             Add Document
@@ -2477,13 +2474,6 @@ function DocumentsTab({
           </div>
         ) : (
           <>
-            <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
-              {/* <p className="text-xs text-amber-700">
-                <i className="ri-information-line mr-1" />
-                Sample data shown for UI review. Real documents will load from
-                the API.
-              </p> */}
-            </div>
             <div className="overflow-x-auto -mx-5 px-5">
               <table className="min-w-full text-sm">
                 <thead>
@@ -2524,13 +2514,14 @@ function DocumentsTab({
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                        {doc.lastUpdate}
+                        {doc.updated}
                       </td>
                       <td className="pl-3 py-2.5 text-center">
                         <div className="inline-flex items-center gap-1">
                           <button
                             className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
                             title="Download"
+                            onClick={() => download(doc)}
                           >
                             <i className="ri-download-2-line text-sm" />
                           </button>
@@ -2567,13 +2558,6 @@ function DocumentsTab({
           </div>
         ) : (
           <>
-            <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
-              <p className="text-xs text-amber-700">
-                <i className="ri-information-line mr-1" />
-                Sample data shown for UI review. Real documents will load from
-                the API.
-              </p>
-            </div>
             <div className="overflow-x-auto -mx-5 px-5">
               <table className="min-w-full text-sm">
                 <thead>
@@ -2615,10 +2599,10 @@ function DocumentsTab({
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-xs font-mono text-primary">
-                        {doc.lienNumber}
+                        {doc.liensId}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                        {doc.lastUpdate}
+                        {doc.updated}
                       </td>
                       <td className="pl-3 py-2.5 text-center">
                         <div className="inline-flex items-center gap-1">
@@ -2628,12 +2612,13 @@ function DocumentsTab({
                           >
                             <i className="ri-download-2-line text-sm" />
                           </button>
-                          <button
+                          {/* <button
                             className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
                             title="View Lien"
+                            onClick={() => download(doc)}
                           >
                             <i className="ri-eye-line text-sm" />
-                          </button>
+                          </button> */}
                         </div>
                       </td>
                     </tr>

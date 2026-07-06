@@ -14,7 +14,10 @@ function toQs(params: Record<string, unknown>): string {
   const pairs = Object.entries(params)
     // ContactSubtype="" is a deliberate filter (main contacts only), not an
     // omitted param, so it's kept even though other blank strings are dropped.
-    .filter(([k, v]) => v !== undefined && v !== null && (v !== "" || k === "ContactSubtype"))
+    .filter(
+      ([k, v]) =>
+        v !== undefined && v !== null && (v !== "" || k === "ContactSubtype"),
+    )
     .map(
       ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
     );
@@ -55,6 +58,12 @@ export const contactsApi = {
   export(contactType: string) {
     return apiClient.post<ExportResponse>(`${BASE}/export-csv`, {
       ContactType: contactType,
+    });
+  },
+
+  exportFacility(contactType: string) {
+    return apiClient.post<ExportResponse>(`${BASE}/generate-facility-csv`, {
+      id: contactType,
     });
   },
 };

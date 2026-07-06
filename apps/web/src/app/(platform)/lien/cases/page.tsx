@@ -183,6 +183,10 @@ export default function CasesPage() {
     lookupCaseStatus();
   }, [search]);
 
+  useEffect(() => {
+    fetchCases();
+  }, [pagination.page]);
+
   const canEdit = ra.can("case:edit");
 
   const handleAdvanceStatus = async (caseItem: CaseListItem) => {

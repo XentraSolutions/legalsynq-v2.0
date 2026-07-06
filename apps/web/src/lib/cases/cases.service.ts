@@ -1,3 +1,4 @@
+import { useSessionContext } from "@/providers/session-provider";
 import { ApiResponse } from "../liens/lien-report.types";
 import { lookupApi } from "../lookup/lookup.api";
 import { casesApi } from "./cases.api";
@@ -9,6 +10,7 @@ import {
   mapDtoToUpdateRequest,
   mapMedicalInfo,
   mapMedicalCodes,
+  mapDocuments,
 } from "./cases.mapper";
 import type {
   CasesQuery,
@@ -39,6 +41,7 @@ import type {
   UpdateCaseDetailsRequestDto,
   MedicalCodeLiensResponse,
 } from "./cases.types";
+import { lookupService } from "../lookup";
 
 export const casesService = {
   async getCases(query: CasesQuery = {}): Promise<CaseListResult> {
@@ -274,14 +277,20 @@ export const casesService = {
     return data;
   },
 
-  async uploadDocuments(request: any): Promise<any> {
-    const { data } = await casesApi.uploadDocument(request);
+  async uploadLiensDocuments(request: any): Promise<any> {
+    const { data } = await casesApi.uploadLiensDocument(request);
+    return mapCaseToDetail(data);
+  },
+
+  async uploadCaseDocuments(request: any): Promise<any> {
+    const { data } = await casesApi.uploadCaseDocument(request);
     return mapCaseToDetail(data);
   },
 
   async loadDocuments(request: any): Promise<any> {
     const { data } = await casesApi.listDocumentsByCase(request);
-    return data;
+    const documents = await lookupService.getDocumentType();
+    return mapDocuments(data, documents);
   },
 
   async loadLiensDocuments(liensId: string): Promise<any> {
@@ -300,5 +309,8 @@ function groupAndCount(
     const key = typeof raw === "string" && raw.trim() ? raw : "Unknown";
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
-  return Array.from(counts.entries()).map(([label, value]) => ({ label, value }));
+  return Array.from(counts.entries()).map(([label, value]) => ({
+    label,
+    value,
+  }));
 }

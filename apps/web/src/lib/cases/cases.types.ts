@@ -43,6 +43,22 @@ export interface PaginatedResultDto<T> {
   totalCount: number;
 }
 
+export interface CaseDocuments {
+  caseDocuments: CaseDocument[];
+  liensDocuments: CaseDocument[];
+}
+
+export interface CaseDocument {
+  id: string;
+  liensId: string;
+  caseId: string;
+  url: string;
+  created: string;
+  mimeType: string;
+  documentType: string;
+  [key: string]: any;
+}
+
 export interface CreateCaseRequestDto {
   caseNumber?: string;
   firstname: string;
