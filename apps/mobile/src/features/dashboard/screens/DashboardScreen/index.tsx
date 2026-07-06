@@ -640,40 +640,50 @@ function mapLawFirmReportGrouped(rows: DashboardLawFirmCaseReportRow[]): DonutSl
   });
 }
 
-function getMedicalProviderCaseCount(row: DashboardMedicalProviderReportRow): number {
+function readFacilityName(row: DashboardMedicalProviderReportRow): string {
   const r = row as Record<string, unknown>;
-  const typed =
-    numericValue(row.totalCases) ??
-    numericValue(row.totalCase) ??
-    numericValue(row.caseCount) ??
-    numericValue(row.cases) ??
-    numericValue(row.count) ??
-    numericValue(row.total) ??
-    numericValue(row.value);
-  if (typed !== undefined) return typed;
-  for (const key of ['numberOfCases', 'caseTotal', 'totalCount', 'numCases', 'casesCount']) {
-    const val = numericValue(r[key]);
-    if (val !== undefined) return val;
+  const candidates = [
+    row.facilityName, row.medicalProvider, row.medicalprovider,
+    row.medicalProviderName, row.providerName, row.name,
+  ];
+  for (const val of candidates) {
+    if (typeof val === 'string' && val.trim().length > 2) return val;
   }
-  return scanFirstPositiveInt(r);
+  for (const key of ['organization', 'organizationName', 'orgName', 'facility', 'medicalFacility', 'provider', 'title']) {
+    const val = r[key];
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  const skipStringKeys = new Set(['label', 'status', 'type', 'id', 'tenantId', 'createdAt', 'updatedAt']);
+  for (const [key, val] of Object.entries(r)) {
+    if (skipStringKeys.has(key)) continue;
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  return row.label ?? 'Unknown Facility';
 }
 
-function getMedicalProviderLabel(row: DashboardMedicalProviderReportRow): string {
-  const r = row as Record<string, unknown>;
-  const typed =
-    row.facilityName ??
-    row.medicalProvider ??
-    row.medicalprovider ??
-    row.medicalProviderName ??
-    row.providerName ??
-    row.name ??
-    row.label;
-  if (typed) return typed;
-  for (const key of ['organization', 'organizationName', 'orgName', 'provider', 'facility', 'medicalFacility', 'title']) {
-    const val = r[key];
-    if (typeof val === 'string' && val.trim()) return val;
+function mapMedicalFacilityReportGrouped(rows: DashboardMedicalProviderReportRow[]): DonutSlice[] {
+  const groups = new Map<string, { label: string; count: number }>();
+  for (const row of rows) {
+    const name = readFacilityName(row);
+    const existing = groups.get(name);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      groups.set(name, { label: name, count: 1 });
+    }
   }
-  return 'Unknown Facility';
+  const entries = Array.from(groups.values()).filter((g) => g.count > 0);
+  const total = entries.reduce((sum, g) => sum + g.count, 0) || 1;
+  return entries.map((g, i) => {
+    const pct = (g.count / total) * 100;
+    return {
+      label: g.label,
+      value: g.count,
+      amount: g.count.toLocaleString(),
+      percent: `(${pct.toFixed(2)}%)`,
+      color: SLICE_COLORS[i % SLICE_COLORS.length],
+    };
+  });
 }
 
 function mapAllocationReportToSlices<Row>(
@@ -902,11 +912,7 @@ function BuyingDashboard({
   const lawFirmTotalCases = useDummyData
     ? '175'
     : lawFirmReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString();
-  const facilityReportSlices = mapAllocationReportToSlices(
-    medicalProviderReport?.items ?? [],
-    getMedicalProviderLabel,
-    getMedicalProviderCaseCount
-  );
+  const facilityReportSlices = mapMedicalFacilityReportGrouped(medicalProviderReport?.items ?? []);
   const facilityAllocationSlices = useDummyData ? FACILITY_ALLOCATION : facilityReportSlices;
   const facilityTotalCases = useDummyData
     ? '239'

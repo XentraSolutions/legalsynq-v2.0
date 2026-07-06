@@ -210,7 +210,12 @@ function getReportPagination(
   }
 
   if (reportType === 'medical-facility-allocation') {
-    return medicalProviderReport;
+    if (!medicalProviderReport) return undefined;
+    const count = new Set(
+      (medicalProviderReport.items ?? []).map((row) => readFacilityName(row))
+    ).size;
+    if (!count) return undefined;
+    return { page: 1, pageSize: count, totalCount: count, totalPages: 1 };
   }
 
   return totalLienReport;
@@ -288,8 +293,12 @@ export function DashboardReportDetailScreen() {
     [route.params.dateRange]
   );
   const { data: lawFirmReport } = useDashboardLawFirmCaseReport(lawFirmAllRowsFilter, reportsEnabled);
+  const medicalProviderAllRowsFilter = useMemo(
+    () => ({ ...buildDashboardReportFilter(route.params.dateRange, 1), limit: 100 }),
+    [route.params.dateRange]
+  );
   const { data: medicalProviderReport } = useDashboardMedicalProviderReport(
-    reportFilter,
+    medicalProviderAllRowsFilter,
     reportsEnabled
   );
   const { data: piechartData } = useDashboardPiechart();
@@ -795,13 +804,7 @@ function buildReport(
   }
 
   if (reportType === 'medical-facility-allocation') {
-    const reportSlices = useDummyData
-      ? []
-      : mapAllocationReportToSlices(
-          medicalProviderReport,
-          getMedicalProviderLabel,
-          getMedicalProviderCaseCount
-        );
+    const reportSlices = useDummyData ? [] : mapMedicalFacilityReportGrouped(medicalProviderReport);
     const slices = useDummyData ? FACILITY_FALLBACK : reportSlices;
     return {
       title: 'Medical Facility Case Allocation',
@@ -1175,16 +1178,6 @@ function lienRowsToBreakdownItems(
     .slice(0, 5);
 }
 
-const SKIP_COUNT_KEYS = new Set(['percentage', 'percent', 'pct', 'share', 'ratio', 'page', 'limit', 'pagesize', 'totalpages', 'id']);
-
-function scanFirstPositiveInt(r: Record<string, unknown>): number {
-  for (const [key, val] of Object.entries(r)) {
-    if (SKIP_COUNT_KEYS.has(key.toLowerCase())) continue;
-    const num = numericValue(val);
-    if (num !== undefined && num > 0 && Number.isInteger(num)) return num;
-  }
-  return 0;
-}
 
 function readLawFirmId(row: DashboardLawFirmCaseReportRow): string {
   const r = row as Record<string, unknown>;
@@ -1240,38 +1233,48 @@ function mapLawFirmReportGrouped(rows: DashboardLawFirmCaseReportRow[]): DetailS
   });
 }
 
-function getMedicalProviderCaseCount(row: DashboardMedicalProviderReportRow): number {
+function readFacilityName(row: DashboardMedicalProviderReportRow): string {
   const r = row as Record<string, unknown>;
-  const typed =
-    numericValue(row.totalCases) ??
-    numericValue(row.totalCase) ??
-    numericValue(row.caseCount) ??
-    numericValue(row.cases) ??
-    numericValue(row.count) ??
-    numericValue(row.total) ??
-    numericValue(row.value);
-  if (typed !== undefined) return typed;
-  for (const key of ['numberOfCases', 'caseTotal', 'totalCount', 'numCases', 'casesCount']) {
-    const val = numericValue(r[key]);
-    if (val !== undefined) return val;
+  const candidates = [
+    row.facilityName, row.medicalProvider, row.medicalprovider,
+    row.medicalProviderName, row.providerName, row.name,
+  ];
+  for (const val of candidates) {
+    if (typeof val === 'string' && val.trim().length > 2) return val;
   }
-  return scanFirstPositiveInt(r);
+  for (const key of ['organization', 'organizationName', 'orgName', 'facility', 'medicalFacility', 'provider', 'title']) {
+    const val = r[key];
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  const skipStringKeys = new Set(['label', 'status', 'type', 'id', 'tenantId', 'createdAt', 'updatedAt']);
+  for (const [key, val] of Object.entries(r)) {
+    if (skipStringKeys.has(key)) continue;
+    if (typeof val === 'string' && val.trim().length > 2) return val;
+  }
+  return row.label ?? 'Unknown Facility';
 }
 
-function getMedicalProviderLabel(row: DashboardMedicalProviderReportRow): string {
-  const r = row as Record<string, unknown>;
-  const typed =
-    row.facilityName ??
-    row.medicalProvider ??
-    row.medicalprovider ??
-    row.medicalProviderName ??
-    row.providerName ??
-    row.name ??
-    row.label;
-  if (typed) return typed;
-  for (const key of ['organization', 'organizationName', 'orgName', 'provider', 'facility', 'medicalFacility', 'title']) {
-    const val = r[key];
-    if (typeof val === 'string' && val.trim()) return val;
+function mapMedicalFacilityReportGrouped(rows: DashboardMedicalProviderReportRow[]): DetailSlice[] {
+  const groups = new Map<string, { label: string; count: number }>();
+  for (const row of rows) {
+    const name = readFacilityName(row);
+    const existing = groups.get(name);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      groups.set(name, { label: name, count: 1 });
+    }
   }
-  return 'Unknown Facility';
+  const entries = Array.from(groups.values()).filter((g) => g.count > 0);
+  const total = entries.reduce((sum, g) => sum + g.count, 0) || 1;
+  return entries.map((g, i) => {
+    const pct = (g.count / total) * 100;
+    return {
+      label: g.label,
+      value: g.count,
+      amount: g.count.toLocaleString(),
+      percent: `(${pct.toFixed(2)}%)`,
+      color: SLICE_COLORS[i % SLICE_COLORS.length],
+    };
+  });
 }
