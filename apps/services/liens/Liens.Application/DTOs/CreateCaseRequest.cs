@@ -17,4 +17,10 @@ public sealed class CreateCaseRequest
     public string? ClaimNumber { get; init; }
     public string? Description { get; init; }
     public string? Notes { get; init; }
+    public string? Sex { get; init; }
+    public string? CaseType { get; init; }
+    public string? CurrentMedicalStatus { get; init; }
+    public string? StateOfIncident { get; init; }
+    public DateOnly? TrackingFollowUpDate { get; init; }
+    public string? LeadId { get; init; }
 }

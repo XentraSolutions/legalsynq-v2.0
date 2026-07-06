@@ -1964,6 +1964,9 @@ export const controlCenterServerApi = {
       userName?:  string;
       category:   string;
       priority:   SupportCase['priority'];
+      caseManagerUserId?: string;
+      caseManagerName?: string;
+      caseManagerEmail?: string;
     }): Promise<SupportCaseDetail> => {
       const raw = await apiClient.post<unknown>('/support/api/tickets', data);
       const result = mapSupportCaseDetail(raw);

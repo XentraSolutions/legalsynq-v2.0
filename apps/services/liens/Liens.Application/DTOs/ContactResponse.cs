@@ -3,7 +3,10 @@ namespace Liens.Application.DTOs;
 public sealed class ContactResponse
 {
     public Guid Id { get; init; }
+    public Guid? FacilityId { get; init; }
+    public Guid? LawFirmId { get; init; }
     public string ContactType { get; init; } = string.Empty;
+    public string? ContactSubtype { get; init; }
     public string FirstName { get; init; } = string.Empty;
     public string LastName { get; init; } = string.Empty;
     public string DisplayName { get; init; } = string.Empty;
