@@ -32,12 +32,14 @@ public sealed class CaseResponse
     public string? StateOfIncident { get; init; }
     public DateOnly? TrackingFollowUpDate { get; init; }
     public string? LeadId { get; init; }
+
     public string? LawFirmId { get; init; }
     public string? LawFirm { get; init; }
     public string? CaseManagerId { get; init; }
     public string? CaseManager { get; init; }
     public string? AccidentTypeId { get; init; }
     public string? AccidentType { get; init; }
+
     public DateTime? OpenedAtUtc { get; init; }
     public DateTime? ClosedAtUtc { get; init; }
     public DateTime CreatedAtUtc { get; init; }

@@ -73,6 +73,7 @@ public sealed class ContactService : IContactService
             tenantId, search, contactType, isActive, page, pageSize, lawFirmId, resolvedFacilityId, contactSubtype, ct);
         var activeCaseCounts = await _repo.GetActiveCaseCountsAsync(tenantId, items, ct);
 
+
         return new PaginatedResult<ContactResponse>
         {
             Items = items.Select(item => MapToResponse(item, activeCaseCounts.GetValueOrDefault(item.Id))).ToList(),
@@ -200,6 +201,10 @@ public sealed class ContactService : IContactService
             request.FullName,
             request.FirstName,
             request.LastName);
+
+        var resolvedFacilityId = request.FacilityId.HasValue
+            ? await ResolveFacilityIdAsync(tenantId, request.FacilityId.Value, actingUserId, ct)
+            : (Guid?)null;
 
         var resolvedFacilityId = request.FacilityId.HasValue
             ? await ResolveFacilityIdAsync(tenantId, request.FacilityId.Value, actingUserId, ct)
