@@ -82,8 +82,12 @@ export const casesApi = {
     return apiClient.put<CaseResponseDto>(`${BASE}/${id}`, request);
   },
 
-  uploadDocument(request: FormData) {
+  uploadLiensDocument(request: FormData) {
     return apiClient.postForm<any>(`${BASE}/liens/upload/document`, request);
+  },
+
+  uploadCaseDocument(request: FormData) {
+    return apiClient.postForm<any>(`${BASE}/upload/document`, request);
   },
 
   listDocumentsByLiens(id: string) {
@@ -94,7 +98,7 @@ export const casesApi = {
 
   listDocumentsByCase(id: string) {
     return apiClient.get<CaseLiensApiResponse>(
-      `/lien/api/liens/cases/liens/get-casedocument/${id}`,
+      `/lien/api/liens/cases/get-allcasedocument/${id}`,
     );
   },
 

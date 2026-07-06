@@ -1,10 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Field from "../../field";
 import { lookupService } from "@/lib/lookup";
 import { facilityService } from "@/lib/facility";
 import { UploadDocumentForm } from "../upload-document-form";
-import { UploadDocumentComponent } from "../../upload-document";
 import { useSessionContext } from "@/providers/session-provider";
+import UploadDocumentComponent, {
+  FileDropzoneRef,
+} from "../../upload-document";
+import { casesService } from "@/lib/cases";
+import { useLienStore } from "@/stores/lien-store";
+import { ApiError } from "@/lib/api-client";
 
 export interface UploadDocumentsProps {
   caseId?: string;
@@ -12,6 +23,7 @@ export interface UploadDocumentsProps {
   data?: any;
   onFormValid?: (valid: boolean, data?: any) => void;
   openAddFundingCompanyModal?: () => void;
+  onUploaded?: () => void;
 }
 
 const INITIAL_FORM = {
@@ -60,14 +72,17 @@ type DropdownData = {
 };
 
 export default function UploadDocuments(props: UploadDocumentsProps) {
-  const { data = {}, onFormValid, openAddFundingCompanyModal } = props;
+  const { data = {}, onUploaded, lienId } = props;
   const { lookup } = useSessionContext();
+  const addToast = useLienStore((s) => s.addToast);
+  const dropzoneRef = useRef<FileDropzoneRef>(null);
 
   const initialForm: UploadForm = {
     ...INITIAL_FORM,
     ...(data as Partial<UploadForm>),
   };
   const [form, setForm] = useState<UploadForm>(initialForm);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const documentTypes = lookup?.DocumentCategory.map((d) => {
@@ -77,10 +92,10 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
       label: d.name,
     };
   });
-  const [documents, setDocuments] = useState<any[]>(data ?? []);
-  const [files, setFiles] = useState<File[]>([]);
+  const [documents, setDocuments] = useState<any[]>(data);
+  const [files, setFiles] = useState<File[] | null>(null);
 
-  useEffect(() => {}, []);
+  useEffect(() => {}, [data]);
 
   function getFileIcon(filename: string): string {
     const ext = filename.split(".").pop()?.toLowerCase() ?? "";
@@ -92,24 +107,6 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     return "ri-file-text-line";
   }
 
-  const listDocument = useCallback(
-    (e: File | File[] | null) => {
-      if (e) {
-        const filesArray = Array.isArray(e) ? e : [e];
-        const newDoc = filesArray.map((f) => ({
-          id: new Date().toISOString(),
-          name: f.name,
-          documentType: form.documentType,
-          size: f.size,
-          lastUpdate: new Date().toLocaleDateString(),
-        }));
-        setDocuments((prev) => [...prev, ...newDoc]);
-        setFiles((prev) => [...prev, ...filesArray]);
-      }
-    },
-    [form],
-  );
-
   function download(file: any) {
     window.open(file.url || URL.createObjectURL(file as any), "_blank");
   }
@@ -118,10 +115,49 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     return "";
   }
 
+  const uploadLiensDocuments = async () => {
+    if (!files || files.length == 0) return;
+    try {
+      files.forEach(async (element: File) => {
+        const formData = new FormData();
+        formData.append("File", element ?? "");
+        formData.append("liensId", lienId ?? "");
+        formData.append("DocName", element.name);
+        formData.append("DocDescription", "Legacy Lien Document upload");
+        formData.append("DocFileTypeId", form.documentType);
+
+        await casesService.uploadLiensDocuments(formData);
+        addToast({
+          type: "success",
+          title: "Document Uploaded",
+          description: `Document has been Uploaded.`,
+        });
+        dropzoneRef?.current?.reset();
+        setForm(initialForm);
+        onUploaded?.();
+      });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Upload Failed",
+          description: err.message,
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Upload Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    }
+  };
+
   useEffect(() => {
-    if (onFormValid && documents.length > 0)
-      onFormValid(true, { ...form, document: files });
-  }, [form, documents]);
+    if (data.length > 0) {
+      setDocuments(data);
+    }
+  }, [data]);
 
   return (
     <div className="container-fluid">
@@ -144,11 +180,26 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         />
         <div className="mt-4">
           <UploadDocumentComponent
-            onUploaded={(e: File | null) => {
-              setForm((prev) => ({ ...prev, document: e }));
-              listDocument(e);
+            ref={dropzoneRef}
+            onUploaded={(e: File[] | null) => {
+              setFiles(e);
             }}
           />
+          <button
+            disabled={files != null && !form.documentType}
+            className={[
+              "w-full mt-3 mb-5 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2",
+              files && form.documentType
+                ? "bg-primary text-white hover:bg-primary/90"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed",
+            ].join(" ")}
+            onClick={() => {
+              uploadLiensDocuments();
+            }}
+          >
+            <i className="ri-add-line text-sm" />
+            Add Document
+          </button>
         </div>
 
         {documents?.length === 0 ? (
@@ -160,13 +211,6 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           </div>
         ) : (
           <>
-            <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
-              {/* <p className="text-xs text-amber-700">
-                <i className="ri-information-line mr-1" />
-                Sample data shown for UI review. Real documents will load from
-                the API.
-              </p> */}
-            </div>
             <div className="overflow-x-auto -mx-5 px-5">
               <table className="min-w-full text-sm">
                 <thead>

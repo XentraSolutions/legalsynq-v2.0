@@ -1,3 +1,4 @@
+import { DocumentTypeResponse } from "../lookup/lookup.types";
 import type {
   CaseResponseDto,
   CaseListItem,
@@ -9,6 +10,8 @@ import type {
   UpdateCaseRequestDto,
   CreateMedicalLiensResponse,
   MedicalCodeLiensResponse,
+  CaseDocuments,
+  CaseDocument,
 } from "./cases.types";
 
 const CASE_STATUS_LABELS: Record<string, string> = {
@@ -219,5 +222,32 @@ export function mapMedicalCodes(result: MedicalCodeLiensResponse[]): {
       medicareCost: +r.medicareCost,
       purchaseAmount: +r.purchaseAmount,
     })),
+  };
+}
+
+function getDocumentTypeById(id: string, docs: DocumentTypeResponse[]) {
+  const doc = docs.find((d) => d.id == id);
+  return doc?.name ?? "";
+}
+
+export function mapDocuments(
+  result: any,
+  cat: DocumentTypeResponse[],
+): CaseDocuments {
+  let liens: CaseDocument[] = [];
+  let cases: CaseDocument[] = [];
+
+  (result.data || []).map((data: CaseDocument) => {
+    if (data.liensId) {
+      liens.push(data);
+      data.documentType = getDocumentTypeById(data.typeId, cat);
+    } else {
+      data.documentType = getDocumentTypeById(data.typeId, cat);
+      cases.push(data);
+    }
+  });
+  return {
+    caseDocuments: cases,
+    liensDocuments: liens,
   };
 }
