@@ -83,8 +83,8 @@ public static class LookupEndpoints
         legacy.MapGet("/contact/funding-company", (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.LienHolder, ct))
             .RequirePermission(LiensPermissions.LienRead);
 
-        // Law firm roles — returns case-manager contacts (closest equivalent to legacy "roles")
-        legacy.MapGet("/contact/lawfirm/role",    (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.CaseManager, ct))
+        // Law firm roles — exposed as law-firm contact subtype options.
+        legacy.MapGet("/contact/lawfirm/role",    () => Results.Ok(GetLawFirmRoleOptions()))
             .RequirePermission(LiensPermissions.LienRead);
 
         // Case managers by law-firm org (best-effort: returns all CaseManager contacts for tenant)
@@ -260,6 +260,28 @@ public static class LookupEndpoints
 
         var result = await contactService.GetAllByTypeAsync(tenantId, contactType, isActive: true, ct);
         return Results.Ok(result);
+    }
+
+    private static IReadOnlyList<object> GetLawFirmRoleOptions()
+    {
+        return new[]
+        {
+            new
+            {
+                code = ContactSubtype.LawFirmCaseManager,
+                name = "Case Manager",
+            },
+            new
+            {
+                code = ContactSubtype.LawFirmAttorney,
+                name = "Attorney",
+            },
+            new
+            {
+                code = ContactSubtype.LawFirmOther,
+                name = "Other",
+            },
+        };
     }
 
     private static async Task<IResult> LegacyGetAllFacilities(

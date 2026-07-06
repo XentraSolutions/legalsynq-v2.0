@@ -8,8 +8,11 @@ public class Contact : AuditableEntity
     public Guid Id           { get; private set; }
     public Guid TenantId     { get; private set; }
     public Guid OrgId        { get; private set; }
+    public Guid? FacilityId  { get; private set; }
+    public Guid? LawFirmId   { get; private set; }
 
     public string ContactType { get; private set; } = Enums.ContactType.InternalUser;
+    public string? ContactSubtype { get; private set; }
 
     public string FirstName   { get; private set; } = string.Empty;
     public string LastName    { get; private set; } = string.Empty;
@@ -39,6 +42,9 @@ public class Contact : AuditableEntity
         string firstName,
         string lastName,
         Guid createdByUserId,
+        Guid? facilityId = null,
+        Guid? lawFirmId = null,
+        string? contactSubtype = null,
         string? title = null,
         string? organization = null,
         string? email = null,
@@ -59,6 +65,12 @@ public class Contact : AuditableEntity
 
         if (!Enums.ContactType.All.Contains(contactType))
             throw new ArgumentException($"Invalid contact type: '{contactType}'.");
+        if (!string.IsNullOrWhiteSpace(contactSubtype) && !Enums.ContactSubtype.All.Contains(contactSubtype))
+            throw new ArgumentException($"Invalid contact subtype: '{contactSubtype}'.");
+        if (facilityId.HasValue && facilityId.Value == Guid.Empty)
+            throw new ArgumentException("FacilityId cannot be empty.", nameof(facilityId));
+        if (lawFirmId.HasValue && lawFirmId.Value == Guid.Empty)
+            throw new ArgumentException("LawFirmId cannot be empty.", nameof(lawFirmId));
 
         var now = DateTime.UtcNow;
         return new Contact
@@ -66,7 +78,10 @@ public class Contact : AuditableEntity
             Id           = Guid.CreateVersion7(),
             TenantId     = tenantId,
             OrgId        = orgId,
+            FacilityId   = facilityId,
+            LawFirmId    = lawFirmId,
             ContactType  = contactType,
+            ContactSubtype = string.IsNullOrWhiteSpace(contactSubtype) ? null : contactSubtype.Trim(),
             FirstName    = firstName.Trim(),
             LastName     = lastName.Trim(),
             DisplayName  = $"{firstName.Trim()} {lastName.Trim()}",
@@ -94,6 +109,9 @@ public class Contact : AuditableEntity
         string lastName,
         string contactType,
         Guid updatedByUserId,
+        Guid? facilityId = null,
+        Guid? lawFirmId = null,
+        string? contactSubtype = null,
         string? title = null,
         string? organization = null,
         string? email = null,
@@ -111,11 +129,20 @@ public class Contact : AuditableEntity
 
         if (!Enums.ContactType.All.Contains(contactType))
             throw new ArgumentException($"Invalid contact type: '{contactType}'.");
+        if (!string.IsNullOrWhiteSpace(contactSubtype) && !Enums.ContactSubtype.All.Contains(contactSubtype))
+            throw new ArgumentException($"Invalid contact subtype: '{contactSubtype}'.");
+        if (facilityId.HasValue && facilityId.Value == Guid.Empty)
+            throw new ArgumentException("FacilityId cannot be empty.", nameof(facilityId));
+        if (lawFirmId.HasValue && lawFirmId.Value == Guid.Empty)
+            throw new ArgumentException("LawFirmId cannot be empty.", nameof(lawFirmId));
 
         FirstName    = firstName.Trim();
         LastName     = lastName.Trim();
         DisplayName  = $"{firstName.Trim()} {lastName.Trim()}";
+        FacilityId   = facilityId;
+        LawFirmId    = lawFirmId;
         ContactType  = contactType;
+        ContactSubtype = string.IsNullOrWhiteSpace(contactSubtype) ? null : contactSubtype.Trim();
         Title        = title?.Trim();
         Organization = organization?.Trim();
         Email        = email?.Trim();

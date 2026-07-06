@@ -28,6 +28,9 @@ public class CreateTicketRequest
     /// Only used during ExternalCustomer creation; ignored if the customer already exists.
     /// </summary>
     public string? ExternalCustomerName { get; set; }
+    public string? CaseManagerUserId { get; set; }
+    public string? CaseManagerName { get; set; }
+    public string? CaseManagerEmail { get; set; }
 }
 
 public class UpdateTicketRequest
@@ -43,6 +46,9 @@ public class UpdateTicketRequest
     public DateTime? DueAt { get; set; }
     public string? RequesterName { get; set; }
     public string? RequesterEmail { get; set; }
+    public string? CaseManagerUserId { get; set; }
+    public string? CaseManagerName { get; set; }
+    public string? CaseManagerEmail { get; set; }
 }
 
 public class TicketResponse
@@ -64,6 +70,9 @@ public class TicketResponse
     public TicketRequesterType RequesterType { get; set; }
     public Guid? ExternalCustomerId { get; set; }
     public TicketVisibilityScope VisibilityScope { get; set; }
+    public string? CaseManagerUserId { get; set; }
+    public string? CaseManagerName { get; set; }
+    public string? CaseManagerEmail { get; set; }
     public string? AssignedUserId { get; set; }
     public string? AssignedQueueId { get; set; }
     public DateTime? DueAt { get; set; }
@@ -93,6 +102,9 @@ public class TicketResponse
         RequesterType = t.RequesterType,
         ExternalCustomerId = t.ExternalCustomerId,
         VisibilityScope = t.VisibilityScope,
+        CaseManagerUserId = t.CaseManagerUserId,
+        CaseManagerName = t.CaseManagerName,
+        CaseManagerEmail = t.CaseManagerEmail,
         AssignedUserId = t.AssignedUserId,
         AssignedQueueId = t.AssignedQueueId,
         DueAt = t.DueAt,

@@ -43,6 +43,8 @@ export function NewTicketModal() {
   const [description, setDesc]  = useState('');
   const [priority, setPriority] = useState<TicketPriority>('Normal');
   const [category, setCategory] = useState('');
+  const [caseManagerName, setCaseManagerName] = useState('');
+  const [caseManagerEmail, setCaseManagerEmail] = useState('');
   const [files, setFiles]       = useState<SelectedFile[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const backdropRef             = useRef<HTMLDivElement>(null);
@@ -54,6 +56,8 @@ export function NewTicketModal() {
     setDesc('');
     setPriority('Normal');
     setCategory('');
+    setCaseManagerName('');
+    setCaseManagerEmail('');
     setFiles([]);
     setUploadStatus(null);
   }
@@ -74,7 +78,14 @@ export function NewTicketModal() {
     setError(null);
     setUploadStatus(null);
     startTx(async () => {
-      const result = await createTicketAction({ title, description, priority, category });
+      const result = await createTicketAction({
+        title,
+        description,
+        priority,
+        category,
+        caseManagerName,
+        caseManagerEmail,
+      });
       if (!result.success) {
         setError(result.error ?? 'Failed to create ticket.');
         return;
@@ -223,6 +234,39 @@ export function NewTicketModal() {
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5" htmlFor="ticket-case-manager">
+                    Case Manager
+                  </label>
+                  <input
+                    id="ticket-case-manager"
+                    type="text"
+                    value={caseManagerName}
+                    onChange={e => setCaseManagerName(e.target.value)}
+                    placeholder="Optional manager name"
+                    maxLength={200}
+                    disabled={isPending}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5" htmlFor="ticket-case-manager-email">
+                    Manager Email
+                  </label>
+                  <input
+                    id="ticket-case-manager-email"
+                    type="email"
+                    value={caseManagerEmail}
+                    onChange={e => setCaseManagerEmail(e.target.value)}
+                    placeholder="Optional manager email"
+                    maxLength={320}
+                    disabled={isPending}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                  />
                 </div>
               </div>
 

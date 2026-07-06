@@ -93,7 +93,9 @@ export default async function SupportCaseDetailPage(props: SupportCaseDetailPage
               {kase.tenantName}
               {kase.userName && <> · <span className="font-medium">{kase.userName}</span></>}
               {' · '}
-              {kase.category}
+              {kase.caseType || kase.category}
+              {' · '}
+              {kase.caseStatus || kase.status}
               {' · '}
               Case ID: <span className="font-mono text-xs">{kase.id}</span>
             </p>

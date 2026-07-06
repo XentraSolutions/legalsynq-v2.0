@@ -124,6 +124,24 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         => await GetOk("/lookup/contact/lawfirm/role");
 
     [Fact]
+    public async Task LookupContactLawfirmRole_returns_law_firm_subtype_options()
+    {
+        var resp = await _client.GetAsync("/lookup/contact/lawfirm/role");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var roles = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        roles.Should().Contain((Liens.Domain.Enums.ContactSubtype.LawFirmCaseManager, "Case Manager"));
+        roles.Should().Contain((Liens.Domain.Enums.ContactSubtype.LawFirmAttorney, "Attorney"));
+        roles.Should().Contain((Liens.Domain.Enums.ContactSubtype.LawFirmOther, "Other"));
+    }
+
+    [Fact]
     public async Task LookupBackupCaseManager_returns200()
         => await GetOk($"/lookup/backupcasemanager/{SeedHelper.LawFirmId}");
 

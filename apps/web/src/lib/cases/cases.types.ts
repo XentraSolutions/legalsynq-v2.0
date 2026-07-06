@@ -182,6 +182,9 @@ export interface LienResponseDto {
   currentBalance?: number | null;
   offerPrice?: number | null;
   purchasePrice?: number | null;
+  purchaseDate?: string | null;
+  totalPurchase?: number | null;
+  totalBilling?: number | null;
   jurisdiction?: string | null;
   isConfidential: boolean;
   subjectDisplayName?: string | null;
