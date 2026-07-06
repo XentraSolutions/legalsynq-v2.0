@@ -318,6 +318,19 @@ export interface CasePaginatedResult {
   totalCount: number;
 }
 
+// Actual shape returned by the per-contact-type case lookups
+// (cases/law/v3, cases/leads/v3, cases/medical/v3, cases/medical/facility/v3,
+// cases/funding/v3) — unpaginated, no `page`/`limit`.
+export interface CaseListApiResponse {
+  isSuccess: boolean;
+  message: string;
+  data: CaseResponseDto[];
+  totalCount: number;
+  totalCases: number;
+  totalActiveCases: number;
+  totalValue: number;
+}
+
 export interface CaseListResult {
   items: CaseListItem[];
   pagination: PaginationMeta;

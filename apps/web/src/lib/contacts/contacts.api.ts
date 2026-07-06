@@ -1,7 +1,6 @@
 import { apiClient } from "@/lib/api-client";
 import type {
   ContactResponseDto,
-  ContactCaseDto,
   PaginatedResultDto,
   CreateContactRequestDto,
   UpdateContactRequestDto,
@@ -13,7 +12,9 @@ const BASE = "/lien/api/liens/contacts";
 
 function toQs(params: Record<string, unknown>): string {
   const pairs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    // ContactSubtype="" is a deliberate filter (main contacts only), not an
+    // omitted param, so it's kept even though other blank strings are dropped.
+    .filter(([k, v]) => v !== undefined && v !== null && (v !== "" || k === "ContactSubtype"))
     .map(
       ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
     );
@@ -55,9 +56,5 @@ export const contactsApi = {
     return apiClient.post<ExportResponse>(`${BASE}/export-csv`, {
       ContactType: contactType,
     });
-  },
-
-  getCases(contactId: string) {
-    return apiClient.get<ContactCaseDto[]>(`${BASE}/${contactId}/cases`);
   },
 };

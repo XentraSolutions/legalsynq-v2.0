@@ -8,6 +8,7 @@ import type {
   DashboardStats,
   CasePaginatedParams,
   CasePaginatedResult,
+  CaseListApiResponse,
   CaseLiensApiResponse,
   CasesFilters,
   ExportResponse,
@@ -261,5 +262,35 @@ export const casesApi = {
 
   exportCaseLiens(request: CaseLiensFilters) {
     return apiClient.post<ApiResponse>(`${BASE}/liens/generate-csv/`, request);
+  },
+
+  listByLawFirm(lawFirmId: string) {
+    return apiClient.post<CaseListApiResponse>(`${BASE}/law/v3`, {
+      lawFirmId,
+    });
+  },
+
+  listByLead(leadId: string) {
+    return apiClient.post<CaseListApiResponse>(`${BASE}/leads/v3`, {
+      leadId,
+    });
+  },
+
+  listByFacility(facilityId: string) {
+    return apiClient.post<CaseListApiResponse>(`${BASE}/medical/facility/v3`, {
+      facilityId,
+    });
+  },
+
+  listByMedicalProvider(medicalId: string) {
+    return apiClient.post<CaseListApiResponse>(`${BASE}/medical/v3`, {
+      medicalId,
+    });
+  },
+
+  listByFundingCompany(fundingCompanyId: string) {
+    return apiClient.post<CaseListApiResponse>(`${BASE}/funding/v3`, {
+      fundingCompanyId,
+    });
   },
 };
