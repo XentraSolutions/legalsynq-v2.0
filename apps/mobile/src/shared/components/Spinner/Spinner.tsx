@@ -14,5 +14,5 @@ const SIZE_MAP = {
 } as const;
 
 export function Spinner({ size = 'md', color = COLORS.primary }: SpinnerProps) {
-  return <ActivityIndicator color={color} size={SIZE_MAP[size]} />;
+  return <ActivityIndicator animating={true} color={color} size={SIZE_MAP[size]} />;
 }

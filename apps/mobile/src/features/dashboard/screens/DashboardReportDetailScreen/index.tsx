@@ -40,7 +40,8 @@ type DetailSlice = {
 
 type BreakdownItem = {
   id: string;
-  status: 'Open' | 'Close' | 'Settled' | 'Active';
+  status: string;
+  statusColor?: string;
   fields: Array<{
     icon: keyof typeof Ionicons.glyphMap;
     label: string;
@@ -199,7 +200,15 @@ function getReportPagination(
   medicalProviderReport: PagedResult<DashboardMedicalProviderReportRow> | undefined
 ): ReportPaginationMeta | undefined {
   if (reportType === 'total-cases') {
-    return totalCaseReport;
+    if (!totalCaseReport) return undefined;
+    const totalCount = totalCaseReport.totalCount;
+    if (!totalCount) return undefined;
+    return {
+      page: totalCaseReport.page,
+      pageSize: DETAIL_PAGE_SIZE,
+      totalCount,
+      totalPages: Math.max(1, Math.ceil(totalCount / DETAIL_PAGE_SIZE)),
+    };
   }
 
   if (reportType === 'law-firm-allocation') {
@@ -283,11 +292,7 @@ export function DashboardReportDetailScreen() {
     [route.params.dateRange]
   );
   const { data: totalLienReport } = useDashboardTotalLienReport(reportFilter, reportsEnabled);
-  const totalCaseAllRowsFilter = useMemo(
-    () => ({ ...buildDashboardReportFilter(route.params.dateRange, 1), limit: 10000 }),
-    [route.params.dateRange]
-  );
-  const { data: totalCaseReport } = useDashboardTotalCaseReport(totalCaseAllRowsFilter, reportsEnabled);
+  const { data: totalCaseReport } = useDashboardTotalCaseReport(reportFilter, reportsEnabled);
   const lawFirmAllRowsFilter = useMemo(
     () => ({ ...buildDashboardReportFilter(route.params.dateRange, 1), limit: 10000 }),
     [route.params.dateRange]
@@ -413,7 +418,7 @@ export function DashboardReportDetailScreen() {
 
         <View className="px-6 pt-2">
           <ReportCard className="px-5 py-5" isDark={isDark}>
-            <View className="mb-2 flex-row items-center justify-between">
+            <View className="mb-2 w-full flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
                 <Ionicons color={isDark ? '#a1a1aa' : '#525762'} name="list-outline" size={18} />
                 <Text className={cx(TYPE.cardTitle, 'text-[#18181b] dark:text-white')}>
@@ -634,7 +639,7 @@ function BreakdownCard({ isLast, item }: { isLast: boolean; item: BreakdownItem 
         <Text className={cx(TYPE.cardTitle, 'flex-1 text-[#18181b] dark:text-white')}>
           {item.id}
         </Text>
-        <StatusChip status={item.status} tone={statusTone} />
+        <StatusChip color={item.statusColor} status={item.status} tone={statusTone} />
       </View>
       <View className="mt-3 gap-3">
         {item.fields.map((field) => (
@@ -658,12 +663,22 @@ function BreakdownCard({ isLast, item }: { isLast: boolean; item: BreakdownItem 
 }
 
 function StatusChip({
+  color,
   status,
   tone,
 }: {
+  color?: string;
   status: BreakdownItem['status'];
   tone: 'success' | 'warning' | 'info';
 }) {
+  if (color) {
+    return (
+      <View style={{ backgroundColor: `${color}22`, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 }}>
+        <Text className={TYPE.microStrong} style={{ color }}>{status}</Text>
+      </View>
+    );
+  }
+
   const classes = {
     info: {
       container: 'bg-[#dbeafe] dark:bg-[#172554]',
@@ -783,7 +798,12 @@ function buildReport(
       centerCaption: 'Total Cases',
       slices,
       breakdownTitle: 'Detailed Breakdown',
-      breakdownItems: slicesToBreakdownItems(slices, 'case', reportPeriodLabel),
+      breakdownItems: useDummyData
+        ? []
+        : totalCaseRowsToBreakdownItems(
+            totalCaseRows,
+            new Map(slices.map((s) => [s.label.toLowerCase(), s.color]))
+          ),
     };
   }
 
@@ -837,6 +857,49 @@ function buildReport(
       ? LIEN_BREAKDOWN
       : lienRowsToBreakdownItems(totalLienRows, reportPeriodLabel),
   };
+}
+
+function totalCaseRowsToBreakdownItems(
+  rows: DashboardTotalCaseReportRow[],
+  statusColorMap: Map<string, string>
+): BreakdownItem[] {
+  return rows.map((row) => {
+    const r = row as Record<string, unknown>;
+
+    const name =
+      row.clientDisplayName ??
+      (row.clientFirstName && row.clientLastName
+        ? `${row.clientFirstName} ${row.clientLastName}`
+        : undefined) ??
+      row.patientName ??
+      row.name ??
+      readReportText(r, ['fullName', 'clientName', 'plaintiff', 'plaintiffName']) ??
+      'N/A';
+
+    const caseId =
+      row.caseNumber ?? row.caseReference ?? row.externalReference ?? row.caseId ??
+      readReportText(r, ['caseNo', 'caseCode', 'referenceNumber']) ??
+      (typeof r.id === 'string' ? r.id : undefined) ?? 'N/A';
+
+    const rawStatus = row.status ?? row.caseStatus ?? row.currentStatus ?? row.statusName ?? 'N/A';
+
+    const dateOfLoss =
+      row.dateOfIncident ?? row.dateOfLoss ?? row.incidentDate ?? row.lossDate ??
+      readReportText(r, ['dateOfLoss', 'lossDate', 'incidentDate', 'dateOfIncident']) ??
+      'N/A';
+
+    const statusColor = statusColorMap.get(rawStatus.toLowerCase());
+
+    return {
+      id: name,
+      status: rawStatus,
+      statusColor,
+      fields: [
+        { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
+        { icon: 'calendar-outline', label: 'Date of Loss', value: dateOfLoss },
+      ],
+    };
+  });
 }
 
 function createLienBreakdownItem(
@@ -1155,18 +1218,18 @@ function lienRowsToBreakdownItems(
           icon: 'briefcase-outline',
           label: 'Case ID',
           value:
-            readReportText(record, ['caseId', 'caseCode', 'caseNumber', 'caseNo', 'case']) ?? 'N/A',
+            readReportText(record, ['caseId']) ?? 'N/A',
         },
         {
           icon: 'person-outline',
           label: 'Plaintiff Name',
           value:
-            readReportText(record, ['plaintiffName', 'plainTiffName', 'patientName', 'name']) ??
+            readReportText(record, ['clientName']) ??
             'N/A',
         },
-        { icon: 'card-outline', label: 'Purchase', value: formatCurrency(purchase) },
-        { icon: 'receipt-outline', label: 'Billing', value: formatCurrency(billing) },
-        { icon: 'calendar-outline', label: 'Report Period', value: reportPeriodLabel },
+        // { icon: 'card-outline', label: 'Purchase', value: formatCurrency(purchase) },
+        // { icon: 'receipt-outline', label: 'Billing', value: formatCurrency(billing) },
+        // { icon: 'calendar-outline', label: 'Report Period', value: reportPeriodLabel },
       ];
 
       return {
