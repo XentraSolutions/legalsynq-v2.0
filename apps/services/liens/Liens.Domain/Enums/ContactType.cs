@@ -4,6 +4,7 @@ public static class ContactType
 {
     public const string LawFirm      = "LawFirm";
     public const string Provider     = "Provider";
+    public const string Facility     = "Facility";
     public const string MedicalFacility = "MedicalFacility";
     public const string LienHolder   = "LienHolder";
     public const string FundingCompany = "FundingCompany";
@@ -13,6 +14,6 @@ public static class ContactType
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
-        LawFirm, Provider, MedicalFacility, LienHolder, FundingCompany, CaseManager, InternalUser, Lead
+        LawFirm, Provider, Facility, MedicalFacility, LienHolder, FundingCompany, CaseManager, InternalUser, Lead
     };
 }

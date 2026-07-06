@@ -10,6 +10,7 @@ namespace Liens.Application.Services;
 
 public sealed class CaseService : ICaseService
 {
+    private const string LegacyMetadataMarker = "[legacy-meta]";
     private readonly ICaseRepository           _caseRepo;
     private readonly IAuditPublisher           _audit;
     private readonly ILienTaskGenerationEngine _taskGenEngine;
@@ -145,7 +146,15 @@ public sealed class CaseService : ICaseService
             policyNumber: request.PolicyNumber,
             claimNumber: request.ClaimNumber,
             description: request.Description,
-            notes: request.Notes);
+            notes: SerializeCaseNotes(
+                request.Notes,
+                BuildMetadata(
+                    sex: request.Sex,
+                    caseType: request.CaseType,
+                    currentMedicalStatus: request.CurrentMedicalStatus,
+                    stateOfIncident: request.StateOfIncident,
+                    trackingFollowUpDate: request.TrackingFollowUpDate,
+                    leadId: request.LeadId)));
 
         await _caseRepo.AddAsync(entity, ct);
 
@@ -214,6 +223,8 @@ public sealed class CaseService : ICaseService
     {
         var entity = await _caseRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Case '{id}' not found for tenant '{tenantId}'.");
+        var noteBody = ExtractUserNotes(entity.Notes);
+        var metadata = ParseCaseMetadata(entity.Notes);
 
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(request.ClientFirstName))
@@ -244,7 +255,16 @@ public sealed class CaseService : ICaseService
             policyNumber: request.PolicyNumber,
             claimNumber: request.ClaimNumber,
             description: request.Description,
-            notes: request.Notes);
+            notes: SerializeCaseNotes(
+                request.Notes ?? noteBody,
+                MergeMetadata(
+                    metadata,
+                    request.Sex,
+                    request.CaseType,
+                    request.CurrentMedicalStatus,
+                    request.StateOfIncident,
+                    request.TrackingFollowUpDate,
+                    request.LeadId)));
 
         if (request.Status is not null && request.Status != entity.Status)
             entity.TransitionStatus(request.Status, actingUserId);
@@ -334,6 +354,9 @@ public sealed class CaseService : ICaseService
 
     private static CaseResponse MapToResponse(Case entity)
     {
+        var noteBody = ExtractUserNotes(entity.Notes);
+        var metadata = ParseCaseMetadata(entity.Notes);
+        var address = SplitAddress(entity.ClientAddress);
         return new CaseResponse
         {
             Id = entity.Id,
@@ -349,17 +372,186 @@ public sealed class CaseService : ICaseService
             ClientPhone = entity.ClientPhone,
             ClientEmail = entity.ClientEmail,
             ClientAddress = entity.ClientAddress,
+            ClientStreetAddress = address.Address,
+            ClientCity = address.City,
+            ClientState = address.State,
+            ClientZipcode = address.Zipcode,
             InsuranceCarrier = entity.InsuranceCarrier,
             PolicyNumber = entity.PolicyNumber,
             ClaimNumber = entity.ClaimNumber,
             DemandAmount = entity.DemandAmount,
             SettlementAmount = entity.SettlementAmount,
             Description = entity.Description,
-            Notes = entity.Notes,
+            Notes = noteBody,
+            Sex = GetMetadataValue(metadata, "gender"),
+            CaseType = GetMetadataValue(metadata, "accidentType"),
+            CurrentMedicalStatus = GetMetadataValue(metadata, "currentMedicalStatus"),
+            StateOfIncident = GetMetadataValue(metadata, "accidentState"),
+            TrackingFollowUpDate = ParseMetadataDate(GetMetadataValue(metadata, "trackingFollowUpDate")),
+            LeadId = GetMetadataValue(metadata, "leadId"),
             OpenedAtUtc = entity.OpenedAtUtc,
             ClosedAtUtc = entity.ClosedAtUtc,
             CreatedAtUtc = entity.CreatedAtUtc,
             UpdatedAtUtc = entity.UpdatedAtUtc,
         };
+    }
+
+    private static Dictionary<string, string> BuildMetadata(
+        string? sex,
+        string? caseType,
+        string? currentMedicalStatus,
+        string? stateOfIncident,
+        DateOnly? trackingFollowUpDate,
+        string? leadId)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        SetMetadataValue(metadata, "gender", sex);
+        SetMetadataValue(metadata, "accidentType", caseType);
+        SetMetadataValue(metadata, "currentMedicalStatus", currentMedicalStatus);
+        SetMetadataValue(metadata, "accidentState", stateOfIncident);
+        SetMetadataValue(
+            metadata,
+            "trackingFollowUpDate",
+            trackingFollowUpDate?.ToString("MM/dd/yyyy"));
+        SetMetadataValue(metadata, "leadId", leadId);
+        return metadata;
+    }
+
+    private static Dictionary<string, string> MergeMetadata(
+        Dictionary<string, string> existing,
+        string? sex,
+        string? caseType,
+        string? currentMedicalStatus,
+        string? stateOfIncident,
+        DateOnly? trackingFollowUpDate,
+        string? leadId)
+    {
+        var metadata = new Dictionary<string, string>(existing, StringComparer.Ordinal);
+        if (sex is not null)
+            SetMetadataValue(metadata, "gender", sex);
+        if (caseType is not null)
+            SetMetadataValue(metadata, "accidentType", caseType);
+        if (currentMedicalStatus is not null)
+            SetMetadataValue(metadata, "currentMedicalStatus", currentMedicalStatus);
+        if (stateOfIncident is not null)
+            SetMetadataValue(metadata, "accidentState", stateOfIncident);
+        if (trackingFollowUpDate.HasValue)
+            SetMetadataValue(metadata, "trackingFollowUpDate", trackingFollowUpDate.Value.ToString("MM/dd/yyyy"));
+        if (leadId is not null)
+            SetMetadataValue(metadata, "leadId", leadId);
+        return metadata;
+    }
+
+    private static void SetMetadataValue(Dictionary<string, string> metadata, string key, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            metadata.Remove(key);
+            return;
+        }
+
+        metadata[key] = value.Trim();
+    }
+
+    private static string? SerializeCaseNotes(string? noteBody, Dictionary<string, string> metadata)
+    {
+        var cleanBody = string.IsNullOrWhiteSpace(noteBody) ? null : noteBody.Trim();
+        if (metadata.Count == 0)
+            return cleanBody;
+
+        var serialized = string.Join("; ", metadata.Select(pair => $"{pair.Key}={pair.Value}"));
+        return cleanBody is null
+            ? $"{LegacyMetadataMarker}{Environment.NewLine}{serialized}"
+            : $"{cleanBody}{Environment.NewLine}{Environment.NewLine}{LegacyMetadataMarker}{Environment.NewLine}{serialized}";
+    }
+
+    private static string? ExtractUserNotes(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+            return null;
+
+        var markerIndex = notes.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+        {
+            var body = notes[..markerIndex].Trim();
+            return body.Length == 0 ? null : body;
+        }
+
+        return LooksLikeLegacyMetadata(notes) ? null : notes;
+    }
+
+    private static Dictionary<string, string> ParseCaseMetadata(string? notes)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(notes))
+            return result;
+
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+        {
+            rawMetadata = notes[(markerIndex + LegacyMetadataMarker.Length)..].Trim();
+        }
+        else if (!LooksLikeLegacyMetadata(notes))
+        {
+            return result;
+        }
+
+        foreach (var segment in rawMetadata.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = segment.IndexOf('=');
+            if (eq <= 0)
+                continue;
+
+            var key = segment[..eq].Trim();
+            var value = segment[(eq + 1)..].Trim();
+            if (key.Length > 0)
+                result[key] = value;
+        }
+
+        return result;
+    }
+
+    private static bool LooksLikeLegacyMetadata(string notes)
+    {
+        var segments = notes.Split("; ", StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length > 0 && segments.All(segment => segment.Contains('='));
+    }
+
+    private static string? GetMetadataValue(Dictionary<string, string> metadata, string key)
+        => metadata.TryGetValue(key, out var value) ? value : null;
+
+    private static DateOnly? ParseMetadataDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return DateOnly.TryParse(value, out var parsed) ? parsed : null;
+    }
+
+    private static (string? Address, string? City, string? State, string? Zipcode) SplitAddress(string? rawAddress)
+    {
+        if (string.IsNullOrWhiteSpace(rawAddress))
+            return (null, null, null, null);
+
+        var parts = rawAddress
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length >= 4)
+        {
+            return (
+                string.Join(", ", parts.Take(parts.Length - 3)),
+                parts[^3],
+                parts[^2],
+                parts[^1]);
+        }
+
+        if (parts.Length == 3)
+            return (parts[0], parts[1], parts[2], null);
+
+        if (parts.Length == 2)
+            return (parts[0], parts[1], null, null);
+
+        return (rawAddress.Trim(), null, null, null);
     }
 }

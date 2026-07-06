@@ -112,7 +112,7 @@ public static class ContactEndpoints
         legacy.MapPost("/leads/v3/{id:guid?}",     (ContactsV3Request r, IContactService cs, ICurrentRequestContext c, Guid? id, CancellationToken ct) => SearchByType(r, cs, c, ContactType.Lead, ct))
             .RequirePermission(LiensPermissions.LienService);
 
-        legacy.MapGet("/lawfirm/role/{lawfirm:guid?}/{id:guid?}", (IContactService cs, ICurrentRequestContext c, Guid? id, CancellationToken ct) => ListByType(cs, c, ContactType.CaseManager, ct))
+        legacy.MapGet("/lawfirm/role/{lawfirm:guid?}/{id:guid?}", () => Results.Ok(GetLawFirmRoleOptions()))
             .RequirePermission(LiensPermissions.LienService);
 
         legacy.MapPost("/generate-csv",          ExportContactsCsv)
@@ -146,14 +146,31 @@ public static class ContactEndpoints
         ICurrentRequestContext ctx,
         string? search = null,
         string? contactType = null,
-        bool? isActive = null,
+        Guid? lawFirmId = null,
+        Guid? facilityId = null,
+        string? type = null,
+        string? contactSubtype = null,
+        bool? isActive = true,
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
+        var isSubcontactQuery = lawFirmId.HasValue || facilityId.HasValue;
+        var contactTypeIsSubtypeAlias = isSubcontactQuery &&
+            !string.IsNullOrWhiteSpace(contactType) &&
+            ContactSubtype.All.Contains(contactType.Trim());
+        var typeIsSubtypeAlias = isSubcontactQuery &&
+            !string.IsNullOrWhiteSpace(type) &&
+            ContactSubtype.All.Contains(type.Trim());
+        var resolvedContactType = !string.IsNullOrWhiteSpace(contactType) && !contactTypeIsSubtypeAlias
+            ? contactType
+            : (!string.IsNullOrWhiteSpace(type) && !typeIsSubtypeAlias ? type : null);
+        var resolvedContactSubtype = !string.IsNullOrWhiteSpace(contactSubtype)
+            ? contactSubtype
+            : (contactTypeIsSubtypeAlias ? contactType : (typeIsSubtypeAlias ? type : null));
         var result = await contactService.SearchAsync(
-            tenantId, search, contactType, isActive, page, pageSize, ct);
+            tenantId, search, resolvedContactType, isActive, page, pageSize, lawFirmId, facilityId, resolvedContactSubtype, ct);
         return Results.Ok(result);
     }
 
@@ -220,6 +237,28 @@ public static class ContactEndpoints
         return Results.Ok(result);
     }
 
+    private static IReadOnlyList<object> GetLawFirmRoleOptions()
+    {
+        return new[]
+        {
+            new
+            {
+                code = ContactSubtype.LawFirmCaseManager,
+                name = "Case Manager",
+            },
+            new
+            {
+                code = ContactSubtype.LawFirmAttorney,
+                name = "Attorney",
+            },
+            new
+            {
+                code = ContactSubtype.LawFirmOther,
+                name = "Other",
+            },
+        };
+    }
+
     // ── Typed-list handlers ───────────────────────────────────────────────────
 
     private static async Task<IResult> ListByType(
@@ -243,7 +282,7 @@ public static class ContactEndpoints
         var tenantId = RequireTenantId(ctx);
         var result = await contactService.SearchAsync(
             tenantId, request.Keyword, contactType, isActive: true,
-            request.Page, request.Limit, ct);
+            request.Page, request.Limit, ct: ct);
         return Results.Ok(result);
     }
 
@@ -318,6 +357,9 @@ public static class ContactEndpoints
     {
         public Guid    Id          { get; init; }
         public string  ContactType { get; init; } = string.Empty;
+        public string? ContactSubtype { get; init; }
+        public Guid?   FacilityId  { get; init; }
+        public Guid?   LawFirmId   { get; init; }
         public string  FirstName   { get; init; } = string.Empty;
         public string  LastName    { get; init; } = string.Empty;
         public string? Title       { get; init; }
@@ -343,7 +385,9 @@ public static class ContactEndpoints
         var userId   = RequireUserId(ctx);
         var request  = new UpdateContactRequest
         {
-            ContactType  = req.ContactType, FirstName = req.FirstName, LastName = req.LastName,
+            ContactType  = req.ContactType, ContactSubtype = req.ContactSubtype,
+            FacilityId   = req.FacilityId, LawFirmId = req.LawFirmId,
+            FirstName    = req.FirstName, LastName = req.LastName,
             Title        = req.Title, Organization = req.Organization,
             Email        = req.Email, Phone = req.Phone, Fax = req.Fax, Website = req.Website,
             AddressLine1 = req.AddressLine1, City = req.City, State = req.State,

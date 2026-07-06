@@ -111,6 +111,9 @@ export async function createSupportCase(data: {
   userName?:  string;
   category:   string;
   priority:   SupportCase['priority'];
+  caseManagerUserId?: string;
+  caseManagerName?: string;
+  caseManagerEmail?: string;
 }): Promise<CreateCaseResult> {
   await requirePlatformAdmin();
   if (!data.title.trim()) return { success: false, error: 'Title is required.' };

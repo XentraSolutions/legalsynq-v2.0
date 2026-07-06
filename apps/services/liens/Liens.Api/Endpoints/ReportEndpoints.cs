@@ -547,7 +547,7 @@ public static class ReportEndpoints
             isActive: true,
             page: 1,
             pageSize: limit,
-            ct);
+            ct: ct);
 
         return result.Items
             .Select(item => (object)new

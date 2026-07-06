@@ -190,6 +190,7 @@ public static class LienEndpoints
 
     private static async Task<IResult> ListLiens(
         ILienService lienService,
+        IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         string? search = null,
         string? status = null,
@@ -203,12 +204,20 @@ public static class LienEndpoints
         var tenantId = RequireTenantId(ctx);
         var result = await lienService.SearchAsync(
             tenantId, search, status, lienType, caseId, facilityId, page, pageSize, ct);
-        return Results.Ok(result);
+        var enriched = await EnrichLienResponsesAsync(result.Items, tenantId, servicingItemService, ct);
+        return Results.Ok(new PaginatedResult<LienResponse>
+        {
+            Items = enriched,
+            Page = result.Page,
+            PageSize = result.PageSize,
+            TotalCount = result.TotalCount,
+        });
     }
 
     private static async Task<IResult> GetLienById(
         Guid id,
         ILienService lienService,
+        IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -216,12 +225,13 @@ public static class LienEndpoints
         var result = await lienService.GetByIdAsync(tenantId, id, ct);
         return result is null
             ? Results.NotFound(new { error = new { code = "not_found", message = $"Lien '{id}' not found." } })
-            : Results.Ok(result);
+            : Results.Ok((await EnrichLienResponsesAsync([result], tenantId, servicingItemService, ct)).Single());
     }
 
     private static async Task<IResult> GetLienByNumber(
         string lienNumber,
         ILienService lienService,
+        IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -229,7 +239,84 @@ public static class LienEndpoints
         var result = await lienService.GetByLienNumberAsync(tenantId, lienNumber, ct);
         return result is null
             ? Results.NotFound(new { error = new { code = "not_found", message = $"Lien with number '{lienNumber}' not found." } })
-            : Results.Ok(result);
+            : Results.Ok((await EnrichLienResponsesAsync([result], tenantId, servicingItemService, ct)).Single());
+    }
+
+    private static async Task<List<LienResponse>> EnrichLienResponsesAsync(
+        List<LienResponse> liens,
+        Guid tenantId,
+        IServicingItemService servicingItemService,
+        CancellationToken ct)
+    {
+        var enriched = new List<LienResponse>(liens.Count);
+
+        foreach (var lien in liens)
+        {
+            var codeResults = await servicingItemService.SearchAsync(
+                tenantId,
+                search: "LegacyMedicalCode",
+                status: null,
+                priority: null,
+                assignedTo: null,
+                caseId: null,
+                lienId: lien.Id,
+                page: 1,
+                pageSize: 500,
+                ct);
+
+            var totalPurchase = 0m;
+            var totalBilling = 0m;
+
+            foreach (var item in codeResults.Items.Where(i =>
+                         string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal)))
+            {
+                var codeFields = ParseLegacyNoteFields(item.Notes);
+                if (decimal.TryParse(codeFields.GetValueOrDefault("purchaseAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var purchase))
+                    totalPurchase += purchase;
+                if (decimal.TryParse(codeFields.GetValueOrDefault("billingAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var billing))
+                    totalBilling += billing;
+            }
+
+            enriched.Add(new LienResponse
+            {
+                Id = lien.Id,
+                LienNumber = lien.LienNumber,
+                ExternalReference = lien.ExternalReference,
+                LienType = lien.LienType,
+                Status = lien.Status,
+                CaseId = lien.CaseId,
+                FacilityId = lien.FacilityId,
+                OriginalAmount = lien.OriginalAmount,
+                CurrentBalance = lien.CurrentBalance,
+                OfferPrice = lien.OfferPrice,
+                PurchasePrice = lien.PurchasePrice,
+                PayoffAmount = lien.PayoffAmount,
+                Jurisdiction = lien.Jurisdiction,
+                IsConfidential = lien.IsConfidential,
+                SubjectFirstName = lien.SubjectFirstName,
+                SubjectLastName = lien.SubjectLastName,
+                SubjectDisplayName = lien.SubjectDisplayName,
+                OrgId = lien.OrgId,
+                SellingOrgId = lien.SellingOrgId,
+                BuyingOrgId = lien.BuyingOrgId,
+                HoldingOrgId = lien.HoldingOrgId,
+                IncidentDate = lien.IncidentDate,
+                PurchaseDate = lien.IncidentDate.HasValue ? FormatLegacyDate(lien.IncidentDate) : lien.PurchaseDate,
+                InitialServiceDate = lien.InitialServiceDate,
+                EndServiceDate = lien.EndServiceDate,
+                TotalPurchase = totalPurchase,
+                TotalBilling = totalBilling,
+                IsBulk = lien.IsBulk,
+                IsServicing = lien.IsServicing,
+                Description = lien.Description,
+                OpenedAtUtc = lien.OpenedAtUtc,
+                ClosedAtUtc = lien.ClosedAtUtc,
+                CreatedAtUtc = lien.CreatedAtUtc,
+                UpdatedAtUtc = lien.UpdatedAtUtc,
+            });
+        }
+
+        return enriched;
     }
 
     private static async Task<IResult> CreateLien(
