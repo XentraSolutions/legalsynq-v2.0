@@ -145,3 +145,52 @@ export interface CaseReduction {
   createdAtUtc: string
   updatedAtUtc: string
 }
+
+export type SettlementHistoryItemType = 'payment' | 'reduction' | 'settlement'
+
+interface SettlementHistoryItemBase {
+  id: string
+  type: SettlementHistoryItemType
+  lienId: string
+  amount: number
+  note: string
+  createdAt: string
+}
+
+export interface SettlementHistoryPaymentItem extends SettlementHistoryItemBase {
+  type: 'payment'
+  paymentNumber: number
+  payee: string
+  checkNumber: string
+}
+
+export interface SettlementHistoryReductionItem extends SettlementHistoryItemBase {
+  type: 'reduction'
+  date: string
+}
+
+export interface SettlementHistorySettlementItem extends SettlementHistoryItemBase {
+  type: 'settlement'
+  paymentNumber: number
+  status: string
+}
+
+export type SettlementHistoryItemV3 =
+  | SettlementHistoryPaymentItem
+  | SettlementHistoryReductionItem
+  | SettlementHistorySettlementItem
+
+export interface GetSettlementHistoryV3Response {
+  isSuccess: boolean
+  message: string
+  data: SettlementHistoryItemV3[]
+  totalCount: number
+  page: number
+  limit: number
+}
+
+export interface SettlementHistoryV3Query {
+  caseId: string
+  page?: number
+  limit?: number
+}
