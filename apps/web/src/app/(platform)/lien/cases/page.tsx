@@ -77,6 +77,8 @@ export default function CasesPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [params, setParams] = useState({
     accidentTypeId: null,
@@ -179,13 +181,17 @@ export default function CasesPage() {
   };
 
   useEffect(() => {
-    fetchCases();
     lookupCaseStatus();
-  }, [search]);
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     fetchCases();
-  }, [pagination.page]);
+  }, [pagination.page, search]);
 
   const canEdit = ra.can("case:edit");
 
@@ -236,7 +242,7 @@ export default function CasesPage() {
 
   const handleCaseCreated = () => {
     setShowCreate(false);
-    setTimeout(() => fetchCases(), 500);
+    setTimeout(() => fetchCases(), 1000);
   };
 
   const handleCasesFilter = (e: any) => {
@@ -331,7 +337,8 @@ export default function CasesPage() {
       <FilterToolbar
         searchPlaceholder="Search by case number or client name..."
         onSearch={(e) => {
-          setSearch(e);
+          console.log(e);
+          setSearchInput(e);
         }}
         filters={[
           {
