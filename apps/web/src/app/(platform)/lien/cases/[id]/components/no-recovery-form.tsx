@@ -5,6 +5,8 @@ import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
+import { lookupService } from "@/lib/lookup";
+import type { LiensStatusResponse } from "@/lib/lookup/lookup.types";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import {
   Select,
@@ -26,6 +28,16 @@ function formatCurrency(amount: number | null): string {
   }).format(amount);
 }
 
+function pickLienStatusOptions(items: LiensStatusResponse[]): LiensStatusResponse[] {
+  const byCode = (codes: string[]) =>
+    items.find((i) => codes.includes((i.code || "").toLowerCase()));
+  const openOrActive = byCode(["active", "open"]);
+  const settledOrClosed = byCode(["settled", "closed"]);
+  return [openOrActive, settledOrClosed].filter(
+    (i): i is LiensStatusResponse => Boolean(i),
+  );
+}
+
 interface NoRecoveryFormProps {
   open: boolean;
   onClose: () => void;
@@ -38,7 +50,7 @@ interface NoRecoveryFormProps {
 }
 
 const INITIAL_FORM = {
-  lienStatus: "2",
+  lienStatus: "",
   closedDate: new Date().toISOString().slice(0, 10),
   note: "",
 };
@@ -57,6 +69,7 @@ export function NoRecoveryForm({
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [lienStatuses, setLienStatuses] = useState<LiensStatusResponse[]>([]);
 
   const openLiens = liens.filter(
     (l) => l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
@@ -69,6 +82,16 @@ export function NoRecoveryForm({
       setForm({ ...INITIAL_FORM });
       setCheckedIds(new Set(openLiens.map((l) => l.id)));
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    lookupService.getLiensStatus().then((res) => {
+      const options = pickLienStatusOptions(res.items);
+      setLienStatuses(options);
+      const settled = options.find((s) => (s.code || "").toLowerCase() === "settled");
+      setForm((prev) => ({ ...prev, lienStatus: (settled ?? options[0])?.code ?? "" }));
+    });
   }, [open]);
 
   const toggleCheck = (id: string) => {
@@ -115,21 +138,12 @@ export function NoRecoveryForm({
     }
     setSaving(true);
     try {
-      await settlementService.createPayment({
-        amount: "",
-        amountToSettle: "",
-        checkAmount: "",
-        checkDate: "",
-        checkNumber: "",
-        closedDate: formatDate(form.closedDate),
-        lienId: "",
+      await settlementService.updateLiensStatus({
+        caseId,
+        lienIds: Array.from(checkedIds).join(","),
         lienStatus: form.lienStatus,
-        netProfit: "",
+        closedDate: formatDate(form.closedDate),
         note: form.note,
-        paymentNumber: "",
-        payor: "",
-        status: "",
-        type: "",
       });
       addToast({
         type: "success",
@@ -237,8 +251,11 @@ export function NoRecoveryForm({
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">Open</SelectItem>
-                  <SelectItem value="2">Close</SelectItem>
+                  {lienStatuses.map((s) => (
+                    <SelectItem key={s.id} value={s.code}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

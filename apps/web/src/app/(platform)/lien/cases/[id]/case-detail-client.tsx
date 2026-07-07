@@ -54,7 +54,7 @@ import { SetupReductionForm } from "./components/setup-reduction-form";
 import { NoRecoveryForm } from "./components/no-recovery-form";
 import { AddPaymentForm } from "./components/add-payment-form";
 import { LienSettlementForm } from "./components/lien-settlement-form";
-import { LienTable } from "@/components/lien/lien-table";
+import { LienTable, LienTableToolbar } from "@/components/lien/lien-table";
 import type {
   LienColumnDef,
   LienFooterCell,
@@ -3466,9 +3466,16 @@ function ServicingTab({
 
           <CollapsibleSection title="Open Liens" icon="ri-stack-line">
             {openLiens.length === 0 ? (
-              <div className="text-center py-8">
-                <i className="ri-stack-line text-2xl text-gray-300" />
-                <p className="text-sm text-gray-400 mt-2">No open liens</p>
+              <div className="-mx-5 border border-gray-100 rounded-none border-x-0 overflow-hidden">
+                <LienTableToolbar
+                  loadedAt={liensLoadedAt}
+                  onRefresh={onRefreshLiens}
+                  isRefreshing={isLiensFetching}
+                />
+                <div className="text-center py-8">
+                  <i className="ri-stack-line text-2xl text-gray-300" />
+                  <p className="text-sm text-gray-400 mt-2">No open liens</p>
+                </div>
               </div>
             ) : (
               <>
@@ -3561,9 +3568,16 @@ function ServicingTab({
             icon="ri-checkbox-circle-line"
           >
             {closedLiens.length === 0 ? (
-              <div className="text-center py-8">
-                <i className="ri-checkbox-circle-line text-2xl text-gray-300" />
-                <p className="text-sm text-gray-400 mt-2">No closed liens</p>
+              <div className="-mx-5 border border-gray-100 rounded-none border-x-0 overflow-hidden">
+                <LienTableToolbar
+                  loadedAt={liensLoadedAt}
+                  onRefresh={onRefreshLiens}
+                  isRefreshing={isLiensFetching}
+                />
+                <div className="text-center py-8">
+                  <i className="ri-checkbox-circle-line text-2xl text-gray-300" />
+                  <p className="text-sm text-gray-400 mt-2">No closed liens</p>
+                </div>
               </div>
             ) : (
               <div className="-mx-5">
