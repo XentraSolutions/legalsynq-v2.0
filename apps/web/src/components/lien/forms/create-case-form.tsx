@@ -127,7 +127,7 @@ export function CreateCaseForm({
           }) ?? [],
         lawFirm:
           lawfirmRes.value.items.map((c) => {
-            return { key: c.id, value: c.id, label: c.organization };
+            return { key: c.id, value: c.id, label: c.displayName };
           }) ?? [],
         caseManagers:
           caseManagersRes.value.items.map((c) => {
@@ -199,17 +199,17 @@ export function CreateCaseForm({
         accidentStateId: form.accidentStateId || undefined,
         caseManagerId: form.caseManagerId || undefined,
       };
-      await casesService.createCase(request);
+      const res = await casesService.createCase(request);
       addToast({
         type: "success",
         title: "Case Created",
-        description: `Case ${form.caseNumber} has been created.`,
+        description: `Case ${res?.data?.id} has been created.`,
       });
       setForm({ ...INITIAL_FORM });
       setErrors({});
       setTimeout(() => {
         onCreated?.();
-      }, 500);
+      }, 1000);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isConflict) {
@@ -292,7 +292,6 @@ export function CreateCaseForm({
         <div className="grid grid-cols-2 gap-3">
           <Field
             label="Address"
-            required
             value={form.clientAddress}
             onChange={(v) => updateField("clientAddress", v.toString())}
             error={touched.clientAddress ? errors.clientAddress : undefined}
@@ -300,7 +299,6 @@ export function CreateCaseForm({
           />
           <Field
             label="City"
-            required
             value={form.clientCity}
             onChange={(v) => updateField("clientCity", v.toString())}
             error={touched.clientCity ? errors.clientCity : undefined}
@@ -311,7 +309,6 @@ export function CreateCaseForm({
         <div className="grid grid-cols-2 gap-3">
           <Field
             label="State"
-            required
             value={form.clientState}
             options={data.state}
             onChange={(v) => updateField("clientState", v.toString())}
@@ -331,7 +328,6 @@ export function CreateCaseForm({
         <div className="grid grid-cols-2 gap-3">
           <Field
             label="Phone"
-            required
             value={form.clientPhone}
             onChange={(v) => updateField("clientPhone", v.toString())}
             error={touched.clientPhone ? errors.clientPhone : undefined}
@@ -339,7 +335,6 @@ export function CreateCaseForm({
           />
           <Field
             label="Email"
-            required
             value={form.clientEmail}
             onChange={(v) => updateField("clientEmail", v.toString())}
             error={touched.clientEmail ? errors.clientEmail : undefined}
@@ -352,7 +347,7 @@ export function CreateCaseForm({
           </span>
           <span className="font-semibold mb-2 mt-1">Case Information</span>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        {/* <div className="grid grid-cols-2 gap-3">
           <Field
             label="External Reference"
             value={form.externalReference}
@@ -367,8 +362,8 @@ export function CreateCaseForm({
             value={form.title}
             onChange={(v) => updateField("title", v.toString())}
             placeholder="Case title (optional)"
-          />
-        </div>
+          /> */}
+        {/* </div> */}
         <div className="grid grid-cols-2 gap-3">
           <Field
             label="Status"
@@ -450,7 +445,7 @@ export function CreateCaseForm({
             type="select"
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        {/* <div className="grid grid-cols-2 gap-3">
           <Field
             label="Insurance Carrier"
             value={form.insuranceCarrier}
@@ -463,15 +458,15 @@ export function CreateCaseForm({
             onChange={(v) => updateField("policyNumber", v.toString())}
             placeholder="Policy Number"
           />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
+        </div> */}
+        {/* <div className="grid grid-cols-2 gap-3">
           <Field
             label="Claim Number"
             value={form.claimNumber}
             onChange={(v) => updateField("claimNumber", v.toString())}
             placeholder="Claim Number"
           />
-        </div>
+        </div> */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Notes

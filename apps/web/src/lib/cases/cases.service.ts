@@ -64,9 +64,9 @@ export const casesService = {
     return mapCaseToDetail(data);
   },
 
-  async createCase(request: CreateCaseRequestDto): Promise<CaseDetail> {
+  async createCase(request: CreateCaseRequestDto): Promise<any> {
     const { data } = await casesApi.create(request);
-    return mapCaseToDetail(data);
+    return data;
   },
 
   async updateCasePersonal(
