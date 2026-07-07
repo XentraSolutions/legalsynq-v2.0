@@ -1,5 +1,15 @@
 import { settlementApi } from './settlement.api';
-import type { CaseReduction, CreateLienReductionRequest, CreateLienReductionResponse, CreateLienSettlementRequest, CreateLienSettlementResponse, CreateLienSettlementV2Request, CreateLienSettlementV2Response, CreateSettlementPaymentRequest, CreateSettlementPaymentResponse, DeletePaymentRequest, GetSettlementHistoryResponse, LegacyCasePayment, LegacySaveReductionRequest, SettlementGenericResponse, UpdateSettlementRequest, UpdateSettlementResponse } from './settlement.types';
+import type { CaseReduction, CreateLienReductionRequest, CreateLienReductionResponse, CreateLienSettlementRequest, CreateLienSettlementResponse, CreateLienSettlementV2Request, CreateLienSettlementV2Response, CreateSettlementPaymentRequest, CreateSettlementPaymentResponse, DeletePaymentRequest, GetSettlementHistoryResponse, LegacyCasePayment, LegacySaveReductionRequest, SettlementGenericResponse, SettlementHistoryItemV3, SettlementHistoryV3Query, UpdateSettlementRequest, UpdateSettlementResponse } from './settlement.types';
+
+export interface SettlementHistoryV3Result {
+  items: SettlementHistoryItemV3[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}
 
 export const settlementService = {
   async deletePayment(id: DeletePaymentRequest['caseId']): Promise<SettlementGenericResponse> {
@@ -24,6 +34,19 @@ export const settlementService = {
   async getSettlementHistory(id: string): Promise<GetSettlementHistoryResponse> {
     const { data } = await settlementApi.getSettlementHistory(id)
     return data
+  },
+  async getSettlementHistoryV3(query: SettlementHistoryV3Query): Promise<SettlementHistoryV3Result> {
+    const { data } = await settlementApi.getSettlementHistoryV3(query)
+    const limit = data.limit || query.limit || 10
+    return {
+      items: data.data,
+      pagination: {
+        page: data.page,
+        pageSize: limit,
+        totalCount: data.totalCount,
+        totalPages: Math.max(1, Math.ceil(data.totalCount / limit)),
+      },
+    }
   },
   async createLienSettlement(form: CreateLienSettlementV2Request): Promise<CreateLienSettlementV2Response> {
     const { data } = await settlementApi.createLienSettlement(form)

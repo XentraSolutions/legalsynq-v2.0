@@ -11,21 +11,16 @@ import {
   CreateSettlementPaymentResponse,
   DeletePaymentRequest,
   GetSettlementHistoryResponse,
+  GetSettlementHistoryV3Response,
   LegacyCasePayment,
   LegacySaveReductionRequest,
   SettlementGenericResponse,
+  SettlementHistoryV3Query,
   UpdateSettlementRequest,
   UpdateSettlementResponse
 } from './settlement.types'
 
 const BASE = '/lien/service'
-
-function toQs(params: Record<string, unknown>): string {
-  const pairs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
-  return pairs.length ? `?${pairs.join('&')}` : ''
-}
 
 export const settlementApi = {
   deletePayment(id: DeletePaymentRequest['caseId']) {
@@ -45,6 +40,9 @@ export const settlementApi = {
   },
   getSettlementHistory(id: string) {
     return apiClient.get<GetSettlementHistoryResponse>(`${BASE}/settlement/history/${id}`)
+  },
+  getSettlementHistoryV3({ caseId, page = 1, limit = 10 }: SettlementHistoryV3Query) {
+    return apiClient.post<GetSettlementHistoryV3Response>(`${BASE}/settlement/history/v3`, { caseId, page, limit })
   },
   createLienSettlement(form: CreateLienSettlementV2Request) {
     return apiClient.post<CreateLienSettlementV2Response>(`/lien/api/liens/settlement/create`, form)

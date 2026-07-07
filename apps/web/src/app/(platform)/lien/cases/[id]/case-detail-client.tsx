@@ -48,7 +48,6 @@ import type {
   DocumentTypeResponse,
   DropdownOption,
 } from "@/lib/lookup/lookup.types";
-import { GetSettlementHistoryResponse } from "@/lib/settlement/settlement.types";
 import { settlementService } from "@/lib/settlement";
 import { useSessionContext } from "@/providers/session-provider";
 import { SetupReductionForm } from "./components/setup-reduction-form";
@@ -61,7 +60,11 @@ import type {
   LienFooterCell,
 } from "@/components/lien/lien-table";
 import { LienListItem, liensService } from "@/lib/liens";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCaseLiens, useLienPaymentsByCase } from "@/hooks/use-case-liens";
+import { useSettlementHistory } from "@/hooks/use-settlement-history";
+import { Pagination } from "@/components/ui/pagination";
+import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types";
 import { contactsService } from "@/lib/contacts";
 import MedicalLienInfo from "@/components/lien/forms/add-medical-lien/medical-lien-info";
 import MedicalFacilityProviderInfo from "@/components/lien/forms/add-medical-lien/medical-facility-provider-info";
@@ -109,6 +112,23 @@ function formatCurrency(amount: number | null): string {
   }).format(amount);
 }
 
+function describeSettlementHistoryItem(item: SettlementHistoryItemV3): string {
+  let description: string;
+  switch (item.type) {
+    case "payment":
+      description = `Payment of ${formatCurrency(item.amount)}${item.payee ? ` to ${item.payee}` : ""}${item.checkNumber ? ` (Check #${item.checkNumber})` : ""}`;
+      break;
+    case "reduction":
+      description = `Reduction of ${formatCurrency(item.amount)}`;
+      break;
+    case "settlement":
+      description = `Settlement of ${formatCurrency(item.amount)}${item.status ? ` — ${item.status}` : ""}`;
+      break;
+  }
+  description += ` to lien ID ${item.lienId}`;
+  return item.note ? `${description}: ${item.note}` : description;
+}
+
 export function CaseDetailClient({ id }: { id: string }) {
   const { lookup } = useSessionContext();
 
@@ -120,8 +140,6 @@ export function CaseDetailClient({ id }: { id: string }) {
   const [caseUpdates, setCaseUpdates] = useState<any | null>(null);
 
   const [documentTypes, setDocumentTypes] = useState<DropdownOption[]>([]);
-
-  const [history, setHistory] = useState<any>();
 
   const {
     data: relatedLiensWithMetadata = [],
@@ -199,27 +217,9 @@ export function CaseDetailClient({ id }: { id: string }) {
     }
   }, [id]);
 
-  const fetchHistory = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const history = await settlementService.getSettlementHistory(id);
-      setHistory(history);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.isNotFound ? "History not found." : err.message);
-      } else {
-        setError("Failed to load history");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
   useEffect(() => {
     fetchCase();
     fetchDocumentTypes();
-    fetchHistory();
     fetchCaseUpdates();
   }, []);
 
@@ -472,7 +472,6 @@ export function CaseDetailClient({ id }: { id: string }) {
         {activeTab === "servicing" && (
           <ServicingTab
             caseDetail={d}
-            history={history}
             liens={relatedLiensWithMetadata}
             liensLoadedAt={liensUpdatedAt ? new Date(liensUpdatedAt) : null}
             onRefreshLiens={refetchLiens}
@@ -3028,7 +3027,6 @@ const SERVICING_SUB_TABS: {
 
 function ServicingTab({
   caseDetail,
-  history,
   liens,
   liensLoadedAt,
   onRefreshLiens,
@@ -3041,7 +3039,6 @@ function ServicingTab({
   onPanelModeChange,
 }: {
   caseDetail: CaseDetail;
-  history: GetSettlementHistoryResponse;
   liens: (CaseLienItem & CaseLienItemMetadata)[];
   liensLoadedAt: Date | null;
   onRefreshLiens: () => void;
@@ -3054,11 +3051,35 @@ function ServicingTab({
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const addToast = useLienStore((s) => s.addToast);
+  const timezone = useTimezone();
   const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [isNoRecoveryOpen, setIsNoRecoveryOpen] = useState(false);
   const [setupReductionFormShown, showSetupReductionForm] = useState(false);
   const [isLienSettlementOpen, setIsLienSettlementOpen] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PAGE_SIZE = 10;
+  const historyQueryClient = useQueryClient();
+  const isHistoryVisible = subTab === "history";
+  const historyQuery = useSettlementHistory(
+    { caseId: caseDetail.id, page: historyPage, limit: HISTORY_PAGE_SIZE },
+    { enabled: isHistoryVisible },
+  );
+  const historyItems = historyQuery.data?.items ?? [];
+  const historyTotalPages = historyQuery.data?.pagination.totalPages ?? 0;
+  const historyTotalCount = historyQuery.data?.pagination.totalCount ?? 0;
+  const historyLoadedAt = historyQuery.dataUpdatedAt
+    ? new Date(historyQuery.dataUpdatedAt)
+    : null;
+  // Mark history stale on servicing mutations; only force a refetch if the
+  // History sub-tab is actually visible, otherwise it'll refetch lazily
+  // once the user switches to it (query is disabled while hidden).
+  const refetchHistory = () => {
+    historyQueryClient.invalidateQueries({
+      queryKey: ["settlement-history"],
+      refetchType: isHistoryVisible ? "active" : "none",
+    });
+  };
 
   /* TEMP: visual fallback data for UI review only */
   const [caseStatus, setCaseStatus] = useState(
@@ -3605,7 +3626,10 @@ function ServicingTab({
             payments={payments}
             liens={liens}
             paymentsLoadedAt={paymentsLoadedAt}
-            onRefreshPayments={onRefreshPayments}
+            onRefreshPayments={() => {
+              onRefreshPayments();
+              refetchHistory();
+            }}
             isPaymentsFetching={isPaymentsFetching}
           />
         </div>
@@ -3613,7 +3637,39 @@ function ServicingTab({
 
       {subTab === "history" && (
         <CollapsibleSection title="Servicing History" icon="ri-history-line">
-          {history.settlements.length === 0 ? (
+          <div className="flex items-center justify-between py-2 border-b border-gray-100 mb-3">
+            <span className="text-[11px] text-gray-400">
+              Last loaded:{" "}
+              {historyLoadedAt
+                ? historyLoadedAt.toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })
+                : "—"}
+            </span>
+            <button
+              type="button"
+              onClick={() => historyQuery.refetch()}
+              disabled={historyQuery.isFetching}
+              className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <i
+                className={`ri-refresh-line text-xs${historyQuery.isFetching ? " animate-spin" : ""}`}
+              />
+              {historyQuery.isFetching ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+
+          {historyQuery.isLoading ? (
+            <div className="text-center py-8">
+              <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-gray-400 mt-2">Loading history...</p>
+            </div>
+          ) : historyItems.length === 0 ? (
             <div className="text-center py-8">
               <i className="ri-history-line text-2xl text-gray-300" />
               <p className="text-sm text-gray-400 mt-2">No history records</p>
@@ -3636,19 +3692,19 @@ function ServicingTab({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {history.settlements.map((h) => (
+                    {historyItems.map((h) => (
                       <tr
                         key={h.id}
                         className="hover:bg-gray-50/50 transition-colors"
                       >
                         <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                          {h.date}
+                          {formatNoteTimestamp(h.createdAt, timezone)}
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-600">
-                          {h.note}
+                          {describeSettlementHistoryItem(h)}
                         </td>
                         <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">
-                          {h.user}
+                          —
                         </td>
                       </tr>
                     ))}
@@ -3657,8 +3713,14 @@ function ServicingTab({
               </div>
               <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
                 <p className="text-xs text-gray-400">
-                  Showing {history.settlements.length} entries
+                  Page {historyPage} of {historyTotalPages} ·{" "}
+                  {historyTotalCount} total
                 </p>
+                <Pagination
+                  page={historyPage}
+                  totalPages={historyTotalPages}
+                  onPageChange={setHistoryPage}
+                />
               </div>
             </>
           )}
@@ -3736,6 +3798,7 @@ function ServicingTab({
         onSaved={() => {
           showSetupReductionForm(false);
           onRefreshLiens();
+          refetchHistory();
         }}
       />
       <NoRecoveryForm
@@ -3749,6 +3812,7 @@ function ServicingTab({
         onSaved={() => {
           setIsNoRecoveryOpen(false);
           onRefreshLiens();
+          refetchHistory();
         }}
       />
       <AddPaymentForm
@@ -3762,6 +3826,7 @@ function ServicingTab({
         onSaved={() => {
           setIsAddPaymentOpen(false);
           onRefreshPayments();
+          refetchHistory();
         }}
       />
       {/* <LienSettlementForm
