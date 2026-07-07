@@ -4,6 +4,7 @@ import {
   ContactsByIdResponse,
   DocumentTypeResponse,
   LawFirmListResponse,
+  LiensStatusResponse,
   LookupGenericResponse,
   LookupResponse,
   MedicalProcedureCodesResponse,
@@ -79,7 +80,7 @@ export const lookupApi = {
   },
 
   getLiensStatus() {
-    return apiClient.get<LookupGenericResponse[]>(`${BASE}/liens/status`);
+    return apiClient.get<LiensStatusResponse[]>(`${BASE}/liens/status`);
   },
 
   getFundingCompany() {

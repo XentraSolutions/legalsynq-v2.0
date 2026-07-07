@@ -16,6 +16,8 @@ import {
   LegacySaveReductionRequest,
   SettlementGenericResponse,
   SettlementHistoryV3Query,
+  UpdateLiensStatusRequest,
+  UpdateLiensStatusResponse,
   UpdateSettlementRequest,
   UpdateSettlementResponse
 } from './settlement.types'
@@ -37,6 +39,9 @@ export const settlementApi = {
   },
   updateSettlement(form: UpdateSettlementRequest) {
     return apiClient.post<UpdateSettlementResponse>(`${BASE}/liens/update/settlement`, form)
+  },
+  updateLiensStatus(form: UpdateLiensStatusRequest) {
+    return apiClient.post<UpdateLiensStatusResponse>(`${BASE}/update-liens-status`, form)
   },
   getSettlementHistory(id: string) {
     return apiClient.get<GetSettlementHistoryResponse>(`${BASE}/settlement/history/${id}`)

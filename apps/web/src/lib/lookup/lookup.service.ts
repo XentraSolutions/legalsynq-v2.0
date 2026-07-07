@@ -91,7 +91,7 @@ export const lookupService = {
     };
   },
 
-  async getLiensStatus(): Promise<{ items: LookupGenericResponse[] }> {
+  async getLiensStatus(): Promise<{ items: LiensStatusResponse[] }> {
     const { data } = await lookupApi.getLiensStatus();
     return {
       items: data,

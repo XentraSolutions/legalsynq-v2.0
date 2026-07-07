@@ -38,6 +38,16 @@ export interface UpdateSettlementRequest {
 
 export interface UpdateSettlementResponse extends SettlementGenericResponse {}
 
+export interface UpdateLiensStatusRequest {
+  caseId: string
+  lienIds: string
+  lienStatus: string
+  closedDate: string
+  note: string
+}
+
+export interface UpdateLiensStatusResponse extends SettlementGenericResponse {}
+
 export interface DeletePaymentRequest {
   caseId: string
   paymentId: string
