@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { lookupService } from "@/lib/lookup";
-import type { LookupData } from "@/lib/lookup/lookup.types";
+import type { LiensStatusResponse, LookupData } from "@/lib/lookup/lookup.types";
 import {
   Select,
   SelectContent,
@@ -29,6 +29,16 @@ function formatCurrency(amount: number | null): string {
   }).format(amount);
 }
 
+function pickLienStatusOptions(items: LiensStatusResponse[]): LiensStatusResponse[] {
+  const byCode = (codes: string[]) =>
+    items.find((i) => codes.includes((i.code || "").toLowerCase()));
+  const openOrActive = byCode(["active", "open"]);
+  const settledOrClosed = byCode(["settled", "closed"]);
+  return [openOrActive, settledOrClosed].filter(
+    (i): i is LiensStatusResponse => Boolean(i),
+  );
+}
+
 function cleanNumericInput(raw: string): string {
   const cleaned = raw.replace(/[^\d.]/g, "");
   const parts = cleaned.split(".");
@@ -47,7 +57,7 @@ interface AddPaymentFormProps {
 }
 
 const INITIAL_FORM = {
-  lienStatus: "1",
+  lienStatus: "",
   checkAmount: "",
   checkDate: "",
   checkNumber: "",
@@ -74,6 +84,7 @@ export function AddPaymentForm({
 
   const [settlementTypes, setSettlementTypes] = useState<LookupData[]>([]);
   const [settlementStatuses, setSettlementStatuses] = useState<LookupData[]>([]);
+  const [lienStatuses, setLienStatuses] = useState<LiensStatusResponse[]>([]);
   const [lookupsLoading, setLookupsLoading] = useState(true);
   const [typeError, setTypeError] = useState(false);
   const [statusError, setStatusError] = useState(false);
@@ -103,7 +114,8 @@ export function AddPaymentForm({
     Promise.allSettled([
       lookupService.getSettlementType(),
       lookupService.getSettlementStatus(),
-    ]).then(([typeRes, statusRes]) => {
+      lookupService.getLiensStatus(),
+    ]).then(([typeRes, statusRes, lienStatusRes]) => {
       if (typeRes.status === "fulfilled" && typeRes.value.items.length > 0) {
         setSettlementTypes(typeRes.value.items);
       } else {
@@ -118,6 +130,18 @@ export function AddPaymentForm({
         // TEMP: fall back to hardcoded options until API endpoint is ready
         setSettlementStatuses(TEMP_SETTLEMENT_STATUSES);
       }
+      const lienStatusOptions =
+        lienStatusRes.status === "fulfilled"
+          ? pickLienStatusOptions(lienStatusRes.value.items)
+          : [];
+      setLienStatuses(lienStatusOptions);
+      const active = lienStatusOptions.find(
+        (s) => (s.code || "").toLowerCase() === "active",
+      );
+      setForm((prev) => ({
+        ...prev,
+        lienStatus: (active ?? lienStatusOptions[0])?.code ?? "",
+      }));
       setLookupsLoading(false);
     });
   }, [open]);
@@ -205,21 +229,30 @@ export function AddPaymentForm({
   const handleSave = async () => {
     setSaving(true);
     try {
+      const lienIds = Array.from(checkedIds);
+      const paymentDate = form.checkDate ? formatDate(form.checkDate) : "";
+
       await Promise.all(
-        Array.from(checkedIds).map((lienId) =>
+        lienIds.flatMap((id) => [
           settlementService.createSettlementPayment({
-            lienId,
+            lienId: id,
             caseId,
-            amount: parseFloat(lienPayments[lienId] || "0"),
-            paymentDate: form.checkDate ? formatDate(form.checkDate) : "",
+            amount: parseFloat(lienPayments[id] || "0"),
+            paymentDate,
             paymentMethod: PAYMENT_METHOD_CHECK,
             referenceNumber: form.checkNumber,
             notes: form.note,
-            // missing from the API specs
             settlementType: form.type,
             settlementStatus: form.status,
-          })
-        )
+          }),
+          settlementService.createLienSettlement({
+            lienId: id,
+            caseId,
+            settlementAmount: parseFloat(lienPayments[id] || "0"),
+            settlementDate: paymentDate,
+            notes: form.note,
+          }),
+        ])
       );
 
       addToast({
@@ -443,8 +476,11 @@ export function AddPaymentForm({
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">Open</SelectItem>
-                  <SelectItem value="2">Close</SelectItem>
+                  {lienStatuses.map((s) => (
+                    <SelectItem key={s.id} value={s.code}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

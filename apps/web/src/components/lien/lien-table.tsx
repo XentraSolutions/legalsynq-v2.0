@@ -50,6 +50,56 @@ interface LienTableProps {
   expandable?: boolean;
 }
 
+interface LienTableToolbarProps {
+  loadedAt?: Date | null;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+  className?: string;
+}
+
+/**
+ * "Last loaded" + Refresh toolbar shared by LienTable and any custom
+ * empty-state markup that bypasses LienTable's own row rendering.
+ */
+export function LienTableToolbar({
+  loadedAt,
+  onRefresh,
+  isRefreshing,
+  className,
+}: LienTableToolbarProps) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between px-3 py-2 bg-white border-b border-gray-100",
+        className,
+      )}
+    >
+      <span className="text-[11px] text-gray-400">
+        Last loaded:{" "}
+        {loadedAt
+          ? loadedAt.toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })
+          : "—"}
+      </span>
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={!onRefresh || isRefreshing}
+        className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <i className={cn("ri-refresh-line text-xs", isRefreshing && "animate-spin")} />
+        {isRefreshing ? "Refreshing..." : "Refresh"}
+      </button>
+    </div>
+  );
+}
+
 export function LienTable({
   liens,
   checkedIds,
@@ -86,30 +136,11 @@ export function LienTable({
   return (
     <div className={cn("border border-gray-100 rounded-lg overflow-hidden", className)}>
       {showLastLoaded && (
-        <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-100">
-          <span className="text-[11px] text-gray-400">
-            Last loaded:{" "}
-            {loadedAt
-              ? loadedAt.toLocaleString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                })
-              : "—"}
-          </span>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={!onRefresh || isRefreshing}
-            className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <i className={cn("ri-refresh-line text-xs", isRefreshing && "animate-spin")} />
-            {isRefreshing ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
+        <LienTableToolbar
+          loadedAt={loadedAt}
+          onRefresh={onRefresh}
+          isRefreshing={isRefreshing}
+        />
       )}
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
