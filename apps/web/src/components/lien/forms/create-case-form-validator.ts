@@ -14,6 +14,16 @@ export type CreateCaseFormState = {
   claimNumber: string;
   description: string;
   notes: string;
+  clientCity?: string;
+  clientState?: string;
+  clientZipcode?: string;
+  dateOfLoss?: string;
+  caseStatusId: string | null;
+  caseManagerId?: string | null;
+  lawfirmId?: string | null;
+  stateId?: string | null;
+  accidentTypeId?: string | null;
+  accidentStateId?: string | null;
 };
 
 type FieldType = "text" | "email" | "date" | "tel";
@@ -50,21 +60,35 @@ const fieldValidationConfigs: FieldValidationConfig[] = [
   {
     field: "clientPhone",
     type: "tel",
-    required: true,
-    requiredMessage: "Phone is required",
+    required: false,
+    requiredMessage: "",
     invalidMessage: "Please enter a valid phone number",
   },
   {
     field: "clientEmail",
     type: "email",
-    required: true,
+    required: false,
     requiredMessage: "Email is required",
     invalidMessage: "Please enter a valid email address",
   },
   {
-    field: "clientAddress",
+    field: "caseStatusId",
     required: true,
-    requiredMessage: "Client address is required",
+    requiredMessage: "Status is required",
+    invalidMessage: "Please select a status",
+  },
+
+  {
+    field: "accidentTypeId",
+    required: true,
+    requiredMessage: "Accident Type is required",
+    invalidMessage: "Please select an Accident Type",
+  },
+  {
+    field: "lawfirmId",
+    required: true,
+    requiredMessage: "Lawfirm is required",
+    invalidMessage: "Please select an Lawfirm",
   },
 ];
 
