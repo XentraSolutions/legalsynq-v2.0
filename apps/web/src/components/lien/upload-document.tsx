@@ -3,6 +3,7 @@ import { useDropzone } from "react-dropzone";
 
 export interface UploadDocumentComponentProps {
   onUploaded: (files: File[]) => void;
+  isMultiple?: boolean;
 }
 
 export interface FileDropzoneRef {
@@ -12,7 +13,7 @@ export interface FileDropzoneRef {
 const UploadDocumentComponent = forwardRef<
   FileDropzoneRef,
   UploadDocumentComponentProps
->(({ onUploaded }, ref) => {
+>(({ onUploaded, isMultiple = true }, ref) => {
   const [files, setFiles] = useState<File[]>([]);
 
   const onDrop = useCallback(
@@ -34,7 +35,7 @@ const UploadDocumentComponent = forwardRef<
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    multiple: true,
+    multiple: isMultiple,
     accept: {
       "application/pdf": [".pdf"],
       "image/*": [".jpg", ".jpeg", ".png"],
