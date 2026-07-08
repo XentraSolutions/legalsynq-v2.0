@@ -1,4 +1,5 @@
 import type { PaginationMeta, PaginatedResultDto } from "./batch.types";
+import type { GenericPaginatedResult } from "../lookup/lookup.types";
 
 export function formatDateField(val: string | null | undefined): string {
   if (!val) return "";
@@ -37,13 +38,20 @@ export const dateConvertertoIso = (dateData: string) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export function mapPagination<T>(
-  result: PaginatedResultDto<T>,
-): PaginationMeta {
+type PaginationSource<T> = PaginatedResultDto<T> | GenericPaginatedResult<T>;
+
+export function mapPagination<T>(result: PaginationSource<T>): PaginationMeta {
+  const pageSize =
+    "pageSize" in result
+      ? result.pageSize ?? ("limit" in result ? result.limit : undefined)
+      : "limit" in result
+        ? result.limit
+        : undefined;
+
   return {
     page: result.page,
-    pageSize: result.pageSize,
+    pageSize,
     totalCount: result.totalCount,
-    totalPages: Math.ceil(result.totalCount / Math.max(result.pageSize, 1)),
+    totalPages: Math.ceil(result.totalCount / Math.max(pageSize ?? 1, 1)),
   };
 }

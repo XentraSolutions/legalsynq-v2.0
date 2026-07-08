@@ -16,6 +16,8 @@ export default function BatchEntryPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>();
   const [templateLabel, setTemplateLabel] = useState<string | null>();
+  const [caseId, setCaseId] = useState<string | null>();
+
   const [template, setTemplate] = useState<{
     columns: string[];
     tableData: Record<string, unknown>[];
@@ -124,7 +126,7 @@ export default function BatchEntryPage() {
     formData.append("Label", templateLabel ?? "");
     formData.append("Template", selectedTemplate ?? "");
     formData.append("date", dateConverter(new Date().toDateString()));
-    formData.append("caseId", "");
+    formData.append("caseId", caseId ?? "");
 
     const response = await batchService.upload(formData);
     console.log(response);
@@ -232,6 +234,15 @@ export default function BatchEntryPage() {
               onChange={(v) => setTemplateLabel(v.toString())}
               placeholder=""
             />
+            {selectedTemplate == "ADD_PAYMENTS_EXISTING_LIENS" && (
+              <Field
+                label="Case Id"
+                required
+                value={templateLabel ?? ""}
+                onChange={(v) => setCaseId(v.toString())}
+                placeholder="Enter Case Id"
+              />
+            )}
 
             <h3 className="text-sm font-semibold text-gray-800 mb-3">
               Documents <span className="text-red-500 ml-0.5">*</span>

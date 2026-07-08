@@ -11,6 +11,7 @@ import { ApiError } from "@/lib/api-client";
 import { batchService } from "@/lib/batch/batch.service";
 import { PaginationMeta } from "@/lib/batch/batch.types";
 import { useRouter } from "next/navigation";
+import { ActionMenu } from "@/components/lien/action-menu";
 
 export default function BatchListPage() {
   const ra = useRoleAccess();
@@ -46,10 +47,11 @@ export default function BatchListPage() {
     try {
       const result = await batchService.getBatchList(query);
       setList(result.items);
+      console.log(result);
       setPagination((prev) => ({
         ...prev,
-        page: result.page,
-        totalCount: result.totalCount,
+        page: result.pagination.page,
+        totalCount: result.pagination.totalCount,
       }));
     } catch (err) {
       if (err instanceof ApiError) {
@@ -156,6 +158,20 @@ export default function BatchListPage() {
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {l.status}
                       </td>
+                      <td
+                        className="px-3 py-2.5 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ActionMenu
+                          items={[
+                            {
+                              label: "View",
+                              icon: "ri-eye-line",
+                              onClick: () => {},
+                            },
+                          ]}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -168,7 +184,7 @@ export default function BatchListPage() {
             )}
           </div>
 
-          {pagination.totalPages && pagination.totalPages > 1 && (
+          {/* {pagination.totalPages && pagination.totalPages > 1 && (
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
                 Page {pagination.page} of {pagination.totalPages} (
@@ -191,7 +207,7 @@ export default function BatchListPage() {
                 </button>
               </div>
             </div>
-          )}
+          )} */}
         </>
       )}
     </div>

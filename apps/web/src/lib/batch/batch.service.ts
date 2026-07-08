@@ -12,6 +12,7 @@ export const batchService = {
     const { data } = await batchApi.list(query);
     return {
       items: data.data,
+      pagination: mapPagination(data),
     };
   },
 

@@ -6,6 +6,8 @@ import type {
   CreateBatchRequestDto,
 } from "./batch.types";
 import { ApiResponse } from "../liens/lien-report.types";
+import { GenericPaginatedResult } from "../lookup/lookup.types";
+import { CaseListItem } from "../cases";
 
 const BASE = "/lien/Batch";
 
@@ -29,7 +31,10 @@ function withApiDates<T extends { startDate?: string; endDate?: string }>(
 
 export const batchApi = {
   list(request: PaginationMeta) {
-    return apiClient.post<ApiResponse>(`${BASE}/list`, request);
+    return apiClient.post<GenericPaginatedResult<CaseListItem>>(
+      `${BASE}/list`,
+      request,
+    );
   },
   getById(id: string) {
     return apiClient.get<ApiResponse>(`${BASE}/${id}`);
