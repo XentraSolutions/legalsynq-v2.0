@@ -354,7 +354,9 @@ export function AddContactForm({
                   className={inputCls("firstName")}
                 />
                 {errors.firstName && (
-                  <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.firstName}
+                  </p>
                 )}
               </div>
               <div>
@@ -374,21 +376,6 @@ export function AddContactForm({
                   <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
                 )}
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Organization
-              </label>
-              <input
-                type="text"
-                value={form.organization}
-                onChange={(e) =>
-                  setForm({ ...form, organization: e.target.value })
-                }
-                placeholder="Organization or company name"
-                className={inputCls("organization")}
-              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
