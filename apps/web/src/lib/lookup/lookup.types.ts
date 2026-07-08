@@ -6,11 +6,22 @@ export interface LookupGenericResponse {
 }
 
 export interface GenericPaginationData {
-  keyword: string;
-  page: number;
+  keyword?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortDirection?: string;
+}
+
+export interface GenericPaginatedResult<T> {
+  data: T[];
   limit: number;
-  sortBy: string;
-  sortDirection: string;
+  page: number;
+  totalCount: number;
+  message?: string;
+  isSuccess?: boolean;
+  pageSize?: number;
 }
 
 export interface DocumentTypeResponse extends LookupGenericResponse {

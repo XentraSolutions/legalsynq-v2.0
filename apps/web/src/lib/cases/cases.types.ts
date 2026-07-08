@@ -84,6 +84,10 @@ export interface CreateCaseRequestDto {
   stateId?: string | null;
   accidentTypeId?: string | null;
   accidentStateId?: string | null;
+  isServicing?: boolean;
+  dateOfIncident?: string;
+  caseType?: string;
+  stateOfIncident?: string;
 }
 
 export interface UpdateCaseRequestDto {

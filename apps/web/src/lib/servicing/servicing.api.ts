@@ -7,8 +7,16 @@ import type {
   UpdateServicingStatusRequestDto,
   ServicingQuery,
   UpdateServicingDetailsRequestDto,
+  ServicingListItem,
+  ExportResponse,
+  ServicingListItemResponseDto,
 } from "./servicing.types";
-import { GenericPaginationData } from "../lookup/lookup.types";
+import {
+  GenericPaginatedResult,
+  GenericPaginationData,
+} from "../lookup/lookup.types";
+
+const BASE = "/lien/service";
 
 function toQs(params: Record<string, unknown>): string {
   const pairs = Object.entries(params)
@@ -20,13 +28,14 @@ function toQs(params: Record<string, unknown>): string {
 }
 
 export const servicingApi = {
-  list(query: ServicingQuery = {}) {
-    return apiClient.get<PaginatedResultDto<ServicingItemResponseDto>>(
-      `/lien/api/liens/servicing${toQs(query as Record<string, unknown>)}`,
+  list(query: GenericPaginationData) {
+    return apiClient.post<GenericPaginatedResult<ServicingListItemResponseDto>>(
+      `${BASE}/case/v3`,
+      query,
     );
   },
   getCase(id: string) {
-    return apiClient.get<any>(`/lien/service/${id}`);
+    return apiClient.get<any>(`${BASE}/${id}`);
   },
 
   getById(id: string) {
@@ -51,7 +60,7 @@ export const servicingApi = {
 
   updateDetails(request: UpdateServicingDetailsRequestDto) {
     return apiClient.patch<ServicingItemResponseDto>(
-      `/lien/service/update-details`,
+      `${BASE}/update-details`,
       request,
     );
   },
@@ -61,5 +70,10 @@ export const servicingApi = {
       `/lien/api/liens/servicing/${id}/status`,
       request,
     );
+  },
+  export(caseId: string = "") {
+    return apiClient.post<ExportResponse>(`${BASE}/generate-csv`, {
+      caseId: caseId,
+    });
   },
 };

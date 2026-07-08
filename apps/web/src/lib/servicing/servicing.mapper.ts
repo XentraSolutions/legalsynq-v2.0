@@ -1,60 +1,103 @@
+import { GenericPaginatedResult } from "../lookup/lookup.types";
+import { ServicingListResult } from "./servicing.service";
 import type {
   ServicingItemResponseDto,
   ServicingListItem,
   ServicingDetail,
   PaginatedResultDto,
   PaginationMeta,
-} from './servicing.types';
+  ServicingListItemResponseDto,
+} from "./servicing.types";
+
+type ServicingListLikeDto = {
+  caseId?: string | null;
+  caseCode?: string | null;
+  plaintiffName?: string | null;
+  lawfirm?: string | null;
+  status?: string | null;
+  settlementStatus?: string | null;
+  settlementDate?: string | null;
+  settlementAmount?: number | null;
+  billingAmount?: number | null;
+  purchaseAmount?: number | null;
+  description?: string | null;
+  taskNumber?: string | null;
+  assignedTo?: string | null;
+  assignedToUserId?: string | null;
+};
 
 function safeString(val: string | null | undefined): string {
-  return val ?? '';
+  return val ?? "";
 }
 
 function formatDateField(val: string | null | undefined): string {
-  if (!val) return '';
+  if (!val) return "";
   try {
     const d = new Date(val);
     if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
   } catch {
     return val;
   }
 }
 
-export function mapServicingToListItem(dto: ServicingItemResponseDto): ServicingListItem {
+export function mapServicingToListItem(
+  dto: ServicingListLikeDto,
+): ServicingListItem {
+  const formattedSettlementDate = formatDateField(dto.settlementDate);
+
   return {
-    id: dto.id,
-    taskNumber: dto.taskNumber,
-    taskType: dto.taskType,
-    description: dto.description,
-    status: dto.status,
-    priority: dto.priority,
-    assignedTo: dto.assignedTo,
+    id: dto.caseId ?? undefined,
     caseId: safeString(dto.caseId),
-    lienId: safeString(dto.lienId),
-    dueDate: dto.dueDate ?? '',
-    notes: safeString(dto.notes),
-    resolution: safeString(dto.resolution),
-    startedAt: formatDateField(dto.startedAtUtc),
-    completedAt: formatDateField(dto.completedAtUtc),
-    escalatedAt: formatDateField(dto.escalatedAtUtc),
-    createdAt: formatDateField(dto.createdAtUtc),
-    updatedAt: formatDateField(dto.updatedAtUtc),
+    caseCode: safeString(dto.caseCode),
+    name: safeString(dto.plaintiffName ?? dto.description ?? dto.taskNumber),
+    lawfirm: safeString(dto.lawfirm ?? dto.assignedTo),
+    currentStatus: safeString(dto.status),
+    settlementStatus: safeString(dto.settlementStatus),
+    settlementDate:
+      formattedSettlementDate !== "" ? formattedSettlementDate : "---",
+    settlementAmount: dto.settlementAmount ?? 0,
+    billingAmount: dto.billingAmount ?? 0,
+    purchaseAmount: dto.purchaseAmount ?? 0,
   };
 }
 
-export function mapServicingToDetail(dto: ServicingItemResponseDto): ServicingDetail {
+export function mapServicingToDetail(
+  dto: ServicingItemResponseDto,
+): ServicingDetail {
   return {
     ...mapServicingToListItem(dto),
     assignedToUserId: safeString(dto.assignedToUserId),
+    taskNumber: safeString(dto.taskNumber),
+    taskType: safeString(dto.taskType),
+    description: safeString(dto.description),
+    status: safeString(dto.status),
+    priority: safeString(dto.priority),
+    assignedTo: safeString(dto.assignedTo),
+    dueDate: dto.dueDate ?? null,
+    notes: dto.notes ?? null,
+    resolution: dto.resolution ?? null,
+    startedAt: dto.startedAtUtc ?? null,
+    completedAt: dto.completedAtUtc ?? null,
+    escalatedAt: dto.escalatedAtUtc ?? null,
+    createdAt: safeString(dto.createdAtUtc),
+    updatedAt: safeString(dto.updatedAtUtc),
+    lienId: dto.lienId ?? null,
   };
 }
 
-export function mapServicingPagination<T>(result: PaginatedResultDto<T>): PaginationMeta {
+export function mapServicingPagination<T>(
+  result: GenericPaginatedResult<T>,
+): PaginationMeta {
   return {
     page: result.page,
-    pageSize: result.pageSize,
+    pageSize: result.limit,
     totalCount: result.totalCount,
-    totalPages: Math.ceil(result.totalCount / Math.max(result.pageSize, 1)),
+    totalPages: Math.ceil(result.totalCount / Math.max(result.limit, 1)),
   };
 }

@@ -1,4 +1,8 @@
-import { GenericPaginationData } from "../lookup/lookup.types";
+import { batchApi } from "../batch/batch.api";
+import {
+  GenericPaginatedResult,
+  GenericPaginationData,
+} from "../lookup/lookup.types";
 import { servicingApi } from "./servicing.api";
 import {
   mapServicingToListItem,
@@ -13,6 +17,9 @@ import type {
   CreateServicingItemRequestDto,
   UpdateServicingItemRequestDto,
   UpdateServicingDetailsRequestDto,
+  ServicingListItemResponseDto,
+  ExportResponse,
+  ServicingPaginationData,
 } from "./servicing.types";
 
 export interface ServicingListResult {
@@ -21,10 +28,10 @@ export interface ServicingListResult {
 }
 
 export const servicingService = {
-  async getItems(query: ServicingQuery = {}): Promise<ServicingListResult> {
+  async getItems(query: ServicingPaginationData): Promise<ServicingListResult> {
     const { data } = await servicingApi.list(query);
     return {
-      items: data.items.map(mapServicingToListItem),
+      items: data.data.map(mapServicingToListItem),
       pagination: mapServicingPagination(data),
     };
   },
@@ -70,5 +77,10 @@ export const servicingService = {
       resolution,
     });
     return mapServicingToDetail(data);
+  },
+
+  async export(): Promise<ExportResponse> {
+    const { data } = await servicingApi.export();
+    return data as ExportResponse;
   },
 };

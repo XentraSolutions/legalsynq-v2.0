@@ -129,9 +129,14 @@ function describeSettlementHistoryItem(item: SettlementHistoryItemV3): string {
   return item.note ? `${description}: ${item.note}` : description;
 }
 
-export function CaseDetailClient({ id }: { id: string }) {
+export function CaseDetailClient({
+  id,
+  tab = "details",
+}: {
+  id: string;
+  tab: string | TabKey;
+}) {
   const { lookup } = useSessionContext();
-
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
   const timezone = useTimezone();
@@ -158,8 +163,7 @@ export function CaseDetailClient({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
-
-  const [activeTab, setActiveTab] = useState<TabKey>("details");
+  const [activeTab, setActiveTab] = useState<TabKey | string>(tab);
   const [panelMode, setPanelMode] = useState<PanelMode>("split");
   const [confirmAction, setConfirmAction] = useState<{
     id: string;
