@@ -11,6 +11,9 @@ import { contactsService } from "@/lib/contacts";
 import { lookupService } from "@/lib/lookup";
 import { useSessionContext } from "@/providers/session-provider";
 import { dateConverter } from "@/lib/cases/cases.mapper";
+import { Combobox } from "@/components/ui/combobox";
+import { CreateLawFirmForm } from "./create-lawfirm-form";
+import { CreateCaseManagerForm } from "./create-case-manager-form";
 
 interface CreateCaseFormProps {
   caseNumber?: string;
@@ -76,6 +79,9 @@ export function CreateCaseForm({
     accidentType: [],
   });
 
+  const [showCreateLawfirm, setShowCreateLawfirm] = useState(false);
+  const [showCreateCaseManager, setShowCreateCaseManager] = useState(false);
+
   const [isValid, setIsValid] = useState(false);
   const [touched, setTouched] = useState<
     Record<keyof typeof INITIAL_FORM, boolean>
@@ -103,9 +109,7 @@ export function CreateCaseForm({
   const fetchData = useCallback(async () => {
     const [lawfirmRes, caseManagersRes] = await Promise.allSettled([
       lookupService.getLawfirm(),
-      contactsService.getContacts({
-        ContactType: "CaseManager",
-      }),
+      contactsService.getCaseManagers(),
     ]);
     if (
       lawfirmRes.status === "fulfilled" &&
@@ -247,6 +251,7 @@ export function CreateCaseForm({
   };
 
   return (
+    <>
     <FormModal
       open={open}
       onClose={reset}
@@ -417,33 +422,54 @@ export function CreateCaseForm({
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field
-            label="Law Firm"
-            required
-            value={form.lawfirmId}
-            options={data?.lawFirm}
-            placeholder=""
-            onChange={(v) => {
-              setForm({
-                ...form,
-                lawfirmId: v.toString(),
-              });
-            }}
-            type="select"
-          />
-          <Field
-            label="Case Manager"
-            value={form.caseManagerId}
-            options={data?.caseManagers}
-            placeholder=""
-            onChange={(v) => {
-              setForm({
-                ...form,
-                caseManagerId: v.toString(),
-              });
-            }}
-            type="select"
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Law Firm<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <Combobox
+              value={form.lawfirmId}
+              onChange={(v) => updateField("lawfirmId", v)}
+              options={data.lawFirm.map((o) => ({
+                value: o.value,
+                label: o.label,
+              }))}
+              error={Boolean(touched.lawfirmId && errors.lawfirmId)}
+              footer={
+                <button
+                  type="button"
+                  onClick={() => setShowCreateLawfirm(true)}
+                  className="w-full text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
+                >
+                  + Add Law Firm
+                </button>
+              }
+            />
+            {touched.lawfirmId && errors.lawfirmId && (
+              <p className="text-xs text-red-500 mt-1">{errors.lawfirmId}</p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Case Manager
+            </label>
+            <Combobox
+              value={form.caseManagerId}
+              onChange={(v) => setForm({ ...form, caseManagerId: v })}
+              options={data.caseManagers.map((o) => ({
+                value: o.value,
+                label: o.label,
+              }))}
+              footer={
+                <button
+                  type="button"
+                  onClick={() => setShowCreateCaseManager(true)}
+                  className="w-full text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
+                >
+                  + Add Case Manager
+                </button>
+              }
+            />
+          </div>
         </div>
         {/* <div className="grid grid-cols-2 gap-3">
           <Field
@@ -481,5 +507,27 @@ export function CreateCaseForm({
         </div>
       </div>
     </FormModal>
+
+    <CreateLawFirmForm
+      open={showCreateLawfirm}
+      onClose={() => setShowCreateLawfirm(false)}
+      onCreated={(created) => {
+        setShowCreateLawfirm(false);
+        setForm((prev) => ({ ...prev, lawfirmId: created.id }));
+        setTouched((prev) => ({ ...prev, lawfirmId: true }));
+        fetchData();
+      }}
+    />
+    <CreateCaseManagerForm
+      open={showCreateCaseManager}
+      defaultLawfirmId={form.lawfirmId}
+      onClose={() => setShowCreateCaseManager(false)}
+      onCreated={(created) => {
+        setShowCreateCaseManager(false);
+        setForm((prev) => ({ ...prev, caseManagerId: created.id }));
+        fetchData();
+      }}
+    />
+    </>
   );
 }

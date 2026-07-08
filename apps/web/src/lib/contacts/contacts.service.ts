@@ -1,4 +1,5 @@
 import { contactsApi } from "./contacts.api";
+import { lookupApi } from "../lookup/lookup.api";
 import { casesApi } from "../cases/cases.api";
 import type {
   CaseResponseDto,
@@ -57,9 +58,51 @@ export interface ContactListResult {
   pagination: PaginationMeta;
 }
 
+// Case Managers are Law Firm contacts distinguished by their contactSubtype
+// role (see LawFirmContactSection), not a distinct top-level contactType.
+// The role code itself is tenant-configurable, so it's resolved from the
+// lawfirm/role lookup rather than hardcoded, and cached for the session.
+let caseManagerRoleCodePromise: Promise<string | undefined> | null = null;
+
+async function resolveCaseManagerRoleCode(): Promise<string | undefined> {
+  if (!caseManagerRoleCodePromise) {
+    caseManagerRoleCodePromise = lookupApi
+      .getLawFirmContactRoles()
+      .then(({ data }) => {
+        const match = data.find(
+          (r) =>
+            r.code.toLowerCase() === "casemanager" ||
+            r.name.toLowerCase() === "case manager",
+        );
+        return match?.code;
+      })
+      .catch(() => undefined);
+  }
+  return caseManagerRoleCodePromise;
+}
+
 export const contactsService = {
   async getContacts(query: ContactsQuery = {}): Promise<ContactListResult> {
     const { data } = await contactsApi.list(query);
+    return {
+      items: data.items.map(mapContactToListItem),
+      pagination: mapContactPagination(data),
+    };
+  },
+
+  async getCaseManagerRoleCode(): Promise<string | undefined> {
+    return resolveCaseManagerRoleCode();
+  },
+
+  async getCaseManagers(
+    params: { lawFirmId?: string } = {},
+  ): Promise<ContactListResult> {
+    const contactSubtype = await resolveCaseManagerRoleCode();
+    const { data } = await contactsApi.list({
+      ContactType: "LawFirm",
+      ContactSubtype: contactSubtype,
+      LawFirmId: params.lawFirmId,
+    });
     return {
       items: data.items.map(mapContactToListItem),
       pagination: mapContactPagination(data),
