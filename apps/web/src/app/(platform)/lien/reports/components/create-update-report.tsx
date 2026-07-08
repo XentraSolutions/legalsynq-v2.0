@@ -124,7 +124,7 @@ export default function CreateUpdateReport({
       lookupService.getFundingCompany(),
       lookupService.getMedicalFacility(),
       lookupService.getMedicalProviders(),
-      contactsService.getContacts({ ContactType: "CaseManager" }),
+      contactsService.getCaseManagers(),
       lookupService.getLiensStatus(),
     ]);
     setData((prev: any) => ({

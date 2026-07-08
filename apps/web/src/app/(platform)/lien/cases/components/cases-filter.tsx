@@ -65,9 +65,7 @@ export function CasesFilter({
   const fetchData = useCallback(async () => {
     const [lawfirmRes, caseManagersRes] = await Promise.allSettled([
       lookupService.getLawfirm(),
-      contactsService.getContacts({
-        ContactType: "CaseManager",
-      }),
+      contactsService.getCaseManagers(),
     ]);
     if (
       lawfirmRes.status === "fulfilled" &&
