@@ -173,31 +173,14 @@ function buildDashboardReportFilter(
   };
 }
 
-function countUniqueLawFirms(items: DashboardLawFirmCaseReportRow[]): number {
-  const ids = new Set<string>();
-  for (const row of items) {
-    const r = row as Record<string, unknown>;
-    const id =
-      (typeof r.lawFirmId === 'string' ? r.lawFirmId : undefined) ??
-      (typeof r.lawfirmId === 'string' ? r.lawfirmId : undefined) ??
-      (typeof r.lawFirmOrgId === 'string' ? r.lawFirmOrgId : undefined) ??
-      (typeof r.organizationId === 'string' ? r.organizationId : undefined) ??
-      (typeof r.orgId === 'string' ? r.orgId : undefined);
-    if (id) {
-      ids.add(id);
-    } else {
-      ids.add(`row-${ids.size}`);
-    }
-  }
-  return ids.size;
-}
 
 function getReportPagination(
   reportType: DashboardReportType,
   totalLienReport: PagedResult<DashboardTotalLienReportRow> | undefined,
   totalCaseReport: PagedResult<DashboardTotalCaseReportRow> | undefined,
   lawFirmReport: PagedResult<DashboardLawFirmCaseReportRow> | undefined,
-  medicalProviderReport: PagedResult<DashboardMedicalProviderReportRow> | undefined
+  medicalProviderReport: PagedResult<DashboardMedicalProviderReportRow> | undefined,
+  currentPage: number
 ): ReportPaginationMeta | undefined {
   if (reportType === 'total-cases') {
     if (!totalCaseReport) return undefined;
@@ -213,18 +196,26 @@ function getReportPagination(
 
   if (reportType === 'law-firm-allocation') {
     if (!lawFirmReport) return undefined;
-    const count = countUniqueLawFirms(lawFirmReport.items ?? []);
-    if (!count) return undefined;
-    return { page: 1, pageSize: count, totalCount: count, totalPages: 1 };
+    const totalCount = lawFirmReport.totalCount;
+    if (!totalCount) return undefined;
+    return {
+      page: currentPage,
+      pageSize: DETAIL_PAGE_SIZE,
+      totalCount,
+      totalPages: Math.max(1, Math.ceil(totalCount / DETAIL_PAGE_SIZE)),
+    };
   }
 
   if (reportType === 'medical-facility-allocation') {
     if (!medicalProviderReport) return undefined;
-    const count = new Set(
-      (medicalProviderReport.items ?? []).map((row) => readFacilityName(row))
-    ).size;
-    if (!count) return undefined;
-    return { page: 1, pageSize: count, totalCount: count, totalPages: 1 };
+    const totalCount = medicalProviderReport.totalCount;
+    if (!totalCount) return undefined;
+    return {
+      page: currentPage,
+      pageSize: DETAIL_PAGE_SIZE,
+      totalCount,
+      totalPages: Math.max(1, Math.ceil(totalCount / DETAIL_PAGE_SIZE)),
+    };
   }
 
   return totalLienReport;
@@ -316,9 +307,11 @@ export function DashboardReportDetailScreen() {
             totalLienReport,
             totalCaseReport,
             lawFirmReport,
-            medicalProviderReport
+            medicalProviderReport,
+            currentPage
           ),
     [
+      currentPage,
       lawFirmReport,
       medicalProviderReport,
       route.params.reportType,
@@ -340,9 +333,11 @@ export function DashboardReportDetailScreen() {
         medicalProviderReport?.items ?? [],
         reportPeriodLabel,
         useDashboardDummyData,
-        piechartData
+        piechartData,
+        currentPage
       ),
     [
+      currentPage,
       lawFirmReport?.items,
       medicalProviderReport?.items,
       piechartData,
@@ -780,7 +775,8 @@ function buildReport(
   medicalProviderReport: DashboardMedicalProviderReportRow[],
   reportPeriodLabel: string,
   useDummyData: boolean,
-  piechartData: DashboardPiechart | undefined
+  piechartData: DashboardPiechart | undefined,
+  currentPage: number
 ): ReportModel {
   if (reportType === 'total-cases') {
     const reportData = useDummyData ? undefined : mapTotalCaseReportToDetail(totalCaseRows);
@@ -819,7 +815,14 @@ function buildReport(
       centerCaption: 'Total Cases',
       slices,
       breakdownTitle: 'Detailed Breakdown',
-      breakdownItems: slicesToBreakdownItems(slices, 'lawFirm', reportPeriodLabel),
+      breakdownItems: useDummyData
+        ? []
+        : lawFirmCaseRowsToBreakdownItems(
+            lawFirmReport.slice(
+              (currentPage - 1) * DETAIL_PAGE_SIZE,
+              currentPage * DETAIL_PAGE_SIZE
+            )
+          ),
     };
   }
 
@@ -835,7 +838,14 @@ function buildReport(
       centerCaption: 'Total MD Cases',
       slices,
       breakdownTitle: 'Detailed Breakdown',
-      breakdownItems: slicesToBreakdownItems(slices, 'facility', reportPeriodLabel),
+      breakdownItems: useDummyData
+        ? []
+        : medicalFacilityCaseRowsToBreakdownItems(
+            medicalProviderReport.slice(
+              (currentPage - 1) * DETAIL_PAGE_SIZE,
+              currentPage * DETAIL_PAGE_SIZE
+            )
+          ),
     };
   }
 
@@ -902,6 +912,82 @@ function totalCaseRowsToBreakdownItems(
   });
 }
 
+function lawFirmCaseRowsToBreakdownItems(rows: DashboardLawFirmCaseReportRow[]): BreakdownItem[] {
+  return rows.map((row) => {
+    const r = row as Record<string, unknown>;
+
+    const name =
+      row.clientDisplayName ??
+      (row.clientFirstName && row.clientLastName
+        ? `${row.clientFirstName} ${row.clientLastName}`
+        : undefined) ??
+      row.patientName ??
+      readReportText(r, ['fullName', 'clientName', 'plaintiff', 'plaintiffName']) ??
+      'N/A';
+
+    const caseId =
+      row.caseNumber ?? row.caseReference ?? row.caseId ??
+      readReportText(r, ['caseNo', 'caseCode', 'referenceNumber']) ??
+      (typeof r.id === 'string' ? r.id : undefined) ?? 'N/A';
+
+    const dateOfLoss =
+      row.dateOfIncident ?? row.dateOfLoss ?? row.incidentDate ?? row.lossDate ??
+      readReportText(r, ['dateOfLoss', 'lossDate', 'incidentDate', 'dateOfIncident']) ??
+      'N/A';
+
+    const lawFirm = readLawFirmName(row);
+
+    return {
+      id: name,
+      status: r.status,
+      fields: [
+        { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
+        { icon: 'business-outline', label: 'Law Firm', value: lawFirm },
+        { icon: 'calendar-outline', label: 'Date of Loss', value: dateOfLoss },
+      ],
+    };
+  });
+}
+
+function medicalFacilityCaseRowsToBreakdownItems(
+  rows: DashboardMedicalProviderReportRow[]
+): BreakdownItem[] {
+  return rows.map((row) => {
+    const r = row as Record<string, unknown>;
+
+    const name =
+      row.clientDisplayName ??
+      (row.clientFirstName && row.clientLastName
+        ? `${row.clientFirstName} ${row.clientLastName}`
+        : undefined) ??
+      row.patientName ??
+      readReportText(r, ['fullName', 'clientName', 'plaintiff', 'plaintiffName']) ??
+      'N/A';
+
+    const caseId =
+      row.caseNumber ?? row.caseReference ?? row.caseId ??
+      readReportText(r, ['caseNo', 'caseCode', 'referenceNumber']) ??
+      (typeof r.id === 'string' ? r.id : undefined) ?? 'N/A';
+
+    const dateOfLoss =
+      row.dateOfIncident ?? row.dateOfLoss ?? row.incidentDate ?? row.lossDate ??
+      readReportText(r, ['dateOfLoss', 'lossDate', 'incidentDate', 'dateOfIncident']) ??
+      'N/A';
+
+    const facilityName = readFacilityName(row);
+
+    return {
+      id: name,
+      status: 'Active',
+      fields: [
+        { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
+        { icon: 'calendar-outline', label: 'Date of Loss', value: dateOfLoss },
+        { icon: 'medical-outline', label: 'MedicalFacility', value: facilityName },
+      ],
+    };
+  });
+}
+
 function createLienBreakdownItem(
   lienId: string,
   status: 'Open' | 'Close',
@@ -918,37 +1004,6 @@ function createLienBreakdownItem(
   };
 }
 
-function slicesToBreakdownItems(
-  slices: DetailSlice[],
-  kind: 'case' | 'lawFirm' | 'facility',
-  reportPeriodLabel: string
-): BreakdownItem[] {
-  return slices
-    .map((slice) => {
-      const label = slice.label;
-      const status: BreakdownItem['status'] = kind === 'case' ? 'Active' : 'Settled';
-      const fields: BreakdownItem['fields'] = [
-        {
-          icon: 'folder-outline',
-          label: kind === 'case' ? 'Status Count' : 'Total Cases',
-          value: slice.amount ?? String(slice.value),
-        },
-        {
-          icon: 'pie-chart-outline',
-          label: 'Share',
-          value: slice.percent?.replace(/[()]/g, '') ?? `${slice.value}%`,
-        },
-        { icon: 'calendar-outline', label: 'Report Period', value: reportPeriodLabel },
-      ];
-
-      return {
-        id: label,
-        status,
-        fields,
-      };
-    })
-    .slice(0, 5);
-}
 
 function mapAllocationReportToSlices<Row>(
   rows: Row[],
