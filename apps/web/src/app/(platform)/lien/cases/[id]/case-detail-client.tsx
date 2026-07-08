@@ -3254,9 +3254,7 @@ function ServicingTab({
   }, []);
 
   const fetchDataCaseManagers = useCallback(async () => {
-    const caseManagers = await contactsService.getContacts({
-      ContactType: "CaseManager",
-    });
+    const caseManagers = await contactsService.getCaseManagers();
     setCaseManagerList(
       caseManagers.items.map((lf) => ({
         key: lf.id,
