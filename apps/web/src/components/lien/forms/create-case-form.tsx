@@ -46,6 +46,7 @@ const INITIAL_FORM = {
   lawfirmId: "",
   accidentTypeId: "",
   accidentStateId: "",
+  isServicing: "true",
 };
 
 export function CreateCaseForm({
@@ -202,6 +203,10 @@ export function CreateCaseForm({
         accidentTypeId: form.accidentTypeId || undefined,
         accidentStateId: form.accidentStateId || undefined,
         caseManagerId: form.caseManagerId || undefined,
+        isServicing: form.isServicing == "true",
+        caseType: form.accidentTypeId || undefined,
+        dateOfIncident: dateConverter(form.dateOfIncident) || undefined,
+        stateOfIncident: form.accidentStateId || undefined,
       };
       const res = await casesService.createCase(request);
       addToast({
@@ -323,7 +328,6 @@ export function CreateCaseForm({
           />
           <Field
             label="Zipcode"
-            required
             value={form.clientZipcode}
             onChange={(v) => updateField("clientZipcode", v.toString())}
             error={touched.clientZipcode ? errors.clientZipcode : undefined}
@@ -332,18 +336,11 @@ export function CreateCaseForm({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field
-            label="Phone"
-            value={form.clientPhone}
-            onChange={(v) => updateField("clientPhone", v.toString())}
-            error={touched.clientPhone ? errors.clientPhone : undefined}
-            placeholder="Phone"
-          />
-          <Field
-            label="Email"
-            value={form.clientEmail}
-            onChange={(v) => updateField("clientEmail", v.toString())}
-            error={touched.clientEmail ? errors.clientEmail : undefined}
-            placeholder="Email"
+            type="checkbox"
+            label="SERVICING"
+            isChecked={form.isServicing == "true"}
+            value={form.isServicing}
+            onChange={(v) => setForm({ ...form, isServicing: v.toString() })}
           />
         </div>
         <div className="col-12 mb-6 mt-6">
@@ -352,23 +349,6 @@ export function CreateCaseForm({
           </span>
           <span className="font-semibold mb-2 mt-1">Case Information</span>
         </div>
-        {/* <div className="grid grid-cols-2 gap-3">
-          <Field
-            label="External Reference"
-            value={form.externalReference}
-            onChange={(v) => updateField("externalReference", v.toString())}
-            error={
-              touched.externalReference ? errors.externalReference : undefined
-            }
-            placeholder="External Reference"
-          />
-          <Field
-            label="Title"
-            value={form.title}
-            onChange={(v) => updateField("title", v.toString())}
-            placeholder="Case title (optional)"
-          /> */}
-        {/* </div> */}
         <div className="grid grid-cols-2 gap-3">
           <Field
             label="Status"
@@ -471,28 +451,6 @@ export function CreateCaseForm({
             />
           </div>
         </div>
-        {/* <div className="grid grid-cols-2 gap-3">
-          <Field
-            label="Insurance Carrier"
-            value={form.insuranceCarrier}
-            onChange={(v) => updateField("insuranceCarrier", v.toString())}
-            placeholder="Insurance carrier name (optional)"
-          />
-          <Field
-            label="Policy Number"
-            value={form.policyNumber}
-            onChange={(v) => updateField("policyNumber", v.toString())}
-            placeholder="Policy Number"
-          />
-        </div> */}
-        {/* <div className="grid grid-cols-2 gap-3">
-          <Field
-            label="Claim Number"
-            value={form.claimNumber}
-            onChange={(v) => updateField("claimNumber", v.toString())}
-            placeholder="Claim Number"
-          />
-        </div> */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Notes
