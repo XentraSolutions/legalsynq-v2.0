@@ -1,19 +1,36 @@
 import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type Accept } from "react-dropzone";
 
 export interface UploadDocumentComponentProps {
   onUploaded: (files: File[]) => void;
   isMultiple?: boolean;
+  config?: {
+    isMultiple?: boolean;
+    accepted?: string | Accept;
+  };
 }
 
 export interface FileDropzoneRef {
   reset: () => void;
 }
 
+const DEFAULT_ACCEPTED_FILES: Accept = {
+  "application/pdf": [".pdf"],
+  "image/*": [".jpg", ".jpeg", ".png"],
+  "text/csv": [".csv"],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+    ".xlsx",
+  ],
+  "application/vnd.ms-excel": [".xls"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
+    ".docx",
+  ],
+};
+
 const UploadDocumentComponent = forwardRef<
   FileDropzoneRef,
   UploadDocumentComponentProps
->(({ onUploaded, isMultiple = true }, ref) => {
+>(({ onUploaded, isMultiple, config }, ref) => {
   const [files, setFiles] = useState<File[]>([]);
 
   const onDrop = useCallback(
@@ -33,20 +50,17 @@ const UploadDocumentComponent = forwardRef<
     },
   }));
 
+  const multiple = config?.isMultiple ?? isMultiple ?? true;
+  const acceptedFiles = config?.accepted ?? DEFAULT_ACCEPTED_FILES;
+  const acceptedLabel =
+    typeof acceptedFiles === "string"
+      ? acceptedFiles
+      : ".pdf,.jpg,.jpeg,.png,.csv,.xlsx,.xls,.docx";
+  console.log(acceptedFiles);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    multiple: isMultiple,
-    accept: {
-      "application/pdf": [".pdf"],
-      "image/*": [".jpg", ".jpeg", ".png"],
-      "text/csv": [".csv"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-        ".xlsx",
-      ],
-      "application/vnd.ms-excel": [".xls"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        [".docx"],
-    },
+    multiple,
+    accept: acceptedFiles as Accept,
     maxSize: 10 * 1024 * 1024,
   });
 
@@ -67,9 +81,7 @@ const UploadDocumentComponent = forwardRef<
 
         <i className="ri-upload-cloud-2-line text-3xl text-gray-300 mb-2" />
         <p className="text-sm text-gray-500">Click or drag file to upload</p>
-        <p className="text-xs text-gray-400 mt-1">
-          ".pdf,.jpg,.png,.docx,.xlsx,.xls,.csv" (max 10MB)
-        </p>
+        <p className="text-xs text-gray-400 mt-1">{acceptedLabel} (max 10MB)</p>
       </div>
 
       {files.length > 0 ? (
