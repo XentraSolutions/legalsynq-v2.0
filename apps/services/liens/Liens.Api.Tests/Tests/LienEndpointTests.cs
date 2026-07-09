@@ -155,6 +155,68 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         db.Facilities.Single(f => f.Id == createdLien.FacilityId!.Value).Name.Should().Be("Sunrise Clinic");
     }
 
+    [Fact]
+    public async Task ReassignFacility_updates_legacy_facility_name_metadata()
+    {
+        Guid newFacilityContactId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            var newFacilityContact = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.MedicalFacility,
+                "Valley",
+                "Clinic",
+                SeedHelper.UserId,
+                organization: "Valley Clinic");
+            newFacilityContactId = newFacilityContact.Id;
+            db.Contacts.Add(newFacilityContact);
+
+            var lien = db.Liens.Single(l => l.Id == SeedHelper.LienId);
+            lien.AttachFacility(SeedHelper.FacilityId, SeedHelper.UserId);
+
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LMFI-TEST-001",
+                "LegacyMedicalFacilityInfo",
+                "Legacy medical facility information",
+                "system",
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                lienId: SeedHelper.LienId,
+                notes: $"facilityId={SeedHelper.FacilityId}; facilityName=Sunrise Clinic"));
+
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/liens/reassign/facility", new
+        {
+            facility = newFacilityContactId,
+            liensId = SeedHelper.LienId,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+        var updatedLien = verifyDb.Liens.Single(l => l.Id == SeedHelper.LienId);
+        var updatedFacilityContact = verifyDb.Contacts.Single(c => c.Id == newFacilityContactId);
+        var facilityInfo = verifyDb.ServicingItems.Single(i =>
+            i.LienId == SeedHelper.LienId &&
+            i.TaskType == "LegacyMedicalFacilityInfo");
+
+        updatedLien.FacilityId.Should().Be(updatedFacilityContact.FacilityId);
+        updatedFacilityContact.FacilityId.Should().NotBeNull();
+        facilityInfo.Notes.Should().Contain($"facilityId={newFacilityContactId}");
+        facilityInfo.Notes.Should().Contain("facilityName=Valley Clinic");
+    }
+
     private sealed class LienResponseBody
     {
         public string LienNumber { get; init; } = string.Empty;

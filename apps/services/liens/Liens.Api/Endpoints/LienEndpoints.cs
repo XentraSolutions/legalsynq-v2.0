@@ -4,6 +4,7 @@ using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
+using Liens.Domain.Enums;
 using System.Globalization;
 
 namespace Liens.Api.Endpoints;
@@ -727,6 +728,8 @@ public static class LienEndpoints
     private static async Task<IResult> ReassignFacilityLegacy(
         LegacyReassignFacilityRequest request,
         ILienService lienService,
+        IContactService contactService,
+        IFacilityService facilityService,
         IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
@@ -773,6 +776,12 @@ public static class LienEndpoints
             };
 
             await lienService.UpdateAsync(tenantId, lienId, userId, mapped, ct);
+            var facilityName = await ResolveLegacyFacilityNameAsync(
+                tenantId,
+                facilityId,
+                contactService,
+                facilityService,
+                ct);
 
             var infoResult = await servicingItemService.SearchAsync(
                 tenantId,
@@ -792,6 +801,14 @@ public static class LienEndpoints
 
             if (existing is null)
             {
+                var fields = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["facilityId"] = facilityId.ToString(),
+                };
+
+                if (!string.IsNullOrWhiteSpace(facilityName))
+                    fields["facilityName"] = facilityName;
+
                 var create = new CreateServicingItemRequest
                 {
                     TaskNumber = $"LMFI-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
@@ -800,7 +817,7 @@ public static class LienEndpoints
                     AssignedTo = "system",
                     CaseId = lien.CaseId,
                     LienId = lienId,
-                    Notes = $"facilityId={facilityId}",
+                    Notes = SerializeLegacyNoteFields(fields),
                 };
 
                 await servicingItemService.CreateAsync(tenantId, orgId, userId, create, ct);
@@ -809,6 +826,8 @@ public static class LienEndpoints
             {
                 var fields = ParseLegacyNoteFields(existing.Notes);
                 fields["facilityId"] = facilityId.ToString();
+                if (!string.IsNullOrWhiteSpace(facilityName))
+                    fields["facilityName"] = facilityName;
 
                 var update = new UpdateServicingItemRequest
                 {
@@ -1084,6 +1103,41 @@ public static class LienEndpoints
 
         return data;
     }
+
+    private static async Task<string?> ResolveLegacyFacilityNameAsync(
+        Guid tenantId,
+        Guid requestedFacilityId,
+        IContactService contactService,
+        IFacilityService facilityService,
+        CancellationToken ct)
+    {
+        var facilityContact = await contactService.GetByIdAsync(tenantId, requestedFacilityId, ct);
+        if (facilityContact is not null && IsStandaloneFacilityContact(facilityContact))
+            return ResolveFacilityDisplayName(facilityContact);
+
+        var facility = await facilityService.GetByIdAsync(tenantId, requestedFacilityId, ct);
+        if (facility is not null && !string.IsNullOrWhiteSpace(facility.Name))
+            return facility.Name.Trim();
+
+        if (facilityContact?.FacilityId is Guid linkedFacilityId)
+        {
+            var linkedFacility = await facilityService.GetByIdAsync(tenantId, linkedFacilityId, ct);
+            if (linkedFacility is not null && !string.IsNullOrWhiteSpace(linkedFacility.Name))
+                return linkedFacility.Name.Trim();
+        }
+
+        return null;
+    }
+
+    private static bool IsStandaloneFacilityContact(ContactResponse contact) =>
+        (string.Equals(contact.ContactType, ContactType.Facility, StringComparison.Ordinal) ||
+         string.Equals(contact.ContactType, ContactType.MedicalFacility, StringComparison.Ordinal)) &&
+        string.IsNullOrWhiteSpace(contact.ContactSubtype);
+
+    private static string ResolveFacilityDisplayName(ContactResponse contact)
+        => string.IsNullOrWhiteSpace(contact.Organization)
+            ? contact.DisplayName
+            : contact.Organization.Trim();
 
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {
