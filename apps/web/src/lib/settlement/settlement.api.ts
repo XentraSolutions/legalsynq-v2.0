@@ -1,5 +1,6 @@
 import { apiClient } from '@/lib/api-client'
 import {
+  CasePayment,
   CaseReduction,
   CreateLienReductionRequest,
   CreateLienReductionResponse,
@@ -12,7 +13,6 @@ import {
   DeletePaymentRequest,
   GetSettlementHistoryResponse,
   GetSettlementHistoryV3Response,
-  LegacyCasePayment,
   LegacySaveReductionRequest,
   SettlementGenericResponse,
   SettlementHistoryV3Query,
@@ -56,7 +56,7 @@ export const settlementApi = {
     return apiClient.post<CreateSettlementPaymentResponse>(`/lien/api/liens/settlement/payments`, form)
   },
   getLienPaymentsByCase(caseId: string) {
-    return apiClient.get<LegacyCasePayment[]>(`${BASE}/liens/settlement/payment-details/${caseId}`)
+    return apiClient.get<CasePayment[]>(`/lien/api/liens/settlement/payments/case/${caseId}`)
   },
   deleteSettlementPayment(id: string) {
     return apiClient.delete<SettlementGenericResponse>(`/lien/api/liens/settlement/payments/${id}`)

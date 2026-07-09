@@ -2848,7 +2848,7 @@ function PaymentHistorySection({
   onRefreshPayments,
   isPaymentsFetching,
 }: {
-  payments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
+  payments: import("@/lib/settlement/settlement.types").CasePayment[];
   liens: (CaseLienItem & CaseLienItemMetadata)[];
   paymentsLoadedAt: Date | null;
   onRefreshPayments: () => void;
@@ -2920,33 +2920,26 @@ function PaymentHistorySection({
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {/* <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Payment ID</th> */}
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Payment #
+                  </th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
                     Lien ID
                   </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Lien Status
-                  </th>
                   <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Amt to Settle
-                  </th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Check Amt
+                    Amount
                   </th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Check Received
+                    Payment Date
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    Payee
                   </th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
                     Check #
                   </th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Settlement Type
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Settlement Status
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    Date
+                    Note
                   </th>
                   <th className="pl-3 py-2 w-10" />
                 </tr>
@@ -2956,51 +2949,34 @@ function PaymentHistorySection({
                   const rowKey = `paymentHistory${idx}`;
                   const lien = liens.find((l) => l.id === p.lienId);
                   const isDeleting = deletingId === rowKey;
-                  const amtToSettle =
-                    p.amountToSettle != null
-                      ? parseFloat(String(p.amountToSettle))
-                      : null;
-                  const checkAmt =
-                    p.checkAmount != null
-                      ? parseFloat(String(p.checkAmount))
-                      : null;
+                  const amount =
+                    p.amount != null ? parseFloat(String(p.amount)) : null;
 
                   return (
                     <tr
                       key={rowKey}
                       className="hover:bg-gray-50/50 transition-colors"
                     >
-                      {/* <td className="pr-3 py-2.5 text-xs font-mono text-gray-500 whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-xs font-mono text-gray-500 whitespace-nowrap">
                         {p.paymentNumber != null ? `#${p.paymentNumber}` : "—"}
-                      </td> */}
+                      </td>
                       <td className="px-3 py-2.5 text-xs font-mono text-primary whitespace-nowrap">
-                        {p.lienCode ?? lien?.lienNumber ?? p.lienId ?? "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
-                        {p.lienStatus ?? "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right whitespace-nowrap">
-                        {amtToSettle != null
-                          ? formatCurrency(amtToSettle)
-                          : "—"}
+                        {lien?.lienNumber ?? p.lienId ?? "—"}
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right whitespace-nowrap">
-                        {checkAmt != null ? formatCurrency(checkAmt) : "—"}
+                        {amount != null ? formatCurrency(amount) : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                        {p.checkDate ?? "—"}
+                        {p.paymentDate ?? "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
+                        {p.payee ?? "—"}
                       </td>
                       <td className="px-3 py-2.5 text-xs font-mono text-gray-500 whitespace-nowrap">
                         {p.checkNumber ?? "—"}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
-                        {p.type ?? "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
-                        {p.status ?? "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                        {p.date ?? "—"}
+                        {p.note ?? "—"}
                       </td>
                       <td className="pl-3 py-2.5 text-center relative">
                         {p.id ? (
@@ -3093,7 +3069,7 @@ function ServicingTab({
   liensLoadedAt: Date | null;
   onRefreshLiens: () => void;
   isLiensFetching: boolean;
-  payments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
+  payments: import("@/lib/settlement/settlement.types").CasePayment[];
   paymentsLoadedAt: Date | null;
   onRefreshPayments: () => void;
   isPaymentsFetching: boolean;

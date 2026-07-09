@@ -8,7 +8,7 @@ import {
 import { LiensQuery, liensService, type LienListItem } from "@/lib/liens";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { settlementService } from "@/lib/settlement";
-import type { LegacyCasePayment } from "@/lib/settlement/settlement.types";
+import type { CasePayment } from "@/lib/settlement/settlement.types";
 import { lookupService } from "@/lib/lookup";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
@@ -22,7 +22,7 @@ export function useLienPaymentsByCase(caseId: string) {
     queryFn: () =>
       settlementService
         .getLienPaymentsByCase(caseId)
-        .catch(() => [] as LegacyCasePayment[]),
+        .catch(() => [] as CasePayment[]),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
@@ -44,7 +44,7 @@ async function fetchCaseLiens(
       queryFn: () =>
         settlementService
           .getLienPaymentsByCase(caseId)
-          .catch(() => [] as LegacyCasePayment[]),
+          .catch(() => [] as CasePayment[]),
     }),
     settlementService.getLienReductionsByCase(caseId).catch(() => []),
     lookupService.getMedicalFacility().catch(() => ({
