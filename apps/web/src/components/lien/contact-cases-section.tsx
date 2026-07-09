@@ -2,11 +2,15 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { contactsService } from '@/lib/contacts';
+import { contactsService, CASE_REASSIGN_CONFIG } from '@/lib/contacts';
 import type { ContactCaseSummary } from '@/lib/contacts/contacts.types';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { ActionMenu } from '@/components/lien/action-menu';
 import { Pagination } from '@/components/ui/pagination';
+import { Modal } from '@/components/lien/modal';
+import { ContactPicker } from '@/components/lien/contact-picker';
+import { useLienStore } from '@/stores/lien-store';
+import { ApiError } from '@/lib/api-client';
 
 // Contact types with a known case-lookup API. Any other type (e.g.
 // LienHolder, CaseManager, InternalUser) has no equivalent endpoint, so the
@@ -36,11 +40,21 @@ interface Props {
 
 export function ContactCasesSection({ contactId, contactType }: Props) {
   const router = useRouter();
+  const addToast = useLienStore((s) => s.addToast);
   const [cases, setCases] = useState<ContactCaseSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const supported = SUPPORTED_CONTACT_TYPES.includes(contactType);
   const showLienColumns = LIEN_DETAIL_CONTACT_TYPES.includes(contactType);
+  const reassignConfig = CASE_REASSIGN_CONFIG[contactType];
+
+  const [reassignTarget, setReassignTarget] = useState<ContactCaseSummary | null>(null);
+  const [newPrimaryId, setNewPrimaryId] = useState('');
+  const [newSecondaryId, setNewSecondaryId] = useState('');
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const [secondaryContactSubtype, setSecondaryContactSubtype] = useState<string | undefined>();
+  const [resolvingSecondarySubtype, setResolvingSecondarySubtype] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const fetchCases = useCallback(async () => {
     try {
@@ -59,6 +73,73 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
   }, [fetchCases, supported]);
 
   useEffect(() => { setPage(1); }, [cases]);
+
+  // Resolves the (tenant-configurable) secondary contact subtype once the
+  // reassign modal opens, so the secondary picker knows which sub-contacts
+  // to offer (e.g. case manager role code).
+  useEffect(() => {
+    if (!reassignTarget || !reassignConfig?.secondary) {
+      setSecondaryContactSubtype(undefined);
+      setResolvingSecondarySubtype(false);
+      return;
+    }
+    let cancelled = false;
+    setResolvingSecondarySubtype(true);
+    reassignConfig.secondary.getContactSubtype().then((code) => {
+      if (cancelled) return;
+      setSecondaryContactSubtype(code);
+      setResolvingSecondarySubtype(false);
+    });
+    return () => { cancelled = true; };
+  }, [reassignTarget, reassignConfig]);
+
+  const openReassign = (c: ContactCaseSummary) => {
+    setReassignTarget(c);
+    setNewPrimaryId('');
+    setNewSecondaryId('');
+    setReassignModalOpen(true);
+  };
+
+  const closeReassign = () => {
+    setReassignModalOpen(false);
+    setReassignTarget(null);
+  };
+
+  const handleReassignSubmit = async () => {
+    if (!reassignTarget || !reassignConfig) return;
+    setSubmitting(true);
+    // Close the modal immediately so the action feels instant. The
+    // selection stays in state (reassignTarget/newPrimaryId/newSecondaryId
+    // aren't cleared) so the modal can reopen pre-filled on failure.
+    setReassignModalOpen(false);
+    try {
+      await contactsService.reassignCase({
+        contactType,
+        item: reassignTarget,
+        newPrimaryId,
+        newSecondaryId: reassignConfig.secondary ? newSecondaryId : undefined,
+      });
+      addToast({
+        type: 'success',
+        title: 'Reassigned',
+        description: `${reassignConfig.label} has been reassigned.`,
+      });
+      setReassignTarget(null);
+      fetchCases();
+    } catch (err) {
+      addToast({
+        type: 'error',
+        title: 'Reassign Failed',
+        description:
+          err instanceof ApiError ? err.message : 'An unexpected error occurred',
+      });
+      // Reopen with the same selection so the user can retry — never
+      // automatically resubmit the request.
+      setReassignModalOpen(true);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const totalPages = Math.max(Math.ceil(cases.length / PAGE_SIZE), 1);
   const pageItems = useMemo(
@@ -110,7 +191,7 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {pageItems.map((c) => (
-                  <tr key={c.id} className="hover:bg-gray-50/50">
+                  <tr key={c.lienId ?? c.id} className="hover:bg-gray-50/50">
                     <td className="px-3 py-3 font-medium text-gray-900">{c.caseNumber}</td>
                     {showLienColumns && (
                       <td className="px-3 py-3 text-gray-600">{c.lienId ?? '—'}</td>
@@ -136,6 +217,15 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
                             icon: 'ri-eye-line',
                             onClick: () => router.push(`/lien/cases/${c.id}`),
                           },
+                          ...(reassignConfig
+                            ? [
+                                {
+                                  label: 'Reassign',
+                                  icon: 'ri-exchange-line',
+                                  onClick: () => openReassign(c),
+                                },
+                              ]
+                            : []),
                         ]}
                       />
                     </td>
@@ -152,6 +242,77 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
           </div>
         )}
       </div>
+
+      {reassignTarget && reassignConfig && (
+        <Modal
+          open={reassignModalOpen}
+          onClose={closeReassign}
+          title="Re-Assign Case"
+          size="sm"
+          footer={
+            <div className="flex items-center justify-between w-full">
+              <button
+                onClick={closeReassign}
+                disabled={submitting}
+                className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReassignSubmit}
+                disabled={submitting || !newPrimaryId}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {submitting ? 'Assigning...' : 'Assign Case'}
+              </button>
+            </div>
+          }
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary text-white shrink-0">
+              <i className="ri-exchange-line text-sm" />
+            </span>
+            <span className="text-sm font-semibold text-primary">Case Assignment Details</span>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                <span className="text-red-500 mr-0.5">*</span>
+                {reassignConfig.fieldLabel}
+              </label>
+              <ContactPicker
+                contactType={contactType}
+                excludeId={contactId}
+                value={newPrimaryId}
+                onChange={(id) => {
+                  setNewPrimaryId(id);
+                  setNewSecondaryId('');
+                }}
+                placeholder="Please select"
+                disabled={submitting}
+              />
+            </div>
+
+            {reassignConfig.secondary && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {reassignConfig.secondary.label}
+                </label>
+                <ContactPicker
+                  contactType={reassignConfig.secondary.contactType}
+                  contactSubtype={secondaryContactSubtype}
+                  lawFirmId={reassignConfig.secondary.scopeParam === 'lawFirmId' ? newPrimaryId : undefined}
+                  facilityId={reassignConfig.secondary.scopeParam === 'facilityId' ? newPrimaryId : undefined}
+                  value={newSecondaryId}
+                  onChange={setNewSecondaryId}
+                  disabled={submitting || !newPrimaryId || resolvingSecondarySubtype}
+                  placeholder="Please select"
+                />
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

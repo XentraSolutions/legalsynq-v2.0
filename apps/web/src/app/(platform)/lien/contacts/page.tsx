@@ -11,14 +11,20 @@ import { SideDrawer } from "@/components/lien/side-drawer";
 import { AddContactForm } from "@/components/lien/forms/add-contact-form";
 import { useLienStore } from "@/stores/lien-store";
 import { useRoleAccess } from "@/hooks/use-role-access";
-import { contactsService, type ContactListItem } from "@/lib/contacts";
+import {
+  contactsService,
+  CASE_REASSIGN_CONFIG,
+  type ContactListItem,
+} from "@/lib/contacts";
 import {
   useContacts,
   useContactTypes,
   useDeleteContact,
+  useBatchReassignContact,
 } from "@/hooks/use-contacts";
 import { useSessionContext } from "@/providers/session-provider";
-import { ConfirmDialog } from "@/components/lien/modal";
+import { ConfirmDialog, Modal } from "@/components/lien/modal";
+import { ContactPicker } from "@/components/lien/contact-picker";
 import { useRouter } from "next/navigation";
 import {
   Table,
@@ -64,7 +70,9 @@ export default function ContactsPage() {
   const [reassignTarget, setReassignTarget] = useState<ContactListItem | null>(
     null,
   );
-  const [reassignSelectedId, setReassignSelectedId] = useState("");
+  const [newContactId, setNewContactId] = useState("");
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const batchReassignMutation = useBatchReassignContact();
 
   // Debounce search input before it drives the query, so we don't refetch on every keystroke.
   useEffect(() => {
@@ -220,6 +228,44 @@ export default function ContactsPage() {
     }
   };
 
+  const runBatchReassign = () => {
+    if (!reassignTarget || !newContactId) return;
+    const target = reassignTarget;
+    const targetTypeLabel =
+      contactTypeMap[target.contactType]?.toLowerCase() ?? "contact";
+    // Close the modal immediately so reassigning feels instant; the toast
+    // takes over as the processing indicator. The selection is kept in
+    // state (reassignTarget/newContactId aren't cleared) so that if it
+    // fails, the modal can reopen pre-filled instead of losing the input.
+    setReassignModalOpen(false);
+    const toastId = toast.loading(
+      `Reassigning cases from ${target.displayName}...`,
+    );
+    batchReassignMutation.mutate(
+      { contactType: target.contactType, oldId: target.id, newId: newContactId },
+      {
+        onSuccess: () => {
+          toast.success("Cases reassigned", {
+            id: toastId,
+            description: `All cases have been moved to the new ${targetTypeLabel}.`,
+          });
+          setReassignTarget(null);
+          setNewContactId("");
+        },
+        onError: (err) => {
+          toast.error("Couldn't reassign cases", {
+            id: toastId,
+            description:
+              err instanceof Error ? err.message : target.displayName,
+          });
+          // Reopen with the same selection so the user can retry — never
+          // automatically resubmit the request.
+          setReassignModalOpen(true);
+        },
+      },
+    );
+  };
+
   const activeContactTypes = useMemo(
     () =>
       contactTypes
@@ -254,17 +300,6 @@ export default function ContactsPage() {
   const nameColumnLabel = typeFilter
     ? (contactTypeMap[typeFilter] ?? "Contact Name")
     : "Contact Name";
-
-  const reassignPool = useMemo(() => {
-    if (!reassignTarget) return [];
-    return contacts
-      .filter(
-        (c) =>
-          c.contactType === reassignTarget.contactType &&
-          c.id !== reassignTarget.id,
-      )
-      .map((c) => ({ id: c.id, label: c.displayName }));
-  }, [reassignTarget, contacts]);
 
   return (
     <div className="space-y-5">
@@ -392,7 +427,8 @@ export default function ContactsPage() {
                               icon: "ri-exchange-line",
                               onClick: () => {
                                 setReassignTarget(c);
-                                setReassignSelectedId("");
+                                setNewContactId("");
+                                setReassignModalOpen(true);
                               },
                             },
                             {
@@ -502,67 +538,64 @@ export default function ContactsPage() {
         />
       )}
 
-      {/* Reassign Modal */}
+      {/* Batch Reassign Modal */}
       {reassignTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md space-y-4">
-            <div>
-              <h2 className="text-base font-semibold text-gray-800">
-                Re-Assign Case
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Select another{" "}
-                {contactTypeMap[reassignTarget.contactType]?.toLowerCase() ??
-                  "contact"}{" "}
-                to assign this case to.
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Assign to
-              </label>
-              <select
-                value={reassignSelectedId}
-                onChange={(e) => setReassignSelectedId(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              >
-                <option value="">Select contact...</option>
-                {reassignPool.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              {reassignPool.length === 0 && (
-                <p className="text-xs text-gray-400 mt-1">
-                  No other contacts of this type available.
-                </p>
-              )}
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
+        <Modal
+          open={reassignModalOpen}
+          onClose={() => {
+            setReassignModalOpen(false);
+            setReassignTarget(null);
+          }}
+          title="Re-Assign Case"
+          size="sm"
+          footer={
+            <div className="flex items-center justify-between w-full">
               <button
-                onClick={() => setReassignTarget(null)}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                onClick={() => {
+                  setReassignModalOpen(false);
+                  setReassignTarget(null);
+                }}
+                disabled={batchReassignMutation.isPending}
+                className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                disabled={!reassignSelectedId}
-                onClick={() => {
-                  addToast({
-                    type: "success",
-                    title: "Case Assigned",
-                    description: "Case has been reassigned.",
-                  });
-                  setReassignTarget(null);
-                }}
-                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg disabled:opacity-40 transition-colors"
+                onClick={runBatchReassign}
+                disabled={!newContactId || batchReassignMutation.isPending}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg disabled:opacity-50 transition-colors"
               >
-                Assign Case
+                {batchReassignMutation.isPending ? "Assigning..." : "Assign Case"}
               </button>
             </div>
+          }
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary text-white shrink-0">
+              <i className="ri-exchange-line text-sm" />
+            </span>
+            <span className="text-sm font-semibold text-primary">
+              Case Assignment Details
+            </span>
           </div>
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <span className="text-red-500 mr-0.5">*</span>
+              {CASE_REASSIGN_CONFIG[reassignTarget.contactType]?.fieldLabel ??
+                `Available ${
+                  contactTypeMap[reassignTarget.contactType] ?? "Contact"
+                }`}
+            </label>
+            <ContactPicker
+              contactType={reassignTarget.contactType}
+              excludeId={reassignTarget.id}
+              value={newContactId}
+              onChange={setNewContactId}
+              placeholder="Please select"
+              disabled={batchReassignMutation.isPending}
+            />
+          </div>
+        </Modal>
       )}
 
       <SideDrawer

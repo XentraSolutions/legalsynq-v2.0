@@ -112,6 +112,26 @@ export interface CreateLienOfferRequestDto {
   expiresAtUtc?: string;
 }
 
+export interface ReassignFacilityRequestDto {
+  liensId: string;
+  facility: string;
+}
+
+export interface ReassignContactPersonRequestDto {
+  liensId: string;
+  facilityContactPerson: string;
+}
+
+export interface ReassignFundingCompanyRequestDto {
+  liensId: string;
+  fundingCompany: string;
+}
+
+export interface ReassignMedicalProviderRequestDto {
+  liensId: string;
+  medicalProvider: string;
+}
+
 export interface LiensQuery {
   search?: string;
   status?: string;

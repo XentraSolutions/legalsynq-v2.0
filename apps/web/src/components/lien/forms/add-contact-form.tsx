@@ -46,7 +46,9 @@ const EMPTY_FORM = {
 
 // MedicalFacility routes through the legacy facility API,
 // which uses a single "name" field rather than firstName/lastName.
-const LEGACY_FACILITY_TYPES = ["MedicalFacility"];
+// const LEGACY_FACILITY_TYPES = ["MedicalFacility"];
+const LEGACY_FACILITY_TYPES: string[] = [];
+// handle all contact types with the new form 
 
 export function AddContactForm({
   open,

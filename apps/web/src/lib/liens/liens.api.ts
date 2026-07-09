@@ -8,6 +8,10 @@ import type {
   UpdateLienRequestDto,
   CreateLienOfferRequestDto,
   LiensQuery,
+  ReassignFacilityRequestDto,
+  ReassignContactPersonRequestDto,
+  ReassignFundingCompanyRequestDto,
+  ReassignMedicalProviderRequestDto,
 } from './liens.types';
 
 function toQs(params: Record<string, unknown>): string {
@@ -63,6 +67,34 @@ export const liensApi = {
     return apiClient.post<LienResponseDto>(
       `/lien/api/liens/liens/${id}/withdraw`,
       {},
+    );
+  },
+
+  reassignFacility(request: ReassignFacilityRequestDto) {
+    return apiClient.post<LienResponseDto>(
+      '/lien/api/liens/liens/reassign/facility',
+      request,
+    );
+  },
+
+  reassignContactPerson(request: ReassignContactPersonRequestDto) {
+    return apiClient.post<LienResponseDto>(
+      '/lien/api/liens/liens/reassign/contact-person',
+      request,
+    );
+  },
+
+  reassignFundingCompany(request: ReassignFundingCompanyRequestDto) {
+    return apiClient.post<LienResponseDto>(
+      '/lien/api/liens/liens/reassign/funding-company',
+      request,
+    );
+  },
+
+  reassignMedicalProvider(request: ReassignMedicalProviderRequestDto) {
+    return apiClient.post<LienResponseDto>(
+      '/lien/api/liens/liens/reassign/medical-provider',
+      request,
     );
   },
 };

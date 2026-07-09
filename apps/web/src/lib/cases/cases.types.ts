@@ -564,3 +564,24 @@ export interface MedicalCodeLiensResponse {
   updated: string;
   updatedBy: string;
 }
+
+export interface BatchReassignCasesRequestDto {
+  contactType: string;
+  oldId: string;
+  newId: string;
+}
+
+export interface ReassignLeadRequestDto {
+  caseId: string;
+  leadId: string;
+}
+
+export interface ReassignLawFirmRequestDto {
+  caseId: string;
+  lawfirm: string;
+}
+
+export interface ReassignCaseManagerRequestDto {
+  caseId: string;
+  caseManager: string;
+}

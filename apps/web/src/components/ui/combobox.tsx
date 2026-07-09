@@ -21,6 +21,10 @@ interface ComboboxProps {
   error?: boolean;
   footer?: React.ReactNode;
   className?: string;
+  // Fired on every keystroke in the search input, in addition to the
+  // built-in client-side filtering — lets a parent drive a server-side
+  // search (e.g. debounced) while `options` is still filtered locally.
+  onSearchChange?: (search: string) => void;
 }
 
 export function Combobox({
@@ -34,6 +38,7 @@ export function Combobox({
   error,
   footer,
   className,
+  onSearchChange,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
@@ -51,7 +56,10 @@ export function Combobox({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setSearch("");
+        if (!next) {
+          setSearch("");
+          onSearchChange?.("");
+        }
       }}
     >
       <PopoverPrimitive.Trigger asChild>
@@ -80,7 +88,10 @@ export function Combobox({
             <input
               autoFocus
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                onSearchChange?.(e.target.value);
+              }}
               placeholder={searchPlaceholder}
               className="w-full border border-gray-300 rounded px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />

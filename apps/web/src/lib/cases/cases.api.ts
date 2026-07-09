@@ -25,6 +25,10 @@ import type {
   CaseLiensFilters,
   UpdateCasePersonalRequestDto,
   UpdateCaseDetailsRequestDto,
+  BatchReassignCasesRequestDto,
+  ReassignLeadRequestDto,
+  ReassignLawFirmRequestDto,
+  ReassignCaseManagerRequestDto,
 } from "./cases.types";
 import { ApiResponse } from "../liens/lien-report.types";
 
@@ -303,5 +307,27 @@ export const casesApi = {
     return apiClient.post<CaseListApiResponse>(`${BASE}/funding/v3`, {
       fundingCompanyId,
     });
+  },
+
+  batchReassign(request: BatchReassignCasesRequestDto) {
+    return apiClient.post<ApiResponse>(`${BASE}/batch-reassign`, request);
+  },
+
+  reassignLead(request: ReassignLeadRequestDto) {
+    return apiClient.post<CaseResponseDto>(`${BASE}/reassign/leads`, request);
+  },
+
+  reassignLawFirm(request: ReassignLawFirmRequestDto) {
+    return apiClient.post<CaseResponseDto>(
+      `${BASE}/reassign/lawfirm`,
+      request,
+    );
+  },
+
+  reassignCaseManager(request: ReassignCaseManagerRequestDto) {
+    return apiClient.post<CaseResponseDto>(
+      `${BASE}/reassign/casemanager`,
+      request,
+    );
   },
 };
