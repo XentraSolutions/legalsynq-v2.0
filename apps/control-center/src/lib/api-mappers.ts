@@ -262,6 +262,7 @@ export function mapTenantSummary(raw: unknown): TenantSummary {
     orgCount:           num(r,  'org_count',             'orgCount',           0),
     createdAtUtc:       str(r, 'created_at',            'createdAtUtc',       new Date().toISOString()),
     subdomain:          optStr(r, 'subdomain',          'subdomain'),
+    url:                optStr(r, "url", "url") ?? '',
     provisioningStatus: (r['provisioning_status'] ?? r['provisioningStatus']) as ProvisioningStatus | undefined
       ? oneOf(r, 'provisioning_status', 'provisioningStatus', PROVISIONING_STATUSES, 'Pending', 'mapTenantSummary.provisioningStatus')
       : undefined,

@@ -21,6 +21,7 @@ export interface TenantSummary {
   orgCount:           number;
   createdAtUtc:       string;
   subdomain?:         string;
+  url:               string;
   provisioningStatus?: ProvisioningStatus;
 }
 
