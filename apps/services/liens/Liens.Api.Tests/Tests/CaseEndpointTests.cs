@@ -5,6 +5,7 @@ using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
+
 using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -265,6 +266,7 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     }
 
     [Fact]
+
     public async Task LegacyBatchReassign_accepts_named_lawfirm_contact_type()
     {
         var oldLawFirmOrgId = Guid.Parse("30000000-0000-0000-0000-000000000101");
