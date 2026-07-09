@@ -5,6 +5,7 @@ import { liensApi } from "../liens/liens.api";
 import type {
   CaseResponseDto,
   CaseListApiResponse,
+  ContactCaseLookupParams,
   LienResponseDto,
   BatchReassignCasesRequestDto,
 } from "../cases/cases.types";
@@ -30,13 +31,16 @@ import type {
 // Contact types with no known case-lookup endpoint simply return no cases.
 const CASE_LOOKUP_BY_CONTACT_TYPE: Record<
   string,
-  (id: string) => Promise<{ data: CaseListApiResponse }>
+  (
+    id: string,
+    params: ContactCaseLookupParams,
+  ) => Promise<{ data: CaseListApiResponse }>
 > = {
-  LawFirm: (id) => casesApi.listByLawFirm(id),
-  Lead: (id) => casesApi.listByLead(id),
-  MedicalFacility: (id) => casesApi.listByFacility(id),
-  Provider: (id) => casesApi.listByMedicalProvider(id),
-  FundingCompany: (id) => casesApi.listByFundingCompany(id),
+  LawFirm: (id, params) => casesApi.listByLawFirm(id, params),
+  Lead: (id, params) => casesApi.listByLead(id, params),
+  MedicalFacility: (id, params) => casesApi.listByFacility(id, params),
+  Provider: (id, params) => casesApi.listByMedicalProvider(id, params),
+  FundingCompany: (id, params) => casesApi.listByFundingCompany(id, params),
 };
 
 // Contact types whose reassign target is a lien, not the case itself
@@ -246,15 +250,16 @@ export const contactsService = {
   async getCasesByContact(
     contactId: string,
     contactType: string,
-  ): Promise<ContactCaseSummary[]> {
+    params: ContactCaseLookupParams,
+  ): Promise<{ items: ContactCaseSummary[]; totalCount: number }> {
     const lookup = CASE_LOOKUP_BY_CONTACT_TYPE[contactType];
-    if (!lookup) return [];
+    if (!lookup) return { items: [], totalCount: 0 };
 
-    const { data } = await lookup(contactId);
+    const { data } = await lookup(contactId, params);
     const cases = data.data ?? [];
 
     if (!LIEN_LEVEL_CONTACT_TYPES.has(contactType)) {
-      return cases.map(mapCaseToContactSummary);
+      return { items: cases.map(mapCaseToContactSummary), totalCount: data.totalCount };
     }
 
     const rowsByCase = await Promise.all(
@@ -269,7 +274,7 @@ export const contactsService = {
         );
       }),
     );
-    return rowsByCase.flat();
+    return { items: rowsByCase.flat(), totalCount: data.totalCount };
   },
 
   // Moves every case (and their liens) from one contact to another of the

@@ -9,6 +9,7 @@ import type {
   CasePaginatedParams,
   CasePaginatedResult,
   CaseListApiResponse,
+  ContactCaseLookupParams,
   CaseLiensApiResponse,
   CasesFilters,
   ExportResponse,
@@ -279,33 +280,48 @@ export const casesApi = {
     return apiClient.post<ApiResponse>(`${BASE}/liens/generate-csv/`, request);
   },
 
-  listByLawFirm(lawFirmId: string) {
+  listByLawFirm(lawFirmId: string, params: ContactCaseLookupParams) {
     return apiClient.post<CaseListApiResponse>(`${BASE}/law/v3`, {
       lawFirmId,
+      keyword: params.keyword ?? "",
+      page: params.page,
+      limit: params.limit,
     });
   },
 
-  listByLead(leadId: string) {
+  listByLead(leadId: string, params: ContactCaseLookupParams) {
     return apiClient.post<CaseListApiResponse>(`${BASE}/leads/v3`, {
       leadId,
+      keyword: params.keyword ?? "",
+      page: params.page,
+      limit: params.limit,
     });
   },
 
-  listByFacility(facilityId: string) {
+  listByFacility(facilityId: string, params: ContactCaseLookupParams) {
     return apiClient.post<CaseListApiResponse>(`${BASE}/medical/facility/v3`, {
       facilityId,
+      keyword: params.keyword ?? "",
+      page: params.page,
+      limit: params.limit,
     });
   },
 
-  listByMedicalProvider(medicalId: string) {
+  listByMedicalProvider(medicalId: string, params: ContactCaseLookupParams) {
     return apiClient.post<CaseListApiResponse>(`${BASE}/medical/v3`, {
       medicalId,
+      keyword: params.keyword ?? "",
+      page: params.page,
+      limit: params.limit,
     });
   },
 
-  listByFundingCompany(fundingCompanyId: string) {
+  listByFundingCompany(fundingCompanyId: string, params: ContactCaseLookupParams) {
     return apiClient.post<CaseListApiResponse>(`${BASE}/funding/v3`, {
       fundingCompanyId,
+      keyword: params.keyword ?? "",
+      page: params.page,
+      limit: params.limit,
     });
   },
 

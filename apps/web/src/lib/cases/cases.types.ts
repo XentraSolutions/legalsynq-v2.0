@@ -340,7 +340,8 @@ export interface CasePaginatedResult {
 
 // Actual shape returned by the per-contact-type case lookups
 // (cases/law/v3, cases/leads/v3, cases/medical/v3, cases/medical/facility/v3,
-// cases/funding/v3) — unpaginated, no `page`/`limit`.
+// cases/funding/v3). `data` holds only the requested page; `totalCount`
+// reflects the full keyword-filtered result set.
 export interface CaseListApiResponse {
   isSuccess: boolean;
   message: string;
@@ -349,6 +350,13 @@ export interface CaseListApiResponse {
   totalCases: number;
   totalActiveCases: number;
   totalValue: number;
+}
+
+// Shared request shape for the per-contact-type case lookups.
+export interface ContactCaseLookupParams {
+  keyword?: string;
+  page: number;
+  limit: number;
 }
 
 export interface CaseListResult {

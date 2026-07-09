@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { contactsService, CASE_REASSIGN_CONFIG } from '@/lib/contacts';
+import { CASE_REASSIGN_CONFIG } from '@/lib/contacts';
 import type { ContactCaseSummary } from '@/lib/contacts/contacts.types';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { ActionMenu } from '@/components/lien/action-menu';
@@ -11,6 +11,7 @@ import { Modal } from '@/components/lien/modal';
 import { ContactPicker } from '@/components/lien/contact-picker';
 import { useLienStore } from '@/stores/lien-store';
 import { ApiError } from '@/lib/api-client';
+import { useContactCases, useReassignContactCase } from '@/hooks/use-contact-cases';
 
 // Contact types with a known case-lookup API. Any other type (e.g.
 // LienHolder, CaseManager, InternalUser) has no equivalent endpoint, so the
@@ -41,9 +42,9 @@ interface Props {
 export function ContactCasesSection({ contactId, contactType }: Props) {
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
-  const [cases, setCases] = useState<ContactCaseSummary[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [keyword, setKeyword] = useState('');
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const supported = SUPPORTED_CONTACT_TYPES.includes(contactType);
   const showLienColumns = LIEN_DETAIL_CONTACT_TYPES.includes(contactType);
   const reassignConfig = CASE_REASSIGN_CONFIG[contactType];
@@ -54,25 +55,26 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [secondaryContactSubtype, setSecondaryContactSubtype] = useState<string | undefined>();
   const [resolvingSecondarySubtype, setResolvingSecondarySubtype] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
-  const fetchCases = useCallback(async () => {
-    try {
-      setLoading(true);
-      const result = await contactsService.getCasesByContact(contactId, contactType);
-      setCases(result);
-    } catch {
-      setCases([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [contactId, contactType]);
+  const { data, isLoading } = useContactCases(
+    contactId,
+    contactType,
+    { keyword: debouncedKeyword, page, limit: PAGE_SIZE },
+    supported,
+  );
+  const cases = data?.items ?? [];
+  const totalCount = data?.totalCount ?? 0;
+  const loading = supported && isLoading;
+
+  const reassignMutation = useReassignContactCase();
+  const submitting = reassignMutation.isPending;
 
   useEffect(() => {
-    if (supported) fetchCases();
-  }, [fetchCases, supported]);
+    const timeout = setTimeout(() => setDebouncedKeyword(keyword), 300);
+    return () => clearTimeout(timeout);
+  }, [keyword]);
 
-  useEffect(() => { setPage(1); }, [cases]);
+  useEffect(() => { setPage(1); }, [debouncedKeyword]);
 
   // Resolves the (tenant-configurable) secondary contact subtype once the
   // reassign modal opens, so the secondary picker knows which sub-contacts
@@ -107,13 +109,12 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
 
   const handleReassignSubmit = async () => {
     if (!reassignTarget || !reassignConfig) return;
-    setSubmitting(true);
     // Close the modal immediately so the action feels instant. The
     // selection stays in state (reassignTarget/newPrimaryId/newSecondaryId
     // aren't cleared) so the modal can reopen pre-filled on failure.
     setReassignModalOpen(false);
     try {
-      await contactsService.reassignCase({
+      await reassignMutation.mutateAsync({
         contactType,
         item: reassignTarget,
         newPrimaryId,
@@ -125,7 +126,6 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
         description: `${reassignConfig.label} has been reassigned.`,
       });
       setReassignTarget(null);
-      fetchCases();
     } catch (err) {
       addToast({
         type: 'error',
@@ -136,28 +136,32 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
       // Reopen with the same selection so the user can retry — never
       // automatically resubmit the request.
       setReassignModalOpen(true);
-    } finally {
-      setSubmitting(false);
     }
   };
 
-  const totalPages = Math.max(Math.ceil(cases.length / PAGE_SIZE), 1);
-  const pageItems = useMemo(
-    () => cases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [cases, page],
-  );
+  const totalPages = Math.max(Math.ceil(totalCount / PAGE_SIZE), 1);
 
   if (!supported) return null;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-3">
         <div className="flex items-center gap-2">
           <i className="ri-folder-2-line text-gray-500" />
           <h3 className="text-sm font-semibold text-gray-800">Cases</h3>
           {!loading && (
-            <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{cases.length}</span>
+            <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{totalCount}</span>
           )}
+        </div>
+        <div className="relative w-full max-w-xs">
+          <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+          <input
+            type="text"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="Search cases..."
+            className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
         </div>
       </div>
 
@@ -190,7 +194,7 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {pageItems.map((c) => (
+                {cases.map((c) => (
                   <tr key={c.lienId ?? c.id} className="hover:bg-gray-50/50">
                     <td className="px-3 py-3 font-medium text-gray-900">{c.caseNumber}</td>
                     {showLienColumns && (
