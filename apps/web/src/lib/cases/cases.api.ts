@@ -71,6 +71,13 @@ export const casesApi = {
     return apiClient.post<CaseResponseDto>(`${BASE}/create`, request);
   },
 
+
+  deleteCase(id: string) {
+    return apiClient.delete<ApiResponse>(
+      `${BASE}/delete/${id}`,
+    );
+  },
+
   updatePersonal(request: UpdateCaseDetailsRequestDto) {
     return apiClient.patch<CaseResponseDto>(`${BASE}/personal-update`, request);
   },

@@ -77,6 +77,7 @@ import { servicingService } from "@/lib/servicing";
 import UploadDocumentComponent, {
   FileDropzoneRef,
 } from "@/components/lien/upload-document";
+import { useRouter } from "next/navigation";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -137,6 +138,7 @@ export function CaseDetailClient({
   tab: string | TabKey;
 }) {
   const { lookup } = useSessionContext();
+  const router = useRouter()
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
   const timezone = useTimezone();
@@ -162,13 +164,13 @@ export function CaseDetailClient({
   } = useLienPaymentsByCase(id);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey | string>(tab);
   const [panelMode, setPanelMode] = useState<PanelMode>("split");
   const [confirmAction, setConfirmAction] = useState<{
     id: string;
-    status: string;
+    status?: string;
     name: string;
+    actionType: "advanceStatus" | "deleteCase";
   } | null>(null);
   const [showMedicalLienModal, setShowMedicalLienModal] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
@@ -272,9 +274,17 @@ export function CaseDetailClient({
         id: caseDetail.id,
         status: nextStatus.code,
         name: nextStatus.name,
+        actionType: "advanceStatus",
       });
-      setConfirmStatus(nextStatus?.sortOrder.toString());
     }
+  };
+
+  const handleDeleteCase = () => {
+    setConfirmAction({
+      id: caseDetail.id,
+      name: caseDetail.caseNumber,
+      actionType: "deleteCase",
+    });
   };
 
   const generatePayoff = async () => {
@@ -292,23 +302,40 @@ export function CaseDetailClient({
     }
   };
 
-  const confirmStatusChange = async () => {
+  const handleConfirmAction = async () => {
     if (!confirmAction) return;
+
     try {
-      const response = await casesService.updateCaseStatus(
-        confirmAction.id,
-        confirmAction.status,
-      );
-      addToast({
-        type: "success",
-        title: "Status Updated",
-        description: `Case moved to ${response.status}`,
-      });
+      if (confirmAction.actionType === "advanceStatus") {
+        const response = await casesService.updateCaseStatus(
+          confirmAction.id,
+          confirmAction.status!,
+        );
+        addToast({
+          type: "success",
+          title: "Status Updated",
+          description: `Case moved to ${response.status}`,
+        });
+      } else if (confirmAction.actionType === "deleteCase") {
+         await casesService.deleteCase(
+          confirmAction.id,
+        );
+        // TODO: Implement deleteCase API endpoint and add it to casesService
+        // For now, show a placeholder message
+        addToast({
+          type: "success",
+          title: "Case Deleted",
+          description: `Case ${confirmAction.id} has been successfully deleted.`
+        });
+        setTimeout(() => {
+          router.push("/lien/cases")
+        }, 500);
+      }
       setConfirmAction(null);
     } catch (err) {
       const message =
-        err instanceof ApiError ? err.message : "Failed to update status";
-      addToast({ type: "error", title: "Update Failed", description: message });
+        err instanceof ApiError ? err.message : "Failed to complete action";
+      addToast({ type: "error", title: "Action Failed", description: message });
       setConfirmAction(null);
     }
   };
@@ -406,6 +433,15 @@ export function CaseDetailClient({
                           >
                             Payoff Qoute
                           </button>
+                          <button
+                            onClick={() => {
+                              handleDeleteCase();
+                              setActionOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-red-600"
+                          >
+                            Delete Case
+                          </button>
                         </div>
                       )}
                     </div>
@@ -497,14 +533,24 @@ export function CaseDetailClient({
         {activeTab === "taskmanager" && <TaskManagerTab caseDetail={d} />}
       </div>
 
-      {confirmStatus && (
+      {confirmAction && (
         <ConfirmDialog
           open
-          onClose={() => setConfirmStatus(null)}
-          onConfirm={confirmStatusChange}
-          title="Advance Case Status"
-          description={`Move ${d.caseNumber} to ${confirmAction?.name}?`}
-          confirmLabel="Advance"
+          onClose={() => setConfirmAction(null)}
+          onConfirm={handleConfirmAction}
+          title={
+            confirmAction.actionType === "advanceStatus"
+              ? "Advance Case Status"
+              : "Delete Case"
+          }
+          description={
+            confirmAction.actionType === "advanceStatus"
+              ? `Move ${d.caseNumber} to ${confirmAction.name}?`
+              : `Are you sure you want to delete case ${confirmAction.name}? This action cannot be undone.`
+          }
+          confirmLabel={
+            confirmAction.actionType === "advanceStatus" ? "Advance" : "Delete"
+          }
         />
       )}
 

@@ -69,6 +69,11 @@ export const casesService = {
     return data;
   },
 
+  async deleteCase(id: string): Promise<ApiResponse> {
+    const { data } = await casesApi.deleteCase(id);
+    return data;
+  },
+
   async updateCasePersonal(
     request: UpdateCasePersonalRequestDto,
   ): Promise<CaseDetail> {
