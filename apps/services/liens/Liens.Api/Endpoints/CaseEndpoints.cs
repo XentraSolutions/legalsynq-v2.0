@@ -38,6 +38,10 @@ public static class CaseEndpoints
         public string? firstname { get; init; }
         public string? lastname { get; init; }
         public string? dob { get; init; }
+        public string? email { get; init; }
+        public string? phone { get; init; }
+        public string? clientEmail { get; init; }
+        public string? clientPhone { get; init; }
         public string? address { get; init; }
         public string? city { get; init; }
         public string? state { get; init; }
@@ -52,6 +56,10 @@ public static class CaseEndpoints
         public string? firstname { get; init; }
         public string? lastname { get; init; }
         public string? dob { get; init; }
+        public string? email { get; init; }
+        public string? phone { get; init; }
+        public string? clientEmail { get; init; }
+        public string? clientPhone { get; init; }
         public string? address { get; init; }
         public string? city { get; init; }
         public string? state { get; init; }
@@ -2880,7 +2888,7 @@ public static class CaseEndpoints
 
         try
         {
-            switch (request.contactType)
+            switch (NormalizeLegacyBatchReassignContactType(request.contactType))
             {
                 case "1": // law firm
                 {
@@ -5048,6 +5056,8 @@ public static class CaseEndpoints
             ClientLastName = request.lastname ?? string.Empty,
             ExternalReference = request.externalCaseId,
             ClientDob = ParseLegacyDate(request.dob),
+            ClientPhone = FirstNonEmpty(request.clientPhone, request.phone),
+            ClientEmail = FirstNonEmpty(request.clientEmail, request.email),
             ClientAddress = BuildAddress(request.address, request.city, request.state, request.zipcode),
             DateOfIncident = ParseLegacyDate(request.dateOfLoss),
             Notes = request.note,
@@ -5101,6 +5111,8 @@ public static class CaseEndpoints
             ClientLastName = request.lastname ?? string.Empty,
             ExternalReference = request.externalCaseId,
             ClientDob = ParseLegacyDate(request.dob),
+            ClientPhone = FirstNonEmpty(request.clientPhone, request.phone),
+            ClientEmail = FirstNonEmpty(request.clientEmail, request.email),
             ClientAddress = BuildAddress(request.address, request.city, request.state, request.zipcode),
             DateOfIncident = ParseLegacyDate(request.dateOfLoss),
             Notes = request.note,
@@ -5111,6 +5123,8 @@ public static class CaseEndpoints
             string.Equals(existing.ClientLastName, mappedRequest.ClientLastName, StringComparison.Ordinal) &&
             string.Equals(existing.ExternalReference, mappedRequest.ExternalReference, StringComparison.Ordinal) &&
             existing.ClientDob == mappedRequest.ClientDob &&
+            string.Equals(existing.ClientPhone, mappedRequest.ClientPhone, StringComparison.Ordinal) &&
+            string.Equals(existing.ClientEmail, mappedRequest.ClientEmail, StringComparison.Ordinal) &&
             string.Equals(existing.ClientAddress, mappedRequest.ClientAddress, StringComparison.Ordinal) &&
             existing.DateOfIncident == mappedRequest.DateOfIncident &&
             string.Equals(existing.Notes, mappedRequest.Notes, StringComparison.Ordinal);
@@ -5144,6 +5158,39 @@ public static class CaseEndpoints
         var userId = RequireUserId(ctx);
         var result = await caseService.UpdateAsync(tenantId, id, userId, request, ct);
         return Results.Ok(result);
+    }
+
+    private static string NormalizeLegacyBatchReassignContactType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var normalized = value.Trim();
+        if (normalized is "1" or "2" or "3" or "4" or "5")
+            return normalized;
+
+        var canonical = string.Concat(normalized.Where(char.IsLetterOrDigit)).ToLowerInvariant();
+
+        return canonical switch
+        {
+            "lawfirm" => "1",
+            "provider" or "medicalprovider" => "2",
+            "fundingcompany" or "lienholder" => "3",
+            "medicalfacility" or "facility" => "4",
+            "lead" or "leads" => "5",
+            _ => normalized,
+        };
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
     }
 
     // ── Partial-update handlers ───────────────────────────────────────────────
