@@ -1,3 +1,7 @@
+import {
+  GenericPaginatedResult,
+  PaginatedResultWithItems,
+} from "../lookup/lookup.types";
 import { batchApi } from "./batch.api";
 import { mapPagination } from "./batch.mapper";
 import type {
@@ -5,10 +9,13 @@ import type {
   CreateBatchRequestDto,
   ProcessBatchDto,
   UpdateBatchRequestDto,
+  BatchListItem,
 } from "./batch.types";
 
 export const batchService = {
-  async getBatchList(query: PaginationMeta): Promise<any> {
+  async getBatchList(
+    query: PaginationMeta,
+  ): Promise<PaginatedResultWithItems<BatchListItem>> {
     const { data } = await batchApi.list(query);
     return {
       items: data.data,

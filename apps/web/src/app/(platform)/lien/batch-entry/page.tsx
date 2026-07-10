@@ -9,15 +9,17 @@ import { useLienStore } from "@/stores/lien-store";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { ApiError } from "@/lib/api-client";
 import { batchService } from "@/lib/batch/batch.service";
-import { PaginationMeta } from "@/lib/batch/batch.types";
+import { BatchListItem, PaginationMeta } from "@/lib/batch/batch.types";
 import { useRouter } from "next/navigation";
 import { ActionMenu } from "@/components/lien/action-menu";
+import { FormModal, Modal } from "@/components/lien/modal";
+import DataMappingComponent from "./components/data-mapping";
 
 export default function BatchListPage() {
   const ra = useRoleAccess();
   const addToast = useLienStore((s) => s.addToast);
   const router = useRouter();
-  const [list, setList] = useState<any[]>([]);
+  const [list, setList] = useState<BatchListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
     pageSize: 50,
@@ -29,6 +31,8 @@ export default function BatchListPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState("");
 
   const currentQuery = useCallback(
     () => ({
@@ -47,7 +51,6 @@ export default function BatchListPage() {
     try {
       const result = await batchService.getBatchList(query);
       setList(result.items);
-      console.log(result);
       setPagination((prev) => ({
         ...prev,
         page: result.pagination.page,
@@ -79,112 +82,112 @@ export default function BatchListPage() {
   const canEdit = ra.can("lien:edit");
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Bulk Imports History"
-        subtitle={loading ? "Loading..." : `${pagination?.totalCount}`}
-        actions={
-          <div className="relative">
-            {/* Dropdown Button */}
-            <button
-              onClick={() => router.push("batch-entry/create")}
-              className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
-            >
-              Create
-            </button>
-          </div>
-        }
-      />
-
-      {loading ? (
-        <div className="p-10 text-center">
-          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-gray-400 mt-2">Loading liens...</p>
-        </div>
-      ) : (
-        <>
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Label
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Template
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      File
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Date
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Rows
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Status
-                    </th>
-
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {list.map((l) => (
-                    //  ${selection.isSelected(l.id) ? "bg-primary/5" : ""
-                    <tr
-                      key={l.id}
-                      className={`hover:bg-gray-50 transition-colors cursor-pointer}`}
-                      // onClick={() => setPreviewId(l.id)}
-                    >
-                      <td className="px-4 py-3">{l.label}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {l.template}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {l.file}
-                      </td>
-
-                      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                        {l.createdAt}
-                        {l.updatedAt}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {l.rows}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {l.status}
-                      </td>
-                      <td
-                        className="px-3 py-2.5 text-right"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ActionMenu
-                          items={[
-                            {
-                              label: "View",
-                              icon: "ri-eye-line",
-                              onClick: () => {},
-                            },
-                          ]}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+    <>
+      <div className="space-y-5">
+        <PageHeader
+          title="Bulk Imports History"
+          subtitle={loading ? "Loading..." : `${pagination?.totalCount}`}
+          actions={
+            <div className="relative">
+              {/* Dropdown Button */}
+              <button
+                onClick={() => router.push("batch-entry/create")}
+                className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
+              >
+                Create
+              </button>
             </div>
-            {list.length === 0 && !error && (
-              <div className="p-10 text-center text-sm text-gray-400">
-                No liens match your filters.
-              </div>
-            )}
-          </div>
+          }
+        />
 
-          {/* {pagination.totalPages && pagination.totalPages > 1 && (
+        {loading ? (
+          <div className="p-10 text-center">
+            <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-sm text-gray-400 mt-2">Loading liens...</p>
+          </div>
+        ) : (
+          <>
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-100">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Label
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Template
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        File
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Date
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Rows
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Status
+                      </th>
+
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {list.map((l) => (
+                      //  ${selection.isSelected(l.id) ? "bg-primary/5" : ""
+                      <tr
+                        key={l.id}
+                        className={`hover:bg-gray-50 transition-colors cursor-pointer}`}
+                        // onClick={() => setPreviewId(l.id)}
+                      >
+                        <td className="px-4 py-3">{l.label}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {l.template}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {l.file}
+                        </td>
+
+                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                          {l.createdDate}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {l.rows}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {l.processStatus}
+                        </td>
+                        <td
+                          className="px-3 py-2.5 text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ActionMenu
+                            items={[
+                              {
+                                label: "View",
+                                icon: "ri-eye-line",
+                                onClick: () => setIsOpen(true),
+                              },
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {list.length === 0 && !error && (
+                <div className="p-10 text-center text-sm text-gray-400">
+                  No liens match your filters.
+                </div>
+              )}
+            </div>
+
+            {/* {pagination.totalPages && pagination.totalPages > 1 && (
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
                 Page {pagination.page} of {pagination.totalPages} (
@@ -208,8 +211,96 @@ export default function BatchListPage() {
               </div>
             </div>
           )} */}
-        </>
+          </>
+        )}
+      </div>
+      {isOpen && (
+        <ViewModal
+          id={selectedId}
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+          handleSubmit={() => setIsOpen(false)}
+        />
       )}
-    </div>
+    </>
+  );
+}
+
+function ViewModal({
+  id,
+  onClose,
+  handleSubmit,
+  isOpen,
+}: {
+  id: string;
+  onClose: () => void;
+  handleSubmit: () => void;
+  isOpen: boolean;
+}) {
+  const [template, setTemplate] = useState<{
+    columns: string[];
+    tableData: Record<string, unknown>[];
+    id: string;
+    batchUploadId: string;
+    caseId: string;
+  }>({
+    columns: [],
+    tableData: [],
+    id: id,
+    batchUploadId: "",
+    caseId: "",
+  });
+
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const fetchDataContext = useCallback(
+    async (id: string) => {
+      const dataContext = await batchService.dataContext({
+        id: id,
+        page: 1,
+        limit: 20,
+      });
+
+      const rows = Array.isArray(dataContext?.data) ? dataContext.data : [];
+      const excludedColumns = new Set(["id", "row", "status", "reason"]);
+      const columns = rows.length
+        ? Object.keys(rows[0]).filter((key) => !excludedColumns.has(key))
+        : [];
+
+      setTemplate((prev) => ({
+        ...prev,
+        columns,
+        id: id,
+        tableData: rows,
+        batchUploadId: dataContext.id,
+        caseId: dataContext.caseId,
+      }));
+    },
+    [template.id],
+  );
+
+  useEffect(() => {
+    fetchDataContext(id ?? "019f485a-7cfa-7b11-822e-d5a029a88288");
+  }, []);
+  return (
+    <>
+      <FormModal
+        open={isOpen}
+        onClose={onClose}
+        onSubmit={() => {
+          handleSubmit();
+          setSubmitting(true);
+        }}
+        title="Create Lien"
+        subtitle="Add a new lien record"
+        submitLabel={submitting ? "Processing..." : "Process"}
+        submitDisabled={submitting}
+        size="lg"
+      >
+        <DataMappingComponent
+          template={template}
+          onRemoveDetails={() => {}}
+        ></DataMappingComponent>
+      </FormModal>
+    </>
   );
 }

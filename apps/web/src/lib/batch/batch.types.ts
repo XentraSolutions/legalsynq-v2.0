@@ -8,6 +8,22 @@ export interface CreateBatchRequestDto {
   dataContext: string;
 }
 
+export interface BatchListItem {
+  id: string;
+  label: string;
+  template: string;
+  file: string;
+  date: string;
+  rows: number;
+  dataContext: string;
+  status: string;
+  processStatus: string;
+  createdDate: string;
+  createdBy: string;
+  updatedDate: string;
+  updatedBy: string;
+}
+
 export interface UpdateBatchRequestDto {
   id: string;
   label: string;
@@ -41,4 +57,11 @@ export interface PaginatedResultDto<T> {
   page: number;
   pageSize: number;
   totalCount: number;
+}
+
+export interface TemplateItem {
+  caseId?: string;
+  template: string;
+  templateLabel: string;
+  file: File;
 }

@@ -24,6 +24,17 @@ export interface GenericPaginatedResult<T> {
   pageSize?: number;
 }
 
+export interface PaginatedResultWithItems<T> {
+  items: T[];
+  pagination: PaginationMeta;
+}
+export interface PaginationMeta {
+  page: number;
+  pageSize?: number;
+  totalCount?: number;
+  totalPages?: number;
+}
+
 export interface DocumentTypeResponse extends LookupGenericResponse {
   category: string;
   code: string;
