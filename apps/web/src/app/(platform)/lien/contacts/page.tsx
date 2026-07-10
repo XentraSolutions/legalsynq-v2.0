@@ -408,7 +408,9 @@ export default function ContactsPage() {
                     <TableCell className="text-sm text-gray-500">
                       {c.email || "—"}
                     </TableCell>
-                    <TableCell className="text-sm text-gray-500">0</TableCell>
+                    <TableCell className="text-sm text-gray-500">
+                      {c.activeCases}
+                    </TableCell>
                     <TableCell
                       className="text-right"
                       onClick={(e) => e.stopPropagation()}
@@ -629,7 +631,7 @@ export default function ContactsPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-400">Active Cases</p>
-                <p className="text-gray-700">0</p>
+                <p className="text-gray-700">{previewContact.activeCases}</p>
               </div>
             </div>
             <Link
