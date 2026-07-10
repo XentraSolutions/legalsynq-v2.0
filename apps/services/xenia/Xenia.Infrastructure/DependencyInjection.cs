@@ -4,10 +4,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Xenia.Application.Adapters;
 using Xenia.Application.Adapters.Interfaces;
 using Xenia.Application.Configuration;
+using Xenia.Application.Email;
 using Xenia.Application.Events;
 using Xenia.Application.Modules;
 using Xenia.Application.TenantContext;
 using Xenia.Infrastructure.Configuration;
+using Xenia.Infrastructure.Email;
+using Xenia.Infrastructure.Email.Connectors;
 using Xenia.Infrastructure.Events;
 using Xenia.Infrastructure.Modules;
 using Xenia.Infrastructure.Persistence;
@@ -79,6 +82,48 @@ public static class DependencyInjection
         services.AddScoped<IWorkflowAdapter, UnavailableWorkflowAdapter>();
         services.AddScoped<IAiAdapter, UnavailableAiAdapter>();
 
+        // ── Email module ──────────────────────────────────────────────────────
+        AddEmailModule(services);
+
         return services;
+    }
+
+    private static void AddEmailModule(IServiceCollection services)
+    {
+        // Secret reference service (development stub — replace in production)
+        services.AddScoped<ISecretReferenceService, UnavailableSecretReferenceService>();
+
+        // Email source service
+        services.AddScoped<IEmailSourceService, EfEmailSourceService>();
+
+        // Connector registry (singleton — connectors are stateless)
+        services.AddSingleton<EmailSourceConnectorRegistry>(sp =>
+        {
+            var registry = new EmailSourceConnectorRegistry();
+            // Register all 5 connectors
+            registry.RegisterConnector(
+                sp.GetRequiredService<Microsoft365EmailConnector>());
+            registry.RegisterConnector(
+                sp.GetRequiredService<GoogleEmailConnector>());
+            registry.RegisterConnector(
+                sp.GetRequiredService<ImapEmailConnector>());
+            registry.RegisterConnector(
+                sp.GetRequiredService<Pop3EmailConnector>());
+            registry.RegisterConnector(
+                sp.GetRequiredService<ExchangeImapEmailConnector>());
+            return registry;
+        });
+        services.AddSingleton<IEmailConnectorRegistry>(
+            sp => sp.GetRequiredService<EmailSourceConnectorRegistry>());
+
+        // Connector implementations (transient — no state)
+        services.AddTransient<Microsoft365EmailConnector>();
+        services.AddTransient<GoogleEmailConnector>();
+        services.AddTransient<ImapEmailConnector>();
+        services.AddTransient<Pop3EmailConnector>();
+        services.AddTransient<ExchangeImapEmailConnector>();
+
+        // Email module seeder (runs after migrations)
+        services.AddHostedService<EmailModuleSeeder>();
     }
 }

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Xenia.Domain.Adapters;
 using Xenia.Domain.Common;
 using Xenia.Domain.Configuration;
+using Xenia.Domain.Email;
 using Xenia.Domain.Modules;
 
 namespace Xenia.Infrastructure.Persistence;
@@ -25,6 +26,11 @@ public sealed class XeniaDbContext : DbContext
     public DbSet<PlatformAdapter> PlatformAdapters => Set<PlatformAdapter>();
     public DbSet<XeniaConfigurationEntry> ConfigurationEntries => Set<XeniaConfigurationEntry>();
     public DbSet<XeniaTenantSettings> TenantSettings => Set<XeniaTenantSettings>();
+
+    // ── Email module ──────────────────────────────────────────────────────────
+    public DbSet<EmailSource> EmailSources => Set<EmailSource>();
+    public DbSet<EmailProviderSettings> EmailProviderSettings => Set<EmailProviderSettings>();
+    public DbSet<EmailValidationHistory> EmailValidationHistory => Set<EmailValidationHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
