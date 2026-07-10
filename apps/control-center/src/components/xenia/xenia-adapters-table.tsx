@@ -7,6 +7,20 @@ interface XeniaAdaptersTableProps {
   adapters: XeniaAdapterDto[];
 }
 
+function CriticalityBadge({ criticality }: { criticality: string }) {
+  const styles: Record<string, string> = {
+    Mandatory: 'bg-red-100 text-red-700 border border-red-200',
+    Optional:  'bg-blue-50 text-blue-700 border border-blue-200',
+    Disabled:  'bg-gray-100 text-gray-500 border border-gray-200',
+  };
+  const cls = styles[criticality] ?? 'bg-gray-100 text-gray-500 border border-gray-200';
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
+      {criticality}
+    </span>
+  );
+}
+
 export function XeniaAdaptersTable({ adapters }: XeniaAdaptersTableProps) {
   if (adapters.length === 0) {
     return (
@@ -23,6 +37,7 @@ export function XeniaAdaptersTable({ adapters }: XeniaAdaptersTableProps) {
           <tr>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adapter</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Criticality</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Config</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Availability</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Health</th>
@@ -40,6 +55,9 @@ export function XeniaAdaptersTable({ adapters }: XeniaAdaptersTableProps) {
                 )}
               </td>
               <td className="px-4 py-3 text-gray-600 text-xs">{a.adapter_type}</td>
+              <td className="px-4 py-3">
+                <CriticalityBadge criticality={a.criticality} />
+              </td>
               <td className="px-4 py-3">
                 <XeniaStatusBadge status={a.configuration_status} variant="adapter" />
               </td>

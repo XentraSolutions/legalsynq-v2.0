@@ -124,16 +124,24 @@ builder.Services.AddHttpContextAccessor();
 var app = builder.Build();
 
 // ── Middleware pipeline ───────────────────────────────────────────────────────
-app.UseMiddleware<XeniaCorrelationMiddleware>();
+// Correct order:
+//   1. Exception handling — outermost so all errors produce well-formed responses.
+//   2. Correlation       — assigns/propagates X-Correlation-Id for all logs.
+//   3. Authentication    — validates JWT, populates HttpContext.User.
+//   4. Tenant context    — reads tenant_id from verified JWT claims (never from
+//                          caller-supplied headers/query/body).
+//   5. Authorization     — policies may require both User AND tenant context.
 app.UseMiddleware<XeniaExceptionMiddleware>();
+app.UseMiddleware<XeniaCorrelationMiddleware>();
 
 app.UseAuthentication();
-app.UseAuthorization();
 
 // ── Tenant context resolution ─────────────────────────────────────────────────
-// Must run after authentication so JWT claims are available.
-// Reads the tenant_id claim from the verified JWT — never from caller-supplied inputs.
+// Placed BEFORE UseAuthorization so that tenant-aware authorization handlers
+// can read the resolved tenant context without a second JWT parse.
 app.UseMiddleware<XeniaTenantContextMiddleware>();
+
+app.UseAuthorization();
 
 // ── Endpoints ─────────────────────────────────────────────────────────────────
 

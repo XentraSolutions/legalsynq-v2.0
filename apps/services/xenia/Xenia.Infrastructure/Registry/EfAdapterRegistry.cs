@@ -11,22 +11,43 @@ namespace Xenia.Infrastructure.Registry;
 /// EF Core-backed adapter registry.
 /// Reflects the DI-registered adapter implementations into the database for observability.
 /// Health check records are upserted on demand.
+///
+/// Adapter criticality classification:
+///   Mandatory — Xenia cannot serve requests without this adapter. DB, Tenant, and Identity
+///               adapters are mandatory; their unavailability causes /ready → 503.
+///   Optional  — Xenia degrades gracefully; Documents, Storage, Notification, Workflow, AI.
+///   Disabled  — Intentionally not wired; status ignored by readiness computation.
 /// </summary>
 internal sealed class EfAdapterRegistry : IAdapterRegistry
 {
     private readonly XeniaDbContext _db;
     private readonly ILogger<EfAdapterRegistry> _logger;
 
-    private static readonly (string Key, AdapterType Type, string Name) [] AdapterMeta =
+    /// <summary>
+    /// Canonical adapter metadata including criticality classification.
+    ///
+    /// Mandatory:
+    ///   - tenant       — required to resolve and validate tenant context for every request.
+    ///   - identity     — required for user identity validation and permission resolution.
+    ///
+    /// Optional (graceful degradation):
+    ///   - document     — file operations; modules fall back to error response when absent.
+    ///   - audit        — event recording; falls back to log-only when absent (see UnavailableAuditAdapter).
+    ///   - notification — outbound messaging; optional by design.
+    ///   - storage      — binary object storage; optional by design.
+    ///   - workflow     — workflow integration; optional by design.
+    ///   - ai           — AI inference integration; optional by design.
+    /// </summary>
+    private static readonly (string Key, AdapterType Type, string Name, AdapterCriticality Criticality)[] AdapterMeta =
     [
-        ("tenant",       AdapterType.Tenant,       "Tenant Adapter"),
-        ("identity",     AdapterType.Identity,     "Identity Adapter"),
-        ("document",     AdapterType.Document,     "Document Adapter"),
-        ("audit",        AdapterType.Audit,        "Audit Adapter"),
-        ("notification", AdapterType.Notification, "Notification Adapter"),
-        ("storage",      AdapterType.Storage,      "Storage Adapter"),
-        ("workflow",     AdapterType.Workflow,      "Workflow Adapter"),
-        ("ai",           AdapterType.Ai,           "AI Adapter"),
+        ("tenant",       AdapterType.Tenant,       "Tenant Adapter",       AdapterCriticality.Mandatory),
+        ("identity",     AdapterType.Identity,     "Identity Adapter",     AdapterCriticality.Mandatory),
+        ("document",     AdapterType.Document,     "Document Adapter",     AdapterCriticality.Optional),
+        ("audit",        AdapterType.Audit,        "Audit Adapter",        AdapterCriticality.Optional),
+        ("notification", AdapterType.Notification, "Notification Adapter", AdapterCriticality.Optional),
+        ("storage",      AdapterType.Storage,      "Storage Adapter",      AdapterCriticality.Optional),
+        ("workflow",     AdapterType.Workflow,      "Workflow Adapter",    AdapterCriticality.Optional),
+        ("ai",           AdapterType.Ai,           "AI Adapter",           AdapterCriticality.Optional),
     ];
 
     public EfAdapterRegistry(XeniaDbContext db, ILogger<EfAdapterRegistry> logger)
@@ -83,14 +104,14 @@ internal sealed class EfAdapterRegistry : IAdapterRegistry
 
     private async Task EnsureAdaptersSeededAsync(CancellationToken ct)
     {
-        foreach (var (key, type, name) in AdapterMeta)
+        foreach (var (key, type, name, criticality) in AdapterMeta)
         {
-            var exists = await _db.PlatformAdapters
-                .AnyAsync(a => a.AdapterKey == key, ct);
+            var existing = await _db.PlatformAdapters
+                .FirstOrDefaultAsync(a => a.AdapterKey == key, ct);
 
-            if (!exists)
+            if (existing is null)
             {
-                var adapter = new PlatformAdapter(Guid.CreateVersion7(), key, type, name, "1.0.0");
+                var adapter = new PlatformAdapter(Guid.CreateVersion7(), key, type, name, "1.0.0", criticality);
                 _db.PlatformAdapters.Add(adapter);
 
                 try { await _db.SaveChangesAsync(ct); }
@@ -98,6 +119,12 @@ internal sealed class EfAdapterRegistry : IAdapterRegistry
                 {
                     _db.Entry(adapter).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
                 }
+            }
+            else if (existing.Criticality != criticality)
+            {
+                // Correct criticality if it drifted (e.g. pre-criticality seed)
+                existing.SetCriticality(criticality);
+                await _db.SaveChangesAsync(ct);
             }
         }
     }
