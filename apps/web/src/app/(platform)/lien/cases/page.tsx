@@ -121,7 +121,6 @@ export default function CasesPage() {
 
   const { data: cases, isLoading, isFetching } = useCases(query);
   const queryClient = useQueryClient();
-
   const caseNumber = useMemo(() => {
     if (!showCreate) return "";
     const year = new Date().getFullYear();
@@ -165,7 +164,8 @@ export default function CasesPage() {
 
   useEffect(() => {
     lookupCaseStatus();
-  }, []);
+    if (cases) setPagination(cases?.pagination);
+  }, [cases]);
 
   useEffect(() => {
     const timeout = setTimeout(() => setSearch(searchInput), 300);
@@ -320,7 +320,6 @@ export default function CasesPage() {
       <FilterToolbar
         searchPlaceholder="Search by case number or client name..."
         onSearch={(e) => {
-          console.log(e);
           setSearchInput(e);
         }}
         filters={[

@@ -189,7 +189,7 @@ export const casesService = {
     return data as ExportResponse;
   },
 
-  async payoffQoute(caseId: string): Promise<DashboardStats> {
+  async payoffQoute(caseId: string): Promise<any> {
     const { data } = await casesApi.payoffQoute(caseId);
     return data;
   },

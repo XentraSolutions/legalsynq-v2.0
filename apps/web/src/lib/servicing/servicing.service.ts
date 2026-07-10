@@ -1,7 +1,11 @@
 import { batchApi } from "../batch/batch.api";
+import { LienListResult } from "../liens";
+import { mapLienToListItem } from "../liens/liens.mapper";
+import { LienListItem, LienResponseDto } from "../liens/liens.types";
 import {
   GenericPaginatedResult,
   GenericPaginationData,
+  PaginatedResultWithItems,
 } from "../lookup/lookup.types";
 import { servicingApi } from "./servicing.api";
 import {
@@ -20,6 +24,7 @@ import type {
   ServicingListItemResponseDto,
   ExportResponse,
   ServicingPaginationData,
+  PaginatedResultDto,
 } from "./servicing.types";
 
 export interface ServicingListResult {
@@ -33,6 +38,21 @@ export const servicingService = {
     return {
       items: data.data.map(mapServicingToListItem),
       pagination: mapServicingPagination(data),
+    };
+  },
+
+  async allLiensList(
+    id: string,
+  ): Promise<PaginatedResultWithItems<LienListItem>> {
+    const { data } = await servicingApi.allLiensList(id);
+    return {
+      items: data.data.map(mapLienToListItem),
+      pagination: {
+        page: 1,
+        pageSize: 20,
+        totalCount: 0,
+        totalPages: 1,
+      },
     };
   },
 

@@ -157,7 +157,7 @@ export function CaseDetailClient({
     dataUpdatedAt: liensUpdatedAt,
     refetch: refetchLiens,
     isFetching: isLiensFetching,
-  } = useCaseLiens(id, { pageSize: 20 });
+  } = useCaseLiens(id, { pageSize: 50 });
   const relatedLiens = relatedLiensWithMetadata;
 
   const {
@@ -202,7 +202,7 @@ export function CaseDetailClient({
     setError(null);
     try {
       const updates = await casesService.getCaseUpdates(id);
-      setCaseUpdates(updates ?? []);
+      setCaseUpdates(updates.data ?? []);
     } catch (err) {}
   }, [id]);
 
@@ -303,6 +303,13 @@ export function CaseDetailClient({
   const generatePayoff = async () => {
     try {
       const response = await casesService.payoffQoute(id);
+      if (!response.isSuccess) {
+        addToast({
+          type: "error",
+          title: "Generate Payoff Failed",
+          description: response?.message,
+        });
+      }
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Failed to generate payoff";
@@ -1377,13 +1384,13 @@ function DetailsTab({
             </thead>
             <tbody className="divide-y divide-gray-50">
               {/* TEMP: visual fallback data for UI review only */}
-              {u && u?.length == 0 && (
+              {/* {u && u?.length == 0 && (
                 <tr className="hover:bg-gray-50/50 transition-colors">
                   <td className="pr-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
                     No records found.
                   </td>
                 </tr>
-              )}
+              )} */}
               {u?.length > 0 ? (
                 u?.map((u) => (
                   <tr

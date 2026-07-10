@@ -19,6 +19,7 @@ import type { CasePayment } from "@/lib/settlement/settlement.types";
 import { lookupService } from "@/lib/lookup";
 import { PaginationMeta } from "@/lib/contacts";
 import { servicingApi } from "@/lib/servicing/servicing.api";
+import { servicingService } from "@/lib/servicing";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -42,24 +43,29 @@ async function fetchCaseLiens(
   query: LiensQuery,
   queryClient: QueryClient,
 ): Promise<CaseLienRow[]> {
-  const [liensResult, payments, reductions, facilities] = await Promise.all([
-    liensService.getLiens({ caseId, ...query }).catch(() => ({
-      items: [] as LienListItem[],
-      pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
-    })),
-    // Reuse the cached payments query if already fetched; otherwise fetch now
-    queryClient.ensureQueryData({
-      queryKey: CASE_PAYMENTS_QUERY_KEY(caseId),
-      queryFn: () =>
-        settlementService
-          .getLienPaymentsByCase(caseId)
-          .catch(() => [] as CasePayment[]),
-    }),
-    settlementService.getLienReductionsByCase(caseId).catch(() => []),
-    lookupService.getMedicalFacility().catch(() => ({
-      items: [],
-    })),
-  ]);
+  const [liensResult, allLiensResult, payments, reductions, facilities] =
+    await Promise.all([
+      liensService.getLiens({ caseId, ...query }).catch(() => ({
+        items: [] as LienListItem[],
+        pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
+      })),
+      servicingService.allLiensList(caseId).catch(() => ({
+        items: [] as LienListItem[],
+        pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
+      })),
+      // Reuse the cached payments query if already fetched; otherwise fetch now
+      queryClient.ensureQueryData({
+        queryKey: CASE_PAYMENTS_QUERY_KEY(caseId),
+        queryFn: () =>
+          settlementService
+            .getLienPaymentsByCase(caseId)
+            .catch(() => [] as CasePayment[]),
+      }),
+      settlementService.getLienReductionsByCase(caseId).catch(() => []),
+      lookupService.getMedicalFacility().catch(() => ({
+        items: [],
+      })),
+    ]);
 
   // Sum all payments per lienId (amount may come back as a string from the legacy endpoint)
   const paymentsByLien = new Map<string, number>();
@@ -85,7 +91,7 @@ async function fetchCaseLiens(
     if (!facilityId) return "";
     return facilities.items.find((f) => f.id == facilityId)?.name;
   }
-
+  // console.log(allLiensResult);
   return liensResult.items.map((lien) => {
     const ext = lien as LienListItem & CaseLienItemMetadata;
     const paymentAmount =
@@ -95,8 +101,8 @@ async function fetchCaseLiens(
     const originalAmount = ext.originalAmount ?? 0;
     return {
       ...lien,
-      facility: ext.facility ?? "(Blank)",
-      facilityName: facilityName(ext.facilityId ?? "") ?? "(Blank)",
+      facility: ext.facility ?? "---",
+      facilityName: facilityName(ext.facilityId ?? "") ?? "---",
       serviceDate: ext.initialServiceDate,
       purchaseDateDate: ext.purchaseDate,
       originalAmount,

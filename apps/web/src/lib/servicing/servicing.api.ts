@@ -15,6 +15,7 @@ import {
   GenericPaginatedResult,
   GenericPaginationData,
 } from "../lookup/lookup.types";
+import { LienListItem, LienResponseDto } from "../liens/liens.types";
 
 const BASE = "/lien/service";
 
@@ -43,7 +44,7 @@ export const servicingApi = {
   },
 
   allLiensList(id: string) {
-    return apiClient.get<GenericPaginatedResult<ServicingListItemResponseDto>>(
+    return apiClient.get<PaginatedResultDto<LienResponseDto>>(
       `${BASE}/all-liens/${id}`,
     );
   },
