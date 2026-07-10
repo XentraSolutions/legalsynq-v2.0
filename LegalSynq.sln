@@ -131,6 +131,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tenant.Application.Tests", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Liens.Api.Tests", "apps\services\liens\Liens.Api.Tests\Liens.Api.Tests.csproj", "{AE2943B7-C05C-4DE1-9379-44A7516016E8}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "xenia", "xenia", "{A1B2C3D4-E5F6-4701-8901-ABCDEF012345}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Xenia.Domain", "apps\services\xenia\Xenia.Domain\Xenia.Domain.csproj", "{B2C3D4E5-F6A7-4812-9012-BCDEF0123456}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Xenia.Application", "apps\services\xenia\Xenia.Application\Xenia.Application.csproj", "{C3D4E5F6-A7B8-4923-A123-CDEF01234567}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Xenia.Infrastructure", "apps\services\xenia\Xenia.Infrastructure\Xenia.Infrastructure.csproj", "{D4E5F6A7-B8C9-4034-B234-DEF012345678}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Xenia.Api", "apps\services\xenia\Xenia.Api\Xenia.Api.csproj", "{E5F6A7B8-C9D0-4145-C345-EF0123456789}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Xenia.Tests", "apps\services\xenia\Xenia.Tests\Xenia.Tests.csproj", "{F6A7B8C9-D0E1-4256-D456-F01234567890}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
