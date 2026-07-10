@@ -7,7 +7,7 @@ public static class XeniaConfigurationEndpoints
 {
     public static IEndpointRouteBuilder MapXeniaConfigurationEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/configuration").RequireAuthorization(XeniaPolicies.Read);
+        var group = app.MapGroup("/configuration").RequireAuthorization(XeniaPolicies.ConfigurationRead);
 
         // GET /configuration — returns non-secret configuration visible to the caller.
         // Secret values are always omitted (ConfigurationEntryDto.ConfigurationValue is null when IsSecret=true).

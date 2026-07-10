@@ -1,17 +1,18 @@
+import { cookies } from 'next/headers';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
-import { getXeniaAdapters } from '@/lib/xenia-api';
+import { getXeniaAdapters, type XeniaAdapterDto } from '@/lib/xenia-api';
 import { XeniaAdaptersTable } from '@/components/xenia/xenia-adapters-table';
-import { getSession } from '@/lib/session';
+import { SESSION_COOKIE_NAME } from '@/lib/app-config';
 
 export const dynamic = 'force-dynamic';
 
 export default async function XeniaAdaptersPage() {
   await requirePlatformAdmin();
 
-  const session = await getSession();
-  const token = session?.token ?? '';
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE_NAME)?.value ?? '';
 
-  let adapters = [];
+  let adapters: XeniaAdapterDto[] = [];
   let error = false;
 
   try {

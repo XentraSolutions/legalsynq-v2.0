@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xenia.Application.TenantContext;
 using Xenia.Infrastructure.TenantContext;
+using Xunit;
 
 namespace Xenia.Tests.TenantContext;
 

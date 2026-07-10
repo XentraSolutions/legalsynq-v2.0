@@ -1,1 +1,3 @@
 - [Xenia platform foundation](xenia-foundation.md) — standalone automation service at port 5035; tenant context from JWT `tenant_id` claim; 8 unavailable adapters; `xn_` table prefix; `ConnectionStrings__XeniaDb` env var.
+- [CC server-component bearer token](cc-session-cookie-pattern.md) — CC server components must read the raw `platform_session` cookie for bearer token; `PlatformSession` has no token field.
+- [Xenia P1-T1 validation defect patterns](xenia-p1-t1-defects.md) — 7 defect classes found during validation; checklist for follow-on Xenia tickets.

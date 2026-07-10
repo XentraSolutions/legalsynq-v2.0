@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xenia.Infrastructure.Modules;
 using Xenia.Infrastructure.Persistence;
+using Xunit;
 
 namespace Xenia.Tests.Modules;
 
