@@ -1,3 +1,6 @@
 - [Xenia platform foundation](xenia-foundation.md) — standalone automation service at port 5035; tenant context from JWT `tenant_id` claim; 8 unavailable adapters; `xn_` table prefix; `ConnectionStrings__XeniaDb` env var.
 - [CC server-component bearer token](cc-session-cookie-pattern.md) — CC server components must read the raw `platform_session` cookie for bearer token; `PlatformSession` has no token field.
 - [Xenia P1-T1 validation defect patterns](xenia-p1-t1-defects.md) — 7 defect classes found during validation; checklist for follow-on Xenia tickets.
+- [Pomelo enum converter NullRef](pomelo-enum-converter-nullref.md) — `HasConversion<string>()` on enum properties crashes Pomelo 8 + EF 8 + .NET 10 at migration/startup time; use explicit `EnumToStringConverter<T>()` instances.
+- [Xenia SkipMigrations + schema apply](xenia-skip-migrations.md) — Xenia supports `Xenia:SkipMigrations=true`; schema applied via pymysql when docker exec OCI-blocked; SQL script at `Xenia.Infrastructure/Persistence/Migrations/xenia_schema_manual.sql`.
+- [Xenia adapter criticality](xenia-adapter-criticality.md) — `Optional=0` is CLR default (no EF sentinel conflict); Tenant+Identity Mandatory; /ready reflects criticality per adapter; XENIA-P1-T2 must deliver Mandatory adapters first.

@@ -13,6 +13,15 @@ public sealed record AdapterDto
     public required string AdapterType { get; init; }
     public required string Name { get; init; }
     public required string Version { get; init; }
+
+    /// <summary>
+    /// Criticality of this adapter for Xenia readiness.
+    /// Mandatory → unavailability causes 503.
+    /// Optional  → unavailability causes degraded 200.
+    /// Disabled  → excluded from readiness computation.
+    /// </summary>
+    public required string Criticality { get; init; }
+
     public required string ConfigurationStatus { get; init; }
     public required string AvailabilityStatus { get; init; }
     public required string HealthStatus { get; init; }
@@ -31,6 +40,7 @@ public sealed record AdapterDto
         AdapterType = a.AdapterType.ToString(),
         Name = a.Name,
         Version = a.Version,
+        Criticality = a.Criticality.ToString(),
         ConfigurationStatus = a.ConfigurationStatus.ToString(),
         AvailabilityStatus = a.AvailabilityStatus.ToString(),
         HealthStatus = a.HealthStatus.ToString(),

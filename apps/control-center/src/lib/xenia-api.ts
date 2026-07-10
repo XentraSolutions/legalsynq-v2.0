@@ -28,6 +28,8 @@ export interface XeniaAdapterDto {
   adapter_type: string;
   name: string;
   version: string;
+  /** Mandatory | Optional | Disabled — controls /ready behavior */
+  criticality: string;
   configuration_status: string;
   availability_status: string;
   health_status: string;

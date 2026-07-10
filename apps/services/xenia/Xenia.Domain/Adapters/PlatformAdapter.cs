@@ -4,7 +4,7 @@ namespace Xenia.Domain.Adapters;
 
 /// <summary>
 /// Represents the registry record of a platform adapter within Xenia.
-/// This entity tracks health and availability status — it does not store credentials.
+/// This entity tracks health, availability, and criticality status — it does not store credentials.
 ///
 /// Adapter implementations are registered in the DI container; this record
 /// mirrors their status for observability via the /adapters endpoint.
@@ -24,6 +24,12 @@ public sealed class PlatformAdapter : AuditableEntityBase
     public AdapterType AdapterType { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string Version { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// How this adapter's unavailability affects Xenia readiness.
+    /// Mandatory → 503, Optional → degraded 200, Disabled → ignored.
+    /// </summary>
+    public AdapterCriticality Criticality { get; private set; }
 
     public AdapterStatus ConfigurationStatus { get; private set; }
     public AdapterStatus AvailabilityStatus { get; private set; }
@@ -45,7 +51,8 @@ public sealed class PlatformAdapter : AuditableEntityBase
         string adapterKey,
         AdapterType adapterType,
         string name,
-        string version)
+        string version,
+        AdapterCriticality criticality = AdapterCriticality.Optional)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(adapterKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -55,6 +62,7 @@ public sealed class PlatformAdapter : AuditableEntityBase
         AdapterType = adapterType;
         Name = name.Trim();
         Version = version?.Trim() ?? "0.0.0";
+        Criticality = criticality;
         ConfigurationStatus = AdapterStatus.Unconfigured;
         AvailabilityStatus = AdapterStatus.Unknown;
         HealthStatus = AdapterStatus.Unknown;
@@ -75,4 +83,9 @@ public sealed class PlatformAdapter : AuditableEntityBase
 
     public void SetConfigured() => ConfigurationStatus = AdapterStatus.Healthy;
     public void SetUnconfigured() => ConfigurationStatus = AdapterStatus.Unconfigured;
+
+    /// <summary>
+    /// Updates the criticality classification for this adapter.
+    /// </summary>
+    public void SetCriticality(AdapterCriticality criticality) => Criticality = criticality;
 }

@@ -1,11 +1,20 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Adapters;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class PlatformAdapterConfiguration : IEntityTypeConfiguration<PlatformAdapter>
 {
+    // Pomelo 8 + EF 8 has a NullRef when HasConversion<string>() is resolved via the generic
+    // type-mapper path (string : IEnumerable<char> causes FindCollectionMapping → NullRef for
+    // the char element mapping in MySQL).  Using an explicit EnumToStringConverter<T> instance
+    // bypasses the generic lookup and avoids the crash.
+    private static readonly EnumToStringConverter<AdapterType>        _adapterTypeConverter        = new();
+    private static readonly EnumToStringConverter<AdapterStatus>      _adapterStatusConverter      = new();
+    private static readonly EnumToStringConverter<AdapterCriticality> _adapterCriticalityConverter = new();
+
     public void Configure(EntityTypeBuilder<PlatformAdapter> builder)
     {
         builder.ToTable("xn_platform_adapters");
@@ -28,7 +37,13 @@ internal sealed class PlatformAdapterConfiguration : IEntityTypeConfiguration<Pl
 
         builder.Property(e => e.AdapterType)
             .HasColumnName("adapter_type")
-            .HasConversion<string>()
+            .HasConversion(_adapterTypeConverter)
+            .HasMaxLength(32)
+            .IsRequired();
+
+        builder.Property(e => e.Criticality)
+            .HasColumnName("criticality")
+            .HasConversion(_adapterCriticalityConverter)
             .HasMaxLength(32)
             .IsRequired();
 
@@ -44,19 +59,19 @@ internal sealed class PlatformAdapterConfiguration : IEntityTypeConfiguration<Pl
 
         builder.Property(e => e.ConfigurationStatus)
             .HasColumnName("configuration_status")
-            .HasConversion<string>()
+            .HasConversion(_adapterStatusConverter)
             .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.AvailabilityStatus)
             .HasColumnName("availability_status")
-            .HasConversion<string>()
+            .HasConversion(_adapterStatusConverter)
             .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.HealthStatus)
             .HasColumnName("health_status")
-            .HasConversion<string>()
+            .HasConversion(_adapterStatusConverter)
             .HasMaxLength(32)
             .IsRequired();
 
