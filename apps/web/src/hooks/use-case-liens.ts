@@ -1,15 +1,24 @@
 "use client";
 
 import {
+  useMutation,
   useQuery,
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
 import { LiensQuery, liensService, type LienListItem } from "@/lib/liens";
-import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
+import {
+  CasesQuery,
+  casesService,
+  CreateCaseRequestDto,
+  type CaseLienItem,
+  type CaseLienItemMetadata,
+} from "@/lib/cases";
 import { settlementService } from "@/lib/settlement";
 import type { CasePayment } from "@/lib/settlement/settlement.types";
 import { lookupService } from "@/lib/lookup";
+import { PaginationMeta } from "@/lib/contacts";
+import { servicingApi } from "@/lib/servicing/servicing.api";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -107,5 +116,27 @@ export function useCaseLiens(caseId: string, query: LiensQuery) {
     queryFn: () => fetchCaseLiens(caseId, query, queryClient),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useCases(query: CasesQuery) {
+  return useQuery({
+    queryKey: ["cases", query],
+    queryFn: () => casesService.getCases(query),
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateCase() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: CreateCaseRequestDto) =>
+      casesService.createCase(payload),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({
+        queryKey: ["cases"],
+      });
+    },
   });
 }

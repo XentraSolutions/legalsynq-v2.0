@@ -28,6 +28,8 @@ import {
 import { ApiError } from "@/lib/api-client";
 import { CasesFilter } from "./components/cases-filter";
 import { CasesQuery, CaseStatusResponse } from "@/lib/cases/cases.types";
+import { useCases, useCreateCase } from "@/hooks/use-case-liens";
+import { useQueryClient } from "@tanstack/react-query";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +66,7 @@ export default function CasesPage() {
   const ra = useRoleAccess();
   const selection = useSelectionState();
 
-  const [cases, setCases] = useState<CaseListItem[]>([]);
+  // const [cases, setCases] = useState<CaseListItem[]>([]);
   const [status, setStatus] = useState<Array<CaseStatusResponse>>();
 
   const [pagination, setPagination] = useState<PaginationMeta>({
@@ -80,7 +82,12 @@ export default function CasesPage() {
   const [searchInput, setSearchInput] = useState("");
 
   const [statusFilter, setStatusFilter] = useState<string>("");
-  const [params, setParams] = useState({
+  const [params, setParams] = useState<{
+    accidentTypeId: string | null;
+    caseManagerId: string | null;
+    lawFirmId: string | null;
+    statusId: string | null;
+  }>({
     accidentTypeId: null,
     caseManagerId: null,
     lawFirmId: null,
@@ -100,6 +107,20 @@ export default function CasesPage() {
   const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(
     null,
   );
+  const query = {
+    keyword: search || "",
+    page: pagination.page,
+    limit: 20,
+    sortBy: "createdAt",
+    sortDirection: "desc",
+    accidentTypeId: params?.accidentTypeId?.toString() ?? "",
+    caseManagerId: params?.caseManagerId?.toString() ?? "",
+    lawFirmId: params?.lawFirmId?.toString() ?? "",
+    statusId: statusFilter.toString() || params?.statusId?.toString(),
+  };
+
+  const { data: cases, isLoading, isFetching } = useCases(query);
+  const queryClient = useQueryClient();
 
   const caseNumber = useMemo(() => {
     if (!showCreate) return "";
@@ -109,49 +130,11 @@ export default function CasesPage() {
     return `CASE-${year}-${paddedCount}`;
   }, [showCreate, pagination]);
 
-  const fetchCases = useCallback(
-    async (params?: CasesQuery) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await casesService.getCases({
-          keyword: search || "",
-          page: pagination.page,
-          limit: 20,
-          sortBy: "createdAt",
-          sortDirection: "desc",
-          accidentTypeId: params?.accidentTypeId?.toString(),
-          caseManagerId: params?.caseManagerId?.toString(),
-          lawFirmId: params?.lawFirmId?.toString(),
-          statusId: statusFilter.toString() || params?.statusId?.toString(),
-        });
-        setCases(result.items);
-
-        setPagination((prev) => ({
-          ...prev,
-          totalCount: result.pagination.totalCount,
-          totalPages: result.pagination.totalPages,
-        }));
-      } catch (err) {
-        if (err instanceof ApiError) {
-          setCases([]);
-
-          setError(err.message);
-        } else {
-          setError("Failed to load cases");
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      search,
-      statusFilter,
-      pagination.page,
-      pagination.totalCount,
-      pagination.totalPages,
-    ],
-  );
+  const fetchCases = () => {
+    queryClient.invalidateQueries({
+      queryKey: ["cases"],
+    });
+  };
 
   const lookupCaseStatus = useCallback(async () => {
     try {
@@ -190,7 +173,7 @@ export default function CasesPage() {
   }, [searchInput]);
 
   useEffect(() => {
-    fetchCases();
+    // fetchCases();
   }, [pagination.page, search]);
 
   const canEdit = ra.can("case:edit");
@@ -242,12 +225,11 @@ export default function CasesPage() {
 
   const handleCaseCreated = () => {
     setShowCreate(false);
-    setTimeout(() => fetchCases(), 1000);
   };
 
   const handleCasesFilter = (e: any) => {
     setShowFilter(false);
-    fetchCases(e);
+    setParams(e);
   };
 
   const handleBulkAction = (actionKey: string) => {
@@ -257,9 +239,10 @@ export default function CasesPage() {
 
   const executeBulkAction = async () => {
     if (!bulkAction) return;
+    if (!cases) return;
     setBulkLoading(true);
     const result = await executeBulk(selection.ids, async (id) => {
-      const caseItem = cases.find((c) => c.id === id);
+      const caseItem = cases.items.find((c) => c.id === id);
       if (!caseItem) throw new Error("Case not found in current list");
       const idx = STATUSES.indexOf(caseItem.status);
       if (idx >= STATUSES.length - 1)
@@ -275,13 +258,13 @@ export default function CasesPage() {
     fetchCases();
   };
 
-  const allIds = cases.map((c) => c.id);
+  const allIds = cases?.items.map((c) => c.id) ?? [];
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Cases"
-        subtitle={loading ? "Loading..." : `${pagination.totalCount} cases`}
+        subtitle={isLoading ? "Loading..." : `${pagination.totalCount} cases`}
         actions={
           <div className="relative">
             {/* Dropdown Button */}
@@ -375,7 +358,7 @@ export default function CasesPage() {
       )}
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        {loading ? (
+        {isLoading ? (
           <div className="py-12 text-center">
             <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             <p className="text-sm text-gray-400 mt-2">Loading cases...</p>
@@ -424,80 +407,82 @@ export default function CasesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {cases.map((c) => (
-                    <tr
-                      key={c.id}
-                      className={`hover:bg-gray-50/80 transition-colors cursor-pointer ${selection.isSelected(c.id) ? "bg-primary/5" : ""}`}
-                      onClick={() => router.push(`/lien/cases/${c.id}`)}
-                    >
-                      {canEdit && (
+                  {cases != undefined &&
+                    cases.items.map((c) => (
+                      <tr
+                        key={c.id}
+                        className={`hover:bg-gray-50/80 transition-colors cursor-pointer ${selection.isSelected(c.id) ? "bg-primary/5" : ""}`}
+                        onClick={() => router.push(`/lien/cases/${c.id}`)}
+                      >
+                        {canEdit && (
+                          <td
+                            className="px-3 py-2.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selection.isSelected(c.id)}
+                              onChange={() => selection.toggle(c.id)}
+                              className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary/20"
+                            />
+                          </td>
+                        )}
+                        <td className="px-3 py-2.5">
+                          <Link
+                            href={`/lien/cases/${c.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs font-mono text-primary hover:underline"
+                          >
+                            {c.caseNumber}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700 font-medium">
+                          {c.clientName}
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-600">
+                          {c.lawFirm || "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-600">
+                          {c.caseManager || "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-600">
+                          {c.accidentType || "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">
+                          {c.dateOfIncident || "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">
+                          {c.clientDob || "—"}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <StatusBadge status={c.status} />
+                        </td>
                         <td
-                          className="px-3 py-2.5"
+                          className="px-3 py-2.5 text-right"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <input
-                            type="checkbox"
-                            checked={selection.isSelected(c.id)}
-                            onChange={() => selection.toggle(c.id)}
-                            className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary/20"
+                          <ActionMenu
+                            items={[
+                              {
+                                label: "View Details",
+                                icon: "ri-eye-line",
+                                onClick: () =>
+                                  router.push(`/lien/cases/${c.id}`),
+                              },
+                              ...(canEdit
+                                ? [
+                                    {
+                                      label: "Advance Status",
+                                      icon: "ri-arrow-right-line",
+                                      onClick: () => handleAdvanceStatus(c),
+                                    },
+                                  ]
+                                : []),
+                            ]}
                           />
                         </td>
-                      )}
-                      <td className="px-3 py-2.5">
-                        <Link
-                          href={`/lien/cases/${c.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-xs font-mono text-primary hover:underline"
-                        >
-                          {c.caseNumber}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 font-medium">
-                        {c.clientName}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">
-                        {c.lawFirm || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">
-                        {c.caseManager || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">
-                        {c.accidentType || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">
-                        {c.dateOfIncident || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">
-                        {c.clientDob || "—"}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <StatusBadge status={c.status} />
-                      </td>
-                      <td
-                        className="px-3 py-2.5 text-right"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ActionMenu
-                          items={[
-                            {
-                              label: "View Details",
-                              icon: "ri-eye-line",
-                              onClick: () => router.push(`/lien/cases/${c.id}`),
-                            },
-                            ...(canEdit
-                              ? [
-                                  {
-                                    label: "Advance Status",
-                                    icon: "ri-arrow-right-line",
-                                    onClick: () => handleAdvanceStatus(c),
-                                  },
-                                ]
-                              : []),
-                          ]}
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>

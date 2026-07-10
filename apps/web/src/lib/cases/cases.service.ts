@@ -40,6 +40,7 @@ import type {
   UpdateCasePersonalRequestDto,
   UpdateCaseDetailsRequestDto,
   MedicalCodeLiensResponse,
+  CaseResponseDto,
 } from "./cases.types";
 import { lookupService } from "../lookup";
 
@@ -64,7 +65,7 @@ export const casesService = {
     return mapCaseToDetail(data);
   },
 
-  async createCase(request: CreateCaseRequestDto): Promise<any> {
+  async createCase(request: CreateCaseRequestDto): Promise<CaseResponseDto> {
     const { data } = await casesApi.create(request);
     return data;
   },
