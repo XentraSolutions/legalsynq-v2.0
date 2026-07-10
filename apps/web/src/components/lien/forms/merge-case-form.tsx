@@ -174,9 +174,6 @@ export function MergeCaseForm({
               case is correct before continuing.
             </strong>
           </div>
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Case Details
-          </p>
         </div>
         <div className="space-y-3">
           <div>
@@ -190,6 +187,11 @@ export function MergeCaseForm({
               type="select"
             />
           </div>
+
+          <p className="text-xs mt-6 font-medium text-gray-500 uppercase tracking-wide">
+            Case Details
+          </p>
+
           <div className="grid grid-cols-3 gap-x-8 gap-y-3">
             <div>
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
