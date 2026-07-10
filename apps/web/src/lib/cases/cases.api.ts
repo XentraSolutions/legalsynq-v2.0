@@ -76,11 +76,12 @@ export const casesApi = {
     return apiClient.post<CaseResponseDto>(`${BASE}/create`, request);
   },
 
+  mergecase(request: { caseIdA: string; caseIdB: string }) {
+    return apiClient.post<CaseResponseDto>(`${BASE}/mergecase`, request);
+  },
 
   deleteCase(id: string) {
-    return apiClient.delete<ApiResponse>(
-      `${BASE}/delete/${id}`,
-    );
+    return apiClient.delete<ApiResponse>(`${BASE}/delete/${id}`);
   },
 
   updatePersonal(request: UpdateCaseDetailsRequestDto) {
@@ -316,7 +317,10 @@ export const casesApi = {
     });
   },
 
-  listByFundingCompany(fundingCompanyId: string, params: ContactCaseLookupParams) {
+  listByFundingCompany(
+    fundingCompanyId: string,
+    params: ContactCaseLookupParams,
+  ) {
     return apiClient.post<CaseListApiResponse>(`${BASE}/funding/v3`, {
       fundingCompanyId,
       keyword: params.keyword ?? "",
@@ -334,10 +338,7 @@ export const casesApi = {
   },
 
   reassignLawFirm(request: ReassignLawFirmRequestDto) {
-    return apiClient.post<CaseResponseDto>(
-      `${BASE}/reassign/lawfirm`,
-      request,
-    );
+    return apiClient.post<CaseResponseDto>(`${BASE}/reassign/lawfirm`, request);
   },
 
   reassignCaseManager(request: ReassignCaseManagerRequestDto) {

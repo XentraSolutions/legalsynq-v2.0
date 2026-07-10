@@ -486,7 +486,7 @@ export default function CasesPage() {
                 </tbody>
               </table>
             </div>
-            {cases.length === 0 && !loading && (
+            {cases?.items?.length === 0 && !loading && (
               <div className="py-12 text-center">
                 <i className="ri-folder-open-line text-2xl text-gray-300" />
                 <p className="text-sm text-gray-400 mt-2">

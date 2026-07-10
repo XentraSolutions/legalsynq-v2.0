@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { ActionMenu } from "@/components/lien/action-menu";
 import { FormModal, Modal } from "@/components/lien/modal";
 import DataMappingComponent from "./components/data-mapping";
+import { dateConverter } from "@/lib/cases/cases.mapper";
 
 export default function BatchListPage() {
   const ra = useRoleAccess();
@@ -33,7 +34,7 @@ export default function BatchListPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
-
+  const [template, setTemplate] = useState<BatchListItem>();
   const currentQuery = useCallback(
     () => ({
       page: 1,
@@ -77,6 +78,42 @@ export default function BatchListPage() {
       page: newPage,
       pageSize: pagination.pageSize,
     });
+  };
+
+  const process = async (template: any) => {
+    const response = await batchService.process({
+      batchUploadId: template.template.id,
+      templateId: template?.template?.templateId ?? "INITIAL_CASE_IMPORT",
+      caseId: template.template.caseId,
+    });
+  };
+
+  const importBatch = async (templateData: any) => {
+    // if (!templateData?.file) return;
+
+    const dataContextLines = [
+      templateData.template.columns.join(","),
+      ...templateData.template.tableData.map((row: any) =>
+        templateData.template.columns
+          .map((column: any) => {
+            const value = row?.[column];
+            return value === null || value === undefined ? "" : String(value);
+          })
+          .join(","),
+      ),
+    ];
+
+    const importPayload = {
+      label: templateData.template.templateLabel || "Case tracking import",
+      template: templateData.templateId ?? "",
+      caseId: templateData.template.caseId || "",
+      file: templateData.template.file.name || "tracking.csv",
+      date: dateConverter(new Date().toDateString()),
+      rows: templateData.template.tableData.length,
+      dataContext: dataContextLines.join("\n"),
+    };
+
+    const response = await batchService.createBatch(importPayload);
   };
 
   const canEdit = ra.can("lien:edit");
@@ -170,7 +207,10 @@ export default function BatchListPage() {
                               {
                                 label: "View",
                                 icon: "ri-eye-line",
-                                onClick: () => setIsOpen(true),
+                                onClick: () => {
+                                  setTemplate(l);
+                                  setIsOpen(true);
+                                },
                               },
                             ]}
                           />
@@ -216,10 +256,10 @@ export default function BatchListPage() {
       </div>
       {isOpen && (
         <ViewModal
-          id={selectedId}
+          templateData={template}
           isOpen={isOpen}
           onClose={() => setIsOpen(false)}
-          handleSubmit={() => setIsOpen(false)}
+          handleSubmit={(template) => process(template)}
         />
       )}
     </>
@@ -227,16 +267,17 @@ export default function BatchListPage() {
 }
 
 function ViewModal({
-  id,
+  templateData,
   onClose,
   handleSubmit,
   isOpen,
 }: {
-  id: string;
+  templateData: BatchListItem | undefined;
   onClose: () => void;
-  handleSubmit: () => void;
+  handleSubmit: (template: any) => void;
   isOpen: boolean;
 }) {
+  console.log(templateData);
   const [template, setTemplate] = useState<{
     columns: string[];
     tableData: Record<string, unknown>[];
@@ -246,7 +287,7 @@ function ViewModal({
   }>({
     columns: [],
     tableData: [],
-    id: id,
+    id: templateData?.id ?? "",
     batchUploadId: "",
     caseId: "",
   });
@@ -279,28 +320,48 @@ function ViewModal({
   );
 
   useEffect(() => {
-    fetchDataContext(id ?? "019f485a-7cfa-7b11-822e-d5a029a88288");
+    fetchDataContext(
+      templateData?.id ?? "019f485a-7cfa-7b11-822e-d5a029a88288",
+    );
   }, []);
   return (
     <>
-      <FormModal
+      <Modal
         open={isOpen}
+        title={templateData?.label ?? "View"}
         onClose={onClose}
-        onSubmit={() => {
-          handleSubmit();
-          setSubmitting(true);
-        }}
-        title="Create Lien"
-        subtitle="Add a new lien record"
-        submitLabel={submitting ? "Processing..." : "Process"}
-        submitDisabled={submitting}
         size="lg"
+        footer={
+          <>
+            <button
+              onClick={onClose}
+              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+            >
+              Close
+            </button>
+            {templateData?.processStatus == "PENDING" && (
+              <button
+                onClick={() => {
+                  handleSubmit({
+                    template,
+                    templateId: templateData.template,
+                  });
+                  setSubmitting(true);
+                }}
+                disabled={submitting}
+                className="text-sm px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-50"
+              >
+                {submitting ? "Processing..." : "Process"}
+              </button>
+            )}
+          </>
+        }
       >
         <DataMappingComponent
           template={template}
           onRemoveDetails={() => {}}
         ></DataMappingComponent>
-      </FormModal>
+      </Modal>
     </>
   );
 }

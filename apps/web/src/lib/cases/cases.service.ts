@@ -303,6 +303,14 @@ export const casesService = {
     const { data } = await casesApi.listDocumentsByLiens(liensId);
     return data;
   },
+
+  async mergeCase(request: {
+    caseIdA: string;
+    caseIdB: string;
+  }): Promise<CaseResponseDto> {
+    const { data } = await casesApi.mergecase(request);
+    return data;
+  },
 };
 
 function groupAndCount(

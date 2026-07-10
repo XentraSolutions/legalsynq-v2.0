@@ -79,6 +79,7 @@ import UploadDocumentComponent, {
   FileDropzoneRef,
 } from "@/components/lien/upload-document";
 import { useRouter } from "next/navigation";
+import { MergeCaseForm } from "@/components/lien/forms/merge-case-form";
 
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-demand",
@@ -139,7 +140,9 @@ export function CaseDetailClient({
   tab: string | TabKey;
 }) {
   const { lookup } = useSessionContext();
-  const router = useRouter()
+  const queryClient = useQueryClient();
+
+  const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
   const timezone = useTimezone();
@@ -171,10 +174,11 @@ export function CaseDetailClient({
     id: string;
     status?: string;
     name: string;
-    actionType: "advanceStatus" | "deleteCase";
+    actionType: "advanceStatus" | "deleteCase" | "mergeCase";
   } | null>(null);
   const [showMedicalLienModal, setShowMedicalLienModal] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
+  const [showMergeCase, setShowMergeCase] = useState(false);
 
   const fetchCase = useCallback(async () => {
     setLoading(true);
@@ -287,6 +291,14 @@ export function CaseDetailClient({
       actionType: "deleteCase",
     });
   };
+  const handleMergeCase = () => {
+    setTimeout(() => {
+      queryClient.invalidateQueries({
+        queryKey: ["cases"],
+      });
+      router.push("/lien/cases");
+    }, 1000);
+  };
 
   const generatePayoff = async () => {
     try {
@@ -318,18 +330,16 @@ export function CaseDetailClient({
           description: `Case moved to ${response.status}`,
         });
       } else if (confirmAction.actionType === "deleteCase") {
-         await casesService.deleteCase(
-          confirmAction.id,
-        );
+        await casesService.deleteCase(confirmAction.id);
         // TODO: Implement deleteCase API endpoint and add it to casesService
         // For now, show a placeholder message
         addToast({
           type: "success",
           title: "Case Deleted",
-          description: `Case ${confirmAction.id} has been successfully deleted.`
+          description: `Case ${confirmAction.id} has been successfully deleted.`,
         });
         setTimeout(() => {
-          router.push("/lien/cases")
+          router.push("/lien/cases");
         }, 500);
       }
       setConfirmAction(null);
@@ -424,6 +434,15 @@ export function CaseDetailClient({
                               Advance Status
                             </button>
                           )}
+                          <button
+                            onClick={() => {
+                              setShowMergeCase(true);
+                              setActionOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                          >
+                            Merge Case
+                          </button>
                           {/* Filter */}
                           <button
                             onClick={() => {
@@ -552,6 +571,15 @@ export function CaseDetailClient({
           confirmLabel={
             confirmAction.actionType === "advanceStatus" ? "Advance" : "Delete"
           }
+        />
+      )}
+
+      {showMergeCase && (
+        <MergeCaseForm
+          open={showMergeCase}
+          caseNumber={d.id}
+          onClose={() => setShowMergeCase(false)}
+          onCreated={handleMergeCase}
         />
       )}
 

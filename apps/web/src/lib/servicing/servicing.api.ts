@@ -34,6 +34,31 @@ export const servicingApi = {
       query,
     );
   },
+
+  liensList(query: GenericPaginationData) {
+    return apiClient.post<GenericPaginatedResult<ServicingListItemResponseDto>>(
+      `${BASE}/all-liens/v3`,
+      query,
+    );
+  },
+
+  allLiensList(id: string) {
+    return apiClient.get<GenericPaginatedResult<ServicingListItemResponseDto>>(
+      `${BASE}/all-liens/${id}`,
+    );
+  },
+  closedliensList(id: string) {
+    return apiClient.get<GenericPaginatedResult<ServicingListItemResponseDto>>(
+      `${BASE}/closed-liens/${id}`,
+    );
+  },
+
+  getServiceCase(id: string) {
+    return apiClient.get<GenericPaginatedResult<ServicingListItemResponseDto>>(
+      `${BASE}/case`,
+    );
+  },
+
   getCase(id: string) {
     return apiClient.get<any>(`${BASE}/${id}`);
   },
