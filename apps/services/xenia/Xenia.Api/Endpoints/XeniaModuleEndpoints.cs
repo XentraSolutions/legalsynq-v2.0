@@ -7,7 +7,7 @@ public static class XeniaModuleEndpoints
 {
     public static IEndpointRouteBuilder MapXeniaModuleEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/modules").RequireAuthorization(XeniaPolicies.Read);
+        var group = app.MapGroup("/modules").RequireAuthorization(XeniaPolicies.ModulesRead);
 
         // GET /modules — list all registered modules
         group.MapGet("/", async (IModuleRegistry registry, CancellationToken ct) =>
@@ -25,7 +25,7 @@ public static class XeniaModuleEndpoints
                 : Results.Ok(module);
         });
 
-        // PUT /modules/{key}/enable — enable module globally (requires admin)
+        // PUT /modules/{key}/enable — enable module globally (requires modules.manage)
         group.MapPut("/{key}/enable", async (
             string key,
             IModuleRegistry registry,
@@ -33,9 +33,9 @@ public static class XeniaModuleEndpoints
         {
             await registry.EnableModuleAsync(key, ct);
             return Results.Ok(new { module_key = key, global_enabled = true });
-        }).RequireAuthorization(XeniaPolicies.Admin);
+        }).RequireAuthorization(XeniaPolicies.ModulesManage);
 
-        // PUT /modules/{key}/disable — disable module globally (requires admin)
+        // PUT /modules/{key}/disable — disable module globally (requires modules.manage)
         group.MapPut("/{key}/disable", async (
             string key,
             IModuleRegistry registry,
@@ -43,7 +43,7 @@ public static class XeniaModuleEndpoints
         {
             await registry.DisableModuleAsync(key, ct);
             return Results.Ok(new { module_key = key, global_enabled = false });
-        }).RequireAuthorization(XeniaPolicies.Admin);
+        }).RequireAuthorization(XeniaPolicies.ModulesManage);
 
         // GET /modules/tenant — tenant-scoped module list
         // Requires tenant context in the JWT.

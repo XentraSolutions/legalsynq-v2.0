@@ -6,7 +6,7 @@ public static class XeniaAdapterEndpoints
 {
     public static IEndpointRouteBuilder MapXeniaAdapterEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/adapters").RequireAuthorization(XeniaPolicies.Read);
+        var group = app.MapGroup("/adapters").RequireAuthorization(XeniaPolicies.AdaptersRead);
 
         // GET /adapters — list all registered adapters with safe status information
         // Credentials are never returned.

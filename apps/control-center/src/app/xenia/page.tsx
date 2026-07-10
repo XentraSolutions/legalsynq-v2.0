@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import {
   getXeniaInfo,
@@ -6,15 +7,15 @@ import {
   getXeniaAdapters,
 } from '@/lib/xenia-api';
 import { XeniaDashboard } from '@/components/xenia/xenia-dashboard';
-import { getSession } from '@/lib/session';
+import { SESSION_COOKIE_NAME } from '@/lib/app-config';
 
 export const dynamic = 'force-dynamic';
 
 export default async function XeniaDashboardPage() {
   await requirePlatformAdmin();
 
-  const session = await getSession();
-  const token = session?.token ?? '';
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE_NAME)?.value ?? '';
 
   const [info, ready, modules, adapters] = await Promise.all([
     getXeniaInfo(),

@@ -4,6 +4,7 @@ using Xenia.Application.Adapters.Interfaces;
 using Xenia.Infrastructure.Platform;
 using Xenia.Infrastructure.Registry;
 using Xenia.Infrastructure.Persistence;
+using Xunit;
 
 namespace Xenia.Tests.Registry;
 
