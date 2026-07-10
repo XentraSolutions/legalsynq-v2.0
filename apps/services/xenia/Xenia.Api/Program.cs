@@ -49,14 +49,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 // ── Authorization — Xenia permission policies ─────────────────────────────────
-// Two broad policies for backwards compatibility, plus granular per-resource policies.
-// PlatformAdmin role satisfies all policies (super-user).
 builder.Services.AddAuthorization(options =>
 {
     static bool IsPlatformAdmin(System.Security.Claims.ClaimsPrincipal u)
         => u.IsInRole("PlatformAdmin");
 
-    // Broad read — covers any Xenia read access; kept for /secure/ping and general gating
+    static bool IsTenantAdmin(System.Security.Claims.ClaimsPrincipal u)
+        => u.IsInRole("TenantAdmin") || IsPlatformAdmin(u);
+
+    // Broad read — covers any Xenia read access
     options.AddPolicy(XeniaPolicies.Read, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
@@ -67,14 +68,14 @@ builder.Services.AddAuthorization(options =>
                   ctx.User.HasClaim("permissions", XeniaPermissions.AdaptersRead) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.ConfigurationRead)));
 
-    // Broad admin — module mutation, configuration writes
+    // Broad admin
     options.AddPolicy(XeniaPolicies.Admin, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
                   IsPlatformAdmin(ctx.User) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
 
-    // Granular — module read
+    // Module read
     options.AddPolicy(XeniaPolicies.ModulesRead, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
@@ -82,7 +83,7 @@ builder.Services.AddAuthorization(options =>
                   ctx.User.HasClaim("permissions", XeniaPermissions.ModulesRead) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
 
-    // Granular — module management (enable/disable)
+    // Module management
     options.AddPolicy(XeniaPolicies.ModulesManage, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
@@ -90,7 +91,7 @@ builder.Services.AddAuthorization(options =>
                   ctx.User.HasClaim("permissions", XeniaPermissions.ModulesManage) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
 
-    // Granular — adapter read
+    // Adapter read
     options.AddPolicy(XeniaPolicies.AdaptersRead, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
@@ -98,7 +99,7 @@ builder.Services.AddAuthorization(options =>
                   ctx.User.HasClaim("permissions", XeniaPermissions.AdaptersRead) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
 
-    // Granular — configuration read
+    // Configuration read
     options.AddPolicy(XeniaPolicies.ConfigurationRead, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
@@ -106,12 +107,41 @@ builder.Services.AddAuthorization(options =>
                   ctx.User.HasClaim("permissions", XeniaPermissions.ConfigurationRead) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
 
-    // Granular — configuration management (write)
+    // Configuration management
     options.AddPolicy(XeniaPolicies.ConfigurationManage, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
                   IsPlatformAdmin(ctx.User) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.ConfigurationManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
+
+    // Email read — tenant admin or platform admin with email.read
+    options.AddPolicy(XeniaPolicies.EmailRead, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  IsPlatformAdmin(ctx.User) ||
+                  IsTenantAdmin(ctx.User) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailRead) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
+
+    // Email manage — create/update/delete/enable/disable sources
+    options.AddPolicy(XeniaPolicies.EmailManage, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  IsPlatformAdmin(ctx.User) ||
+                  IsTenantAdmin(ctx.User) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
+
+    // Email validate — trigger connection tests
+    options.AddPolicy(XeniaPolicies.EmailValidate, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  IsPlatformAdmin(ctx.User) ||
+                  IsTenantAdmin(ctx.User) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailValidate) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailManage) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
 });
 
@@ -136,9 +166,6 @@ app.UseMiddleware<XeniaCorrelationMiddleware>();
 
 app.UseAuthentication();
 
-// ── Tenant context resolution ─────────────────────────────────────────────────
-// Placed BEFORE UseAuthorization so that tenant-aware authorization handlers
-// can read the resolved tenant context without a second JWT parse.
 app.UseMiddleware<XeniaTenantContextMiddleware>();
 
 app.UseAuthorization();
@@ -153,6 +180,11 @@ app.MapXeniaInfoEndpoints();
 app.MapXeniaModuleEndpoints();
 app.MapXeniaAdapterEndpoints();
 app.MapXeniaConfigurationEndpoints();
+
+// Email module endpoints
+app.MapXeniaEmailModuleEndpoints();
+app.MapXeniaEmailSourceEndpoints();
+app.MapXeniaEmailProviderEndpoints();
 
 // Auth smoke-test endpoint
 app.MapGet("/secure/ping", (HttpContext ctx) =>
@@ -182,6 +214,9 @@ public static class XeniaPolicies
     public const string AdaptersRead      = "XeniaAdaptersRead";
     public const string ConfigurationRead = "XeniaConfigurationRead";
     public const string ConfigurationManage = "XeniaConfigurationManage";
+    public const string EmailRead         = "XeniaEmailRead";
+    public const string EmailManage       = "XeniaEmailManage";
+    public const string EmailValidate     = "XeniaEmailValidate";
 }
 
 public static class XeniaPermissions
@@ -193,6 +228,9 @@ public static class XeniaPermissions
     public const string AdaptersRead = "xenia.adapters.read";
     public const string ConfigurationRead = "xenia.configuration.read";
     public const string ConfigurationManage = "xenia.configuration.manage";
+    public const string EmailRead = "xenia.email.read";
+    public const string EmailManage = "xenia.email.manage";
+    public const string EmailValidate = "xenia.email.validate";
 }
 
 public static class XeniaBuildInfo

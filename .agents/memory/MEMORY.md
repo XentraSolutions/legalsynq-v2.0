@@ -4,3 +4,4 @@
 - [Pomelo enum converter NullRef](pomelo-enum-converter-nullref.md) — `HasConversion<string>()` on enum properties crashes Pomelo 8 + EF 8 + .NET 10 at migration/startup time; use explicit `EnumToStringConverter<T>()` instances.
 - [Xenia SkipMigrations + schema apply](xenia-skip-migrations.md) — Xenia supports `Xenia:SkipMigrations=true`; schema applied via pymysql when docker exec OCI-blocked; SQL script at `Xenia.Infrastructure/Persistence/Migrations/xenia_schema_manual.sql`.
 - [Xenia adapter criticality](xenia-adapter-criticality.md) — `Optional=0` is CLR default (no EF sentinel conflict); Tenant+Identity Mandatory; /ready reflects criticality per adapter; XENIA-P1-T2 must deliver Mandatory adapters first.
+- [Xenia email module patterns](xenia-email-patterns.md) — SSRF guard, secret ref pattern (opaque ref only, never value), TLS enforcement, OAuth2 deferred; `AuditableEntityBase` required (not `IAuditableEntity` directly) for history entity.
