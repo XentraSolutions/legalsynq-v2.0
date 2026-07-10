@@ -1,20 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FormModal, Modal } from "@/components/lien/modal";
+import { Modal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { casesService, type CreateCaseRequestDto } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
-import { getCreateCaseFormErrors } from "./create-case-form-validator";
 import Field from "../field";
-import { contactsService } from "@/lib/contacts";
-import { lookupService } from "@/lib/lookup";
 import { useSessionContext } from "@/providers/session-provider";
-import { dateConverter } from "@/lib/cases/cases.mapper";
-import { Combobox } from "@/components/ui/combobox";
-import { CreateLawFirmForm } from "./create-lawfirm-form";
-import { CreateCaseManagerForm } from "./create-case-manager-form";
-import { useCases, useCreateCase } from "@/hooks/use-case-liens";
+import { useCases } from "@/hooks/use-case-liens";
 
 interface MergeCaseFormProps {
   caseNumber: string;
