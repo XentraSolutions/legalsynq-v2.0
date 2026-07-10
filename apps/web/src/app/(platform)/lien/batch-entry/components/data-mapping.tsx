@@ -9,13 +9,13 @@ type DataMappingComponentProps = {
     batchUploadId: string;
     caseId: string;
   };
+  importStatus?: "FAILED" | "PROCESSING";
   onRemoveDetails: (id: string) => void;
 };
 export default function DataMappingComponent({
   template,
   onRemoveDetails,
 }: DataMappingComponentProps) {
-  console.log(template);
   useEffect(() => {}, [template]);
   return (
     <div className="space-y-4">

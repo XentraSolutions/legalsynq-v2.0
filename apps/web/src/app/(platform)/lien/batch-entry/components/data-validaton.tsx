@@ -16,10 +16,77 @@ type DataValidationComponentProps = {
       data: Record<string, unknown>;
     }>;
   } | null;
+  status?: "VIEWING" | "PROCESSING";
 };
 export default function DataValidationComponent({
   validations,
+  status = "PROCESSING",
 }: DataValidationComponentProps) {
+  if (status === "VIEWING") {
+    const rows = validations?.data ?? [];
+
+    const columns = rows.length > 0 ? Object.keys(rows[0].data ?? {}) : [];
+
+    return (
+      <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+                  Row
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                  Status
+                </th>
+
+                {columns.map((column) => (
+                  <th
+                    key={column}
+                    className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500"
+                  >
+                    {column}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {rows.map((item) => (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm">{item.row}</td>
+                  <td className="px-4 py-3 text-center">
+                    {item.status === "FAILED" ? (
+                      <div className="group relative inline-flex">
+                        <i className="ri-alert-line text-red-500 text-lg cursor-pointer" />
+
+                        <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                          {item.reason}
+                        </div>
+                      </div>
+                    ) : (
+                      <i className="ri-checkbox-circle-line text-green-500 text-lg" />
+                    )}
+                  </td>
+                  {columns.map((column) => (
+                    <td
+                      key={column}
+                      className="px-4 py-3 text-sm text-gray-700"
+                    >
+                      {item.data[column] == null
+                        ? "—"
+                        : String(item.data[column])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div

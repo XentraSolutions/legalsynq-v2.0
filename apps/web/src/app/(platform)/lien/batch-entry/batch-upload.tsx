@@ -27,7 +27,7 @@ export default function BatchUploadComponent({
 }: BatchUploadComponentProps) {
   const addToast = useLienStore((s) => s.addToast);
 
-  const [currentStep, setCurrentStep] = useState(action == "create" ? 1 : 1);
+  const [currentStep, setCurrentStep] = useState(action == "create" ? 0 : 1);
   const [totalImports, setTotalImport] = useState<number>(0);
   const [templateData, setTemplateData] = useState<TemplateItem>();
 
@@ -138,23 +138,32 @@ export default function BatchUploadComponent({
     formData.append("caseId", templateData?.caseId ?? "");
 
     const response = await batchService.upload(formData);
-    console.log(response);
     setTemplate((prev) => ({ ...prev, id: response.id }));
     setTimeout(() => {
-      console.log(template);
       fetchDataContext(response.id);
     }, 1000);
   }, [templateData]);
 
   const process = async () => {
-    console.log(template);
-    const response = await batchService.process({
-      batchUploadId: template.id,
-      templateId: templateData?.template ?? "INITIAL_CASE_IMPORT",
-      caseId: template.caseId,
-    });
+    try {
+      const response = await batchService.process({
+        batchUploadId: template.id,
+        templateId: templateData?.template ?? "INITIAL_CASE_IMPORT",
+        caseId: template.caseId,
+      });
 
-    setValidations(response);
+      setValidations(response);
+      return response;
+    } catch (err) {
+      if (err instanceof ApiError) {
+        console.log(err);
+        addToast({
+          type: "error",
+          title: "Process Failed",
+          description: "",
+        });
+      }
+    }
   };
 
   const importBatch = async () => {
@@ -182,8 +191,20 @@ export default function BatchUploadComponent({
       dataContext: dataContextLines.join("\n"),
     };
 
-    const response = await batchService.createBatch(importPayload);
-    setTotalImport(response.data.length);
+    try {
+      const response = await batchService.createBatch(importPayload);
+
+      setTotalImport(response.createdCount);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        console.log(err);
+        addToast({
+          type: "error",
+          title: "Import Failed",
+          description: err?.message,
+        });
+      }
+    }
   };
 
   const nextStep = async () => {
@@ -200,8 +221,6 @@ export default function BatchUploadComponent({
   };
 
   const getDetails = useCallback(async (id: string) => {
-    console.log(id);
-    return id;
     try {
       const result = await batchService.getDetails(id);
     } catch (err) {
@@ -238,8 +257,6 @@ export default function BatchUploadComponent({
   useEffect(() => {
     if (data) {
       getDetails(data.id);
-    } else {
-      fetchDataContext("019f485a-7cfa-7b11-822e-d5a029a88288");
     }
   }, [action]);
 

@@ -203,8 +203,9 @@ export default function MedicalCodesDescription(
         title: `Deleted`,
       });
       setTimeout(() => {
-        loadProcedureCodes();
-      }, 500);
+        const newList = rows.filter((p) => p.id != id);
+        setRows(newList);
+      }, 1000);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
 
@@ -234,7 +235,8 @@ export default function MedicalCodesDescription(
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Medical Code & Description<span className="text-red-500 ml-0.5">*</span>
+              Medical Code & Description
+              <span className="text-red-500 ml-0.5">*</span>
             </label>
             <BaseSelect
               value={form.procedureCode}

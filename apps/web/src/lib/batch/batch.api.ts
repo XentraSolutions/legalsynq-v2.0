@@ -65,6 +65,10 @@ export const batchApi = {
     return apiClient.post<string>(`${BASE}/data-context`, request);
   },
 
+  getDataContext(request: { id: string; page: number; limit: number }) {
+    return apiClient.post<string>(`${BASE}/data-context`, request);
+  },
+
   delete(id: string) {
     return apiClient.delete<ApiResponse>(`${BASE}/delete/${id}`);
   },

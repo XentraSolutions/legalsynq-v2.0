@@ -15,6 +15,7 @@ import { ActionMenu } from "@/components/lien/action-menu";
 import { FormModal, Modal } from "@/components/lien/modal";
 import DataMappingComponent from "./components/data-mapping";
 import { dateConverter } from "@/lib/cases/cases.mapper";
+import DataValidationComponent from "./components/data-validaton";
 
 export default function BatchListPage() {
   const ra = useRoleAccess();
@@ -44,6 +45,9 @@ export default function BatchListPage() {
       status: "",
     }),
     [search],
+  );
+  const [processStatus, setProcessStatus] = useState(
+    template?.processStatus ?? "VIEWING",
   );
 
   const fetchList = useCallback(async (query: PaginationMeta) => {
@@ -86,6 +90,23 @@ export default function BatchListPage() {
       templateId: template?.template?.templateId ?? "INITIAL_CASE_IMPORT",
       caseId: template.template.caseId,
     });
+    if (response.isSuccess) {
+      if (response.successCount > 0) {
+        importBatch(template);
+      } else {
+        setIsOpen(false);
+        // setTimeout(() => {
+        //   setProcessStatus("VIEWING");
+        //   setIsOpen(true);
+        // }, 1000);
+      }
+
+      // addToast({
+      //   type: "success",
+      //   title: "Process Succeed",
+      //   description: "",
+      // });
+    }
   };
 
   const importBatch = async (templateData: any) => {
@@ -107,13 +128,20 @@ export default function BatchListPage() {
       label: templateData.template.templateLabel || "Case tracking import",
       template: templateData.templateId ?? "",
       caseId: templateData.template.caseId || "",
-      file: templateData.template.file.name || "tracking.csv",
+      file: templateData.template.file || "tracking.csv",
       date: dateConverter(new Date().toDateString()),
       rows: templateData.template.tableData.length,
       dataContext: dataContextLines.join("\n"),
     };
 
     const response = await batchService.createBatch(importPayload);
+
+    addToast({
+      type: response.successCount > 0 ? "success" : "error",
+      title: "Process Succeeded",
+      description: response.message,
+    });
+    setIsOpen(false);
   };
 
   const canEdit = ra.can("lien:edit");
@@ -257,6 +285,7 @@ export default function BatchListPage() {
       {isOpen && (
         <ViewModal
           templateData={template}
+          processStatus={processStatus}
           isOpen={isOpen}
           onClose={() => setIsOpen(false)}
           handleSubmit={(template) => process(template)}
@@ -268,16 +297,19 @@ export default function BatchListPage() {
 
 function ViewModal({
   templateData,
+  processStatus,
   onClose,
   handleSubmit,
   isOpen,
 }: {
   templateData: BatchListItem | undefined;
+  processStatus: string;
   onClose: () => void;
   handleSubmit: (template: any) => void;
   isOpen: boolean;
 }) {
-  console.log(templateData);
+  const addToast = useLienStore((s) => s.addToast);
+
   const [template, setTemplate] = useState<{
     columns: string[];
     tableData: Record<string, unknown>[];
@@ -291,8 +323,24 @@ function ViewModal({
     batchUploadId: "",
     caseId: "",
   });
+  const [validations, setValidations] = useState<{
+    isSuccess?: boolean;
+    message?: string;
+    totalRows?: number;
+    successCount?: number;
+    failedCount?: number;
+    data?: Array<{
+      id: string;
+      batchUploadId: string;
+      row: number;
+      status: string;
+      reason: string;
+      data: Record<string, unknown>;
+    }>;
+  } | null>(null);
 
   const [submitting, setSubmitting] = useState<boolean>(false);
+
   const fetchDataContext = useCallback(
     async (id: string) => {
       const dataContext = await batchService.dataContext({
@@ -300,7 +348,6 @@ function ViewModal({
         page: 1,
         limit: 20,
       });
-
       const rows = Array.isArray(dataContext?.data) ? dataContext.data : [];
       const excludedColumns = new Set(["id", "row", "status", "reason"]);
       const columns = rows.length
@@ -314,16 +361,49 @@ function ViewModal({
         tableData: rows,
         batchUploadId: dataContext.id,
         caseId: dataContext.caseId,
+        templateStatus: `${dataContext?.successCount} Successfully Imported Rows From ${templateData?.file}`,
       }));
     },
     [template.id],
   );
 
+  const fetchValidationContext = useCallback(
+    async (id: string) => {
+      const dataContext = await batchService.getDetails(id);
+      setValidations(dataContext);
+    },
+    [template.id],
+  );
+  const removeDetails = useCallback(
+    async (id: string) => {
+      try {
+        await batchService.deleteDetails(id);
+        const newList = template.tableData.filter((t) => t.id !== id);
+        setTemplate((prev) => ({ ...prev, tableData: newList }));
+        addToast({
+          type: "success",
+          title: "Row Deleted",
+          description: `Row has been deleted.`,
+        });
+      } catch (err) {
+        if (err instanceof ApiError) {
+          console.log(err);
+        }
+      } finally {
+        //   setLoading(false);
+      }
+    },
+    [template],
+  );
+
   useEffect(() => {
-    fetchDataContext(
-      templateData?.id ?? "019f485a-7cfa-7b11-822e-d5a029a88288",
-    );
+    if (templateData?.processStatus == "PENDING") {
+      fetchDataContext(templateData?.id);
+    } else {
+      fetchValidationContext(templateData?.id ?? "");
+    }
   }, []);
+
   return (
     <>
       <Modal
@@ -357,10 +437,17 @@ function ViewModal({
           </>
         }
       >
-        <DataMappingComponent
-          template={template}
-          onRemoveDetails={() => {}}
-        ></DataMappingComponent>
+        {templateData?.processStatus == "PENDING" ? (
+          <DataMappingComponent
+            template={template}
+            onRemoveDetails={removeDetails}
+          ></DataMappingComponent>
+        ) : (
+          <DataValidationComponent
+            status="VIEWING"
+            validations={validations}
+          ></DataValidationComponent>
+        )}
       </Modal>
     </>
   );
