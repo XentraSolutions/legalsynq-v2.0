@@ -66,6 +66,7 @@ import { useSettlementHistory } from "@/hooks/use-settlement-history";
 import { Pagination } from "@/components/ui/pagination";
 import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types";
 import { contactsService } from "@/lib/contacts";
+import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
 import MedicalLienInfo from "@/components/lien/forms/add-medical-lien/medical-lien-info";
 import MedicalFacilityProviderInfo from "@/components/lien/forms/add-medical-lien/medical-facility-provider-info";
 import MedicalCodesDescription from "@/components/lien/forms/add-medical-lien/medical-codes-description";
@@ -1193,13 +1194,14 @@ function DetailsTab({
                 <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
                   Lead
                 </label>
-                <Field
-                  label=""
+                <ContactEntitySelect
+                  contactType="Lead"
                   value={form.leadId}
-                  options={[]}
-                  onChange={(v) => updateField("leadId", v.toString())}
-                  placeholder="Lead"
-                  type="select"
+                  onChange={(v) => updateField("leadId", v)}
+                  placeholder="Select lead..."
+                  searchPlaceholder="Search leads..."
+                  allowCreate
+                  createLabel="Add Lead"
                 />
               </div>
             </div>

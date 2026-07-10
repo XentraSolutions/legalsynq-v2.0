@@ -3,17 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
-import { casesService, type CreateCaseRequestDto } from "@/lib/cases";
+import { type CreateCaseRequestDto } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import { getCreateCaseFormErrors } from "./create-case-form-validator";
 import Field from "../field";
 import { contactsService } from "@/lib/contacts";
-import { lookupService } from "@/lib/lookup";
 import { useSessionContext } from "@/providers/session-provider";
 import { dateConverter } from "@/lib/cases/cases.mapper";
-import { Combobox } from "@/components/ui/combobox";
-import { CreateLawFirmForm } from "./create-lawfirm-form";
-import { CreateCaseManagerForm } from "./create-case-manager-form";
+import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
 import { useCreateCase } from "@/hooks/use-case-liens";
 
 interface CreateCaseFormProps {
@@ -70,20 +67,15 @@ export function CreateCaseForm({
     state: Array<{ key: string; value: string; label: string }>;
     accidentState: Array<{ key: string; value: string; label: string }>;
     status: Array<{ key: string; value: string; label: string }>;
-    lawFirm: Array<{ key: string; value: string; label: string }>;
-    caseManagers: Array<{ key: string; value: string; label: string }>;
     accidentType: Array<{ key: string; value: string; label: string }>;
   }>({
     state: [],
     accidentState: [],
     status: [],
-    lawFirm: [],
-    caseManagers: [],
     accidentType: [],
   });
 
-  const [showCreateLawfirm, setShowCreateLawfirm] = useState(false);
-  const [showCreateCaseManager, setShowCreateCaseManager] = useState(false);
+  const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string>();
 
   const [isValid, setIsValid] = useState(false);
   const [touched, setTouched] = useState<
@@ -110,43 +102,26 @@ export function CreateCaseForm({
   };
 
   const fetchData = useCallback(async () => {
-    const [lawfirmRes, caseManagersRes] = await Promise.allSettled([
-      lookupService.getLawfirm(),
-      contactsService.getCaseManagers(),
-    ]);
-    if (
-      lawfirmRes.status === "fulfilled" &&
-      caseManagersRes.status === "fulfilled"
-    ) {
-      setData((prev: any) => ({
-        ...prev,
-        status:
-          lookup?.CaseStatus?.map((c) => {
-            return { key: c.id, value: c.code, label: c.name };
-          }) ?? [],
-        state:
-          lookup?.State?.map((c) => {
-            return { key: c.id, value: c.code, label: c.code };
-          }) ?? [],
-        accidentState:
-          lookup?.State?.map((c) => {
-            return { key: c.id, value: c.code, label: c.code };
-          }) ?? [],
-        lawFirm:
-          lawfirmRes.value.items.map((c) => {
-            return { key: c.id, value: c.id, label: c.displayName };
-          }) ?? [],
-        caseManagers:
-          caseManagersRes.value.items.map((c) => {
-            return { key: c.id, value: c.id, label: c.displayName };
-          }) ?? [],
-        accidentType:
-          lookup?.AccidentType?.map((c) => {
-            return { key: c.id, value: c.id, label: c.name };
-          }) ?? [],
-      }));
-    }
-  }, []);
+    setData((prev) => ({
+      ...prev,
+      status:
+        lookup?.CaseStatus?.map((c) => {
+          return { key: c.id, value: c.code, label: c.name };
+        }) ?? [],
+      state:
+        lookup?.State?.map((c) => {
+          return { key: c.id, value: c.code, label: c.code };
+        }) ?? [],
+      accidentState:
+        lookup?.State?.map((c) => {
+          return { key: c.id, value: c.code, label: c.code };
+        }) ?? [],
+      accidentType:
+        lookup?.AccidentType?.map((c) => {
+          return { key: c.id, value: c.id, label: c.name };
+        }) ?? [],
+    }));
+  }, [lookup]);
 
   useEffect(() => {
     if (!Object.values(touched).some(Boolean)) return;
@@ -160,6 +135,10 @@ export function CreateCaseForm({
 
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    contactsService.getCaseManagerRoleCode().then(setCaseManagerRoleCode);
   }, []);
 
   const formatDate = (dateString: string) => {
@@ -413,23 +392,22 @@ export function CreateCaseForm({
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Law Firm<span className="text-red-500 ml-0.5">*</span>
               </label>
-              <Combobox
+              <ContactEntitySelect
+                contactType="LawFirm"
                 value={form.lawfirmId}
-                onChange={(v) => updateField("lawfirmId", v)}
-                options={data.lawFirm.map((o) => ({
-                  value: o.value,
-                  label: o.label,
-                }))}
+                onChange={(v) => {
+                  setForm((prev) => ({
+                    ...prev,
+                    lawfirmId: v,
+                    caseManagerId: "",
+                  }));
+                  setTouched((prev) => ({ ...prev, lawfirmId: true }));
+                }}
                 error={Boolean(touched.lawfirmId && errors.lawfirmId)}
-                footer={
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateLawfirm(true)}
-                    className="w-full text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
-                  >
-                    + Add Law Firm
-                  </button>
-                }
+                placeholder="Select law firm..."
+                searchPlaceholder="Search law firms..."
+                allowCreate
+                createLabel="Add Law Firm"
               />
               {touched.lawfirmId && errors.lawfirmId && (
                 <p className="text-xs text-red-500 mt-1">{errors.lawfirmId}</p>
@@ -439,22 +417,18 @@ export function CreateCaseForm({
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Case Manager
               </label>
-              <Combobox
+              <ContactEntitySelect
+                contactType="LawFirm"
+                contactSubtype={caseManagerRoleCode}
+                lawFirmId={form.lawfirmId}
+                requireParent
+                parentHint="Select a law firm first"
                 value={form.caseManagerId}
                 onChange={(v) => setForm({ ...form, caseManagerId: v })}
-                options={data.caseManagers.map((o) => ({
-                  value: o.value,
-                  label: o.label,
-                }))}
-                footer={
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateCaseManager(true)}
-                    className="w-full text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
-                  >
-                    + Add Case Manager
-                  </button>
-                }
+                placeholder="Select case manager..."
+                searchPlaceholder="Search case managers..."
+                allowCreate
+                createLabel="Add Case Manager"
               />
             </div>
           </div>
@@ -472,27 +446,6 @@ export function CreateCaseForm({
           </div>
         </div>
       </FormModal>
-
-      <CreateLawFirmForm
-        open={showCreateLawfirm}
-        onClose={() => setShowCreateLawfirm(false)}
-        onCreated={(created) => {
-          setShowCreateLawfirm(false);
-          setForm((prev) => ({ ...prev, lawfirmId: created.id }));
-          setTouched((prev) => ({ ...prev, lawfirmId: true }));
-          fetchData();
-        }}
-      />
-      <CreateCaseManagerForm
-        open={showCreateCaseManager}
-        defaultLawfirmId={form.lawfirmId}
-        onClose={() => setShowCreateCaseManager(false)}
-        onCreated={(created) => {
-          setShowCreateCaseManager(false);
-          setForm((prev) => ({ ...prev, caseManagerId: created.id }));
-          fetchData();
-        }}
-      />
     </>
   );
 }

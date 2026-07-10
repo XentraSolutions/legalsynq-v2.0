@@ -10,13 +10,14 @@ export const CONTACTS_QUERY_KEY = (query: ContactsQuery) =>
 
 export const CONTACT_TYPES_QUERY_KEY = ["contact-types"] as const;
 
-export function useContacts(query: ContactsQuery) {
+export function useContacts(query: ContactsQuery, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: CONTACTS_QUERY_KEY(query),
     queryFn: () => contactsService.getContacts(query),
     staleTime: 0,
     placeholderData: keepPreviousData,
     refetchOnWindowFocus: false,
+    enabled: options?.enabled,
   });
 }
 

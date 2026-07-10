@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   open: boolean;
@@ -17,6 +18,13 @@ const SIZE_MAP = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4
 
 export function Modal({ open, onClose, title, titleClassName, subtitle, children, footer, size = 'md' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  // Portaled to <body> below, so it always lands after (and therefore
+  // paints above) any Radix-portaled popover/dropdown content, regardless
+  // of where this Modal sits in the React tree. Deferred to a mounted
+  // flag since `document` isn't available during SSR.
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -26,9 +34,9 @@ export function Modal({ open, onClose, title, titleClassName, subtitle, children
     return () => { document.removeEventListener('keydown', handler); document.body.style.overflow = ''; };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div ref={overlayRef} className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}>
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
       <div className={`relative bg-white rounded-xl shadow-xl w-full ${SIZE_MAP[size]} max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200`}>
@@ -44,7 +52,8 @@ export function Modal({ open, onClose, title, titleClassName, subtitle, children
         <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
         {footer && <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

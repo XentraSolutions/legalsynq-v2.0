@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/lien/page-header";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/lien/action-menu";
 import { SideDrawer } from "@/components/lien/side-drawer";
-import { AddContactForm } from "@/components/lien/forms/add-contact-form";
+import { AddContactModal } from "@/components/lien/add-contact-modal";
 import { useLienStore } from "@/stores/lien-store";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import {
@@ -48,7 +48,6 @@ export default function ContactsPage() {
 
   const [contactData, setContactData] = useState<ContactListItem>();
   const { lookup } = useSessionContext();
-  const [states, setStates] = useState(lookup?.State);
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -129,7 +128,6 @@ export default function ContactsPage() {
     : null;
 
   const showCreateForm = async (mode: "create" | "edit") => {
-    setStates(lookup?.State);
     setShowCreate({ open: true, mode: mode });
   };
 
@@ -487,21 +485,17 @@ export default function ContactsPage() {
       )}
 
       {showCreate.open && (
-        <AddContactForm
+        <AddContactModal
           open={showCreate.open}
-          mode={showCreate.mode}
-          defaultContactType={typeFilter || undefined}
-          data={{
-            addressLine1: "",
-            postalCode: "",
-            ...contactData,
-            contactTypes: activeContactTypes,
-            states: states ?? [],
-          }}
+          title={showCreate.mode === "edit" ? "Edit Contact" : "Add Contact"}
+          contactType={showCreate.mode === "create" ? typeFilter || undefined : undefined}
+          contactTypeOptions={activeContactTypes}
+          editTarget={showCreate.mode === "edit" ? contactData : null}
           onClose={() => setShowCreate({ open: false })}
-          onCreated={() =>
-            queryClient.invalidateQueries({ queryKey: ["contacts"] })
-          }
+          onSaved={() => {
+            setShowCreate({ open: false });
+            queryClient.invalidateQueries({ queryKey: ["contacts"] });
+          }}
         />
       )}
 

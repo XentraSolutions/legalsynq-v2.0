@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Field from "../../field";
+import { BaseSelect } from "@/components/ui/base-select";
 import { lookupService } from "@/lib/lookup";
 import { CreateCaseForm } from "../create-case-form";
 import { CreateMedicalCode } from "../add-medical-code";
@@ -232,28 +233,23 @@ export default function MedicalCodesDescription(
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <Field
-              label="Medical Code & Description"
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Medical Code & Description<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <BaseSelect
               value={form.procedureCode}
-              required
-              options={procedureOptions}
               onChange={(v) => {
-                setForm({ ...form, procedureCode: v.toString() });
-                getMedicalProcedureCosts(v.toString());
+                setForm({ ...form, procedureCode: v });
+                getMedicalProcedureCosts(v);
               }}
+              options={procedureOptions}
               placeholder="Select a code"
-              type="select"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreate(!showCreate);
-                }}
-                className="inline-flex items-center justify-center rounded-lg px-2 py-2 text-sm font-semibold text-primary disabled:cursor-not-allowed disabled:bg-gray-300"
-              >
-                Add New Medical Code
-              </button>
-            </Field>
+              searchPlaceholder="Search codes..."
+              createAction={{
+                label: "Add New Medical Code",
+                onSelect: () => setShowCreate(true),
+              }}
+            />
           </div>
 
           <Field

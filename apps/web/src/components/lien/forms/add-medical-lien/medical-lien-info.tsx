@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Field from "../../field";
-import { lookupService } from "@/lib/lookup";
+import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
 import { useSessionContext } from "@/providers/session-provider";
 
 export interface MedicalLienInfoProps {
@@ -33,11 +33,9 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
   const [form, setForm] = useState(!data ? { ...INITIAL_FORM } : data);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const [fundingCompanyList, setFundingCompanyList] = useState<any[]>([]);
   const [statusList, setStatusList] = useState<Array<Record<string, string>>>();
 
   useEffect(() => {
-    loadFundingCompanies();
     loadStatuses();
   }, []);
 
@@ -45,18 +43,6 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
     validateForm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form]);
-
-  async function loadFundingCompanies() {
-    try {
-      const fundingCompanyRes = await lookupService.getFundingCompany();
-      const list = fundingCompanyRes.items.map((c) => {
-        return { key: c.id, value: c.id, label: c.name };
-      });
-      setFundingCompanyList(list ?? []);
-    } catch (e) {
-      setFundingCompanyList([]);
-    }
-  }
 
   async function loadStatuses() {
     try {
@@ -168,14 +154,23 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
             <label htmlFor="facilityName" className="form-label">
               {" "}
             </label>
-            <Field
-              label="Funding Company"
-              value={form.fundingCompany}
-              options={fundingCompanyList}
-              onChange={(v) => {
-                setForm({ ...form, fundingCompany: v.toString() });
-              }}
-              type="select"
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Funding Company
+            </label>
+            <ContactEntitySelect
+              contactType="FundingCompany"
+              value={form.fundingCompanyId}
+              onChange={(v, option) =>
+                setForm({
+                  ...form,
+                  fundingCompanyId: v,
+                  fundingCompany: option.label,
+                })
+              }
+              placeholder="Select funding company..."
+              searchPlaceholder="Search funding companies..."
+              allowCreate
+              createLabel="Add Funding Company"
             />
           </div>
         </div>
