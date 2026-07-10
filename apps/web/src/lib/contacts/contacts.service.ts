@@ -247,6 +247,11 @@ export const contactsService = {
     return data;
   },
 
+  async exportFacilityContacts(contactType: string): Promise<ExportResponse> {
+    const { data } = await contactsApi.exportFacility(contactType);
+    return data;
+  },
+
   async getCasesByContact(
     contactId: string,
     contactType: string,

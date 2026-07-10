@@ -134,7 +134,7 @@ export default function ContactsPage() {
   };
 
   const exportContacts = async () => {
-    // if (typeFilter == "Facility") return exportFacilityContacts();
+    if (typeFilter == "MedicalFacility") return exportFacilityContacts();
     const response = await contactsService.exportContacts(typeFilter);
     const csv = atob(response.data);
 
@@ -151,17 +151,17 @@ export default function ContactsPage() {
   };
 
   const exportFacilityContacts = async () => {
-    // const response = await contactsService.exportFacilityContacts("");
-    // const csv = atob(response.data);
-    // const now = new Date();
-    // const date = now.toISOString().split("T")[0];
-    // const time = now.toTimeString().split(" ")[0].replace(/:/g, "-");
-    // const filename = `contacts_${date}_${time}.csv`;
-    // const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    // const link = document.createElement("a");
-    // link.href = URL.createObjectURL(blob);
-    // link.download = filename;
-    // link.click();
+    const response = await contactsService.exportFacilityContacts("");
+    const csv = atob(response.data);
+    const now = new Date();
+    const date = now.toISOString().split("T")[0];
+    const time = now.toTimeString().split(" ")[0].replace(/:/g, "-");
+    const filename = `contacts_${date}_${time}.csv`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
   };
 
   // As far as we know, legacy does not differentiate between deactivating and
@@ -242,7 +242,11 @@ export default function ContactsPage() {
       `Reassigning cases from ${target.displayName}...`,
     );
     batchReassignMutation.mutate(
-      { contactType: target.contactType, oldId: target.id, newId: newContactId },
+      {
+        contactType: target.contactType,
+        oldId: target.id,
+        newId: newContactId,
+      },
       {
         onSuccess: () => {
           toast.success("Cases reassigned", {
@@ -565,7 +569,9 @@ export default function ContactsPage() {
                 disabled={!newContactId || batchReassignMutation.isPending}
                 className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg disabled:opacity-50 transition-colors"
               >
-                {batchReassignMutation.isPending ? "Assigning..." : "Assign Case"}
+                {batchReassignMutation.isPending
+                  ? "Assigning..."
+                  : "Assign Case"}
               </button>
             </div>
           }
