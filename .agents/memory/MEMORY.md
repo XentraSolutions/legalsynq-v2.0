@@ -1,0 +1,1 @@
+- [Xenia platform foundation](xenia-foundation.md) — standalone automation service at port 5035; tenant context from JWT `tenant_id` claim; 8 unavailable adapters; `xn_` table prefix; `ConnectionStrings__XeniaDb` env var.
