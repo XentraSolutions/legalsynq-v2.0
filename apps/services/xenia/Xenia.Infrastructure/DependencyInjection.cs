@@ -5,6 +5,7 @@ using Xenia.Application.Adapters;
 using Xenia.Application.Adapters.Interfaces;
 using Xenia.Application.Configuration;
 using Xenia.Application.Email;
+using Xenia.Application.Email.Ingestion;
 using Xenia.Application.Events;
 using Xenia.Application.Modules;
 using Xenia.Application.TenantContext;
@@ -83,12 +84,12 @@ public static class DependencyInjection
         services.AddScoped<IAiAdapter, UnavailableAiAdapter>();
 
         // ── Email module ──────────────────────────────────────────────────────
-        AddEmailModule(services);
+        AddEmailModule(services, configuration);
 
         return services;
     }
 
-    private static void AddEmailModule(IServiceCollection services)
+    private static void AddEmailModule(IServiceCollection services, IConfiguration configuration)
     {
         // Secret reference service (development stub — replace in production)
         services.AddScoped<ISecretReferenceService, UnavailableSecretReferenceService>();
@@ -128,5 +129,26 @@ public static class DependencyInjection
 
         // Email module seeder (runs after migrations)
         services.AddHostedService<EmailModuleSeeder>();
+
+        // ── Email ingestion engine ─────────────────────────────────────────
+        services.Configure<XeniaIngestionOptions>(
+            configuration.GetSection(XeniaIngestionOptions.SectionName));
+
+        services.AddScoped<IMessageNormalizer, EmailMessageNormalizer>();
+        services.AddScoped<IDuplicateDetectionService, EfDuplicateDetectionService>();
+        services.AddScoped<IMessagePersistenceService, EfMessagePersistenceService>();
+        services.AddScoped<IAttachmentDispatcher, DocumentAdapterAttachmentDispatcher>();
+        services.AddScoped<ISyncStateService, EfSyncStateService>();
+        services.AddScoped<IEmailMessageService, EfEmailMessageService>();
+
+        // Per-source sync lock — in-process implementation (singleton for lock state)
+        services.AddSingleton<IEmailSourceSyncLock, InProcessEmailSourceSyncLock>();
+
+        // Sync orchestrator (also implements IEmailSyncService)
+        services.AddScoped<EmailSyncOrchestrator>();
+        services.AddScoped<IEmailSyncService>(sp => sp.GetRequiredService<EmailSyncOrchestrator>());
+
+        // Background worker (disabled by default via XeniaIngestionOptions.WorkerEnabled = false)
+        services.AddHostedService<EmailIngestionWorker>();
     }
 }

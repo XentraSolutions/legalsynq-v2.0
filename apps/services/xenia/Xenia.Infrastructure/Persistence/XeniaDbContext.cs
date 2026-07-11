@@ -33,6 +33,13 @@ public sealed class XeniaDbContext : DbContext
     public DbSet<EmailValidationHistory> EmailValidationHistory => Set<EmailValidationHistory>();
     public DbSet<EmailSettings> EmailSettings => Set<EmailSettings>();
 
+    // ── Email ingestion engine ────────────────────────────────────────────────
+    public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
+    public DbSet<EmailMessageRecipient> EmailMessageRecipients => Set<EmailMessageRecipient>();
+    public DbSet<EmailAttachmentReference> EmailAttachmentReferences => Set<EmailAttachmentReference>();
+    public DbSet<EmailSyncState> EmailSyncStates => Set<EmailSyncState>();
+    public DbSet<EmailIngestionRun> EmailIngestionRuns => Set<EmailIngestionRun>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

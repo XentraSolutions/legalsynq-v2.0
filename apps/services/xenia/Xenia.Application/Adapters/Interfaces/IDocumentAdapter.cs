@@ -21,6 +21,22 @@ public interface IDocumentAdapter
         CancellationToken ct = default);
 
     /// <summary>
+    /// Uploads an attachment stream to the document service.
+    /// The stream is consumed by the adapter; callers must not re-read it after this call.
+    /// Returns null if the adapter is unavailable or the upload fails.
+    ///
+    /// maxSizeBytes is enforced before upload — streams that exceed it are rejected
+    /// without buffering the full content.
+    /// </summary>
+    Task<DocumentUploadResult?> UploadAttachmentStreamAsync(
+        Guid tenantId,
+        string fileName,
+        string contentType,
+        Stream contentStream,
+        long? maxSizeBytes = null,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Retrieves metadata for a previously stored document.
     /// Returns null when not found or the adapter is unavailable.
     /// </summary>
@@ -31,4 +47,5 @@ public interface IDocumentAdapter
 }
 
 public sealed record DocumentReservationResult(Guid DocumentId, string UploadReference, bool IsAvailable);
+public sealed record DocumentUploadResult(Guid DocumentId, string? ContentHash, bool IsAvailable);
 public sealed record DocumentMetadataResult(Guid DocumentId, string FileName, string ContentType, long SizeBytes);

@@ -15,6 +15,12 @@ internal sealed class UnavailableDocumentAdapter : IDocumentAdapter
         => Task.FromResult<DocumentReservationResult?>(
             new DocumentReservationResult(Guid.Empty, string.Empty, IsAvailable: false));
 
+    public Task<DocumentUploadResult?> UploadAttachmentStreamAsync(
+        Guid tenantId, string fileName, string contentType,
+        Stream contentStream, long? maxSizeBytes = null, CancellationToken ct = default)
+        => Task.FromResult<DocumentUploadResult?>(
+            new DocumentUploadResult(Guid.Empty, null, IsAvailable: false));
+
     public Task<DocumentMetadataResult?> GetDocumentMetadataAsync(
         Guid tenantId, Guid documentId, CancellationToken ct = default)
         => Task.FromResult<DocumentMetadataResult?>(null);
