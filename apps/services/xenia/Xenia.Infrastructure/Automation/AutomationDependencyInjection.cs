@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Xenia.Application.Automation;
 
 namespace Xenia.Infrastructure.Automation;
@@ -11,13 +12,13 @@ public static class AutomationDependencyInjection
     ///
     /// Order:
     ///   1. Configuration options
-    ///   2. Durable EF-backed stores (singleton — IDbContextFactory per operation, no captive deps)
-    ///   3. Application services (scoped — per-request lifecycle)
-    ///   4. Singleton registry (holds provider references across requests)
-    ///   5. Email provider (scoped — depends on scoped orchestrator)
-    ///   6. Registration of email provider into registry via hosted init
+    ///   2. Durable EF-backed singletons — IDbContextFactory per op, no captive deps
+    ///   3. Application-layer EF-backed singletons (config, idempotency)
+    ///   4. Scoped services — per-request lifecycle
+    ///   5. Startup reconciliation hosted service
     ///
-    /// InMemory stores replaced by EF implementations (XENIA-P1-PROD-V1 / Migration 8).
+    /// All in-memory automation components replaced by EF/MySQL implementations
+    /// (XENIA-P1-PROD-V1-T1). InMemory impls retained in source as test doubles only.
     /// </summary>
     public static IServiceCollection AddXeniaAutomation(
         this IServiceCollection services,
@@ -26,19 +27,26 @@ public static class AutomationDependencyInjection
         services.Configure<XeniaAutomationOptions>(
             configuration.GetSection(XeniaAutomationOptions.Section));
 
-        // Durable EF-backed stores — singleton using IDbContextFactory to create DbContext per op
+        // ── Durable EF-backed singletons ──────────────────────────────────────
         services.AddSingleton<IAutomationRuntimeStateStore, EfAutomationRuntimeStateStore>();
         services.AddSingleton<IAutomationDeadLetterStore, EfAutomationDeadLetterStore>();
-        services.AddSingleton<IAutomationScheduler, DefaultAutomationScheduler>();
+        services.AddSingleton<IAutomationScheduler, EfAutomationScheduleStore>();
         services.AddSingleton<IAutomationEventPublisher, AuditAdapterAutomationEventPublisher>();
-        services.AddSingleton<IAutomationRegistry, InMemoryAutomationRegistry>();
+        services.AddSingleton<IAutomationRegistry, EfAutomationRegistry>();
 
+        // ── Application-layer EF-backed singletons ────────────────────────────
+        services.AddSingleton<IAutomationConfigurationService, EfAutomationConfigurationService>();
+        services.AddSingleton<IAutomationIdempotencyService, EfAutomationIdempotencyService>();
+
+        // ── Scoped services — per-request ─────────────────────────────────────
         services.AddScoped<IAutomationDiscoveryService, DefaultAutomationDiscoveryService>();
-        services.AddScoped<IAutomationExecutionService, DefaultAutomationExecutionService>();
+        services.AddScoped<IAutomationExecutionService, EfAutomationExecutionService>();
         services.AddScoped<IAutomationDiagnosticsService, DefaultAutomationDiagnosticsService>();
         services.AddScoped<IAutomationProvider, EmailAutomationProvider>();
 
+        // ── Startup reconciliation + store validation ──────────────────────────
         services.AddHostedService<AutomationRegistrationWorker>();
+        services.AddHostedService<AutomationStoreValidationService>();
 
         return services;
     }
