@@ -31,14 +31,17 @@ internal sealed class EmailMessageNormalizer : IMessageNormalizer
     };
 
     private readonly XeniaIngestionOptions _opts;
+    private readonly IEmailHtmlSanitizer _htmlSanitizer;
     private readonly ILogger<EmailMessageNormalizer> _logger;
 
     public EmailMessageNormalizer(
         IOptions<XeniaIngestionOptions> opts,
+        IEmailHtmlSanitizer htmlSanitizer,
         ILogger<EmailMessageNormalizer> logger)
     {
-        _opts   = opts.Value;
-        _logger = logger;
+        _opts          = opts.Value;
+        _htmlSanitizer = htmlSanitizer;
+        _logger        = logger;
     }
 
     public NormalizationResult Normalize(
@@ -52,7 +55,12 @@ internal sealed class EmailMessageNormalizer : IMessageNormalizer
                 return Fail("PROVIDER_MESSAGE_ID_REQUIRED", "Provider message ID is required.");
 
             var bodyText    = Truncate(envelope.BodyText, _opts.MaxMessageBodyBytes);
-            var bodyHtml    = Truncate(envelope.BodyHtml, _opts.MaxMessageBodyBytes);
+            // Sanitize HTML before truncation — removes scripts, remote images, dangerous tags
+            var rawHtml     = Truncate(envelope.BodyHtml, _opts.MaxMessageBodyBytes);
+            var bodyHtml    = rawHtml is not null
+                ? _htmlSanitizer.Sanitize(rawHtml)
+                : null;
+            if (string.IsNullOrEmpty(bodyHtml)) bodyHtml = null;
             var bodyType    = DetermineBodyType(bodyText, bodyHtml);
             var bodyPreview = GeneratePreview(bodyText, bodyHtml, _opts.BodyPreviewLength);
 

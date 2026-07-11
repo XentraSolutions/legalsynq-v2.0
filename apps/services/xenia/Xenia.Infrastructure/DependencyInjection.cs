@@ -141,8 +141,17 @@ public static class DependencyInjection
         services.AddScoped<ISyncStateService, EfSyncStateService>();
         services.AddScoped<IEmailMessageService, EfEmailMessageService>();
 
-        // Per-source sync lock — in-process implementation (singleton for lock state)
-        services.AddSingleton<IEmailSourceSyncLock, InProcessEmailSourceSyncLock>();
+        // Per-source sync lock — durable database-backed (default); in-process kept for tests.
+        services.AddSingleton<IEmailSourceSyncLock, DbEmailSourceSyncLock>();
+
+        // Cursor protection — AES-256-GCM with tenant+source binding
+        services.AddSingleton<IProviderCursorProtector, AesCursorProtector>();
+
+        // HTML sanitization — Ganss.Xss backed, applied at normalization time
+        services.AddSingleton<IEmailHtmlSanitizer, GanssEmailHtmlSanitizer>();
+
+        // IMAP ingestion connector — provides real UID-based IMAP message fetching (Operational)
+        services.AddSingleton<IEmailIngestionConnector, ImapEmailIngestionConnector>();
 
         // Sync orchestrator (also implements IEmailSyncService)
         services.AddScoped<EmailSyncOrchestrator>();

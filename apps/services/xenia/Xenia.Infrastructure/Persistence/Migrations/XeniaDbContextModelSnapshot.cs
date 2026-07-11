@@ -361,6 +361,24 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                 b.HasIndex("TenantId", "StartedAt").HasDatabaseName("ix_ingestion_runs_started_at");
                 b.ToTable("xn_email_ingestion_runs");
             });
+
+            modelBuilder.Entity("Xenia.Domain.Email.EmailSourceSyncLock", b =>
+            {
+                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
+                b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)").HasColumnName("tenant_id");
+                b.Property<string>("EmailSourceId").IsRequired().HasColumnType("char(36)").HasColumnName("email_source_id");
+                b.Property<string>("LeaseOwnerId").IsRequired().HasMaxLength(200).HasColumnName("lease_owner_id");
+                b.Property<DateTime>("AcquiredAt").HasColumnType("datetime(6)").HasColumnName("acquired_at");
+                b.Property<DateTime>("RenewedAt").HasColumnType("datetime(6)").HasColumnName("renewed_at");
+                b.Property<DateTime>("ExpiresAt").HasColumnType("datetime(6)").HasColumnName("expires_at");
+                b.Property<int>("Version").HasColumnName("version");
+                b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)").HasColumnName("created_at");
+                b.Property<DateTime>("UpdatedAt").HasColumnType("datetime(6)").HasColumnName("updated_at");
+                b.HasKey("Id");
+                b.HasIndex("TenantId", "EmailSourceId").IsUnique().HasDatabaseName("ux_email_source_sync_locks_source");
+                b.HasIndex("ExpiresAt").HasDatabaseName("ix_email_source_sync_locks_expires_at");
+                b.ToTable("xn_email_source_sync_locks");
+            });
 #pragma warning restore 612, 618
         }
     }
