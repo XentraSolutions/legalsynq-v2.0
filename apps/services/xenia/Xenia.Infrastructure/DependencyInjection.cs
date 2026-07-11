@@ -152,7 +152,8 @@ public static class DependencyInjection
         services.AddSingleton<IEmailHtmlSanitizer, GanssEmailHtmlSanitizer>();
 
         // IMAP ingestion connector — provides real UID-based IMAP message fetching (Operational)
-        services.AddSingleton<IEmailIngestionConnector, ImapEmailIngestionConnector>();
+        // Scoped (not singleton) because constructor injects ISecretReferenceService (scoped lifetime)
+        services.AddScoped<IEmailIngestionConnector, ImapEmailIngestionConnector>();
 
         // Sync orchestrator (also implements IEmailSyncService)
         services.AddScoped<EmailSyncOrchestrator>();

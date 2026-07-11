@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Xenia.Application.Email.Ingestion;
+using Xunit;
 using Xenia.Domain.Email;
 using Xenia.Infrastructure.Email;
 using Xenia.Infrastructure.Persistence;

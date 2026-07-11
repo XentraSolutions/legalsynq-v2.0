@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Xenia.Application.Email.Ingestion;
 using Xenia.Infrastructure.Email;
+using Xunit;
 
 namespace Xenia.Tests.Email.Ingestion;
 

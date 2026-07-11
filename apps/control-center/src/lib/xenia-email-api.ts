@@ -656,6 +656,10 @@ export async function listEmailAlerts(token: string, query: AlertListQuery = {})
   return xeniaFetch(`/api/v1/email/operations/alerts?${qs}`, token);
 }
 
+export async function getEmailAlert(token: string, alertId: string): Promise<OperationalAlert> {
+  return xeniaFetch(`/api/v1/email/operations/alerts/${alertId}`, token);
+}
+
 export async function acknowledgeAlert(token: string, alertId: string): Promise<{ acknowledged: boolean }> {
   return xeniaFetch(`/api/v1/email/operations/alerts/${alertId}/acknowledge`, token, { method: 'POST', body: '{}' });
 }
@@ -665,6 +669,30 @@ export async function resolveAlert(token: string, alertId: string, reason?: stri
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
+}
+
+export async function suppressAlert(
+  token: string,
+  alertId: string,
+  suppressForMinutes: number,
+): Promise<{ suppressed: boolean }> {
+  return xeniaFetch(`/api/v1/email/operations/alerts/${alertId}/suppress`, token, {
+    method: 'POST',
+    body: JSON.stringify({ suppressForMinutes }),
+  });
+}
+
+export async function getEmailOperationsMetrics(
+  token: string,
+  from?: string,
+  to?: string,
+  sourceId?: string,
+): Promise<Record<string, unknown>> {
+  const qs = new URLSearchParams();
+  if (from)     qs.set('from',     from);
+  if (to)       qs.set('to',       to);
+  if (sourceId) qs.set('sourceId', sourceId);
+  return xeniaFetch(`/api/v1/email/operations/metrics?${qs}`, token);
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────

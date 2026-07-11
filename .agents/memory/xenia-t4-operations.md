@@ -51,4 +51,10 @@ description: What was built for the XENIA-P1-T4 email operations/monitoring laye
 - `EmailRetentionRunTests` — lifecycle, dry-run vs execute
 - `EmailIngestionRunRetryTests` — CreateRetry factory
 
+## Bugs found and fixed during validation
+
+- **Migration `[Migration]` attribute is in Designer.cs.** A manually-authored migration `.cs` file without a companion Designer.cs won't be listed by `ef migrations list` AND won't apply at runtime (runtime also uses the `[Migration]` attribute to discover migrations). Fix: add `[DbContext(typeof(XeniaDbContext))] [Migration("20260710000007_AddOperationsDomain")]` directly to the migration file; the `partial class` pattern is fine without the Designer counterpart as long as the attribute is present.
+- **`ImapEmailIngestionConnector` must be `AddScoped` not `AddSingleton`** because its constructor injects `ISecretReferenceService` which is registered as scoped. Pattern: if any injected service is scoped, the dependent must be scoped too. dotnet validates this at startup with DI validation enabled (EF tools surface it as a startup error during `ef migrations list`).
+- **Xunit must be imported explicitly per test file.** `using Xunit;` is NOT a global using in this project. Every file that uses `[Fact]`, `[Theory]`, or `Assert` needs the directive. Files missing it compile in isolation but fail when `dotnet build` does a full rebuild.
+
 **Why:** Complete audit of the operations monitoring layer for XENIA-P1-T4.

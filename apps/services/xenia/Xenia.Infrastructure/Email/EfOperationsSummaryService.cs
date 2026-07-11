@@ -41,7 +41,7 @@ internal sealed class EfOperationsSummaryService : IOperationsSummaryService
                 Enabled       = g.Count(s => s.Status != EmailSourceStatus.Disabled),
                 Healthy       = g.Count(s => s.HealthStatus == EmailHealthStatus.Healthy),
                 Degraded      = g.Count(s => s.HealthStatus == EmailHealthStatus.Degraded),
-                Unhealthy     = g.Count(s => s.HealthStatus == EmailHealthStatus.Unhealthy),
+                Unhealthy     = g.Count(s => s.HealthStatus == EmailHealthStatus.Unavailable),
                 NeverValidated= g.Count(s => s.HealthStatus == EmailHealthStatus.Unknown),
             })
             .FirstOrDefaultAsync(ct);
