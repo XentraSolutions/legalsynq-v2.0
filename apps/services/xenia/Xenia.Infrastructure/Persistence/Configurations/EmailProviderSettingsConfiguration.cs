@@ -1,13 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailProviderSettingsConfiguration : IEntityTypeConfiguration<EmailProviderSettings>
 {
-    private static readonly EnumToStringConverter<EmailProviderType> _providerTypeConverter = new();
 
     public void Configure(EntityTypeBuilder<EmailProviderSettings> builder)
     {
@@ -32,7 +30,6 @@ internal sealed class EmailProviderSettingsConfiguration : IEntityTypeConfigurat
 
         builder.Property(e => e.ProviderType)
             .HasColumnName("provider_type")
-            .HasConversion(_providerTypeConverter)
             .HasMaxLength(32)
             .IsRequired();
 

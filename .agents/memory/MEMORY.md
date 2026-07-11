@@ -9,3 +9,5 @@
 - [Xenia endpoint pattern](xenia-endpoint-pattern.md) — use XeniaTenantContextAccessor (.Current, sync) in minimal-API handlers; never ITenantContextResolver.ResolveAsync (async interface); ActorId (not UserId) on IXeniaTenantContext.
 - [Xenia T4 operations domain](xenia-t4-operations.md) — operations domain complete: 3 new entities, 9 interfaces, 7 infra services, migration 7, 4 endpoint classes, 4 policies, 8 frontend pages, 5 test files; all builds pass silently.
 - [Xenia T5 delivery and test fix patterns](xenia-t5-delivery.md) — XENIA-P1-T5 complete; Phases A-G/J; 444 tests; key test fixup patterns documented.
+- [Pomelo 8.0.2 EF tooling breakage](pomelo-ef-tooling-breakage.md) — `dotnet ef database update` permanently broken for Xenia schema; `scripts/apply_xenia_migrations_raw.py` is the validated workaround.
+- [Xenia MySQL index key-length limits](xenia-mysql-index-key-limits.md) — three M5 indexes exceed MySQL 3072-byte InnoDB limit in utf8mb4; fixed with column prefixes; documented in PROD-V1 report.

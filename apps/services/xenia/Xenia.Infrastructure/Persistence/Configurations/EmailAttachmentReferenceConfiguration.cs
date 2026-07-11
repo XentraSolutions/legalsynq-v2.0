@@ -1,13 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailAttachmentReferenceConfiguration : IEntityTypeConfiguration<EmailAttachmentReference>
 {
-    private static readonly EnumToStringConverter<AttachmentDispatchStatus> _statusConverter = new();
 
     public void Configure(EntityTypeBuilder<EmailAttachmentReference> builder)
     {
@@ -53,7 +51,7 @@ internal sealed class EmailAttachmentReferenceConfiguration : IEntityTypeConfigu
 
         builder.Property(e => e.DispatchStatus)
             .HasColumnName("dispatch_status")
-            .HasConversion(_statusConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.ErrorCode)
             .HasColumnName("error_code").HasMaxLength(EmailAttachmentReference.ErrorCodeMaxLength);

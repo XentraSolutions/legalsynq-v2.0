@@ -1,14 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailSyncStateConfiguration : IEntityTypeConfiguration<EmailSyncState>
 {
-    private static readonly EnumToStringConverter<EmailProviderType> _providerTypeConverter = new();
-    private static readonly EnumToStringConverter<SyncCursorType>    _cursorTypeConverter   = new();
 
     public void Configure(EntityTypeBuilder<EmailSyncState> builder)
     {
@@ -27,11 +24,11 @@ internal sealed class EmailSyncStateConfiguration : IEntityTypeConfiguration<Ema
 
         builder.Property(e => e.ProviderType)
             .HasColumnName("provider_type")
-            .HasConversion(_providerTypeConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.CursorType)
             .HasColumnName("cursor_type")
-            .HasConversion(_cursorTypeConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.CursorValue)
             .HasColumnName("cursor_value").HasMaxLength(EmailSyncState.CursorValueMaxLength);

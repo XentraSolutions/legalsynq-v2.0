@@ -1,13 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailMessageRecipientConfiguration : IEntityTypeConfiguration<EmailMessageRecipient>
 {
-    private static readonly EnumToStringConverter<EmailRecipientType> _recipientTypeConverter = new();
 
     public void Configure(EntityTypeBuilder<EmailMessageRecipient> builder)
     {
@@ -26,7 +24,7 @@ internal sealed class EmailMessageRecipientConfiguration : IEntityTypeConfigurat
 
         builder.Property(e => e.RecipientType)
             .HasColumnName("recipient_type")
-            .HasConversion(_recipientTypeConverter).HasMaxLength(16).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.EmailAddress)
             .HasColumnName("email_address").HasMaxLength(EmailMessageRecipient.AddressMaxLength).IsRequired();

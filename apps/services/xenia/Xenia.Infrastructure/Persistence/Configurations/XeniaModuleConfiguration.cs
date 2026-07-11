@@ -46,8 +46,6 @@ internal sealed class XeniaModuleConfiguration : IEntityTypeConfiguration<XeniaM
 
         builder.Property(e => e.Status)
             .HasColumnName("status")
-            .HasConversion<string>()
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.ConfigurationNamespace)

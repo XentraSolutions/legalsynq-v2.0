@@ -21,11 +21,9 @@ namespace Xenia.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
+            migrationBuilder.AddColumn<int>(
                 name: "criticality",
                 table: "xn_platform_adapters",
-                type: "varchar(32)",
-                maxLength: 32,
                 nullable: false,
                 defaultValue: "Optional");
         }

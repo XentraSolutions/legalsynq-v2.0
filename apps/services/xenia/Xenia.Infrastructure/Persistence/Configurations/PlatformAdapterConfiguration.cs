@@ -11,9 +11,6 @@ internal sealed class PlatformAdapterConfiguration : IEntityTypeConfiguration<Pl
     // type-mapper path (string : IEnumerable<char> causes FindCollectionMapping → NullRef for
     // the char element mapping in MySQL).  Using an explicit EnumToStringConverter<T> instance
     // bypasses the generic lookup and avoids the crash.
-    private static readonly EnumToStringConverter<AdapterType>        _adapterTypeConverter        = new();
-    private static readonly EnumToStringConverter<AdapterStatus>      _adapterStatusConverter      = new();
-    private static readonly EnumToStringConverter<AdapterCriticality> _adapterCriticalityConverter = new();
 
     public void Configure(EntityTypeBuilder<PlatformAdapter> builder)
     {
@@ -37,14 +34,10 @@ internal sealed class PlatformAdapterConfiguration : IEntityTypeConfiguration<Pl
 
         builder.Property(e => e.AdapterType)
             .HasColumnName("adapter_type")
-            .HasConversion(_adapterTypeConverter)
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.Criticality)
             .HasColumnName("criticality")
-            .HasConversion(_adapterCriticalityConverter)
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.Name)
@@ -59,20 +52,14 @@ internal sealed class PlatformAdapterConfiguration : IEntityTypeConfiguration<Pl
 
         builder.Property(e => e.ConfigurationStatus)
             .HasColumnName("configuration_status")
-            .HasConversion(_adapterStatusConverter)
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.AvailabilityStatus)
             .HasColumnName("availability_status")
-            .HasConversion(_adapterStatusConverter)
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.HealthStatus)
             .HasColumnName("health_status")
-            .HasConversion(_adapterStatusConverter)
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.LastHealthCheckAt)

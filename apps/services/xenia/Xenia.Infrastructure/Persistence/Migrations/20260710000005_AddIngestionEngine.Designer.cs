@@ -15,14 +15,6 @@ namespace Xenia.Infrastructure.Persistence.Migrations
     {
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
-#pragma warning disable 612, 618
-            modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.10")
-                .HasAnnotation("Relational:MaxIdentifierLength", 64);
-
-            // NOTE: Full model snapshot is maintained in XeniaDbContextModelSnapshot.cs
-            // This designer file references the same model.
-#pragma warning restore 612, 618
         }
     }
 }

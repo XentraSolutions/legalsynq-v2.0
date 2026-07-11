@@ -1,14 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailRetentionRunConfiguration : IEntityTypeConfiguration<EmailRetentionRun>
 {
-    private static readonly EnumToStringConverter<EmailRetentionMode>      _modeConverter   = new();
-    private static readonly EnumToStringConverter<EmailRetentionRunStatus> _statusConverter = new();
 
     public void Configure(EntityTypeBuilder<EmailRetentionRun> builder)
     {
@@ -23,11 +20,11 @@ internal sealed class EmailRetentionRunConfiguration : IEntityTypeConfiguration<
 
         builder.Property(e => e.Mode)
             .HasColumnName("mode")
-            .HasConversion(_modeConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.Status)
             .HasColumnName("status")
-            .HasConversion(_statusConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.StartedAt)
             .HasColumnName("started_at").HasColumnType("datetime(6)").IsRequired();
