@@ -1,10 +1,13 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Xenia.Infrastructure.Persistence.Migrations
 {
+    [DbContext(typeof(Xenia.Infrastructure.Persistence.XeniaDbContext))]
+    [Migration("20260710000007_AddOperationsDomain")]
     /// <summary>
     /// Migration 7 — Email Operations Domain.
     ///

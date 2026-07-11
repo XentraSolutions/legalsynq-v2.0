@@ -81,5 +81,30 @@ public static class XeniaEmailMessageEndpoints
             var attachments = await messageService.GetAttachmentsAsync(tc.TenantId, id, ct);
             return Results.Ok(new { attachments, total = attachments.Count });
         }).RequireAuthorization(XeniaPolicies.EmailRead);
+
+        // POST /email/messages/{id}/attachments/retry
+        group.MapPost("/{id}/attachments/retry", async (
+            Guid id,
+            XeniaTenantContextAccessor tenantCtx,
+            IEmailMessageService messageService,
+            CancellationToken ct) =>
+        {
+            var tc = tenantCtx.Current;
+            if (tc is null || tc.TenantId == Guid.Empty) return Results.Unauthorized();
+
+            var result = await messageService.RetryAttachmentsAsync(tc.TenantId, id, tc.ActorId, ct);
+
+            if (!result.Success)
+            {
+                return result.ErrorCode switch
+                {
+                    "NOT_FOUND"   => Results.NotFound(new { errorCode = result.ErrorCode, message = result.SafeMessage }),
+                    "CONFLICT"    => Results.Conflict(new { errorCode = result.ErrorCode, message = result.SafeMessage }),
+                    _             => Results.UnprocessableEntity(new { errorCode = result.ErrorCode, message = result.SafeMessage }),
+                };
+            }
+
+            return Results.Ok(new { attachmentsQueued = result.AttachmentsQueued, message = "Attachment retry queued." });
+        }).RequireAuthorization(XeniaPolicies.EmailManage);
     }
 }

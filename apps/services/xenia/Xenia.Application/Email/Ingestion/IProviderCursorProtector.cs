@@ -18,6 +18,13 @@ public interface IProviderCursorProtector
     string GetVersion();
 
     /// <summary>
+    /// True if the implementation is operating with the dev-fallback zero-key
+    /// (i.e. XeniaCursorProtection:Key was not configured).
+    /// Must trigger a Critical log at startup when true outside Development.
+    /// </summary>
+    bool IsUsingDevFallbackKey { get; }
+
+    /// <summary>
     /// Protects a raw cursor value, binding it to the given tenant and source.
     /// The protected string is safe to persist in the database.
     /// </summary>

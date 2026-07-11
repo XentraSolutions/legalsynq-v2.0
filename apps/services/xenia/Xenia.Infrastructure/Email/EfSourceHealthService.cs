@@ -75,7 +75,7 @@ internal sealed class EfSourceHealthService : ISourceHealthService
 
         var isLocked     = lockRow is not null && !lockRow.IsExpired;
         var lockOwnerId  = isLocked ? SafeOwnerId(lockRow!.LeaseOwnerId) : null;
-        var lockExpires  = isLocked ? lockRow!.ExpiresAt : null;
+        var lockExpires  = isLocked ? (DateTime?)lockRow!.ExpiresAt : null;
 
         // Run counters
         var runAgg = await _db.EmailIngestionRuns

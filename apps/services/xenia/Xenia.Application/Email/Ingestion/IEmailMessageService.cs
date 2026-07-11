@@ -8,7 +8,20 @@ public interface IEmailMessageService
     Task<EmailMessagePage> ListMessagesAsync(EmailMessageQuery query, CancellationToken ct = default);
     Task<EmailMessageDetail?> GetMessageAsync(Guid tenantId, Guid messageId, CancellationToken ct = default);
     Task<IReadOnlyList<AttachmentReferenceDto>> GetAttachmentsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Queues a retry of attachment dispatch for a specific message.
+    /// Returns NotFound if the message does not belong to the tenant.
+    /// Returns Conflict if the message has no attachments or all attachments are already dispatched.
+    /// </summary>
+    Task<AttachmentRetryResult> RetryAttachmentsAsync(Guid tenantId, Guid messageId, Guid? actorId, CancellationToken ct = default);
 }
+
+public sealed record AttachmentRetryResult(
+    bool Success,
+    int AttachmentsQueued,
+    string? ErrorCode,
+    string? SafeMessage);
 
 public sealed record EmailMessageQuery
 {

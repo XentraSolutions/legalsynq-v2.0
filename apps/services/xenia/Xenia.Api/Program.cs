@@ -262,6 +262,22 @@ startupLogger.LogInformation(
     app.Environment.EnvironmentName,
     XeniaBuildInfo.ServiceVersion);
 
+// ── Production cursor-key enforcement ─────────────────────────────────────────
+// Warn loudly if the dev-fallback zero-key is active outside of Development.
+// Production deployments must set XeniaCursorProtection:Key (64-char hex / 32 bytes).
+var cursorProtector = app.Services.GetRequiredService<Xenia.Application.Email.Ingestion.IProviderCursorProtector>();
+if (cursorProtector.IsUsingDevFallbackKey)
+{
+    if (!app.Environment.IsDevelopment())
+        startupLogger.LogCritical(
+            "SECURITY: XeniaCursorProtection:Key is not configured. " +
+            "The dev-fallback zero-key is active in a non-Development environment. " +
+            "Set XeniaCursorProtection:Key to a 64-hex-char value before serving real traffic.");
+    else
+        startupLogger.LogWarning(
+            "XeniaCursorProtection:Key not set — using dev zero-key. Safe for Development only.");
+}
+
 app.Run();
 
 // ── Shared constants ──────────────────────────────────────────────────────────

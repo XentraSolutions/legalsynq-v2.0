@@ -140,4 +140,37 @@ internal sealed class EfEmailMessageService : IEmailMessageService
             })
             .ToListAsync(ct);
     }
+
+    public async Task<AttachmentRetryResult> RetryAttachmentsAsync(
+        Guid tenantId, Guid messageId, Guid? actorId, CancellationToken ct = default)
+    {
+        var exists = await _db.EmailMessages
+            .AnyAsync(m => m.TenantId == tenantId && m.Id == messageId, ct);
+
+        if (!exists)
+            return new AttachmentRetryResult(false, 0, "NOT_FOUND", "Message not found.");
+
+        var attachments = await _db.EmailAttachmentReferences
+            .Where(a => a.TenantId == tenantId && a.EmailMessageId == messageId)
+            .ToListAsync(ct);
+
+        if (attachments.Count == 0)
+            return new AttachmentRetryResult(false, 0, "CONFLICT", "Message has no attachments.");
+
+        var retryable = attachments
+            .Where(a => a.DispatchStatus == AttachmentDispatchStatus.Pending ||
+                        a.DispatchStatus == AttachmentDispatchStatus.Failed)
+            .ToList();
+
+        if (retryable.Count == 0)
+            return new AttachmentRetryResult(false, 0, "CONFLICT",
+                "All attachments are already dispatched or skipped.");
+
+        foreach (var att in retryable)
+            att.MarkPending();
+
+        await _db.SaveChangesAsync(ct);
+
+        return new AttachmentRetryResult(true, retryable.Count, null, null);
+    }
 }

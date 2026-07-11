@@ -78,6 +78,15 @@ public sealed class EmailAttachmentReference
         };
     }
 
+    /// <summary>Resets a Failed or Skipped attachment back to Pending for retry.</summary>
+    public void MarkPending()
+    {
+        ErrorCode        = null;
+        SafeErrorSummary = null;
+        DispatchStatus   = AttachmentDispatchStatus.Pending;
+        UpdatedAtUtc     = DateTime.UtcNow;
+    }
+
     public void MarkDispatched(Guid documentReferenceId, string? contentHash)
     {
         DocumentReferenceId = documentReferenceId;

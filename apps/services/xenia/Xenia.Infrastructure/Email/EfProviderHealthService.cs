@@ -28,9 +28,9 @@ internal sealed class EfProviderHealthService : IProviderHealthService
                 SupportsAttachments: true,
                 SupportsRateLimitHandling: false),
 
-            [EmailProviderType.Gmail] = new(
+            [EmailProviderType.Google] = new(
                 Classification: ProviderClassification.ProtocolCompleteUnverified,
-                DisplayName: "Gmail",
+                DisplayName: "Gmail / Google Workspace",
                 SupportsAuthentication: true,
                 SupportsIngestion: true,
                 SupportsIncrementalCursor: true,
@@ -46,7 +46,7 @@ internal sealed class EfProviderHealthService : IProviderHealthService
                 SupportsAttachments: true,
                 SupportsRateLimitHandling: true),
 
-            [EmailProviderType.Exchange] = new(
+            [EmailProviderType.ExchangeImap] = new(
                 Classification: ProviderClassification.Stub,
                 DisplayName: "Exchange (IMAP mode)",
                 SupportsAuthentication: true,
@@ -76,7 +76,7 @@ internal sealed class EfProviderHealthService : IProviderHealthService
                 Provider      = g.Key,
                 Total         = g.Count(),
                 Healthy       = g.Count(s => s.HealthStatus == EmailHealthStatus.Healthy),
-                Failed        = g.Count(s => s.HealthStatus == EmailHealthStatus.Unhealthy),
+                Failed        = g.Count(s => s.HealthStatus == EmailHealthStatus.Unavailable),
             })
             .ToListAsync(ct);
 

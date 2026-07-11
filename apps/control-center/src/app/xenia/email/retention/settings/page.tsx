@@ -71,7 +71,7 @@ export default async function EmailRetentionSettingsPage() {
             />
             <SettingsRow
               label="Attachment Reference Retention"
-              value={`${settings.attachmentReferenceRetentionDays ?? '365'} days`}
+              value={`${settings.ingestionRunRetentionDays ?? 365} days`}
             />
             <SettingsRow
               label="Purge Batch Size"
