@@ -143,6 +143,16 @@ builder.Services.AddAuthorization(options =>
                   ctx.User.HasClaim("permissions", XeniaPermissions.EmailValidate) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.EmailManage) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
+
+    // Email sync — trigger ingestion runs, view sync state and history
+    options.AddPolicy(XeniaPolicies.EmailSync, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  IsPlatformAdmin(ctx.User) ||
+                  IsTenantAdmin(ctx.User) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailSync) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
 });
 
 // ── Application and infrastructure services ───────────────────────────────────
@@ -187,6 +197,10 @@ app.MapXeniaEmailSourceEndpoints();
 app.MapXeniaEmailProviderEndpoints();
 app.MapXeniaEmailSettingsEndpoints();
 
+// Email ingestion engine endpoints
+app.MapXeniaEmailSyncEndpoints();
+app.MapXeniaEmailMessageEndpoints();
+
 // Auth smoke-test endpoint
 app.MapGet("/secure/ping", (HttpContext ctx) =>
 {
@@ -218,6 +232,7 @@ public static class XeniaPolicies
     public const string EmailRead         = "XeniaEmailRead";
     public const string EmailManage       = "XeniaEmailManage";
     public const string EmailValidate     = "XeniaEmailValidate";
+    public const string EmailSync         = "XeniaEmailSync";
 }
 
 public static class XeniaPermissions
@@ -229,9 +244,10 @@ public static class XeniaPermissions
     public const string AdaptersRead = "xenia.adapters.read";
     public const string ConfigurationRead = "xenia.configuration.read";
     public const string ConfigurationManage = "xenia.configuration.manage";
-    public const string EmailRead = "xenia.email.read";
-    public const string EmailManage = "xenia.email.manage";
+    public const string EmailRead     = "xenia.email.read";
+    public const string EmailManage   = "xenia.email.manage";
     public const string EmailValidate = "xenia.email.validate";
+    public const string EmailSync     = "xenia.email.sync";
 }
 
 public static class XeniaBuildInfo

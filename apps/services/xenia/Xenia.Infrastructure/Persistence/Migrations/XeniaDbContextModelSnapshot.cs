@@ -205,6 +205,162 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                 b.HasIndex("TenantId").IsUnique().HasDatabaseName("ix_xn_email_settings_tenant_id_unique");
                 b.ToTable("xn_email_settings");
             });
+
+            modelBuilder.Entity("Xenia.Domain.Email.EmailMessage", b =>
+            {
+                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
+                b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)").HasColumnName("tenant_id");
+                b.Property<string>("EmailSourceId").IsRequired().HasColumnType("char(36)").HasColumnName("email_source_id");
+                b.Property<string>("ProviderType").IsRequired().HasMaxLength(32).HasColumnName("provider_type");
+                b.Property<string>("ProviderMessageId").IsRequired().HasMaxLength(1024).HasColumnName("provider_message_id");
+                b.Property<string>("InternetMessageId").HasMaxLength(998).HasColumnName("internet_message_id");
+                b.Property<string>("ThreadId").HasMaxLength(500).HasColumnName("thread_id");
+                b.Property<string>("ConversationId").HasMaxLength(500).HasColumnName("conversation_id");
+                b.Property<string>("Subject").HasMaxLength(998).HasColumnName("subject");
+                b.Property<string>("FromAddress").HasMaxLength(320).HasColumnName("from_address");
+                b.Property<string>("FromName").HasMaxLength(500).HasColumnName("from_name");
+                b.Property<string>("SenderAddress").HasMaxLength(320).HasColumnName("sender_address");
+                b.Property<string>("SenderName").HasMaxLength(500).HasColumnName("sender_name");
+                b.Property<string>("ReplyToAddresses").HasMaxLength(2000).HasColumnName("reply_to_addresses");
+                b.Property<DateTime?>("SentAt").HasColumnType("datetime(6)").HasColumnName("sent_at");
+                b.Property<DateTime?>("ReceivedAt").HasColumnType("datetime(6)").HasColumnName("received_at");
+                b.Property<string>("Importance").IsRequired().HasMaxLength(16).HasColumnName("importance").HasDefaultValue("Normal");
+                b.Property<bool?>("IsRead").HasColumnName("is_read");
+                b.Property<bool>("HasAttachments").HasColumnName("has_attachments");
+                b.Property<int>("AttachmentCount").HasColumnName("attachment_count");
+                b.Property<string>("BodyType").IsRequired().HasMaxLength(16).HasColumnName("body_type").HasDefaultValue("Unknown");
+                b.Property<string>("BodyText").HasColumnType("mediumtext").HasColumnName("body_text");
+                b.Property<string>("BodyHtml").HasColumnType("mediumtext").HasColumnName("body_html");
+                b.Property<string>("BodyPreview").HasMaxLength(500).HasColumnName("body_preview");
+                b.Property<string>("HeadersJson").HasColumnType("text").HasColumnName("headers_json");
+                b.Property<string>("ProviderMetadataJson").HasMaxLength(8000).HasColumnName("provider_metadata_json");
+                b.Property<string>("ContentHash").HasMaxLength(128).HasColumnName("content_hash");
+                b.Property<string>("ImportStatus").IsRequired().HasMaxLength(32).HasColumnName("import_status").HasDefaultValue("Pending");
+                b.Property<string>("ProcessingState").IsRequired().HasMaxLength(32).HasColumnName("processing_state").HasDefaultValue("Pending");
+                b.Property<DateTime?>("ImportedAt").HasColumnType("datetime(6)").HasColumnName("imported_at");
+                b.Property<DateTime?>("LastObservedAt").HasColumnType("datetime(6)").HasColumnName("last_observed_at");
+                b.Property<string>("LastIngestionRunId").HasColumnType("char(36)").HasColumnName("last_ingestion_run_id");
+                b.Property<int>("Version").HasColumnName("version");
+                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at_utc");
+                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at_utc");
+                b.HasKey("Id");
+                b.HasIndex("TenantId", "EmailSourceId", "ProviderType", "ProviderMessageId").IsUnique().HasDatabaseName("ux_email_messages_provider_unique");
+                b.HasIndex("TenantId", "InternetMessageId").HasDatabaseName("ix_email_messages_internet_message_id");
+                b.HasIndex("TenantId").HasDatabaseName("ix_email_messages_tenant");
+                b.HasIndex("TenantId", "EmailSourceId").HasDatabaseName("ix_email_messages_source");
+                b.HasIndex("TenantId", "ReceivedAt").HasDatabaseName("ix_email_messages_received_at");
+                b.HasIndex("TenantId", "ImportStatus").HasDatabaseName("ix_email_messages_import_status");
+                b.HasIndex("TenantId", "HasAttachments").HasDatabaseName("ix_email_messages_has_attachments");
+                b.ToTable("xn_email_messages");
+            });
+
+            modelBuilder.Entity("Xenia.Domain.Email.EmailMessageRecipient", b =>
+            {
+                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
+                b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)").HasColumnName("tenant_id");
+                b.Property<string>("EmailMessageId").IsRequired().HasColumnType("char(36)").HasColumnName("email_message_id");
+                b.Property<string>("RecipientType").IsRequired().HasMaxLength(16).HasColumnName("recipient_type");
+                b.Property<string>("EmailAddress").IsRequired().HasMaxLength(320).HasColumnName("email_address");
+                b.Property<string>("DisplayName").HasMaxLength(500).HasColumnName("display_name");
+                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at_utc");
+                b.HasKey("Id");
+                b.HasIndex("EmailMessageId").HasDatabaseName("ix_email_recipients_message");
+                b.HasIndex("TenantId", "EmailAddress").HasDatabaseName("ix_email_recipients_address");
+                b.ToTable("xn_email_recipients");
+            });
+
+            modelBuilder.Entity("Xenia.Domain.Email.EmailAttachmentReference", b =>
+            {
+                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
+                b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)").HasColumnName("tenant_id");
+                b.Property<string>("EmailMessageId").IsRequired().HasColumnType("char(36)").HasColumnName("email_message_id");
+                b.Property<string>("ProviderAttachmentId").HasMaxLength(1024).HasColumnName("provider_attachment_id");
+                b.Property<string>("DocumentReferenceId").HasColumnType("char(36)").HasColumnName("document_reference_id");
+                b.Property<string>("FileName").IsRequired().HasMaxLength(500).HasColumnName("file_name");
+                b.Property<string>("MimeType").HasMaxLength(255).HasColumnName("mime_type");
+                b.Property<long?>("SizeBytes").HasColumnName("size_bytes");
+                b.Property<string>("ContentHash").HasMaxLength(128).HasColumnName("content_hash");
+                b.Property<bool>("IsInline").HasColumnName("is_inline");
+                b.Property<string>("ContentId").HasMaxLength(500).HasColumnName("content_id");
+                b.Property<string>("Disposition").HasMaxLength(100).HasColumnName("disposition");
+                b.Property<string>("DispatchStatus").IsRequired().HasMaxLength(32).HasColumnName("dispatch_status").HasDefaultValue("Pending");
+                b.Property<string>("ErrorCode").HasMaxLength(100).HasColumnName("error_code");
+                b.Property<string>("SafeErrorSummary").HasMaxLength(500).HasColumnName("safe_error_summary");
+                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at_utc");
+                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at_utc");
+                b.HasKey("Id");
+                b.HasIndex("TenantId", "EmailMessageId", "ProviderAttachmentId").HasDatabaseName("ix_email_attachments_provider_id");
+                b.HasIndex("EmailMessageId").HasDatabaseName("ix_email_attachments_message");
+                b.HasIndex("TenantId", "DispatchStatus").HasDatabaseName("ix_email_attachments_dispatch_status");
+                b.ToTable("xn_email_attachment_references");
+            });
+
+            modelBuilder.Entity("Xenia.Domain.Email.EmailSyncState", b =>
+            {
+                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
+                b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)").HasColumnName("tenant_id");
+                b.Property<string>("EmailSourceId").IsRequired().HasColumnType("char(36)").HasColumnName("email_source_id");
+                b.Property<string>("ProviderType").IsRequired().HasMaxLength(32).HasColumnName("provider_type");
+                b.Property<string>("CursorType").IsRequired().HasMaxLength(32).HasColumnName("cursor_type");
+                b.Property<string>("CursorValue").HasMaxLength(4000).HasColumnName("cursor_value");
+                b.Property<string>("CursorMetadataJson").HasMaxLength(2000).HasColumnName("cursor_metadata_json");
+                b.Property<string>("SafeCursorSummary").HasMaxLength(200).HasColumnName("safe_cursor_summary");
+                b.Property<DateTime?>("LastSuccessfulSyncAt").HasColumnType("datetime(6)").HasColumnName("last_successful_sync_at");
+                b.Property<DateTime?>("LastAttemptedSyncAt").HasColumnType("datetime(6)").HasColumnName("last_attempted_sync_at");
+                b.Property<DateTime?>("LastProcessedProviderTimestamp").HasColumnType("datetime(6)").HasColumnName("last_processed_provider_timestamp");
+                b.Property<string>("LastProcessedProviderMessageId").HasMaxLength(1024).HasColumnName("last_processed_provider_message_id");
+                b.Property<bool>("InitialSyncCompleted").HasColumnName("initial_sync_completed");
+                b.Property<int>("ConsecutiveFailureCount").HasColumnName("consecutive_failure_count");
+                b.Property<DateTime?>("NextEligibleSyncAt").HasColumnType("datetime(6)").HasColumnName("next_eligible_sync_at");
+                b.Property<string>("LastErrorCode").HasMaxLength(100).HasColumnName("last_error_code");
+                b.Property<string>("SafeLastErrorSummary").HasMaxLength(500).HasColumnName("safe_last_error_summary");
+                b.Property<int>("StateVersion").HasColumnName("state_version").IsConcurrencyToken();
+                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at_utc");
+                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at_utc");
+                b.HasKey("Id");
+                b.HasIndex("EmailSourceId").IsUnique().HasDatabaseName("ux_email_sync_state_source_unique");
+                b.HasIndex("TenantId").HasDatabaseName("ix_email_sync_state_tenant");
+                b.HasIndex("TenantId", "NextEligibleSyncAt").HasDatabaseName("ix_email_sync_state_next_eligible");
+                b.HasIndex("TenantId", "LastSuccessfulSyncAt").HasDatabaseName("ix_email_sync_state_last_success");
+                b.ToTable("xn_email_sync_state");
+            });
+
+            modelBuilder.Entity("Xenia.Domain.Email.EmailIngestionRun", b =>
+            {
+                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
+                b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)").HasColumnName("tenant_id");
+                b.Property<string>("EmailSourceId").IsRequired().HasColumnType("char(36)").HasColumnName("email_source_id");
+                b.Property<string>("TriggerType").IsRequired().HasMaxLength(32).HasColumnName("trigger_type");
+                b.Property<string>("Status").IsRequired().HasMaxLength(32).HasColumnName("status");
+                b.Property<DateTime>("StartedAt").HasColumnType("datetime(6)").HasColumnName("started_at");
+                b.Property<DateTime?>("CompletedAt").HasColumnType("datetime(6)").HasColumnName("completed_at");
+                b.Property<long?>("DurationMs").HasColumnName("duration_ms");
+                b.Property<string>("CorrelationId").HasMaxLength(200).HasColumnName("correlation_id");
+                b.Property<string>("ActorId").HasColumnType("char(36)").HasColumnName("actor_id");
+                b.Property<string>("WorkerInstanceId").HasMaxLength(200).HasColumnName("worker_instance_id");
+                b.Property<int>("MessagesDiscovered").HasColumnName("messages_discovered");
+                b.Property<int>("MessagesImported").HasColumnName("messages_imported");
+                b.Property<int>("MessagesUpdated").HasColumnName("messages_updated");
+                b.Property<int>("MessagesDuplicated").HasColumnName("messages_duplicated");
+                b.Property<int>("MessagesFailed").HasColumnName("messages_failed");
+                b.Property<int>("AttachmentsDiscovered").HasColumnName("attachments_discovered");
+                b.Property<int>("AttachmentsDispatched").HasColumnName("attachments_dispatched");
+                b.Property<int>("AttachmentsFailed").HasColumnName("attachments_failed");
+                b.Property<int>("PagesProcessed").HasColumnName("pages_processed");
+                b.Property<int>("RetryCount").HasColumnName("retry_count");
+                b.Property<string>("CursorBeforeSafeSummary").HasMaxLength(200).HasColumnName("cursor_before_safe_summary");
+                b.Property<string>("CursorAfterSafeSummary").HasMaxLength(200).HasColumnName("cursor_after_safe_summary");
+                b.Property<string>("ErrorCode").HasMaxLength(100).HasColumnName("error_code");
+                b.Property<string>("SafeErrorSummary").HasMaxLength(500).HasColumnName("safe_error_summary");
+                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at_utc");
+                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at_utc");
+                b.HasKey("Id");
+                b.HasIndex("TenantId").HasDatabaseName("ix_ingestion_runs_tenant");
+                b.HasIndex("TenantId", "EmailSourceId").HasDatabaseName("ix_ingestion_runs_source");
+                b.HasIndex("TenantId", "Status").HasDatabaseName("ix_ingestion_runs_status");
+                b.HasIndex("TenantId", "StartedAt").HasDatabaseName("ix_ingestion_runs_started_at");
+                b.ToTable("xn_email_ingestion_runs");
+            });
 #pragma warning restore 612, 618
         }
     }

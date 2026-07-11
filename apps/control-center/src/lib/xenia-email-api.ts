@@ -246,3 +246,153 @@ export async function updateEmailSettings(
     body: JSON.stringify(payload),
   });
 }
+
+// ── Email Sync / Ingestion ────────────────────────────────────────────────────
+
+export interface EmailSyncState {
+  id: string;
+  tenantId: string;
+  emailSourceId: string;
+  providerType: string;
+  cursorType: string;
+  cursorValue?: string;
+  safeCursorSummary?: string;
+  lastSuccessfulSyncAt?: string;
+  lastAttemptedSyncAt?: string;
+  initialSyncCompleted: boolean;
+  consecutiveFailureCount: number;
+  nextEligibleSyncAt?: string;
+  lastErrorCode?: string;
+  safeLastErrorSummary?: string;
+  stateVersion: number;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface IngestionRun {
+  id: string;
+  tenantId: string;
+  emailSourceId: string;
+  triggerType: string;
+  status: string;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  correlationId?: string;
+  messagesDiscovered: number;
+  messagesImported: number;
+  messagesUpdated: number;
+  messagesDuplicated: number;
+  messagesFailed: number;
+  attachmentsDiscovered: number;
+  attachmentsDispatched: number;
+  attachmentsFailed: number;
+  pagesProcessed: number;
+  retryCount: number;
+  cursorBeforeSafeSummary?: string;
+  cursorAfterSafeSummary?: string;
+  errorCode?: string;
+  safeErrorSummary?: string;
+  createdAtUtc: string;
+}
+
+export interface EmailMessageSummary {
+  id: string;
+  tenantId: string;
+  emailSourceId: string;
+  subject?: string;
+  fromAddress?: string;
+  fromName?: string;
+  receivedAt?: string;
+  sentAt?: string;
+  importance: string;
+  hasAttachments: boolean;
+  attachmentCount: number;
+  bodyPreview?: string;
+  importStatus: string;
+  importedAt?: string;
+}
+
+export interface EmailMessageAttachment {
+  id: string;
+  fileName: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  isInline: boolean;
+  contentId?: string;
+  dispatchStatus: string;
+  documentReferenceId?: string;
+}
+
+export interface EmailMessageRecipient {
+  id: string;
+  recipientType: string;
+  emailAddress: string;
+  displayName?: string;
+}
+
+export interface EmailMessageDetail extends EmailMessageSummary {
+  internetMessageId?: string;
+  threadId?: string;
+  conversationId?: string;
+  senderAddress?: string;
+  senderName?: string;
+  replyToAddresses?: string;
+  isRead?: boolean;
+  bodyType: string;
+  bodyText?: string;
+  bodyPreview?: string;
+  updatedAtUtc: string;
+  recipients: EmailMessageRecipient[];
+  attachments: EmailMessageAttachment[];
+}
+
+export interface EmailMessagesQuery {
+  sourceId?: string;
+  fromAddress?: string;
+  subject?: string;
+  importStatus?: string;
+  pageSize?: number;
+  pageOffset?: number;
+}
+
+export async function triggerEmailSync(token: string, sourceId: string): Promise<IngestionRun> {
+  return xeniaFetch(`/email/sources/${sourceId}/sync`, token, { method: 'POST' });
+}
+
+export async function getEmailSyncState(
+  token: string,
+  sourceId: string,
+): Promise<EmailSyncState> {
+  return xeniaFetch(`/email/sources/${sourceId}/sync/state`, token);
+}
+
+export async function getIngestionHistory(
+  token: string,
+  sourceId: string,
+  limit = 20,
+): Promise<{ sourceId: string; runs: IngestionRun[]; total: number }> {
+  return xeniaFetch(`/email/sources/${sourceId}/sync/history?limit=${limit}`, token);
+}
+
+export async function getEmailMessages(
+  token: string,
+  query: EmailMessagesQuery = {},
+): Promise<{ messages: EmailMessageSummary[]; totalCount: number }> {
+  const params = new URLSearchParams();
+  if (query.sourceId)     params.set('sourceId',     query.sourceId);
+  if (query.fromAddress)  params.set('fromAddress',  query.fromAddress);
+  if (query.subject)      params.set('subject',      query.subject);
+  if (query.importStatus) params.set('importStatus', query.importStatus);
+  if (query.pageSize)     params.set('pageSize',     String(query.pageSize));
+  if (query.pageOffset)   params.set('pageOffset',   String(query.pageOffset));
+  const qs = params.toString();
+  return xeniaFetch(`/email/messages${qs ? `?${qs}` : ''}`, token);
+}
+
+export async function getEmailMessage(
+  token: string,
+  messageId: string,
+): Promise<EmailMessageDetail> {
+  return xeniaFetch(`/email/messages/${messageId}`, token);
+}

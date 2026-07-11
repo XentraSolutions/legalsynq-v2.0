@@ -9,6 +9,7 @@ export default function XeniaEmailLayout({ children }: { children: React.ReactNo
         <nav className="flex gap-5 px-0 py-2">
           <EmailNavLink href="/xenia/email" label="Dashboard" />
           <EmailNavLink href="/xenia/email/sources" label="Sources" />
+          <EmailNavLink href="/xenia/email/messages" label="Messages" />
           <EmailNavLink href="/xenia/email/providers" label="Providers" />
           <EmailNavLink href="/xenia/email/settings" label="Settings" />
         </nav>
