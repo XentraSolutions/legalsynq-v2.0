@@ -6,6 +6,7 @@ using Xenia.Application.Adapters.Interfaces;
 using Xenia.Application.Configuration;
 using Xenia.Application.Email;
 using Xenia.Application.Email.Ingestion;
+using Xenia.Application.Email.Operations;
 using Xenia.Application.Events;
 using Xenia.Application.Modules;
 using Xenia.Application.TenantContext;
@@ -159,5 +160,20 @@ public static class DependencyInjection
 
         // Background worker (disabled by default via XeniaIngestionOptions.WorkerEnabled = false)
         services.AddHostedService<EmailIngestionWorker>();
+
+        // ── Email operations & monitoring ──────────────────────────────────
+        services.AddSingleton<IEmailHeaderSanitizer, EmailHeaderSanitizer>();
+
+        services.AddScoped<IEmailOperationalSettingsService, EfEmailOperationalSettingsService>();
+        services.AddScoped<IAlertService, EfAlertService>();
+        services.AddScoped<IAlertRuleEngine, DefaultAlertRuleEngine>();
+        services.AddScoped<IOperationsSummaryService, EfOperationsSummaryService>();
+        services.AddScoped<ISourceHealthService, EfSourceHealthService>();
+        services.AddScoped<IProviderHealthService, EfProviderHealthService>();
+        services.AddScoped<IRunQueryService, EfRunQueryService>();
+        services.AddScoped<IRetentionService, EfRetentionService>();
+
+        // Lock lease renewal background service
+        services.AddHostedService<LockLeaseRenewalService>();
     }
 }

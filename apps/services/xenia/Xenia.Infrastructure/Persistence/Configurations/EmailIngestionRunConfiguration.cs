@@ -93,6 +93,9 @@ internal sealed class EmailIngestionRunConfiguration : IEntityTypeConfiguration<
         builder.Property(e => e.SafeErrorSummary)
             .HasColumnName("safe_error_summary").HasMaxLength(EmailIngestionRun.SafeErrorSummaryMaxLength);
 
+        builder.Property(e => e.RetryOfRunId)
+            .HasColumnName("retry_of_run_id").HasColumnType("char(36)");
+
         builder.Property(e => e.CreatedAtUtc)
             .HasColumnName("created_at_utc").HasColumnType("datetime(6)").IsRequired();
 

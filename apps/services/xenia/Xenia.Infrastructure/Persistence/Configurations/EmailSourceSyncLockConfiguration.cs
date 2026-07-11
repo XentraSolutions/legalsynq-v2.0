@@ -65,7 +65,20 @@ internal sealed class EmailSourceSyncLockConfiguration : IEntityTypeConfiguratio
             .IsUnique()
             .HasDatabaseName("ux_email_source_sync_locks_source");
 
+        builder.Property(x => x.FencingToken)
+            .HasColumnName("fencing_token")
+            .IsRequired()
+            .HasDefaultValue(1L);
+
+        builder.Property(x => x.RenewalFailureCount)
+            .HasColumnName("renewal_failure_count")
+            .IsRequired()
+            .HasDefaultValue(0);
+
         builder.HasIndex(x => x.ExpiresAt)
             .HasDatabaseName("ix_email_source_sync_locks_expires_at");
+
+        builder.HasIndex(x => x.FencingToken)
+            .HasDatabaseName("ix_email_source_sync_locks_fencing_token");
     }
 }

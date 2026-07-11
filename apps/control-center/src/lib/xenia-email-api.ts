@@ -396,3 +396,308 @@ export async function getEmailMessage(
 ): Promise<EmailMessageDetail> {
   return xeniaFetch(`/email/messages/${messageId}`, token);
 }
+
+// ─── T4: Operations, Monitoring, and Alerts ───────────────────────────────────
+
+export interface OperationsSummary {
+  tenantId: string;
+  from?: string;
+  to?: string;
+  totalRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  runningRuns: number;
+  cancelledRuns: number;
+  totalMessagesImported: number;
+  totalErrors: number;
+  openAlerts: number;
+  criticalAlerts: number;
+  warningAlerts: number;
+  sourcesHealthy: number;
+  sourcesDegraded: number;
+  sourcesUnavailable: number;
+  sourcesUnknown: number;
+  lockContention: number;
+  averageRunDurationMs?: number;
+  lastRunAt?: string;
+}
+
+export interface SourceHealthSnapshot {
+  sourceId: string;
+  displayName: string;
+  emailAddress: string;
+  providerType: string;
+  healthStatus: string;
+  consecutiveFailureCount: number;
+  nextEligibleSyncAt?: string;
+  lastSuccessfulSyncAt?: string;
+  lastAttemptedSyncAt?: string;
+  lastErrorCode?: string;
+  safeLastErrorSummary?: string;
+  activeLockOwner?: string;
+  lockExpiresAt?: string;
+  fencingToken?: number;
+  renewalFailureCount?: number;
+}
+
+export interface ProviderHealthSnapshot {
+  providerType: string;
+  displayName: string;
+  totalSources: number;
+  healthySources: number;
+  degradedSources: number;
+  unavailableSources: number;
+  recentSuccessRate?: number;
+  lastActivityAt?: string;
+}
+
+export interface IngestionRunSummary {
+  id: string;
+  tenantId: string;
+  emailSourceId: string;
+  sourceDisplayName?: string;
+  providerType: string;
+  status: string;
+  triggerType: string;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  messagesImported: number;
+  messagesDuplicate: number;
+  messagesSkipped: number;
+  errorCount: number;
+  retryCount: number;
+  retryOfRunId?: string;
+  correlationId?: string;
+}
+
+export interface IngestionRunDetail extends IngestionRunSummary {
+  pagesProcessed: number;
+  cursorBeforeSafeSummary?: string;
+  cursorAfterSafeSummary?: string;
+  errorCode?: string;
+  safeErrorSummary?: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface RunListResult {
+  runs: IngestionRunSummary[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface OperationalAlert {
+  id: string;
+  tenantId: string;
+  emailSourceId?: string;
+  sourceDisplayName?: string;
+  providerType?: string;
+  alertType: string;
+  severity: string;
+  status: string;
+  deduplicationKey: string;
+  title: string;
+  safeDescription: string;
+  firstObservedAt: string;
+  lastObservedAt: string;
+  occurrenceCount: number;
+  acknowledgedAt?: string;
+  resolvedAt?: string;
+  resolutionReason?: string;
+  suppressedUntil?: string;
+  isSuppressedNow: boolean;
+  correlationId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AlertListResult {
+  alerts: OperationalAlert[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface EmailOperationalSettings {
+  id: string;
+  tenantId: string;
+  defaultDashboardRangeDays: number;
+  sourceFailureAlertThreshold: number;
+  staleSyncThresholdMinutes: number;
+  lockWarningThresholdMinutes: number;
+  maximumRetryCount: number;
+  cancellationTimeoutSeconds: number;
+  metricsEnabled: boolean;
+  notificationAlertsEnabled: boolean;
+  defaultRunPageSize: number;
+  defaultMessagePageSize: number;
+  messageMetadataRetentionDays: number;
+  messageBodyRetentionDays: number;
+  ingestionRunRetentionDays: number;
+  alertRetentionDays: number;
+  purgeBatchSize: number;
+  retentionDryRunDefault: boolean;
+  legalHoldEnabled: boolean;
+  retentionEnabled: boolean;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export interface RetentionRun {
+  id: string;
+  tenantId: string;
+  mode: string;
+  status: string;
+  startedAt: string;
+  completedAt?: string;
+  messagesEligible: number;
+  messagesDeleted: number;
+  bodiesCleared: number;
+  runsDeleted: number;
+  alertsDeleted: number;
+  attachmentReferencesDeleted: number;
+  failures: number;
+  safeErrorSummary?: string;
+  correlationId?: string;
+  actorId?: string;
+  createdAt: string;
+}
+
+// ── Operations summary ────────────────────────────────────────────────────────
+
+export async function getEmailOperationsSummary(
+  token: string,
+  params: { from?: string; to?: string; sourceId?: string } = {},
+): Promise<OperationsSummary> {
+  const qs = new URLSearchParams();
+  if (params.from)     qs.set('from',     params.from);
+  if (params.to)       qs.set('to',       params.to);
+  if (params.sourceId) qs.set('sourceId', params.sourceId);
+  return xeniaFetch(`/api/v1/email/operations/summary${qs.size ? `?${qs}` : ''}`, token);
+}
+
+// ── Source health ─────────────────────────────────────────────────────────────
+
+export async function getAllSourceHealth(token: string): Promise<{ items: SourceHealthSnapshot[]; count: number }> {
+  return xeniaFetch('/api/v1/email/operations/sources/health', token);
+}
+
+export async function getSourceHealth(token: string, sourceId: string): Promise<SourceHealthSnapshot> {
+  return xeniaFetch(`/api/v1/email/operations/sources/${sourceId}/health`, token);
+}
+
+// ── Provider health ───────────────────────────────────────────────────────────
+
+export async function getAllProviderHealth(token: string): Promise<{ items: ProviderHealthSnapshot[]; count: number }> {
+  return xeniaFetch('/api/v1/email/operations/providers/health', token);
+}
+
+// ── Runs ──────────────────────────────────────────────────────────────────────
+
+export interface RunListQuery {
+  page?: number;
+  pageSize?: number;
+  sourceId?: string;
+  status?: string;
+  trigger?: string;
+  hasErrors?: boolean;
+  from?: string;
+  to?: string;
+  correlationId?: string;
+}
+
+export async function listEmailRuns(token: string, query: RunListQuery = {}): Promise<RunListResult> {
+  const qs = new URLSearchParams();
+  if (query.page)          qs.set('page',          String(query.page));
+  if (query.pageSize)      qs.set('pageSize',       String(query.pageSize));
+  if (query.sourceId)      qs.set('sourceId',       query.sourceId);
+  if (query.status)        qs.set('status',         query.status);
+  if (query.trigger)       qs.set('trigger',        query.trigger);
+  if (query.hasErrors != null) qs.set('hasErrors',  String(query.hasErrors));
+  if (query.from)          qs.set('from',           query.from);
+  if (query.to)            qs.set('to',             query.to);
+  if (query.correlationId) qs.set('correlationId',  query.correlationId);
+  return xeniaFetch(`/api/v1/email/operations/runs?${qs}`, token);
+}
+
+export async function getEmailRun(token: string, runId: string): Promise<IngestionRunDetail> {
+  return xeniaFetch(`/api/v1/email/operations/runs/${runId}`, token);
+}
+
+export async function retryEmailRun(token: string, runId: string): Promise<{ runId: string; message: string }> {
+  return xeniaFetch(`/api/v1/email/operations/runs/${runId}/retry`, token, { method: 'POST', body: '{}' });
+}
+
+export async function cancelEmailRun(token: string, runId: string): Promise<{ state: string }> {
+  return xeniaFetch(`/api/v1/email/operations/runs/${runId}/cancel`, token, { method: 'POST', body: '{}' });
+}
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+
+export interface AlertListQuery {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  severity?: string;
+  alertType?: string;
+  sourceId?: string;
+}
+
+export async function listEmailAlerts(token: string, query: AlertListQuery = {}): Promise<AlertListResult> {
+  const qs = new URLSearchParams();
+  if (query.page)      qs.set('page',      String(query.page));
+  if (query.pageSize)  qs.set('pageSize',  String(query.pageSize));
+  if (query.status)    qs.set('status',    query.status);
+  if (query.severity)  qs.set('severity',  query.severity);
+  if (query.alertType) qs.set('alertType', query.alertType);
+  if (query.sourceId)  qs.set('sourceId',  query.sourceId);
+  return xeniaFetch(`/api/v1/email/operations/alerts?${qs}`, token);
+}
+
+export async function acknowledgeAlert(token: string, alertId: string): Promise<{ acknowledged: boolean }> {
+  return xeniaFetch(`/api/v1/email/operations/alerts/${alertId}/acknowledge`, token, { method: 'POST', body: '{}' });
+}
+
+export async function resolveAlert(token: string, alertId: string, reason?: string): Promise<{ resolved: boolean }> {
+  return xeniaFetch(`/api/v1/email/operations/alerts/${alertId}/resolve`, token, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+export async function getEmailOperationalSettings(token: string): Promise<EmailOperationalSettings> {
+  return xeniaFetch('/api/v1/email/operations/settings', token);
+}
+
+export async function updateEmailOperationalSettings(
+  token: string,
+  settings: Partial<EmailOperationalSettings>,
+): Promise<EmailOperationalSettings> {
+  return xeniaFetch('/api/v1/email/operations/settings', token, {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+}
+
+// ── Retention ─────────────────────────────────────────────────────────────────
+
+export async function runEmailRetention(
+  token: string,
+  dryRun = true,
+): Promise<RetentionRun> {
+  return xeniaFetch('/api/v1/email/operations/retention/run', token, {
+    method: 'POST',
+    body: JSON.stringify({ dryRun }),
+  });
+}
+
+export async function getRetentionHistory(
+  token: string,
+  limit = 20,
+): Promise<{ items: RetentionRun[]; count: number }> {
+  return xeniaFetch(`/api/v1/email/operations/retention/history?limit=${limit}`, token);
+}

@@ -153,6 +153,45 @@ builder.Services.AddAuthorization(options =>
                   ctx.User.HasClaim("permissions", XeniaPermissions.EmailSync) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.EmailManage) ||
                   ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
+
+    // Email operations read — view operations dashboard, run history, alerts, settings
+    options.AddPolicy(XeniaPolicies.EmailOperationsRead, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  IsPlatformAdmin(ctx.User) ||
+                  IsTenantAdmin(ctx.User) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailOperationsRead) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailOperationsManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
+
+    // Email operations manage — retry/cancel runs, update settings
+    options.AddPolicy(XeniaPolicies.EmailOperationsManage, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  IsPlatformAdmin(ctx.User) ||
+                  IsTenantAdmin(ctx.User) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailOperationsManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
+
+    // Email alerts manage — acknowledge, resolve, suppress alerts
+    options.AddPolicy(XeniaPolicies.EmailAlertsManage, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  IsPlatformAdmin(ctx.User) ||
+                  IsTenantAdmin(ctx.User) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailAlertsManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailOperationsManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
+
+    // Email retention manage — execute or simulate retention runs
+    options.AddPolicy(XeniaPolicies.EmailRetentionManage, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  IsPlatformAdmin(ctx.User) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.EmailRetentionManage) ||
+                  ctx.User.HasClaim("permissions", XeniaPermissions.Admin)));
 });
 
 // ── Application and infrastructure services ───────────────────────────────────
@@ -201,6 +240,12 @@ app.MapXeniaEmailSettingsEndpoints();
 app.MapXeniaEmailSyncEndpoints();
 app.MapXeniaEmailMessageEndpoints();
 
+// Email operations, monitoring, and administration endpoints
+app.MapXeniaEmailOperationsEndpoints();
+app.MapXeniaEmailRunEndpoints();
+app.MapXeniaEmailAlertEndpoints();
+app.MapXeniaEmailRetentionEndpoints();
+
 // Auth smoke-test endpoint
 app.MapGet("/secure/ping", (HttpContext ctx) =>
 {
@@ -233,6 +278,10 @@ public static class XeniaPolicies
     public const string EmailManage       = "XeniaEmailManage";
     public const string EmailValidate     = "XeniaEmailValidate";
     public const string EmailSync         = "XeniaEmailSync";
+    public const string EmailOperationsRead    = "XeniaEmailOperationsRead";
+    public const string EmailOperationsManage  = "XeniaEmailOperationsManage";
+    public const string EmailAlertsManage      = "XeniaEmailAlertsManage";
+    public const string EmailRetentionManage   = "XeniaEmailRetentionManage";
 }
 
 public static class XeniaPermissions
@@ -247,7 +296,11 @@ public static class XeniaPermissions
     public const string EmailRead     = "xenia.email.read";
     public const string EmailManage   = "xenia.email.manage";
     public const string EmailValidate = "xenia.email.validate";
-    public const string EmailSync     = "xenia.email.sync";
+    public const string EmailSync             = "xenia.email.sync";
+    public const string EmailOperationsRead   = "xenia.email.operations.read";
+    public const string EmailOperationsManage = "xenia.email.operations.manage";
+    public const string EmailAlertsManage     = "xenia.email.alerts.manage";
+    public const string EmailRetentionManage  = "xenia.email.retention.manage";
 }
 
 public static class XeniaBuildInfo

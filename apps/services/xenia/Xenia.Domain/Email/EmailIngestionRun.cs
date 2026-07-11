@@ -62,7 +62,37 @@ public sealed class EmailIngestionRun
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Run ID of the original run this is a retry of (null if not a retry).</summary>
+    public Guid? RetryOfRunId { get; private set; }
+
     private EmailIngestionRun() { }
+
+    /// <summary>
+    /// Creates a retry run for a previously failed or completed-with-errors run.
+    /// The new run is queued with trigger type Retry and linked to the original.
+    /// </summary>
+    public static EmailIngestionRun CreateRetry(
+        Guid tenantId,
+        Guid emailSourceId,
+        Guid originalRunId,
+        Guid? actorId,
+        string? correlationId)
+    {
+        return new EmailIngestionRun
+        {
+            Id               = Guid.CreateVersion7(),
+            TenantId         = tenantId,
+            EmailSourceId    = emailSourceId,
+            TriggerType      = IngestionRunTriggerType.Manual,
+            Status           = IngestionRunStatus.Queued,
+            StartedAt        = DateTime.UtcNow,
+            CorrelationId    = correlationId,
+            ActorId          = actorId,
+            RetryOfRunId     = originalRunId,
+            CreatedAtUtc     = DateTime.UtcNow,
+            UpdatedAtUtc     = DateTime.UtcNow,
+        };
+    }
 
     public static EmailIngestionRun Create(
         Guid tenantId,
