@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Xenia.Infrastructure.Persistence;
 
 #nullable disable
@@ -9,98 +10,15 @@ using Xenia.Infrastructure.Persistence;
 namespace Xenia.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(XeniaDbContext))]
-    partial class XeniaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260710000004_AddSoftDeleteAndSettings")]
+    partial class AddSoftDeleteAndSettings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "8.0.10")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
-
-            modelBuilder.Entity("Xenia.Domain.Modules.XeniaModule", b =>
-            {
-                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
-                b.Property<string>("ConfigurationNamespace").IsRequired().HasMaxLength(200).HasColumnName("configuration_namespace");
-                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at");
-                b.Property<string>("Description").HasMaxLength(1000).HasColumnName("description");
-                b.Property<bool>("GlobalEnabled").HasColumnName("global_enabled");
-                b.Property<string>("ModuleKey").IsRequired().HasMaxLength(100).HasColumnName("module_key");
-                b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnName("name");
-                b.Property<string>("Status").IsRequired().HasMaxLength(32).HasColumnName("status");
-                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at");
-                b.Property<string>("Version").IsRequired().HasMaxLength(50).HasColumnName("version");
-                b.HasKey("Id");
-                b.HasIndex("ModuleKey").IsUnique().HasDatabaseName("ix_xn_modules_module_key");
-                b.ToTable("xn_modules");
-            });
-
-            modelBuilder.Entity("Xenia.Domain.Modules.XeniaTenantModule", b =>
-            {
-                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
-                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at");
-                b.Property<bool>("Enabled").HasColumnName("enabled");
-                b.Property<string>("ModuleConfiguration").HasMaxLength(8000).HasColumnName("module_configuration");
-                b.Property<string>("ModuleKey").IsRequired().HasMaxLength(100).HasColumnName("module_key");
-                b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)").HasColumnName("tenant_id");
-                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at");
-                b.HasKey("Id");
-                b.HasIndex("TenantId").HasDatabaseName("ix_xn_tenant_modules_tenant_id");
-                b.HasIndex("TenantId", "ModuleKey").IsUnique().HasDatabaseName("ix_xn_tenant_modules_tenant_module");
-                b.ToTable("xn_tenant_modules");
-            });
-
-            modelBuilder.Entity("Xenia.Domain.Adapters.PlatformAdapter", b =>
-            {
-                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
-                b.Property<string>("AdapterKey").IsRequired().HasMaxLength(100).HasColumnName("adapter_key");
-                b.Property<string>("AdapterType").IsRequired().HasMaxLength(32).HasColumnName("adapter_type");
-                b.Property<string>("AvailabilityStatus").IsRequired().HasMaxLength(32).HasColumnName("availability_status");
-                b.Property<string>("ConfigurationStatus").IsRequired().HasMaxLength(32).HasColumnName("configuration_status");
-                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at");
-                b.Property<string>("DiagnosticMessage").HasMaxLength(500).HasColumnName("diagnostic_message");
-                b.Property<string>("HealthStatus").IsRequired().HasMaxLength(32).HasColumnName("health_status");
-                b.Property<DateTime?>("LastHealthCheckAt").HasColumnType("datetime(6)").HasColumnName("last_health_check_at");
-                b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnName("name");
-                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at");
-                b.Property<string>("Version").IsRequired().HasMaxLength(50).HasColumnName("version");
-                b.HasKey("Id");
-                b.HasIndex("AdapterKey").IsUnique().HasDatabaseName("ix_xn_platform_adapters_key");
-                b.ToTable("xn_platform_adapters");
-            });
-
-            modelBuilder.Entity("Xenia.Domain.Configuration.XeniaConfigurationEntry", b =>
-            {
-                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
-                b.Property<string>("ConfigurationKey").IsRequired().HasMaxLength(200).HasColumnName("configuration_key");
-                b.Property<string>("ConfigurationValue").HasMaxLength(4000).HasColumnName("configuration_value");
-                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at");
-                b.Property<bool>("IsSecret").HasColumnName("is_secret");
-                b.Property<string>("Namespace").IsRequired().HasMaxLength(200).HasColumnName("namespace");
-                b.Property<string>("ScopeId").HasMaxLength(300).HasColumnName("scope_id");
-                b.Property<string>("ScopeType").IsRequired().HasMaxLength(32).HasColumnName("scope_type");
-                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at");
-                b.Property<string>("ValueType").HasMaxLength(50).HasColumnName("value_type");
-                b.Property<int>("Version").HasColumnName("version");
-                b.HasKey("Id");
-                b.HasIndex("ScopeType", "ScopeId", "Namespace", "ConfigurationKey").IsUnique().HasDatabaseName("ix_xn_configuration_scope_key");
-                b.ToTable("xn_configuration");
-            });
-
-            modelBuilder.Entity("Xenia.Domain.Configuration.XeniaTenantSettings", b =>
-            {
-                b.Property<string>("Id").HasColumnType("char(36)").HasColumnName("id");
-                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at");
-                b.Property<bool>("Enabled").HasColumnName("enabled");
-                b.Property<string>("Settings").HasMaxLength(8000).HasColumnName("settings");
-                b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)").HasColumnName("tenant_id");
-                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at");
-                b.HasKey("Id");
-                b.HasIndex("TenantId").IsUnique().HasDatabaseName("ix_xn_tenant_settings_tenant_id");
-                b.ToTable("xn_tenant_settings");
-            });
-
-            // ── Email Module (migrations 3 + 4) ──────────────────────────────────
 
             modelBuilder.Entity("Xenia.Domain.Email.EmailSource", b =>
             {

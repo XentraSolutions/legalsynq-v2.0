@@ -87,6 +87,12 @@ public sealed class EmailSource : AuditableEntityBase
     /// <summary>Optimistic concurrency token. Incremented on each update.</summary>
     public int RowVersion { get; private set; }
 
+    // ── Soft delete ───────────────────────────────────────────────────────────
+    /// <summary>True when the source has been soft-deleted. Excluded from all normal queries.</summary>
+    public bool IsDeleted { get; private set; }
+    public DateTime? DeletedAt { get; private set; }
+    public Guid? DeletedBy { get; private set; }
+
     private EmailSource() { }
 
     public EmailSource(
@@ -153,6 +159,7 @@ public sealed class EmailSource : AuditableEntityBase
 
     public void Enable(Guid? actorId = null)
     {
+        if (IsDeleted) throw new InvalidOperationException("Cannot enable a deleted email source.");
         Enabled = true;
         Status = EmailSourceStatus.Active;
         UpdatedBy = actorId;
@@ -161,6 +168,23 @@ public sealed class EmailSource : AuditableEntityBase
 
     public void Disable(Guid? actorId = null)
     {
+        if (IsDeleted) throw new InvalidOperationException("Cannot disable a deleted email source.");
+        Enabled = false;
+        Status = EmailSourceStatus.Disabled;
+        UpdatedBy = actorId;
+        IncrementVersion();
+    }
+
+    /// <summary>
+    /// Soft-deletes the source. Irreversible via normal APIs.
+    /// Validation history and audit records are retained.
+    /// </summary>
+    public void SoftDelete(Guid? actorId = null)
+    {
+        if (IsDeleted) return; // idempotent
+        IsDeleted = true;
+        DeletedAt = DateTime.UtcNow;
+        DeletedBy = actorId;
         Enabled = false;
         Status = EmailSourceStatus.Disabled;
         UpdatedBy = actorId;
@@ -169,6 +193,7 @@ public sealed class EmailSource : AuditableEntityBase
 
     public void RecordValidationStarted(Guid? actorId = null)
     {
+        if (IsDeleted) throw new InvalidOperationException("Cannot validate a deleted email source.");
         Status = EmailSourceStatus.Validating;
         ValidationStatus = EmailValidationStatus.Pending;
         UpdatedBy = actorId;

@@ -201,3 +201,48 @@ export async function getEmailProviders(
 export async function getEmailProvider(token: string, key: string): Promise<EmailProviderDefinition> {
   return xeniaFetch(`/email/providers/${key}`, token);
 }
+
+// ── Email Settings ────────────────────────────────────────────────────────────
+
+export interface EmailSettings {
+  id: string;
+  tenantId: string;
+  connectionTimeoutSeconds: number;
+  allowedProviderTypes: string;
+  validationRetryLimit: number;
+  validationHistoryRetentionDays: number;
+  allowedPorts: string;
+  requireTls: boolean;
+  allowCustomHosts: boolean;
+  ssrfPolicyMode: string;
+  defaultSourceEnabled: boolean;
+  version: number;
+  updatedAtUtc: string;
+}
+
+export interface UpdateEmailSettingsPayload {
+  connectionTimeoutSeconds?: number;
+  allowedProviderTypes?: string;
+  validationRetryLimit?: number;
+  validationHistoryRetentionDays?: number;
+  allowedPorts?: string;
+  requireTls?: boolean;
+  allowCustomHosts?: boolean;
+  ssrfPolicyMode?: string;
+  defaultSourceEnabled?: boolean;
+  expectedVersion: number;
+}
+
+export async function getEmailSettings(token: string): Promise<EmailSettings> {
+  return xeniaFetch('/email/settings', token);
+}
+
+export async function updateEmailSettings(
+  token: string,
+  payload: UpdateEmailSettingsPayload,
+): Promise<EmailSettings> {
+  return xeniaFetch('/email/settings', token, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}

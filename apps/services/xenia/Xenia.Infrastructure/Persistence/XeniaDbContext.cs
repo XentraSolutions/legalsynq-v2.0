@@ -31,6 +31,7 @@ public sealed class XeniaDbContext : DbContext
     public DbSet<EmailSource> EmailSources => Set<EmailSource>();
     public DbSet<EmailProviderSettings> EmailProviderSettings => Set<EmailProviderSettings>();
     public DbSet<EmailValidationHistory> EmailValidationHistory => Set<EmailValidationHistory>();
+    public DbSet<EmailSettings> EmailSettings => Set<EmailSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

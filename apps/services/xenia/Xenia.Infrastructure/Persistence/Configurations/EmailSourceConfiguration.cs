@@ -144,6 +144,20 @@ internal sealed class EmailSourceConfiguration : IEntityTypeConfiguration<EmailS
             .HasColumnName("row_version")
             .IsRequired();
 
+        // ── Soft delete ───────────────────────────────────────────────────────
+        builder.Property(e => e.IsDeleted)
+            .HasColumnName("is_deleted")
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(e => e.DeletedAt)
+            .HasColumnName("deleted_at")
+            .HasColumnType("datetime(6)");
+
+        builder.Property(e => e.DeletedBy)
+            .HasColumnName("deleted_by")
+            .HasColumnType("char(36)");
+
         builder.Property(e => e.CreatedAtUtc)
             .HasColumnName("created_at")
             .HasColumnType("datetime(6)")

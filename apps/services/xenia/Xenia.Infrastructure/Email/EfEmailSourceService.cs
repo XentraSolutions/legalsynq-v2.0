@@ -37,7 +37,7 @@ internal sealed class EfEmailSourceService : IEmailSourceService
     {
         var sources = await _db.EmailSources
             .AsNoTracking()
-            .Where(s => s.TenantId == tenantId)
+            .Where(s => s.TenantId == tenantId && !s.IsDeleted)
             .OrderBy(s => s.DisplayName)
             .ToListAsync(ct);
 
@@ -49,7 +49,7 @@ internal sealed class EfEmailSourceService : IEmailSourceService
     {
         var source = await _db.EmailSources
             .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId, ct);
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId && !s.IsDeleted, ct);
 
         return source is null ? null : EmailSourceDto.FromEntity(source);
     }
@@ -133,7 +133,7 @@ internal sealed class EfEmailSourceService : IEmailSourceService
         CancellationToken ct = default)
     {
         var source = await _db.EmailSources
-            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId, ct);
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId && !s.IsDeleted, ct);
 
         if (source is null) return null;
 
@@ -200,16 +200,12 @@ internal sealed class EfEmailSourceService : IEmailSourceService
         Guid tenantId, Guid sourceId, Guid? actorId, CancellationToken ct = default)
     {
         var source = await _db.EmailSources
-            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId, ct);
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId && !s.IsDeleted, ct);
 
         if (source is null) return false;
 
-        var settings = await _db.EmailProviderSettings
-            .FirstOrDefaultAsync(p => p.EmailSourceId == sourceId, ct);
-        if (settings is not null)
-            _db.EmailProviderSettings.Remove(settings);
-
-        _db.EmailSources.Remove(source);
+        // Soft delete — retain validation history and audit records
+        source.SoftDelete(actorId);
         await _db.SaveChangesAsync(ct);
 
         await TryAuditAsync(new XeniaAuditEvent
@@ -222,6 +218,7 @@ internal sealed class EfEmailSourceService : IEmailSourceService
             ActorId = actorId,
             CorrelationId = null,
             OccurredAt = DateTime.UtcNow,
+            Detail = "soft_delete",
         }, ct);
 
         return true;
@@ -231,7 +228,7 @@ internal sealed class EfEmailSourceService : IEmailSourceService
         Guid tenantId, Guid sourceId, Guid? actorId, CancellationToken ct = default)
     {
         var source = await _db.EmailSources
-            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId, ct);
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId && !s.IsDeleted, ct);
 
         if (source is null) return false;
 
@@ -257,7 +254,7 @@ internal sealed class EfEmailSourceService : IEmailSourceService
         Guid tenantId, Guid sourceId, Guid? actorId, CancellationToken ct = default)
     {
         var source = await _db.EmailSources
-            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId, ct);
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId && !s.IsDeleted, ct);
 
         if (source is null) return false;
 
@@ -287,7 +284,7 @@ internal sealed class EfEmailSourceService : IEmailSourceService
         CancellationToken ct = default)
     {
         var source = await _db.EmailSources
-            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId, ct);
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == sourceId && !s.IsDeleted, ct);
 
         if (source is null)
         {
