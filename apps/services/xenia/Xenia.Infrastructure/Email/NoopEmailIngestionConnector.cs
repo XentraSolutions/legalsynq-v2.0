@@ -16,6 +16,8 @@ internal sealed class NoopEmailIngestionConnector : IEmailIngestionConnector
     public NoopEmailIngestionConnector(EmailProviderType providerType) =>
         _providerType = providerType;
 
+    public EmailProviderType ProviderType => _providerType;
+
     public ProviderSyncCapabilities GetIngestionCapabilities() =>
         new()
         {

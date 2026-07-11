@@ -9,12 +9,17 @@ namespace Xenia.Infrastructure.Email;
 internal sealed class EfSyncStateService : ISyncStateService
 {
     private readonly XeniaDbContext _db;
+    private readonly IProviderCursorProtector _cursorProtector;
     private readonly ILogger<EfSyncStateService> _logger;
 
-    public EfSyncStateService(XeniaDbContext db, ILogger<EfSyncStateService> logger)
+    public EfSyncStateService(
+        XeniaDbContext db,
+        IProviderCursorProtector cursorProtector,
+        ILogger<EfSyncStateService> logger)
     {
-        _db     = db;
-        _logger = logger;
+        _db              = db;
+        _cursorProtector = cursorProtector;
+        _logger          = logger;
     }
 
     public async Task<EmailSyncState> GetOrCreateAsync(
@@ -59,8 +64,26 @@ internal sealed class EfSyncStateService : ISyncStateService
             .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.EmailSourceId == emailSourceId, ct);
         if (state is null) return;
 
+        // Protect cursor value before persisting — never store raw tokens in DB
+        string? protectedCursorValue = null;
+        if (cursor.RawValue is not null)
+        {
+            try
+            {
+                protectedCursorValue = await _cursorProtector.ProtectAsync(
+                    cursor.RawValue, tenantId, emailSourceId, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Cursor protection failed for tenantId={TenantId} sourceId={SourceId} — cursor not committed",
+                    tenantId, emailSourceId);
+                return;
+            }
+        }
+
         state.CommitCursor(
-            cursor.RawValue, cursor.MetadataJson, cursor.SafeSummary,
+            protectedCursorValue, cursor.MetadataJson, cursor.SafeSummary,
             lastProcessedTimestamp, lastProcessedMessageId);
 
         try

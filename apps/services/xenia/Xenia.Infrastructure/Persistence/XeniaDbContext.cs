@@ -39,6 +39,7 @@ public sealed class XeniaDbContext : DbContext
     public DbSet<EmailAttachmentReference> EmailAttachmentReferences => Set<EmailAttachmentReference>();
     public DbSet<EmailSyncState> EmailSyncStates => Set<EmailSyncState>();
     public DbSet<EmailIngestionRun> EmailIngestionRuns => Set<EmailIngestionRun>();
+    public DbSet<EmailSourceSyncLock> EmailSourceSyncLocks => Set<EmailSourceSyncLock>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

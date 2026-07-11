@@ -1,3 +1,5 @@
+using Xenia.Domain.Email;
+
 namespace Xenia.Application.Email.Ingestion;
 
 /// <summary>
@@ -16,6 +18,9 @@ namespace Xenia.Application.Email.Ingestion;
 /// </summary>
 public interface IEmailIngestionConnector
 {
+    /// <summary>The provider type this connector handles.</summary>
+    EmailProviderType ProviderType { get; }
+
     /// <summary>Returns the ingestion capabilities for this connector/environment.</summary>
     ProviderSyncCapabilities GetIngestionCapabilities();
 
