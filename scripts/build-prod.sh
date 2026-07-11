@@ -149,7 +149,7 @@ if [ ! -f "$CC_NEXT_BIN" ]; then
   CC_NEXT_BIN="$NEXT_BIN"
 fi
 echo "[control-center] Using next binary: $CC_NEXT_BIN"
-NODE_OPTIONS="--max-old-space-size=512" node "$CC_NEXT_BIN" build --webpack
+NODE_OPTIONS="--max-old-space-size=2048" node "$CC_NEXT_BIN" build --webpack
 
 echo "====== Building .NET services ======"
 cd "$ROOT"
