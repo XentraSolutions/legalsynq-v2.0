@@ -10,10 +10,16 @@ namespace Xenia.Tests.Email;
 
 public sealed class EmailMessageNormalizerTests
 {
+    private sealed class NoopHtmlSanitizer : IEmailHtmlSanitizer
+    {
+        public bool BlocksRemoteImages => false;
+        public string Sanitize(string? html) => html ?? string.Empty;
+    }
+
     private static EmailMessageNormalizer CreateNormalizer(XeniaIngestionOptions? opts = null)
     {
         opts ??= new XeniaIngestionOptions();
-        return new EmailMessageNormalizer(Options.Create(opts), NullLogger<EmailMessageNormalizer>.Instance);
+        return new EmailMessageNormalizer(Options.Create(opts), new NoopHtmlSanitizer(), NullLogger<EmailMessageNormalizer>.Instance);
     }
 
     private static ProviderMessageEnvelope MinimalEnvelope(string msgId = "prov-001") =>

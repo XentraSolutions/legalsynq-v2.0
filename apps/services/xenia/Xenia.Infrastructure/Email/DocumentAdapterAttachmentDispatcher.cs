@@ -4,7 +4,6 @@ using Microsoft.Extensions.Options;
 using Xenia.Application.Adapters.Interfaces;
 using Xenia.Application.Email.Ingestion;
 using Xenia.Infrastructure.Persistence;
-
 namespace Xenia.Infrastructure.Email;
 
 /// <summary>
@@ -15,21 +14,26 @@ namespace Xenia.Infrastructure.Email;
 /// - Never stores binary content in Xenia's DB.
 /// - If the Documents adapter is unavailable, the reference remains Pending — no fallback.
 /// - Idempotent: re-dispatching a Pending or Failed reference is safe.
+///
+/// Audit events: xenia.email.attachment.dispatched, xenia.email.attachment.failed
 /// </summary>
 internal sealed class DocumentAdapterAttachmentDispatcher : IAttachmentDispatcher
 {
     private readonly IDocumentAdapter _documentAdapter;
+    private readonly IAuditAdapter _auditAdapter;
     private readonly XeniaDbContext _db;
     private readonly XeniaIngestionOptions _opts;
     private readonly ILogger<DocumentAdapterAttachmentDispatcher> _logger;
 
     public DocumentAdapterAttachmentDispatcher(
         IDocumentAdapter documentAdapter,
+        IAuditAdapter auditAdapter,
         XeniaDbContext db,
         IOptions<XeniaIngestionOptions> opts,
         ILogger<DocumentAdapterAttachmentDispatcher> logger)
     {
         _documentAdapter = documentAdapter;
+        _auditAdapter    = auditAdapter;
         _db              = db;
         _opts            = opts.Value;
         _logger          = logger;
@@ -93,6 +97,20 @@ internal sealed class DocumentAdapterAttachmentDispatcher : IAttachmentDispatche
             {
                 reference.MarkFailed("UPLOAD_UNAVAILABLE", "Documents adapter did not accept the upload.");
                 await _db.SaveChangesAsync(ct);
+
+                await TryAuditAsync(new XeniaAuditEvent
+                {
+                    Action        = "xenia.email.attachment.failed",
+                    ResourceType  = "email_attachment",
+                    ResourceId    = reference.Id.ToString(),
+                    Result        = "failure",
+                    TenantId      = request.TenantId,
+                    ActorId       = null,
+                    CorrelationId = null,
+                    OccurredAt    = DateTime.UtcNow,
+                    Detail        = $"message_id={request.EmailMessageId} error=UPLOAD_UNAVAILABLE",
+                });
+
                 return new AttachmentDispatchResult
                 {
                     Success          = false,
@@ -103,6 +121,19 @@ internal sealed class DocumentAdapterAttachmentDispatcher : IAttachmentDispatche
 
             reference.MarkDispatched(upload.DocumentId, upload.ContentHash);
             await _db.SaveChangesAsync(ct);
+
+            await TryAuditAsync(new XeniaAuditEvent
+            {
+                Action        = "xenia.email.attachment.dispatched",
+                ResourceType  = "email_attachment",
+                ResourceId    = reference.Id.ToString(),
+                Result        = "success",
+                TenantId      = request.TenantId,
+                ActorId       = null,
+                CorrelationId = null,
+                OccurredAt    = DateTime.UtcNow,
+                Detail        = $"message_id={request.EmailMessageId} doc_ref={upload.DocumentId}",
+            });
 
             return new AttachmentDispatchResult
             {
@@ -118,12 +149,35 @@ internal sealed class DocumentAdapterAttachmentDispatcher : IAttachmentDispatche
                 request.AttachmentReferenceId, request.TenantId);
             reference.MarkFailed("DISPATCH_ERROR", "Attachment dispatch failed.");
             await _db.SaveChangesAsync(ct);
+
+            await TryAuditAsync(new XeniaAuditEvent
+            {
+                Action        = "xenia.email.attachment.failed",
+                ResourceType  = "email_attachment",
+                ResourceId    = reference.Id.ToString(),
+                Result        = "failure",
+                TenantId      = request.TenantId,
+                ActorId       = null,
+                CorrelationId = null,
+                OccurredAt    = DateTime.UtcNow,
+                Detail        = $"message_id={request.EmailMessageId} error=DISPATCH_ERROR",
+            });
+
             return new AttachmentDispatchResult
             {
                 Success          = false,
                 ErrorCode        = "DISPATCH_ERROR",
                 SafeErrorSummary = "Attachment dispatch failed.",
             };
+        }
+    }
+
+    private async Task TryAuditAsync(XeniaAuditEvent ev)
+    {
+        try { await _auditAdapter.RecordEventAsync(ev); }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit emit failed for action={Action}", ev.Action);
         }
     }
 }

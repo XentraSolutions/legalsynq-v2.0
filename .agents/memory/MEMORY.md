@@ -8,3 +8,4 @@
 - [Xenia ingestion engine enum names](xenia-ingestion-enum-names.md) — EmailProviderType uses `Google` (not GoogleWorkspace); EmailMessageBodyType uses `Plain` (not PlainText); Xunit must be imported explicitly per test file; private DI helpers need IConfiguration passed as parameter.
 - [Xenia endpoint pattern](xenia-endpoint-pattern.md) — use XeniaTenantContextAccessor (.Current, sync) in minimal-API handlers; never ITenantContextResolver.ResolveAsync (async interface); ActorId (not UserId) on IXeniaTenantContext.
 - [Xenia T4 operations domain](xenia-t4-operations.md) — operations domain complete: 3 new entities, 9 interfaces, 7 infra services, migration 7, 4 endpoint classes, 4 policies, 8 frontend pages, 5 test files; all builds pass silently.
+- [Xenia T5 delivery and test fix patterns](xenia-t5-delivery.md) — XENIA-P1-T5 complete; Phases A-G/J; 444 tests; key test fixup patterns documented.

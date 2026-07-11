@@ -3,6 +3,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xenia.Application.Adapters;
 using Xenia.Application.Adapters.Interfaces;
+using Xenia.Infrastructure.Automation;
+using Xenia.Infrastructure.Observability;
 using Xenia.Application.Configuration;
 using Xenia.Application.Email;
 using Xenia.Application.Email.Ingestion;
@@ -176,5 +178,11 @@ public static class DependencyInjection
 
         // Lock lease renewal background service
         services.AddHostedService<LockLeaseRenewalService>();
+
+        // Automation framework
+        services.AddXeniaAutomation(configuration);
+
+        // Observability — System.Diagnostics.Metrics (Phase B)
+        services.AddXeniaObservability();
     }
 }

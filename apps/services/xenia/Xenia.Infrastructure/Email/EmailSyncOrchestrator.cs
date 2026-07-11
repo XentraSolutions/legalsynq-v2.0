@@ -94,6 +94,8 @@ internal sealed class EmailSyncOrchestrator : IEmailSyncService
         if (activeRun is not null)
             return SyncRequestResult.Conflict();
 
+        await EmitSyncQueuedAsync(tenantId, emailSourceId, actorId, correlationId, IngestionRunTriggerType.Manual);
+
         var result = await ExecuteSyncAsync(tenantId, emailSourceId,
             IngestionRunTriggerType.Manual, actorId, correlationId, ct);
 
@@ -143,6 +145,9 @@ internal sealed class EmailSyncOrchestrator : IEmailSyncService
 
         await EmitSyncStartedAsync(tenantId, emailSourceId, run.Id, actorId, correlationId);
 
+        if (triggerType == IngestionRunTriggerType.Retry)
+            await EmitSyncResumedAsync(tenantId, emailSourceId, run.Id, actorId, correlationId);
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(_opts.PerSourceTimeout);
 
@@ -155,8 +160,12 @@ internal sealed class EmailSyncOrchestrator : IEmailSyncService
                 "Sync completed: runId={RunId} imported={Imported} duped={Duped} pages={Pages}",
                 run.Id, result.MessagesImported, result.MessagesDuplicated, result.PagesProcessed);
 
-            await EmitSyncCompletedAsync(tenantId, emailSourceId, run.Id, actorId, correlationId,
-                result.MessagesImported, result.MessagesDuplicated, result.MessagesFailed, result.PagesProcessed);
+            if (result.MessagesFailed > 0)
+                await EmitSyncCompletedWithErrorsAsync(tenantId, emailSourceId, run.Id, actorId, correlationId,
+                    result.MessagesImported, result.MessagesDuplicated, result.MessagesFailed, result.PagesProcessed);
+            else
+                await EmitSyncCompletedAsync(tenantId, emailSourceId, run.Id, actorId, correlationId,
+                    result.MessagesImported, result.MessagesDuplicated, result.MessagesFailed, result.PagesProcessed);
 
             return result with { RunId = run.Id };
         }
@@ -240,6 +249,7 @@ internal sealed class EmailSyncOrchestrator : IEmailSyncService
                     source.Id);
                 await _syncStateService.ResetCursorAsync(
                     source.TenantId, source.Id, "cursor-unprotection-failed", ct);
+                await EmitCursorInvalidatedAsync(source.TenantId, source.Id, "cursor-unprotection-failed");
             }
             else
             {
@@ -283,6 +293,7 @@ internal sealed class EmailSyncOrchestrator : IEmailSyncService
                 {
                     _logger.LogWarning("Invalid cursor for sourceId={SourceId}; resetting", source.Id);
                     await _syncStateService.ResetCursorAsync(source.TenantId, source.Id, "invalid-cursor", ct);
+                    await EmitCursorInvalidatedAsync(source.TenantId, source.Id, "invalid-cursor");
                     break;
                 }
                 if (fetchResult.IsRateLimited && fetchResult.RetryAfter.HasValue)
@@ -475,6 +486,66 @@ internal sealed class EmailSyncOrchestrator : IEmailSyncService
             CorrelationId = correlationId,
             OccurredAt    = DateTime.UtcNow,
             Detail        = $"run_id={runId} error={errorCode}",
+        });
+
+    private Task EmitSyncQueuedAsync(
+        Guid tenantId, Guid sourceId, Guid? actorId, string? correlationId, IngestionRunTriggerType triggerType) =>
+        TryAuditAsync(new XeniaAuditEvent
+        {
+            Action        = "xenia.email.sync.queued",
+            ResourceType  = "email_source",
+            ResourceId    = sourceId.ToString(),
+            Result        = "queued",
+            TenantId      = tenantId,
+            ActorId       = actorId,
+            CorrelationId = correlationId,
+            OccurredAt    = DateTime.UtcNow,
+            Detail        = $"trigger={triggerType}",
+        });
+
+    private Task EmitSyncResumedAsync(
+        Guid tenantId, Guid sourceId, Guid runId, Guid? actorId, string? correlationId) =>
+        TryAuditAsync(new XeniaAuditEvent
+        {
+            Action        = "xenia.email.sync.resumed",
+            ResourceType  = "email_source",
+            ResourceId    = sourceId.ToString(),
+            Result        = "resumed",
+            TenantId      = tenantId,
+            ActorId       = actorId,
+            CorrelationId = correlationId,
+            OccurredAt    = DateTime.UtcNow,
+            Detail        = $"run_id={runId}",
+        });
+
+    private Task EmitSyncCompletedWithErrorsAsync(
+        Guid tenantId, Guid sourceId, Guid runId, Guid? actorId, string? correlationId,
+        int imported, int duped, int failed, int pages) =>
+        TryAuditAsync(new XeniaAuditEvent
+        {
+            Action        = "xenia.email.sync.completed_with_errors",
+            ResourceType  = "email_source",
+            ResourceId    = sourceId.ToString(),
+            Result        = "partial",
+            TenantId      = tenantId,
+            ActorId       = actorId,
+            CorrelationId = correlationId,
+            OccurredAt    = DateTime.UtcNow,
+            Detail        = $"run_id={runId} imported={imported} duped={duped} failed={failed} pages={pages}",
+        });
+
+    private Task EmitCursorInvalidatedAsync(Guid tenantId, Guid sourceId, string reason) =>
+        TryAuditAsync(new XeniaAuditEvent
+        {
+            Action        = "xenia.email.cursor.invalidated",
+            ResourceType  = "email_source",
+            ResourceId    = sourceId.ToString(),
+            Result        = "invalidated",
+            TenantId      = tenantId,
+            ActorId       = null,
+            CorrelationId = null,
+            OccurredAt    = DateTime.UtcNow,
+            Detail        = $"reason={reason}",
         });
 
     private Task EmitSyncResetAsync(

@@ -30,8 +30,9 @@ public sealed class DurableLockTests
     {
         var services = new ServiceCollection();
 
+        var dbName = $"lock_test_{Guid.NewGuid():N}";
         services.AddDbContext<XeniaDbContext>(o =>
-            o.UseInMemoryDatabase($"lock_test_{Guid.NewGuid():N}"));
+            o.UseInMemoryDatabase(dbName));
 
         services.AddLogging();
 
