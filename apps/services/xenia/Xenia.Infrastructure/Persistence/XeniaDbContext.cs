@@ -41,6 +41,11 @@ public sealed class XeniaDbContext : DbContext
     public DbSet<EmailIngestionRun> EmailIngestionRuns => Set<EmailIngestionRun>();
     public DbSet<EmailSourceSyncLock> EmailSourceSyncLocks => Set<EmailSourceSyncLock>();
 
+    // ── Email operations domain ───────────────────────────────────────────────
+    public DbSet<EmailOperationalAlert> EmailOperationalAlerts => Set<EmailOperationalAlert>();
+    public DbSet<EmailOperationalSettings> EmailOperationalSettings => Set<EmailOperationalSettings>();
+    public DbSet<EmailRetentionRun> EmailRetentionRuns => Set<EmailRetentionRun>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
