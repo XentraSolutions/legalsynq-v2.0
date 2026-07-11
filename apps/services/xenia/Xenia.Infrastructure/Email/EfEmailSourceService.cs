@@ -355,6 +355,8 @@ internal sealed class EfEmailSourceService : IEmailSourceService
         var completedAt = DateTime.UtcNow;
         var durationMs = (int)(completedAt - startedAt).TotalMilliseconds;
 
+        var previousHealth = source.HealthStatus;
+
         if (connResult.Success)
             source.RecordValidationSuccess(connResult.DurationMs > 0 ? connResult.DurationMs : durationMs, actorId);
         else
@@ -363,6 +365,8 @@ internal sealed class EfEmailSourceService : IEmailSourceService
                 connResult.SafeErrorSummary ?? "Validation failed.",
                 connResult.DurationMs > 0 ? connResult.DurationMs : durationMs,
                 actorId);
+
+        var healthChanged = source.HealthStatus != previousHealth;
 
         var history = EmailValidationHistory.Create(
             Guid.CreateVersion7(),
@@ -394,6 +398,22 @@ internal sealed class EfEmailSourceService : IEmailSourceService
             OccurredAt = completedAt,
             Detail = connResult.ErrorCode,
         }, ct);
+
+        if (healthChanged)
+        {
+            await TryAuditAsync(new XeniaAuditEvent
+            {
+                Action        = "xenia.email.source.health_changed",
+                ResourceType  = "email_source",
+                ResourceId    = sourceId.ToString(),
+                Result        = "changed",
+                TenantId      = tenantId,
+                ActorId       = actorId,
+                CorrelationId = correlationId,
+                OccurredAt    = completedAt,
+                Detail        = $"previous={previousHealth} current={source.HealthStatus}",
+            }, ct);
+        }
 
         return new EmailValidationResultDto
         {

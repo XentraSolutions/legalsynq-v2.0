@@ -16,8 +16,14 @@ public sealed class DuplicateDetectionServiceTests
             .UseInMemoryDatabase(name)
             .Options);
 
+    private sealed class NoopHtmlSanitizer : IEmailHtmlSanitizer
+    {
+        public bool BlocksRemoteImages => false;
+        public string Sanitize(string? html) => html ?? string.Empty;
+    }
+
     private static EmailMessageNormalizer CreateNormalizer() =>
-        new(Options.Create(new XeniaIngestionOptions()), NullLogger<EmailMessageNormalizer>.Instance);
+        new(Options.Create(new XeniaIngestionOptions()), new NoopHtmlSanitizer(), NullLogger<EmailMessageNormalizer>.Instance);
 
     private static NormalizedMessage NormalMessage(string provId, string? internetId = null, string? hash = null) =>
         new()

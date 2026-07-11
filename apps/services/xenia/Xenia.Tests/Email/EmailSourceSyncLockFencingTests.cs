@@ -106,12 +106,12 @@ public sealed class EmailSourceSyncLockFencingTests
     public void RecordRenewalFailure_IncrementsCount()
     {
         var lk = CreateLock();
-        var exceeded1 = lk.RecordRenewalFailure(threshold: 3);
+        var exceeded1 = lk.RecordRenewalFailure(failureThreshold: 3);
         Assert.False(exceeded1);
         Assert.Equal(1, lk.RenewalFailureCount);
 
-        lk.RecordRenewalFailure(threshold: 3);
-        var exceeded3 = lk.RecordRenewalFailure(threshold: 3);
+        lk.RecordRenewalFailure(failureThreshold: 3);
+        var exceeded3 = lk.RecordRenewalFailure(failureThreshold: 3);
         Assert.True(exceeded3);
         Assert.Equal(3, lk.RenewalFailureCount);
     }

@@ -28,6 +28,7 @@ export default async function XeniaLayout({ children }: { children: React.ReactN
               <NavLink href="/xenia/modules" label="Modules" />
               <NavLink href="/xenia/adapters" label="Adapters" />
               <NavLink href="/xenia/email" label="Email" />
+              <NavLink href="/xenia/automation" label="Automation" />
               <NavLink href="/xenia/settings" label="Settings" />
             </nav>
           </div>

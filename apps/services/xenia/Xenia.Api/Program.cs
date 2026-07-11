@@ -246,6 +246,9 @@ app.MapXeniaEmailRunEndpoints();
 app.MapXeniaEmailAlertEndpoints();
 app.MapXeniaEmailRetentionEndpoints();
 
+// Automation framework
+app.MapAutomationEndpoints();
+
 // Auth smoke-test endpoint
 app.MapGet("/secure/ping", (HttpContext ctx) =>
 {

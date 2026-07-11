@@ -92,3 +92,126 @@ export async function getXeniaAdapters(token: string): Promise<XeniaAdapterDto[]
   );
   return res?.adapters ?? [];
 }
+
+// ── Automation types ────────────────────────────────────────────────
+
+export interface XeniaAutomationManifest {
+  automationKey: string;
+  displayName: string;
+  description: string;
+  version: string;
+  category: string;
+  provider: string;
+  status: string;
+  capabilities: number;
+  dependencies: XeniaAutomationDependency[];
+  permissions: string[];
+  configurationNamespace: string;
+  supportedTriggers: string[];
+  tenantEnablementSupported: boolean;
+  schedulingSupported: boolean;
+  diagnosticsSupported: boolean;
+  healthSupported: boolean;
+  minimumPlatformVersion: string;
+  metadataVersion: number;
+}
+
+export interface XeniaAutomationDependency {
+  key: string;
+  dependencyType: string;
+  criticality: string;
+  availabilityState: string;
+  configurationState: string | null;
+  healthImpact: string | null;
+  isOptional: boolean;
+}
+
+export interface XeniaAutomationRuntimeState {
+  automationKey: string;
+  automationVersion: string;
+  tenantId: string | null;
+  globalState: string;
+  tenantState: string | null;
+  effectiveState: string;
+  activeExecutions: number;
+  totalExecutions: number;
+  failedExecutions: number;
+  lastExecutedAt: string | null;
+  lastSucceededAt: string | null;
+  lastSafeError: string | null;
+}
+
+export interface XeniaAutomationDiagnosticsSnapshot {
+  generatedAt: string;
+  serviceVersion: string;
+  environment: string;
+  registrations: XeniaAutomationRegistryEntry[];
+  workers: XeniaAutomationWorkerStatus[];
+  dependencies: XeniaAutomationDependencyStatus[];
+  activeExecutions: number;
+  deadLetterCount: number;
+}
+
+export interface XeniaAutomationRegistryEntry {
+  automationKey: string;
+  version: string;
+  provider: string;
+  effectiveState: string;
+  activeExecutions: number;
+  totalExecutions: number;
+  failedExecutions: number;
+  lastExecutedAt: string | null;
+  lastSafeError: string | null;
+}
+
+export interface XeniaAutomationWorkerStatus {
+  name: string;
+  isRunning: boolean;
+  lastRunAt: string | null;
+  safeStatus: string | null;
+}
+
+export interface XeniaAutomationDependencyStatus {
+  key: string;
+  dependencyType: string;
+  criticality: string;
+  availabilityState: string;
+  isConfigured: boolean;
+}
+
+export interface XeniaDeadLetterEntry {
+  id: string;
+  automationKey: string;
+  automationVersion: string;
+  executionId: string;
+  triggerType: string;
+  failureCategory: string;
+  safeErrorSummary: string;
+  retryCount: number;
+  firstFailedAt: string;
+  lastFailedAt: string;
+  status: string;
+  tenantId: string | null;
+}
+
+// ── Automation API helpers ──────────────────────────────────────────
+
+export async function getXeniaAutomations(token: string): Promise<XeniaAutomationManifest[]> {
+  const res = await fetchXenia<{ items: XeniaAutomationManifest[]; totalCount: number }>(
+    '/api/v1/automation',
+    token,
+  );
+  return res?.items ?? [];
+}
+
+export async function getXeniaAutomationDiagnostics(token: string): Promise<XeniaAutomationDiagnosticsSnapshot | null> {
+  return fetchXenia<XeniaAutomationDiagnosticsSnapshot>('/api/v1/automation-diagnostics/snapshot', token);
+}
+
+export async function getXeniaDeadLetterEntries(token: string): Promise<XeniaDeadLetterEntry[]> {
+  const res = await fetchXenia<{ items: XeniaDeadLetterEntry[] }>(
+    '/api/v1/automation-dlq',
+    token,
+  );
+  return res?.items ?? [];
+}

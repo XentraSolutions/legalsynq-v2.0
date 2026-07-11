@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Xenia.Application.Adapters.Interfaces;
 using Xenia.Application.Email.Ingestion;
 using Xenia.Domain.Email;
 using Xenia.Infrastructure.Persistence;
@@ -8,8 +10,18 @@ namespace Xenia.Infrastructure.Email;
 internal sealed class EfEmailMessageService : IEmailMessageService
 {
     private readonly XeniaDbContext _db;
+    private readonly IAuditAdapter _auditAdapter;
+    private readonly ILogger<EfEmailMessageService> _logger;
 
-    public EfEmailMessageService(XeniaDbContext db) => _db = db;
+    public EfEmailMessageService(
+        XeniaDbContext db,
+        IAuditAdapter auditAdapter,
+        ILogger<EfEmailMessageService> logger)
+    {
+        _db           = db;
+        _auditAdapter = auditAdapter;
+        _logger       = logger;
+    }
 
     public async Task<EmailMessagePage> ListMessagesAsync(EmailMessageQuery query, CancellationToken ct = default)
     {
@@ -171,6 +183,28 @@ internal sealed class EfEmailMessageService : IEmailMessageService
 
         await _db.SaveChangesAsync(ct);
 
+        await TryAuditAsync(new XeniaAuditEvent
+        {
+            Action        = "xenia.email.attachment.retry_queued",
+            ResourceType  = "email_message",
+            ResourceId    = messageId.ToString(),
+            Result        = "queued",
+            TenantId      = tenantId,
+            ActorId       = actorId,
+            CorrelationId = null,
+            OccurredAt    = DateTime.UtcNow,
+            Detail        = $"retryable_count={retryable.Count}",
+        });
+
         return new AttachmentRetryResult(true, retryable.Count, null, null);
+    }
+
+    private async Task TryAuditAsync(XeniaAuditEvent ev)
+    {
+        try { await _auditAdapter.RecordEventAsync(ev); }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit emit failed for action={Action}", ev.Action);
+        }
     }
 }

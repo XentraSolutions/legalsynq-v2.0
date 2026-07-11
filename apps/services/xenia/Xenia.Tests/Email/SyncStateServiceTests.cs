@@ -20,13 +20,23 @@ public sealed class SyncStateServiceTests : IDisposable
     private static readonly Guid TenantId = Guid.Parse("11111111-0000-0000-0000-000000000011");
     private static readonly Guid SourceId = Guid.Parse("22222222-0000-0000-0000-000000000022");
 
+    private sealed class NoopCursorProtector : IProviderCursorProtector
+    {
+        public string GetVersion() => "v1";
+        public bool IsUsingDevFallbackKey => true;
+        public Task<string> ProtectAsync(string raw, Guid t, Guid s, CancellationToken ct = default) =>
+            Task.FromResult(raw);
+        public Task<string?> UnprotectAsync(string prot, Guid t, Guid s, CancellationToken ct = default) =>
+            Task.FromResult<string?>(prot);
+    }
+
     public SyncStateServiceTests()
     {
         var options = new DbContextOptionsBuilder<XeniaDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         _db  = new XeniaDbContext(options);
-        _sut = new EfSyncStateService(_db, NullLogger<EfSyncStateService>.Instance);
+        _sut = new EfSyncStateService(_db, new NoopCursorProtector(), NullLogger<EfSyncStateService>.Instance);
     }
 
     public void Dispose() => _db.Dispose();

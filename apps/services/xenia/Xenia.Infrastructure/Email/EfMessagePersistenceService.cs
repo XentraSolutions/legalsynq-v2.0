@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Xenia.Application.Adapters.Interfaces;
 using Xenia.Application.Email.Ingestion;
 using Xenia.Domain.Email;
 using Xenia.Infrastructure.Persistence;
@@ -18,16 +19,24 @@ namespace Xenia.Infrastructure.Email;
 /// 6. Return attachment stubs for dispatcher.
 ///
 /// No binary content is stored here.
+/// Audit events: xenia.email.message.imported, .duplicate, .failed
+/// Note: xenia.email.message.updated is not applicable — the current persistence
+///       layer has no update pathway; duplicates are observed, not re-imported.
 /// </summary>
 internal sealed class EfMessagePersistenceService : IMessagePersistenceService
 {
     private readonly XeniaDbContext _db;
+    private readonly IAuditAdapter _auditAdapter;
     private readonly ILogger<EfMessagePersistenceService> _logger;
 
-    public EfMessagePersistenceService(XeniaDbContext db, ILogger<EfMessagePersistenceService> logger)
+    public EfMessagePersistenceService(
+        XeniaDbContext db,
+        IAuditAdapter auditAdapter,
+        ILogger<EfMessagePersistenceService> logger)
     {
-        _db     = db;
-        _logger = logger;
+        _db           = db;
+        _auditAdapter = auditAdapter;
+        _logger       = logger;
     }
 
     public async Task<MessagePersistenceResult> PersistMessageAsync(
@@ -43,7 +52,6 @@ internal sealed class EfMessagePersistenceService : IMessagePersistenceService
         {
             if (duplicateCheck.IsDuplicate && duplicateCheck.ExistingMessageId.HasValue)
             {
-                // Update last-observed timestamp on duplicate
                 var existing = await _db.EmailMessages
                     .FirstOrDefaultAsync(m => m.Id == duplicateCheck.ExistingMessageId.Value, ct);
                 if (existing is not null)
@@ -51,6 +59,19 @@ internal sealed class EfMessagePersistenceService : IMessagePersistenceService
                     existing.MarkDuplicate(runId);
                     await _db.SaveChangesAsync(ct);
                 }
+
+                await TryAuditAsync(new XeniaAuditEvent
+                {
+                    Action        = "xenia.email.message.duplicate",
+                    ResourceType  = "email_message",
+                    ResourceId    = duplicateCheck.ExistingMessageId.Value.ToString(),
+                    Result        = "duplicate",
+                    TenantId      = tenantId,
+                    ActorId       = null,
+                    CorrelationId = null,
+                    OccurredAt    = DateTime.UtcNow,
+                    Detail        = $"source_id={emailSourceId} run_id={runId}",
+                });
 
                 return new MessagePersistenceResult
                 {
@@ -61,7 +82,6 @@ internal sealed class EfMessagePersistenceService : IMessagePersistenceService
                 };
             }
 
-            // Create new message
             var msg = EmailMessage.Create(tenantId, emailSourceId, providerType, message.ProviderMessageId);
             msg.SetAddressing(
                 message.Subject, message.FromAddress, message.FromName,
@@ -76,7 +96,6 @@ internal sealed class EfMessagePersistenceService : IMessagePersistenceService
 
             _db.EmailMessages.Add(msg);
 
-            // Create recipients
             foreach (var r in message.Recipients)
             {
                 _db.EmailMessageRecipients.Add(
@@ -85,7 +104,6 @@ internal sealed class EfMessagePersistenceService : IMessagePersistenceService
 
             await _db.SaveChangesAsync(ct);
 
-            // Create attachment stubs
             var attachmentIds = new List<Guid>();
             foreach (var att in message.Attachments)
             {
@@ -100,6 +118,19 @@ internal sealed class EfMessagePersistenceService : IMessagePersistenceService
             if (attachmentIds.Count > 0)
                 await _db.SaveChangesAsync(ct);
 
+            await TryAuditAsync(new XeniaAuditEvent
+            {
+                Action        = "xenia.email.message.imported",
+                ResourceType  = "email_message",
+                ResourceId    = msg.Id.ToString(),
+                Result        = "success",
+                TenantId      = tenantId,
+                ActorId       = null,
+                CorrelationId = null,
+                OccurredAt    = DateTime.UtcNow,
+                Detail        = $"source_id={emailSourceId} run_id={runId} provider={providerType} attachments={attachmentIds.Count}",
+            });
+
             return new MessagePersistenceResult
             {
                 Success              = true,
@@ -110,8 +141,21 @@ internal sealed class EfMessagePersistenceService : IMessagePersistenceService
         }
         catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
         {
-            // Race condition — another worker persisted this message concurrently
             _logger.LogDebug(ex, "Concurrent duplicate detected for tenantId={TenantId}", tenantId);
+
+            await TryAuditAsync(new XeniaAuditEvent
+            {
+                Action        = "xenia.email.message.duplicate",
+                ResourceType  = "email_message",
+                ResourceId    = null,
+                Result        = "duplicate",
+                TenantId      = tenantId,
+                ActorId       = null,
+                CorrelationId = null,
+                OccurredAt    = DateTime.UtcNow,
+                Detail        = $"source_id={emailSourceId} run_id={runId} reason=concurrent_race",
+            });
+
             return new MessagePersistenceResult
             {
                 Success      = true,
@@ -122,6 +166,20 @@ internal sealed class EfMessagePersistenceService : IMessagePersistenceService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Persistence error for tenantId={TenantId} sourceId={SourceId}", tenantId, emailSourceId);
+
+            await TryAuditAsync(new XeniaAuditEvent
+            {
+                Action        = "xenia.email.message.failed",
+                ResourceType  = "email_message",
+                ResourceId    = null,
+                Result        = "failure",
+                TenantId      = tenantId,
+                ActorId       = null,
+                CorrelationId = null,
+                OccurredAt    = DateTime.UtcNow,
+                Detail        = $"source_id={emailSourceId} run_id={runId} error=PERSISTENCE_ERROR",
+            });
+
             return new MessagePersistenceResult
             {
                 Success          = false,
@@ -130,6 +188,15 @@ internal sealed class EfMessagePersistenceService : IMessagePersistenceService
                 SafeErrorSummary = "Message could not be saved.",
                 AttachmentReferenceIds = [],
             };
+        }
+    }
+
+    private async Task TryAuditAsync(XeniaAuditEvent ev)
+    {
+        try { await _auditAdapter.RecordEventAsync(ev); }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit emit failed for action={Action}", ev.Action);
         }
     }
 

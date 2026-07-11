@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
+using Xenia.Application.Adapters.Interfaces;
 using Xenia.Application.Email.Ingestion;
 using Xenia.Domain.Email;
 using Xenia.Infrastructure.Email;
@@ -20,13 +21,20 @@ public sealed class MessagePersistenceServiceTests : IDisposable
     private static readonly Guid TenantId = Guid.Parse("11111111-0000-0000-0000-000000000001");
     private static readonly Guid SourceId = Guid.Parse("22222222-0000-0000-0000-000000000002");
 
+    private sealed class NoopAuditAdapter : IAuditAdapter
+    {
+        public bool IsConfigured => false;
+        public Task RecordEventAsync(XeniaAuditEvent auditEvent, CancellationToken ct = default) =>
+            Task.CompletedTask;
+    }
+
     public MessagePersistenceServiceTests()
     {
         var options = new DbContextOptionsBuilder<XeniaDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         _db  = new XeniaDbContext(options);
-        _sut = new EfMessagePersistenceService(_db, NullLogger<EfMessagePersistenceService>.Instance);
+        _sut = new EfMessagePersistenceService(_db, new NoopAuditAdapter(), NullLogger<EfMessagePersistenceService>.Instance);
     }
 
     public void Dispose() => _db.Dispose();
