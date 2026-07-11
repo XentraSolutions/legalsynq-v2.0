@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Xenia.Domain.Adapters;
+using Xenia.Domain.Automation;
 using Xenia.Domain.Common;
 using Xenia.Domain.Configuration;
 using Xenia.Domain.Email;
@@ -45,6 +46,17 @@ public sealed class XeniaDbContext : DbContext
     public DbSet<EmailOperationalAlert> EmailOperationalAlerts => Set<EmailOperationalAlert>();
     public DbSet<EmailOperationalSettings> EmailOperationalSettings => Set<EmailOperationalSettings>();
     public DbSet<EmailRetentionRun> EmailRetentionRuns => Set<EmailRetentionRun>();
+
+    // ── Automation platform — durable state ───────────────────────────────────
+    public DbSet<AutomationRegistration> AutomationRegistry => Set<AutomationRegistration>();
+    public DbSet<AutomationVersionRecord> AutomationVersions => Set<AutomationVersionRecord>();
+    public DbSet<TenantAutomationState> TenantAutomations => Set<TenantAutomationState>();
+    public DbSet<AutomationConfigurationEntry> AutomationConfiguration => Set<AutomationConfigurationEntry>();
+    public DbSet<AutomationRuntimeStateRecord> AutomationRuntimeState => Set<AutomationRuntimeStateRecord>();
+    public DbSet<AutomationExecutionRecord> AutomationExecutions => Set<AutomationExecutionRecord>();
+    public DbSet<AutomationDeadLetterRecord> AutomationDeadLetters => Set<AutomationDeadLetterRecord>();
+    public DbSet<AutomationScheduleRecord> AutomationSchedules => Set<AutomationScheduleRecord>();
+    public DbSet<AutomationIdempotencyRecord> AutomationIdempotency => Set<AutomationIdempotencyRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

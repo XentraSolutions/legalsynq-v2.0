@@ -30,6 +30,49 @@ public sealed class AutomationDeadLetterEntry
 
     private AutomationDeadLetterEntry() { }
 
+    /// <summary>
+    /// Reconstitutes a domain model from persisted state (EF store → domain layer).
+    /// Use only in EF store implementations; never call from application or domain logic.
+    /// </summary>
+    public static AutomationDeadLetterEntry Reconstitute(
+        Guid id,
+        Guid? tenantId,
+        string automationKey,
+        string automationVersion,
+        Guid executionId,
+        AutomationTriggerType triggerType,
+        string failureCategory,
+        string safeErrorSummary,
+        int retryCount,
+        DateTime firstFailedAt,
+        DateTime lastFailedAt,
+        DateTime? nextEligibleRetryAt,
+        AutomationDeadLetterStatus status,
+        string? correlationId,
+        DateTime createdAt,
+        DateTime updatedAt)
+    {
+        return new AutomationDeadLetterEntry
+        {
+            Id               = id,
+            TenantId         = tenantId,
+            AutomationKey    = automationKey,
+            AutomationVersion = automationVersion,
+            ExecutionId      = executionId,
+            TriggerType      = triggerType,
+            FailureCategory  = failureCategory,
+            SafeErrorSummary = safeErrorSummary,
+            RetryCount       = retryCount,
+            FirstFailedAt    = firstFailedAt,
+            LastFailedAt     = lastFailedAt,
+            NextEligibleRetryAt = nextEligibleRetryAt,
+            Status           = status,
+            CorrelationId    = correlationId,
+            CreatedAt        = createdAt,
+            UpdatedAt        = updatedAt,
+        };
+    }
+
     public static AutomationDeadLetterEntry Create(
         Guid? tenantId,
         string automationKey,

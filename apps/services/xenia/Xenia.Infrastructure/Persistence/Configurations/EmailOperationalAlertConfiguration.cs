@@ -1,16 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailOperationalAlertConfiguration : IEntityTypeConfiguration<EmailOperationalAlert>
 {
-    private static readonly EnumToStringConverter<EmailAlertType>     _typeConverter     = new();
-    private static readonly EnumToStringConverter<EmailAlertSeverity> _severityConverter = new();
-    private static readonly EnumToStringConverter<EmailAlertStatus>   _statusConverter   = new();
-    private static readonly EnumToStringConverter<EmailProviderType>  _providerConverter = new();
 
     public void Configure(EntityTypeBuilder<EmailOperationalAlert> builder)
     {
@@ -28,19 +23,19 @@ internal sealed class EmailOperationalAlertConfiguration : IEntityTypeConfigurat
 
         builder.Property(e => e.ProviderType)
             .HasColumnName("provider_type")
-            .HasConversion(_providerConverter).HasMaxLength(32);
+            ;
 
         builder.Property(e => e.AlertType)
             .HasColumnName("alert_type")
-            .HasConversion(_typeConverter).HasMaxLength(64).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.Severity)
             .HasColumnName("severity")
-            .HasConversion(_severityConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.Status)
             .HasColumnName("status")
-            .HasConversion(_statusConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.DeduplicationKey)
             .HasColumnName("deduplication_key")

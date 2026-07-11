@@ -41,7 +41,11 @@ public static class DependencyInjection
                 "Set it via the environment variable 'ConnectionStrings__XeniaDb'.");
         }
 
-        services.AddDbContext<XeniaDbContext>(options =>
+        // AddDbContextFactory registers:
+        //   - IDbContextFactory<XeniaDbContext> as Singleton (used by automation EF stores)
+        //   - XeniaDbContext itself as Scoped (used by all existing scoped infrastructure services)
+        // This replaces the previous AddDbContext call — no separate AddDbContext needed.
+        services.AddDbContextFactory<XeniaDbContext>(options =>
         {
             var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
             options.UseMySql(

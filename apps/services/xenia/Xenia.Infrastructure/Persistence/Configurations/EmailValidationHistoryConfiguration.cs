@@ -1,14 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailValidationHistoryConfiguration : IEntityTypeConfiguration<EmailValidationHistory>
 {
-    private static readonly EnumToStringConverter<EmailProviderType> _providerTypeConverter = new();
-    private static readonly EnumToStringConverter<EmailValidationResult> _resultConverter = new();
 
     public void Configure(EntityTypeBuilder<EmailValidationHistory> builder)
     {
@@ -33,7 +30,6 @@ internal sealed class EmailValidationHistoryConfiguration : IEntityTypeConfigura
 
         builder.Property(e => e.ProviderType)
             .HasColumnName("provider_type")
-            .HasConversion(_providerTypeConverter)
             .HasMaxLength(32)
             .IsRequired();
 
@@ -56,7 +52,6 @@ internal sealed class EmailValidationHistoryConfiguration : IEntityTypeConfigura
 
         builder.Property(e => e.Result)
             .HasColumnName("result")
-            .HasConversion(_resultConverter)
             .HasMaxLength(32)
             .IsRequired();
 

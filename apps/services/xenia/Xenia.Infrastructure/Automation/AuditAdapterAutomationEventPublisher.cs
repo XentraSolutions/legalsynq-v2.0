@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Xenia.Application.Adapters.Interfaces;
 using Xenia.Application.Automation;
@@ -8,17 +9,21 @@ namespace Xenia.Infrastructure.Automation;
 /// Publishes automation lifecycle events by writing to the IAuditAdapter.
 /// All events use the "xenia.automation." prefix to distinguish from email events.
 /// Fail-silent: audit failures never surface as execution failures.
+///
+/// Uses IServiceScopeFactory to resolve the scoped IAuditAdapter from a singleton
+/// context — prevents the captive dependency anti-pattern where a singleton holds
+/// a reference to a scoped service beyond the scope's lifetime.
 /// </summary>
 internal sealed class AuditAdapterAutomationEventPublisher : IAutomationEventPublisher
 {
-    private readonly IAuditAdapter _auditAdapter;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AuditAdapterAutomationEventPublisher> _logger;
 
     public AuditAdapterAutomationEventPublisher(
-        IAuditAdapter auditAdapter,
+        IServiceScopeFactory scopeFactory,
         ILogger<AuditAdapterAutomationEventPublisher> logger)
     {
-        _auditAdapter = auditAdapter;
+        _scopeFactory = scopeFactory;
         _logger       = logger;
     }
 
@@ -62,7 +67,9 @@ internal sealed class AuditAdapterAutomationEventPublisher : IAutomationEventPub
     {
         try
         {
-            await _auditAdapter.RecordEventAsync(new XeniaAuditEvent
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var auditAdapter = scope.ServiceProvider.GetRequiredService<IAuditAdapter>();
+            await auditAdapter.RecordEventAsync(new XeniaAuditEvent
             {
                 Action        = action,
                 ResourceType  = resourceType,

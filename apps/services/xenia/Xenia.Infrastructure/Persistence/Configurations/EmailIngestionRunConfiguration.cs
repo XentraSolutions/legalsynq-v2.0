@@ -1,14 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailIngestionRunConfiguration : IEntityTypeConfiguration<EmailIngestionRun>
 {
-    private static readonly EnumToStringConverter<IngestionRunStatus>      _statusConverter  = new();
-    private static readonly EnumToStringConverter<IngestionRunTriggerType> _triggerConverter = new();
 
     public void Configure(EntityTypeBuilder<EmailIngestionRun> builder)
     {
@@ -27,11 +24,11 @@ internal sealed class EmailIngestionRunConfiguration : IEntityTypeConfiguration<
 
         builder.Property(e => e.TriggerType)
             .HasColumnName("trigger_type")
-            .HasConversion(_triggerConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.Status)
             .HasColumnName("status")
-            .HasConversion(_statusConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.StartedAt)
             .HasColumnName("started_at").HasColumnType("datetime(6)").IsRequired();

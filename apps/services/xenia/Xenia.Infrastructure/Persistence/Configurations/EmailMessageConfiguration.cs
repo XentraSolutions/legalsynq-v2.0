@@ -1,17 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailMessageConfiguration : IEntityTypeConfiguration<EmailMessage>
 {
-    private static readonly EnumToStringConverter<EmailProviderType>     _providerTypeConverter = new();
-    private static readonly EnumToStringConverter<MessageImportStatus>   _importStatusConverter = new();
-    private static readonly EnumToStringConverter<MessageProcessingState>_processingStateConverter = new();
-    private static readonly EnumToStringConverter<EmailMessageBodyType>  _bodyTypeConverter = new();
-    private static readonly EnumToStringConverter<EmailImportance>       _importanceConverter = new();
 
     public void Configure(EntityTypeBuilder<EmailMessage> builder)
     {
@@ -30,7 +24,7 @@ internal sealed class EmailMessageConfiguration : IEntityTypeConfiguration<Email
 
         builder.Property(e => e.ProviderType)
             .HasColumnName("provider_type")
-            .HasConversion(_providerTypeConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.ProviderMessageId)
             .HasColumnName("provider_message_id").HasMaxLength(EmailMessage.ProviderMessageIdMaxLength).IsRequired();
@@ -70,7 +64,7 @@ internal sealed class EmailMessageConfiguration : IEntityTypeConfiguration<Email
 
         builder.Property(e => e.Importance)
             .HasColumnName("importance")
-            .HasConversion(_importanceConverter).HasMaxLength(16).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.IsRead)
             .HasColumnName("is_read");
@@ -83,7 +77,7 @@ internal sealed class EmailMessageConfiguration : IEntityTypeConfiguration<Email
 
         builder.Property(e => e.BodyType)
             .HasColumnName("body_type")
-            .HasConversion(_bodyTypeConverter).HasMaxLength(16).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.BodyText)
             .HasColumnName("body_text").HasColumnType("mediumtext");
@@ -105,11 +99,11 @@ internal sealed class EmailMessageConfiguration : IEntityTypeConfiguration<Email
 
         builder.Property(e => e.ImportStatus)
             .HasColumnName("import_status")
-            .HasConversion(_importStatusConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.ProcessingState)
             .HasColumnName("processing_state")
-            .HasConversion(_processingStateConverter).HasMaxLength(32).IsRequired();
+            .IsRequired();
 
         builder.Property(e => e.ImportedAt)
             .HasColumnName("imported_at").HasColumnType("datetime(6)");

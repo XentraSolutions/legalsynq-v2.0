@@ -19,8 +19,6 @@ internal sealed class XeniaConfigurationEntryConfiguration : IEntityTypeConfigur
 
         builder.Property(e => e.ScopeType)
             .HasColumnName("scope_type")
-            .HasConversion<string>()
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.ScopeId)

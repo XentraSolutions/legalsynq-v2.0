@@ -1,4 +1,5 @@
 using Xenia.Application.Automation;
+using AppDiagEntry = Xenia.Application.Automation.AutomationRegistryEntry;
 using Xenia.Domain.Automation;
 
 namespace Xenia.Infrastructure.Automation;

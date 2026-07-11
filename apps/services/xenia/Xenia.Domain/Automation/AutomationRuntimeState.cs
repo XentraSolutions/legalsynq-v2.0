@@ -26,6 +26,47 @@ public sealed class AutomationRuntimeState
 
     private AutomationRuntimeState() { }
 
+    /// <summary>
+    /// Reconstitutes a domain model from persisted state (EF store → domain layer).
+    /// Use only in EF store implementations; never call from application or domain logic.
+    /// </summary>
+    public static AutomationRuntimeState Reconstitute(
+        Guid id,
+        string automationKey,
+        string automationVersion,
+        Guid? tenantId,
+        AutomationLifecycleState globalState,
+        AutomationLifecycleState? tenantState,
+        int activeExecutions,
+        int totalExecutions,
+        int failedExecutions,
+        DateTime? lastExecutedAt,
+        DateTime? lastSucceededAt,
+        string? lastSafeError,
+        DateTime createdAt,
+        DateTime updatedAt,
+        uint rowVersion)
+    {
+        return new AutomationRuntimeState
+        {
+            Id               = id,
+            AutomationKey    = automationKey,
+            AutomationVersion = automationVersion,
+            TenantId         = tenantId,
+            GlobalState      = globalState,
+            TenantState      = tenantState,
+            ActiveExecutions = activeExecutions,
+            TotalExecutions  = totalExecutions,
+            FailedExecutions = failedExecutions,
+            LastExecutedAt   = lastExecutedAt,
+            LastSucceededAt  = lastSucceededAt,
+            LastSafeError    = lastSafeError,
+            CreatedAt        = createdAt,
+            UpdatedAt        = updatedAt,
+            RowVersion       = rowVersion,
+        };
+    }
+
     public static AutomationRuntimeState Create(
         string automationKey,
         string automationVersion,

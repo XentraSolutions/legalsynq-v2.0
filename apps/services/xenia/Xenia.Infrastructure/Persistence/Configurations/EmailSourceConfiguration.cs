@@ -1,17 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xenia.Domain.Email;
 
 namespace Xenia.Infrastructure.Persistence.Configurations;
 
 internal sealed class EmailSourceConfiguration : IEntityTypeConfiguration<EmailSource>
 {
-    private static readonly EnumToStringConverter<EmailProviderType> _providerTypeConverter = new();
-    private static readonly EnumToStringConverter<EmailAuthType> _authTypeConverter = new();
-    private static readonly EnumToStringConverter<EmailSourceStatus> _statusConverter = new();
-    private static readonly EnumToStringConverter<EmailHealthStatus> _healthStatusConverter = new();
-    private static readonly EnumToStringConverter<EmailValidationStatus> _validationStatusConverter = new();
 
     public void Configure(EntityTypeBuilder<EmailSource> builder)
     {
@@ -45,13 +39,11 @@ internal sealed class EmailSourceConfiguration : IEntityTypeConfiguration<EmailS
 
         builder.Property(e => e.ProviderType)
             .HasColumnName("provider_type")
-            .HasConversion(_providerTypeConverter)
             .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.AuthType)
             .HasColumnName("auth_type")
-            .HasConversion(_authTypeConverter)
             .HasMaxLength(32)
             .IsRequired();
 
@@ -93,19 +85,16 @@ internal sealed class EmailSourceConfiguration : IEntityTypeConfiguration<EmailS
 
         builder.Property(e => e.Status)
             .HasColumnName("status")
-            .HasConversion(_statusConverter)
             .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.HealthStatus)
             .HasColumnName("health_status")
-            .HasConversion(_healthStatusConverter)
             .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(e => e.ValidationStatus)
             .HasColumnName("validation_status")
-            .HasConversion(_validationStatusConverter)
             .HasMaxLength(32)
             .IsRequired();
 
