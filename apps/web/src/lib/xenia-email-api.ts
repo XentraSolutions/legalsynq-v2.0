@@ -180,3 +180,84 @@ export async function getEmailProviders(
 ): Promise<{ providers: EmailProviderDefinition[] }> {
   return xeniaFetch('/api/v1/email/providers', token);
 }
+
+export interface EmailMessageSummary {
+  id: string;
+  tenantId: string;
+  emailSourceId: string;
+  subject?: string;
+  fromAddress?: string;
+  fromName?: string;
+  receivedAt?: string;
+  sentAt?: string;
+  importance: string;
+  hasAttachments: boolean;
+  attachmentCount: number;
+  bodyPreview?: string;
+  importStatus: string;
+  importedAt?: string;
+}
+
+export interface EmailMessageAttachment {
+  id: string;
+  fileName: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  isInline: boolean;
+  contentId?: string;
+  dispatchStatus: string;
+  documentReferenceId?: string;
+}
+
+export interface EmailMessageRecipient {
+  id: string;
+  recipientType: string;
+  emailAddress: string;
+  displayName?: string;
+}
+
+export interface EmailMessageDetail extends EmailMessageSummary {
+  internetMessageId?: string;
+  threadId?: string;
+  conversationId?: string;
+  senderAddress?: string;
+  senderName?: string;
+  replyToAddresses?: string;
+  isRead?: boolean;
+  bodyType: string;
+  bodyText?: string;
+  updatedAtUtc: string;
+  recipients: EmailMessageRecipient[];
+  attachments: EmailMessageAttachment[];
+}
+
+export interface EmailMessagesQuery {
+  sourceId?: string;
+  fromAddress?: string;
+  subject?: string;
+  importStatus?: string;
+  pageSize?: number;
+  pageOffset?: number;
+}
+
+export async function getEmailMessages(
+  token: string,
+  query: EmailMessagesQuery = {},
+): Promise<{ messages: EmailMessageSummary[]; totalCount: number }> {
+  const params = new URLSearchParams();
+  if (query.sourceId)     params.set('sourceId',     query.sourceId);
+  if (query.fromAddress)  params.set('fromAddress',  query.fromAddress);
+  if (query.subject)      params.set('subject',      query.subject);
+  if (query.importStatus) params.set('importStatus', query.importStatus);
+  if (query.pageSize)     params.set('pageSize',     String(query.pageSize));
+  if (query.pageOffset)   params.set('pageOffset',   String(query.pageOffset));
+  const qs = params.toString();
+  return xeniaFetch(`/api/v1/email/messages${qs ? `?${qs}` : ''}`, token);
+}
+
+export async function getEmailMessage(
+  token: string,
+  messageId: string,
+): Promise<EmailMessageDetail> {
+  return xeniaFetch(`/api/v1/email/messages/${messageId}`, token);
+}

@@ -85,6 +85,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: '/lien/settings/task-automation',       label: 'Task Automation',   icon: 'ri-robot-line'         },
         { href: '/lien/settings/task-governance',       label: 'Task Governance',   icon: 'ri-shield-check-line'  },
         { href: '/lien/settings/email-sources',         label: 'Email Sources',     icon: 'ri-mail-settings-line' },
+        { href: '/lien/settings/email-inbox',           label: 'Email Inbox',       icon: 'ri-inbox-line'         },
       ],
     },
   ],
