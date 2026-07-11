@@ -27,6 +27,12 @@ namespace Xenia.Infrastructure.Automation;
 ///   · xn_automation_runtime_state — via <see cref="IAutomationRuntimeStateStore"/> (already EF)
 ///   · xn_tenant_automations       — per-tenant enable/disable overrides
 ///
+/// Transaction boundaries:
+///   · <see cref="UpsertRegistrationAsync"/> wraps registry + version rows in one explicit
+///     transaction so both succeed or both are rolled back (G4 closure).
+///   · <see cref="ReconcileRegistrationAsync"/> likewise.
+///   · Single-row mutations (lifecycle enable/disable, tenant state) use auto-commit.
+///
 /// Singleton — uses <see cref="IDbContextFactory{T}"/> for short-lived contexts
 /// to avoid captive-dependency issues.
 /// </summary>
@@ -101,8 +107,8 @@ internal sealed class EfAutomationRegistry : IAutomationRegistry
         var result = new List<AutomationManifest>();
         foreach (var p in _providers.Values)
         {
-            var manifest = p.GetManifest();
-            var state = await _stateStore.GetAsync(p.AutomationKey, tenantId, ct);
+            var manifest      = p.GetManifest();
+            var state         = await _stateStore.GetAsync(p.AutomationKey, tenantId, ct);
             var effectiveState = state?.EffectiveState ?? AutomationLifecycleState.Registered;
             result.Add(manifest with { Status = effectiveState });
         }
@@ -196,6 +202,10 @@ internal sealed class EfAutomationRegistry : IAutomationRegistry
 
     // ── Private helpers ────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Atomically upserts the registry row and version row in a single explicit transaction.
+    /// Satisfies G4: registry + version writes are transactionally consistent.
+    /// </summary>
     private async Task UpsertRegistrationAsync(IAutomationProvider provider, CancellationToken ct)
     {
         var manifest     = provider.GetManifest();
@@ -203,60 +213,75 @@ internal sealed class EfAutomationRegistry : IAutomationRegistry
         var manifestHash = ComputeManifestHash(manifestJson);
 
         await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
-
-        var reg = await ctx.AutomationRegistry
-            .FirstOrDefaultAsync(r => r.AutomationKey == provider.AutomationKey, ct);
-
-        if (reg is null)
-        {
-            reg = AutomationRegistration.Create(
-                provider.AutomationKey,
-                manifest.Provider,
-                manifest.Category,
-                provider.Version,
-                manifestHash,
-                manifest.MinimumPlatformVersion);
-            ctx.AutomationRegistry.Add(reg);
-        }
-        else
-        {
-            reg.Reconcile(provider.Version, manifestHash, DateTime.UtcNow);
-            ctx.AutomationRegistry.Update(reg);
-        }
-
-        var ver = await ctx.AutomationVersions
-            .FirstOrDefaultAsync(v =>
-                v.AutomationKey == provider.AutomationKey &&
-                v.Version == provider.Version, ct);
-
-        if (ver is null)
-        {
-            ver = AutomationVersionRecord.Create(
-                provider.AutomationKey,
-                provider.Version,
-                manifestJson,
-                ManifestSchemaVersion);
-            ver.Activate();
-            ctx.AutomationVersions.Add(ver);
-        }
-        else if (ver.Status != AutomationVersionStatus.Active)
-        {
-            ver.Activate();
-            ctx.AutomationVersions.Update(ver);
-        }
+        await using var tx  = await ctx.Database.BeginTransactionAsync(ct);
 
         try
         {
+            var reg = await ctx.AutomationRegistry
+                .FirstOrDefaultAsync(r => r.AutomationKey == provider.AutomationKey, ct);
+
+            if (reg is null)
+            {
+                reg = AutomationRegistration.Create(
+                    provider.AutomationKey,
+                    manifest.Provider,
+                    manifest.Category,
+                    provider.Version,
+                    manifestHash,
+                    manifest.MinimumPlatformVersion);
+                ctx.AutomationRegistry.Add(reg);
+            }
+            else
+            {
+                reg.Reconcile(provider.Version, manifestHash, DateTime.UtcNow);
+                // If previously Unavailable and now rediscovered, restore lifecycle
+                if (reg.LifecycleStatus == AutomationLifecycleState.Unavailable)
+                    reg.SetLifecycle(AutomationLifecycleState.Registered);
+                ctx.AutomationRegistry.Update(reg);
+            }
+
+            var ver = await ctx.AutomationVersions
+                .FirstOrDefaultAsync(v =>
+                    v.AutomationKey == provider.AutomationKey &&
+                    v.Version == provider.Version, ct);
+
+            if (ver is null)
+            {
+                ver = AutomationVersionRecord.Create(
+                    provider.AutomationKey,
+                    provider.Version,
+                    manifestJson,
+                    ManifestSchemaVersion);
+                ver.Activate();
+                ctx.AutomationVersions.Add(ver);
+            }
+            else if (ver.Status != AutomationVersionStatus.Active)
+            {
+                ver.Activate();
+                ctx.AutomationVersions.Update(ver);
+            }
+
             await ctx.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
         }
         catch (DbUpdateException ex)
         {
+            await tx.RollbackAsync(CancellationToken.None);
             _logger.LogWarning(ex,
                 "Failed to upsert durable registration for key={Key}; " +
-                "provider dict already updated — continuing", provider.AutomationKey);
+                "transaction rolled back — continuing", provider.AutomationKey);
+        }
+        catch (Exception)
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            throw;
         }
     }
 
+    /// <summary>
+    /// Atomically reconciles the registry row when the provider version matches
+    /// but the manifest may have changed. Wrapped in an explicit transaction.
+    /// </summary>
     private async Task ReconcileRegistrationAsync(IAutomationProvider provider, CancellationToken ct)
     {
         var manifest     = provider.GetManifest();
@@ -268,6 +293,7 @@ internal sealed class EfAutomationRegistry : IAutomationRegistry
         var reg = await ctx.AutomationRegistry
             .FirstOrDefaultAsync(r => r.AutomationKey == provider.AutomationKey, ct);
 
+        bool needsSave;
         if (reg is null)
         {
             reg = AutomationRegistration.Create(
@@ -278,25 +304,41 @@ internal sealed class EfAutomationRegistry : IAutomationRegistry
                 manifestHash,
                 manifest.MinimumPlatformVersion);
             ctx.AutomationRegistry.Add(reg);
+            needsSave = true;
         }
-        else if (reg.ManifestHash != manifestHash)
+        else if (reg.ManifestHash != manifestHash ||
+                 reg.LifecycleStatus == AutomationLifecycleState.Unavailable)
         {
             reg.Reconcile(provider.Version, manifestHash, DateTime.UtcNow);
+            if (reg.LifecycleStatus == AutomationLifecycleState.Unavailable)
+                reg.SetLifecycle(AutomationLifecycleState.Registered);
             ctx.AutomationRegistry.Update(reg);
+            needsSave = true;
         }
         else
         {
             return;
         }
 
+        if (!needsSave) return;
+
+        await using var tx = await ctx.Database.BeginTransactionAsync(ct);
         try
         {
             await ctx.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
         }
         catch (DbUpdateException ex)
         {
+            await tx.RollbackAsync(CancellationToken.None);
             _logger.LogWarning(ex,
-                "Reconcile upsert failed for key={Key} — non-fatal", provider.AutomationKey);
+                "Reconcile upsert failed for key={Key} — transaction rolled back, non-fatal",
+                provider.AutomationKey);
+        }
+        catch (Exception)
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            throw;
         }
     }
 
