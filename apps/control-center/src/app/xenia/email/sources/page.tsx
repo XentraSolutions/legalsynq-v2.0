@@ -58,6 +58,12 @@ export default async function EmailSourcesPage() {
           >
             ← Email Dashboard
           </a>
+          <a
+            href="/xenia/email/sources/new"
+            className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+          >
+            + New Source
+          </a>
         </div>
       </div>
 
@@ -100,7 +106,12 @@ export default async function EmailSourcesPage() {
                 {sources.map(s => (
                   <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{s.displayName}</div>
+                      <a
+                        href={`/xenia/email/sources/${s.id}`}
+                        className="font-medium text-indigo-600 hover:text-indigo-800"
+                      >
+                        {s.displayName}
+                      </a>
                       <div className="text-xs text-gray-500">{s.emailAddress}</div>
                       {s.description && (
                         <div className="text-xs text-gray-400 mt-0.5 max-w-xs truncate">{s.description}</div>

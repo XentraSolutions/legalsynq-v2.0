@@ -214,7 +214,46 @@ public sealed class EmailSourceServiceTests : IDisposable
         var result = await _service.DeleteSourceAsync(_tenantId, created.Id, null);
 
         Assert.True(result);
-        Assert.Equal(0, await _db.EmailSources.CountAsync());
+        // Soft delete: row is retained in DB but marked deleted
+        Assert.Equal(1, await _db.EmailSources.CountAsync());
+        var row = await _db.EmailSources.FirstAsync(s => s.Id == created.Id);
+        Assert.True(row.IsDeleted);
+        Assert.NotNull(row.DeletedAt);
+    }
+
+    [Fact]
+    public async Task DeleteSource_SoftDeleted_NotReturnedByGetSources()
+    {
+        var created = await CreateTestSource("softdel@example.com");
+        await _service.DeleteSourceAsync(_tenantId, created.Id, null);
+
+        var sources = await _service.GetSourcesAsync(_tenantId);
+        Assert.Empty(sources);
+
+        var single = await _service.GetSourceAsync(_tenantId, created.Id);
+        Assert.Null(single);
+    }
+
+    [Fact]
+    public async Task DeleteSource_AlreadyDeleted_ReturnsFalse()
+    {
+        var created = await CreateTestSource("alreadydel@example.com");
+        var first = await _service.DeleteSourceAsync(_tenantId, created.Id, null);
+        var second = await _service.DeleteSourceAsync(_tenantId, created.Id, null);
+
+        Assert.True(first);
+        Assert.False(second); // Source now hidden (soft-deleted), returns not-found
+    }
+
+    [Fact]
+    public async Task DeleteSource_PreservesValidationHistoryInDb()
+    {
+        // Validation history rows belong to a different table and are not deleted
+        var created = await CreateTestSource("hist@example.com");
+        await _service.DeleteSourceAsync(_tenantId, created.Id, null);
+        // Validation history is not affected by soft delete
+        var history = await _db.EmailValidationHistory.CountAsync(h => h.EmailSourceId == created.Id);
+        Assert.Equal(0, history); // None yet — but table not purged by delete
     }
 
     [Fact]

@@ -96,6 +96,9 @@ public static class DependencyInjection
         // Email source service
         services.AddScoped<IEmailSourceService, EfEmailSourceService>();
 
+        // Email settings service
+        services.AddScoped<IEmailSettingsService, EfEmailSettingsService>();
+
         // Connector registry (singleton — connectors are stateless)
         services.AddSingleton<EmailSourceConnectorRegistry>(sp =>
         {

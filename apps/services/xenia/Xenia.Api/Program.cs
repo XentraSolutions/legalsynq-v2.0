@@ -185,6 +185,7 @@ app.MapXeniaConfigurationEndpoints();
 app.MapXeniaEmailModuleEndpoints();
 app.MapXeniaEmailSourceEndpoints();
 app.MapXeniaEmailProviderEndpoints();
+app.MapXeniaEmailSettingsEndpoints();
 
 // Auth smoke-test endpoint
 app.MapGet("/secure/ping", (HttpContext ctx) =>
