@@ -43,9 +43,19 @@ internal sealed class XeniaMigrationsHostedService : IHostedService
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<XeniaDbContext>();
 
-        _logger.LogInformation("Xenia: applying database migrations...");
-        await db.Database.MigrateAsync(cancellationToken);
-        _logger.LogInformation("Xenia: database migrations complete.");
+        var isSqlite = db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
+        if (isSqlite)
+        {
+            _logger.LogInformation("Xenia: SQLite mode — creating schema via EnsureCreated (no migrations).");
+            await db.Database.EnsureCreatedAsync(cancellationToken);
+            _logger.LogInformation("Xenia: SQLite schema ready.");
+        }
+        else
+        {
+            _logger.LogInformation("Xenia: applying database migrations...");
+            await db.Database.MigrateAsync(cancellationToken);
+            _logger.LogInformation("Xenia: database migrations complete.");
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
