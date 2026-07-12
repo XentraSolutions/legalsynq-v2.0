@@ -34,12 +34,7 @@ public static class DependencyInjection
     {
         // ── Database ─────────────────────────────────────────────────────────
         var connectionString = configuration.GetConnectionString(XeniaDbConnectionStringName);
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException(
-                $"Connection string 'ConnectionStrings:{XeniaDbConnectionStringName}' is missing. " +
-                "Set it via the environment variable 'ConnectionStrings__XeniaDb'.");
-        }
+        var useSqlite = string.IsNullOrWhiteSpace(connectionString);
 
         // AddDbContextFactory registers:
         //   - IDbContextFactory<XeniaDbContext> as Singleton (used by automation EF stores)
@@ -47,15 +42,23 @@ public static class DependencyInjection
         // This replaces the previous AddDbContext call — no separate AddDbContext needed.
         services.AddDbContextFactory<XeniaDbContext>(options =>
         {
-            var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
-            options.UseMySql(
-                connectionString,
-                serverVersion,
-                mySqlOptions =>
-                {
-                    mySqlOptions.MigrationsAssembly(typeof(XeniaDbContext).Assembly.GetName().Name);
-                    mySqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
-                });
+            if (useSqlite)
+            {
+                var sqlitePath = Path.Combine(Path.GetTempPath(), "xenia.db");
+                options.UseSqlite($"Data Source={sqlitePath}");
+            }
+            else
+            {
+                var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
+                options.UseMySql(
+                    connectionString!,
+                    serverVersion,
+                    mySqlOptions =>
+                    {
+                        mySqlOptions.MigrationsAssembly(typeof(XeniaDbContext).Assembly.GetName().Name);
+                        mySqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
+                    });
+            }
         });
 
         // ── Migrations (run before any seeding) ──────────────────────────────
