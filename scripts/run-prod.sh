@@ -217,8 +217,13 @@ if command -v dotnet &>/dev/null; then
         Task.Api)      launch_svc "$_svc_label" "$csproj"; PID_TASK=$! ;;
         Tenant.Api)    launch_svc "$_svc_label" "$csproj"; PID_TENANT=$! ;;
         Xenia.Api)
-          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
-          PID_XENIA=$! ;;
+          _xenia_dll="$(dirname "$csproj")/bin/Release/net10.0/Xenia.Api.dll"
+          if [ ! -f "$_xenia_dll" ]; then
+            echo "[xenia] WARNING: Xenia binary not found — skipping (email features unavailable)"
+          else
+            launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
+            PID_XENIA=$!
+          fi ;;
         Support.Api)
           # Jwt:SigningKey is read from the Jwt__SigningKey Replit secret (env var).
           # Notifications are forwarded to the Notifications service on :5008.
