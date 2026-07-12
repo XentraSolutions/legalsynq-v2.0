@@ -50,9 +50,19 @@ internal sealed class XeniaMigrationsHostedService : IHostedService
         }
         else
         {
-            _logger.LogInformation("Xenia: applying database migrations...");
-            await db.Database.MigrateAsync(cancellationToken);
-            _logger.LogInformation("Xenia: database migrations complete.");
+            try
+            {
+                _logger.LogInformation("Xenia: applying database migrations...");
+                await db.Database.MigrateAsync(cancellationToken);
+                _logger.LogInformation("Xenia: database migrations complete.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Xenia: database migration failed — service will start without a working database. " +
+                    "DB-dependent endpoints will return errors. " +
+                    "Ensure ConnectionStrings__XeniaDb is set to a reachable MySQL instance.");
+            }
         }
     }
 

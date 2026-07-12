@@ -192,6 +192,8 @@ if command -v dotnet &>/dev/null; then
   build_service "Documents"     "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
   build_service "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
   build_service "Comms"         "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj"
+  # Force a clean Xenia rebuild so incremental build never silently reuses a stale binary.
+  rm -f "$ROOT/apps/services/xenia/Xenia.Api/bin/Release/net10.0/Xenia.Api.dll"
   build_service "Xenia"         "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
   build_service "Support"       "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
 
