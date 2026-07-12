@@ -25,6 +25,7 @@ DOTNET_PROJECTS=(
   "Support.Api/Support.Api.csproj"
   "Commerce.Api/Commerce.Api.csproj"
   "Billing.Api/Billing.Api.csproj"
+  "Xenia.Api/Xenia.Api.csproj"
   "Gateway.Api/Gateway.Api.csproj"
 )
 

@@ -36,7 +36,7 @@ public class UserRoleAssignment
             TenantId = tenantId,
             UserId = userId,
             RoleCode = roleCode.Trim(),
-            ProductCode = productCode?.ToUpperInvariant().Trim(),
+            ProductCode = ProductCodeNormalizer.NormalizeOptional(productCode),
             AssignmentStatus = AssignmentStatus.Active,
             OrganizationId = organizationId,
             SourceType = "Direct",

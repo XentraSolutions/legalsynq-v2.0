@@ -12,7 +12,7 @@ export const FrontendProductCode = {
   SynqLien:     'SynqLien',
   SynqInsights: 'SynqInsights',
   SynqComms:    'SynqComms',
-  SynqAI:       'SynqAI',
+  Xenia:        'Xenia',
 } as const;
 export type FrontendProductCodeValue = (typeof FrontendProductCode)[keyof typeof FrontendProductCode];
 

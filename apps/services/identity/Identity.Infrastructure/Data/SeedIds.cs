@@ -9,7 +9,7 @@ internal static class SeedIds
     public static readonly Guid ProductSynqLiens       = new("10000000-0000-0000-0000-000000000002");
     public static readonly Guid ProductSynqCareConnect = new("10000000-0000-0000-0000-000000000003");
     public static readonly Guid ProductSynqPay         = new("10000000-0000-0000-0000-000000000004");
-    public static readonly Guid ProductSynqAI          = new("10000000-0000-0000-0000-000000000005");
+    public static readonly Guid ProductXenia           = new("10000000-0000-0000-0000-000000000005");
 
     // ── Tenant ────────────────────────────────────────────────────────────────
     public static readonly Guid TenantLegalSynq = new("20000000-0000-0000-0000-000000000001");

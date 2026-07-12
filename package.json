@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev:web": "cd apps/web && node node_modules/next/dist/bin/next dev -p 3000",
-    "dev:control-center": "cd apps/control-center && node node_modules/next/dist/bin/next dev -p 8004"
+    "dev:web": "cd apps/web && node ../../node_modules/next/dist/bin/next dev -p 3000",
+    "dev:control-center": "cd apps/control-center && node ../../node_modules/next/dist/bin/next dev -p 8004"
   },
   "keywords": [],
   "author": "",

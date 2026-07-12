@@ -27,7 +27,7 @@ public class TenantProductEntitlement
         {
             Id = Guid.CreateVersion7(),
             TenantId = tenantId,
-            ProductCode = productCode.ToUpperInvariant().Trim(),
+            ProductCode = ProductCodeNormalizer.Normalize(productCode),
             Status = EntitlementStatus.Active,
             EnabledAtUtc = now,
             CreatedAtUtc = now,

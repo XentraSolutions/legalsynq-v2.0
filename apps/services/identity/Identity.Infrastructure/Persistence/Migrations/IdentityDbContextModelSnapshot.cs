@@ -1241,11 +1241,11 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000005"),
-                            Code = "SYNQ_AI",
+                            Code = "XENIA",
                             CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "AI-powered legal intelligence platform",
+                            Description = "Enterprise intelligence platform for LegalSynq products.",
                             IsActive = true,
-                            Name = "SynqAI"
+                            Name = "Xenia"
                         });
                 });
 

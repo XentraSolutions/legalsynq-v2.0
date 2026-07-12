@@ -36,9 +36,9 @@ const ALL_PRODUCTS = [
     bg: "#f5f3ff",
   },
   {
-    id: "ai",
-    label: "Synq AI",
-    href: "/ai/dashboard",
+    id: "xenia",
+    label: "Xenia",
+    href: "/xenia/dashboard",
     iconSrc: "/product-icons/synqai.png",
     bg: "#fffbeb",
   },

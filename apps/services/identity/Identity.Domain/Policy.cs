@@ -57,7 +57,7 @@ public class Policy
             PolicyCode = normalizedCode,
             Name = name.Trim(),
             Description = description?.Trim(),
-            ProductCode = productCode.Trim(),
+            ProductCode = ProductCodeNormalizer.Normalize(productCode),
             IsActive = true,
             Priority = priority,
             Effect = effect,

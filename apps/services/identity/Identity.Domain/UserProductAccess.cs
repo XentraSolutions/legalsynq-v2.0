@@ -33,7 +33,7 @@ public class UserProductAccess
             Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             UserId = userId,
-            ProductCode = productCode.ToUpperInvariant().Trim(),
+            ProductCode = ProductCodeNormalizer.Normalize(productCode),
             AccessStatus = AccessStatus.Granted,
             OrganizationId = organizationId,
             SourceType = "Direct",

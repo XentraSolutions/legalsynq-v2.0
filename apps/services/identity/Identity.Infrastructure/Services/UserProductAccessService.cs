@@ -33,14 +33,14 @@ public class UserProductAccessService : IUserProductAccessService
 
     public async Task<UserProductAccess?> GetByTenantUserAndCodeAsync(Guid tenantId, Guid userId, string productCode, CancellationToken ct = default)
     {
-        var code = productCode.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.Normalize(productCode);
         return await _db.UserProductAccessRecords
             .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.UserId == userId && a.ProductCode == code, ct);
     }
 
     public async Task<UserProductAccess> GrantAsync(Guid tenantId, Guid userId, string productCode, Guid? actorUserId = null, CancellationToken ct = default)
     {
-        var code = productCode.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.Normalize(productCode);
 
         var isMember = await _db.UserTenants.AnyAsync(ut => ut.UserId == userId && ut.TenantId == tenantId && ut.IsActive, ct);
         if (!isMember)
@@ -118,7 +118,7 @@ public class UserProductAccessService : IUserProductAccessService
 
     public async Task<bool> RevokeAsync(Guid tenantId, Guid userId, string productCode, Guid? actorUserId = null, CancellationToken ct = default)
     {
-        var code = productCode.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.Normalize(productCode);
         var existing = await _db.UserProductAccessRecords
             .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.UserId == userId && a.ProductCode == code, ct);
 

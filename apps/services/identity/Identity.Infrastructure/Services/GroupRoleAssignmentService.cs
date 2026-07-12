@@ -42,7 +42,7 @@ public class GroupRoleAssignmentService : IGroupRoleAssignmentService
         if (group.Status == GroupStatus.Archived)
             throw new InvalidOperationException("Cannot assign roles to an archived group.");
 
-        var code = productCode?.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.NormalizeOptional(productCode);
         if (code != null)
         {
             var entitled = await _db.TenantProductEntitlements

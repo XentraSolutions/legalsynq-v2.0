@@ -33,14 +33,14 @@ public class TenantProductEntitlementService : ITenantProductEntitlementService
 
     public async Task<TenantProductEntitlement?> GetByTenantAndCodeAsync(Guid tenantId, string productCode, CancellationToken ct = default)
     {
-        var code = productCode.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.Normalize(productCode);
         return await _db.TenantProductEntitlements
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.ProductCode == code, ct);
     }
 
     public async Task<TenantProductEntitlement> UpsertAsync(Guid tenantId, string productCode, Guid? actorUserId = null, CancellationToken ct = default)
     {
-        var code = productCode.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.Normalize(productCode);
 
         var tenant = await _db.Tenants.AnyAsync(t => t.Id == tenantId, ct);
         if (!tenant)
@@ -100,7 +100,7 @@ public class TenantProductEntitlementService : ITenantProductEntitlementService
 
     public async Task<bool> DisableAsync(Guid tenantId, string productCode, Guid? actorUserId = null, CancellationToken ct = default)
     {
-        var code = productCode.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.Normalize(productCode);
         var existing = await _db.TenantProductEntitlements
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.ProductCode == code, ct);
 

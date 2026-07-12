@@ -35,7 +35,7 @@ public class GroupRoleAssignment
             TenantId = tenantId,
             GroupId = groupId,
             RoleCode = roleCode.Trim(),
-            ProductCode = productCode?.ToUpperInvariant().Trim(),
+            ProductCode = ProductCodeNormalizer.NormalizeOptional(productCode),
             OrganizationId = organizationId,
             AssignmentStatus = AssignmentStatus.Active,
             AssignedAtUtc = now,

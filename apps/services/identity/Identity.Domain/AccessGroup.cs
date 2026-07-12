@@ -47,7 +47,7 @@ public class AccessGroup
             Description = description?.Trim(),
             Status = GroupStatus.Active,
             ScopeType = scopeType,
-            ProductCode = productCode?.ToUpperInvariant().Trim(),
+            ProductCode = ProductCodeNormalizer.NormalizeOptional(productCode),
             OrganizationId = organizationId,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,

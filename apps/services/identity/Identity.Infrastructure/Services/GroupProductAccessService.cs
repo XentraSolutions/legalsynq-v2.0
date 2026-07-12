@@ -28,7 +28,7 @@ public class GroupProductAccessService : IGroupProductAccessService
         if (groupId == Guid.Empty) throw new ArgumentException("GroupId is required.", nameof(groupId));
         if (string.IsNullOrWhiteSpace(productCode)) throw new ArgumentException("ProductCode is required.", nameof(productCode));
 
-        var code = productCode.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.Normalize(productCode);
 
         var group = await _db.AccessGroups
             .FirstOrDefaultAsync(g => g.Id == groupId && g.TenantId == tenantId, ct)
@@ -86,7 +86,7 @@ public class GroupProductAccessService : IGroupProductAccessService
     {
         if (string.IsNullOrWhiteSpace(productCode)) throw new ArgumentException("ProductCode is required.", nameof(productCode));
 
-        var code = productCode.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.Normalize(productCode);
         var existing = await _db.GroupProductAccessRecords
             .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.GroupId == groupId && a.ProductCode == code, ct);
         if (existing == null) return false;

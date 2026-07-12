@@ -53,6 +53,9 @@ public class TenantAdminService : ITenantAdminService
         ["synq_rx"] = "SynqRx",
         ["synqpayout"] = "SynqPayout",
         ["synq_payout"] = "SynqPayout",
+        ["xenia"] = "Xenia",
+        ["synqai"] = "Xenia",
+        ["synq_ai"] = "Xenia",
     };
 
     public TenantAdminService(

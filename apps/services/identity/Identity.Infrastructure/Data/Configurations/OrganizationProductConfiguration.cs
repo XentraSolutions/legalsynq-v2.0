@@ -33,7 +33,7 @@ public class OrganizationProductConfiguration : IEntityTypeConfiguration<Organiz
             new { OrganizationId = SeedIds.OrgLegalSynq, ProductId = SeedIds.ProductSynqLiens,       IsEnabled = true, EnabledAtUtc = (DateTime?)SeedIds.SeededAt, GrantedByUserId = (Guid?)null },
             new { OrganizationId = SeedIds.OrgLegalSynq, ProductId = SeedIds.ProductSynqCareConnect, IsEnabled = true, EnabledAtUtc = (DateTime?)SeedIds.SeededAt, GrantedByUserId = (Guid?)null },
             new { OrganizationId = SeedIds.OrgLegalSynq, ProductId = SeedIds.ProductSynqPay,         IsEnabled = true, EnabledAtUtc = (DateTime?)SeedIds.SeededAt, GrantedByUserId = (Guid?)null },
-            new { OrganizationId = SeedIds.OrgLegalSynq, ProductId = SeedIds.ProductSynqAI,          IsEnabled = true, EnabledAtUtc = (DateTime?)SeedIds.SeededAt, GrantedByUserId = (Guid?)null }
+            new { OrganizationId = SeedIds.OrgLegalSynq, ProductId = SeedIds.ProductXenia,           IsEnabled = true, EnabledAtUtc = (DateTime?)SeedIds.SeededAt, GrantedByUserId = (Guid?)null }
         );
     }
 }

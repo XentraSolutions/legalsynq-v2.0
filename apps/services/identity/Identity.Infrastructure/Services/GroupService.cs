@@ -41,7 +41,7 @@ public class GroupService : IGroupService
 
         if (scopeType == GroupScopeType.Product)
         {
-            var code = productCode?.ToUpperInvariant().Trim();
+            var code = ProductCodeNormalizer.NormalizeOptional(productCode);
             var entitled = await _db.TenantProductEntitlements
                 .AnyAsync(e => e.TenantId == tenantId && e.ProductCode == code! && e.Status == EntitlementStatus.Active, ct);
             if (!entitled)

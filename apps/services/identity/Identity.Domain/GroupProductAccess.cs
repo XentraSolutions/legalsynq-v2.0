@@ -30,7 +30,7 @@ public class GroupProductAccess
             Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             GroupId = groupId,
-            ProductCode = productCode.ToUpperInvariant().Trim(),
+            ProductCode = ProductCodeNormalizer.Normalize(productCode),
             AccessStatus = AccessStatus.Granted,
             GrantedAtUtc = now,
             CreatedAtUtc = now,

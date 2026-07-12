@@ -106,6 +106,8 @@ PID_CC=$!
   dotnet restore "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" --verbosity quiet
   dotnet build   "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
     || echo "[billing] Build error — continuing with cached binary"
+  dotnet build "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
+    || echo "[xenia] Build error — continuing with cached binary"
   # Identity.Api can OOM inside the full solution build on constrained hosts.
   # Build it separately here with conservative GC settings so the binary always
   # reflects the latest source (including the "role" claim fix in JwtTokenService).
@@ -138,7 +140,7 @@ PID_CC=$!
   #    Monitoring's OOM was killing Task and Flow when it started 15th; moving it
   #    here gives it maximum RAM headroom. It will emit "no data" for most
   #    entities at first, which is fine — the monitoring cycle auto-recovers.
-  # 3. Commerce + Billing (InMemory) — lightweight, start while RAM is free.
+  # 3. Commerce + Billing + Xenia (stateless/in-memory) — lightweight, start while RAM is free.
   # 4. Tenant (has DB migration) — starts early to avoid OOM when last.
   # 5. Reports + Task — also OOM'd when last; moved to positions 5–6.
   # 6. Remaining DB services — staggered 3 s apart to avoid MySQL connection
@@ -172,7 +174,7 @@ PID_CC=$!
   ) &
   sleep 5
 
-  # Commerce and Billing are InMemory (no DB migration); start early.
+  # Commerce, Billing, and Xenia are stateless/in-memory; start early.
   ASPNETCORE_ENVIRONMENT=Development \
     ASPNETCORE_URLS=http://0.0.0.0:5030 \
     DOTNET_GCConserveMemory=9 \
@@ -185,8 +187,13 @@ PID_CC=$!
     BILLING_LEGALSYNQ_SIGNING_KEY="${Jwt__SigningKey:-}" \
     dotnet run --no-build --project "$ROOT/apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj" &
   sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    ASPNETCORE_URLS=http://0.0.0.0:5032 \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj" &
+  sleep 3
 
-  # Tenant starts 5th — only 4 processes running before it.
+  # Tenant starts after the stateless services so DB-backed startup still happens early.
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
     dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &

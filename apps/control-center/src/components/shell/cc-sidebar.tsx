@@ -48,6 +48,9 @@ function CCSidebarInner({ collapsed, mounted, toggle, navSections }: {
     : isHome
       ? undefined
       : getSectionForPathname(pathname ?? '', navSections);
+  const xeniaShortcut = navSections
+    ?.find(section => section.heading === 'XENIA')
+    ?.items.find(item => item.href === '/xenia');
 
   // Home is only "active" on pure / with no group selected
   const homeIsActive = isHome && !groupParam;
@@ -98,6 +101,15 @@ function CCSidebarInner({ collapsed, mounted, toggle, navSections }: {
             activeBg={nav.activeBg}
             forceActive={homeIsActive}
           />
+          {xeniaShortcut ? (
+            <SidebarItem
+              item={xeniaShortcut}
+              pathname={pathname ?? ''}
+              collapsed={collapsed}
+              activeColor={nav.activeColor}
+              activeBg={nav.activeBg}
+            />
+          ) : null}
         </nav>
 
         {/* Active group section — from ?group param (home) or pathname (deep routes) */}

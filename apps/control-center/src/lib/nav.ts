@@ -70,6 +70,13 @@ export const CC_NAV: NavSection[] = [
   },
 
   {
+    heading: 'XENIA',
+    items: [
+      { href: '/xenia', label: 'Overview', icon: 'ri-robot-line', badge: 'IN PROGRESS' },
+    ],
+  },
+
+  {
     heading: 'TENANTS',
     items: [
       { href: '/tenants', label: 'Tenants',       icon: 'ri-building-2-line'                    },

@@ -1415,6 +1415,10 @@ public static class AdminEndpoints
         ["SynqFund"]      = "SYNQ_FUND",
         ["SynqLien"]      = "SYNQ_LIENS",
         ["CareConnect"]   = "SYNQ_CARECONNECT",
+        ["Xenia"]         = "XENIA",
+        ["SynqAI"]        = "XENIA",
+        ["SYNQ_AI"]       = "XENIA",
+        ["SYNQAI"]        = "XENIA",
         ["SynqInsights"]  = "SYNQ_INSIGHTS",
     };
 
@@ -1424,6 +1428,8 @@ public static class AdminEndpoints
         ["SYNQ_FUND"]        = "SynqFund",
         ["SYNQ_LIENS"]       = "SynqLien",
         ["SYNQ_CARECONNECT"] = "CareConnect",
+        ["XENIA"]            = "Xenia",
+        ["SYNQ_AI"]          = "Xenia",
         ["SYNQ_INSIGHTS"]    = "SynqInsights",
     };
 
@@ -7072,7 +7078,7 @@ public static class AdminEndpoints
         }
 
         // Otherwise uppercase + trim the raw key and look it up directly
-        var code = productKey.ToUpperInvariant().Trim();
+        var code = ProductCodeNormalizer.Normalize(productKey);
         var found = await db.Products.AnyAsync(p => p.Code == code && p.IsActive, ct);
         return found ? code : null;
     }
@@ -7633,7 +7639,7 @@ public static class AdminEndpoints
         {
             var filterCode = FrontendToDbProductCode.TryGetValue(productKey, out var mapped)
                 ? mapped
-                : productKey.ToUpperInvariant().Trim();
+                : ProductCodeNormalizer.Normalize(productKey);
             q = q.Where(u => db.UserProductAccessRecords.Any(a =>
                 a.UserId == u.Id && a.ProductCode == filterCode &&
                 a.AccessStatus == AccessStatus.Granted));

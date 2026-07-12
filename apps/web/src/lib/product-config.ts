@@ -44,6 +44,13 @@ export const PRODUCT_DEFS: readonly ProductDef[] = [
     routePrefix: '/admin',
     requiredRoles: [],
   },
+  {
+    id: 'xenia',
+    label: 'Xenia',
+    riIcon: 'ri-robot-line',
+    routePrefix: '/xenia',
+    requiredRoles: [],
+  },
 ] as const;
 
 /**

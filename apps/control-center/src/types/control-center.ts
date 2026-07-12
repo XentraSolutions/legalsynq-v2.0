@@ -66,6 +66,7 @@ export interface TenantAccessCodeSaveResult extends TenantAccessCodeMetadata {
 export type ProductCode =
   | 'SynqFund'
   | 'SynqLien'
+  | 'Xenia'
   | 'SynqBill'
   | 'SynqRx'
   | 'SynqPayout'

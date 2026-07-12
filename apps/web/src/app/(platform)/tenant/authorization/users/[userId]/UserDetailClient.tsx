@@ -90,7 +90,7 @@ const AVAILABLE_PRODUCTS = [
   { code: 'SYNQ_FUND', label: 'Synq Funds' },
   { code: 'SYNQ_LIEN', label: 'Synq Liens' },
   { code: 'SYNQ_CARECONNECT', label: 'Synq CareConnect' },
-  { code: 'SYNQ_AI', label: 'Synq AI' },
+  { code: 'XENIA', label: 'Xenia' },
   { code: 'SYNQ_INSIGHTS', label: 'Synq Insights' },
 ];
 

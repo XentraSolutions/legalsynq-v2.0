@@ -27,6 +27,12 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     description: 'Medical lien tracking and settlement workflows',
   },
   {
+    code: 'Xenia',
+    name: 'Xenia',
+    iconSrc: '/product-icons/synqai.png',
+    description: 'Enterprise AI orchestration, agents, skills, knowledge, governance, and usage management.',
+  },
+  {
     code: 'SynqBill',
     name: 'Synq Bill',
     iconSrc: '/product-icons/synqbill.png',

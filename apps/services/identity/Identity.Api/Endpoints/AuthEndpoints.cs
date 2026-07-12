@@ -112,7 +112,7 @@ public static class AuthEndpoints
             var requestedProductCode = httpContext.Request.Query["productCode"].FirstOrDefault();
             var normalizedProductCode = string.IsNullOrWhiteSpace(requestedProductCode)
                 ? null
-                : requestedProductCode.Trim().ToUpperInvariant();
+                : ProductCodeNormalizer.Normalize(requestedProductCode);
 
             var records = await db.UserProductAccessRecords
                 .AsNoTracking()
