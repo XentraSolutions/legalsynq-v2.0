@@ -192,6 +192,7 @@ if command -v dotnet &>/dev/null; then
   build_service "Documents"     "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
   build_service "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
   build_service "Comms"         "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj"
+  build_service "Xenia"         "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
   build_service "Support"       "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
 
   if [ "$DOTNET_FAIL" -gt 0 ]; then
