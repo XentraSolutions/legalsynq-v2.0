@@ -30,6 +30,7 @@ This file is the agent's persistent memory. It contains architecture, convention
 | Notifications | 5025 |
 | Reports | 5029 |
 | Commerce (planned) | 5030 |
+| Xenia (automation platform) | 5035 |
 
 ## Architecture Rules
 
@@ -255,6 +256,7 @@ All projects (services and shared libraries) target `net10.0`. The Replit enviro
 - Control Center (dashboard, tenant mgmt, user mgmt, audit investigation, monitoring, notifications, reports)
 - Commerce ECO-01: `ICommerceLifecycleNotifier`, noop implementation, `AddCommerceIntegration` DI helper, event type constants, notification template keys
 - Commerce ECO-02: Commerce notifications wired into TenantAdminService, TenantService, ProductProvisioningService
+- Xenia XENIA-P1-T1: Standalone automation platform core foundation (port 5035) — Domain/Application/Infrastructure/Api/Tests, 8 platform adapter interfaces + noop impls, module registry, tenant-context resolution, layered config (5 scopes), event framework, /health /ready /info /modules /adapters /configuration endpoints, Control Center admin UI shell (dashboard, modules, adapters, settings pages)
 
 ## User Preferences
 

@@ -1,0 +1,2653 @@
+You are implementing the following Xenia operational administration ticket.
+
+==================================================
+TICKET
+==================================================
+
+Ticket ID: XENIA-P1-T4
+
+Parent Ticket: XENIA-P1 — Xenia Platform Foundation & Email Automation
+
+Related Tickets:
+- XENIA-P1-T1 — Core Service Foundation
+- XENIA-P1-T1-V1 — Core Foundation Validation and Remediation
+- XENIA-P1-T1-V2 — Core Portability and Runtime Closure
+- XENIA-P1-T2 — Tenant Email Module Foundation and Source Connectivity
+- XENIA-P1-T2-V1 — Email Source Connectivity and Administration Closure
+- XENIA-P1-T3 — Email Ingestion Engine and Message Persistence Foundation
+- XENIA-P1-T3-V1 — Ingestion Runtime Validation and Provider Completion
+
+Task Type: 🟦 XenIA
+
+Title: Email Administration, Monitoring, and Operational Control
+
+==================================================
+MANDATORY EXECUTION RULES
+==================================================
+
+1. Create the implementation report before making any code changes.
+
+Required report path:
+
+/analysis/XENIA-P1-T4-report.md
+
+2. The report must be created as the first implementation action.
+
+3. Before changing source code, populate the report with:
+
+- Ticket information
+- Prior-report review
+- Initial repository analysis
+- Toolchain and environment
+- Current implementation status
+- Initial implementation-progress table
+- Identified prerequisite gaps
+
+4. Update the report incrementally throughout:
+
+- Carried-forward prerequisite closure
+- Controlled IMAP validation
+- Runtime API validation
+- Proxy validation
+- Header sanitization
+- Lock lease renewal
+- Audit completion
+- Attachment-streaming proof
+- Cursor-key enforcement
+- Operational domain implementation
+- Database changes
+- Backend APIs
+- Metrics
+- Alerts
+- Retention
+- Frontend implementation
+- Test execution
+- Final acceptance review
+
+5. Do not create or fully populate the report only after implementation is complete.
+
+6. Do not fabricate:
+
+- Build success
+- Publish success
+- Test success
+- Migration success
+- Controlled provider ingestion
+- Attachment dispatch
+- Runtime API behavior
+- Proxy behavior
+- Tenant isolation
+- Audit delivery
+- Notification submission
+- Metrics output
+- Alert behavior
+- Retention execution
+- Frontend behavior
+
+7. Classify every material activity as one of:
+
+- Completed
+- Partially completed
+- Failed
+- Blocked
+- Skipped
+- Not applicable
+- Not independently verified
+
+8. For every command, migration, test run, HTTP request, proxy request, provider operation, retry, cancellation, alert action, and retention execution, record:
+
+- Exact command or request
+- Working directory
+- Environment
+- Exit code or HTTP status
+- Expected result
+- Actual result
+- Relevant output summary
+- Remediation performed
+- Retest result
+
+9. Do not perform GitHub operations.
+
+Do not:
+
+- Run git add
+- Commit
+- Push
+- Create or update pull requests
+- Merge branches
+- Claim GitHub Actions success
+
+10. Do not perform AWS or production infrastructure work.
+
+Do not:
+
+- Deploy to ECS or Fargate
+- Modify production RDS
+- Modify production Secrets Manager
+- Modify IAM
+- Modify Cloud Map
+- Modify Route53
+- Modify ALB
+- Claim production deployment success
+- Claim production runtime success
+
+11. Do not begin XENIA-P1-T5.
+
+12. Do not implement:
+
+- AI classification
+- AI summarization
+- Entity extraction
+- Case creation
+- Customer-support ticket creation
+- Workflow routing
+- Email sending
+- Email replies
+- Auto-response
+- Message deletion from provider
+- Provider mailbox cleanup
+- Mark-as-read
+- Gmail push notifications
+- Microsoft Graph subscriptions
+- Provider webhooks
+- OCR
+- Attachment classification
+- Calendar synchronization
+- Contact synchronization
+- LegalSynq lien or funding business logic
+
+13. Preserve the locked Xenia architecture.
+
+14. Keep implementation incremental.
+
+15. Avoid unrelated rewrites.
+
+16. Do not weaken tenant isolation, authorization, TLS, SSRF, sanitization, secret protection, cursor protection, or retention safety to make tests pass.
+
+17. Use only local, disposable, or test infrastructure.
+
+18. Do not use production mailboxes or production databases.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Build the operational administration and monitoring layer for Xenia Email.
+
+This ticket must enable authorized tenant and platform administrators to:
+
+- Monitor source health
+- Monitor provider health
+- View active and historical ingestion runs
+- Retry eligible failures
+- Cancel queued or active runs safely
+- Review ingestion metrics and trends
+- Review operational alerts
+- Acknowledge, resolve, and suppress alerts
+- Search ingested message metadata
+- Configure operational thresholds
+- Configure and safely execute retention policies
+- View audit-related operational events
+- Troubleshoot ingestion without direct database access
+- Operate Xenia Email through the LegalSynq Control Center
+
+This ticket must also close the carried-forward technical prerequisites from XENIA-P1-T3-V1:
+
+- Controlled end-to-end IMAP ingestion proof
+- Runtime API validation
+- Control Center proxy validation
+- Relational tenant-isolation validation
+- Header sanitization
+- Durable-lock lease renewal and stale-worker protection
+- Complete ingestion audit-event coverage
+- Attachment-streaming proof
+- Production cursor-key enforcement
+
+The intended final state is:
+
+XENIA-P1-T4 complete
+and
+XENIA-P1-T5 ready to begin
+
+==================================================
+SOURCE MATERIAL
+==================================================
+
+Review before modifying code:
+
+/analysis/XENIA-P1-T1-report.md
+/analysis/XENIA-P1-T1-V1-report.md
+/analysis/XENIA-P1-T1-V2-report.md
+/analysis/XENIA-P1-T2-report.md
+/analysis/XENIA-P1-T2-V1-report.md
+/analysis/XENIA-P1-T3-report.md
+/analysis/XENIA-P1-T3-V1-report.md
+
+Treat prior reports as claims requiring repository and runtime verification.
+
+Verify:
+
+- Existing source administration
+- Existing ingestion entities
+- Existing sync-state implementation
+- Existing run model
+- Durable-lock implementation
+- Cursor-protection implementation
+- HTML sanitizer
+- Header persistence behavior
+- IMAP connector
+- Attachment dispatcher
+- Audit adapter
+- Notification adapter
+- Metrics framework
+- Existing operations pages
+- Existing Control Center proxy
+- Existing authorization policies
+- Existing migrations and snapshot
+- Existing tests and commands
+
+Record discrepancies in:
+
+/analysis/XENIA-P1-T4-report.md
+
+==================================================
+LOCKED ARCHITECTURE
+==================================================
+
+1. Xenia remains an independent, separately deployable automation platform.
+
+2. Email remains a module within Xenia.
+
+3. LegalSynq is the first host platform, not the owner of Xenia core.
+
+4. Control Center remains LegalSynq host integration.
+
+5. Xenia APIs must remain portable to another host platform.
+
+6. Xenia remains tenant-aware.
+
+7. Provider-specific protocol logic remains inside connectors.
+
+8. Operational administration must not bypass domain services or tenant context.
+
+9. Xenia owns:
+
+- Source health
+- Provider health
+- Ingestion-run state
+- Operational alerts
+- Operational settings
+- Retention metadata and execution records
+- Email operational metrics
+- Message search APIs
+- Retry and cancellation orchestration
+- Lock status
+- Safe cursor summaries
+- Operations APIs
+
+10. Audit Service owns durable audit persistence.
+
+11. Notification Service owns alert delivery.
+
+12. Documents Service owns attachment binaries.
+
+13. Secret Provider owns credentials and tokens.
+
+14. Tenant Service owns tenant master state.
+
+15. Identity Service owns users, authentication, roles, and permission assignments.
+
+16. Xenia must not directly access another service’s database.
+
+17. Operational tables must not contain credentials, raw cursors, message bodies, or attachment binaries unless explicitly part of the existing message domain.
+
+18. No LegalSynq product-domain logic may enter Xenia core.
+
+==================================================
+INITIAL ANALYSIS
+==================================================
+
+Before source changes:
+
+1. Inspect:
+
+- Xenia.Domain
+- Xenia.Application
+- Xenia.Infrastructure
+- Xenia.Api
+- Xenia.Tests
+- Email source services
+- Email ingestion services
+- Sync-state service
+- Run persistence
+- Durable lock
+- Cursor protector
+- HTML sanitizer
+- Header persistence
+- IMAP connector
+- Attachment dispatcher
+- Audit adapter
+- Notification adapter
+- Metrics or telemetry framework
+- Existing health checks
+- Existing operations DTOs
+- Existing Control Center Email pages
+- Xenia API client
+- Control Center proxy
+- Authorization policies
+- Migrations
+- Model snapshot
+- Test infrastructure
+- Disposable MySQL setup
+- Controlled IMAP harness options
+
+2. Run and record:
+
+dotnet --info
+dotnet --list-sdks
+dotnet tool list
+node --version
+pnpm --version
+mysql --version
+docker --version
+docker compose version
+
+3. Confirm:
+
+- Compatible .NET SDK
+- EF CLI status
+- Disposable MySQL strategy
+- Controlled IMAP strategy
+- Test Documents adapter
+- Test Audit adapter
+- Test Notification adapter
+- Metrics framework
+- Frontend scripts
+- Existing test count
+- Current build and publish state
+
+4. Create and populate the report before code changes.
+
+==================================================
+IMPLEMENTATION TASKS
+==================================================
+
+--------------------------------------------------
+1. CLOSE CONTROLLED IMAP INGESTION PREREQUISITE
+--------------------------------------------------
+
+Execute one real controlled IMAP ingestion path.
+
+Use:
+
+- Local TLS-enabled IMAP server
+- Purpose-built IMAP test harness
+- Approved non-production IMAP test account
+- Another controlled protocol environment
+
+Do not use a production mailbox.
+
+The test environment must include:
+
+- TLS
+- Test credentials
+- At least two initial messages
+- One HTML message
+- One message with attachment
+- Stable UIDs
+- Ability to add another message for incremental validation
+- Safe cleanup
+
+Required sequence:
+
+Run 1 — Initial synchronization:
+- Source configured
+- Secret resolved
+- TLS established
+- Authentication succeeds
+- Lock acquired
+- Initial cursor established
+- Existing messages discovered
+- Messages retrieved
+- Messages normalized
+- Messages persisted
+- Attachment stream dispatched
+- Cursor protected and committed
+- Run completed
+- Lock released
+
+Run 2 — Incremental synchronization:
+- Add one new test message
+- Run synchronization
+- Only the new message imports
+- Existing messages do not duplicate
+- Cursor advances
+
+Run 3 — No changes:
+- Run synchronization again
+- Zero new messages import
+- No duplicate message rows
+- No duplicate attachment rows
+
+Record:
+
+- Server or harness
+- Startup command
+- Port
+- TLS configuration
+- Authentication approach
+- Safe source identifier
+- Run IDs
+- Imported counts
+- Duplicate counts
+- Attachment counts
+- Safe cursor summaries
+- Cleanup
+
+--------------------------------------------------
+2. PROVE ATTACHMENT STREAMING
+--------------------------------------------------
+
+Use the controlled IMAP message containing an attachment.
+
+Validate:
+
+- Connector returns a stream
+- Size limit enforced
+- Filename sanitized
+- MIME type handled safely
+- Hash calculated
+- Documents test adapter receives stream
+- Document reference returned
+- Reference persisted
+- Retry is idempotent
+- Replaying the same attachment does not create duplicate document references
+- Temporary Documents failure is retryable
+- Permanent Documents failure creates the expected operational state
+- No binary column exists in Xenia tables
+- No Base64 attachment persistence
+- No attachment content in logs or audit
+
+The test Documents adapter may use test-only memory or temporary files.
+
+Do not add binary persistence to Xenia production tables.
+
+--------------------------------------------------
+3. IMPLEMENT HEADER SANITIZATION
+--------------------------------------------------
+
+Create:
+
+IEmailHeaderSanitizer
+
+and a concrete implementation.
+
+Requirements:
+
+- Case-insensitive matching
+- Allowlist preferred
+- Configurable denylist
+- Maximum header count
+- Maximum individual value size
+- Maximum total serialized size
+- Unicode normalization
+- Malformed-header rejection or omission
+- Stable serialization
+- Safe handling of duplicate headers
+
+Remove or redact at minimum:
+
+- Authorization
+- Proxy-Authorization
+- Cookie
+- Set-Cookie
+- X-Api-Key
+- Provider access-token headers
+- Internal secret-bearing headers
+- Unexpected binary values
+- Oversized values
+
+Document the policy for:
+
+- Received
+- Authentication-Results
+- DKIM-Signature
+- ARC headers
+- X-Originating-IP
+- Internal routing headers
+
+Integrate sanitization before header persistence.
+
+Ensure APIs and UI return only sanitized headers.
+
+Add tests for:
+
+- Sensitive-header removal
+- Case-insensitivity
+- Oversized value rejection
+- Total-size cap
+- Malformed values
+- Unicode normalization
+- Allowed-header preservation
+- No header leakage to audit/logs
+
+--------------------------------------------------
+4. IMPLEMENT LOCK LEASE RENEWAL
+--------------------------------------------------
+
+Extend the durable source lock.
+
+Required fields or behavior:
+
+- Lease owner
+- Fencing token
+- AcquiredAt
+- RenewedAt
+- ExpiresAt
+- Renewal failure count
+- Version/concurrency control
+
+Implement:
+
+- Periodic lease renewal
+- Renewal interval shorter than lease duration
+- Owner validation
+- Fencing-token validation
+- Release
+- Expiry recovery
+- Cancellation
+- Crash recovery
+
+Critical rule:
+
+A worker that loses its lease or fencing authority must not commit:
+
+- Cursor updates
+- Run completion
+- Message state changes that imply exclusive ownership
+- Attachment finalization that requires exclusive run ownership
+
+Tests:
+
+- Long-running run renews lease
+- Another simulated instance cannot acquire renewed lease
+- Renewal failure stops or safely pauses processing
+- Stale worker cannot commit after takeover
+- Expired lock can be recovered
+- Cancellation stops renewal
+- Release is idempotent
+- Different sources remain concurrent
+- Different tenants remain isolated
+
+--------------------------------------------------
+5. ENFORCE PRODUCTION CURSOR-PROTECTION KEY
+--------------------------------------------------
+
+Required environment behavior:
+
+Development:
+- Temporary fallback allowed only with explicit warning
+
+Test:
+- Test key allowed
+
+Staging:
+- Missing or invalid key causes startup failure
+
+Production:
+- Missing or invalid key causes startup failure
+
+Implement:
+
+- Environment-aware validation
+- Minimum key length
+- Valid format validation
+- Key identifier/version
+- Current key configuration
+- Optional previous key support for rotation
+- Readiness status
+- No key value in logs or diagnostics
+
+Add tests:
+
+- Development fallback
+- Test key
+- Staging missing key fails
+- Production missing key fails
+- Invalid key fails
+- Valid key starts
+- Key value never logged
+- Existing protected cursor can be read with previous key if rotation support is added
+
+--------------------------------------------------
+6. COMPLETE INGESTION AUDIT COVERAGE
+--------------------------------------------------
+
+Implement and test:
+
+- xenia.email.sync.queued
+- xenia.email.sync.started
+- xenia.email.sync.completed
+- xenia.email.sync.completed_with_errors
+- xenia.email.sync.failed
+- xenia.email.sync.cancelled
+- xenia.email.sync.resumed
+- xenia.email.sync.reset
+- xenia.email.sync.retry_queued
+- xenia.email.message.imported
+- xenia.email.message.updated
+- xenia.email.message.duplicate
+- xenia.email.message.failed
+- xenia.email.attachment.dispatched
+- xenia.email.attachment.failed
+- xenia.email.attachment.retry_queued
+- xenia.email.cursor.invalidated
+- xenia.email.source.health_changed
+- xenia.email.alert.opened
+- xenia.email.alert.resolved
+
+Audit payloads may contain:
+
+- Tenant ID
+- Source ID
+- Run ID
+- Message ID
+- Attachment-reference ID
+- Provider
+- Result
+- Counts
+- Correlation ID
+- Timestamp
+- Safe error category
+
+Audit payloads must not contain:
+
+- Message body
+- Subject where policy prohibits it
+- Recipient addresses unless explicitly approved
+- Raw headers
+- Credentials
+- Secret references
+- Raw cursors
+- Provider tokens
+- Raw provider exceptions
+- Attachment content
+
+Audit fallback must:
+
+- Remain visibly degraded
+- Log only safe structured metadata
+- Never claim durable persistence
+
+--------------------------------------------------
+7. EXECUTE RELATIONAL TENANT-ISOLATION TESTS
+--------------------------------------------------
+
+Use disposable MySQL with Tenant A and Tenant B.
+
+Prove:
+
+- Tenant A cannot see Tenant B operations summary
+- Tenant A cannot see Tenant B source health
+- Tenant A cannot see Tenant B provider statistics derived from Tenant B data
+- Tenant A cannot list Tenant B runs
+- Tenant A cannot open Tenant B run detail
+- Tenant A cannot retry Tenant B run
+- Tenant A cannot cancel Tenant B run
+- Tenant A cannot list Tenant B alerts
+- Tenant A cannot acknowledge, resolve, or suppress Tenant B alert
+- Tenant A cannot search Tenant B messages
+- Tenant A cannot read Tenant B operational settings
+- Tenant A cannot update Tenant B operational settings
+- Tenant A cannot execute Tenant B retention
+- Body tenant override fails
+- Route tenant override fails
+- Query tenant override fails
+- Untrusted header tenant override fails
+- Worker-created alerts use the correct tenant
+- Audit events use the correct tenant
+- Notification requests use the correct tenant
+- PlatformAdmin behavior is explicit and tested
+
+Use platform-standard 403 or 404 behavior without leaking resource existence.
+
+--------------------------------------------------
+8. IMPLEMENT OPERATIONAL SETTINGS DOMAIN
+--------------------------------------------------
+
+Create a tenant-scoped operational settings model.
+
+Suggested fields:
+
+- Id
+- TenantId
+- DefaultDashboardRange
+- SourceFailureAlertThreshold
+- StaleSyncThresholdMinutes
+- LockWarningThresholdMinutes
+- MaximumRetryCount
+- CancellationTimeoutSeconds
+- MetricsEnabled
+- NotificationAlertsEnabled
+- DefaultRunPageSize
+- DefaultMessagePageSize
+- OperationalPollingIntervalSeconds
+- MessageMetadataRetentionDays
+- MessageBodyRetentionDays
+- ValidationHistoryRetentionDays
+- IngestionRunRetentionDays
+- AlertRetentionDays
+- AttachmentReferenceRetentionDays
+- PurgeBatchSize
+- RetentionDryRunDefault
+- LegalHoldEnabled
+- RetentionEnabled
+- CreatedAt
+- UpdatedAt
+- UpdatedBy
+- Version
+
+Do not store credentials, provider tokens, or raw cursors.
+
+Choose either:
+
+- Dedicated table
+- Existing configuration framework
+
+Document the decision.
+
+--------------------------------------------------
+9. IMPLEMENT OPERATIONAL ALERT DOMAIN
+--------------------------------------------------
+
+Create:
+
+EmailOperationalAlert
+
+Required fields:
+
+- Id
+- TenantId
+- EmailSourceId where applicable
+- ProviderType where applicable
+- AlertType
+- Severity
+- Status
+- DeduplicationKey
+- Title
+- SafeDescription
+- FirstObservedAt
+- LastObservedAt
+- OccurrenceCount
+- AcknowledgedAt
+- AcknowledgedBy
+- ResolvedAt
+- ResolvedBy
+- ResolutionReason
+- SuppressedUntil
+- CorrelationId
+- CreatedAt
+- UpdatedAt
+- Version
+
+Alert types:
+
+- SourceAuthenticationFailure
+- SourceConnectionFailure
+- SourceRepeatedFailure
+- SourceDisabled
+- ProviderUnavailable
+- ProviderRateLimited
+- SyncStalled
+- LockStale
+- CursorInvalidated
+- AttachmentDispatchFailure
+- AuditUnavailable
+- DocumentsUnavailable
+- SecretProviderUnavailable
+- RetentionFailure
+- MigrationMismatch
+- WorkerUnavailable
+
+Severity:
+
+- Informational
+- Warning
+- Critical
+
+Status:
+
+- Open
+- Acknowledged
+- Resolved
+- Suppressed
+
+Add indexes and deduplication constraints.
+
+--------------------------------------------------
+10. IMPLEMENT ALERT RULE ENGINE
+--------------------------------------------------
+
+Create a bounded internal alert-evaluation service.
+
+Evaluate conditions such as:
+
+- Consecutive source failures exceed threshold
+- No successful sync within configured threshold
+- Run duration exceeds configured threshold
+- Lock held beyond warning threshold
+- Attachment failures exceed threshold
+- Provider throttling exceeds threshold
+- Audit adapter unavailable
+- Documents adapter unavailable
+- Secret provider unavailable
+- Background worker heartbeat missing
+- Retention run fails
+
+Rules:
+
+- Tenant-scoped
+- Platform defaults with tenant overrides
+- No duplicate open alert for same deduplication key
+- Existing open alert occurrence count increments
+- Alert auto-resolves when condition clears where appropriate
+- Alert state changes are audited
+- Notification adapter request emitted if enabled
+- Notification adapter failure does not lose alert
+- Safe descriptions only
+
+Do not implement direct email/SMS delivery.
+
+--------------------------------------------------
+11. IMPLEMENT RUN RETRY
+--------------------------------------------------
+
+Implement:
+
+POST /email/runs/{runId}/retry
+
+Rules:
+
+- Tenant-scoped
+- Permission protected
+- Only failed or completed-with-errors runs
+- Only retryable failure categories
+- Source must remain enabled
+- Module must remain effectively enabled
+- Respects source lock
+- Creates new run
+- Links to original run
+- Preserves safe retry metadata
+- Does not duplicate imported messages
+- Audited
+- Returns 202 when queued
+- Returns 409 when source locked
+- Returns 422 for non-retryable failures
+- Returns 404 for unknown/cross-tenant run
+
+Add retry counters and lineage where missing.
+
+--------------------------------------------------
+12. IMPLEMENT ATTACHMENT RETRY
+--------------------------------------------------
+
+Implement:
+
+POST /email/messages/{messageId}/attachments/retry
+
+or a more specific attachment endpoint if preferred.
+
+Rules:
+
+- Tenant-scoped
+- Permission protected
+- Only failed/pending attachments
+- Idempotent
+- Does not redownload successfully dispatched attachments
+- Uses source/provider connector
+- Uses Documents adapter
+- Records retry state
+- Creates audit event
+- Creates operational alert on repeated permanent failure
+- Returns 202 when queued
+- Returns 409 when already processing
+- Returns 422 when not retryable
+
+--------------------------------------------------
+13. IMPLEMENT RUN CANCELLATION
+--------------------------------------------------
+
+Implement:
+
+POST /email/runs/{runId}/cancel
+
+Support:
+
+- Queued run cancellation
+- Active run cancellation where connector supports cancellation
+
+Required states:
+
+- CancellationRequested
+- Cancelled
+- UnableToCancel
+- AlreadyCompleted
+
+Rules:
+
+- Tenant-scoped
+- Requires operational management permission
+- Idempotent
+- Propagates cancellation token
+- Stops lock renewal
+- Does not over-advance cursor
+- Does not corrupt persisted messages
+- Records final run status
+- Audited
+- Returns 202 when cancellation requested
+- Returns 409 if already completed or state conflict, according to existing convention
+
+Add tests for:
+
+- Queued cancellation
+- Active cancellation
+- Repeated cancellation
+- Cancellation after completion
+- Cursor correctness
+- Lock release
+- Run status
+
+--------------------------------------------------
+14. IMPLEMENT OPERATIONS SUMMARY SERVICE
+--------------------------------------------------
+
+Create an operational summary service.
+
+Required metrics:
+
+- Total configured sources
+- Enabled sources
+- Healthy sources
+- Degraded sources
+- Unhealthy sources
+- Never validated sources
+- Currently syncing sources
+- Queued runs
+- Active runs
+- Completed runs
+- Completed-with-errors runs
+- Failed runs
+- Messages imported
+- Duplicate messages
+- Message failures
+- Attachments dispatched
+- Attachment failures
+- Average sync duration
+- Provider throttling incidents
+- Retry count
+- Lock contention incidents
+- Cursor resets
+- Open alerts by severity
+
+Support:
+
+- Tenant scope
+- Authorized platform scope
+- Date range
+- Provider filter
+- Source filter
+- Run status filter
+
+Use efficient database aggregation.
+
+Do not load all records into memory.
+
+--------------------------------------------------
+15. IMPLEMENT SOURCE HEALTH SERVICE
+--------------------------------------------------
+
+Return source operational state:
+
+- Source ID
+- Source name
+- Provider
+- Enabled state
+- Module effective state
+- Connection state
+- Validation state
+- Health state
+- Last validation
+- Last successful validation
+- Last sync attempt
+- Last successful sync
+- Current run
+- Failure count
+- Next retry
+- Lock state
+- Lock owner-safe identifier
+- Lock expiration
+- Cursor type
+- Safe cursor summary
+- Initial sync complete
+- Messages imported
+- Duplicates
+- Attachment failures
+- Last safe error
+- Open alerts
+
+No raw cursor, token, or secret reference.
+
+--------------------------------------------------
+16. IMPLEMENT PROVIDER HEALTH SERVICE
+--------------------------------------------------
+
+Return:
+
+- Provider
+- Classification
+- Operational status
+- Authentication support
+- Ingestion support
+- Incremental-cursor support
+- Attachment support
+- Rate-limit support
+- Configured source count
+- Healthy source count
+- Failed source count
+- Recent error rate
+- Average connection latency
+- Last successful operation
+- Availability
+- Safe diagnostics
+
+Classification must remain accurate:
+
+- Operational
+- Protocol-complete, unverified
+- Validation-only
+- Stub
+- Blocked
+
+Do not automatically classify a provider as operational merely because code exists.
+
+--------------------------------------------------
+17. IMPLEMENT RUN QUERY SERVICE
+--------------------------------------------------
+
+Support:
+
+- Paginated run list
+- Stable sorting
+- Run detail
+- Filters
+- Tenant scope
+- Authorized platform scope
+
+Filters:
+
+- Date range
+- Tenant where authorized
+- Source
+- Provider
+- Trigger
+- Status
+- Has errors
+- Correlation ID
+- Worker instance
+
+Run detail should include:
+
+- Timeline
+- Queue time
+- Start
+- Completion
+- Duration
+- Lock lifecycle
+- Safe cursor-before summary
+- Safe cursor-after summary
+- Page count
+- Message counters
+- Attachment counters
+- Retry events
+- Failure events
+- Audit-reference metadata
+- Safe errors
+
+No message bodies, raw headers, raw cursors, or credentials.
+
+--------------------------------------------------
+18. IMPLEMENT OPERATIONAL METRICS
+--------------------------------------------------
+
+Use the repository’s established metrics framework.
+
+Expose metrics such as:
+
+- xenia_email_sync_runs_total
+- xenia_email_sync_run_duration_seconds
+- xenia_email_messages_discovered_total
+- xenia_email_messages_imported_total
+- xenia_email_messages_duplicate_total
+- xenia_email_messages_failed_total
+- xenia_email_attachments_dispatched_total
+- xenia_email_attachments_failed_total
+- xenia_email_provider_requests_total
+- xenia_email_provider_failures_total
+- xenia_email_provider_throttles_total
+- xenia_email_lock_contention_total
+- xenia_email_cursor_reset_total
+- xenia_email_retry_total
+- xenia_email_active_runs
+- xenia_email_open_alerts
+
+Allowed bounded labels:
+
+- Provider
+- Run status
+- Trigger type
+- Error category
+- Alert severity
+
+Do not use:
+
+- Tenant ID unless the metrics backend explicitly supports bounded tenant dimensions
+- Source ID
+- Message ID
+- Email address
+- Correlation ID
+- Run ID
+
+Add tests for label bounds.
+
+--------------------------------------------------
+19. EXPAND MESSAGE SEARCH
+--------------------------------------------------
+
+Enhance:
+
+GET /email/messages
+
+Support filters:
+
+- Source
+- Provider
+- Date range
+- Sender
+- Recipient
+- Subject
+- Has attachments
+- Import status
+- Processing state
+- Run ID
+- Internet Message-ID
+- Provider Message ID
+- Thread ID
+- Conversation ID
+
+Requirements:
+
+- Tenant-scoped
+- Paginated
+- Stable sorting
+- Bounded page size
+- Parameterized queries
+- Safe wildcard handling
+- Search timeout
+- No cross-tenant results
+- No full message-body search unless a safe approved index already exists
+
+Do not implement unsafe raw SQL.
+
+--------------------------------------------------
+20. IMPLEMENT RETENTION SETTINGS
+--------------------------------------------------
+
+Support:
+
+- Message metadata retention
+- Message body retention
+- Validation-history retention
+- Ingestion-run retention
+- Alert retention
+- Attachment-reference retention
+- Purge batch size
+- Dry-run default
+- Legal hold
+- Retention enabled/disabled
+
+Rules:
+
+- Tenant-scoped
+- Platform defaults with tenant overrides where appropriate
+- Permission protected
+- Audited
+- Concurrency protected
+- No direct Documents binary deletion unless explicitly supported by adapter contract and policy
+- Sync state required for active sources must not be deleted
+- Open alerts must not be deleted incorrectly
+- Legal hold blocks deletion
+
+--------------------------------------------------
+21. IMPLEMENT RETENTION WORKER FOUNDATION
+--------------------------------------------------
+
+Create retention execution service and worker foundation.
+
+Requirements:
+
+- Disabled by default
+- Tenant-scoped
+- Batched
+- Idempotent
+- Dry-run mode
+- Audited
+- Respects legal hold
+- Avoids active-run conflicts
+- Preserves required sync state
+- Produces summary
+- Safe retry
+- Cancellation
+- Execution record
+
+Suggested retention-run fields:
+
+- Id
+- TenantId
+- Mode
+- Status
+- StartedAt
+- CompletedAt
+- MessagesEligible
+- MessagesDeleted
+- BodiesCleared
+- RunsDeleted
+- AlertsDeleted
+- AttachmentReferencesDeleted
+- Failures
+- SafeErrorSummary
+- CorrelationId
+- ActorId
+
+No production scheduling is required.
+
+--------------------------------------------------
+22. DATABASE CHANGES
+--------------------------------------------------
+
+Create or update tables such as:
+
+- xn_email_operational_alerts
+- xn_email_operational_settings
+- xn_email_retention_runs
+
+Update lock table if needed:
+
+- renewed_at
+- fencing_token
+- renewal_failure_count
+
+Add:
+
+- Primary keys
+- Tenant indexes
+- Source indexes
+- Provider indexes
+- Alert status/severity indexes
+- Deduplication key
+- Run status/date indexes
+- Unique operational settings per tenant
+- Concurrency fields
+- Foreign keys only within Xenia schema
+
+Do not add:
+
+- Credential columns
+- Raw cursor columns to operational tables
+- Message body duplication
+- Attachment binaries
+- Cross-service foreign keys
+
+Update:
+
+- EF configurations
+- Migrations
+- Migration designer
+- Model snapshot
+
+Validate clean and upgrade migrations on disposable MySQL.
+
+--------------------------------------------------
+23. IMPLEMENT OPERATIONS APIS
+--------------------------------------------------
+
+Implement:
+
+GET /email/operations/summary
+
+GET /email/operations/metrics
+
+GET /email/operations/provider-health
+
+GET /email/operations/source-health
+
+GET /email/runs
+
+GET /email/runs/{runId}
+
+POST /email/runs/{runId}/retry
+
+POST /email/runs/{runId}/cancel
+
+POST /email/messages/{messageId}/attachments/retry
+
+GET /email/alerts
+
+GET /email/alerts/{id}
+
+POST /email/alerts/{id}/acknowledge
+
+POST /email/alerts/{id}/resolve
+
+POST /email/alerts/{id}/suppress
+
+GET /email/operations/settings
+
+PUT /email/operations/settings
+
+POST /email/retention/dry-run
+
+POST /email/retention/execute
+
+Use consistent Problem Details or platform-standard error contracts.
+
+Expected statuses:
+
+200:
+Successful reads and completed immediate actions
+
+202:
+Queued retry, cancellation, or retention execution
+
+400:
+Malformed request
+
+401:
+Unauthenticated
+
+403:
+Missing permission
+
+404:
+Unknown or cross-tenant resource
+
+409:
+State conflict, active lock, concurrent operation
+
+422:
+Valid request but non-retryable or operationally invalid
+
+503:
+Mandatory dependency unavailable
+
+--------------------------------------------------
+24. AUTHORIZATION
+--------------------------------------------------
+
+Add or validate:
+
+- xenia.email.read
+- xenia.email.sync
+- xenia.email.manage
+- xenia.email.operations.read
+- xenia.email.operations.manage
+- xenia.email.alerts.manage
+- xenia.email.retention.manage
+
+Policy mapping:
+
+Operations dashboard:
+xenia.email.operations.read
+
+Source/provider health:
+xenia.email.operations.read
+
+Run list/detail:
+xenia.email.operations.read
+
+Retry:
+xenia.email.sync or xenia.email.operations.manage according to selected policy
+
+Cancel:
+xenia.email.operations.manage
+
+Alert read:
+xenia.email.operations.read
+
+Alert actions:
+xenia.email.alerts.manage
+
+Operational settings:
+xenia.email.operations.manage
+
+Retention:
+xenia.email.retention.manage
+
+Message search:
+xenia.email.read
+
+Tests:
+
+- 401 unauthenticated
+- 403 missing permission
+- Reader cannot retry
+- Reader cannot cancel
+- Operations reader cannot manage alerts
+- Alert manager cannot execute retention
+- Retention manager cannot cancel runs unless separately authorized
+- PlatformAdmin behavior explicit
+- Tenant boundaries enforced
+
+--------------------------------------------------
+25. NOTIFICATION ADAPTER INTEGRATION
+--------------------------------------------------
+
+When operational alerts open or escalate and notifications are enabled:
+
+- Submit a generic Notification adapter request
+- Include tenant
+- Alert ID
+- Alert type
+- Severity
+- Safe summary
+- Correlation ID
+- Recipient routing key or role reference
+
+Do not:
+
+- Send email directly
+- Send SMS directly
+- Embed credentials
+- Include message bodies
+- Include raw headers
+- Include raw cursors
+
+If Notification adapter is unavailable:
+
+- Alert remains persisted
+- Notification status marked degraded/pending/failed
+- Xenia remains operational according to dependency criticality
+- Audit event records safe result
+
+--------------------------------------------------
+26. RUNTIME API VALIDATION
+--------------------------------------------------
+
+Start Xenia locally against disposable MySQL.
+
+Execute actual requests for:
+
+- Operations summary
+- Metrics
+- Provider health
+- Source health
+- Run list
+- Run detail
+- Retry
+- Cancel
+- Attachment retry
+- Alert list/detail
+- Alert acknowledge
+- Alert resolve
+- Alert suppress
+- Operations settings read/update
+- Retention dry-run
+- Retention execute
+- Message search
+
+Validate:
+
+- 200
+- 202
+- 400 or 422
+- 401
+- 403
+- 404
+- 409
+- 503
+
+For every request record:
+
+- Method
+- URL
+- Authentication
+- Permissions
+- Tenant
+- Expected result
+- Actual status
+- Correlation ID
+- Safe response summary
+- Result
+
+--------------------------------------------------
+27. CONTROL CENTER PROXY VALIDATION
+--------------------------------------------------
+
+Run Control Center locally and execute requests through the host proxy.
+
+Validate:
+
+- GET
+- POST
+- PUT
+- DELETE where applicable
+- Query forwarding
+- Pagination forwarding
+- 200 preservation
+- 202 preservation
+- 400 preservation
+- 401 preservation
+- 403 preservation
+- 404 preservation
+- 409 preservation
+- 422 preservation
+- 503 preservation
+- Authorization forwarding
+- Correlation forwarding
+- Content-type preservation
+- Tenant safety
+- No body logging
+- No header logging
+- No credential logging
+
+--------------------------------------------------
+28. OPERATIONS DASHBOARD UI
+--------------------------------------------------
+
+Create:
+
+/xenia/email/operations
+
+Display:
+
+- Module state
+- Source counts
+- Source health
+- Active runs
+- Run status totals
+- Message import volume
+- Duplicate volume
+- Attachment dispatch/failure
+- Average duration
+- Provider throttling
+- Retry count
+- Lock contention
+- Cursor resets
+- Open alerts
+- Last updated
+
+Filters:
+
+- Date range
+- Provider
+- Source
+- Status
+
+States:
+
+- Loading
+- Empty
+- Error
+- Unauthorized
+- Forbidden
+- Backend unavailable
+- Degraded
+
+--------------------------------------------------
+29. SOURCE HEALTH UI
+--------------------------------------------------
+
+Enhance:
+
+/xenia/email/sources
+/xenia/email/sources/{id}
+
+Display:
+
+- Connection status
+- Validation status
+- Health
+- Last sync
+- Current run
+- Retry state
+- Lock status
+- Safe cursor summary
+- Message counts
+- Attachment failures
+- Alerts
+- Safe diagnostics
+
+Actions may link to:
+
+- Sync
+- Retry
+- Run history
+- Alerts
+
+No raw secret, token, or cursor.
+
+--------------------------------------------------
+30. PROVIDER HEALTH UI
+--------------------------------------------------
+
+Enhance:
+
+/xenia/email/providers
+
+Display:
+
+- Provider classification
+- Operational state
+- Authentication support
+- Ingestion support
+- Cursor support
+- Attachment support
+- Source counts
+- Health counts
+- Error rate
+- Latency
+- Last successful operation
+- Safe diagnostics
+
+Do not mark stubs as operational.
+
+--------------------------------------------------
+31. RUN MONITORING UI
+--------------------------------------------------
+
+Create:
+
+/xenia/email/runs
+/xenia/email/runs/{runId}
+
+List:
+
+- Run ID
+- Source
+- Provider
+- Trigger
+- Status
+- Start/end
+- Duration
+- Message counts
+- Attachment counts
+- Retry count
+- Correlation ID
+- Safe error
+
+Detail:
+
+- Timeline
+- Lock lifecycle
+- Safe cursor summaries
+- Counters
+- Retry events
+- Cancellation state
+- Audit references
+- Safe diagnostics
+
+Actions:
+
+- Retry
+- Cancel
+
+Permission-aware and state-aware.
+
+--------------------------------------------------
+32. ALERT UI
+--------------------------------------------------
+
+Create:
+
+/xenia/email/alerts
+/xenia/email/alerts/{id}
+
+Display:
+
+- Severity
+- Status
+- Alert type
+- Source
+- Provider
+- First observed
+- Last observed
+- Occurrence count
+- Safe description
+- Correlation ID
+- Resolution information
+
+Actions:
+
+- Acknowledge
+- Resolve
+- Suppress
+
+Requirements:
+
+- Confirmation where appropriate
+- Permission-aware
+- No false success
+- Refresh after mutation
+- Conflict handling
+- Tenant isolation
+
+--------------------------------------------------
+33. OPERATIONS SETTINGS UI
+--------------------------------------------------
+
+Create:
+
+/xenia/email/settings/operations
+
+Allow authorized users to configure:
+
+- Dashboard defaults
+- Alert thresholds
+- Stale-sync threshold
+- Lock warning threshold
+- Maximum retries
+- Cancellation timeout
+- Notification alerts enabled
+- Retention settings
+- Polling interval
+- Page-size defaults
+
+Requirements:
+
+- Permission checks
+- Concurrency handling
+- Validation
+- Safe defaults
+- Audit event
+- No credentials
+
+--------------------------------------------------
+34. RETENTION UI
+--------------------------------------------------
+
+Add retention controls within Operations Settings or a dedicated section.
+
+Support:
+
+- Current policy
+- Legal hold
+- Dry-run
+- Dry-run result
+- Execute
+- Execution status
+- History
+- Eligible counts
+- Deleted/cleared counts
+- Errors
+- Confirmation
+
+Do not imply Documents binaries were deleted unless the Documents adapter confirms it.
+
+--------------------------------------------------
+35. MESSAGE SEARCH UI
+--------------------------------------------------
+
+Enhance:
+
+/xenia/email/messages
+
+Add:
+
+- Date range
+- Source
+- Provider
+- Sender
+- Recipient
+- Subject
+- Attachment filter
+- Import status
+- Processing state
+- Run ID
+- Internet Message-ID
+- Provider Message ID
+- Thread/conversation filters
+
+Requirements:
+
+- Pagination
+- Stable sorting
+- Clear filters
+- Loading/error/auth states
+- No unsafe body search
+- Safe metadata display
+
+--------------------------------------------------
+36. FRONTEND API CLIENT
+--------------------------------------------------
+
+Add typed client methods for:
+
+- Operations summary
+- Metrics
+- Provider health
+- Source health
+- Run list/detail
+- Retry
+- Cancel
+- Attachment retry
+- Alert list/detail/actions
+- Operational settings
+- Retention dry-run/execute
+- Message search filters
+
+Ensure DTO parity.
+
+Do not expose raw cursor, headers, credentials, or internal exceptions.
+
+--------------------------------------------------
+37. FRONTEND VALIDATION
+--------------------------------------------------
+
+Run:
+
+pnpm --filter control-center type-check
+pnpm --filter control-center lint
+pnpm --filter control-center test
+pnpm --filter control-center build
+
+Validate:
+
+- Operations dashboard
+- Source health
+- Provider health
+- Runs
+- Run detail
+- Retry
+- Cancel
+- Alerts
+- Alert actions
+- Operations settings
+- Retention
+- Message search
+- Unauthorized state
+- Forbidden state
+- Backend unavailable
+- Conflict state
+- Degraded state
+
+Clearly separate unrelated host failures.
+
+No Xenia-related frontend error may remain.
+
+--------------------------------------------------
+38. BUILD, TEST, AND MIGRATION VALIDATION
+--------------------------------------------------
+
+Backend:
+
+dotnet restore
+dotnet build
+dotnet publish
+dotnet test
+
+Migrations:
+
+dotnet ef migrations list
+dotnet ef migrations script
+dotnet ef database update
+
+Runtime:
+
+dotnet run --project apps/services/xenia/Xenia.Api
+
+Frontend:
+
+pnpm --filter control-center type-check
+pnpm --filter control-center lint
+pnpm --filter control-center test
+pnpm --filter control-center build
+
+Report:
+
+- Total tests discovered
+- Executed
+- Passed
+- Failed
+- Skipped
+- Duration
+- Exit codes
+
+Do not leave placeholders.
+
+==================================================
+DATABASE REQUIREMENTS
+==================================================
+
+New tables may include:
+
+- xn_email_operational_alerts
+- xn_email_operational_settings
+- xn_email_retention_runs
+
+Update existing lock table with:
+
+- renewed_at
+- fencing_token
+- renewal_failure_count
+
+Required indexes:
+
+- Tenant ID
+- Source ID
+- Provider
+- Alert type
+- Alert severity
+- Alert status
+- First observed
+- Last observed
+- Deduplication key
+- Retention-run status
+- Retention-run started time
+- Lock expiration
+- Fencing token where appropriate
+
+Required constraints:
+
+- Operational settings unique per tenant
+- Alert deduplication safe per tenant/source/type
+- Tenant-owned foreign keys only
+- No cross-service foreign keys
+- No credential columns
+- No raw cursor columns in operations tables
+- No attachment binary columns
+- No duplicated message-body columns
+
+==================================================
+REQUIRED TEST COVERAGE
+==================================================
+
+Carried-forward prerequisites:
+
+- Controlled IMAP initial sync
+- Incremental sync
+- Third no-change sync
+- Duplicate replay
+- Attachment streaming
+- Cursor protection
+- Lock renewal
+- Stale-worker fencing
+- Header sanitization
+- Production key enforcement
+- Relational tenant isolation
+- Runtime APIs
+- Proxy
+
+Operations:
+
+- Summary aggregation
+- Source health
+- Provider health
+- Run filters
+- Run detail
+- Retry eligibility
+- Retry queue
+- Retry conflict
+- Cancellation
+- Cancellation idempotency
+- Cursor correctness after cancellation
+- Alert creation
+- Alert deduplication
+- Alert occurrence increment
+- Alert acknowledgment
+- Alert resolution
+- Alert suppression
+- Auto-resolution
+- Notification adapter request
+- Notification failure handling
+- Metrics
+- Bounded labels
+- Message search
+- Operational settings
+- Retention dry-run
+- Retention execution
+- Legal hold
+- Retention idempotency
+- Retention audit
+
+Security:
+
+- Tenant isolation
+- Override attacks
+- Authorization
+- Header redaction
+- Cursor redaction
+- Message-body redaction
+- Audit redaction
+- Log redaction
+- Proxy safety
+- Notification payload safety
+
+Frontend:
+
+- Dashboard
+- Source health
+- Provider health
+- Runs
+- Run detail
+- Retry
+- Cancel
+- Alerts
+- Alert actions
+- Settings
+- Retention
+- Search
+- Loading
+- Empty
+- Error
+- Unauthorized
+- Forbidden
+- Backend unavailable
+- Conflict
+- Degraded
+- Proxy status preservation
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+The ticket is complete only when:
+
+1. Controlled IMAP initial sync succeeds.
+
+2. Controlled incremental sync succeeds.
+
+3. Third no-change sync imports zero messages.
+
+4. Duplicate replay creates no duplicate messages.
+
+5. Controlled attachment stream reaches the Documents test adapter.
+
+6. Attachment reference persists.
+
+7. Attachment replay is idempotent.
+
+8. No attachment binary is stored in Xenia.
+
+9. Header sanitizer exists.
+
+10. Sensitive headers are removed.
+
+11. Header-count limits are enforced.
+
+12. Header-value limits are enforced.
+
+13. Header total-size limits are enforced.
+
+14. Lock lease renewal exists.
+
+15. Active lease renews.
+
+16. Another instance cannot acquire renewed lease.
+
+17. Renewal failure prevents stale commit.
+
+18. Fencing token prevents stale worker commit.
+
+19. Expired lock recovers.
+
+20. Production cursor key is mandatory.
+
+21. Missing production key prevents startup.
+
+22. Invalid production key prevents startup.
+
+23. Key value is never logged.
+
+24. Full required ingestion audit-event set is implemented.
+
+25. Audit payloads contain no message body.
+
+26. Audit payloads contain no raw headers.
+
+27. Audit payloads contain no credentials.
+
+28. Audit payloads contain no raw cursors.
+
+29. Relational tenant-isolation tests pass.
+
+30. Runtime API tests execute.
+
+31. Proxy tests execute.
+
+32. Operations summary API works.
+
+33. Metrics API works.
+
+34. Provider-health API works.
+
+35. Source-health API works.
+
+36. Run list works.
+
+37. Run detail works.
+
+38. Run retry works.
+
+39. Non-retryable run returns 422.
+
+40. Locked source retry returns 409.
+
+41. Run cancellation works.
+
+42. Cancellation is idempotent.
+
+43. Cancellation preserves cursor correctness.
+
+44. Attachment retry works.
+
+45. Alert model exists.
+
+46. Alert rules create alerts.
+
+47. Duplicate alert conditions do not create duplicate open alerts.
+
+48. Alert occurrence count increments.
+
+49. Alert acknowledgment works.
+
+50. Alert resolution works.
+
+51. Alert suppression works.
+
+52. Auto-resolution works where configured.
+
+53. Notification adapter request is emitted when configured.
+
+54. Notification failure does not remove alert.
+
+55. Operational metrics are exposed.
+
+56. Metric labels are bounded.
+
+57. Message search filters work.
+
+58. Message search is tenant-scoped.
+
+59. Operational settings exist.
+
+60. Operational settings are tenant-scoped.
+
+61. Retention settings exist.
+
+62. Retention dry-run works.
+
+63. Retention execution works.
+
+64. Legal hold blocks retention deletion.
+
+65. Retention is idempotent.
+
+66. Retention is audited.
+
+67. Tenant A cannot access Tenant B dashboard.
+
+68. Tenant A cannot access Tenant B runs.
+
+69. Tenant A cannot retry Tenant B run.
+
+70. Tenant A cannot cancel Tenant B run.
+
+71. Tenant A cannot manage Tenant B alerts.
+
+72. Tenant A cannot search Tenant B messages.
+
+73. Tenant A cannot change Tenant B settings.
+
+74. Tenant A cannot execute Tenant B retention.
+
+75. Tenant override attacks fail.
+
+76. Operations permissions are enforced.
+
+77. 401 behavior is correct.
+
+78. 403 behavior is correct.
+
+79. 404 behavior is correct.
+
+80. 409 behavior is correct.
+
+81. 422 behavior is correct.
+
+82. 503 behavior is correct.
+
+83. Operations dashboard UI renders.
+
+84. Source-health UI renders.
+
+85. Provider-health UI renders.
+
+86. Runs UI renders.
+
+87. Run-detail UI renders.
+
+88. Retry UI works.
+
+89. Cancel UI works.
+
+90. Alerts UI renders.
+
+91. Alert actions work.
+
+92. Operations settings UI renders.
+
+93. Retention UI works.
+
+94. Message-search UI works.
+
+95. Loading state works.
+
+96. Empty state works.
+
+97. Error state works.
+
+98. Unauthorized state works.
+
+99. Forbidden state works.
+
+100. Backend-unavailable state works.
+
+101. Conflict state works.
+
+102. Degraded state works.
+
+103. Control Center Xenia code type-checks.
+
+104. Control Center lint executes.
+
+105. Control Center tests execute where configured.
+
+106. Control Center production build succeeds, or unrelated blockers are isolated.
+
+107. Proxy preserves 200.
+
+108. Proxy preserves 202.
+
+109. Proxy preserves 400.
+
+110. Proxy preserves 401.
+
+111. Proxy preserves 403.
+
+112. Proxy preserves 404.
+
+113. Proxy preserves 409.
+
+114. Proxy preserves 422.
+
+115. Proxy preserves 503.
+
+116. Proxy forwards authorization.
+
+117. Proxy forwards correlation IDs.
+
+118. No credentials are exposed.
+
+119. No message bodies are logged.
+
+120. No raw headers are logged.
+
+121. No raw cursors are exposed.
+
+122. No AI is implemented.
+
+123. No workflow automation is implemented.
+
+124. No case creation is implemented.
+
+125. No support-ticket creation is implemented.
+
+126. No outbound email is implemented.
+
+127. `/analysis/XENIA-P1-T4-report.md` exists.
+
+128. The report was created before code changes.
+
+129. The report was updated incrementally.
+
+130. Validation commands include exit codes.
+
+131. API validation includes actual statuses.
+
+132. Controlled IMAP evidence is included.
+
+133. Acceptance matrix is complete.
+
+134. Completion percentage is evidence-based.
+
+135. The report states whether XENIA-P1-T5 may begin.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do not implement:
+
+- AI classification
+- AI summarization
+- Entity extraction
+- Case creation
+- Customer-support ticket creation
+- Workflow routing
+- Email sending
+- Email replies
+- Auto-response
+- Message deletion from provider
+- Message move
+- Mark-as-read
+- Gmail push notifications
+- Microsoft Graph subscriptions
+- Provider webhooks
+- OCR
+- Attachment classification
+- Document indexing
+- Calendar synchronization
+- Contact synchronization
+- LegalSynq lien or funding logic
+- GitHub operations
+- GitHub Actions
+- AWS deployment
+- Production RDS changes
+- Production Secrets Manager changes
+- Production ECS/Fargate changes
+- Production Cloud Map changes
+- Production Route53 changes
+- Production ALB changes
+- Production runtime claims
+
+==================================================
+KNOWN RESTRICTIONS
+==================================================
+
+- Keep implementation incremental.
+- Do not rewrite Xenia core.
+- Do not weaken tenant isolation.
+- Do not weaken authorization.
+- Do not weaken TLS.
+- Do not weaken SSRF protection.
+- Do not bypass header sanitization.
+- Do not bypass cursor protection.
+- Do not weaken lock fencing for tests.
+- Do not store credentials.
+- Do not store attachment binaries.
+- Do not log message bodies.
+- Do not log raw headers.
+- Do not log raw cursors.
+- Do not fabricate controlled ingestion success.
+- Do not use production mailboxes.
+- Do not use production databases.
+- Do not begin XENIA-P1-T5.
+
+==================================================
+REQUIRED REPORT STRUCTURE
+==================================================
+
+Create before any code changes:
+
+/analysis/XENIA-P1-T4-report.md
+
+Use at least:
+
+# XENIA-P1-T4 Email Administration, Monitoring, and Operational Control Report
+
+## 1. Executive Summary
+
+## 2. Ticket Information
+- Ticket ID
+- Parent ticket
+- Related tickets
+- Task type
+- Objective
+- Current status
+
+## 3. Prior Report Review
+- Confirmed claims
+- Incorrect claims
+- Unverified claims
+- Missing evidence
+
+## 4. Initial Repository Analysis
+
+## 5. Toolchain and Environment
+
+## 6. Implementation Progress
+Maintain:
+- Not started
+- In progress
+- Completed
+- Partially completed
+- Blocked
+- Failed
+
+## 7. Files Inspected
+
+## 8. Controlled IMAP Validation
+
+## 9. Attachment Streaming Proof
+
+## 10. Header Sanitization
+
+## 11. Lock Lease Renewal and Fencing
+
+## 12. Cursor-Key Enforcement
+
+## 13. Audit Coverage
+
+## 14. Relational Tenant Isolation
+
+## 15. Operational Settings
+
+## 16. Alert Domain
+
+## 17. Alert Rule Engine
+
+## 18. Notification Adapter Integration
+
+## 19. Run Retry
+
+## 20. Attachment Retry
+
+## 21. Run Cancellation
+
+## 22. Operations Summary
+
+## 23. Source Health
+
+## 24. Provider Health
+
+## 25. Run Query and Detail
+
+## 26. Metrics
+
+## 27. Message Search
+
+## 28. Retention Settings
+
+## 29. Retention Execution
+
+## 30. Database Changes
+
+## 31. Migration Validation
+- Migration list
+- Script generation
+- Clean apply
+- Upgrade apply
+- Snapshot validation
+- Schema inspection
+
+## 32. Authorization
+
+## 33. API Endpoints
+
+## 34. API Validation
+For every request:
+- Method
+- URL
+- Authentication
+- Permissions
+- Tenant
+- Expected status
+- Actual status
+- Correlation ID
+- Safe response summary
+- Result
+
+## 35. Proxy Validation
+
+## 36. Operations Dashboard UI
+
+## 37. Source Health UI
+
+## 38. Provider Health UI
+
+## 39. Run Monitoring UI
+
+## 40. Alert UI
+
+## 41. Operations Settings UI
+
+## 42. Retention UI
+
+## 43. Message Search UI
+
+## 44. Frontend API Client
+
+## 45. Frontend Validation
+- Type-check
+- Lint
+- Tests
+- Production build
+- Xenia-specific result
+- Whole-app result
+
+## 46. Tests Added or Updated
+
+## 47. Test Execution Results
+- Total discovered
+- Total executed
+- Passed
+- Failed
+- Skipped
+- Duration
+- Command
+- Exit code
+
+## 48. Security Review
+
+## 49. Sensitive-Content Review
+
+## 50. Acceptance Criteria Matrix
+For every criterion:
+- Criterion
+- Status
+- Evidence
+- Notes
+
+## 51. Issues Found
+
+## 52. Remediation Performed
+
+## 53. Remaining Gaps
+
+## 54. Risks and Architecture Concerns
+
+## 55. Environmental Limitations
+
+## 56. Out-of-Scope Confirmation
+
+## 57. Documentation Updated
+
+## 58. XENIA-P1-T5 Readiness
+Use one:
+- Ready to begin
+- Ready with prerequisites
+- Not ready
+- Blocked
+
+## 59. Final Status
+Use one:
+- Complete
+- Complete with limitations
+- Partially complete
+- Blocked
+- Failed
+
+## 60. Completion Percentage
+
+## 61. Follow-Up Recommendations
+
+==================================================
+FINAL RESPONSE REQUIREMENTS
+==================================================
+
+When implementation and validation are complete:
+
+1. Fully update the report.
+
+2. Remove or resolve placeholders such as:
+
+- In progress
+- To be recorded
+- Estimated
+- Expected
+- Will be completed
+
+unless the item genuinely remains blocked and is documented with evidence.
+
+3. Provide a concise final response containing:
+
+- Ticket ID
+- Final status
+- Completion percentage
+- Build result
+- Publish result
+- Test result
+- Migration result
+- Controlled IMAP result
+- Attachment-streaming result
+- Header-sanitization result
+- Lock-renewal result
+- Cursor-key enforcement result
+- Audit result
+- Tenant-isolation result
+- Operations dashboard result
+- Source-health result
+- Provider-health result
+- Run-monitoring result
+- Retry result
+- Cancellation result
+- Alert result
+- Metrics result
+- Message-search result
+- Retention result
+- Runtime API result
+- Proxy result
+- Frontend result
+- Sensitive-content review
+- Known limitations
+- XENIA-P1-T5 readiness
+- Exact report path
+
+4. Do not claim GitHub success.
+
+5. Do not claim AWS success.
+
+6. Do not claim production success.
+
+7. Stop after XENIA-P1-T4.
+
+Do not begin XENIA-P1-T5.

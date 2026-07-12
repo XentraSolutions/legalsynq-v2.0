@@ -114,6 +114,7 @@ if command -v dotnet &>/dev/null; then
       "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
       "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj"
       "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
+      "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
     )
 
     # Derives the expected Release output DLL from a .csproj path.
@@ -176,7 +177,7 @@ if command -v dotnet &>/dev/null; then
     SVC_NAMES=()
     PID_IDENTITY="" PID_FUND="" PID_CARECONNECT="" PID_DOCUMENTS=""
     PID_AUDIT="" PID_NOTIFICATIONS="" PID_LIENS="" PID_GATEWAY="" PID_FLOW="" PID_MONITORING="" PID_TASK=""
-    PID_TENANT="" PID_SUPPORT="" PID_COMMERCE="" PID_BILLING="" PID_REPORTS="" PID_COMMS=""
+    PID_TENANT="" PID_SUPPORT="" PID_COMMERCE="" PID_BILLING="" PID_REPORTS="" PID_COMMS="" PID_XENIA=""
 
     # ── Resolve portal URL / domain once — used by Identity, CareConnect, Support ──
     # PortalBaseUrl → PORTAL_BASE_URL secret/env if set; otherwise derived from
@@ -215,6 +216,9 @@ if command -v dotnet &>/dev/null; then
         Monitoring.Api) launch_svc "$_svc_label" "$csproj"; PID_MONITORING=$! ;;
         Task.Api)      launch_svc "$_svc_label" "$csproj"; PID_TASK=$! ;;
         Tenant.Api)    launch_svc "$_svc_label" "$csproj"; PID_TENANT=$! ;;
+        Xenia.Api)
+          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
+          PID_XENIA=$! ;;
         Support.Api)
           # Jwt:SigningKey is read from the Jwt__SigningKey Replit secret (env var).
           # Notifications are forwarded to the Notifications service on :5008.

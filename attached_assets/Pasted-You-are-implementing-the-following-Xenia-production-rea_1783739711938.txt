@@ -1,0 +1,2838 @@
+You are implementing the following Xenia production-readiness closure ticket.
+
+==================================================
+TICKET
+==================================================
+
+Ticket ID:
+XENIA-P1-PROD-V1
+
+Parent Ticket:
+XENIA-P1 — Xenia Platform Foundation & Email Automation
+
+Related Tickets:
+- XENIA-P1-T1 — Core Service Foundation
+- XENIA-P1-T1-V1 — Core Foundation Validation and Remediation
+- XENIA-P1-T1-V2 — Core Portability and Runtime Closure
+- XENIA-P1-T2 — Tenant Email Module Foundation and Source Connectivity
+- XENIA-P1-T2-V1 — Email Source Connectivity and Administration Closure
+- XENIA-P1-T3 — Email Ingestion Engine and Message Persistence Foundation
+- XENIA-P1-T3-V1 — Ingestion Runtime Validation and Provider Completion
+- XENIA-P1-T4 — Email Administration, Monitoring, and Operational Control
+- XENIA-P1-T5 — Enterprise Hardening, Production Validation, AI Readiness, and Extensibility Foundation
+
+Task Type:
+🟦 XenIA
+
+Title:
+Production Readiness and Durable Automation State Closure
+
+==================================================
+MANDATORY EXECUTION RULES
+==================================================
+
+1. Create the implementation report before making any code changes.
+
+Required report path:
+
+/analysis/XENIA-P1-PROD-V1-report.md
+
+2. The report must be the first implementation artifact created.
+
+3. Before changing source code, populate the report with:
+
+- Ticket information
+- Prior-report review
+- Initial repository analysis
+- Toolchain and environment
+- Current automation architecture
+- Current persistence architecture
+- Current migration state
+- Current runtime API state
+- Current adapter state
+- Current test/build state
+- Initial implementation-progress table
+- Confirmed T5 gaps and discrepancies
+
+4. Update the report incrementally throughout:
+
+- Durable persistence design
+- Domain and database changes
+- Registry reconciliation
+- Execution persistence
+- Dead-letter persistence
+- Schedule persistence
+- Idempotency
+- Migration creation
+- Clean migration validation
+- Upgrade migration validation
+- Multi-instance validation
+- Runtime startup
+- Runtime API validation
+- Tenant-isolation validation
+- Adapter integration validation
+- Diagnostics validation
+- Support-bundle validation
+- Resilience testing
+- Performance testing
+- Vulnerability disposition
+- Documentation
+- Acceptance-matrix completion
+- Final production-readiness decision
+
+5. Do not create or populate the report only after implementation is complete.
+
+6. Do not fabricate:
+
+- Build success
+- Publish success
+- Test success
+- Migration success
+- Runtime startup
+- Runtime API behavior
+- Tenant isolation
+- Multi-instance consistency
+- Adapter integration
+- Support-bundle safety
+- Performance results
+- Resilience behavior
+- Vulnerability remediation
+- Production readiness
+
+7. Classify every material activity as exactly one of:
+
+- Completed
+- Partially completed
+- Failed
+- Blocked
+- Skipped
+- Not applicable
+- Not independently verified
+- Accepted limitation
+
+8. For every command, migration, test, HTTP request, integration request, benchmark, failure simulation, and database inspection, record:
+
+- Exact command or request
+- Working directory
+- Environment
+- Exit code or HTTP status
+- Expected result
+- Actual result
+- Relevant output summary
+- Remediation performed
+- Retest result
+
+9. Do not perform GitHub operations.
+
+Do not:
+
+- Run git add
+- Commit
+- Push
+- Create or update pull requests
+- Merge branches
+- Claim GitHub Actions success
+
+10. Do not perform AWS or production infrastructure work.
+
+Do not:
+
+- Deploy to ECS or Fargate
+- Modify production RDS
+- Modify production Secrets Manager
+- Modify IAM
+- Modify Cloud Map
+- Modify Route53
+- Modify ALB
+- Claim production deployment success
+- Claim production runtime success
+
+11. Do not begin Phase 2 feature implementation.
+
+12. Do not implement:
+
+- AI summarization
+- AI classification
+- AI extraction
+- OCR
+- Case intake business logic
+- Customer-support workflows
+- Workflow business rules
+- Outbound email
+- SMS, Slack, or Teams integrations
+- Calendar or contact synchronization
+- Provider webhooks
+- LegalSynq lien or funding logic
+
+13. Preserve Xenia as:
+
+- Independent
+- Separately deployable
+- Tenant-aware
+- Provider-neutral
+- Adapter-driven
+- Portable to another host platform
+
+14. Keep implementation incremental.
+
+15. Avoid unrelated rewrites.
+
+16. Do not weaken:
+
+- Tenant isolation
+- Authorization
+- TLS
+- SSRF protection
+- Cursor protection
+- Locking or fencing
+- Header or HTML sanitization
+- Secret handling
+- Audit redaction
+- Retention safety
+- Diagnostics authorization
+- Support-bundle redaction
+
+17. Use only local, disposable, controlled, or approved non-production infrastructure.
+
+18. Do not use production mailboxes, production data, or production databases.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Close the remaining Xenia Phase 1 production-readiness gaps without adding new Phase 2 business functionality.
+
+This ticket must:
+
+- Replace process-local mutable automation state with durable MySQL persistence.
+- Persist automation registry state.
+- Persist automation versions.
+- Persist platform and tenant automation enablement.
+- Persist automation configuration.
+- Persist automation runtime state.
+- Persist execution history.
+- Persist dead letters.
+- Persist schedule definitions.
+- Persist idempotency records.
+- Reconcile discovered automation providers with durable state at startup.
+- Ensure consistency across multiple Xenia instances.
+- Create and validate the automation persistence migration.
+- Validate clean and upgrade migration paths.
+- Start Xenia against disposable MySQL.
+- Execute authenticated runtime API tests.
+- Prove tenant isolation using relational and runtime tests.
+- Validate Documents, Audit, Notification, Identity, and Tenant adapters using controlled integration hosts.
+- Validate diagnostics and support-bundle security.
+- Execute resilience failure simulations.
+- Execute and document performance baselines.
+- Resolve or formally disposition vulnerable dependencies.
+- Complete the full Phase 1 acceptance matrix.
+- Issue a final production-readiness decision.
+- Issue a Phase 2 continuation decision.
+
+The intended result is:
+
+XENIA-P1 production readiness formally approved
+
+or
+
+XENIA-P1 production readiness blocked with explicit remaining prerequisites.
+
+==================================================
+SOURCE MATERIAL
+==================================================
+
+Review before modifying code:
+
+/analysis/XENIA-P1-T1-report.md
+/analysis/XENIA-P1-T1-V1-report.md
+/analysis/XENIA-P1-T1-V2-report.md
+/analysis/XENIA-P1-T2-report.md
+/analysis/XENIA-P1-T2-V1-report.md
+/analysis/XENIA-P1-T3-report.md
+/analysis/XENIA-P1-T3-V1-report.md
+/analysis/XENIA-P1-T4-report.md
+/analysis/XENIA-P1-T5-report.md
+
+Treat all prior reports as claims requiring repository verification.
+
+Confirm:
+
+- Automation domain files exist.
+- Automation interfaces exist.
+- Automation infrastructure implementations exist.
+- EmailAutomationProvider exists and is registered.
+- Automation APIs exist.
+- Automation UI exists.
+- Dead-letter abstractions exist.
+- Scheduling contracts exist.
+- Current automation stores are in-memory or durable.
+- Current execution state persistence behavior.
+- Current configuration persistence behavior.
+- Current tenant enablement persistence behavior.
+- Current migration list.
+- Whether Migration 8 exists.
+- Whether the model snapshot contains automation entities.
+- Whether runtime API validation exists.
+- Whether relational tenant-isolation tests exist.
+- Whether support-bundle output is validated.
+- Whether adapter tests are mocks, contract tests, or real controlled integrations.
+- Whether performance results exist.
+- Whether vulnerability findings remain.
+
+Record all discrepancies in:
+
+/analysis/XENIA-P1-PROD-V1-report.md
+
+==================================================
+LOCKED ARCHITECTURE
+==================================================
+
+1. Xenia remains an independent automation platform.
+
+2. Email remains the first automation provider.
+
+3. Provider manifests may remain code-defined and immutable.
+
+4. Mutable automation state must be durable.
+
+5. Production source-of-truth state must not be process-local.
+
+6. Durable state includes:
+
+- Registry lifecycle state
+- Automation versions
+- Tenant enablement
+- Platform enablement
+- Configuration
+- Runtime state
+- Executions
+- Dead letters
+- Schedules
+- Idempotency
+
+7. Xenia must not directly access another service's database.
+
+8. External services remain adapter-based.
+
+9. No LegalSynq product-domain logic may enter Xenia core.
+
+10. Host platforms own:
+
+- Host navigation
+- Host session integration
+- Host-specific permission mapping
+- Product-specific consumers
+
+11. Xenia owns automation runtime state and orchestration metadata.
+
+12. Audit owns durable audit records.
+
+13. Notification owns outbound delivery.
+
+14. Documents owns document and attachment binaries.
+
+15. Secret Provider owns credentials and secret values.
+
+16. Identity owns users, authentication, and permission assignments.
+
+17. Tenant owns tenant master status.
+
+18. Workflow owns workflow execution.
+
+19. AI remains an adapter boundary only.
+
+20. GitHub and AWS remain separate task types.
+
+==================================================
+INITIAL ANALYSIS
+==================================================
+
+Before source changes:
+
+1. Inspect:
+
+- Xenia.Domain/Automation
+- Xenia.Application/Automation
+- Xenia.Infrastructure/Automation
+- Xenia.Api automation endpoints
+- Automation authorization policies
+- EmailAutomationProvider
+- Automation registry
+- Automation discovery
+- Automation lifecycle
+- Automation configuration
+- Automation execution
+- Dead-letter store
+- Scheduler contracts
+- Metrics
+- Diagnostics
+- Support-bundle implementation
+- XeniaDbContext
+- EF configurations
+- Migrations
+- Model snapshot
+- Existing test projects
+- Control Center automation pages
+- Automation frontend API client
+- Control Center proxy
+- Adapter interfaces and implementations
+- Security startup validation
+- Dependency manifests
+
+2. Run and record:
+
+dotnet --info
+dotnet --list-sdks
+dotnet tool list
+node --version
+pnpm --version
+mysql --version
+docker --version
+docker compose version
+
+3. Confirm:
+
+- Compatible .NET SDK
+- EF CLI version and compatibility
+- Docker availability
+- Disposable MySQL strategy
+- Test authentication strategy
+- Controlled adapter-host strategy
+- Multi-instance test strategy
+- Frontend commands
+- Current test count
+- Current build state
+- Current migration state
+
+4. Create and populate the report before code changes.
+
+==================================================
+PHASE A — DURABLE AUTOMATION DOMAIN AND STORAGE
+==================================================
+
+--------------------------------------------------
+1. FINALIZE DURABLE PERSISTENCE DESIGN
+--------------------------------------------------
+
+Determine which data remains code-defined and which must be persisted.
+
+Code-defined and immutable where appropriate:
+
+- Provider manifest template
+- Capability declarations
+- Dependency declarations
+- Supported triggers
+- Supported execution modes
+
+Durable and mutable:
+
+- Registered provider/version records
+- Current platform lifecycle state
+- Tenant enablement
+- Tenant lifecycle override
+- Configuration
+- Runtime health state
+- Execution state
+- Dead letters
+- Schedules
+- Idempotency
+- Reconciliation state
+
+Avoid unnecessary duplication between manifests and relational tables.
+
+Document the final design.
+
+--------------------------------------------------
+2. IMPLEMENT AUTOMATION REGISTRY ENTITY
+--------------------------------------------------
+
+Create or finalize a durable automation registry entity.
+
+Required fields:
+
+- Id
+- AutomationKey
+- Provider
+- Category
+- CurrentVersion
+- LifecycleStatus
+- GloballyEnabled
+- ManifestHash
+- MinimumPlatformVersion
+- RegisteredAt
+- LastReconciledAt
+- CreatedAt
+- UpdatedAt
+- Version or concurrency token
+
+Constraints:
+
+- AutomationKey unique
+- CurrentVersion required
+- No tenant-specific state in this table
+- No secret values
+- No arbitrary executable assembly paths
+
+--------------------------------------------------
+3. IMPLEMENT AUTOMATION VERSION ENTITY
+--------------------------------------------------
+
+Required fields:
+
+- Id
+- AutomationKey
+- Version
+- ManifestJson
+- ManifestSchemaVersion
+- CompatibilityJson
+- RegisteredAt
+- ActivatedAt
+- RetiredAt
+- Status
+- CreatedAt
+- UpdatedAt
+
+Constraints:
+
+- Unique AutomationKey + Version
+- Manifest size limit
+- Manifest validation before persistence
+- No credentials or secret values
+- No business payloads
+
+--------------------------------------------------
+4. IMPLEMENT TENANT AUTOMATION STATE
+--------------------------------------------------
+
+Create a tenant automation entity.
+
+Required fields:
+
+- Id
+- TenantId
+- AutomationKey
+- Enabled
+- LifecycleOverride
+- EffectiveStateCache where justified
+- ConfigurationVersion
+- LastValidatedAt
+- CreatedAt
+- UpdatedAt
+- UpdatedBy
+- Version or concurrency token
+
+Constraints:
+
+- Unique TenantId + AutomationKey
+- Tenant ID required
+- No cross-tenant foreign-key path
+- Configuration stored separately where appropriate
+
+--------------------------------------------------
+5. IMPLEMENT AUTOMATION CONFIGURATION ENTITY
+--------------------------------------------------
+
+Required fields:
+
+- Id
+- ScopeType
+- TenantId nullable only for explicit platform scope
+- AutomationKey
+- ConfigurationNamespace
+- ConfigurationJson
+- SchemaVersion
+- SecretReferencesJson
+- CreatedAt
+- UpdatedAt
+- UpdatedBy
+- Version or concurrency token
+
+Rules:
+
+- Secret references only
+- No resolved secrets
+- Configuration size limit
+- JSON schema/version validation
+- Tenant-scoped queries
+- Platform and tenant precedence documented
+- Effective-value resolution tested
+
+--------------------------------------------------
+6. IMPLEMENT AUTOMATION RUNTIME STATE
+--------------------------------------------------
+
+Required fields:
+
+- Id
+- TenantId
+- AutomationKey
+- LifecycleState
+- HealthState
+- LastExecutionAt
+- LastSuccessfulExecutionAt
+- ConsecutiveFailureCount
+- NextEligibleExecutionAt
+- LastSafeErrorCategory
+- LastSafeErrorSummary
+- WorkerInstanceId
+- CreatedAt
+- UpdatedAt
+- Version or concurrency token
+
+Constraints:
+
+- Unique TenantId + AutomationKey
+- No raw stack traces
+- No raw payloads
+- No secret data
+
+--------------------------------------------------
+7. IMPLEMENT DURABLE EXECUTION ENTITY
+--------------------------------------------------
+
+Required fields:
+
+- Id
+- ExecutionId
+- TenantId
+- AutomationKey
+- AutomationVersion
+- TriggerType
+- Status
+- IdempotencyKey
+- CorrelationId
+- ActorId
+- QueuedAt
+- StartedAt
+- CompletedAt
+- RetryCount
+- ParentExecutionId
+- DeadLetterId
+- SafeResultSummary
+- SafeErrorCategory
+- SafeErrorSummary
+- WorkerInstanceId
+- CreatedAt
+- UpdatedAt
+- Version or concurrency token
+
+Statuses:
+
+- Queued
+- Running
+- Completed
+- CompletedWithErrors
+- Failed
+- Cancelled
+- DeadLettered
+
+Constraints:
+
+- ExecutionId unique
+- Tenant + Automation + IdempotencyKey unique where populated
+- No raw business payload
+- No message body
+- No attachment binary
+
+--------------------------------------------------
+8. IMPLEMENT DURABLE DEAD-LETTER ENTITY
+--------------------------------------------------
+
+Required fields:
+
+- Id
+- TenantId
+- AutomationKey
+- AutomationVersion
+- ExecutionId
+- TriggerType
+- FailureCategory
+- SafeErrorSummary
+- RetryCount
+- ReplayCount
+- FirstFailedAt
+- LastFailedAt
+- NextEligibleRetryAt
+- Status
+- Resolution
+- CorrelationId
+- CreatedAt
+- UpdatedAt
+- Version or concurrency token
+
+Statuses:
+
+- Open
+- Retrying
+- Resolved
+- Abandoned
+
+Constraints:
+
+- Tenant-scoped
+- Idempotent creation
+- No raw payload
+- No credentials
+- No raw headers
+- No raw cursors
+- No message bodies
+
+--------------------------------------------------
+9. IMPLEMENT DURABLE SCHEDULE ENTITY
+--------------------------------------------------
+
+Required fields:
+
+- Id
+- TenantId
+- AutomationKey
+- ScheduleType
+- Expression
+- IntervalSeconds
+- TimeZone
+- Enabled
+- NextRunAt
+- LastRunAt
+- MisfirePolicy
+- ConcurrencyPolicy
+- CreatedBy
+- UpdatedBy
+- CreatedAt
+- UpdatedAt
+- Version or concurrency token
+
+Schedule types:
+
+- Manual
+- Interval
+- Cron
+- OneTime
+- EventDriven
+- Retry
+
+Rules:
+
+- State survives restart
+- Time zone validated
+- Expression validated
+- No arbitrary code
+- No duplicate active schedule where policy disallows it
+
+--------------------------------------------------
+10. IMPLEMENT IDEMPOTENCY ENTITY
+--------------------------------------------------
+
+Required fields:
+
+- Id
+- TenantId
+- AutomationKey
+- IdempotencyKey
+- RequestFingerprint
+- ExecutionId
+- ExpiresAt
+- CreatedAt
+- Version or concurrency token
+
+Constraints:
+
+- Unique TenantId + AutomationKey + IdempotencyKey
+- Fingerprint uses safe canonical request metadata
+- No raw request payload unless explicitly safe
+- Configurable expiration
+- Purge-safe
+
+==================================================
+PHASE B — EF CONFIGURATION AND MIGRATION
+==================================================
+
+--------------------------------------------------
+11. UPDATE XENIA DBCONTEXT
+--------------------------------------------------
+
+Add DbSet and model configuration for durable automation entities.
+
+Validate:
+
+- Table names
+- Column types
+- JSON mappings
+- Enum mappings
+- UTC timestamps
+- Concurrency tokens
+- Tenant indexes
+- Unique constraints
+- Foreign keys within Xenia schema only
+- Delete behavior
+- Long-text limits
+- String lengths
+
+Do not introduce cross-service foreign keys.
+
+--------------------------------------------------
+12. CREATE AUTOMATION PERSISTENCE MIGRATION
+--------------------------------------------------
+
+Create the next valid migration.
+
+Expected name:
+
+AddDurableAutomationState
+
+Use the repository's timestamp convention.
+
+Suggested tables:
+
+- xn_automation_registry
+- xn_automation_versions
+- xn_tenant_automations
+- xn_automation_configuration
+- xn_automation_runtime_state
+- xn_automation_executions
+- xn_automation_dead_letters
+- xn_automation_schedules
+- xn_automation_idempotency
+
+Add another table only when justified.
+
+Update:
+
+- Migration class
+- Designer
+- XeniaDbContextModelSnapshot
+
+The report must clearly state whether this is Migration 8 or another sequence number.
+
+--------------------------------------------------
+13. VALIDATE CLEAN MIGRATION PATH
+--------------------------------------------------
+
+Provision disposable MySQL.
+
+Run:
+
+dotnet ef migrations list
+dotnet ef migrations script
+dotnet ef database update
+
+Apply every Xenia migration to an empty database.
+
+Inspect:
+
+- Migration history
+- Tables
+- Columns
+- Indexes
+- Unique constraints
+- Foreign keys
+- JSON fields
+- Concurrency fields
+- Enum fields
+
+Record exact command results.
+
+--------------------------------------------------
+14. VALIDATE UPGRADE MIGRATION PATH
+--------------------------------------------------
+
+Create a second disposable database.
+
+Apply migrations only through the schema immediately before durable automation persistence.
+
+Then apply the new migration.
+
+Validate:
+
+- Existing Email data remains intact
+- Operations data remains intact
+- No destructive unintended schema change
+- Automation tables appear correctly
+- Migration history correct
+- Snapshot consistent
+
+--------------------------------------------------
+15. VALIDATE DOWN SCRIPT OR ROLLBACK SAFETY
+--------------------------------------------------
+
+Generate migration SQL and review Down behavior.
+
+Do not execute destructive rollback against valuable data.
+
+Validate:
+
+- Down removes only new automation schema objects
+- Existing Email schema remains untouched
+- Foreign-key order valid
+- No accidental table drops outside scope
+
+==================================================
+PHASE C — DURABLE SERVICES
+==================================================
+
+--------------------------------------------------
+16. IMPLEMENT EF AUTOMATION REGISTRY
+--------------------------------------------------
+
+Replace production use of process-local mutable registry state.
+
+The durable registry must support:
+
+- Registration
+- Reconciliation
+- Lookup
+- Version lookup
+- Capability lookup
+- Dependency lookup
+- Global enablement
+- Tenant enablement
+- Effective state
+- Health state
+- Lifecycle changes
+- Concurrency handling
+
+Static provider discovery may remain in memory, but mutable state must be read from and written to MySQL.
+
+--------------------------------------------------
+17. IMPLEMENT STARTUP REGISTRY RECONCILIATION
+--------------------------------------------------
+
+At startup:
+
+1. Discover all `IAutomationProvider` implementations.
+2. Validate manifests.
+3. Hash manifests deterministically.
+4. Insert missing automations.
+5. Insert missing versions.
+6. Update safe metadata when compatible.
+7. Preserve tenant configuration and enablement.
+8. Mark missing providers unavailable.
+9. Do not delete missing provider records.
+10. Emit safe lifecycle and audit events.
+
+Multi-instance requirements:
+
+- Two instances starting concurrently must not create duplicates.
+- Database unique constraints act as final protection.
+- Duplicate-key reconciliation must be handled safely.
+- Transactions and retries must be bounded.
+
+--------------------------------------------------
+18. IMPLEMENT EF AUTOMATION CONFIGURATION SERVICE
+--------------------------------------------------
+
+Support:
+
+- Platform configuration
+- Tenant configuration
+- Effective configuration
+- Secret references
+- Schema validation
+- Versioning
+- Optimistic concurrency
+- Audit on change
+- Tenant isolation
+
+Replace any production in-memory configuration state.
+
+--------------------------------------------------
+19. IMPLEMENT EF AUTOMATION LIFECYCLE SERVICE
+--------------------------------------------------
+
+Persist:
+
+- Global lifecycle state
+- Tenant lifecycle override
+- Health state
+- Enable/disable state
+- Retired state
+
+Validate transitions:
+
+- Registered
+- Disabled
+- Enabled
+- Degraded
+- Unavailable
+- Retired
+
+Reject invalid transitions.
+
+--------------------------------------------------
+20. IMPLEMENT DURABLE EXECUTION SERVICE
+--------------------------------------------------
+
+Persist every execution lifecycle:
+
+- Queued
+- Running
+- Completed
+- CompletedWithErrors
+- Failed
+- Cancelled
+- DeadLettered
+
+Requirements:
+
+- Tenant-scoped
+- Concurrency-protected
+- Multi-instance safe
+- Idempotency-aware
+- Safe result/error summaries
+- Correlation propagation
+- Actor propagation
+- Worker identity
+
+--------------------------------------------------
+21. IMPLEMENT EF DEAD-LETTER STORE
+--------------------------------------------------
+
+Replace production in-memory dead-letter storage.
+
+Support:
+
+- Create idempotently
+- List
+- Detail
+- Retry acquisition
+- Retry completion
+- Resolve
+- Abandon
+- Replay count
+- Next eligible retry
+- Concurrency protection
+- Tenant isolation
+
+Prevent two instances from replaying the same item.
+
+Use lease, status transition with concurrency token, or equivalent atomic acquisition.
+
+--------------------------------------------------
+22. IMPLEMENT DURABLE SCHEDULE STORE
+--------------------------------------------------
+
+Persist schedule definitions.
+
+Support:
+
+- Create
+- Update
+- Enable
+- Disable
+- List
+- Detail
+- Next-run calculation
+- Last-run update
+- Optimistic concurrency
+
+If scheduling execution is active:
+
+- Acquire schedules atomically
+- Use leases
+- Prevent duplicate execution
+- Preserve tenant context
+
+If scheduling execution remains disabled:
+
+- Persist and validate definitions
+- Document that execution remains a future scheduler responsibility
+
+--------------------------------------------------
+23. IMPLEMENT DURABLE IDEMPOTENCY SERVICE
+--------------------------------------------------
+
+Support:
+
+- Reserve key atomically
+- Compare fingerprint
+- Return existing execution for same request
+- Reject same key with a different fingerprint
+- Expiration
+- Safe cleanup
+
+Required API behavior:
+
+- Existing matching request: return existing execution
+- Existing mismatched request: return 409
+- Cross-tenant same key: independent
+- Concurrent duplicate requests: one execution only
+
+==================================================
+PHASE D — MULTI-INSTANCE CONSISTENCY
+==================================================
+
+--------------------------------------------------
+24. CREATE MULTI-INSTANCE TEST HARNESS
+--------------------------------------------------
+
+Simulate at least two Xenia application/service instances sharing the same MySQL database.
+
+Use:
+
+- Different service-provider containers
+- Different worker IDs
+- Shared database
+- Shared automation providers
+- Shared adapter test hosts
+
+Do not rely only on a single DI container.
+
+--------------------------------------------------
+25. VALIDATE REGISTRY RECONCILIATION
+--------------------------------------------------
+
+Test:
+
+- Concurrent first startup
+- Existing registry startup
+- New version startup
+- Missing provider startup
+- Provider restored after missing
+- Manifest mismatch
+- Incompatible version
+- Duplicate-key race
+
+Expected:
+
+- No duplicates
+- State preserved
+- Missing provider marked unavailable
+- Tenant state preserved
+- Safe audit events emitted
+
+--------------------------------------------------
+26. VALIDATE EXECUTION ACQUISITION
+--------------------------------------------------
+
+Test two instances attempting the same execution.
+
+Expected:
+
+- One instance acquires execution
+- Other instance receives conflict or no work
+- No duplicate provider invocation
+- No duplicate side effect
+- Final status consistent
+
+--------------------------------------------------
+27. VALIDATE DEAD-LETTER REPLAY RACE
+--------------------------------------------------
+
+Test two instances retrying one dead letter.
+
+Expected:
+
+- One retry acquires
+- One retry is rejected or observes Retrying
+- Replay count increments once
+- New execution linked correctly
+- Dead-letter status finalizes safely
+
+--------------------------------------------------
+28. VALIDATE SCHEDULE ACQUISITION
+--------------------------------------------------
+
+If schedule execution is active:
+
+- Two instances query due schedule
+- One acquires
+- One does not execute
+- NextRunAt advances once
+- Execution linked once
+
+If not active:
+
+- Validate durable schedule concurrency only
+- Clearly document execution remains disabled
+
+--------------------------------------------------
+29. VALIDATE CONFIGURATION CONCURRENCY
+--------------------------------------------------
+
+Test two concurrent updates using the same version.
+
+Expected:
+
+- One succeeds
+- One receives conflict
+- No silent overwrite
+- Audit records successful change only
+
+--------------------------------------------------
+30. VALIDATE STALE INSTANCE WRITES
+--------------------------------------------------
+
+Simulate:
+
+- Instance A reads state
+- Instance B updates state
+- Instance A attempts stale update
+
+Expected:
+
+- Stale update rejected
+- Concurrency conflict recorded
+- No rollback of newer state
+
+==================================================
+PHASE E — RUNTIME STARTUP AND API VALIDATION
+==================================================
+
+--------------------------------------------------
+31. START XENIA AGAINST DISPOSABLE MYSQL
+--------------------------------------------------
+
+Run Xenia locally using:
+
+- Disposable MySQL
+- Test JWT/authentication configuration
+- Test adapters
+- Production-like security flags where possible
+- Explicit cursor-protection key
+- Explicit instance ID
+
+Validate:
+
+- Startup
+- Registry reconciliation
+- Migration state
+- Automation provider discovery
+- Email provider registration
+- Health/readiness
+- Graceful shutdown
+- Restart recovery
+
+--------------------------------------------------
+32. IMPLEMENT TEST AUTHENTICATION STRATEGY
+--------------------------------------------------
+
+Use a safe test-only approach consistent with repository patterns.
+
+Support test identities for:
+
+- Tenant A reader
+- Tenant A executor
+- Tenant A manager
+- Tenant A diagnostics user
+- Tenant A dead-letter manager
+- Tenant B equivalent users
+- Platform administrator
+- Unauthorized user
+
+Do not enable authentication bypass in production-like environments.
+
+--------------------------------------------------
+33. EXECUTE AUTOMATION RUNTIME APIS
+--------------------------------------------------
+
+Validate:
+
+GET /automations
+GET /automations/{key}
+GET /automations/{key}/versions
+GET /automations/{key}/capabilities
+GET /automations/{key}/dependencies
+GET /automations/{key}/health
+GET /automations/{key}/configuration
+PUT /automations/{key}/configuration
+POST /automations/{key}/enable
+POST /automations/{key}/disable
+POST /automations/{key}/execute
+POST /automations/{key}/cancel/{executionId}
+GET /automations/executions
+GET /automations/executions/{executionId}
+GET /automations/dead-letters
+POST /automations/dead-letters/{id}/retry
+POST /automations/dead-letters/{id}/abandon
+GET /automations/diagnostics
+POST /automations/support-bundle
+
+Validate actual statuses:
+
+- 200
+- 201 where applicable
+- 202
+- 400
+- 401
+- 403
+- 404
+- 409
+- 422
+- 503
+
+For every request record:
+
+- Method
+- URL
+- Authentication
+- Permission set
+- Tenant
+- Request summary
+- Expected status
+- Actual status
+- Correlation ID
+- Safe response summary
+- Result
+
+--------------------------------------------------
+34. VALIDATE RESTART RECOVERY
+--------------------------------------------------
+
+Test:
+
+1. Register providers.
+2. Configure tenant automation.
+3. Queue and complete executions.
+4. Create dead letter.
+5. Create schedule.
+6. Stop Xenia.
+7. Restart Xenia.
+8. Verify all mutable state remains.
+9. Verify reconciliation does not duplicate rows.
+
+==================================================
+PHASE F — TENANT ISOLATION AND AUTHORIZATION
+==================================================
+
+--------------------------------------------------
+35. EXECUTE RELATIONAL TENANT-ISOLATION TESTS
+--------------------------------------------------
+
+Use Tenant A and Tenant B in MySQL.
+
+Prove:
+
+- Tenant A cannot view Tenant B automation state.
+- Tenant A cannot view Tenant B configuration.
+- Tenant A cannot update Tenant B configuration.
+- Tenant A cannot enable Tenant B automation.
+- Tenant A cannot disable Tenant B automation.
+- Tenant A cannot execute Tenant B automation.
+- Tenant A cannot cancel Tenant B execution.
+- Tenant A cannot view Tenant B executions.
+- Tenant A cannot view Tenant B dead letters.
+- Tenant A cannot retry Tenant B dead letters.
+- Tenant A cannot abandon Tenant B dead letters.
+- Tenant A cannot view Tenant B schedules.
+- Tenant A cannot modify Tenant B schedules.
+- Tenant A cannot generate Tenant B support bundle.
+- Tenant A cannot view Tenant B diagnostics.
+
+Override attacks:
+
+- Body tenant override
+- Route tenant override
+- Query tenant override
+- Untrusted header tenant override
+
+Platform administrator behavior must be explicit and tested.
+
+Cross-tenant resources must not leak existence.
+
+--------------------------------------------------
+36. VALIDATE PERMISSIONS
+--------------------------------------------------
+
+Permissions:
+
+- xenia.automations.read
+- xenia.automations.manage
+- xenia.automations.execute
+- xenia.automations.diagnostics
+- xenia.automations.deadletters.manage
+- xenia.automations.configuration.manage
+
+Tests:
+
+- 401 unauthenticated
+- 403 missing permission
+- Reader cannot execute
+- Executor cannot configure
+- Config manager cannot manage dead letters
+- Dead-letter manager cannot enable/disable automation without manage
+- Diagnostics user cannot execute
+- Platform administrator behavior explicit
+- Tenant scope always enforced
+
+==================================================
+PHASE G — CONTROLLED ADAPTER INTEGRATION
+==================================================
+
+--------------------------------------------------
+37. CREATE CONTROLLED HTTP TEST HOSTS
+--------------------------------------------------
+
+Create local contract-compatible HTTP hosts or controlled in-process servers for:
+
+- Documents
+- Audit
+- Notification
+- Identity
+- Tenant
+
+Test hosts must support:
+
+- Expected success
+- Timeout
+- 429
+- 500
+- 503
+- Malformed response
+- Delayed response
+- Duplicate request
+- Correlation headers
+- Tenant headers or claims where appropriate
+
+Do not use production services.
+
+--------------------------------------------------
+38. VALIDATE DOCUMENTS ADAPTER
+--------------------------------------------------
+
+Execute:
+
+- Small streamed upload
+- Large allowed streamed upload
+- Oversized rejection
+- Timeout
+- Retry
+- 500/503
+- Idempotent replay
+- Tenant propagation
+- Correlation propagation
+- Metadata validation
+- Reference integrity
+
+Confirm:
+
+- No full binary fallback into Xenia DB
+- No attachment content logged
+- No duplicate document reference on replay
+
+--------------------------------------------------
+39. VALIDATE AUDIT ADAPTER
+--------------------------------------------------
+
+Execute:
+
+- Event submission
+- Ordered event sequence where required
+- Timeout
+- Retry
+- Duplicate/replay
+- Degraded fallback
+- Tenant propagation
+- Correlation propagation
+- Sensitive-content redaction
+
+Confirm:
+
+- No message body
+- No raw header
+- No credential
+- No raw cursor
+- No attachment content
+
+--------------------------------------------------
+40. VALIDATE NOTIFICATION ADAPTER
+--------------------------------------------------
+
+Execute:
+
+- Alert submission
+- Duplicate alert submission
+- Suppression
+- Timeout
+- Retry
+- Failure
+- Tenant propagation
+- Correlation propagation
+- Safe payload
+
+Confirm:
+
+- Xenia does not send email or SMS directly
+- Failed notification does not delete persisted alert
+
+--------------------------------------------------
+41. VALIDATE IDENTITY ADAPTER
+--------------------------------------------------
+
+Execute:
+
+- Valid user
+- Invalid user
+- Disabled user
+- Platform administrator
+- Tenant administrator
+- Missing permission
+- Adapter unavailable
+- Timeout
+- Malformed response
+
+--------------------------------------------------
+42. VALIDATE TENANT ADAPTER
+--------------------------------------------------
+
+Execute:
+
+- Active tenant
+- Suspended tenant
+- Disabled tenant
+- Unknown tenant
+- Adapter unavailable
+- Timeout
+- Malformed response
+
+Automation execution must refuse ineligible tenants.
+
+==================================================
+PHASE H — DIAGNOSTICS AND SUPPORT BUNDLES
+==================================================
+
+--------------------------------------------------
+43. VALIDATE DIAGNOSTICS APIS
+--------------------------------------------------
+
+Validate:
+
+GET /diagnostics/runtime
+GET /diagnostics/dependencies
+GET /diagnostics/workers
+GET /diagnostics/locks
+GET /diagnostics/queues
+GET /diagnostics/automations
+GET /diagnostics/configuration
+GET /diagnostics/health-snapshot
+
+Requirements:
+
+- Correct permission
+- Tenant scope
+- Platform scope explicit
+- Safe summaries
+- Bounded result size
+- No raw stack traces in production-like mode
+- No secret values
+- No connection strings
+- No tokens
+- No raw cursors
+- No message bodies
+- No raw headers
+
+--------------------------------------------------
+44. VALIDATE SUPPORT-BUNDLE GENERATION
+--------------------------------------------------
+
+Test:
+
+- Authorized request
+- Unauthorized request
+- Tenant-scoped request
+- Platform-scoped request
+- Maximum-size enforcement
+- Filename sanitation
+- Path traversal attempts
+- Output stream
+- Temporary storage where used
+- Expiration or immediate streaming
+- Correlation ID
+- Creation timestamp
+- Cleanup
+
+Bundle content may include:
+
+- Version
+- Environment name
+- Health
+- Adapter states
+- Registry state
+- Version state
+- Worker state
+- Safe execution summaries
+- Safe dead-letter summaries
+- Safe lock summaries
+- Migration IDs
+- Configuration key names only
+
+Bundle must exclude:
+
+- Passwords
+- Tokens
+- Secret values
+- Raw secret references where sensitive
+- JWTs
+- Cookies
+- Connection strings
+- Message bodies
+- Raw headers
+- Raw cursors
+- Attachments
+- Private keys
+
+--------------------------------------------------
+45. IMPLEMENT AUTOMATED BUNDLE REDACTION SCAN
+--------------------------------------------------
+
+Scan generated support bundles for forbidden patterns and known test secret values.
+
+Fail tests on detection.
+
+==================================================
+PHASE I — RESILIENCE VALIDATION
+==================================================
+
+--------------------------------------------------
+46. EXECUTE FAILURE SIMULATIONS
+--------------------------------------------------
+
+Simulate:
+
+- Database timeout
+- Database restart
+- Documents timeout
+- Audit timeout
+- Notification timeout
+- Adapter 429
+- Adapter 500
+- Adapter 503
+- Circuit breaker open
+- Circuit breaker half-open
+- Process interruption
+- Duplicate execution request
+- Dead-letter replay race
+- Schedule acquisition race
+- Registry reconciliation race
+
+Validate:
+
+- Bounded retry
+- Exponential backoff
+- Jitter
+- Retry-After
+- Circuit behavior
+- No retry for 401/403
+- No retry for invalid configuration
+- No duplicate side effects
+- Correct final state
+- Operator-visible diagnostics
+- Audit trail
+- Recovery after dependency restoration
+
+--------------------------------------------------
+47. VALIDATE DATABASE RESTART RECOVERY
+--------------------------------------------------
+
+During active or queued work:
+
+1. Stop disposable MySQL.
+2. Observe failure classification.
+3. Restore MySQL.
+4. Validate service recovery.
+5. Validate no duplicate execution.
+6. Validate durable state integrity.
+
+Do not claim seamless recovery if manual restart is required; document actual behavior.
+
+==================================================
+PHASE J — PERFORMANCE BASELINES
+==================================================
+
+--------------------------------------------------
+48. RUN RELEASE PERFORMANCE HARNESS
+--------------------------------------------------
+
+Use Release build.
+
+Measure:
+
+- Automation registration throughput
+- Discovery latency
+- Registry list latency
+- Configuration read/write latency
+- Execution queue latency
+- Execution persistence throughput
+- Dead-letter insertion throughput
+- Dead-letter query latency
+- Schedule query latency
+- Message normalization throughput
+- Email message persistence throughput
+- Operations-summary query latency
+- Support-bundle generation latency
+
+--------------------------------------------------
+49. DOCUMENT TEST ENVIRONMENT
+--------------------------------------------------
+
+Record:
+
+- CPU allocation
+- Memory allocation
+- Operating system
+- .NET version
+- MySQL version
+- Database storage mode
+- Dataset sizes
+- Warm-up iterations
+- Measurement iterations
+- Concurrency
+- Run duration
+- Build configuration
+
+--------------------------------------------------
+50. RECORD PERFORMANCE RESULTS
+--------------------------------------------------
+
+For applicable operations record:
+
+- p50
+- p95
+- p99
+- Average
+- Minimum
+- Maximum
+- Throughput
+- Peak memory
+- Error count
+
+Do not represent development-environment results as production capacity.
+
+--------------------------------------------------
+51. DEFINE REGRESSION THRESHOLDS
+--------------------------------------------------
+
+Document reasonable development regression thresholds.
+
+Examples:
+
+- Registry list p95
+- Configuration read p95
+- Execution persistence p95
+- Dead-letter query p95
+- Support-bundle generation maximum
+- Message normalization throughput minimum
+
+Do not fail the entire ticket solely because Replit performance is slow unless there is a clear regression or correctness issue.
+
+==================================================
+PHASE K — DEPENDENCY SECURITY
+==================================================
+
+--------------------------------------------------
+52. RUN VULNERABILITY SCANS
+--------------------------------------------------
+
+Run:
+
+dotnet list package --vulnerable --include-transitive
+pnpm audit
+
+Record exact outputs and exit codes.
+
+--------------------------------------------------
+53. EVALUATE EACH FINDING
+--------------------------------------------------
+
+For every finding record:
+
+- Package
+- Installed version
+- Affected range
+- Severity
+- Advisory identifier
+- Reachability
+- Exploit prerequisites
+- Fixed version
+- Upgrade feasibility
+- Regression risk
+- Compensating controls
+- Risk owner
+- Final disposition
+
+Allowed dispositions:
+
+- Remediated
+- Accepted temporarily
+- False positive
+- Not reachable
+- Blocked by upstream
+
+No reachable critical or high vulnerability may remain without explicit documented approval.
+
+--------------------------------------------------
+54. APPLY NARROW PACKAGE UPDATES WHERE SAFE
+--------------------------------------------------
+
+Only update packages when:
+
+- A fixed compatible version exists
+- Changes remain within Xenia scope
+- Tests and builds validate compatibility
+- Security improvement outweighs regression risk
+
+Do not broadly upgrade unrelated projects.
+
+==================================================
+PHASE L — FRONTEND AND PROXY VALIDATION
+==================================================
+
+--------------------------------------------------
+55. VALIDATE AUTOMATION CONTROL CENTER
+--------------------------------------------------
+
+Validate routes:
+
+/xenia/automations
+/xenia/automations/registry
+/xenia/automations/{key}
+/xenia/automations/executions
+/xenia/automations/executions/{executionId}
+/xenia/automations/diagnostics
+/xenia/automations/dead-letters
+/xenia/automations/configuration
+
+Validate:
+
+- Registry data from durable API
+- Configuration persistence after restart
+- Execution list/detail
+- Dead-letter list/actions
+- Diagnostics
+- Support-bundle action
+- Loading state
+- Empty state
+- Error state
+- Unauthorized
+- Forbidden
+- Backend unavailable
+- Conflict
+- Degraded
+
+--------------------------------------------------
+56. VALIDATE CONTROL CENTER PROXY
+--------------------------------------------------
+
+Execute actual requests through the host proxy.
+
+Validate:
+
+- GET
+- POST
+- PUT
+- DELETE where applicable
+- Query forwarding
+- Pagination
+- 200
+- 201
+- 202
+- 400
+- 401
+- 403
+- 404
+- 409
+- 422
+- 503
+- Authorization forwarding
+- Correlation forwarding
+- Content-type preservation
+- Streaming support-bundle response
+- Tenant safety
+- No credential logging
+- No diagnostic data leakage
+
+--------------------------------------------------
+57. RUN FRONTEND COMMANDS
+--------------------------------------------------
+
+Run:
+
+pnpm --filter control-center type-check
+pnpm --filter control-center lint
+pnpm --filter control-center test
+pnpm --filter control-center build
+
+Clearly separate:
+
+- Xenia-specific results
+- Whole Control Center results
+- Unrelated pre-existing failures
+
+No Xenia-related frontend build error may remain.
+
+==================================================
+PHASE M — DOCUMENTATION AND ACCEPTANCE
+==================================================
+
+--------------------------------------------------
+58. UPDATE DOCUMENTATION
+--------------------------------------------------
+
+Create or update:
+
+- Production architecture
+- Automation persistence model
+- Migration guide
+- Multi-instance guide
+- Registry reconciliation guide
+- Dead-letter runbook
+- Scheduling-state guide
+- Idempotency guide
+- Adapter integration guide
+- Diagnostics guide
+- Support-bundle guide
+- Performance baseline report
+- Resilience behavior guide
+- Vulnerability register
+- Security configuration guide
+- Production-readiness checklist
+- Phase 1 closure record
+- Phase 2 prerequisites
+
+--------------------------------------------------
+59. COMPLETE FULL ACCEPTANCE MATRIX
+--------------------------------------------------
+
+Complete every acceptance criterion from:
+
+- XENIA-P1-T1
+- XENIA-P1-T1-V1
+- XENIA-P1-T1-V2
+- XENIA-P1-T2
+- XENIA-P1-T2-V1
+- XENIA-P1-T3
+- XENIA-P1-T3-V1
+- XENIA-P1-T4
+- XENIA-P1-T5
+- XENIA-P1-PROD-V1
+
+Each row must include:
+
+- Ticket
+- Criterion number or identifier
+- Criterion
+- Status
+- Evidence
+- Command/test/request
+- Notes
+- Remaining limitation
+- Acceptance owner where applicable
+
+Do not use a summary-only matrix.
+
+--------------------------------------------------
+60. ISSUE FINAL DECISIONS
+--------------------------------------------------
+
+The report must issue:
+
+XENIA-P1 closure recommendation:
+
+- Close
+- Close with accepted limitations
+- Keep open
+- Blocked
+
+Production-readiness decision:
+
+- Approved for production deployment
+- Approved with explicit prerequisites
+- Not approved
+- Blocked
+
+Phase 2 continuation:
+
+- Ready to begin
+- Ready with prerequisites
+- Not ready
+- Blocked
+
+Do not equate Phase 2 development readiness with production deployment readiness.
+
+==================================================
+DATABASE REQUIREMENTS
+==================================================
+
+Expected durable automation tables:
+
+- xn_automation_registry
+- xn_automation_versions
+- xn_tenant_automations
+- xn_automation_configuration
+- xn_automation_runtime_state
+- xn_automation_executions
+- xn_automation_dead_letters
+- xn_automation_schedules
+- xn_automation_idempotency
+
+Optional additional table:
+
+- xn_automation_dependencies
+
+only if runtime mutable dependency state requires separate persistence.
+
+Required indexes:
+
+- AutomationKey
+- AutomationKey + Version
+- TenantId + AutomationKey
+- LifecycleStatus
+- HealthState
+- ExecutionId
+- TenantId + Execution status
+- CorrelationId
+- Idempotency uniqueness
+- Dead-letter status
+- Dead-letter next eligible retry
+- Schedule enabled + next run
+- Runtime-state next eligible execution
+- Updated timestamps where operational queries require them
+
+Required constraints:
+
+- Registry key unique
+- Version unique per automation
+- Tenant automation unique per tenant/automation
+- Configuration unique per scope/tenant/automation/namespace
+- Runtime state unique per tenant/automation
+- Execution ID unique
+- Idempotency unique per tenant/automation/key
+- No credential columns
+- No raw payload columns
+- No message-body columns
+- No attachment binary columns
+- No cross-service foreign keys
+
+==================================================
+VALIDATION COMMANDS
+==================================================
+
+Backend:
+
+dotnet --info
+dotnet restore
+dotnet build
+dotnet publish
+dotnet test
+
+Migrations:
+
+dotnet ef migrations list
+dotnet ef migrations script
+dotnet ef database update
+
+Runtime:
+
+dotnet run --project apps/services/xenia/Xenia.Api
+
+Frontend:
+
+pnpm --filter control-center type-check
+pnpm --filter control-center lint
+pnpm --filter control-center test
+pnpm --filter control-center build
+
+Security:
+
+dotnet list package --vulnerable --include-transitive
+pnpm audit
+
+Use repository-equivalent paths and commands when project structure differs.
+
+==================================================
+REQUIRED TEST COVERAGE
+==================================================
+
+Persistence:
+
+- Registry persistence
+- Version persistence
+- Tenant enablement persistence
+- Configuration persistence
+- Runtime-state persistence
+- Execution persistence
+- Dead-letter persistence
+- Schedule persistence
+- Idempotency persistence
+- Restart recovery
+
+Registry:
+
+- First registration
+- Duplicate registration
+- Concurrent registration
+- Version registration
+- Missing provider
+- Restored provider
+- Manifest hash change
+- Incompatible manifest
+- Tenant-state preservation
+
+Concurrency:
+
+- Configuration conflict
+- Execution acquisition
+- Dead-letter replay race
+- Schedule acquisition race
+- Idempotency race
+- Stale-write rejection
+- Multi-instance startup
+
+Tenant isolation:
+
+- Registry-derived tenant state
+- Configuration
+- Execution
+- Cancellation
+- Dead letters
+- Schedules
+- Diagnostics
+- Support bundles
+- Override attacks
+
+Runtime API:
+
+- 200
+- 201
+- 202
+- 400
+- 401
+- 403
+- 404
+- 409
+- 422
+- 503
+
+Adapters:
+
+- Documents success/failure/retry/idempotency
+- Audit success/failure/retry/redaction
+- Notification success/failure/retry/suppression
+- Identity roles/permissions/unavailable
+- Tenant active/suspended/unknown/unavailable
+
+Diagnostics:
+
+- Authorization
+- Redaction
+- Tenant scope
+- Bounded output
+- Degraded state
+
+Support bundle:
+
+- Generation
+- Streaming or safe temporary storage
+- Size limit
+- Filename safety
+- Path traversal
+- Expiration/cleanup
+- Redaction scan
+- Authorization
+- Tenant scope
+
+Resilience:
+
+- Database restart
+- Timeout
+- 429
+- 500
+- 503
+- Circuit open
+- Half-open recovery
+- Retry bounds
+- Retry-After
+- No retry for 401/403
+- No duplicate side effect
+
+Performance:
+
+- Release build
+- Warm-up
+- Dataset scaling
+- Concurrency
+- Latency percentiles
+- Throughput
+- Memory
+- Error rate
+
+Security:
+
+- Startup fail-fast
+- Sensitive data scanning
+- Vulnerability scan
+- Risk disposition
+- JWT and permission handling
+- Diagnostic and bundle redaction
+
+Frontend:
+
+- Registry
+- Detail
+- Configuration
+- Executions
+- Execution detail
+- Dead letters
+- Diagnostics
+- Support bundle
+- Loading
+- Empty
+- Error
+- Unauthorized
+- Forbidden
+- Conflict
+- Backend unavailable
+- Degraded
+- Proxy status preservation
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+The ticket is complete only when:
+
+1. Durable automation registry state exists.
+
+2. Durable automation version state exists.
+
+3. Tenant automation enablement is durable.
+
+4. Automation configuration is durable.
+
+5. Automation runtime state is durable.
+
+6. Automation execution history is durable.
+
+7. Dead letters are durable.
+
+8. Schedule definitions are durable.
+
+9. Idempotency records are durable.
+
+10. Mutable automation state survives restart.
+
+11. Mutable state is consistent across simulated instances.
+
+12. Registry reconciliation is idempotent.
+
+13. Duplicate startup registration is prevented.
+
+14. Missing provider is marked unavailable rather than deleted.
+
+15. Provider restoration is reconciled safely.
+
+16. Version reconciliation works.
+
+17. Configuration concurrency is enforced.
+
+18. Dead-letter replay is multi-instance safe.
+
+19. Schedule acquisition is multi-instance safe where execution is active.
+
+20. Execution acquisition is multi-instance safe.
+
+21. Idempotency works across instances.
+
+22. Automation persistence migration exists.
+
+23. Migration appears in the EF migration list.
+
+24. Migration SQL generates successfully.
+
+25. Clean MySQL migration succeeds.
+
+26. Upgrade MySQL migration succeeds.
+
+27. Model snapshot matches.
+
+28. Required tables exist.
+
+29. Required indexes exist.
+
+30. Required constraints exist.
+
+31. No credential columns exist.
+
+32. No raw business-payload columns exist.
+
+33. No cross-service foreign keys exist.
+
+34. Xenia starts against migrated MySQL.
+
+35. Registry reconciliation runs at startup.
+
+36. Email provider remains registered after restart.
+
+37. Tenant enablement remains after restart.
+
+38. Configuration remains after restart.
+
+39. Execution history remains after restart.
+
+40. Dead letters remain after restart.
+
+41. Schedules remain after restart.
+
+42. Automation registry API works at runtime.
+
+43. Automation detail API works.
+
+44. Versions API works.
+
+45. Capabilities API works.
+
+46. Dependencies API works.
+
+47. Health API works.
+
+48. Configuration read works.
+
+49. Configuration update works.
+
+50. Enable works.
+
+51. Disable works.
+
+52. Manual execute returns the expected status.
+
+53. Idempotent replay returns existing execution.
+
+54. Mismatched idempotency fingerprint returns conflict.
+
+55. Cancel works.
+
+56. Execution history works.
+
+57. Execution detail works.
+
+58. Dead-letter list works.
+
+59. Dead-letter retry works.
+
+60. Dead-letter abandon works.
+
+61. Diagnostics APIs work.
+
+62. Support-bundle generation works.
+
+63. Runtime API tests include actual status codes.
+
+64. Correlation IDs are returned.
+
+65. Unauthenticated requests return 401.
+
+66. Unauthorized requests return 403.
+
+67. Unknown resources return 404.
+
+68. Conflicts return 409.
+
+69. Semantically invalid actions return 422.
+
+70. Mandatory dependency failures return 503.
+
+71. Tenant A cannot view Tenant B automation state.
+
+72. Tenant A cannot modify Tenant B configuration.
+
+73. Tenant A cannot execute Tenant B automation.
+
+74. Tenant A cannot cancel Tenant B execution.
+
+75. Tenant A cannot view Tenant B execution.
+
+76. Tenant A cannot view Tenant B dead letters.
+
+77. Tenant A cannot retry Tenant B dead letters.
+
+78. Tenant A cannot abandon Tenant B dead letters.
+
+79. Tenant A cannot view or modify Tenant B schedules.
+
+80. Tenant A cannot view Tenant B diagnostics.
+
+81. Tenant A cannot generate Tenant B support bundle.
+
+82. Tenant override attacks fail.
+
+83. Platform administrator behavior is explicit.
+
+84. Documents adapter controlled integration is validated.
+
+85. Audit adapter controlled integration is validated.
+
+86. Notification adapter controlled integration is validated.
+
+87. Identity adapter controlled integration is validated.
+
+88. Tenant adapter controlled integration is validated.
+
+89. Support bundles enforce size limits.
+
+90. Support bundles are streamed or expire safely.
+
+91. Support bundles contain no secrets.
+
+92. Support bundles contain no message bodies.
+
+93. Support bundles contain no raw headers.
+
+94. Support bundles contain no raw cursors.
+
+95. Support bundles contain no attachment data.
+
+96. Diagnostics contain no secrets.
+
+97. Diagnostics contain no raw connection strings.
+
+98. Performance harness executes.
+
+99. Performance environment is documented.
+
+100. API latency baseline is documented.
+
+101. Persistence throughput baseline is documented.
+
+102. Registry latency is documented.
+
+103. Dead-letter query latency is documented.
+
+104. Support-bundle latency is documented.
+
+105. Resilience failure simulations execute.
+
+106. Retries are bounded.
+
+107. Circuit breakers operate correctly.
+
+108. Retry-After is respected.
+
+109. Invalid credentials and permission denials are not retried.
+
+110. Duplicate side effects are prevented.
+
+111. Database restart behavior is documented.
+
+112. Production-like insecure configuration fails fast.
+
+113. Dependency vulnerability checks execute.
+
+114. All reachable critical/high findings are remediated or formally approved.
+
+115. Moderate findings have documented dispositions.
+
+116. Full Phase 1 acceptance matrix is complete.
+
+117. Production architecture documentation is updated.
+
+118. Production runbooks are updated.
+
+119. Backend restores successfully.
+
+120. Backend builds successfully.
+
+121. API publishes successfully.
+
+122. Critical automated tests pass.
+
+123. Final test counts are documented.
+
+124. Frontend type-check succeeds for Xenia code.
+
+125. Frontend lint executes.
+
+126. Frontend tests execute where configured.
+
+127. Frontend production build succeeds or unrelated blockers are isolated.
+
+128. Proxy preserves runtime statuses.
+
+129. Proxy forwards authorization.
+
+130. Proxy forwards correlation IDs.
+
+131. Proxy safely streams support bundles.
+
+132. No Phase 2 business functionality is implemented.
+
+133. `/analysis/XENIA-P1-PROD-V1-report.md` exists.
+
+134. The report was created before code changes.
+
+135. The report was updated incrementally.
+
+136. Validation commands include exit codes.
+
+137. API requests include actual statuses.
+
+138. Performance results include environment and dataset details.
+
+139. Acceptance matrix contains criterion-level evidence.
+
+140. Final completion percentage is evidence-based.
+
+141. The report issues a production-readiness decision.
+
+142. The report issues a Phase 2 continuation decision.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do not implement:
+
+- AI summarization
+- AI classification
+- AI extraction
+- OCR
+- Case intake business logic
+- Customer-support workflows
+- Workflow business rules
+- Outbound email
+- Email replies
+- Auto responses
+- SMS
+- Slack
+- Teams
+- Calendar synchronization
+- Contact synchronization
+- Provider webhooks
+- LegalSynq lien or funding logic
+- GitHub operations
+- GitHub Actions
+- AWS deployment
+- Production RDS changes
+- Production Secrets Manager changes
+- Production ECS/Fargate changes
+- Production Route53 changes
+- Production Cloud Map changes
+- Production ALB changes
+- Production data migration
+- Production runtime claims
+
+==================================================
+KNOWN RESTRICTIONS
+==================================================
+
+- Keep implementation incremental.
+- Do not rewrite the automation framework unnecessarily.
+- Do not rewrite Email ingestion.
+- Do not duplicate immutable provider manifest data without justification.
+- Do not weaken tenant isolation.
+- Do not weaken authorization.
+- Do not weaken security controls.
+- Do not store credentials.
+- Do not store raw automation business payloads.
+- Do not store message bodies in automation infrastructure tables.
+- Do not store attachment binaries.
+- Do not log message bodies.
+- Do not log raw headers.
+- Do not log raw cursors.
+- Do not load arbitrary untrusted plugins.
+- Do not fabricate migration, integration, performance, or runtime results.
+- Do not use production data.
+- Do not begin Phase 2 features.
+
+==================================================
+REQUIRED REPORT STRUCTURE
+==================================================
+
+Create before any code change:
+
+/analysis/XENIA-P1-PROD-V1-report.md
+
+Use at least:
+
+# XENIA-P1-PROD-V1 Production Readiness and Durable Automation State Closure Report
+
+## 1. Executive Summary
+
+## 2. Ticket Information
+- Ticket ID
+- Parent ticket
+- Related tickets
+- Task type
+- Objective
+- Current status
+
+## 3. Prior Report Review
+- Confirmed claims
+- Incorrect claims
+- Unverified claims
+- Missing evidence
+
+## 4. Initial Repository Analysis
+
+## 5. Toolchain and Environment
+
+## 6. Implementation Progress
+Maintain:
+- Not started
+- In progress
+- Completed
+- Partially completed
+- Failed
+- Blocked
+- Accepted limitation
+
+## 7. Files Inspected
+
+## 8. Durable Persistence Architecture
+
+## 9. Registry Entity
+
+## 10. Version Entity
+
+## 11. Tenant Automation State
+
+## 12. Automation Configuration
+
+## 13. Runtime State
+
+## 14. Execution Persistence
+
+## 15. Dead-Letter Persistence
+
+## 16. Schedule Persistence
+
+## 17. Idempotency Persistence
+
+## 18. EF Configuration
+
+## 19. Migration Creation
+
+## 20. Clean Migration Validation
+
+## 21. Upgrade Migration Validation
+
+## 22. Schema Inspection
+
+## 23. Model Snapshot Validation
+
+## 24. Registry Reconciliation
+
+## 25. Durable Configuration Service
+
+## 26. Durable Lifecycle Service
+
+## 27. Durable Execution Service
+
+## 28. Durable Dead-Letter Store
+
+## 29. Durable Schedule Store
+
+## 30. Durable Idempotency Service
+
+## 31. Multi-Instance Test Harness
+
+## 32. Registry Concurrency
+
+## 33. Execution Concurrency
+
+## 34. Dead-Letter Replay Concurrency
+
+## 35. Schedule Concurrency
+
+## 36. Configuration Concurrency
+
+## 37. Restart Recovery
+
+## 38. Runtime Startup
+
+## 39. Authentication Test Strategy
+
+## 40. Runtime API Validation
+For every request:
+- Method
+- URL
+- Authentication
+- Permissions
+- Tenant
+- Expected status
+- Actual status
+- Correlation ID
+- Safe response summary
+- Result
+
+## 41. Authorization
+
+## 42. Relational Tenant Isolation
+
+## 43. Override-Attack Validation
+
+## 44. Documents Adapter Integration
+
+## 45. Audit Adapter Integration
+
+## 46. Notification Adapter Integration
+
+## 47. Identity Adapter Integration
+
+## 48. Tenant Adapter Integration
+
+## 49. Diagnostics Validation
+
+## 50. Support-Bundle Validation
+
+## 51. Support-Bundle Redaction Scan
+
+## 52. Resilience Validation
+
+## 53. Database Restart Validation
+
+## 54. Performance Environment
+
+## 55. Performance Results
+
+## 56. Regression Thresholds
+
+## 57. Dependency Vulnerability Scan
+
+## 58. Vulnerability Disposition
+
+## 59. Frontend Validation
+
+## 60. Proxy Validation
+
+## 61. Tests Added or Updated
+
+## 62. Test Execution Results
+- Total discovered
+- Total executed
+- Passed
+- Failed
+- Skipped
+- Duration
+- Command
+- Exit code
+
+## 63. Security Review
+
+## 64. Sensitive-Content Review
+
+## 65. Documentation Updated
+
+## 66. Full Phase 1 Acceptance Matrix
+For every criterion:
+- Ticket
+- Criterion ID
+- Criterion
+- Status
+- Evidence
+- Command/test/request
+- Notes
+- Remaining limitation
+- Acceptance owner where applicable
+
+## 67. Issues Found
+
+## 68. Remediation Performed
+
+## 69. Remaining Gaps
+
+## 70. Risks and Architecture Concerns
+
+## 71. Environmental Limitations
+
+## 72. Out-of-Scope Confirmation
+
+## 73. XENIA-P1 Closure Recommendation
+Use one:
+- Close
+- Close with accepted limitations
+- Keep open
+- Blocked
+
+## 74. Production-Readiness Decision
+Use one:
+- Approved for production deployment
+- Approved with explicit prerequisites
+- Not approved
+- Blocked
+
+## 75. Phase 2 Continuation Decision
+Use one:
+- Ready to begin
+- Ready with prerequisites
+- Not ready
+- Blocked
+
+## 76. Final Status
+Use one:
+- Complete
+- Complete with limitations
+- Partially complete
+- Blocked
+- Failed
+
+## 77. Completion Percentage
+
+## 78. Follow-Up Recommendations
+
+==================================================
+FINAL RESPONSE REQUIREMENTS
+==================================================
+
+When implementation and validation are complete:
+
+1. Fully update the report.
+
+2. Remove or resolve placeholders such as:
+
+- In progress
+- To be recorded
+- Estimated
+- Expected
+- Will be completed
+
+unless the item genuinely remains blocked and is documented with evidence.
+
+3. Provide a concise final response containing:
+
+- Ticket ID
+- Final status
+- Completion percentage
+- Build result
+- Publish result
+- Test result
+- Migration result
+- Durable registry result
+- Durable configuration result
+- Durable runtime-state result
+- Durable execution result
+- Durable dead-letter result
+- Durable schedule result
+- Idempotency result
+- Registry reconciliation result
+- Multi-instance consistency result
+- Restart-recovery result
+- Runtime API result
+- Tenant-isolation result
+- Authorization result
+- Documents integration result
+- Audit integration result
+- Notification integration result
+- Identity integration result
+- Tenant integration result
+- Diagnostics result
+- Support-bundle result
+- Resilience result
+- Performance result
+- Vulnerability disposition
+- Frontend result
+- Proxy result
+- Documentation result
+- Known limitations
+- XENIA-P1 closure recommendation
+- Production-readiness decision
+- Phase 2 continuation decision
+- Exact report path
+
+4. Do not claim GitHub success.
+
+5. Do not claim AWS success.
+
+6. Do not claim production deployment success.
+
+7. Stop after XENIA-P1-PROD-V1.
+
+Do not begin Phase 2 implementation.

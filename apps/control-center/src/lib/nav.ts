@@ -168,6 +168,16 @@ export const CC_NAV: NavSection[] = [
   },
 
   {
+    heading: 'AUTOMATION',
+    items: [
+      { href: '/xenia',          label: 'Xenia',    icon: 'ri-flashlight-line',    badge: 'LIVE' },
+      { href: '/xenia/modules',  label: 'Modules',  icon: 'ri-puzzle-line',        badge: 'LIVE' },
+      { href: '/xenia/adapters', label: 'Adapters', icon: 'ri-links-line',         badge: 'LIVE' },
+      { href: '/xenia/settings', label: 'Settings', icon: 'ri-settings-3-line',    badge: 'LIVE' },
+    ],
+  },
+
+  {
     heading: 'SYSTEM',
     items: [
       { href: '/settings', label: 'Platform Settings', icon: 'ri-settings-3-line', badge: 'IN PROGRESS' },

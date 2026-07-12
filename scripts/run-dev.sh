@@ -254,6 +254,15 @@ PID_CC=$!
     DOTNET_GCConserveMemory=9 \
     dotnet run --no-build --project "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj" &
   sleep 3
+  # Xenia — standalone automation platform, port 5035, own MySQL DB (xenia_db).
+  # Starts late in the wave because it is independent: it has no callers among
+  # the existing services and its unavailable-adapter pattern means it does not
+  # hard-depend on other services being up.
+  ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_GCConserveMemory=9 \
+    ASPNETCORE_URLS=http://0.0.0.0:5035 \
+    dotnet run --no-build --project "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj" &
+  sleep 3
   # Support service — port 5017, standalone MySQL, JWT via Authentication:Jwt:SymmetricKey.
   # Authentication__Jwt__SymmetricKey is sourced from Jwt__SigningKey (the same secret used
   # by the gateway) so tokens minted by the platform validate correctly in Support.
