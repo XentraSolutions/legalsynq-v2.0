@@ -34,30 +34,25 @@ public static class DependencyInjection
     {
         // ── Database ─────────────────────────────────────────────────────────
         var connectionString = configuration.GetConnectionString(XeniaDbConnectionStringName);
-        var useInMemory = string.IsNullOrWhiteSpace(connectionString);
+        var hasDatabase = !string.IsNullOrWhiteSpace(connectionString);
 
         // AddDbContextFactory registers:
         //   - IDbContextFactory<XeniaDbContext> as Singleton (used by automation EF stores)
         //   - XeniaDbContext itself as Scoped (used by all existing scoped infrastructure services)
-        // This replaces the previous AddDbContext call — no separate AddDbContext needed.
+        // When no connection string is configured, a null/empty string is passed to UseMySql.
+        // The DbContextFactory registration succeeds; actual DB operations fail gracefully
+        // because all hosted services and scoped services have their own try-catch guards.
         services.AddDbContextFactory<XeniaDbContext>(options =>
         {
-            if (useInMemory)
-            {
-                options.UseInMemoryDatabase("XeniaDb");
-            }
-            else
-            {
-                var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
-                options.UseMySql(
-                    connectionString!,
-                    serverVersion,
-                    mySqlOptions =>
-                    {
-                        mySqlOptions.MigrationsAssembly(typeof(XeniaDbContext).Assembly.GetName().Name);
-                        mySqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
-                    });
-            }
+            var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
+            options.UseMySql(
+                connectionString ?? string.Empty,
+                serverVersion,
+                mySqlOptions =>
+                {
+                    mySqlOptions.MigrationsAssembly(typeof(XeniaDbContext).Assembly.GetName().Name);
+                    mySqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
+                });
         });
 
         // ── Migrations (run before any seeding) ──────────────────────────────
@@ -93,18 +88,26 @@ public static class DependencyInjection
         services.AddScoped<IAiAdapter, UnavailableAiAdapter>();
 
         // ── Email module ──────────────────────────────────────────────────────
-        AddEmailModule(services, configuration);
+        AddEmailModule(services, configuration, hasDatabase);
 
         return services;
     }
 
-    private static void AddEmailModule(IServiceCollection services, IConfiguration configuration)
+    private static void AddEmailModule(IServiceCollection services, IConfiguration configuration, bool hasDatabase)
     {
         // Secret reference service (development stub — replace in production)
         services.AddScoped<ISecretReferenceService, UnavailableSecretReferenceService>();
 
-        // Email source service
-        services.AddScoped<IEmailSourceService, EfEmailSourceService>();
+        // Email source service — use persistent EF Core impl when a database is configured,
+        // otherwise fall back to a volatile in-memory store (no new package dependencies).
+        if (hasDatabase)
+        {
+            services.AddScoped<IEmailSourceService, EfEmailSourceService>();
+        }
+        else
+        {
+            services.AddSingleton<IEmailSourceService, InMemoryEmailSourceService>();
+        }
 
         // Email settings service
         services.AddScoped<IEmailSettingsService, EfEmailSettingsService>();
