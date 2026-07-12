@@ -43,12 +43,10 @@ internal sealed class XeniaMigrationsHostedService : IHostedService
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<XeniaDbContext>();
 
-        var isSqlite = db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
-        if (isSqlite)
+        var isInMemory = db.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
+        if (isInMemory)
         {
-            _logger.LogInformation("Xenia: SQLite mode — creating schema via EnsureCreated (no migrations).");
-            await db.Database.EnsureCreatedAsync(cancellationToken);
-            _logger.LogInformation("Xenia: SQLite schema ready.");
+            _logger.LogInformation("Xenia: InMemory mode — skipping migrations (data will not persist across restarts).");
         }
         else
         {

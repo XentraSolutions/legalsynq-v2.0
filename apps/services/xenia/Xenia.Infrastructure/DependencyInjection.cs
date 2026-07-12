@@ -34,7 +34,7 @@ public static class DependencyInjection
     {
         // ── Database ─────────────────────────────────────────────────────────
         var connectionString = configuration.GetConnectionString(XeniaDbConnectionStringName);
-        var useSqlite = string.IsNullOrWhiteSpace(connectionString);
+        var useInMemory = string.IsNullOrWhiteSpace(connectionString);
 
         // AddDbContextFactory registers:
         //   - IDbContextFactory<XeniaDbContext> as Singleton (used by automation EF stores)
@@ -42,10 +42,9 @@ public static class DependencyInjection
         // This replaces the previous AddDbContext call — no separate AddDbContext needed.
         services.AddDbContextFactory<XeniaDbContext>(options =>
         {
-            if (useSqlite)
+            if (useInMemory)
             {
-                var sqlitePath = Path.Combine(Path.GetTempPath(), "xenia.db");
-                options.UseSqlite($"Data Source={sqlitePath}");
+                options.UseInMemoryDatabase("XeniaDb");
             }
             else
             {
