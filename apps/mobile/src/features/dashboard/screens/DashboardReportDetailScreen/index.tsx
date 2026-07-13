@@ -42,6 +42,7 @@ type BreakdownItem = {
   id: string;
   status: string;
   statusColor?: string;
+  showStatus?: boolean;
   fields: Array<{
     icon: keyof typeof Ionicons.glyphMap;
     label: string;
@@ -173,7 +174,6 @@ function buildDashboardReportFilter(
   };
 }
 
-
 function getReportPagination(
   reportType: DashboardReportType,
   totalLienReport: PagedResult<DashboardTotalLienReportRow> | undefined,
@@ -288,7 +288,10 @@ export function DashboardReportDetailScreen() {
     () => ({ ...buildDashboardReportFilter(route.params.dateRange, 1), limit: 10000 }),
     [route.params.dateRange]
   );
-  const { data: lawFirmReport } = useDashboardLawFirmCaseReport(lawFirmAllRowsFilter, reportsEnabled);
+  const { data: lawFirmReport } = useDashboardLawFirmCaseReport(
+    lawFirmAllRowsFilter,
+    reportsEnabled
+  );
   const medicalProviderAllRowsFilter = useMemo(
     () => ({ ...buildDashboardReportFilter(route.params.dateRange, 1), limit: 100 }),
     [route.params.dateRange]
@@ -634,7 +637,9 @@ function BreakdownCard({ isLast, item }: { isLast: boolean; item: BreakdownItem 
         <Text className={cx(TYPE.cardTitle, 'flex-1 text-[#18181b] dark:text-white')}>
           {item.id}
         </Text>
-        <StatusChip color={item.statusColor} status={item.status} tone={statusTone} />
+        {item.showStatus === false ? null : (
+          <StatusChip color={item.statusColor} status={item.status} tone={statusTone} />
+        )}
       </View>
       <View className="mt-3 gap-3">
         {item.fields.map((field) => (
@@ -668,8 +673,17 @@ function StatusChip({
 }) {
   if (color) {
     return (
-      <View style={{ backgroundColor: `${color}22`, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 }}>
-        <Text className={TYPE.microStrong} style={{ color }}>{status}</Text>
+      <View
+        style={{
+          backgroundColor: `${color}22`,
+          borderRadius: 999,
+          paddingHorizontal: 12,
+          paddingVertical: 4,
+        }}
+      >
+        <Text className={TYPE.microStrong} style={{ color }}>
+          {status}
+        </Text>
       </View>
     );
   }
@@ -782,10 +796,14 @@ function buildReport(
     const reportData = useDummyData ? undefined : mapTotalCaseReportToDetail(totalCaseRows);
     const piechartSlices =
       !useDummyData && piechartData ? mapPiechartCaseSlices(piechartData) : undefined;
-    const slices = useDummyData ? TOTAL_CASES_FALLBACK : (reportData?.slices ?? piechartSlices ?? []);
+    const slices = useDummyData
+      ? TOTAL_CASES_FALLBACK
+      : (reportData?.slices ?? piechartSlices ?? []);
     const centerValue = useDummyData
       ? '4,773'
-      : (reportData?.totalCases.toLocaleString() ?? piechartData?.totalCases.toLocaleString() ?? '0');
+      : (reportData?.totalCases.toLocaleString() ??
+        piechartData?.totalCases.toLocaleString() ??
+        '0');
     return {
       title: 'Total Cases',
       subtitle:
@@ -852,7 +870,9 @@ function buildReport(
   const reportData = useDummyData ? undefined : mapTotalLienReportToDetail(totalLienRows);
   const piechartLienSlices =
     !useDummyData && piechartData ? mapPiechartLienSlices(piechartData) : undefined;
-  const slices = useDummyData ? TOTAL_LIEN_FALLBACK : (reportData?.slices ?? piechartLienSlices ?? []);
+  const slices = useDummyData
+    ? TOTAL_LIEN_FALLBACK
+    : (reportData?.slices ?? piechartLienSlices ?? []);
   const centerValue = useDummyData
     ? '239'
     : (reportData?.totalLiens.toLocaleString() ?? piechartData?.totalLiens.toLocaleString() ?? '0');
@@ -863,9 +883,7 @@ function buildReport(
     centerCaption: 'Total Liens',
     slices,
     breakdownTitle: 'Detailed Breakdown',
-    breakdownItems: useDummyData
-      ? LIEN_BREAKDOWN
-      : lienRowsToBreakdownItems(totalLienRows, reportPeriodLabel),
+    breakdownItems: useDummyData ? LIEN_BREAKDOWN : lienRowsToBreakdownItems(totalLienRows),
   };
 }
 
@@ -887,14 +905,21 @@ function totalCaseRowsToBreakdownItems(
       'N/A';
 
     const caseId =
-      row.caseNumber ?? row.caseReference ?? row.externalReference ?? row.caseId ??
+      row.caseNumber ??
+      row.caseReference ??
+      row.externalReference ??
+      row.caseId ??
       readReportText(r, ['caseNo', 'caseCode', 'referenceNumber']) ??
-      (typeof r.id === 'string' ? r.id : undefined) ?? 'N/A';
+      (typeof r.id === 'string' ? r.id : undefined) ??
+      'N/A';
 
     const rawStatus = row.status ?? row.caseStatus ?? row.currentStatus ?? row.statusName ?? 'N/A';
 
     const dateOfLoss =
-      row.dateOfIncident ?? row.dateOfLoss ?? row.incidentDate ?? row.lossDate ??
+      row.dateOfIncident ??
+      row.dateOfLoss ??
+      row.incidentDate ??
+      row.lossDate ??
       readReportText(r, ['dateOfLoss', 'lossDate', 'incidentDate', 'dateOfIncident']) ??
       'N/A';
 
@@ -926,12 +951,18 @@ function lawFirmCaseRowsToBreakdownItems(rows: DashboardLawFirmCaseReportRow[]):
       'N/A';
 
     const caseId =
-      row.caseNumber ?? row.caseReference ?? row.caseId ??
+      row.caseNumber ??
+      row.caseReference ??
+      row.caseId ??
       readReportText(r, ['caseNo', 'caseCode', 'referenceNumber']) ??
-      (typeof r.id === 'string' ? r.id : undefined) ?? 'N/A';
+      (typeof r.id === 'string' ? r.id : undefined) ??
+      'N/A';
 
     const dateOfLoss =
-      row.dateOfIncident ?? row.dateOfLoss ?? row.incidentDate ?? row.lossDate ??
+      row.dateOfIncident ??
+      row.dateOfLoss ??
+      row.incidentDate ??
+      row.lossDate ??
       readReportText(r, ['dateOfLoss', 'lossDate', 'incidentDate', 'dateOfIncident']) ??
       'N/A';
 
@@ -939,7 +970,8 @@ function lawFirmCaseRowsToBreakdownItems(rows: DashboardLawFirmCaseReportRow[]):
 
     return {
       id: name,
-      status: r.status,
+      status: readReportText(r, ['status']) ?? 'Active',
+      showStatus: false,
       fields: [
         { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
         { icon: 'business-outline', label: 'Law Firm', value: lawFirm },
@@ -965,12 +997,18 @@ function medicalFacilityCaseRowsToBreakdownItems(
       'N/A';
 
     const caseId =
-      row.caseNumber ?? row.caseReference ?? row.caseId ??
+      row.caseNumber ??
+      row.caseReference ??
+      row.caseId ??
       readReportText(r, ['caseNo', 'caseCode', 'referenceNumber']) ??
-      (typeof r.id === 'string' ? r.id : undefined) ?? 'N/A';
+      (typeof r.id === 'string' ? r.id : undefined) ??
+      'N/A';
 
     const dateOfLoss =
-      row.dateOfIncident ?? row.dateOfLoss ?? row.incidentDate ?? row.lossDate ??
+      row.dateOfIncident ??
+      row.dateOfLoss ??
+      row.incidentDate ??
+      row.lossDate ??
       readReportText(r, ['dateOfLoss', 'lossDate', 'incidentDate', 'dateOfIncident']) ??
       'N/A';
 
@@ -979,6 +1017,7 @@ function medicalFacilityCaseRowsToBreakdownItems(
     return {
       id: name,
       status: 'Active',
+      showStatus: false,
       fields: [
         { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
         { icon: 'calendar-outline', label: 'Date of Loss', value: dateOfLoss },
@@ -1002,29 +1041,6 @@ function createLienBreakdownItem(
       { icon: 'person-outline', label: 'Plaintiff Name', value: plaintiffName },
     ],
   };
-}
-
-
-function mapAllocationReportToSlices<Row>(
-  rows: Row[],
-  getLabel: (row: Row) => string,
-  getCount: (row: Row) => number
-): DetailSlice[] {
-  const rowsWithCounts = rows
-    .map((row) => ({ label: getLabel(row), count: getCount(row) }))
-    .filter((row) => row.count > 0);
-  const total = rowsWithCounts.reduce((sum, row) => sum + row.count, 0) || 1;
-
-  return rowsWithCounts.map((row, index) => {
-    const pct = (row.count / total) * 100;
-    return {
-      label: row.label,
-      value: row.count,
-      amount: row.count.toLocaleString(),
-      percent: `(${pct.toFixed(2)}%)`,
-      color: SLICE_COLORS[index % SLICE_COLORS.length],
-    };
-  });
 }
 
 function formatCurrency(value: number): string {
@@ -1227,10 +1243,7 @@ function mapTotalCaseReportToDetail(
   return { slices, totalCases };
 }
 
-function lienRowsToBreakdownItems(
-  rows: DashboardTotalLienReportRow[],
-  reportPeriodLabel: string
-): BreakdownItem[] {
+function lienRowsToBreakdownItems(rows: DashboardTotalLienReportRow[]): BreakdownItem[] {
   return rows
     .map((row, index) => {
       const record = row as Record<string, unknown>;
@@ -1253,38 +1266,17 @@ function lienRowsToBreakdownItems(
           'lienNumber',
           'id',
         ]) ?? String(index + 1);
-      const purchase =
-        readReportNumber(record, [
-          'purchase',
-          'purchaseAmount',
-          'totalPurchase',
-          'totalPurchaseAmount',
-        ]) ?? 0;
-      const billing =
-        readReportNumber(record, [
-          'billing',
-          'billingAmount',
-          'totalBilling',
-          'totalBillingAmount',
-        ]) ?? 0;
-
       const fields: BreakdownItem['fields'] = [
         {
           icon: 'briefcase-outline',
           label: 'Case ID',
-          value:
-            readReportText(record, ['caseId']) ?? 'N/A',
+          value: readReportText(record, ['caseId']) ?? 'N/A',
         },
         {
           icon: 'person-outline',
           label: 'Plaintiff Name',
-          value:
-            readReportText(record, ['clientName']) ??
-            'N/A',
+          value: readReportText(record, ['clientName']) ?? 'N/A',
         },
-        // { icon: 'card-outline', label: 'Purchase', value: formatCurrency(purchase) },
-        // { icon: 'receipt-outline', label: 'Billing', value: formatCurrency(billing) },
-        // { icon: 'calendar-outline', label: 'Report Period', value: reportPeriodLabel },
       ];
 
       return {
@@ -1296,10 +1288,16 @@ function lienRowsToBreakdownItems(
     .slice(0, 5);
 }
 
-
 function readLawFirmId(row: DashboardLawFirmCaseReportRow): string {
   const r = row as Record<string, unknown>;
-  for (const key of ['lawFirmId', 'lawfirmId', 'lawFirmOrgId', 'organizationId', 'orgId', 'firmId']) {
+  for (const key of [
+    'lawFirmId',
+    'lawfirmId',
+    'lawFirmOrgId',
+    'organizationId',
+    'orgId',
+    'firmId',
+  ]) {
     const val = r[key];
     if (typeof val === 'string' && val.trim()) return val;
     if (typeof val === 'number') return String(val);
@@ -1313,11 +1311,27 @@ function readLawFirmName(row: DashboardLawFirmCaseReportRow): string {
   for (const val of candidates) {
     if (typeof val === 'string' && val.trim().length > 2) return val;
   }
-  for (const key of ['organization', 'organizationName', 'orgName', 'contactName', 'firm', 'title', 'lawFirmTitle']) {
+  for (const key of [
+    'organization',
+    'organizationName',
+    'orgName',
+    'contactName',
+    'firm',
+    'title',
+    'lawFirmTitle',
+  ]) {
     const val = r[key];
     if (typeof val === 'string' && val.trim().length > 2) return val;
   }
-  const skipStringKeys = new Set(['label', 'status', 'type', 'id', 'tenantId', 'createdAt', 'updatedAt']);
+  const skipStringKeys = new Set([
+    'label',
+    'status',
+    'type',
+    'id',
+    'tenantId',
+    'createdAt',
+    'updatedAt',
+  ]);
   for (const [key, val] of Object.entries(r)) {
     if (skipStringKeys.has(key)) continue;
     if (typeof val === 'string' && val.trim().length > 2) return val;
@@ -1354,17 +1368,37 @@ function mapLawFirmReportGrouped(rows: DashboardLawFirmCaseReportRow[]): DetailS
 function readFacilityName(row: DashboardMedicalProviderReportRow): string {
   const r = row as Record<string, unknown>;
   const candidates = [
-    row.facilityName, row.medicalProvider, row.medicalprovider,
-    row.medicalProviderName, row.providerName, row.name,
+    row.facilityName,
+    row.medicalProvider,
+    row.medicalprovider,
+    row.medicalProviderName,
+    row.providerName,
+    row.name,
   ];
   for (const val of candidates) {
     if (typeof val === 'string' && val.trim().length > 2) return val;
   }
-  for (const key of ['organization', 'organizationName', 'orgName', 'facility', 'medicalFacility', 'provider', 'title']) {
+  for (const key of [
+    'organization',
+    'organizationName',
+    'orgName',
+    'facility',
+    'medicalFacility',
+    'provider',
+    'title',
+  ]) {
     const val = r[key];
     if (typeof val === 'string' && val.trim().length > 2) return val;
   }
-  const skipStringKeys = new Set(['label', 'status', 'type', 'id', 'tenantId', 'createdAt', 'updatedAt']);
+  const skipStringKeys = new Set([
+    'label',
+    'status',
+    'type',
+    'id',
+    'tenantId',
+    'createdAt',
+    'updatedAt',
+  ]);
   for (const [key, val] of Object.entries(r)) {
     if (skipStringKeys.has(key)) continue;
     if (typeof val === 'string' && val.trim().length > 2) return val;

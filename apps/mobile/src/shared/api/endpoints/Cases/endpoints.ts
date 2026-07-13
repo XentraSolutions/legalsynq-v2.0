@@ -231,11 +231,8 @@ export const CasesApi = {
   },
 
   async getDashboardDeployed(body: DashboardStatRequest): Promise<DashboardStatResponse> {
-    const response = await apiClient.post<unknown>(
-      `${CASES_BASE_PATH}/dashboard/deployed`,
-      body
-    );
-    return (response.data.data ?? {}) as DashboardStatResponse;
+    const response = await apiClient.post<unknown>(`${CASES_BASE_PATH}/dashboard/deployed`, body);
+    return (asRecord(response.data)?.data ?? response.data ?? {}) as DashboardStatResponse;
   },
 
   async getDashboardCashReceived(body: DashboardStatRequest): Promise<DashboardStatResponse> {
@@ -243,6 +240,6 @@ export const CasesApi = {
       `${CASES_BASE_PATH}/dashboard/cash-received`,
       body
     );
-    return (response.data.data ?? {}) as DashboardStatResponse;
+    return (asRecord(response.data)?.data ?? response.data ?? {}) as DashboardStatResponse;
   },
 };

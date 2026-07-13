@@ -576,20 +576,16 @@ function numericValue(value: unknown): number | undefined {
   return undefined;
 }
 
-const SKIP_COUNT_KEYS = new Set(['percentage', 'percent', 'pct', 'share', 'ratio', 'page', 'limit', 'pagesize', 'totalpages', 'id']);
-
-function scanFirstPositiveInt(r: Record<string, unknown>): number {
-  for (const [key, val] of Object.entries(r)) {
-    if (SKIP_COUNT_KEYS.has(key.toLowerCase())) continue;
-    const num = numericValue(val);
-    if (num !== undefined && num > 0 && Number.isInteger(num)) return num;
-  }
-  return 0;
-}
-
 function readLawFirmId(row: DashboardLawFirmCaseReportRow): string {
   const r = row as Record<string, unknown>;
-  for (const key of ['lawFirmId', 'lawfirmId', 'lawFirmOrgId', 'organizationId', 'orgId', 'firmId']) {
+  for (const key of [
+    'lawFirmId',
+    'lawfirmId',
+    'lawFirmOrgId',
+    'organizationId',
+    'orgId',
+    'firmId',
+  ]) {
     const val = r[key];
     if (typeof val === 'string' && val.trim()) return val;
     if (typeof val === 'number') return String(val);
@@ -599,18 +595,32 @@ function readLawFirmId(row: DashboardLawFirmCaseReportRow): string {
 
 function readLawFirmName(row: DashboardLawFirmCaseReportRow): string {
   const r = row as Record<string, unknown>;
-  const candidates = [
-    row.lawFirm, row.lawfirm, row.lawFirmName, row.firmName, row.name,
-  ];
+  const candidates = [row.lawFirm, row.lawfirm, row.lawFirmName, row.firmName, row.name];
   for (const val of candidates) {
     if (typeof val === 'string' && val.trim().length > 2) return val;
   }
-  for (const key of ['organization', 'organizationName', 'orgName', 'contactName', 'firm', 'title', 'lawFirmTitle']) {
+  for (const key of [
+    'organization',
+    'organizationName',
+    'orgName',
+    'contactName',
+    'firm',
+    'title',
+    'lawFirmTitle',
+  ]) {
     const val = r[key];
     if (typeof val === 'string' && val.trim().length > 2) return val;
   }
   // scan all string fields longer than 2 chars, skipping known non-name fields
-  const skipStringKeys = new Set(['label', 'status', 'type', 'id', 'tenantId', 'createdAt', 'updatedAt']);
+  const skipStringKeys = new Set([
+    'label',
+    'status',
+    'type',
+    'id',
+    'tenantId',
+    'createdAt',
+    'updatedAt',
+  ]);
   for (const [key, val] of Object.entries(r)) {
     if (skipStringKeys.has(key)) continue;
     if (typeof val === 'string' && val.trim().length > 2) return val;
@@ -647,17 +657,37 @@ function mapLawFirmReportGrouped(rows: DashboardLawFirmCaseReportRow[]): DonutSl
 function readFacilityName(row: DashboardMedicalProviderReportRow): string {
   const r = row as Record<string, unknown>;
   const candidates = [
-    row.facilityName, row.medicalProvider, row.medicalprovider,
-    row.medicalProviderName, row.providerName, row.name,
+    row.facilityName,
+    row.medicalProvider,
+    row.medicalprovider,
+    row.medicalProviderName,
+    row.providerName,
+    row.name,
   ];
   for (const val of candidates) {
     if (typeof val === 'string' && val.trim().length > 2) return val;
   }
-  for (const key of ['organization', 'organizationName', 'orgName', 'facility', 'medicalFacility', 'provider', 'title']) {
+  for (const key of [
+    'organization',
+    'organizationName',
+    'orgName',
+    'facility',
+    'medicalFacility',
+    'provider',
+    'title',
+  ]) {
     const val = r[key];
     if (typeof val === 'string' && val.trim().length > 2) return val;
   }
-  const skipStringKeys = new Set(['label', 'status', 'type', 'id', 'tenantId', 'createdAt', 'updatedAt']);
+  const skipStringKeys = new Set([
+    'label',
+    'status',
+    'type',
+    'id',
+    'tenantId',
+    'createdAt',
+    'updatedAt',
+  ]);
   for (const [key, val] of Object.entries(r)) {
     if (skipStringKeys.has(key)) continue;
     if (typeof val === 'string' && val.trim().length > 2) return val;
@@ -686,28 +716,6 @@ function mapMedicalFacilityReportGrouped(rows: DashboardMedicalProviderReportRow
       amount: g.count.toLocaleString(),
       percent: `(${pct.toFixed(2)}%)`,
       color: SLICE_COLORS[i % SLICE_COLORS.length],
-    };
-  });
-}
-
-function mapAllocationReportToSlices<Row>(
-  rows: Row[],
-  getLabel: (row: Row) => string,
-  getCount: (row: Row) => number
-): DonutSlice[] {
-  const rowsWithCounts = rows
-    .map((row) => ({ label: getLabel(row), count: getCount(row) }))
-    .filter((row) => row.count > 0);
-  const total = rowsWithCounts.reduce((sum, row) => sum + row.count, 0) || 1;
-
-  return rowsWithCounts.map((row, index) => {
-    const pct = (row.count / total) * 100;
-    return {
-      label: row.label,
-      value: row.count,
-      amount: row.count.toLocaleString(),
-      percent: `(${pct.toFixed(2)}%)`,
-      color: SLICE_COLORS[index % SLICE_COLORS.length],
     };
   });
 }
@@ -883,7 +891,16 @@ function mapTotalCaseReportToDashboard(rows: DashboardTotalCaseReportRow[]):
 function readStatAmount(data: DashboardStatResponse | undefined): number | undefined {
   if (!data) return undefined;
   const r = data as Record<string, unknown>;
-  for (const key of ['totalAmount', 'total', 'amount', 'value', 'cashDeployed', 'deployed', 'cashReceived', 'received']) {
+  for (const key of [
+    'totalAmount',
+    'total',
+    'amount',
+    'value',
+    'cashDeployed',
+    'deployed',
+    'cashReceived',
+    'received',
+  ]) {
     const raw = r[key];
     if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
     if (typeof raw === 'string') {
