@@ -105,7 +105,6 @@ export function MergeCaseForm({
           : [],
       );
     }
-    console.log(cases);
   }, [data]);
 
   const handleSubmit = async () => {
@@ -151,7 +150,7 @@ export function MergeCaseForm({
         footer={
           <>
             <button
-              onClick={() => {}}
+              onClick={onClose}
               className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
             >
               Close
