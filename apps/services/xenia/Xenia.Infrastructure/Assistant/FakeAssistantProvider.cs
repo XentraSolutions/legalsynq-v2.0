@@ -5,6 +5,8 @@ namespace Xenia.Infrastructure.Assistant;
 
 internal sealed class FakeAssistantProvider : IAssistantProvider
 {
+    private const string CareConnectGroundingPrefix = "Authorized CareConnect referral context:";
+
     public Task<string> GetProviderKeyAsync(CancellationToken ct = default)
         => Task.FromResult("fake");
 
@@ -14,10 +16,13 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
     {
         var lastUserMessage = request.Messages.LastOrDefault(m => m.Role.Equals("user", StringComparison.OrdinalIgnoreCase))?.Content
             ?? "How can I help?";
+        var grounding = request.Messages
+            .FirstOrDefault(m => m.Content.StartsWith(CareConnectGroundingPrefix, StringComparison.OrdinalIgnoreCase))
+            ?.Content;
 
-        var text =
-            $"Xenia {request.AgentKey} is running in fake-provider mode. " +
-            $"I received: {lastUserMessage.Trim()}";
+        var text = grounding is null
+            ? $"Xenia {request.AgentKey} is running in fake-provider mode. I received: {lastUserMessage.Trim()}"
+            : $"Xenia {request.AgentKey} is running in fake-provider mode. I received: {lastUserMessage.Trim()}\n\nGrounded context:\n{CompactGrounding(grounding)}";
 
         foreach (var chunk in Chunk(text, 24))
         {
@@ -42,4 +47,12 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
 
     private static int EstimateTokens(int characters)
         => Math.Max(1, (int)Math.Ceiling(characters / 4.0));
+
+    private static string CompactGrounding(string grounding)
+    {
+        var compact = grounding.Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n\n", "\n", StringComparison.Ordinal)
+            .Trim();
+        return compact.Length <= 320 ? compact : compact[..320];
+    }
 }

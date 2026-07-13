@@ -56,7 +56,7 @@ internal sealed class AssistantModuleSeeder : IHostedService
             "General LegalSynq assistant for product-neutral questions and drafting.",
             "1.0.0",
             "You are Xenia, LegalSynq's tenant-aware assistant. Answer concisely, avoid exposing secrets, and use only authorized context.",
-            """["tenant.context.summary"]""",
+            """["tenant.context.summary","careconnect.referral.lookup"]""",
             "[]",
             cancellationToken);
 

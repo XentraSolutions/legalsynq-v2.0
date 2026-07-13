@@ -21,6 +21,7 @@ internal sealed class EfAssistantService : IAssistantService
     private readonly XeniaDbContext _db;
     private readonly XeniaTenantContextAccessor _tenantAccessor;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IAssistantToolExecutor _toolExecutor;
     private readonly IAssistantProvider _provider;
     private readonly IAssistantRuntimeSettingsService _runtimeSettings;
     private readonly IOptions<XeniaAssistantOptions> _options;
@@ -31,6 +32,7 @@ internal sealed class EfAssistantService : IAssistantService
         XeniaDbContext db,
         XeniaTenantContextAccessor tenantAccessor,
         IHttpContextAccessor httpContextAccessor,
+        IAssistantToolExecutor toolExecutor,
         IAssistantProvider provider,
         IAssistantRuntimeSettingsService runtimeSettings,
         IOptions<XeniaAssistantOptions> options,
@@ -40,6 +42,7 @@ internal sealed class EfAssistantService : IAssistantService
         _db = db;
         _tenantAccessor = tenantAccessor;
         _httpContextAccessor = httpContextAccessor;
+        _toolExecutor = toolExecutor;
         _provider = provider;
         _runtimeSettings = runtimeSettings;
         _options = options;
@@ -229,11 +232,27 @@ internal sealed class EfAssistantService : IAssistantService
 
         yield return new AssistantStreamEventDto("user_message", null, ToMessageDto(userMessage, []), null);
 
+        var mergedContextJson = MergeContextJson(conversation.ContextJson, request.ContextJson);
+        var grounding = await TryBuildGroundingAsync(
+            conversationId,
+            userMessage.Id,
+            tenantId,
+            actorId,
+            agent.AgentKey,
+            mergedContextJson,
+            ct);
+
         var providerMessages = priorMessages
             .Where(m => m.Role is AssistantMessageRole.User or AssistantMessageRole.Assistant)
             .Select(m => new AssistantProviderMessage(ToProviderRole(m.Role), m.Content))
-            .Append(new AssistantProviderMessage("user", content))
             .ToList();
+
+        if (!string.IsNullOrWhiteSpace(grounding?.PromptMessage))
+        {
+            providerMessages.Add(new AssistantProviderMessage("user", grounding.PromptMessage));
+        }
+
+        providerMessages.Add(new AssistantProviderMessage("user", content));
 
         var providerRequest = new AssistantProviderRequest(
             agent.AgentKey,
@@ -241,7 +260,7 @@ internal sealed class EfAssistantService : IAssistantService
             agent.SystemPrompt,
             string.IsNullOrWhiteSpace(runtimeSettings.ModelKey) ? "xenia-fake" : runtimeSettings.ModelKey,
             providerMessages,
-            MergeContextJson(conversation.ContextJson, request.ContextJson),
+            mergedContextJson,
             correlationId ?? string.Empty);
 
         var chunks = new List<string>();
@@ -295,6 +314,21 @@ internal sealed class EfAssistantService : IAssistantService
         assistantMessage.SetUsage(inputTokens, outputTokens, finishReason);
 
         _db.AssistantMessages.Add(assistantMessage);
+        var assistantCitations = (grounding?.Citations ?? [])
+            .Select(citation => new AssistantMessageCitation(
+                Guid.CreateVersion7(),
+                assistantMessage.Id,
+                tenantId,
+                citation.SourceType,
+                citation.SourceId,
+                citation.Label,
+                citation.Url))
+            .ToList();
+
+        foreach (var citation in assistantCitations)
+        {
+            _db.AssistantMessageCitations.Add(citation);
+        }
         conversation.Touch(DateTime.UtcNow);
 
         await RecordUsageAsync(
@@ -316,7 +350,11 @@ internal sealed class EfAssistantService : IAssistantService
         _metrics.AssistantResponseDurationMs.Record(sw.Elapsed.TotalMilliseconds, KeyValuePair.Create<string, object?>("provider", providerKey));
         _metrics.AssistantTokens.Add(inputTokens.Value + outputTokens.Value, KeyValuePair.Create<string, object?>("provider", providerKey));
 
-        yield return new AssistantStreamEventDto("message", null, ToMessageDto(assistantMessage, []), null);
+        yield return new AssistantStreamEventDto(
+            "message",
+            null,
+            ToMessageDto(assistantMessage, assistantCitations),
+            null);
         yield return new AssistantStreamEventDto("done", null, null, null);
     }
 
@@ -641,4 +679,140 @@ internal sealed class EfAssistantService : IAssistantService
 
     private static int EstimateTokens(int characters)
         => Math.Max(1, (int)Math.Ceiling(characters / 4.0));
+
+    private async Task<AssistantGroundingResult?> TryBuildGroundingAsync(
+        Guid conversationId,
+        Guid userMessageId,
+        Guid tenantId,
+        Guid actorId,
+        string agentKey,
+        string mergedContextJson,
+        CancellationToken ct)
+    {
+        var toolKey = TryResolveGroundingToolKey(mergedContextJson);
+        if (toolKey is null) return null;
+
+        var inputJson = BuildGroundingInputJson(toolKey, mergedContextJson);
+        if (inputJson is null) return null;
+
+        var invocation = new AssistantToolInvocation(
+            Guid.CreateVersion7(),
+            conversationId,
+            userMessageId,
+            tenantId,
+            actorId,
+            agentKey,
+            toolKey,
+            inputJson);
+
+        _db.AssistantToolInvocations.Add(invocation);
+
+        AssistantToolExecutionResultDto result;
+        try
+        {
+            result = await _toolExecutor.ExecuteAsync(
+                new AssistantToolExecutionRequestDto(toolKey, agentKey, inputJson, mergedContextJson),
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Assistant grounding tool execution failed. tool={ToolKey}", toolKey);
+            invocation.Fail("The grounded product lookup failed.");
+            await _db.SaveChangesAsync(ct);
+            return new AssistantGroundingResult(
+                BuildGroundingFailurePrompt("The grounded product lookup failed."),
+                []);
+        }
+
+        if (result.Succeeded)
+        {
+            invocation.Complete(result.OutputJson);
+        }
+        else
+        {
+            if (string.Equals(result.Status, "confirmation_required", StringComparison.OrdinalIgnoreCase))
+                invocation.MarkConfirmationRequired();
+
+            invocation.Fail(result.SafeError ?? "The grounded product lookup failed.");
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        return result.Succeeded
+            ? new AssistantGroundingResult(
+                BuildGroundingPrompt(toolKey, result.OutputJson),
+                result.Citations)
+            : new AssistantGroundingResult(
+                BuildGroundingFailurePrompt(result.SafeError ?? "The grounded product lookup failed."),
+                []);
+    }
+
+    private static string? TryResolveGroundingToolKey(string mergedContextJson)
+    {
+        var path = TryGetContextPath(mergedContextJson);
+        if (string.IsNullOrWhiteSpace(path)) return null;
+
+        return TryParseCareConnectReferralId(path, out _)
+            ? "careconnect.referral.lookup"
+            : null;
+    }
+
+    private static string? BuildGroundingInputJson(string toolKey, string mergedContextJson)
+    {
+        var path = TryGetContextPath(mergedContextJson);
+        if (string.IsNullOrWhiteSpace(path)) return null;
+
+        if (toolKey.Equals("careconnect.referral.lookup", StringComparison.OrdinalIgnoreCase) &&
+            TryParseCareConnectReferralId(path, out var referralId))
+        {
+            return JsonSerializer.Serialize(new { referralId }, JsonOptions);
+        }
+
+        return null;
+    }
+
+    private static string BuildGroundingPrompt(string toolKey, string outputJson)
+        => toolKey.Equals("careconnect.referral.lookup", StringComparison.OrdinalIgnoreCase)
+            ? $"Authorized CareConnect referral context:\n{outputJson}\nUse only this grounded referral data when answering the next question. If the user asks beyond it, say that the current lookup does not provide that detail."
+            : outputJson;
+
+    private static string BuildGroundingFailurePrompt(string safeError)
+        => $"Authorized product lookup was unavailable for the current page: {safeError} Do not make record-specific claims without grounded data.";
+
+    private static string? TryGetContextPath(string mergedContextJson)
+    {
+        if (string.IsNullOrWhiteSpace(mergedContextJson)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(mergedContextJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+                !doc.RootElement.TryGetProperty("path", out var pathElement) ||
+                pathElement.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return pathElement.GetString();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool TryParseCareConnectReferralId(string path, out Guid referralId)
+    {
+        referralId = Guid.Empty;
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return segments.Length >= 3 &&
+               segments[0].Equals("careconnect", StringComparison.OrdinalIgnoreCase) &&
+               segments[1].Equals("referrals", StringComparison.OrdinalIgnoreCase) &&
+               Guid.TryParse(segments[2], out referralId) &&
+               referralId != Guid.Empty;
+    }
+
+    private sealed record AssistantGroundingResult(
+        string PromptMessage,
+        IReadOnlyList<AssistantToolCitationDto> Citations);
 }

@@ -10,13 +10,16 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly IAssistantToolRegistry _registry;
+    private readonly ICareConnectAssistantSource _careConnect;
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     public StaticAssistantToolExecutor(
         IAssistantToolRegistry registry,
+        ICareConnectAssistantSource careConnect,
         IHttpContextAccessor httpContextAccessor)
     {
         _registry = registry;
+        _careConnect = careConnect;
         _httpContextAccessor = httpContextAccessor;
     }
 
@@ -45,39 +48,120 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
             return Task.FromResult(Denied("confirmation_required", "This assistant tool requires explicit user confirmation."));
         }
 
-        var outputJson = request.ToolKey.Equals("tenant.context.summary", StringComparison.OrdinalIgnoreCase)
-            ? JsonSerializer.Serialize(new
+        if (request.ToolKey.Equals("tenant.context.summary", StringComparison.OrdinalIgnoreCase))
+        {
+            var outputJson = JsonSerializer.Serialize(new
             {
                 status = "available",
                 note = "Tenant page context received. Sensitive record details must be fetched server-side by authorized tools.",
                 input = SafeJsonObject(request.InputJson),
                 context = SafeJsonObject(request.ContextJson),
-            }, JsonOptions)
-            : "{}";
+            }, JsonOptions);
 
-        if (!request.ToolKey.Equals("tenant.context.summary", StringComparison.OrdinalIgnoreCase))
-        {
+            if (outputJson.Length > tool.MaxOutputCharacters)
+                outputJson = outputJson[..tool.MaxOutputCharacters];
+
             return Task.FromResult(new AssistantToolExecutionResultDto(
-                false,
-                "adapter_unavailable",
+                true,
+                "completed",
                 outputJson,
-                "This assistant tool is declared but its product adapter is not wired yet.",
-                outputJson.Length));
+                null,
+                outputJson.Length,
+                []));
         }
+
+        if (request.ToolKey.Equals("careconnect.referral.lookup", StringComparison.OrdinalIgnoreCase))
+        {
+            return ExecuteCareConnectReferralLookupAsync(tool, request, ct);
+        }
+
+        return Task.FromResult(new AssistantToolExecutionResultDto(
+            false,
+            "adapter_unavailable",
+            "{}",
+            "This assistant tool is declared but its product adapter is not wired yet.",
+            2,
+            []));
+    }
+
+    private static AssistantToolExecutionResultDto Denied(string status, string safeError)
+        => new(false, status, "{}", safeError, 2, []);
+
+    private async Task<AssistantToolExecutionResultDto> ExecuteCareConnectReferralLookupAsync(
+        AssistantToolDefinitionDto tool,
+        AssistantToolExecutionRequestDto request,
+        CancellationToken ct)
+    {
+        var referralId = TryGetGuid(request.InputJson, "referralId");
+        if (referralId is null || referralId == Guid.Empty)
+        {
+            return new AssistantToolExecutionResultDto(
+                false,
+                "invalid_input",
+                "{}",
+                "The CareConnect referral id is missing or invalid.",
+                2,
+                []);
+        }
+
+        var lookup = await _careConnect.LookupReferralAsync(referralId.Value, ct);
+        if (!lookup.Succeeded || lookup.Referral is null)
+        {
+            return new AssistantToolExecutionResultDto(
+                false,
+                lookup.Status,
+                "{}",
+                lookup.SafeError ?? "The CareConnect referral lookup failed.",
+                2,
+                []);
+        }
+
+        var referral = lookup.Referral;
+        var outputJson = JsonSerializer.Serialize(new
+        {
+            status = "available",
+            referral = new
+            {
+                id = referral.ReferralId,
+                clientDisplayName = referral.ClientDisplayName,
+                status = referral.Status,
+                urgency = referral.Urgency,
+                providerName = referral.ProviderName,
+                requestedService = referral.RequestedService,
+                treatmentTypeName = referral.TreatmentTypeName,
+                caseNumber = referral.CaseNumber,
+                referringOrganizationName = referral.ReferringOrganizationName,
+                referrerName = referral.ReferrerName,
+                createdAtUtc = referral.CreatedAtUtc,
+                updatedAtUtc = referral.UpdatedAtUtc,
+            },
+            recentHistory = referral.History.Select(item => new
+            {
+                oldStatus = item.OldStatus,
+                newStatus = item.NewStatus,
+                changedAtUtc = item.ChangedAtUtc,
+                notes = item.Notes,
+            }),
+            note = lookup.SafeError,
+        }, JsonOptions);
 
         if (outputJson.Length > tool.MaxOutputCharacters)
             outputJson = outputJson[..tool.MaxOutputCharacters];
 
-        return Task.FromResult(new AssistantToolExecutionResultDto(
+        return new AssistantToolExecutionResultDto(
             true,
-            "completed",
+            lookup.Status,
             outputJson,
-            null,
-            outputJson.Length));
+            lookup.SafeError,
+            outputJson.Length,
+            [
+                new AssistantToolCitationDto(
+                    "careconnect.referral",
+                    referral.ReferralId.ToString(),
+                    $"CareConnect referral {referral.ClientDisplayName}",
+                    $"/careconnect/referrals/{referral.ReferralId}")
+            ]);
     }
-
-    private static AssistantToolExecutionResultDto Denied(string status, string safeError)
-        => new(false, status, "{}", safeError, 2);
 
     private static bool HasAnyRequiredPermission(ClaimsPrincipal principal, IReadOnlyList<string> permissions)
     {
@@ -135,6 +219,30 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
         catch (JsonException)
         {
             return "{}";
+        }
+    }
+
+    private static Guid? TryGetGuid(string? json, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+                !doc.RootElement.TryGetProperty(propertyName, out var value))
+            {
+                return null;
+            }
+
+            return value.ValueKind == JsonValueKind.String &&
+                   Guid.TryParse(value.GetString(), out var parsed)
+                ? parsed
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 }

@@ -10,6 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  parseMarkdownBlocks,
+  parseMarkdownInlines,
+  type MarkdownBlock,
+  type MarkdownInlineToken,
+} from '@/lib/xenia/markdown';
 import { normalizeStreamEvent, type XeniaStreamEvent } from '@/lib/xenia/stream';
 import type {
   XeniaAgent,
@@ -341,8 +347,8 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
 
               {draftAssistant && (
                 <div className="flex justify-start">
-                  <div className="max-w-[85%] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm">
-                    {draftAssistant}
+                  <div className="max-w-[85%] break-words rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 shadow-sm">
+                    <AssistantMessageContent content={draftAssistant} isStreaming />
                   </div>
                 </div>
               )}
@@ -394,20 +400,231 @@ function MessageBubble({ message }: { message: XeniaMessage }) {
   return (
     <div className={isUser ? 'flex justify-end' : 'flex justify-start'}>
       <div className={[
-        'max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-6',
+        'max-w-[85%] break-words rounded-2xl px-4 py-3 text-sm leading-6',
         isUser ? 'bg-[#0f1928] text-white' : 'border border-gray-200 bg-white text-gray-800 shadow-sm',
       ].join(' ')}>
-        {message.content}
+        {isUser ? (
+          <p className="whitespace-pre-wrap">{message.content}</p>
+        ) : (
+          <AssistantMessageContent content={message.content} />
+        )}
         {message.citations.length > 0 && (
-          <div className="mt-2 space-y-1 border-t border-gray-100 pt-2">
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
             {message.citations.map(citation => (
-              <div key={citation.id} className="text-xs text-gray-500">
-                {citation.label}
-              </div>
+              citation.url ? (
+                <a
+                  key={citation.id}
+                  href={citation.url}
+                  className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 hover:border-orange-300 hover:bg-orange-100"
+                >
+                  {citation.label}
+                </a>
+              ) : (
+                <span
+                  key={citation.id}
+                  className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600"
+                >
+                  {citation.label}
+                </span>
+              )
             ))}
           </div>
         )}
       </div>
     </div>
   );
+}
+
+function AssistantMessageContent({
+  content,
+  isStreaming = false,
+}: {
+  content: string;
+  isStreaming?: boolean;
+}) {
+  const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
+
+  if (blocks.length === 0) {
+    return <p className="whitespace-pre-wrap">{content}</p>;
+  }
+
+  return (
+    <div className={['space-y-3', isStreaming ? 'opacity-90' : ''].join(' ').trim()}>
+      {blocks.map((block, index) => renderMarkdownBlock(block, `${index}`))}
+    </div>
+  );
+}
+
+function renderMarkdownBlock(block: MarkdownBlock, key: string): JSX.Element {
+  switch (block.type) {
+    case 'heading': {
+      const className = {
+        1: 'text-lg font-semibold text-gray-950',
+        2: 'text-base font-semibold text-gray-950',
+        3: 'text-sm font-semibold uppercase tracking-wide text-gray-700',
+        4: 'text-sm font-semibold text-gray-900',
+        5: 'text-sm font-medium text-gray-900',
+        6: 'text-xs font-semibold uppercase tracking-wide text-gray-500',
+      }[block.level];
+      return (
+        <div key={key} className={className}>
+          {renderInlineTokens(parseMarkdownInlines(block.text), `${key}-heading`)}
+        </div>
+      );
+    }
+    case 'paragraph':
+      return (
+        <p key={key} className="text-sm leading-6 text-gray-800">
+          {renderInlineTokens(parseMarkdownInlines(block.text), `${key}-paragraph`)}
+        </p>
+      );
+    case 'list':
+      return block.ordered ? (
+        <ol key={key} className="list-decimal space-y-2 pl-5 marker:font-semibold marker:text-gray-500">
+          {block.items.map((item, index) => (
+            <li key={`${key}-item-${index}`} className="pl-1">
+              <div className="space-y-2">
+                {item.map((nestedBlock, nestedIndex) =>
+                  renderMarkdownBlock(nestedBlock, `${key}-item-${index}-${nestedIndex}`))}
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <ul key={key} className="list-disc space-y-2 pl-5 marker:text-gray-500">
+          {block.items.map((item, index) => (
+            <li key={`${key}-item-${index}`} className="pl-1">
+              <div className="space-y-2">
+                {item.map((nestedBlock, nestedIndex) =>
+                  renderMarkdownBlock(nestedBlock, `${key}-item-${index}-${nestedIndex}`))}
+              </div>
+            </li>
+          ))}
+        </ul>
+      );
+    case 'blockquote':
+      return (
+        <blockquote
+          key={key}
+          className="border-l-2 border-orange-200 bg-orange-50/50 pl-4 italic text-gray-700"
+        >
+          <div className="space-y-2 py-0.5">
+            {block.blocks.map((nestedBlock, nestedIndex) =>
+              renderMarkdownBlock(nestedBlock, `${key}-quote-${nestedIndex}`))}
+          </div>
+        </blockquote>
+      );
+    case 'code':
+      return (
+        <div key={key} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
+          {block.language && (
+            <div className="border-b border-slate-800 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+              {block.language}
+            </div>
+          )}
+          <pre className="overflow-x-auto px-3 py-3 text-[13px] leading-6 text-slate-100">
+            <code>{block.code}</code>
+          </pre>
+        </div>
+      );
+    case 'table':
+      return (
+        <div key={key} className="overflow-x-auto rounded-xl border border-gray-200">
+          <table className="min-w-full border-collapse text-left text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                {block.headers.map((header, index) => (
+                  <th
+                    key={`${key}-header-${index}`}
+                    className="border-b border-gray-200 px-3 py-2 font-semibold text-gray-700"
+                  >
+                    {renderInlineTokens(parseMarkdownInlines(header), `${key}-header-${index}`)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, rowIndex) => (
+                <tr key={`${key}-row-${rowIndex}`} className="border-t border-gray-100">
+                  {row.map((cell, cellIndex) => (
+                    <td
+                      key={`${key}-row-${rowIndex}-cell-${cellIndex}`}
+                      className="px-3 py-2 align-top text-gray-700"
+                    >
+                      {renderInlineTokens(
+                        parseMarkdownInlines(cell),
+                        `${key}-row-${rowIndex}-cell-${cellIndex}`,
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    case 'rule':
+      return <hr key={key} className="border-gray-200" />;
+    default:
+      return <div key={key} />;
+  }
+}
+
+function renderInlineTokens(tokens: MarkdownInlineToken[], keyPrefix: string): React.ReactNode[] {
+  return tokens.flatMap((token, index) => {
+    const key = `${keyPrefix}-${index}`;
+
+    switch (token.type) {
+      case 'text': {
+        const segments = token.value.split('\n');
+        return segments.flatMap((segment, segmentIndex) => (
+          segmentIndex === 0
+            ? [<span key={`${key}-segment-${segmentIndex}`}>{segment}</span>]
+            : [
+              <br key={`${key}-break-${segmentIndex}`} />,
+              <span key={`${key}-segment-${segmentIndex}`}>{segment}</span>,
+            ]
+        ));
+      }
+      case 'strong':
+        return (
+          <strong key={key} className="font-semibold text-gray-950">
+            {renderInlineTokens(token.children, `${key}-strong`)}
+          </strong>
+        );
+      case 'emphasis':
+        return (
+          <em key={key} className="italic">
+            {renderInlineTokens(token.children, `${key}-emphasis`)}
+          </em>
+        );
+      case 'code':
+        return (
+          <code
+            key={key}
+            className="rounded-md bg-gray-100 px-1.5 py-0.5 font-mono text-[0.85em] text-gray-900"
+          >
+            {token.value}
+          </code>
+        );
+      case 'link':
+        return (
+          <a
+            key={key}
+            href={token.href}
+            target={isExternalHref(token.href) ? '_blank' : undefined}
+            rel={isExternalHref(token.href) ? 'noreferrer' : undefined}
+            className="font-medium text-orange-700 underline decoration-orange-300 underline-offset-2 hover:text-orange-800"
+          >
+            {renderInlineTokens(token.children, `${key}-link`)}
+          </a>
+        );
+      default:
+        return [];
+    }
+  });
+}
+
+function isExternalHref(href: string): boolean {
+  return /^https?:\/\//i.test(href);
 }

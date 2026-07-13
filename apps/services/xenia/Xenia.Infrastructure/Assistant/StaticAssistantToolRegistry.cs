@@ -27,7 +27,7 @@ internal sealed class StaticAssistantToolRegistry : IAssistantToolRegistry
         new(
             ToolKey: "careconnect.referral.lookup",
             Name: "CareConnect referral lookup",
-            Description: "Placeholder read-only lookup contract for authorized CareConnect referrals.",
+            Description: "Read-only lookup for the current authorized CareConnect referral context.",
             InputSchemaJson: """{"type":"object","additionalProperties":false,"properties":{"referralId":{"type":"string"}},"required":["referralId"]}""",
             RequiredPermissions: ["SYNQ_CARECONNECT.referral:read:own", "SYNQ_CARECONNECT.referral:read:addressed"],
             RequiredProductCodes: ["CareConnect"],
@@ -43,6 +43,9 @@ internal sealed class StaticAssistantToolRegistry : IAssistantToolRegistry
         if (agentKey.Equals(AssistantModuleKeys.CareConnectAgentKey, StringComparison.OrdinalIgnoreCase))
             return Tools.Where(t => t.RequiredProductCodes.Contains("CareConnect") || t.ToolKey == "tenant.context.summary").ToList();
 
-        return Tools.Where(t => t.ToolKey == "tenant.context.summary").ToList();
+        return Tools.Where(t =>
+                t.ToolKey == "tenant.context.summary" ||
+                t.ToolKey == "careconnect.referral.lookup")
+            .ToList();
     }
 }

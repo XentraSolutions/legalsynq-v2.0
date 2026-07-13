@@ -151,6 +151,7 @@ export XeniaAssistant__ModelKey="xenia-fake"
 export XeniaAssistant__OpenAI__ReasoningEffort="medium"
 export XeniaAssistant__OpenAI__TextVerbosity="medium"
 export XeniaAssistant__OpenAI__MaxOutputTokens="4096"
+export XeniaAssistant__CareConnect__BaseUrl="http://127.0.0.1:5003"
 
 # Run service
 cd apps/services/xenia/Xenia.Api
@@ -206,6 +207,22 @@ provider, model key, reasoning effort, text verbosity, max output tokens, base U
 in `XeniaAssistant:OpenAI:ApiKey` in the Xenia service appsettings; it is not persisted from control-center. During
 local `dotnet run`, Xenia resolves those appsettings from the source `Xenia.Api` project directory so changes are not
 stuck behind stale `bin/...` copies.
+
+## Assistant Product Grounding
+
+The first grounded assistant integration is CareConnect referral lookup. When the user opens Xenia from a
+`/careconnect/referrals/{id}` route, Xenia resolves the referral id from the current page context, performs a
+read-only server-side referral lookup against CareConnect, and injects a sanitized summary plus recent status history
+into the assistant prompt. Assistant replies cite the current referral record when grounding succeeds.
+
+CareConnect grounding is configured from `appsettings` only:
+
+- `XeniaAssistant:CareConnect:BaseUrl`
+- `XeniaAssistant:CareConnect:TimeoutSeconds`
+- `XeniaAssistant:CareConnect:MaxHistoryItems`
+
+Xenia forwards the caller's bearer token to CareConnect for this lookup so downstream product and participant
+authorization still applies.
 
 ---
 

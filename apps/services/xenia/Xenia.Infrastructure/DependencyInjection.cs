@@ -80,6 +80,12 @@ public static class DependencyInjection
         // ── Xenia assistant ──────────────────────────────────────────────────
         services.Configure<XeniaAssistantOptions>(
             configuration.GetSection(XeniaAssistantOptions.SectionName));
+        services.AddHttpClient<ICareConnectAssistantSource, CareConnectAssistantSource>((sp, http) =>
+        {
+            var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<XeniaAssistantOptions>>().Value;
+            http.BaseAddress = new Uri(options.CareConnect.BaseUrl.TrimEnd('/'));
+            http.Timeout = TimeSpan.FromSeconds(Math.Max(5, options.CareConnect.TimeoutSeconds));
+        });
         services.AddScoped<IAssistantRuntimeSettingsService, AssistantRuntimeSettingsService>();
         services.AddScoped<OpenAiAssistantProvider>();
         services.AddSingleton<FakeAssistantProvider>();

@@ -28,9 +28,16 @@ public sealed record AssistantToolExecutionRequestDto(
     string InputJson,
     string ContextJson);
 
+public sealed record AssistantToolCitationDto(
+    string SourceType,
+    string SourceId,
+    string Label,
+    string? Url);
+
 public sealed record AssistantToolExecutionResultDto(
     bool Succeeded,
     string Status,
     string OutputJson,
     string? SafeError,
-    int OutputCharacters);
+    int OutputCharacters,
+    IReadOnlyList<AssistantToolCitationDto> Citations);

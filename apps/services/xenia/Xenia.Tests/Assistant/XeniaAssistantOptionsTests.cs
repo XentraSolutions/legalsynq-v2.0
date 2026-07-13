@@ -12,4 +12,14 @@ public sealed class XeniaAssistantOptionsTests
 
         Assert.Null(options.OpenAI.ApiKey);
     }
+
+    [Fact]
+    public void CareConnectOptions_DefaultToLocalServiceBaseUrl()
+    {
+        var options = new XeniaAssistantOptions();
+
+        Assert.Equal("http://127.0.0.1:5003", options.CareConnect.BaseUrl);
+        Assert.Equal(20, options.CareConnect.TimeoutSeconds);
+        Assert.Equal(5, options.CareConnect.MaxHistoryItems);
+    }
 }
