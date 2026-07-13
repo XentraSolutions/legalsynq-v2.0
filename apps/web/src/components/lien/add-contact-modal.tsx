@@ -8,6 +8,15 @@ import { contactsService } from "@/lib/contacts";
 import type { ContactDetail } from "@/lib/contacts";
 import type { LookupData } from "@/lib/lookup/lookup.types";
 import { ApiError } from "@/lib/api-client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { X } from "lucide-react";
+import { formatPhoneInput, isValidPhone } from "@/lib/phone";
 
 /** Minimal shape needed to prefill the edit form — satisfied by both
  * ContactResponseDto (contact detail sections) and ContactListItem
@@ -44,6 +53,8 @@ interface AddContactModalProps {
   subtitle?: string;
   /** Presence => edit mode: prefills the form and calls updateContact. */
   editTarget?: EditableContact | null;
+  /** Hides the address/city/state/zip fields — used for sub-contacts (staff, law firm contacts) who don't need their own address. */
+  hideAddress?: boolean;
 }
 
 interface ContactTypeIconConfig {
@@ -125,6 +136,7 @@ export function AddContactModal({
   title,
   subtitle,
   editTarget,
+  hideAddress,
 }: AddContactModalProps) {
   const { lookup } = useSessionContext();
   const addToast = useLienStore((s) => s.addToast);
@@ -170,10 +182,14 @@ export function AddContactModal({
   const validate = () => {
     const e: Record<string, string> = {};
     if (!form.contactType) e.contactType = "Type is required";
+    if (roleOptions && roleOptions.length > 0 && !form.contactSubtype)
+      e.contactSubtype = "Role is required";
     if (!form.firstName.trim()) e.firstName = "First name is required";
     if (!form.lastName.trim()) e.lastName = "Last name is required";
-    if (form.email && !/\S+@\S+\.\S+/.test(form.email))
+    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email))
       e.email = "Invalid email format";
+    if (form.phone && !isValidPhone(form.phone))
+      e.phone = "Phone number must be 10 digits";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -191,10 +207,14 @@ export function AddContactModal({
         lastName: form.lastName.trim(),
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
-        addressLine1: form.addressLine1.trim() || undefined,
-        city: form.city.trim() || undefined,
-        state: form.state || undefined,
-        postalCode: form.postalCode.trim() || undefined,
+        ...(hideAddress
+          ? {}
+          : {
+              addressLine1: form.addressLine1.trim() || undefined,
+              city: form.city.trim() || undefined,
+              state: form.state || undefined,
+              postalCode: form.postalCode.trim() || undefined,
+            }),
       };
 
       const saved = isEdit
@@ -222,7 +242,12 @@ export function AddContactModal({
   const inputCls = (field: string) =>
     `w-full border rounded-lg px-3 py-2 text-sm ${errors[field] ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`;
 
-  const typeIcon = getContactTypeIcon(form.contactType, form.contactSubtype);
+  // When a Role select is shown, the role is user-chosen and shouldn't override
+  // the parent entity's header (e.g. Law Firm contacts keep the "Law Firm" header
+  // regardless of which role is selected).
+  const typeIcon = roleOptions
+    ? (CONTACT_TYPE_ICONS[form.contactType] ?? DEFAULT_ICON)
+    : getContactTypeIcon(form.contactType, form.contactSubtype);
 
   return (
     <FormModal
@@ -263,26 +288,6 @@ export function AddContactModal({
             {errors.contactType && (
               <p className="text-xs text-red-500 mt-1">{errors.contactType}</p>
             )}
-          </div>
-        )}
-
-        {roleOptions && roleOptions.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Role
-            </label>
-            <select
-              value={form.contactSubtype}
-              onChange={(e) => setForm({ ...form, contactSubtype: e.target.value })}
-              className={inputCls("contactSubtype")}
-            >
-              <option value="">— Select Role —</option>
-              {roleOptions.map((r) => (
-                <option key={r.id} value={r.code}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
           </div>
         )}
 
@@ -342,69 +347,118 @@ export function AddContactModal({
             <input
               type="text"
               value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, phone: formatPhoneInput(e.target.value) })
+              }
               placeholder="(555) 555-0000"
               className={inputCls("phone")}
             />
+            {errors.phone && (
+              <p className="text-xs text-red-500 mt-1">{errors.phone}</p>
+            )}
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Address
-          </label>
-          <input
-            type="text"
-            value={form.addressLine1}
-            onChange={(e) => setForm({ ...form, addressLine1: e.target.value })}
-            placeholder="Address"
-            className={inputCls("addressLine1")}
-          />
-        </div>
+        {!hideAddress && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Address
+              </label>
+              <input
+                type="text"
+                value={form.addressLine1}
+                onChange={(e) => setForm({ ...form, addressLine1: e.target.value })}
+                placeholder="Address"
+                className={inputCls("addressLine1")}
+              />
+            </div>
 
-        <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={form.city}
+                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  placeholder="City"
+                  className={inputCls("city")}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  State
+                </label>
+                <select
+                  value={form.state}
+                  onChange={(e) => setForm({ ...form, state: e.target.value })}
+                  className={inputCls("state")}
+                >
+                  <option value="">Select...</option>
+                  {states.map((s) => (
+                    <option key={s.key} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Zip Code
+                </label>
+                <input
+                  type="text"
+                  value={form.postalCode}
+                  onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
+                  placeholder="Zip Code"
+                  className={inputCls("postalCode")}
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        {roleOptions && roleOptions.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              City
+              <span className="text-red-500 mr-0.5">*</span>Role
             </label>
-            <input
-              type="text"
-              value={form.city}
-              onChange={(e) => setForm({ ...form, city: e.target.value })}
-              placeholder="City"
-              className={inputCls("city")}
-            />
+            <div className="relative">
+              <Select
+                value={form.contactSubtype}
+                onValueChange={(v) => setForm({ ...form, contactSubtype: v })}
+              >
+                <SelectTrigger
+                  className={errors.contactSubtype ? "border-red-300" : "border-gray-200"}
+                >
+                  <SelectValue placeholder="— Select Role —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roleOptions.map((r) => (
+                    <SelectItem key={r.id} value={r.code}>
+                      {r.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.contactSubtype && (
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, contactSubtype: "" })}
+                  className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                  aria-label="Clear role"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {errors.contactSubtype && (
+              <p className="text-xs text-red-500 mt-1">{errors.contactSubtype}</p>
+            )}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              State
-            </label>
-            <select
-              value={form.state}
-              onChange={(e) => setForm({ ...form, state: e.target.value })}
-              className={inputCls("state")}
-            >
-              <option value="">Select...</option>
-              {states.map((s) => (
-                <option key={s.key} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Zip Code
-            </label>
-            <input
-              type="text"
-              value={form.postalCode}
-              onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
-              placeholder="Zip Code"
-              className={inputCls("postalCode")}
-            />
-          </div>
-        </div>
+        )}
       </div>
     </FormModal>
   );
