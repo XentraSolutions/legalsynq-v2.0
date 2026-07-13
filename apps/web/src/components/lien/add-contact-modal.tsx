@@ -96,7 +96,10 @@ const CONTACT_TYPE_ICONS: Record<string, ContactTypeIconConfig> = {
   },
 };
 
-function getContactTypeIcon(contactType: string, contactSubtype: string): ContactTypeIconConfig {
+function getContactTypeIcon(
+  contactType: string,
+  contactSubtype: string,
+): ContactTypeIconConfig {
   return (
     SUBTYPE_ICONS[contactSubtype.toLowerCase()] ??
     CONTACT_TYPE_ICONS[contactType] ??
@@ -151,7 +154,9 @@ export function AddContactModal({
   // First/Last Name inputs; everything else ("main" contacts) collapses
   // them into a single Full Name input that's split on submit.
   const isSubContact =
-    Boolean(hideAddress) || Boolean(contactSubtype) || Boolean(roleOptions && roleOptions.length > 0);
+    Boolean(hideAddress) ||
+    Boolean(contactSubtype) ||
+    Boolean(roleOptions && roleOptions.length > 0);
   const isMainContact = !isSubContact;
 
   const [form, setForm] = useState({
@@ -163,7 +168,11 @@ export function AddContactModal({
   const [submitting, setSubmitting] = useState(false);
 
   const states =
-    lookup?.State?.map((s) => ({ key: s.id, value: s.code, label: `${s.name} (${s.code})` })) ?? [];
+    lookup?.State?.map((s) => ({
+      key: s.id,
+      value: s.code,
+      label: `${s.name} (${s.code})`,
+    })) ?? [];
 
   useEffect(() => {
     if (!open) return;
@@ -195,8 +204,23 @@ export function AddContactModal({
   }, [open, editTarget]);
 
   const FIELDS: readonly ValidatableField[] = isMainContact
-    ? ["contactType", "contactSubtype", "fullName", "email", "phone", "postalCode"]
-    : ["contactType", "contactSubtype", "firstName", "lastName", "email", "phone", "postalCode"];
+    ? [
+        "contactType",
+        "contactSubtype",
+        "fullName",
+        "email",
+        "phone",
+        "postalCode",
+      ]
+    : [
+        "contactType",
+        "contactSubtype",
+        "firstName",
+        "lastName",
+        "email",
+        "phone",
+        "postalCode",
+      ];
 
   const validateField = (
     field: ValidatableField,
@@ -213,14 +237,8 @@ export function AddContactModal({
         return f.firstName.trim() ? undefined : "First name is required";
       case "lastName":
         return f.lastName.trim() ? undefined : "Last name is required";
-      case "fullName": {
-        const trimmed = f.fullName.trim();
-        if (!trimmed) return "Full name is required";
-        // The backend requires firstName/lastName as separate non-empty
-        // values, so the single Full Name input must contain at least two
-        // words (split on the first space on submit).
-        return /\s/.test(trimmed) ? undefined : "Enter both first and last name";
-      }
+      case "fullName":
+        return f.fullName.trim() ? undefined : "Full name is required";
       case "email":
         return f.email && !/^\S+@\S+\.\S+$/.test(f.email)
           ? "Invalid email format"
@@ -258,8 +276,10 @@ export function AddContactModal({
       if (isMainContact) {
         const trimmedFull = form.fullName.trim().replace(/\s+/g, " ");
         const spaceIdx = trimmedFull.indexOf(" ");
-        firstName = spaceIdx === -1 ? trimmedFull : trimmedFull.slice(0, spaceIdx);
-        lastName = spaceIdx === -1 ? trimmedFull : trimmedFull.slice(spaceIdx + 1);
+        firstName =
+          spaceIdx === -1 ? trimmedFull : trimmedFull.slice(0, spaceIdx);
+        lastName =
+          spaceIdx === -1 ? trimmedFull : trimmedFull.slice(spaceIdx + 1);
       } else {
         firstName = form.firstName.trim();
         lastName = form.lastName.trim();
@@ -270,8 +290,12 @@ export function AddContactModal({
         contactSubtype: form.contactSubtype || undefined,
         lawFirmId: lawFirmId || undefined,
         facilityId: facilityId || undefined,
-        firstName,
-        lastName,
+        ...(isMainContact
+          ? { fullName: form.fullName.trim() }
+          : {
+              firstName: form.firstName.trim(),
+              lastName: form.lastName.trim(),
+            }),
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
         ...(hideAddress
@@ -291,7 +315,9 @@ export function AddContactModal({
       addToast({
         type: "success",
         title: isEdit ? "Contact Updated" : "Contact Created",
-        description: isMainContact ? form.fullName.trim() : `${form.firstName} ${form.lastName}`,
+        description: isMainContact
+          ? form.fullName.trim()
+          : `${form.firstName} ${form.lastName}`,
       });
       onSaved(saved);
     } catch (err) {
@@ -299,7 +325,9 @@ export function AddContactModal({
         type: "error",
         title: isEdit ? "Update Failed" : "Create Failed",
         description:
-          err instanceof ApiError ? err.message : "An unexpected error occurred",
+          err instanceof ApiError
+            ? err.message
+            : "An unexpected error occurred",
       });
     } finally {
       setSubmitting(false);
@@ -309,7 +337,10 @@ export function AddContactModal({
   // Revalidates a field the moment it changes — the act of changing it is what
   // marks it "dirty", so required-but-untouched fields still surface their
   // error only on submit (see `validate`), while edited fields update live.
-  const setField = <K extends keyof typeof EMPTY_FORM>(field: K, value: string) => {
+  const setField = <K extends keyof typeof EMPTY_FORM>(
+    field: K,
+    value: string,
+  ) => {
     const next = { ...form, [field]: value };
     setForm(next);
     setErrors((e) => {
@@ -347,10 +378,14 @@ export function AddContactModal({
       submitDisabled={submitting}
     >
       <div className="flex items-center gap-2.5 mb-4">
-        <div className={`w-9 h-9 rounded-lg ${typeIcon.iconBg} text-white flex items-center justify-center shrink-0`}>
+        <div
+          className={`w-9 h-9 rounded-lg ${typeIcon.iconBg} text-white flex items-center justify-center shrink-0`}
+        >
           <i className={`${typeIcon.icon} text-lg`} />
         </div>
-        <span className={`text-sm font-semibold ${typeIcon.labelText}`}>{typeIcon.label}</span>
+        <span className={`text-sm font-semibold ${typeIcon.labelText}`}>
+          {typeIcon.label}
+        </span>
       </div>
 
       <div className="space-y-4">
@@ -362,7 +397,10 @@ export function AddContactModal({
             <Combobox
               value={form.contactType}
               onChange={(v) => setField("contactType", v)}
-              options={contactTypeOptions.map((t) => ({ value: t.code, label: t.name }))}
+              options={contactTypeOptions.map((t) => ({
+                value: t.code,
+                label: t.name,
+              }))}
               disabled={isEdit}
               error={Boolean(errors.contactType)}
               placeholder="Select..."
@@ -377,13 +415,13 @@ export function AddContactModal({
         {isMainContact ? (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name<span className="text-red-500 ml-0.5">*</span>
+              Name<span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               type="text"
               value={form.fullName}
               onChange={(e) => setField("fullName", e.target.value)}
-              placeholder="Full name"
+              placeholder="Name"
               className={inputCls("fullName")}
             />
             {errors.fullName && (
@@ -448,7 +486,9 @@ export function AddContactModal({
             <input
               type="text"
               value={form.phone}
-              onChange={(e) => setField("phone", formatPhoneInput(e.target.value))}
+              onChange={(e) =>
+                setField("phone", formatPhoneInput(e.target.value))
+              }
               placeholder="(555) 555-0000"
               className={inputCls("phone")}
             />
@@ -493,7 +533,10 @@ export function AddContactModal({
                 <Combobox
                   value={form.state}
                   onChange={(v) => setField("state", v)}
-                  options={states.map((s) => ({ value: s.value, label: s.label }))}
+                  options={states.map((s) => ({
+                    value: s.value,
+                    label: s.label,
+                  }))}
                   error={Boolean(errors.state)}
                   placeholder="Select..."
                   clearable
@@ -506,12 +549,16 @@ export function AddContactModal({
                 <input
                   type="text"
                   value={form.postalCode}
-                  onChange={(e) => setField("postalCode", formatZipInput(e.target.value))}
+                  onChange={(e) =>
+                    setField("postalCode", formatZipInput(e.target.value))
+                  }
                   placeholder="Zip Code"
                   className={inputCls("postalCode")}
                 />
                 {errors.postalCode && (
-                  <p className="text-xs text-red-500 mt-1">{errors.postalCode}</p>
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.postalCode}
+                  </p>
                 )}
               </div>
             </div>
@@ -526,13 +573,18 @@ export function AddContactModal({
             <Combobox
               value={form.contactSubtype}
               onChange={(v) => setField("contactSubtype", v)}
-              options={roleOptions.map((r) => ({ value: r.code, label: r.name }))}
+              options={roleOptions.map((r) => ({
+                value: r.code,
+                label: r.name,
+              }))}
               error={Boolean(errors.contactSubtype)}
               placeholder="— Select Role —"
               clearable
             />
             {errors.contactSubtype && (
-              <p className="text-xs text-red-500 mt-1">{errors.contactSubtype}</p>
+              <p className="text-xs text-red-500 mt-1">
+                {errors.contactSubtype}
+              </p>
             )}
           </div>
         )}
