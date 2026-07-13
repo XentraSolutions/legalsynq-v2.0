@@ -107,6 +107,7 @@ function getContactTypeIcon(contactType: string, contactSubtype: string): Contac
 const EMPTY_FORM = {
   firstName: "",
   lastName: "",
+  fullName: "",
   contactType: "",
   contactSubtype: "",
   email: "",
@@ -116,6 +117,16 @@ const EMPTY_FORM = {
   state: "",
   postalCode: "",
 };
+
+type ValidatableField =
+  | "contactType"
+  | "contactSubtype"
+  | "firstName"
+  | "lastName"
+  | "fullName"
+  | "email"
+  | "phone"
+  | "postalCode";
 
 export function AddContactModal({
   open,
@@ -136,6 +147,13 @@ export function AddContactModal({
   const addToast = useLienStore((s) => s.addToast);
   const isEdit = Boolean(editTarget);
 
+  // Sub-contacts (facility/law firm staff, case managers) keep separate
+  // First/Last Name inputs; everything else ("main" contacts) collapses
+  // them into a single Full Name input that's split on submit.
+  const isSubContact =
+    Boolean(hideAddress) || Boolean(contactSubtype) || Boolean(roleOptions && roleOptions.length > 0);
+  const isMainContact = !isSubContact;
+
   const [form, setForm] = useState({
     ...EMPTY_FORM,
     contactType: contactType ?? "",
@@ -150,9 +168,12 @@ export function AddContactModal({
   useEffect(() => {
     if (!open) return;
     if (editTarget) {
+      const firstName = editTarget.firstName ?? "";
+      const lastName = editTarget.lastName ?? "";
       setForm({
-        firstName: editTarget.firstName ?? "",
-        lastName: editTarget.lastName ?? "",
+        firstName,
+        lastName,
+        fullName: `${firstName} ${lastName}`.trim(),
         contactType: editTarget.contactType ?? contactType ?? "",
         contactSubtype: editTarget.contactSubtype ?? contactSubtype ?? "",
         email: editTarget.email ?? "",
@@ -173,18 +194,12 @@ export function AddContactModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editTarget]);
 
-  const FIELDS = [
-    "contactType",
-    "contactSubtype",
-    "firstName",
-    "lastName",
-    "email",
-    "phone",
-    "postalCode",
-  ] as const;
+  const FIELDS: readonly ValidatableField[] = isMainContact
+    ? ["contactType", "contactSubtype", "fullName", "email", "phone", "postalCode"]
+    : ["contactType", "contactSubtype", "firstName", "lastName", "email", "phone", "postalCode"];
 
   const validateField = (
-    field: (typeof FIELDS)[number],
+    field: ValidatableField,
     f: typeof form,
   ): string | undefined => {
     switch (field) {
@@ -198,6 +213,8 @@ export function AddContactModal({
         return f.firstName.trim() ? undefined : "First name is required";
       case "lastName":
         return f.lastName.trim() ? undefined : "Last name is required";
+      case "fullName":
+        return f.fullName.trim() ? undefined : "Full name is required";
       case "email":
         return f.email && !/^\S+@\S+\.\S+$/.test(f.email)
           ? "Invalid email format"
@@ -232,8 +249,9 @@ export function AddContactModal({
         contactSubtype: form.contactSubtype || undefined,
         lawFirmId: lawFirmId || undefined,
         facilityId: facilityId || undefined,
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
+        ...(isMainContact
+          ? { fullName: form.fullName.trim() }
+          : { firstName: form.firstName.trim(), lastName: form.lastName.trim() }),
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
         ...(hideAddress
@@ -253,7 +271,7 @@ export function AddContactModal({
       addToast({
         type: "success",
         title: isEdit ? "Contact Updated" : "Contact Created",
-        description: `${form.firstName} ${form.lastName}`,
+        description: isMainContact ? form.fullName.trim() : `${form.firstName} ${form.lastName}`,
       });
       onSaved(saved);
     } catch (err) {
@@ -336,38 +354,56 @@ export function AddContactModal({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        {isMainContact ? (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              First Name<span className="text-red-500 ml-0.5">*</span>
+              Name<span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               type="text"
-              value={form.firstName}
-              onChange={(e) => setField("firstName", e.target.value)}
-              placeholder="First name"
-              className={inputCls("firstName")}
+              value={form.fullName}
+              onChange={(e) => setField("fullName", e.target.value)}
+              placeholder="Name"
+              className={inputCls("fullName")}
             />
-            {errors.firstName && (
-              <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
+            {errors.fullName && (
+              <p className="text-xs text-red-500 mt-1">{errors.fullName}</p>
             )}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Last Name<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.lastName}
-              onChange={(e) => setField("lastName", e.target.value)}
-              placeholder="Last name"
-              className={inputCls("lastName")}
-            />
-            {errors.lastName && (
-              <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
-            )}
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                First Name<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.firstName}
+                onChange={(e) => setField("firstName", e.target.value)}
+                placeholder="First name"
+                className={inputCls("firstName")}
+              />
+              {errors.firstName && (
+                <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Last Name<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.lastName}
+                onChange={(e) => setField("lastName", e.target.value)}
+                placeholder="Last name"
+                className={inputCls("lastName")}
+              />
+              {errors.lastName && (
+                <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
