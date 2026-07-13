@@ -88,7 +88,7 @@ export function MergeCaseForm({
   });
 
   const [selectedId, setSelectedId] = useState("");
-  const [cases, setCases] = useState<any>();
+  const [cases, setCases] = useState<any>([]);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   useEffect(() => {
@@ -96,11 +96,16 @@ export function MergeCaseForm({
       setCases(
         data
           ? data.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.clientName };
+              return {
+                key: c.id,
+                value: c.id,
+                label: `${c.clientName}\nDate of loss:${c.dateOfIncident || "---"}, Date of Birth: ${c.clientDob}, ${c.lawFirm}, Case Number: ${c.caseNumber}`,
+              };
             })
           : [],
       );
     }
+    console.log(cases);
   }, [data]);
 
   const handleSubmit = async () => {
@@ -239,7 +244,7 @@ export function MergeCaseForm({
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
                 Law firm
               </label>
-              {clientData?.lawfirm ?? "---"}
+              {clientData?.lawFirm ?? "---"}
             </div>
 
             <div>
