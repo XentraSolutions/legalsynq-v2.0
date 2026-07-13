@@ -318,13 +318,7 @@ export function CaseDetailClient({
   const generatePayoff = async () => {
     try {
       const response = await casesService.payoffQoute(id);
-      if (!response.isSuccess) {
-        addToast({
-          type: "error",
-          title: "Generate Payoff Failed",
-          description: response?.message,
-        });
-      }
+
       if (response.url) {
         setShowPayoffQoute({ isOpen: true, url: response.url });
       } else {
