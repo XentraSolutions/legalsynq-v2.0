@@ -42,7 +42,7 @@ export const servicingService = {
     };
   },
 
-  async allLiensList(id: string): Promise<{ items: ServicingLienItem[] }> {
+  async allLiensList(id: string): Promise<any> {
     const { data } = await servicingApi.allLiensList(id);
     return data;
   },
