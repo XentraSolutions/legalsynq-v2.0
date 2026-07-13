@@ -120,18 +120,18 @@ async function xeniaFetch(path: string, token: string, init?: RequestInit) {
 export async function getEmailSources(
   token: string,
 ): Promise<{ sources: EmailSource[]; total: number }> {
-  return xeniaFetch('/api/v1/email/sources', token);
+  return xeniaFetch('/email/sources', token);
 }
 
 export async function getEmailSource(token: string, id: string): Promise<EmailSource> {
-  return xeniaFetch(`/api/v1/email/sources/${id}`, token);
+  return xeniaFetch(`/email/sources/${id}`, token);
 }
 
 export async function createEmailSource(
   token: string,
   payload: CreateEmailSourcePayload,
 ): Promise<EmailSource> {
-  return xeniaFetch('/api/v1/email/sources', token, {
+  return xeniaFetch('/email/sources', token, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -142,29 +142,29 @@ export async function updateEmailSource(
   id: string,
   payload: UpdateEmailSourcePayload,
 ): Promise<EmailSource> {
-  return xeniaFetch(`/api/v1/email/sources/${id}`, token, {
+  return xeniaFetch(`/email/sources/${id}`, token, {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
 }
 
 export async function deleteEmailSource(token: string, id: string): Promise<void> {
-  await xeniaFetch(`/api/v1/email/sources/${id}`, token, { method: 'DELETE' });
+  await xeniaFetch(`/email/sources/${id}`, token, { method: 'DELETE' });
 }
 
 export async function enableEmailSource(token: string, id: string): Promise<void> {
-  await xeniaFetch(`/api/v1/email/sources/${id}/enable`, token, { method: 'PUT', body: '{}' });
+  await xeniaFetch(`/email/sources/${id}/enable`, token, { method: 'PUT', body: '{}' });
 }
 
 export async function disableEmailSource(token: string, id: string): Promise<void> {
-  await xeniaFetch(`/api/v1/email/sources/${id}/disable`, token, { method: 'PUT', body: '{}' });
+  await xeniaFetch(`/email/sources/${id}/disable`, token, { method: 'PUT', body: '{}' });
 }
 
 export async function validateEmailSource(
   token: string,
   id: string,
 ): Promise<EmailValidationResult> {
-  return xeniaFetch(`/api/v1/email/sources/${id}/validate`, token, { method: 'POST', body: '{}' });
+  return xeniaFetch(`/email/sources/${id}/validate`, token, { method: 'POST', body: '{}' });
 }
 
 export async function getValidationHistory(
@@ -172,13 +172,13 @@ export async function getValidationHistory(
   id: string,
   limit = 10,
 ): Promise<{ history: ValidationHistoryEntry[] }> {
-  return xeniaFetch(`/api/v1/email/sources/${id}/validation-history?limit=${limit}`, token);
+  return xeniaFetch(`/email/sources/${id}/validation-history?limit=${limit}`, token);
 }
 
 export async function getEmailProviders(
   token: string,
 ): Promise<{ providers: EmailProviderDefinition[] }> {
-  return xeniaFetch('/api/v1/email/providers', token);
+  return xeniaFetch('/email/providers', token);
 }
 
 export interface EmailMessageSummary {
@@ -252,12 +252,12 @@ export async function getEmailMessages(
   if (query.pageSize)     params.set('pageSize',     String(query.pageSize));
   if (query.pageOffset)   params.set('pageOffset',   String(query.pageOffset));
   const qs = params.toString();
-  return xeniaFetch(`/api/v1/email/messages${qs ? `?${qs}` : ''}`, token);
+  return xeniaFetch(`/email/messages${qs ? `?${qs}` : ''}`, token);
 }
 
 export async function getEmailMessage(
   token: string,
   messageId: string,
 ): Promise<EmailMessageDetail> {
-  return xeniaFetch(`/api/v1/email/messages/${messageId}`, token);
+  return xeniaFetch(`/email/messages/${messageId}`, token);
 }
