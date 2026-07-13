@@ -36,27 +36,27 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString(XeniaDbConnectionStringName);
         var hasDatabase = !string.IsNullOrWhiteSpace(connectionString);
 
-        // AddDbContextFactory registers:
-        //   - IDbContextFactory<XeniaDbContext> as Singleton (used by automation EF stores)
-        //   - XeniaDbContext itself as Scoped (used by all existing scoped infrastructure services)
-        // When no connection string is configured, a null/empty string is passed to UseMySql.
-        // The DbContextFactory registration succeeds; actual DB operations fail gracefully
-        // because all hosted services and scoped services have their own try-catch guards.
-        services.AddDbContextFactory<XeniaDbContext>(options =>
+        if (hasDatabase)
         {
+            // AddDbContextFactory registers:
+            //   - IDbContextFactory<XeniaDbContext> as Singleton (used by automation EF stores)
+            //   - XeniaDbContext itself as Scoped (used by all existing scoped infrastructure services)
             var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
-            options.UseMySql(
-                connectionString ?? string.Empty,
-                serverVersion,
-                mySqlOptions =>
-                {
-                    mySqlOptions.MigrationsAssembly(typeof(XeniaDbContext).Assembly.GetName().Name);
-                    mySqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
-                });
-        });
+            services.AddDbContextFactory<XeniaDbContext>(options =>
+            {
+                options.UseMySql(
+                    connectionString!,
+                    serverVersion,
+                    mySqlOptions =>
+                    {
+                        mySqlOptions.MigrationsAssembly(typeof(XeniaDbContext).Assembly.GetName().Name);
+                        mySqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
+                    });
+            });
 
-        // ── Migrations (run before any seeding) ──────────────────────────────
-        services.AddHostedService<XeniaMigrationsHostedService>();
+            // ── Migrations (run before any seeding) ──────────────────────────
+            services.AddHostedService<XeniaMigrationsHostedService>();
+        }
 
         // ── Module registry ───────────────────────────────────────────────────
         services.AddScoped<EfModuleRegistry>();
@@ -153,8 +153,12 @@ public static class DependencyInjection
         services.AddScoped<ISyncStateService, EfSyncStateService>();
         services.AddScoped<IEmailMessageService, EfEmailMessageService>();
 
-        // Per-source sync lock — durable database-backed (default); in-process kept for tests.
-        services.AddSingleton<IEmailSourceSyncLock, DbEmailSourceSyncLock>();
+        // Per-source sync lock — durable database-backed when DB is configured;
+        // falls back to in-process for single-instance no-DB deployments.
+        if (hasDatabase)
+            services.AddSingleton<IEmailSourceSyncLock, DbEmailSourceSyncLock>();
+        else
+            services.AddSingleton<IEmailSourceSyncLock, InProcessEmailSourceSyncLock>();
 
         // Cursor protection — AES-256-GCM with tenant+source binding
         services.AddSingleton<IProviderCursorProtector, AesCursorProtector>();
