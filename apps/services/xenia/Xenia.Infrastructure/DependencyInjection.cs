@@ -198,6 +198,18 @@ public static class DependencyInjection
             services.AddScoped<IRunQueryService, EfRunQueryService>();
             services.AddScoped<IRetentionService, EfRetentionService>();
         }
+        else
+        {
+            // Noop fallbacks so ASP.NET Core minimal-API endpoint mapping can always
+            // resolve these services at startup (prevents "Body was inferred" crash).
+            services.AddScoped<IEmailOperationalSettingsService, UnavailableEmailOperationalSettingsService>();
+            services.AddScoped<IAlertService, UnavailableAlertService>();
+            services.AddScoped<IOperationsSummaryService, UnavailableOperationsSummaryService>();
+            services.AddScoped<ISourceHealthService, UnavailableSourceHealthService>();
+            services.AddScoped<IProviderHealthService, UnavailableProviderHealthService>();
+            services.AddScoped<IRunQueryService, UnavailableRunQueryService>();
+            services.AddScoped<IRetentionService, UnavailableRetentionService>();
+        }
 
         // Automation framework — requires database-backed stores; skip entirely when no DB.
         // Automation endpoints return 503/500 in no-DB deployments (acceptable).
