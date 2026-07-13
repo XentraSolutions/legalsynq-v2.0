@@ -35,6 +35,8 @@ jobs:
       - name: Send status to Teams
         env:
           TEAMS_WEBHOOK_URL: "https://defaultaa988e77b0e34f06aabede25235728.77.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/096e911d604d4dd888079d793342333c/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=KzG5jznBNR16wX9Xem3NYI9_T25_Q7reFftMPTsbvHE"
+          APP_VERSION: ${{ jobs.build_ios.exports.appVersion }}
+          BUILD_NUMBER: ${{ jobs.build_ios.exports.appBuildVersion }}
         run: |
           # Note: Pulling version data directly out of EAS jobs into a custom shell step 
           # usually requires curling the Expo API or inspecting the build artifact metadata.
@@ -49,7 +51,7 @@ jobs:
                           \"body\": [
                               {
                                   \"type\": \"TextBlock\",
-                                  \"text\": \"EAS Workflow Completed\",
+                                  \"text\": \"LegalSynqV3 QA Build\",
                                   \"weight\": \"bolder\",
                                   \"size\": \"medium\"
                               },
@@ -58,7 +60,9 @@ jobs:
                                   \"facts\": [
                                       {\"title\": \"Workflow:\", \"value\": \"Build and Submit QA IOS App\"},
                                       {\"title\": \"Platform:\", \"value\": \"iOS\"},
-                                      {\"title\": \"Profile:\", \"value\": \"QA\"}
+                                      {\"title\": \"Profile:\", \"value\": \"QA\"},
+                                      {\"title\": \"App Version:\", \"value\": \"$APP_VERSION\"},
+                                      {\"title\": \"Build Number:\", \"value\": \"$BUILD_NUMBER\"}
                                   ]
                               }
                           ],
