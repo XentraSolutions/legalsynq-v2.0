@@ -114,7 +114,8 @@ if command -v dotnet &>/dev/null; then
       "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
       "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj"
       "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
-      "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
+      # Xenia is intentionally excluded: its binary is optional (build-prod.sh builds it
+      # non-fatally). If missing, the Xenia.Api case below skips it gracefully.
     )
 
     # Derives the expected Release output DLL from a .csproj path.
@@ -216,14 +217,6 @@ if command -v dotnet &>/dev/null; then
         Monitoring.Api) launch_svc "$_svc_label" "$csproj"; PID_MONITORING=$! ;;
         Task.Api)      launch_svc "$_svc_label" "$csproj"; PID_TASK=$! ;;
         Tenant.Api)    launch_svc "$_svc_label" "$csproj"; PID_TENANT=$! ;;
-        Xenia.Api)
-          _xenia_dll="$(dirname "$csproj")/bin/Release/net10.0/Xenia.Api.dll"
-          if [ ! -f "$_xenia_dll" ]; then
-            echo "[xenia] WARNING: Xenia binary not found — skipping (email features unavailable)"
-          else
-            launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
-            PID_XENIA=$!
-          fi ;;
         Support.Api)
           # Jwt:SigningKey is read from the Jwt__SigningKey Replit secret (env var).
           # Notifications are forwarded to the Notifications service on :5008.
@@ -291,6 +284,18 @@ if command -v dotnet &>/dev/null; then
       SVC_NAMES+=("$_svc_label")
     done
 
+    # ── Xenia (optional — binary may be absent if build failed) ──────────────
+    _xenia_csproj="$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
+    _xenia_dll="$(dirname "$_xenia_csproj")/bin/Release/net10.0/Xenia.Api.dll"
+    if [ -f "$_xenia_dll" ]; then
+      launch_svc "Xenia" "$_xenia_csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
+      PID_XENIA=$!
+      SVC_PIDS+=("$PID_XENIA")
+      SVC_NAMES+=("Xenia")
+    else
+      echo "[xenia] WARNING: Xenia binary not found — skipping (email features unavailable)"
+    fi
+
     echo "[dotnet] Service launch complete"
 
     # ── Fast crash-detection ──────────────────────────────────────────────────
@@ -329,6 +334,9 @@ if command -v dotnet &>/dev/null; then
     _probe_svc "Liens"         5009 /health            "${PID_LIENS:-}"         "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Comms"         5011 /health            "${PID_COMMS:-}"         "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Support"       5017 /support/api/health "${PID_SUPPORT:-}"      "$PROBE_TIMEOUT_DOTNET"
+    if [ -n "${PID_XENIA:-}" ]; then
+      _probe_svc "Xenia"       5035 /health            "$PID_XENIA"             "$PROBE_TIMEOUT_DOTNET"
+    fi
 
     wait
   ) &
