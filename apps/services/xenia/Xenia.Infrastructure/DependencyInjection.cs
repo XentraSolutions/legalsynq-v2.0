@@ -177,23 +177,27 @@ public static class DependencyInjection
         services.AddScoped<EmailSyncOrchestrator>();
         services.AddScoped<IEmailSyncService>(sp => sp.GetRequiredService<EmailSyncOrchestrator>());
 
-        // Background worker (disabled by default via XeniaIngestionOptions.WorkerEnabled = false)
-        services.AddHostedService<EmailIngestionWorker>();
+        // Background worker and lock renewal — require XeniaDbContext; skip when no DB.
+        if (hasDatabase)
+        {
+            services.AddHostedService<EmailIngestionWorker>();
+            services.AddHostedService<LockLeaseRenewalService>();
+        }
 
         // ── Email operations & monitoring ──────────────────────────────────
         services.AddSingleton<IEmailHeaderSanitizer, EmailHeaderSanitizer>();
 
-        services.AddScoped<IEmailOperationalSettingsService, EfEmailOperationalSettingsService>();
-        services.AddScoped<IAlertService, EfAlertService>();
-        services.AddScoped<IAlertRuleEngine, DefaultAlertRuleEngine>();
-        services.AddScoped<IOperationsSummaryService, EfOperationsSummaryService>();
-        services.AddScoped<ISourceHealthService, EfSourceHealthService>();
-        services.AddScoped<IProviderHealthService, EfProviderHealthService>();
-        services.AddScoped<IRunQueryService, EfRunQueryService>();
-        services.AddScoped<IRetentionService, EfRetentionService>();
-
-        // Lock lease renewal background service
-        services.AddHostedService<LockLeaseRenewalService>();
+        if (hasDatabase)
+        {
+            services.AddScoped<IEmailOperationalSettingsService, EfEmailOperationalSettingsService>();
+            services.AddScoped<IAlertService, EfAlertService>();
+            services.AddScoped<IAlertRuleEngine, DefaultAlertRuleEngine>();
+            services.AddScoped<IOperationsSummaryService, EfOperationsSummaryService>();
+            services.AddScoped<ISourceHealthService, EfSourceHealthService>();
+            services.AddScoped<IProviderHealthService, EfProviderHealthService>();
+            services.AddScoped<IRunQueryService, EfRunQueryService>();
+            services.AddScoped<IRetentionService, EfRetentionService>();
+        }
 
         // Automation framework — requires database-backed stores; skip entirely when no DB.
         // Automation endpoints return 503/500 in no-DB deployments (acceptable).
