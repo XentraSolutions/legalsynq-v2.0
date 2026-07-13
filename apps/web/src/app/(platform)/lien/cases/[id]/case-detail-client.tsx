@@ -395,9 +395,9 @@ export function CaseDetailClient({
                   label="State of Incident"
                   value={d.stateOfIncident}
                 />
-                <HeaderMeta label="Law Firm" value={d.insuranceCarrier || ""} />
+                <HeaderMeta label="Law Firm" value={d.lawFirm || ""} />
                 {/* TEMP: UI mock data for visual review only */}
-                <HeaderMeta label="Case Manager" value="" />
+                <HeaderMeta label="Case Manager" value={d.caseManager || ""} />
                 {canEdit ? (
                   <div className="flex items-end">
                     <div className="relative">

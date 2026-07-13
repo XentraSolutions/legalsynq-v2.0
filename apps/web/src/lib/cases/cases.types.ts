@@ -34,6 +34,10 @@ export interface CaseResponseDto {
   closedAtUtc?: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
+  lawFirm: string;
+  lawFirmId: string;
+  caseManager: string;
+  accidentType: string;
 }
 
 export interface PaginatedResultDto<T> {
@@ -243,6 +247,9 @@ export interface CaseDetail {
   closedAt: string;
   createdAt: string;
   updatedAt: string;
+  lawFirm: string;
+  caseManager: string;
+  accidentType: string;
 }
 
 export interface CaseLienItem {
