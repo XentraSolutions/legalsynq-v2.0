@@ -8,15 +8,9 @@ import { contactsService } from "@/lib/contacts";
 import type { ContactDetail } from "@/lib/contacts";
 import type { LookupData } from "@/lib/lookup/lookup.types";
 import { ApiError } from "@/lib/api-client";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { X } from "lucide-react";
+import { Combobox } from "@/components/ui/combobox";
 import { formatPhoneInput, isValidPhone } from "@/lib/phone";
+import { formatZipInput, isValidUsZipCode } from "@/lib/address";
 
 /** Minimal shape needed to prefill the edit form — satisfied by both
  * ContactResponseDto (contact detail sections) and ContactListItem
@@ -151,7 +145,7 @@ export function AddContactModal({
   const [submitting, setSubmitting] = useState(false);
 
   const states =
-    lookup?.State?.map((s) => ({ key: s.id, value: s.code, label: s.code })) ?? [];
+    lookup?.State?.map((s) => ({ key: s.id, value: s.code, label: `${s.name} (${s.code})` })) ?? [];
 
   useEffect(() => {
     if (!open) return;
@@ -179,17 +173,52 @@ export function AddContactModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editTarget]);
 
+  const FIELDS = [
+    "contactType",
+    "contactSubtype",
+    "firstName",
+    "lastName",
+    "email",
+    "phone",
+    "postalCode",
+  ] as const;
+
+  const validateField = (
+    field: (typeof FIELDS)[number],
+    f: typeof form,
+  ): string | undefined => {
+    switch (field) {
+      case "contactType":
+        return f.contactType ? undefined : "Type is required";
+      case "contactSubtype":
+        return roleOptions && roleOptions.length > 0 && !f.contactSubtype
+          ? "Role is required"
+          : undefined;
+      case "firstName":
+        return f.firstName.trim() ? undefined : "First name is required";
+      case "lastName":
+        return f.lastName.trim() ? undefined : "Last name is required";
+      case "email":
+        return f.email && !/^\S+@\S+\.\S+$/.test(f.email)
+          ? "Invalid email format"
+          : undefined;
+      case "phone":
+        return f.phone && !isValidPhone(f.phone)
+          ? "Phone number must be 10 digits"
+          : undefined;
+      case "postalCode":
+        return !hideAddress && f.postalCode && !isValidUsZipCode(f.postalCode)
+          ? "Zip code must be 5 or 9 digits (XXXXX or XXXXX-XXXX)"
+          : undefined;
+    }
+  };
+
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.contactType) e.contactType = "Type is required";
-    if (roleOptions && roleOptions.length > 0 && !form.contactSubtype)
-      e.contactSubtype = "Role is required";
-    if (!form.firstName.trim()) e.firstName = "First name is required";
-    if (!form.lastName.trim()) e.lastName = "Last name is required";
-    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email))
-      e.email = "Invalid email format";
-    if (form.phone && !isValidPhone(form.phone))
-      e.phone = "Phone number must be 10 digits";
+    for (const field of FIELDS) {
+      const msg = validateField(field, form);
+      if (msg) e[field] = msg;
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -239,6 +268,26 @@ export function AddContactModal({
     }
   };
 
+  // Revalidates a field the moment it changes — the act of changing it is what
+  // marks it "dirty", so required-but-untouched fields still surface their
+  // error only on submit (see `validate`), while edited fields update live.
+  const setField = <K extends keyof typeof EMPTY_FORM>(field: K, value: string) => {
+    const next = { ...form, [field]: value };
+    setForm(next);
+    setErrors((e) => {
+      const isValidatedField = (FIELDS as readonly string[]).includes(field);
+      const msg = isValidatedField
+        ? validateField(field as (typeof FIELDS)[number], next)
+        : undefined;
+      if (!msg) {
+        if (!e[field]) return e;
+        const { [field]: _removed, ...rest } = e;
+        return rest;
+      }
+      return { ...e, [field]: msg };
+    });
+  };
+
   const inputCls = (field: string) =>
     `w-full border rounded-lg px-3 py-2 text-sm ${errors[field] ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`;
 
@@ -272,19 +321,15 @@ export function AddContactModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Contact Type<span className="text-red-500 ml-0.5">*</span>
             </label>
-            <select
+            <Combobox
               value={form.contactType}
-              onChange={(e) => setForm({ ...form, contactType: e.target.value })}
+              onChange={(v) => setField("contactType", v)}
+              options={contactTypeOptions.map((t) => ({ value: t.code, label: t.name }))}
               disabled={isEdit}
-              className={inputCls("contactType")}
-            >
-              <option value="">Select...</option>
-              {contactTypeOptions.map((t) => (
-                <option key={t.id} value={t.code}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              error={Boolean(errors.contactType)}
+              placeholder="Select..."
+              clearable
+            />
             {errors.contactType && (
               <p className="text-xs text-red-500 mt-1">{errors.contactType}</p>
             )}
@@ -299,7 +344,7 @@ export function AddContactModal({
             <input
               type="text"
               value={form.firstName}
-              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+              onChange={(e) => setField("firstName", e.target.value)}
               placeholder="First name"
               className={inputCls("firstName")}
             />
@@ -314,7 +359,7 @@ export function AddContactModal({
             <input
               type="text"
               value={form.lastName}
-              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+              onChange={(e) => setField("lastName", e.target.value)}
               placeholder="Last name"
               className={inputCls("lastName")}
             />
@@ -332,7 +377,7 @@ export function AddContactModal({
             <input
               type="email"
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => setField("email", e.target.value)}
               placeholder="email@example.com"
               className={inputCls("email")}
             />
@@ -347,9 +392,7 @@ export function AddContactModal({
             <input
               type="text"
               value={form.phone}
-              onChange={(e) =>
-                setForm({ ...form, phone: formatPhoneInput(e.target.value) })
-              }
+              onChange={(e) => setField("phone", formatPhoneInput(e.target.value))}
               placeholder="(555) 555-0000"
               className={inputCls("phone")}
             />
@@ -368,7 +411,7 @@ export function AddContactModal({
               <input
                 type="text"
                 value={form.addressLine1}
-                onChange={(e) => setForm({ ...form, addressLine1: e.target.value })}
+                onChange={(e) => setField("addressLine1", e.target.value)}
                 placeholder="Address"
                 className={inputCls("addressLine1")}
               />
@@ -382,7 +425,7 @@ export function AddContactModal({
                 <input
                   type="text"
                   value={form.city}
-                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  onChange={(e) => setField("city", e.target.value)}
                   placeholder="City"
                   className={inputCls("city")}
                 />
@@ -391,18 +434,14 @@ export function AddContactModal({
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   State
                 </label>
-                <select
+                <Combobox
                   value={form.state}
-                  onChange={(e) => setForm({ ...form, state: e.target.value })}
-                  className={inputCls("state")}
-                >
-                  <option value="">Select...</option>
-                  {states.map((s) => (
-                    <option key={s.key} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setField("state", v)}
+                  options={states.map((s) => ({ value: s.value, label: s.label }))}
+                  error={Boolean(errors.state)}
+                  placeholder="Select..."
+                  clearable
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -411,10 +450,13 @@ export function AddContactModal({
                 <input
                   type="text"
                   value={form.postalCode}
-                  onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
+                  onChange={(e) => setField("postalCode", formatZipInput(e.target.value))}
                   placeholder="Zip Code"
                   className={inputCls("postalCode")}
                 />
+                {errors.postalCode && (
+                  <p className="text-xs text-red-500 mt-1">{errors.postalCode}</p>
+                )}
               </div>
             </div>
           </>
@@ -425,35 +467,14 @@ export function AddContactModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               <span className="text-red-500 mr-0.5">*</span>Role
             </label>
-            <div className="relative">
-              <Select
-                value={form.contactSubtype}
-                onValueChange={(v) => setForm({ ...form, contactSubtype: v })}
-              >
-                <SelectTrigger
-                  className={errors.contactSubtype ? "border-red-300" : "border-gray-200"}
-                >
-                  <SelectValue placeholder="— Select Role —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roleOptions.map((r) => (
-                    <SelectItem key={r.id} value={r.code}>
-                      {r.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.contactSubtype && (
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, contactSubtype: "" })}
-                  className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                  aria-label="Clear role"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+            <Combobox
+              value={form.contactSubtype}
+              onChange={(v) => setField("contactSubtype", v)}
+              options={roleOptions.map((r) => ({ value: r.code, label: r.name }))}
+              error={Boolean(errors.contactSubtype)}
+              placeholder="— Select Role —"
+              clearable
+            />
             {errors.contactSubtype && (
               <p className="text-xs text-red-500 mt-1">{errors.contactSubtype}</p>
             )}
