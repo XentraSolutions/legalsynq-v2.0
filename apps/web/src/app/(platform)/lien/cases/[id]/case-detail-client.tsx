@@ -425,19 +425,6 @@ export function CaseDetailClient({
                       {/* Dropdown Menu */}
                       {actionOpen && (
                         <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                          {/* Create Lien */}
-                          {ra.can("lien:edit") && (
-                            <button
-                              onClick={() => {
-                                handleAdvanceStatus();
-                                setActionOpen(false);
-                              }}
-                              disabled={d.status === "Closed"}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                            >
-                              Advance Status
-                            </button>
-                          )}
                           <button
                             onClick={() => {
                               setShowMergeCase(true);

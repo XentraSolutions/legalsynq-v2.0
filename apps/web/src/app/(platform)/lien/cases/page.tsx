@@ -369,16 +369,6 @@ export default function CasesPage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100">
-                    {canEdit && (
-                      <th className="px-3 py-2.5 w-10">
-                        <input
-                          type="checkbox"
-                          checked={selection.isAllSelected(allIds)}
-                          onChange={() => selection.toggleAll(allIds)}
-                          className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary/20"
-                        />
-                      </th>
-                    )}
                     <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
                       Case ID
                     </th>
@@ -414,19 +404,6 @@ export default function CasesPage() {
                         className={`hover:bg-gray-50/80 transition-colors cursor-pointer ${selection.isSelected(c.id) ? "bg-primary/5" : ""}`}
                         onClick={() => router.push(`/lien/cases/${c.id}`)}
                       >
-                        {canEdit && (
-                          <td
-                            className="px-3 py-2.5"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selection.isSelected(c.id)}
-                              onChange={() => selection.toggle(c.id)}
-                              className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary/20"
-                            />
-                          </td>
-                        )}
                         <td className="px-3 py-2.5">
                           <Link
                             href={`/lien/cases/${c.id}`}
@@ -521,28 +498,6 @@ export default function CasesPage() {
             </button>
           </div>
         </div>
-      )}
-
-      {canEdit && (
-        <BulkActionBar
-          count={selection.count}
-          actions={BULK_ACTIONS}
-          onAction={handleBulkAction}
-          onClear={selection.clear}
-        />
-      )}
-
-      {bulkAction && (
-        <BulkConfirmModal
-          open
-          onClose={() => setBulkAction(null)}
-          onConfirm={executeBulkAction}
-          title={bulkAction.confirmTitle}
-          description={bulkAction.confirmDescription(selection.count)}
-          count={selection.count}
-          variant={bulkAction.variant}
-          loading={bulkLoading}
-        />
       )}
 
       {showCreate && (
