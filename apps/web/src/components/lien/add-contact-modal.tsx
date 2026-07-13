@@ -8,6 +8,9 @@ import { contactsService } from "@/lib/contacts";
 import type { ContactDetail } from "@/lib/contacts";
 import type { LookupData } from "@/lib/lookup/lookup.types";
 import { ApiError } from "@/lib/api-client";
+import { Combobox } from "@/components/ui/combobox";
+import { formatPhoneInput, isValidPhone } from "@/lib/phone";
+import { formatZipInput, isValidUsZipCode } from "@/lib/address";
 
 /** Minimal shape needed to prefill the edit form — satisfied by both
  * ContactResponseDto (contact detail sections) and ContactListItem
@@ -44,6 +47,8 @@ interface AddContactModalProps {
   subtitle?: string;
   /** Presence => edit mode: prefills the form and calls updateContact. */
   editTarget?: EditableContact | null;
+  /** Hides the address/city/state/zip fields — used for sub-contacts (staff, law firm contacts) who don't need their own address. */
+  hideAddress?: boolean;
 }
 
 interface ContactTypeIconConfig {
@@ -102,6 +107,7 @@ function getContactTypeIcon(contactType: string, contactSubtype: string): Contac
 const EMPTY_FORM = {
   firstName: "",
   lastName: "",
+  fullName: "",
   contactType: "",
   contactSubtype: "",
   email: "",
@@ -111,6 +117,16 @@ const EMPTY_FORM = {
   state: "",
   postalCode: "",
 };
+
+type ValidatableField =
+  | "contactType"
+  | "contactSubtype"
+  | "firstName"
+  | "lastName"
+  | "fullName"
+  | "email"
+  | "phone"
+  | "postalCode";
 
 export function AddContactModal({
   open,
@@ -125,10 +141,18 @@ export function AddContactModal({
   title,
   subtitle,
   editTarget,
+  hideAddress,
 }: AddContactModalProps) {
   const { lookup } = useSessionContext();
   const addToast = useLienStore((s) => s.addToast);
   const isEdit = Boolean(editTarget);
+
+  // Sub-contacts (facility/law firm staff, case managers) keep separate
+  // First/Last Name inputs; everything else ("main" contacts) collapses
+  // them into a single Full Name input that's split on submit.
+  const isSubContact =
+    Boolean(hideAddress) || Boolean(contactSubtype) || Boolean(roleOptions && roleOptions.length > 0);
+  const isMainContact = !isSubContact;
 
   const [form, setForm] = useState({
     ...EMPTY_FORM,
@@ -139,14 +163,17 @@ export function AddContactModal({
   const [submitting, setSubmitting] = useState(false);
 
   const states =
-    lookup?.State?.map((s) => ({ key: s.id, value: s.code, label: s.code })) ?? [];
+    lookup?.State?.map((s) => ({ key: s.id, value: s.code, label: `${s.name} (${s.code})` })) ?? [];
 
   useEffect(() => {
     if (!open) return;
     if (editTarget) {
+      const firstName = editTarget.firstName ?? "";
+      const lastName = editTarget.lastName ?? "";
       setForm({
-        firstName: editTarget.firstName ?? "",
-        lastName: editTarget.lastName ?? "",
+        firstName,
+        lastName,
+        fullName: `${firstName} ${lastName}`.trim(),
         contactType: editTarget.contactType ?? contactType ?? "",
         contactSubtype: editTarget.contactSubtype ?? contactSubtype ?? "",
         email: editTarget.email ?? "",
@@ -167,13 +194,54 @@ export function AddContactModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editTarget]);
 
+  const FIELDS: readonly ValidatableField[] = isMainContact
+    ? ["contactType", "contactSubtype", "fullName", "email", "phone", "postalCode"]
+    : ["contactType", "contactSubtype", "firstName", "lastName", "email", "phone", "postalCode"];
+
+  const validateField = (
+    field: ValidatableField,
+    f: typeof form,
+  ): string | undefined => {
+    switch (field) {
+      case "contactType":
+        return f.contactType ? undefined : "Type is required";
+      case "contactSubtype":
+        return roleOptions && roleOptions.length > 0 && !f.contactSubtype
+          ? "Role is required"
+          : undefined;
+      case "firstName":
+        return f.firstName.trim() ? undefined : "First name is required";
+      case "lastName":
+        return f.lastName.trim() ? undefined : "Last name is required";
+      case "fullName": {
+        const trimmed = f.fullName.trim();
+        if (!trimmed) return "Full name is required";
+        // The backend requires firstName/lastName as separate non-empty
+        // values, so the single Full Name input must contain at least two
+        // words (split on the first space on submit).
+        return /\s/.test(trimmed) ? undefined : "Enter both first and last name";
+      }
+      case "email":
+        return f.email && !/^\S+@\S+\.\S+$/.test(f.email)
+          ? "Invalid email format"
+          : undefined;
+      case "phone":
+        return f.phone && !isValidPhone(f.phone)
+          ? "Phone number must be 10 digits"
+          : undefined;
+      case "postalCode":
+        return !hideAddress && f.postalCode && !isValidUsZipCode(f.postalCode)
+          ? "Zip code must be 5 or 9 digits (XXXXX or XXXXX-XXXX)"
+          : undefined;
+    }
+  };
+
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.contactType) e.contactType = "Type is required";
-    if (!form.firstName.trim()) e.firstName = "First name is required";
-    if (!form.lastName.trim()) e.lastName = "Last name is required";
-    if (form.email && !/\S+@\S+\.\S+/.test(form.email))
-      e.email = "Invalid email format";
+    for (const field of FIELDS) {
+      const msg = validateField(field, form);
+      if (msg) e[field] = msg;
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -182,19 +250,38 @@ export function AddContactModal({
     if (!validate()) return;
     setSubmitting(true);
     try {
+      // Main contacts collect a single Full Name input; the backend still
+      // requires separate firstName/lastName, so split on the first space
+      // (validation above guarantees at least one space is present).
+      let firstName: string;
+      let lastName: string;
+      if (isMainContact) {
+        const trimmedFull = form.fullName.trim().replace(/\s+/g, " ");
+        const spaceIdx = trimmedFull.indexOf(" ");
+        firstName = spaceIdx === -1 ? trimmedFull : trimmedFull.slice(0, spaceIdx);
+        lastName = spaceIdx === -1 ? trimmedFull : trimmedFull.slice(spaceIdx + 1);
+      } else {
+        firstName = form.firstName.trim();
+        lastName = form.lastName.trim();
+      }
+
       const payload = {
         contactType: form.contactType,
         contactSubtype: form.contactSubtype || undefined,
         lawFirmId: lawFirmId || undefined,
         facilityId: facilityId || undefined,
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
+        firstName,
+        lastName,
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
-        addressLine1: form.addressLine1.trim() || undefined,
-        city: form.city.trim() || undefined,
-        state: form.state || undefined,
-        postalCode: form.postalCode.trim() || undefined,
+        ...(hideAddress
+          ? {}
+          : {
+              addressLine1: form.addressLine1.trim() || undefined,
+              city: form.city.trim() || undefined,
+              state: form.state || undefined,
+              postalCode: form.postalCode.trim() || undefined,
+            }),
       };
 
       const saved = isEdit
@@ -204,7 +291,7 @@ export function AddContactModal({
       addToast({
         type: "success",
         title: isEdit ? "Contact Updated" : "Contact Created",
-        description: `${form.firstName} ${form.lastName}`,
+        description: isMainContact ? form.fullName.trim() : `${form.firstName} ${form.lastName}`,
       });
       onSaved(saved);
     } catch (err) {
@@ -219,10 +306,35 @@ export function AddContactModal({
     }
   };
 
+  // Revalidates a field the moment it changes — the act of changing it is what
+  // marks it "dirty", so required-but-untouched fields still surface their
+  // error only on submit (see `validate`), while edited fields update live.
+  const setField = <K extends keyof typeof EMPTY_FORM>(field: K, value: string) => {
+    const next = { ...form, [field]: value };
+    setForm(next);
+    setErrors((e) => {
+      const isValidatedField = (FIELDS as readonly string[]).includes(field);
+      const msg = isValidatedField
+        ? validateField(field as (typeof FIELDS)[number], next)
+        : undefined;
+      if (!msg) {
+        if (!e[field]) return e;
+        const { [field]: _removed, ...rest } = e;
+        return rest;
+      }
+      return { ...e, [field]: msg };
+    });
+  };
+
   const inputCls = (field: string) =>
     `w-full border rounded-lg px-3 py-2 text-sm ${errors[field] ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`;
 
-  const typeIcon = getContactTypeIcon(form.contactType, form.contactSubtype);
+  // When a Role select is shown, the role is user-chosen and shouldn't override
+  // the parent entity's header (e.g. Law Firm contacts keep the "Law Firm" header
+  // regardless of which role is selected).
+  const typeIcon = roleOptions
+    ? (CONTACT_TYPE_ICONS[form.contactType] ?? DEFAULT_ICON)
+    : getContactTypeIcon(form.contactType, form.contactSubtype);
 
   return (
     <FormModal
@@ -247,77 +359,71 @@ export function AddContactModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Contact Type<span className="text-red-500 ml-0.5">*</span>
             </label>
-            <select
+            <Combobox
               value={form.contactType}
-              onChange={(e) => setForm({ ...form, contactType: e.target.value })}
+              onChange={(v) => setField("contactType", v)}
+              options={contactTypeOptions.map((t) => ({ value: t.code, label: t.name }))}
               disabled={isEdit}
-              className={inputCls("contactType")}
-            >
-              <option value="">Select...</option>
-              {contactTypeOptions.map((t) => (
-                <option key={t.id} value={t.code}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              error={Boolean(errors.contactType)}
+              placeholder="Select..."
+              clearable
+            />
             {errors.contactType && (
               <p className="text-xs text-red-500 mt-1">{errors.contactType}</p>
             )}
           </div>
         )}
 
-        {roleOptions && roleOptions.length > 0 && (
+        {isMainContact ? (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Role
+              Full Name<span className="text-red-500 ml-0.5">*</span>
             </label>
-            <select
-              value={form.contactSubtype}
-              onChange={(e) => setForm({ ...form, contactSubtype: e.target.value })}
-              className={inputCls("contactSubtype")}
-            >
-              <option value="">— Select Role —</option>
-              {roleOptions.map((r) => (
-                <option key={r.id} value={r.code}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+            <input
+              type="text"
+              value={form.fullName}
+              onChange={(e) => setField("fullName", e.target.value)}
+              placeholder="Full name"
+              className={inputCls("fullName")}
+            />
+            {errors.fullName && (
+              <p className="text-xs text-red-500 mt-1">{errors.fullName}</p>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                First Name<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.firstName}
+                onChange={(e) => setField("firstName", e.target.value)}
+                placeholder="First name"
+                className={inputCls("firstName")}
+              />
+              {errors.firstName && (
+                <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Last Name<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.lastName}
+                onChange={(e) => setField("lastName", e.target.value)}
+                placeholder="Last name"
+                className={inputCls("lastName")}
+              />
+              {errors.lastName && (
+                <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
+              )}
+            </div>
           </div>
         )}
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              First Name<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.firstName}
-              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-              placeholder="First name"
-              className={inputCls("firstName")}
-            />
-            {errors.firstName && (
-              <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Last Name<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.lastName}
-              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-              placeholder="Last name"
-              className={inputCls("lastName")}
-            />
-            {errors.lastName && (
-              <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
-            )}
-          </div>
-        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -327,7 +433,7 @@ export function AddContactModal({
             <input
               type="email"
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => setField("email", e.target.value)}
               placeholder="email@example.com"
               className={inputCls("email")}
             />
@@ -342,69 +448,94 @@ export function AddContactModal({
             <input
               type="text"
               value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              onChange={(e) => setField("phone", formatPhoneInput(e.target.value))}
               placeholder="(555) 555-0000"
               className={inputCls("phone")}
             />
+            {errors.phone && (
+              <p className="text-xs text-red-500 mt-1">{errors.phone}</p>
+            )}
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Address
-          </label>
-          <input
-            type="text"
-            value={form.addressLine1}
-            onChange={(e) => setForm({ ...form, addressLine1: e.target.value })}
-            placeholder="Address"
-            className={inputCls("addressLine1")}
-          />
-        </div>
+        {!hideAddress && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Address
+              </label>
+              <input
+                type="text"
+                value={form.addressLine1}
+                onChange={(e) => setField("addressLine1", e.target.value)}
+                placeholder="Address"
+                className={inputCls("addressLine1")}
+              />
+            </div>
 
-        <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={form.city}
+                  onChange={(e) => setField("city", e.target.value)}
+                  placeholder="City"
+                  className={inputCls("city")}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  State
+                </label>
+                <Combobox
+                  value={form.state}
+                  onChange={(v) => setField("state", v)}
+                  options={states.map((s) => ({ value: s.value, label: s.label }))}
+                  error={Boolean(errors.state)}
+                  placeholder="Select..."
+                  clearable
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Zip Code
+                </label>
+                <input
+                  type="text"
+                  value={form.postalCode}
+                  onChange={(e) => setField("postalCode", formatZipInput(e.target.value))}
+                  placeholder="Zip Code"
+                  className={inputCls("postalCode")}
+                />
+                {errors.postalCode && (
+                  <p className="text-xs text-red-500 mt-1">{errors.postalCode}</p>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {roleOptions && roleOptions.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              City
+              <span className="text-red-500 mr-0.5">*</span>Role
             </label>
-            <input
-              type="text"
-              value={form.city}
-              onChange={(e) => setForm({ ...form, city: e.target.value })}
-              placeholder="City"
-              className={inputCls("city")}
+            <Combobox
+              value={form.contactSubtype}
+              onChange={(v) => setField("contactSubtype", v)}
+              options={roleOptions.map((r) => ({ value: r.code, label: r.name }))}
+              error={Boolean(errors.contactSubtype)}
+              placeholder="— Select Role —"
+              clearable
             />
+            {errors.contactSubtype && (
+              <p className="text-xs text-red-500 mt-1">{errors.contactSubtype}</p>
+            )}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              State
-            </label>
-            <select
-              value={form.state}
-              onChange={(e) => setForm({ ...form, state: e.target.value })}
-              className={inputCls("state")}
-            >
-              <option value="">Select...</option>
-              {states.map((s) => (
-                <option key={s.key} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Zip Code
-            </label>
-            <input
-              type="text"
-              value={form.postalCode}
-              onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
-              placeholder="Zip Code"
-              className={inputCls("postalCode")}
-            />
-          </div>
-        </div>
+        )}
       </div>
     </FormModal>
   );

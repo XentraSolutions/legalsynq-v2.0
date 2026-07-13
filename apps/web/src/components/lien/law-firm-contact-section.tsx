@@ -8,7 +8,7 @@ import { type ContactResponseDto } from "@/lib/contacts/contacts.types";
 import { type LookupData } from "@/lib/lookup/lookup.types";
 import { ApiError } from "@/lib/api-client";
 import { ConfirmDialog } from "@/components/lien/modal";
-import { AddContactModal } from "@/components/lien/add-contact-modal";
+import { AddSubContactModal } from "@/components/lien/add-subcontact-modal";
 import { ActionMenu } from "@/components/lien/action-menu";
 
 interface Props {
@@ -183,7 +183,7 @@ export function LawFirmContactSection({ lawFirmId }: Props) {
       </div>
 
       {modalOpen && (
-        <AddContactModal
+        <AddSubContactModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           title={editTarget ? "Edit Law Firm Contact" : "Add Law Firm Contact"}
