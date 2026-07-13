@@ -20,8 +20,8 @@ interface BaseFieldProps {
 }
 
 interface TextFieldProps {
-  type?: "text" | "textarea" | "date";
-  value?: string | null;
+  type?: "text" | "textarea" | "date" | "number" | "email";
+  value?: string | null | number;
   onChange: (value: string) => void;
 }
 
@@ -143,6 +143,7 @@ export default function Field<
             type={props.type}
             value={props.value ?? ""}
             onChange={(e) => props.onChange(e.target.value)}
+            max={props.type == "date" ? "9999-12-31" : ""}
             onFocus={onFocus}
             onClick={onClick}
             placeholder={placeholder}

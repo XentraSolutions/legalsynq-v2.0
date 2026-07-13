@@ -151,7 +151,7 @@ export function CreateLienModal({
               value={form.lienType}
               options={lienTypes}
               placeholder="Select one case"
-              onChange={(v) =>
+              onChange={(v: string) =>
                 setForm({
                   ...form,
                   lienType: v.toString(),
@@ -168,7 +168,7 @@ export function CreateLienModal({
               value={form.caseId}
               options={cases}
               placeholder="Select one case"
-              onChange={(v) =>
+              onChange={(v: string) =>
                 setForm({
                   ...form,
                   caseId: v.toString(),
@@ -186,7 +186,7 @@ export function CreateLienModal({
               label="Original Amount"
               required
               value={form.originalAmount}
-              onChange={(v) =>
+              onChange={(v: string) =>
                 setForm({ ...form, originalAmount: v.toString() })
               }
               placeholder="0.00"
@@ -201,7 +201,7 @@ export function CreateLienModal({
               required
               value={form.jurisdiction}
               options={state}
-              onChange={(v) =>
+              onChange={(v: string) =>
                 setForm({
                   ...form,
                   jurisdiction: v.toString(),
@@ -217,7 +217,9 @@ export function CreateLienModal({
             <Field
               label="Subject First Name"
               value={form.subjectFirst}
-              onChange={(v) => setForm({ ...form, subjectFirst: v.toString() })}
+              onChange={(v: string) =>
+                setForm({ ...form, subjectFirst: v.toString() })
+              }
               placeholder="First name"
             />
           </div>
@@ -225,7 +227,9 @@ export function CreateLienModal({
             <Field
               label="Subject Last Name"
               value={form.subjectLast}
-              onChange={(v) => setForm({ ...form, subjectLast: v.toString() })}
+              onChange={(v: string) =>
+                setForm({ ...form, subjectLast: v.toString() })
+              }
               placeholder="Last name"
             />
           </div>
@@ -234,7 +238,9 @@ export function CreateLienModal({
           <Field
             label="Description"
             value={form.description}
-            onChange={(v) => setForm({ ...form, description: v.toString() })}
+            onChange={(v: string) =>
+              setForm({ ...form, description: v.toString() })
+            }
             placeholder="Optional description..."
             type="textarea"
           />

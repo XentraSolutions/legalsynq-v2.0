@@ -40,9 +40,7 @@ export const servicingService = {
 
   async allLiensList(id: string): Promise<{ items: ServicingLienItem[] }> {
     const { data } = await servicingApi.allLiensList(id);
-    return {
-      items: data.data,
-    };
+    return data;
   },
 
   async getCase(query: string): Promise<ServicingListResult> {

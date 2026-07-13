@@ -6,7 +6,12 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { LiensQuery, liensService, type LienListItem } from "@/lib/liens";
+import {
+  LiensQuery,
+  liensService,
+  PaginationMeta,
+  type LienListItem,
+} from "@/lib/liens";
 import {
   CasesQuery,
   casesService,
@@ -17,6 +22,7 @@ import {
 import { settlementService } from "@/lib/settlement";
 import type { CasePayment } from "@/lib/settlement/settlement.types";
 import { contactsService } from "@/lib/contacts";
+import { PaginatedResult } from "@/lib/reports/reports.types";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -39,7 +45,7 @@ async function fetchCaseLiens(
   caseId: string,
   query: LiensQuery,
   queryClient: QueryClient,
-): Promise<{ items: CaseLienRow[]; totalCount: number }> {
+): Promise<{ items: CaseLienRow[]; pagination: PaginationMeta }> {
   const [liensResult, payments, reductions, facilities] = await Promise.all([
     liensService.getLiens({ caseId, ...query }).catch(() => ({
       items: [] as LienListItem[],
@@ -106,7 +112,9 @@ async function fetchCaseLiens(
         closedAtUtc: ext.closedAtUtc ?? null,
       };
     }),
-    totalCount: liensResult.pagination.totalCount,
+    pagination: {
+      ...liensResult.pagination,
+    },
   };
 }
 
@@ -115,6 +123,7 @@ export function useCaseLiens(
   query: LiensQuery,
   activeTab: string = "liens",
 ) {
+  console.log(query);
   const queryClient = useQueryClient();
 
   // Lien tab
@@ -133,14 +142,15 @@ export function useCaseLiens(
           ...query,
           page: 1,
           pageSize:
-            (pagedQuery?.data?.totalCount ?? 0) > 20
-              ? pagedQuery?.data?.totalCount
+            (pagedQuery?.data?.pagination.totalCount ?? 0) > 20
+              ? pagedQuery?.data?.pagination?.totalCount
               : 10,
         },
         queryClient,
       ),
     enabled:
-      activeTab === "all-liens" && (pagedQuery?.data?.totalCount ?? 0) > 20,
+      activeTab === "all-liens" &&
+      (pagedQuery?.data?.pagination?.totalCount ?? 0) > 20,
   });
 
   return activeTab == "liens" ? pagedQuery : allQuery;
@@ -161,7 +171,19 @@ export function useCreateCase() {
   return useMutation({
     mutationFn: (payload: CreateCaseRequestDto) =>
       casesService.createCase(payload),
-    onSuccess: (data) => {
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["cases"],
+      });
+    },
+  });
+}
+export function useDeleteCase() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => casesService.deleteCase(id),
+    onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["cases"],
       });

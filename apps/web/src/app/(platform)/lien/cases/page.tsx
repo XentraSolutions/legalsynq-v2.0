@@ -30,6 +30,7 @@ import { CasesFilter } from "./components/cases-filter";
 import { CasesQuery, CaseStatusResponse } from "@/lib/cases/cases.types";
 import { useCases, useCreateCase } from "@/hooks/use-case-liens";
 import { useQueryClient } from "@tanstack/react-query";
+import MedicalLienComponent from "@/components/lien/add-medical-lien/add-medical-lien/medical-lien-component";
 
 export const dynamic = "force-dynamic";
 
@@ -95,11 +96,9 @@ export default function CasesPage() {
   });
   const [showCreate, setShowCreate] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{
-    id: string;
-    status: string;
-    name: string;
-  } | null>(null);
+  const [showMedicalLien, setShowMedicalLien] = useState(false);
+
+  const [confirmAction, setConfirmAction] = useState<boolean>(false);
   const [actionOpen, setActionOpen] = useState(false);
 
   const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
@@ -107,6 +106,8 @@ export default function CasesPage() {
   const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(
     null,
   );
+  const [caseId, setCaseId] = useState("");
+
   const query = {
     keyword: search || "",
     page: pagination.page,
@@ -178,53 +179,20 @@ export default function CasesPage() {
 
   const canEdit = ra.can("case:edit");
 
-  const handleAdvanceStatus = async (caseItem: CaseListItem) => {
-    const currentStatus = status?.find((s) => s.code === caseItem.status);
-
-    if (!currentStatus) return;
-
-    const nextStatus = status?.find(
-      (s) => s.sortOrder === currentStatus.sortOrder + 1,
-    );
-
-    if (nextStatus) {
-      setConfirmAction({
-        id: caseItem.id,
-        status: nextStatus.code,
-        name: nextStatus.name,
-      });
-    }
-  };
-
   const handleChangeStatusFilter = async (statusName: string) => {
     const filtered = status?.find((s) => s.code == statusName);
     setStatusFilter(filtered?.code ?? "");
   };
 
   const confirmStatusChange = async () => {
-    if (!confirmAction) return;
-    try {
-      const response = await casesService.updateCaseStatus(
-        confirmAction.id,
-        confirmAction.status,
-      );
-      addToast({
-        type: "success",
-        title: "Status Updated",
-        description: `Case moved to ${response.status}`,
-      });
-      setConfirmAction(null);
-      fetchCases();
-    } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : "Failed to update status";
-      addToast({ type: "error", title: "Update Failed", description: message });
-      setConfirmAction(null);
-    }
+    setShowMedicalLien(true);
+    setConfirmAction(false);
   };
 
-  const handleCaseCreated = () => {
+  const handleCaseCreated = (id: string) => {
     setShowCreate(false);
+    setCaseId(id);
+    setConfirmAction(true);
   };
 
   const handleCasesFilter = (e: any) => {
@@ -446,15 +414,6 @@ export default function CasesPage() {
                                 onClick: () =>
                                   router.push(`/lien/cases/${c.id}`),
                               },
-                              ...(canEdit
-                                ? [
-                                    {
-                                      label: "Advance Status",
-                                      icon: "ri-arrow-right-line",
-                                      onClick: () => handleAdvanceStatus(c),
-                                    },
-                                  ]
-                                : []),
                             ]}
                           />
                         </td>
@@ -514,16 +473,26 @@ export default function CasesPage() {
         onApplyFilter={handleCasesFilter}
       />
 
-      {confirmAction && (
-        <ConfirmDialog
-          open
-          onClose={() => setConfirmAction(null)}
-          onConfirm={confirmStatusChange}
-          title="Change Case Status"
-          description={`Move this case to ${confirmAction.name}?`}
-          confirmLabel="Update Status"
-        />
+      <ConfirmDialog
+        open={confirmAction}
+        onClose={() => setConfirmAction(false)}
+        onConfirm={confirmStatusChange}
+        title="Confirmation"
+        description={`New Case created. Do you want to add a lien now?`}
+        confirmLabel="Yes"
+      />
+      {showMedicalLien && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full mx-4 my-6">
+            <MedicalLienComponent
+              caseId={caseId}
+              onClose={() => setShowMedicalLien(false)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
 }
+
+// "https://legal-dmm-prod.legalsynq.com/70om7wvWruLZg1PA/DrS0uTyouKgBVGQKnlGj1WVe7l0JCksh.pdf"

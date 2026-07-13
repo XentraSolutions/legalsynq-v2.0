@@ -17,7 +17,7 @@ interface CreateCaseFormProps {
   caseNumber?: string;
   open: boolean;
   onClose: () => void;
-  onCreated?: () => void;
+  onCreated?: (data: any) => void;
 }
 
 const INITIAL_FORM = {
@@ -54,7 +54,7 @@ export function CreateCaseForm({
   onCreated,
 }: CreateCaseFormProps) {
   const { lookup } = useSessionContext();
-  const { mutate: createCase, isPending } = useCreateCase();
+  const { mutateAsync: createCase, isPending } = useCreateCase();
 
   const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState({
@@ -196,11 +196,13 @@ export function CreateCaseForm({
         title: "Case Created",
         description: `Case has been created.`,
       });
+      console.log(res);
+
+      setTimeout(() => {
+        onCreated?.(res.id);
+      }, 500);
       setForm({ ...INITIAL_FORM });
       setErrors({});
-      setTimeout(() => {
-        onCreated?.();
-      }, 1000);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isConflict) {
