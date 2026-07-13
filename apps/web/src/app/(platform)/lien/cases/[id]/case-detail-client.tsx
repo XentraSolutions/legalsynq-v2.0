@@ -185,7 +185,7 @@ export function CaseDetailClient({
     id: string;
     status?: string;
     name: string;
-    actionType: "advanceStatus" | "deleteCase" | "mergeCase";
+    actionType: "deleteCase";
   } | null>(null);
   const [showMedicalLienModal, setShowMedicalLienModal] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
@@ -279,26 +279,6 @@ export function CaseDetailClient({
 
   const docType = documentTypes;
 
-  const handleAdvanceStatus = async () => {
-    const status = lookup?.CaseStatus;
-    const currentStatus = status?.find((s) => s.code === caseDetail.status);
-
-    if (!currentStatus) return;
-
-    const nextStatus = status?.find(
-      (s) => s.sortOrder === currentStatus.sortOrder + 1,
-    );
-
-    if (nextStatus) {
-      setConfirmAction({
-        id: caseDetail.id,
-        status: nextStatus.code,
-        name: nextStatus.name,
-        actionType: "advanceStatus",
-      });
-    }
-  };
-
   const handleDeleteCase = () => {
     setConfirmAction({
       id: caseDetail.id,
@@ -345,17 +325,7 @@ export function CaseDetailClient({
     if (!confirmAction) return;
 
     try {
-      if (confirmAction.actionType === "advanceStatus") {
-        const response = await casesService.updateCaseStatus(
-          confirmAction.id,
-          confirmAction.status!,
-        );
-        addToast({
-          type: "success",
-          title: "Status Updated",
-          description: `Case moved to ${response.status}`,
-        });
-      } else if (confirmAction.actionType === "deleteCase") {
+      if (confirmAction.actionType === "deleteCase") {
         await deleteCase(confirmAction.id);
         // TODO: Implement deleteCase API endpoint and add it to casesService
         // For now, show a placeholder message
@@ -430,13 +400,6 @@ export function CaseDetailClient({
                 <HeaderMeta label="Case Manager" value="" />
                 {canEdit ? (
                   <div className="flex items-end">
-                    {/* <button
-                      onClick={handleAdvanceStatus}
-                      disabled={d.status === "Closed"}
-                      className="text-sm font-medium px-4 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors whitespace-nowrap"
-                    >
-                      Actions
-                    </button> */}
                     <div className="relative">
                       {/* Dropdown Button */}
                       <button
@@ -575,19 +538,9 @@ export function CaseDetailClient({
           open
           onClose={() => setConfirmAction(null)}
           onConfirm={handleConfirmAction}
-          title={
-            confirmAction.actionType === "advanceStatus"
-              ? "Advance Case Status"
-              : "Delete Case"
-          }
-          description={
-            confirmAction.actionType === "advanceStatus"
-              ? `Move ${d.caseNumber} to ${confirmAction.name}?`
-              : `Are you sure you want to delete case ${confirmAction.name}? This action cannot be undone.`
-          }
-          confirmLabel={
-            confirmAction.actionType === "advanceStatus" ? "Advance" : "Delete"
-          }
+          title={"Delete Case"}
+          description={`Are you sure you want to delete case ${confirmAction.name}? This action cannot be undone.`}
+          confirmLabel={"Delete"}
         />
       )}
 
@@ -826,6 +779,11 @@ function DetailsTab({
       return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
 
+  const caseStatusList =
+    lookup?.CaseStatus.map((s) => {
+      return { key: s.id, value: s.code, label: s.name };
+    }) ?? [];
+
   const resetPlaintiffForm = useCallback(() => {
     setForm({ ...d });
     setPErrors({});
@@ -1002,7 +960,7 @@ function DetailsTab({
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Case Status
                 </label>
-                <div className="relative">
+                {/* <div className="relative">
                   <select
                     value={form.status}
                     onChange={(e) =>
@@ -1017,7 +975,15 @@ function DetailsTab({
                     ))}
                   </select>
                   <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                </div>
+                </div> */}
+                <Field
+                  label=""
+                  value={form.status}
+                  options={caseStatusList}
+                  onChange={(v: string) => updateField("status", v.toString())}
+                  placeholder="Medical Status"
+                  type="select"
+                />
               </div>
 
               <div>
