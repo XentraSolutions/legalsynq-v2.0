@@ -18,32 +18,24 @@ jobs:
       EXPO_DEBUG: "1"
     params:
       platform: ios
-      build_id: ${{ needs.build_ios.outputs.build_id }}
+       # In EAS, you reference the build job's ID like this:
+      build_id: ${{ jobs.build_ios.exports.buildId }}
       profile: production
   notification_teams:
     name: Notify Microsoft Teams
     type: custom
     needs: [submit_ios_app]
-    # This ensures the notification runs even if previous steps fail
-    if: always() 
-    env:
-      TEAMS_WEBHOOK_URL: "https://defaultaa988e77b0e34f06aabede25235728.77.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/096e911d604d4dd888079d793342333c/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=KzG5jznBNR16wX9Xem3NYI9_T25_Q7reFftMPTsbvHE"
+    # EAS uses standard Linux runners for custom jobs, but to run regardless of upstream failure, 
+    # you typically have to handle it or separate the workflows because EAS doesn't fully support 'always()' yet.
+    # If submit fails, by default dependent jobs are skipped in EAS.
     steps:
       - name: Send status to Teams
+        env:
+          TEAMS_WEBHOOK_URL: "https://defaultaa988e77b0e34f06aabede25235728.77.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/096e911d604d4dd888079d793342333c/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=KzG5jznBNR16wX9Xem3NYI9_T25_Q7reFftMPTsbvHE"
         run: |
-          # Determine status based on the submission job outcome
-          if [ "${{ needs.submit_ios_app.outcome }}" = "success" ]; then
-            STATUS="Success"
-            COLOR="Good"
-          else
-            STATUS="Failed"
-            COLOR="Attention"
-          fi
-
-          # Extract app version and build number from the build job outputs
-          APP_VERSION="${{ needs.build_ios.outputs.version }}"
-          BUILD_NUMBER="${{ needs.build_ios.outputs.build_number }}"
-
+          # Note: Pulling version data directly out of EAS jobs into a custom shell step 
+          # usually requires curling the Expo API or inspecting the build artifact metadata.
+          
           curl -H "Content-Type: application/json" -d "{
               \"type\": \"message\",
               \"attachments\": [
@@ -54,19 +46,16 @@ jobs:
                           \"body\": [
                               {
                                   \"type\": \"TextBlock\",
-                                  \"text\": \"EAS Workflow Alert\",
+                                  \"text\": \"EAS Workflow Completed\",
                                   \"weight\": \"bolder\",
                                   \"size\": \"medium\"
                               },
                               {
                                   \"type\": \"FactSet\",
                                   \"facts\": [
-                                      {\"title\": \"Workflow:\", \"value\": \"Build and Submit Prod IOS App\"},
-                                      {\"title\": \"Status:\", \"value\": \"$STATUS\"},
+                                      {\"title\": \"Workflow:\", \"value\": \"Build and Submit Production IOS App\"},
                                       {\"title\": \"Platform:\", \"value\": \"iOS\"},
-                                      {\"title\": \"Profile:\", \"value\": \"PRODUCTION\"},
-                                      {\"title\": \"App Version:\", \"value\": \"$APP_VERSION\"},
-                                      {\"title\": \"Build Number:\", \"value\": \"$BUILD_NUMBER\"}
+                                      {\"title\": \"Profile:\", \"value\": \"Production\"}
                                   ]
                               }
                           ],
