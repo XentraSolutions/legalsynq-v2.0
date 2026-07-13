@@ -397,7 +397,10 @@ export function CaseDetailClient({
                   value={d.clientDob || "---"}
                 />
                 {/* TEMP: UI mock data for visual review only */}
-                <HeaderMeta label="State of Incident" value="FL" />
+                <HeaderMeta
+                  label="State of Incident"
+                  value={d.stateOfIncident}
+                />
                 <HeaderMeta label="Law Firm" value={d.insuranceCarrier || ""} />
                 {/* TEMP: UI mock data for visual review only */}
                 <HeaderMeta label="Case Manager" value="" />
@@ -1214,7 +1217,9 @@ function DetailsTab({
                   label=""
                   value={form.stateOfIncident}
                   options={state}
-                  onChange={(v) => updateField("stateOfIncident", v.toString())}
+                  onChange={(v: string) =>
+                    updateField("stateOfIncident", v.toString())
+                  }
                   placeholder="State"
                   type="select"
                 />
@@ -2005,7 +2010,7 @@ function LiensTab({
                 onClick={() => onAddMedicalLien(true)}
               >
                 <i className="ri-link text-sm" />
-                Link Lien
+                Add Medical Lien
               </button>
 
               <button
