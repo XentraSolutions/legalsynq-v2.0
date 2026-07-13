@@ -284,16 +284,22 @@ if command -v dotnet &>/dev/null; then
       SVC_NAMES+=("$_svc_label")
     done
 
-    # ── Xenia (optional — binary may be absent if build failed) ──────────────
+    # ── Xenia (built here; binary is required for email features) ────────────
     _xenia_csproj="$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
     _xenia_dll="$(dirname "$_xenia_csproj")/bin/Release/net10.0/Xenia.Api.dll"
+    if [ ! -f "$_xenia_dll" ]; then
+      echo "[xenia] Binary missing — building Xenia now..."
+      dotnet build "$_xenia_csproj" --configuration Release --verbosity minimal 2>&1 \
+        && echo "[xenia] Xenia build OK" \
+        || echo "[xenia] Xenia build FAILED — email features unavailable"
+    fi
     if [ -f "$_xenia_dll" ]; then
       launch_svc "Xenia" "$_xenia_csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
       PID_XENIA=$!
       SVC_PIDS+=("$PID_XENIA")
       SVC_NAMES+=("Xenia")
     else
-      echo "[xenia] WARNING: Xenia binary not found — skipping (email features unavailable)"
+      echo "[xenia] WARNING: Xenia binary not found after build attempt — skipping"
     fi
 
     echo "[dotnet] Service launch complete"
