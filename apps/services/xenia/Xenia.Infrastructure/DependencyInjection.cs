@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xenia.Application.Adapters;
 using Xenia.Application.Adapters.Interfaces;
+using Xenia.Application.Automation;
 using Xenia.Infrastructure.Automation;
 using Xenia.Infrastructure.Observability;
 using Xenia.Application.Configuration;
@@ -211,10 +212,23 @@ public static class DependencyInjection
             services.AddScoped<IRetentionService, UnavailableRetentionService>();
         }
 
-        // Automation framework — requires database-backed stores; skip entirely when no DB.
-        // Automation endpoints return 503/500 in no-DB deployments (acceptable).
+        // Automation framework — requires database-backed stores.
+        // When no DB: register noop fallbacks so ASP.NET Core minimal-API can
+        // always resolve these services at endpoint-mapping time (prevents
+        // "Body was inferred but method does not allow inferred body parameters").
         if (hasDatabase)
+        {
             services.AddXeniaAutomation(configuration);
+        }
+        else
+        {
+            services.AddScoped<IAutomationDiscoveryService, UnavailableAutomationDiscoveryService>();
+            services.AddScoped<IAutomationRegistry, UnavailableAutomationRegistry>();
+            services.AddScoped<IAutomationExecutionService, UnavailableAutomationExecutionService>();
+            services.AddScoped<IAutomationDeadLetterStore, UnavailableAutomationDeadLetterStore>();
+            services.AddScoped<IAutomationDiagnosticsService, UnavailableAutomationDiagnosticsService>();
+            services.AddScoped<IAutomationScheduler, UnavailableAutomationScheduler>();
+        }
 
         // Observability — System.Diagnostics.Metrics (Phase B)
         services.AddXeniaObservability();
