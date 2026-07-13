@@ -192,8 +192,10 @@ public static class DependencyInjection
         // Lock lease renewal background service
         services.AddHostedService<LockLeaseRenewalService>();
 
-        // Automation framework
-        services.AddXeniaAutomation(configuration);
+        // Automation framework — requires database-backed stores; skip entirely when no DB.
+        // Automation endpoints return 503/500 in no-DB deployments (acceptable).
+        if (hasDatabase)
+            services.AddXeniaAutomation(configuration);
 
         // Observability — System.Diagnostics.Metrics (Phase B)
         services.AddXeniaObservability();
