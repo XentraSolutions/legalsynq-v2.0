@@ -29,17 +29,26 @@ internal sealed class AutomationRegistrationWorker : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        using var scope = _scopeFactory.CreateScope();
-        var providers = scope.ServiceProvider.GetServices<IAutomationProvider>();
-        foreach (var provider in providers)
+        try
         {
-            var result = await _registry.RegisterAsync(provider, cancellationToken);
-            if (result.IsSuccess && !result.WasDuplicate)
-                _logger.LogInformation("Automation registered: {Key} v{Version}", provider.AutomationKey, provider.Version);
-            else if (result.WasDuplicate)
-                _logger.LogDebug("Automation already registered: {Key} v{Version}", provider.AutomationKey, provider.Version);
-            else
-                _logger.LogWarning("Automation registration failed: {Key} — {Error}", provider.AutomationKey, result.ErrorMessage);
+            using var scope = _scopeFactory.CreateScope();
+            var providers = scope.ServiceProvider.GetServices<IAutomationProvider>();
+            foreach (var provider in providers)
+            {
+                var result = await _registry.RegisterAsync(provider, cancellationToken);
+                if (result.IsSuccess && !result.WasDuplicate)
+                    _logger.LogInformation("Automation registered: {Key} v{Version}", provider.AutomationKey, provider.Version);
+                else if (result.WasDuplicate)
+                    _logger.LogDebug("Automation already registered: {Key} v{Version}", provider.AutomationKey, provider.Version);
+                else
+                    _logger.LogWarning("Automation registration failed: {Key} — {Error}", provider.AutomationKey, result.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[Xenia] AutomationRegistrationWorker failed to register providers — " +
+                "automation features unavailable. Check XeniaDb connection string.");
         }
     }
 
