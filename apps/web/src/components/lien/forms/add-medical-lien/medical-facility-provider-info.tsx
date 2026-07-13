@@ -49,7 +49,8 @@ export default function MedicalFacilityProviderInfo(
   }, [form]);
 
   function validateForm() {
-    onFormValid?.(true, form);
+    const isValid = !!form.facility;
+    onFormValid?.(isValid, form);
   }
 
   return (

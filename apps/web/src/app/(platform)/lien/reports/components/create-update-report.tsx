@@ -393,7 +393,7 @@ export default function CreateUpdateReport({
               label="View By"
               value={form.reportType}
               options={data.reportType}
-              onChange={(v) => {
+              onChange={(v: string) => {
                 setForm({ ...form, reportType: v });
               }}
               type="select"
@@ -404,7 +404,7 @@ export default function CreateUpdateReport({
               value={form.statusView}
               options={data.statusView ? data.statusView : []}
               placeholder=""
-              onChange={(v) => {
+              onChange={(v: string) => {
                 setForm({ ...form, statusView: v });
               }}
               type="select"

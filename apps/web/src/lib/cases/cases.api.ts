@@ -73,7 +73,7 @@ export const casesApi = {
   },
 
   create(request: CreateCaseRequestDto) {
-    return apiClient.post<CaseResponseDto>(`${BASE}/create`, request);
+    return apiClient.post<{ data: { id: string } }>(`${BASE}/create`, request);
   },
 
   mergecase(request: { caseIdA: string; caseIdB: string }) {
@@ -203,7 +203,7 @@ export const casesApi = {
   },
 
   payoffQoute(caseId: string) {
-    return apiClient.get<DashboardStats>(`${BASE}/payoff-qoute/${caseId}`);
+    return apiClient.get<any>(`${BASE}/payoff-qoute/${caseId}`);
   },
 
   createMedicalLiens(request: CreateMedicalLiensDto) {

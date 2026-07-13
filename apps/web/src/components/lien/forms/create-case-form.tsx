@@ -17,7 +17,7 @@ interface CreateCaseFormProps {
   caseNumber?: string;
   open: boolean;
   onClose: () => void;
-  onCreated?: () => void;
+  onCreated?: (data: any) => void;
 }
 
 const INITIAL_FORM = {
@@ -54,7 +54,7 @@ export function CreateCaseForm({
   onCreated,
 }: CreateCaseFormProps) {
   const { lookup } = useSessionContext();
-  const { mutate: createCase, isPending } = useCreateCase();
+  const { mutateAsync: createCase, isPending } = useCreateCase();
 
   const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState({
@@ -196,11 +196,12 @@ export function CreateCaseForm({
         title: "Case Created",
         description: `Case has been created.`,
       });
+
+      setTimeout(() => {
+        onCreated?.(res.id);
+      }, 500);
       setForm({ ...INITIAL_FORM });
       setErrors({});
-      setTimeout(() => {
-        onCreated?.();
-      }, 1000);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isConflict) {
@@ -307,11 +308,12 @@ export function CreateCaseForm({
               label="State"
               value={form.clientState}
               options={data.state}
-              onChange={(v) => updateField("clientState", v.toString())}
+              onChange={(v: string) => updateField("clientState", v.toString())}
               error={touched.clientState ? errors.clientState : undefined}
               placeholder="State"
               type="select"
             />
+
             <Field
               label="Zipcode"
               value={form.clientZipcode}
@@ -325,7 +327,6 @@ export function CreateCaseForm({
               type="checkbox"
               label="SERVICING"
               isChecked={form.isServicing == "true"}
-              value={form.isServicing}
               onChange={(v) => setForm({ ...form, isServicing: v.toString() })}
             />
           </div>
@@ -342,7 +343,7 @@ export function CreateCaseForm({
               value={form.caseStatusId}
               options={data?.status}
               placeholder=""
-              onChange={(v) => {
+              onChange={(v: string) => {
                 setForm({
                   ...form,
                   caseStatusId: v.toString(),
@@ -356,7 +357,7 @@ export function CreateCaseForm({
               value={form.accidentTypeId}
               options={data?.accidentType}
               placeholder=""
-              onChange={(v) => {
+              onChange={(v: string) => {
                 setForm({
                   ...form,
                   accidentTypeId: v.toString(),
@@ -372,7 +373,7 @@ export function CreateCaseForm({
               value={form.accidentStateId}
               options={data?.accidentState}
               placeholder=""
-              onChange={(v) => {
+              onChange={(v: string) => {
                 setForm({
                   ...form,
                   accidentStateId: v.toString(),

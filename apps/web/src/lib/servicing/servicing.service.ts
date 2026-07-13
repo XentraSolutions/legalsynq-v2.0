@@ -25,6 +25,7 @@ import type {
   ExportResponse,
   ServicingPaginationData,
   PaginatedResultDto,
+  ServicingLienItem,
 } from "./servicing.types";
 
 export interface ServicingListResult {
@@ -41,19 +42,9 @@ export const servicingService = {
     };
   },
 
-  async allLiensList(
-    id: string,
-  ): Promise<PaginatedResultWithItems<LienListItem>> {
+  async allLiensList(id: string): Promise<any> {
     const { data } = await servicingApi.allLiensList(id);
-    return {
-      items: data.data.map(mapLienToListItem),
-      pagination: {
-        page: 1,
-        pageSize: 20,
-        totalCount: 0,
-        totalPages: 1,
-      },
-    };
+    return data;
   },
 
   async getCase(query: string): Promise<ServicingListResult> {

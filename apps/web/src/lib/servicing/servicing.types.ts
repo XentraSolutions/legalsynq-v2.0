@@ -146,6 +146,15 @@ export interface ServicingListItem {
   purchaseAmount: number;
 }
 
+export interface ServicingLienItem {
+  amount: string;
+  caseId: string;
+  currentBalance: string;
+  lienCode: string;
+  liensId: string;
+  purchaseAmount: string;
+  status: string;
+}
 export interface ServicingListItemResponseDto {
   caseId: string;
   caseCode: string;

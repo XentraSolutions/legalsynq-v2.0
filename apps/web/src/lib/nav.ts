@@ -44,25 +44,23 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
 
   lien: [
     {
-      items: [
-        { href: '/lien/home',          label: 'Home',          icon: 'ri-home-line' },
-      ],
-    },
-    {
       heading: 'MY TASKS',
       items: [
         { href: '/lien/dashboard',     label: 'Dashboard',     icon: 'ri-dashboard-line' },
-        { href: '/lien/task-manager',  label: 'Task Manager',  icon: 'ri-task-line' },
-        { href: '/lien/cases',         label: 'Cases',         icon: 'ri-folder-open-line' },
-        { href: '/lien/liens',         label: 'Liens',         icon: 'ri-stack-line' },
-        { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-receipt-line', sellModeOnly: true },
-        { href: '/lien/servicing',     label: 'Servicing',     icon: 'ri-tools-line' },
+        { href: '/lien/task-manager',  label: 'Task Manager',  icon: 'ri-todo-line' },
+        { href: '/lien/cases',         label: 'Cases',         icon: 'ri-survey-line' },
+        { href: '/lien/liens',         label: 'Liens',         icon: 'ri-file-transfer-line' },
+        { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-file-list-3-line', sellModeOnly: true },
+        { href: '/lien/servicing',     label: 'Servicing',     icon: 'ri-file-settings-line' },
         { href: '/lien/contacts',      label: 'Contacts',      icon: 'ri-contacts-book-line' },
       ],
     },
     {
+      // LSV3-628: Marketplace is not part of the Phase 1 migration scope — hidden
+      // pending Phase 1 completion, kept in the definition for easy re-enable.
       heading: 'MARKETPLACE',
       sellModeOnly: true,
+      notInPhase1: true,
       items: [
         { href: '/lien/my-liens',    label: 'My Liens',    icon: 'ri-price-tag-3-line',         requiredRoles: [ProductRole.SynqLienSeller] },
         { href: '/lien/sales',       label: 'Lien Sales',  icon: 'ri-exchange-dollar-line',      requiredRoles: [ProductRole.SynqLienSeller] },
@@ -73,13 +71,18 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       heading: 'MY TOOLS',
       items: [
-        { href: '/lien/reports', label: 'Reports', icon: 'ri-file-copy-2-line' },
-        { href: '/lien/batch-entry',       label: 'Batch Entry',       icon: 'ri-upload-2-line', requiredRoles: [ProductRole.SynqLienSeller] },
-        { href: '/lien/document-handling', label: 'Document Handling', icon: 'ri-file-copy-2-line' },
+        { href: '/lien/reports', label: 'Reports', icon: 'ri-file-list-2-line' },
+        { href: '/lien/batch-entry',       label: 'Batch Upload',      icon: 'ri-upload-line', requiredRoles: [ProductRole.SynqLienSeller] },
+        { href: '/lien/document-handling', label: 'Document Handling', icon: 'ri-file-list-line' },
       ],
     },
     {
+      // LSV3-628: product-level Settings is not part of the Phase 1 migration
+      // scope — hidden pending Phase 1 completion, kept in the definition for
+      // easy re-enable. (Not to be confused with the global ACCOUNT > User
+      // Management item in GLOBAL_BOTTOM_NAV, which stays visible.)
       heading: 'SETTINGS',
+      notInPhase1: true,
       items: [
         { href: '/lien/settings/workflow',              label: 'Workflow Settings', icon: 'ri-git-branch-line'    },
         { href: '/lien/settings/task-templates',        label: 'Task Templates',    icon: 'ri-file-list-3-line'   },
@@ -155,9 +158,13 @@ export function filterNavByRoles(
   orgType?:     OrgTypeValue | null,
 ): NavSection[] {
   return sections
+    .filter(section => !section.notInPhase1)
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
+        // LSV3-628: hide items not part of the Phase 1 migration scope.
+        if (item.notInPhase1) return false;
+
         // Hide immediately if the user holds any excluded role.
         if (item.excludedRoles?.some(role => userRoles.includes(role))) return false;
 
@@ -231,7 +238,7 @@ export const GLOBAL_BOTTOM_NAV: NavSection = {
     { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line',           adminOnly: true },
     { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line',             adminOnly: true },
     { href: '/support',                         label: 'Support',         icon: 'ri-customer-service-2-line', adminOnly: true },
-    { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-shield-user-line',        adminOnly: true },
+    { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-user-community-line',     adminOnly: true },
     { href: '/tenant/settings',                 label: 'Tenant Settings', icon: 'ri-settings-3-line',         adminOnly: true },
   ],
 };

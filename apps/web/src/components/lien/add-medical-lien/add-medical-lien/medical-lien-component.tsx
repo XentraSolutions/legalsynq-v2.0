@@ -119,7 +119,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
   }
 
   const handleBackOrCancel = () => {
-    if (currentStep > 0) {
+    if (currentStep > 1) {
       setCurrentStep((s) => s - 1);
     } else {
       onClose?.();
@@ -225,6 +225,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
   };
 
   const createMedicalCodeLiens = async (payload: CreateMedicalCodeLiensDto) => {
+    startLoading();
     try {
       const request: CreateMedicalCodeLiensDto = {
         id: payload.id,
@@ -257,10 +258,9 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
           description: "An unexpected error occurred",
         });
       }
+    } finally {
+      stopLoading();
     }
-    // finally {
-    //   setSubmitting(false);
-    // }
   };
   const saveMedicalPayee = async (payload: CreateMedicalPaymentDto) => {
     try {
@@ -350,15 +350,6 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     try {
       // Implement save logic here (API call)
       Promise.allSettled([
-        await createMedicalFacilityLiens(forms[1]),
-        forms[2]?.codeRows?.forEach(async (element: any) => {
-          await createMedicalCodeLiens({
-            payee: forms[2].payee,
-            outboundCheckNumber: forms[2].outboundCheckNumber,
-            ...element,
-            id: null,
-          });
-        }),
         await saveMedicalPayee(forms[2]),
         await uploadDocuments(forms[3]),
       ]);
@@ -392,7 +383,8 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
             {/* RIGHT BUTTON */}
             <button
               onClick={handleNextOrSubmit}
-              className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+              className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-primary/70"
+              disabled={notComplete || loading}
             >
               {isLastStep ? "Save" : "Next"}
             </button>
