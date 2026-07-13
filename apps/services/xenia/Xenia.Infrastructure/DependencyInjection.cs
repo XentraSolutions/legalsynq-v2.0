@@ -34,7 +34,10 @@ public static class DependencyInjection
     {
         // ── Database ─────────────────────────────────────────────────────────
         var connectionString = configuration.GetConnectionString(XeniaDbConnectionStringName);
-        var hasDatabase = !string.IsNullOrWhiteSpace(connectionString);
+        // Treat placeholder values (appsettings.json defaults) as "no real database".
+        // A real connection string must not contain "REPLACE_VIA_SECRET".
+        var hasDatabase = !string.IsNullOrWhiteSpace(connectionString)
+            && !connectionString.Contains("REPLACE_VIA_SECRET", StringComparison.OrdinalIgnoreCase);
 
         if (hasDatabase)
         {

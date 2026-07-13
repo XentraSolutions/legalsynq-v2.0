@@ -91,8 +91,11 @@ internal sealed class AutomationStoreValidationService : IHostedService
 
         if (_environment.IsProduction() || _environment.IsStaging())
         {
-            _logger.LogCritical("{Message}", message);
-            throw new InvalidOperationException(message);
+            // Log critical but do NOT throw — throwing from IHostedService.StartAsync
+            // causes "Hosting failed to start" which kills ALL services, not just automation.
+            _logger.LogCritical(
+                "{Message} Xenia will continue without automation features.", message);
+            return Task.CompletedTask;
         }
 
         _logger.LogWarning("{Message}", message);
