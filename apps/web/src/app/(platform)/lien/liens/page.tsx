@@ -59,7 +59,7 @@ export default function LiensPage() {
   const [liens, setLiens] = useState<LienListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
-    pageSize: 50,
+    pageSize: 20,
     totalCount: 0,
     totalPages: 0,
   });

@@ -10,6 +10,7 @@ import type {
   ServicingListItem,
   ExportResponse,
   ServicingListItemResponseDto,
+  ServicingLienItem,
 } from "./servicing.types";
 import {
   GenericPaginatedResult,
@@ -43,7 +44,7 @@ export const servicingApi = {
   },
 
   allLiensList(id: string) {
-    return apiClient.get<GenericPaginatedResult<ServicingListItemResponseDto>>(
+    return apiClient.get<PaginatedResultDto<ServicingLienItem>>(
       `${BASE}/all-liens/${id}`,
     );
   },

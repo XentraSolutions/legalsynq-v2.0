@@ -20,6 +20,8 @@ import type {
   ServicingListItemResponseDto,
   ExportResponse,
   ServicingPaginationData,
+  PaginatedResultDto,
+  ServicingLienItem,
 } from "./servicing.types";
 
 export interface ServicingListResult {
@@ -33,6 +35,13 @@ export const servicingService = {
     return {
       items: data.data.map(mapServicingToListItem),
       pagination: mapServicingPagination(data),
+    };
+  },
+
+  async allLiensList(id: string): Promise<{ items: ServicingLienItem[] }> {
+    const { data } = await servicingApi.allLiensList(id);
+    return {
+      items: data.data,
     };
   },
 

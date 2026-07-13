@@ -153,12 +153,13 @@ export function CaseDetailClient({
   const [documentTypes, setDocumentTypes] = useState<DropdownOption[]>([]);
 
   const {
-    data: relatedLiensWithMetadata = [],
+    data: relatedLiensWithMetadata = { items: [], totalCount: 0 },
     dataUpdatedAt: liensUpdatedAt,
     refetch: refetchLiens,
     isFetching: isLiensFetching,
-  } = useCaseLiens(id, { pageSize: 20 });
-  const relatedLiens = relatedLiensWithMetadata;
+  } = useCaseLiens(id, { pageSize: 5 });
+  const relatedLiens = relatedLiensWithMetadata?.items;
+  const totalCount = relatedLiensWithMetadata?.totalCount ?? 0;
 
   const {
     data: casePayments = [],
@@ -490,7 +491,7 @@ export function CaseDetailClient({
                 {tab.label}
                 {tab.key === "liens" && (
                   <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
-                    {relatedLiens.length}
+                    {totalCount}
                   </span>
                 )}
               </button>
@@ -532,7 +533,7 @@ export function CaseDetailClient({
         {activeTab === "servicing" && (
           <ServicingTab
             caseDetail={d}
-            liens={relatedLiensWithMetadata}
+            liens={relatedLiensWithMetadata.items}
             liensLoadedAt={liensUpdatedAt ? new Date(liensUpdatedAt) : null}
             onRefreshLiens={refetchLiens}
             isLiensFetching={isLiensFetching}
@@ -2113,7 +2114,7 @@ function LiensTab({
                       </td>
                       <td colSpan={2} />
                     </tr>
-                    {/* <tr>
+                    <tr>
                       <td colSpan={8} className="py-3">
                         {pagination.totalPages > 0 && (
                           <div className="flex items-center justify-between gap-3">
@@ -2152,7 +2153,7 @@ function LiensTab({
                           </div>
                         )}
                       </td>
-                    </tr> */}
+                    </tr>
                   </tfoot>
                 </table>
               </div>
@@ -3083,7 +3084,6 @@ const SERVICING_SUB_TABS: {
 
 function ServicingTab({
   caseDetail,
-  liens,
   liensLoadedAt,
   onRefreshLiens,
   isLiensFetching,
@@ -3107,6 +3107,9 @@ function ServicingTab({
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const addToast = useLienStore((s) => s.addToast);
+  const { data = { items: [], totalCount: 0 }, refetch: refetchLiens } =
+    useCaseLiens(caseDetail.id, {}, "all-liens");
+  const liens = data.items ?? [];
   const timezone = useTimezone();
   const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
