@@ -114,8 +114,7 @@ if command -v dotnet &>/dev/null; then
       "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
       "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj"
       "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
-      # Xenia is intentionally excluded: its binary is optional (build-prod.sh builds it
-      # non-fatally). If missing, the Xenia.Api case below skips it gracefully.
+      "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
     )
 
     # Derives the expected Release output DLL from a .csproj path.
@@ -277,30 +276,15 @@ if command -v dotnet &>/dev/null; then
           launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5029
           PID_REPORTS=$! ;;
         Comms.Api)     launch_svc "$_svc_label" "$csproj"; PID_COMMS=$! ;;
+        Xenia.Api)
+          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
+          PID_XENIA=$! ;;
         *)             launch_svc "$_svc_label" "$csproj" ;;
       esac
       # $! is the PID of the dotnet process just backgrounded by launch_svc
       SVC_PIDS+=("$!")
       SVC_NAMES+=("$_svc_label")
     done
-
-    # ── Xenia (built here; binary is required for email features) ────────────
-    _xenia_csproj="$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
-    _xenia_dll="$(dirname "$_xenia_csproj")/bin/Release/net10.0/Xenia.Api.dll"
-    if [ ! -f "$_xenia_dll" ]; then
-      echo "[xenia] Binary missing — building Xenia now..."
-      dotnet build "$_xenia_csproj" --configuration Release --verbosity minimal 2>&1 \
-        && echo "[xenia] Xenia build OK" \
-        || echo "[xenia] Xenia build FAILED — email features unavailable"
-    fi
-    if [ -f "$_xenia_dll" ]; then
-      launch_svc "Xenia" "$_xenia_csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
-      PID_XENIA=$!
-      SVC_PIDS+=("$PID_XENIA")
-      SVC_NAMES+=("Xenia")
-    else
-      echo "[xenia] WARNING: Xenia binary not found after build attempt — skipping"
-    fi
 
     echo "[dotnet] Service launch complete"
 
