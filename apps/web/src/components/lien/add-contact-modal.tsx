@@ -399,7 +399,7 @@ export function AddContactModal({
               onChange={(v) => setField("contactType", v)}
               options={contactTypeOptions.map((t) => ({
                 value: t.code,
-                label: t.name,
+                label: t.name.toUpperCase(),
               }))}
               disabled={isEdit}
               error={Boolean(errors.contactType)}
