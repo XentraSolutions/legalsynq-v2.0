@@ -85,13 +85,14 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const documentTypes = lookup?.DocumentCategory.map((d) => {
-    return {
-      key: d.id,
-      value: d.id,
-      label: d.name,
-    };
-  });
+  const documentTypes =
+    lookup?.DocumentCategory.map((d) => {
+      return {
+        key: d.id,
+        value: d.id,
+        label: d.name,
+      };
+    }) ?? [];
   const [documents, setDocuments] = useState<any[]>(data);
   const [files, setFiles] = useState<File[] | null>(null);
 
@@ -153,6 +154,17 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     }
   };
 
+  const documentIdToName = (id: any): string[] => {
+    const query = String(id ?? "").toLowerCase();
+    return documentTypes
+      .filter((t: any) =>
+        String(t.key ?? "")
+          .toLowerCase()
+          .includes(query),
+      )
+      .map((t: any) => t.label);
+  };
+
   useEffect(() => {
     if (data.length > 0) {
       setDocuments(data);
@@ -173,7 +185,9 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           required
           value={form.documentType}
           options={documentTypes}
-          onChange={(v) => setForm({ ...form, documentType: v.toString() })}
+          onChange={(v: string) =>
+            setForm({ ...form, documentType: v.toString() })
+          }
           error={errors.documentType}
           placeholder=""
           type="select"
@@ -248,7 +262,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                         </td>
                         <td className="px-3 py-2.5">
                           <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
-                            {doc.filename}
+                            {documentIdToName(doc.typeId)}
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">

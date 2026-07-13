@@ -65,9 +65,9 @@ export const casesService = {
     return mapCaseToDetail(data);
   },
 
-  async createCase(request: CreateCaseRequestDto): Promise<CaseResponseDto> {
+  async createCase(request: CreateCaseRequestDto): Promise<{ id: string }> {
     const { data } = await casesApi.create(request);
-    return data;
+    return { id: data.data.id };
   },
 
   async deleteCase(id: string): Promise<ApiResponse> {
@@ -189,9 +189,12 @@ export const casesService = {
     return data as ExportResponse;
   },
 
-  async payoffQoute(caseId: string): Promise<any> {
+  async payoffQoute(caseId: string): Promise<{ url: string; message: string }> {
     const { data } = await casesApi.payoffQoute(caseId);
-    return data;
+    return {
+      url: data.isSuccess ? data?.data?.url : "",
+      message: data.message,
+    };
   },
 
   async exportCaseLiens(request: CaseLiensFilters): Promise<ExportResponse> {

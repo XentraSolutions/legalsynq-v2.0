@@ -24,7 +24,7 @@ import { TaskPanel } from "@/components/lien/task-panel";
 import { CaseTaskManager } from "@/components/lien/case-task-manager";
 import { useTimezone } from "@/lib/use-timezone";
 
-import { ConfirmDialog } from "@/components/lien/modal";
+import { ConfirmDialog, Modal } from "@/components/lien/modal";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import MedicalLienComponent from "@/components/lien/add-medical-lien/add-medical-lien/medical-lien-component";
 import { useCaseWorkflows } from "@/hooks/use-case-workflows";
@@ -59,9 +59,13 @@ import type {
   LienColumnDef,
   LienFooterCell,
 } from "@/components/lien/lien-table";
-import { LienListItem, liensService } from "@/lib/liens";
-import { useQueryClient } from "@tanstack/react-query";
-import { useCaseLiens, useLienPaymentsByCase } from "@/hooks/use-case-liens";
+import { LienListItem, LiensQuery, liensService } from "@/lib/liens";
+import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import {
+  useCaseLiens,
+  useDeleteCase,
+  useLienPaymentsByCase,
+} from "@/hooks/use-case-liens";
 import { useSettlementHistory } from "@/hooks/use-settlement-history";
 import { Pagination } from "@/components/ui/pagination";
 import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types";
@@ -140,6 +144,9 @@ export function CaseDetailClient({
   tab: string | TabKey;
 }) {
   const { lookup } = useSessionContext();
+
+  const { mutateAsync: deleteCase } = useDeleteCase();
+
   const queryClient = useQueryClient();
 
   const router = useRouter();
@@ -153,12 +160,16 @@ export function CaseDetailClient({
   const [documentTypes, setDocumentTypes] = useState<DropdownOption[]>([]);
 
   const {
-    data: relatedLiensWithMetadata = [],
+    data: relatedLiensWithMetadata = {
+      items: [],
+      pagination: { page: 1, pageSize: 20, totalCount: 0, totalPages: 1 },
+    },
     dataUpdatedAt: liensUpdatedAt,
     refetch: refetchLiens,
     isFetching: isLiensFetching,
-  } = useCaseLiens(id, { pageSize: 50 });
-  const relatedLiens = relatedLiensWithMetadata;
+  } = useCaseLiens(id, { pageSize: 20 });
+  const relatedLiens = relatedLiensWithMetadata.items;
+  const totalCount = relatedLiensWithMetadata?.pagination?.totalCount ?? 0;
 
   const {
     data: casePayments = [],
@@ -179,6 +190,10 @@ export function CaseDetailClient({
   const [showMedicalLienModal, setShowMedicalLienModal] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
   const [showMergeCase, setShowMergeCase] = useState(false);
+  const [showPayoffQoute, setShowPayoffQoute] = useState({
+    isOpen: false,
+    url: "",
+  });
 
   const fetchCase = useCallback(async () => {
     setLoading(true);
@@ -310,7 +325,17 @@ export function CaseDetailClient({
           description: response?.message,
         });
       }
+      if (response.url) {
+        setShowPayoffQoute({ isOpen: true, url: response.url });
+      } else {
+        addToast({
+          type: "error",
+          title: "Generate Payoff Failed",
+          description: response.message,
+        });
+      }
     } catch (err) {
+      console.log(err);
       const message =
         err instanceof ApiError ? err.message : "Failed to generate payoff";
       addToast({
@@ -337,7 +362,7 @@ export function CaseDetailClient({
           description: `Case moved to ${response.status}`,
         });
       } else if (confirmAction.actionType === "deleteCase") {
-        await casesService.deleteCase(confirmAction.id);
+        await deleteCase(confirmAction.id);
         // TODO: Implement deleteCase API endpoint and add it to casesService
         // For now, show a placeholder message
         addToast({
@@ -373,20 +398,19 @@ export function CaseDetailClient({
 
       <div className="mx-6 mt-2 bg-white border border-gray-200 rounded-lg">
         <div className="px-6 py-4">
-          <div className="flex items-center gap-8">
-            <div className="shrink-0 min-w-[160px]">
+          <div className="flex flex-col md:flex-row align-items-center justify-evenly gap-8 sm:gap-4 py-2 ">
+            <div className="min-w-[160px] col-lg-3 col-12 mb-2 ">
               {/* TEMP: UI mock data for visual review only */}
               <h1 className="text-xl font-bold text-gray-900 leading-tight">
-                {d.clientName || "Maj Test"}
+                {d.clientName || ""}
               </h1>
               <p className="text-xs text-gray-400 mt-1.5 font-medium">
                 {d.caseNumber}
               </p>
-              <p className="text-xs text-gray-400 mt-1.5 font-medium">{d.id}</p>
             </div>
 
-            <div className="flex-1 min-w-0">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
+            <div className="min-w-0 col-lg-9 flex-1">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 md:gap-x-4 gap-y-2">
                 <HeaderMeta
                   label="Case Type"
                   value={d.caseType || "Lien Case"}
@@ -403,7 +427,10 @@ export function CaseDetailClient({
                   value={d.clientDob || "---"}
                 />
                 {/* TEMP: UI mock data for visual review only */}
-                <HeaderMeta label="State of Incident" value="FL" />
+                <HeaderMeta
+                  label="State of Incident"
+                  value={d.stateOfIncident}
+                />
                 <HeaderMeta label="Law Firm" value={d.insuranceCarrier || ""} />
                 {/* TEMP: UI mock data for visual review only */}
                 <HeaderMeta label="Case Manager" value="" />
@@ -428,29 +455,6 @@ export function CaseDetailClient({
                       {/* Dropdown Menu */}
                       {actionOpen && (
                         <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                          {/* Create Lien */}
-                          {ra.can("lien:edit") && (
-                            <button
-                              onClick={() => {
-                                handleAdvanceStatus();
-                                setActionOpen(false);
-                              }}
-                              disabled={d.status === "Closed"}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                            >
-                              Advance Status
-                            </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              setShowMergeCase(true);
-                              setActionOpen(false);
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                          >
-                            Merge Case
-                          </button>
-                          {/* Filter */}
                           <button
                             onClick={() => {
                               generatePayoff();
@@ -462,10 +466,21 @@ export function CaseDetailClient({
                           </button>
                           <button
                             onClick={() => {
+                              setShowMergeCase(true);
+                              setActionOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                          >
+                            Merge Case
+                          </button>
+                          {/* Filter */}
+
+                          <button
+                            onClick={() => {
                               handleDeleteCase();
                               setActionOpen(false);
                             }}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-red-600"
+                            className="text-left px-4 py-2 text-sm hover:bg-gray-100 text-red-600"
                           >
                             Delete Case
                           </button>
@@ -482,7 +497,7 @@ export function CaseDetailClient({
         </div>
 
         <div className="border-t border-gray-100 px-6">
-          <nav className="flex gap-4 -mb-px">
+          <nav className="flex flex-wrap gap-4 -mb-px">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
@@ -497,7 +512,7 @@ export function CaseDetailClient({
                 {tab.label}
                 {tab.key === "liens" && (
                   <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
-                    {relatedLiens.length}
+                    {totalCount}
                   </span>
                 )}
               </button>
@@ -521,6 +536,7 @@ export function CaseDetailClient({
           <LiensTab
             caseId={id}
             liens={relatedLiens}
+            liensPagination={relatedLiensWithMetadata.pagination}
             caseDetail={d}
             panelMode={panelMode}
             onPanelModeChange={setPanelMode}
@@ -539,7 +555,7 @@ export function CaseDetailClient({
         {activeTab === "servicing" && (
           <ServicingTab
             caseDetail={d}
-            liens={relatedLiensWithMetadata}
+            liens={relatedLiensWithMetadata.items}
             liensLoadedAt={liensUpdatedAt ? new Date(liensUpdatedAt) : null}
             onRefreshLiens={refetchLiens}
             isLiensFetching={isLiensFetching}
@@ -600,6 +616,29 @@ export function CaseDetailClient({
             />
           </div>
         </div>
+      )}
+      {showPayoffQoute.isOpen && (
+        <Modal
+          size="xl"
+          open={showPayoffQoute.isOpen}
+          title="Payoff Qoute"
+          onClose={() => setShowPayoffQoute({ isOpen: false, url: "" })}
+        >
+          <div className="min-h-[75vh]">
+            <object
+              data={showPayoffQoute.url}
+              type="application/pdf"
+              width="100%"
+              height="100%"
+              className="min-h-[75vh]"
+            >
+              <p>
+                It appears your browser does not support PDFs.{" "}
+                <a href={showPayoffQoute.url ?? ""}>Download the PDF</a>.
+              </p>
+            </object>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -929,184 +968,6 @@ function DetailsTab({
   const leftContent = (
     <div className="space-y-4">
       <CollapsibleSection
-        title="Plaintiff"
-        icon="ri-user-line"
-        onEdit={
-          canEdit && !editingPlaintiff
-            ? () => {
-                resetPlaintiffForm();
-                setEditingPlaintiff(true);
-              }
-            : undefined
-        }
-      >
-        <div className="mb-3">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Plaintiff Info
-          </p>
-        </div>
-
-        {editingPlaintiff ? (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3 relative">
-              <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  First Name *
-                </label>
-                <Field
-                  label=""
-                  value={form.clientFirstName}
-                  onChange={(e) => updateField("clientFirstName", e.toString())}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  Last Name *
-                </label>
-                <Field
-                  label=""
-                  value={form.clientLastName}
-                  onChange={(e) => updateField("clientLastName", e.toString())}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  Phone Number
-                </label>
-                <Field
-                  label=""
-                  value={form.clientPhone}
-                  onChange={(e) => updateField("clientPhone", e.toString())}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  Email
-                </label>
-                <Field
-                  label=""
-                  value={form.clientEmail}
-                  onChange={(e) => updateField("clientEmail", e.toString())}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  Date of Birth
-                </label>
-                <Field
-                  label=""
-                  type="date"
-                  value={form.clientDob}
-                  onChange={(e) => updateField("clientDob", e.toString())}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
-                  Sex
-                </label>
-                <Field
-                  label=""
-                  value={form.sex}
-                  type="select"
-                  options={[
-                    { key: "male", value: "male", label: "Male" },
-                    { key: "female", value: "female", label: "Female" },
-                  ]}
-                  onChange={(e) => updateField("sex", e.toString())}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  Address
-                </label>
-                <Field
-                  label=""
-                  value={form.clientStreetAddress}
-                  onChange={(e) =>
-                    updateField("clientStreetAddress", e.toString())
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  City
-                </label>
-                <Field
-                  label=""
-                  value={form.clientCity}
-                  onChange={(e) => updateField("clientCity", e.toString())}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  State
-                </label>
-                <Field
-                  label=""
-                  value={form.clientState}
-                  type="select"
-                  options={state}
-                  onChange={(e) => {
-                    updateField("clientState", e.toString());
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                  Zip code
-                </label>
-                <Field
-                  label=""
-                  value={form.clientZipcode}
-                  onChange={(e) => updateField("clientZipcode", e.toString())}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                onClick={handlePlaintiffSave}
-                disabled={pSaving}
-                className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
-              >
-                {pSaving ? (
-                  <>
-                    <i className="ri-loader-4-line text-sm animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <i className="ri-save-line text-sm" />
-                    Save
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  setEditingPlaintiff(false);
-                  setPErrors({});
-                }}
-                disabled={pSaving}
-                className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <FieldGrid>
-            <FieldItem label="Full Name" value={d.clientName} />
-            <FieldItem label="Phone Number" value={d.clientPhone} />
-            <FieldItem label="Email" value={d.clientEmail} />
-            <FieldItem label="Birthdate" value={d.clientDob} />
-            <FieldItem label="Sex" value={d.sex} />
-            <FieldItem label="Address" value={d.clientAddress} />
-          </FieldGrid>
-        )}
-      </CollapsibleSection>
-
-      <CollapsibleSection
         title="Case Tracking"
         icon="ri-compass-3-line"
         onEdit={
@@ -1173,7 +1034,7 @@ function DetailsTab({
                   label=""
                   value={form.currentMedicalStatus}
                   options={medicalStatus}
-                  onChange={(v) =>
+                  onChange={(v: string) =>
                     updateField("currentMedicalStatus", v.toString())
                   }
                   placeholder="Medical Status"
@@ -1190,7 +1051,7 @@ function DetailsTab({
                   value={form.caseType}
                   options={accidentType}
                   placeholder=""
-                  onChange={(v) => {
+                  onChange={(v: string) => {
                     updateField("caseType", v.toString());
                   }}
                   type="select"
@@ -1220,7 +1081,9 @@ function DetailsTab({
                   label=""
                   value={form.stateOfIncident}
                   options={state}
-                  onChange={(v) => updateField("stateOfIncident", v.toString())}
+                  onChange={(v: string) =>
+                    updateField("stateOfIncident", v.toString())
+                  }
                   placeholder="State"
                   type="select"
                 />
@@ -1361,6 +1224,184 @@ function DetailsTab({
             ))}
           </div>
         </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Plaintiff"
+        icon="ri-user-line"
+        onEdit={
+          canEdit && !editingPlaintiff
+            ? () => {
+                resetPlaintiffForm();
+                setEditingPlaintiff(true);
+              }
+            : undefined
+        }
+      >
+        <div className="mb-3">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Plaintiff Info
+          </p>
+        </div>
+
+        {editingPlaintiff ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3 relative">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  First Name *
+                </label>
+                <Field
+                  label=""
+                  value={form.clientFirstName}
+                  onChange={(e) => updateField("clientFirstName", e.toString())}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  Last Name *
+                </label>
+                <Field
+                  label=""
+                  value={form.clientLastName}
+                  onChange={(e) => updateField("clientLastName", e.toString())}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  Phone Number
+                </label>
+                <Field
+                  label=""
+                  value={form.clientPhone}
+                  onChange={(e) => updateField("clientPhone", e.toString())}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  Email
+                </label>
+                <Field
+                  label=""
+                  value={form.clientEmail}
+                  onChange={(e) => updateField("clientEmail", e.toString())}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  Date of Birth
+                </label>
+                <Field
+                  label=""
+                  type="date"
+                  value={form.clientDob}
+                  onChange={(e) => updateField("clientDob", e.toString())}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
+                  Sex
+                </label>
+                <Field
+                  label=""
+                  value={form.sex}
+                  type="select"
+                  options={[
+                    { key: "male", value: "male", label: "Male" },
+                    { key: "female", value: "female", label: "Female" },
+                  ]}
+                  onChange={(e: string) => updateField("sex", e.toString())}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  Address
+                </label>
+                <Field
+                  label=""
+                  value={form.clientStreetAddress}
+                  onChange={(e) =>
+                    updateField("clientStreetAddress", e.toString())
+                  }
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  City
+                </label>
+                <Field
+                  label=""
+                  value={form.clientCity}
+                  onChange={(e) => updateField("clientCity", e.toString())}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  State
+                </label>
+                <Field
+                  label=""
+                  value={form.clientState}
+                  type="select"
+                  options={state}
+                  onChange={(e: string) => {
+                    updateField("clientState", e.toString());
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  Zip code
+                </label>
+                <Field
+                  label=""
+                  value={form.clientZipcode}
+                  onChange={(e) => updateField("clientZipcode", e.toString())}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                onClick={handlePlaintiffSave}
+                disabled={pSaving}
+                className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {pSaving ? (
+                  <>
+                    <i className="ri-loader-4-line text-sm animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-save-line text-sm" />
+                    Save
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setEditingPlaintiff(false);
+                  setPErrors({});
+                }}
+                disabled={pSaving}
+                className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <FieldGrid>
+            <FieldItem label="Full Name" value={d.clientName} />
+            <FieldItem label="Phone Number" value={d.clientPhone} />
+            <FieldItem label="Email" value={d.clientEmail} />
+            <FieldItem label="Date of Birth" value={d.clientDob} />
+            <FieldItem label="Sex" value={d.sex} />
+            <FieldItem label="Address" value={d.clientAddress} />
+          </FieldGrid>
+        )}
       </CollapsibleSection>
 
       <CollapsibleSection title="Updates" icon="ri-history-line">
@@ -1568,6 +1609,7 @@ const TEMP_LIEN_UPDATES = [
 function LiensTab({
   caseId,
   liens,
+  liensPagination,
   caseDetail,
   panelMode,
   onPanelModeChange,
@@ -1575,6 +1617,7 @@ function LiensTab({
 }: {
   caseId: string;
   liens: CaseLienItem[];
+  liensPagination: PaginationMeta;
   caseDetail: CaseDetail;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
@@ -1600,12 +1643,7 @@ function LiensTab({
   });
   const addToast = useLienStore((s) => s.addToast);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [pagination, setPagination] = useState<PaginationMeta>({
-    page: 1,
-    pageSize: 20,
-    totalCount: 0,
-    totalPages: 1,
-  });
+  const [pagination, setPagination] = useState<PaginationMeta>(liensPagination);
 
   const fetchData = useCallback(async () => {
     const updates = await casesService.getCaseLiensUpdates(caseId);
@@ -1723,10 +1761,9 @@ function LiensTab({
   }, [filtered, pagination.page, pagination.pageSize]);
 
   useEffect(() => {
-    const totalCount = filtered.length;
+    const totalCount = liensPagination.totalCount;
     const totalPages = Math.max(1, Math.ceil(totalCount / pagination.pageSize));
     const safePage = Math.min(pagination.page, totalPages);
-
     setPagination((prev) => {
       if (
         prev.totalCount === totalCount &&
@@ -2011,7 +2048,7 @@ function LiensTab({
                 onClick={() => onAddMedicalLien(true)}
               >
                 <i className="ri-link text-sm" />
-                Link Lien
+                Add Medical Lien
               </button>
 
               <button
@@ -2120,7 +2157,7 @@ function LiensTab({
                       </td>
                       <td colSpan={2} />
                     </tr>
-                    {/* <tr>
+                    <tr>
                       <td colSpan={8} className="py-3">
                         {pagination.totalPages > 0 && (
                           <div className="flex items-center justify-between gap-3">
@@ -2159,7 +2196,7 @@ function LiensTab({
                           </div>
                         )}
                       </td>
-                    </tr> */}
+                    </tr>
                   </tfoot>
                 </table>
               </div>
@@ -2523,7 +2560,7 @@ function DocumentsTab({
                 label=""
                 value={selectedDocType}
                 options={docTypes}
-                onChange={(v) => setSelectedDocType(v.toString())}
+                onChange={(v: string) => setSelectedDocType(v.toString())}
                 placeholder="Select document type..."
                 type="select"
               />
@@ -3090,7 +3127,6 @@ const SERVICING_SUB_TABS: {
 
 function ServicingTab({
   caseDetail,
-  liens,
   liensLoadedAt,
   onRefreshLiens,
   isLiensFetching,
@@ -3114,6 +3150,9 @@ function ServicingTab({
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const addToast = useLienStore((s) => s.addToast);
+  const { data = { items: [], pagination: {} }, refetch: refetchLiens } =
+    useCaseLiens(caseDetail.id, {}, "all-liens");
+  const liens = data.items ?? [];
   const timezone = useTimezone();
   const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
@@ -3290,9 +3329,10 @@ function ServicingTab({
     },
   ];
 
-  const caseStatusList = lookup?.CaseStatus.map((s) => {
-    return { key: s.id, value: s.code, label: s.name };
-  });
+  const caseStatusList =
+    lookup?.CaseStatus.map((s) => {
+      return { key: s.id, value: s.code, label: s.name };
+    }) ?? [];
   const fetchDataLawfirms = useCallback(async () => {
     const lawfirms = await lookupService.getLawfirm();
     setLawFirmList(
@@ -3404,7 +3444,7 @@ function ServicingTab({
                 value={caseStatus}
                 type="select"
                 options={caseStatusList}
-                onChange={(e) => setCaseStatus(e.toString())}
+                onChange={(e: string) => setCaseStatus(e.toString())}
               />
             </div>
 
@@ -3446,7 +3486,7 @@ function ServicingTab({
                 value={currentLawFirm}
                 type="select"
                 options={lawFirmList}
-                onChange={(e) => setCurrentLawFirm(e.toString())}
+                onChange={(e: string) => setCurrentLawFirm(e.toString())}
                 onClick={() => {
                   fetchDataLawfirms();
                 }}
@@ -3464,7 +3504,7 @@ function ServicingTab({
                   value={currentLawyer}
                   type="select"
                   options={lawyerList}
-                  onChange={(e) => setCurrentLawyer(e.toString())}
+                  onChange={(e: string) => setCurrentLawyer(e.toString())}
                   onClick={() => {
                     fetchDataLawyers();
                   }}
@@ -3480,7 +3520,7 @@ function ServicingTab({
                   value={currentCaseManager}
                   type="select"
                   options={caseManagerList}
-                  onChange={(e) => setCurrentCaseManager(e.toString())}
+                  onChange={(e: string) => setCurrentCaseManager(e.toString())}
                   onClick={() => {
                     fetchDataCaseManagers();
                   }}

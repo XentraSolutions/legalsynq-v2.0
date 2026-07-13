@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Field from "../../field";
 import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
 import { useSessionContext } from "@/providers/session-provider";
+import { BaseSelectOption } from "@/components/ui/base-select";
 
 export interface MedicalLienInfoProps {
   caseId?: string;
@@ -33,32 +34,21 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
   const [form, setForm] = useState(!data ? { ...INITIAL_FORM } : data);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const [statusList, setStatusList] = useState<Array<Record<string, string>>>();
-
-  useEffect(() => {
-    loadStatuses();
-  }, []);
+  const statusList =
+    lookup?.LienStatus.map((c) => {
+      return { key: c.id, value: c.code, label: c.name };
+    }) ?? [];
+  useEffect(() => {}, []);
 
   useEffect(() => {
     validateForm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form]);
 
-  async function loadStatuses() {
-    try {
-      const list = lookup?.LienStatus.map((c) => {
-        return { key: c.id, value: c.code, label: c.name };
-      });
-      setStatusList(list ?? []);
-    } catch (e) {
-      setStatusList([]);
-    }
-  }
-
   function validateForm() {
-    // const valid =
-    //   !!form.status && !!form.purchaseDate && !!form.initialServiceDate;
-    onFormValid?.(true, form);
+    const valid =
+      !!form.status && !!form.purchaseDate && !!form.initialServiceDate;
+    onFormValid?.(valid, form);
   }
 
   return (
@@ -79,7 +69,7 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
             label="Lien Status"
             value={form.status}
             options={statusList}
-            onChange={(v) => {
+            onChange={(v: string) => {
               setForm({ ...form, status: v.toString() });
             }}
             type="select"
@@ -125,7 +115,6 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
             type="checkbox"
             label="Bulk"
             isChecked={form.isBulk == "true"}
-            value={form.isBulk}
             onChange={(v) => setForm({ ...form, isBulk: v.toString() })}
           />
 
@@ -133,7 +122,6 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
             type="checkbox"
             label="Servicing"
             isChecked={form.isServicing == "true"}
-            value={form.isServicing}
             onChange={(v) => {
               setForm({ ...form, isServicing: v.toString() });
             }}

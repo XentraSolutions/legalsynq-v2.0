@@ -6,7 +6,7 @@ import { contactsApi } from "@/lib/contacts/contacts.api";
 import { type ContactResponseDto } from "@/lib/contacts/contacts.types";
 import { ApiError } from "@/lib/api-client";
 import { ConfirmDialog } from "@/components/lien/modal";
-import { AddContactModal } from "@/components/lien/add-contact-modal";
+import { AddSubContactModal } from "@/components/lien/add-subcontact-modal";
 import { ActionMenu } from "@/components/lien/action-menu";
 
 interface Props {
@@ -166,7 +166,7 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
       </div>
 
       {modalOpen && (
-        <AddContactModal
+        <AddSubContactModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           title={editTarget ? "Edit Staff Member" : "Add Staff Member"}

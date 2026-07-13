@@ -7,7 +7,7 @@ import { casesService, type CreateCaseRequestDto } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import Field from "../field";
 import { useSessionContext } from "@/providers/session-provider";
-import { useCases } from "@/hooks/use-case-liens";
+import { useCases, useCreateCase } from "@/hooks/use-case-liens";
 
 interface MergeCaseFormProps {
   caseNumber: string;
@@ -183,7 +183,7 @@ export function MergeCaseForm({
               value={form.id}
               options={cases}
               placeholder="Select one case"
-              onChange={(v) => setSelectedId(v.toString())}
+              onChange={(v: string) => setSelectedId(v.toString())}
               type="select"
             />
           </div>

@@ -31,54 +31,56 @@ export interface BaseSelectCreateAction {
   icon?: React.ReactNode;
 }
 
-export interface BaseSelectProps<TOption extends BaseSelectOption = BaseSelectOption> {
-  /** Currently selected option's `value`, or null/undefined for none. */
-  value?: string | null;
-  /** Fires with the selected option's value and the full option object. */
-  onChange: (value: string, option: TOption) => void;
-  /** Full option list. In "infinite" mode this should be the accumulated pages so far. */
+interface BaseSelectCommonProps<
+  TOption extends BaseSelectOption = BaseSelectOption,
+> {
   options: TOption[];
 
-  /** "eager" renders every option up front; "infinite" fetches more as the list is scrolled. Default "eager". */
   loadingMode?: "eager" | "infinite";
-  /** True while the first page of options is loading. */
   isLoading?: boolean;
-  /** True while a subsequent page is loading (infinite mode only). */
   isFetchingMore?: boolean;
-  /** Whether another page is available (infinite mode only). */
   hasNextPage?: boolean;
-  /** Called when the scroll sentinel comes into view (infinite mode only). */
   onLoadMore?: () => void;
 
-  /** Controlled search text. Falls back to internal state when omitted. */
   search?: string;
-  /** Fires on every keystroke — wire this to a debounced server search. */
   onSearchChange?: (search: string) => void;
-  /** Filter `options` locally by label as well. Default true. Set false when `options` is already server-filtered. */
   filterLocally?: boolean;
-  /** Highlight the matched substring of each option's label. Default true. Ignored when `renderOption` is set. */
   highlightMatch?: boolean;
 
-  /**
-   * Fully customize each option row (e.g. show a secondary line like an
-   * email or address under the label). BaseSelect still overlays the
-   * selected-check indicator; `renderOption` only controls the row's
-   * own content.
-   */
-  renderOption?: (option: TOption, state: BaseSelectOptionState) => React.ReactNode;
+  renderOption?: (
+    option: TOption,
+    state: BaseSelectOptionState,
+  ) => React.ReactNode;
 
-  /** Renders a trailing "+ Add …" row that hands off to the caller's own modal/form. */
   createAction?: BaseSelectCreateAction;
 
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
   loadingText?: string;
+
   disabled?: boolean;
   error?: boolean;
   className?: string;
   contentClassName?: string;
 }
+
+type SingleSelectProps<TOption extends BaseSelectOption> = {
+  multiple?: false;
+  value?: string | null;
+  onChange: (value: string, option: TOption) => void;
+};
+
+type MultiSelectProps<TOption extends BaseSelectOption> = {
+  multiple: true;
+  value?: string[];
+  onChange: (values: string[], options: TOption[]) => void;
+};
+
+export type BaseSelectProps<
+  TOption extends BaseSelectOption = BaseSelectOption,
+> = BaseSelectCommonProps<TOption> &
+  (SingleSelectProps<TOption> | MultiSelectProps<TOption>);
 
 /** Wraps the first case-insensitive match of `query` in `label` with a `<mark>`. */
 function highlightLabel(label: string, query: string): React.ReactNode {
@@ -162,30 +164,31 @@ function highlightLabel(label: string, query: string): React.ReactNode {
  * />
  * ```
  */
-export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>({
-  value,
-  onChange,
-  options,
-  loadingMode = "eager",
-  isLoading = false,
-  isFetchingMore = false,
-  hasNextPage = false,
-  onLoadMore,
-  search: controlledSearch,
-  onSearchChange,
-  filterLocally = true,
-  highlightMatch = true,
-  renderOption,
-  createAction,
-  placeholder = "Select…",
-  searchPlaceholder = "Search...",
-  emptyText = "No options found.",
-  loadingText = "Loading...",
-  disabled,
-  error,
-  className,
-  contentClassName,
-}: BaseSelectProps<TOption>) {
+export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
+  props: BaseSelectProps<TOption>,
+) {
+  const {
+    options,
+    loadingMode = "eager",
+    isLoading = false,
+    isFetchingMore = false,
+    hasNextPage = false,
+    onLoadMore,
+    search: controlledSearch,
+    onSearchChange,
+    filterLocally = true,
+    highlightMatch = true,
+    renderOption,
+    createAction,
+    placeholder = "Select…",
+    searchPlaceholder = "Search...",
+    emptyText = "No options found.",
+    loadingText = "Loading...",
+    disabled,
+    error,
+    className,
+    contentClassName,
+  } = props;
   const [open, setOpen] = React.useState(false);
   const [internalSearch, setInternalSearch] = React.useState("");
   const [activeIndex, setActiveIndex] = React.useState(0);
@@ -194,12 +197,42 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
   const listRef = React.useRef<HTMLDivElement>(null);
   const sentinelRef = React.useRef<HTMLDivElement>(null);
 
-  const selected = options.find((o) => o.value === value);
+  const selectedValues = React.useMemo(
+    () =>
+      new Set(
+        props.multiple ? (props.value ?? []) : props.value ? [props.value] : [],
+      ),
+    [props.multiple, props.value],
+  );
+
+  const selected = React.useMemo(
+    () =>
+      props.multiple
+        ? options.filter((o) => selectedValues.has(o.value))
+        : options.find((o) => o.value === props.value),
+    [props.multiple, props.value, options, selectedValues],
+  );
+
+  const selectedOptions = React.useMemo(
+    () => options.filter((o) => selectedValues.has(o.value)),
+    [options, selectedValues],
+  );
+
+  const selectedOption = React.useMemo(
+    () => options.find((o) => o.value === props.value),
+    [options, props.value],
+  );
+
+  const selectedLabel = props.multiple
+    ? selectedOptions.map((o) => o.label).join(", ")
+    : selectedOption?.label;
 
   const filteredOptions = React.useMemo(() => {
     if (!filterLocally) return options;
+
     const query = search.trim().toLowerCase();
     if (!query) return options;
+
     return options.filter((o) => o.label.toLowerCase().includes(query));
   }, [options, search, filterLocally]);
 
@@ -208,26 +241,50 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
   }, [filteredOptions]);
 
   const handleSearchChange = (next: string) => {
-    if (controlledSearch === undefined) setInternalSearch(next);
+    if (controlledSearch === undefined) {
+      setInternalSearch(next);
+    }
+
     onSearchChange?.(next);
   };
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
+
     if (!next) {
       handleSearchChange("");
       setActiveIndex(0);
     }
   };
 
+  const isSelected = React.useCallback(
+    (option: TOption) => selectedValues.has(option.value),
+    [selectedValues],
+  );
+
   const selectOption = (option: TOption) => {
     if (option.disabled) return;
-    onChange(option.value, option);
+
+    if (props.multiple) {
+      const current = props.value ?? [];
+
+      const nextValues = current.includes(option.value)
+        ? current.filter((v) => v !== option.value)
+        : [...current, option.value];
+
+      const nextOptions = options.filter((o) => nextValues.includes(o.value));
+
+      props.onChange(nextValues, nextOptions);
+      return;
+    }
+
+    props.onChange(option.value, option);
     handleOpenChange(false);
   };
 
   React.useEffect(() => {
-    if (loadingMode !== "infinite" || !open || !hasNextPage || !onLoadMore) return;
+    if (loadingMode !== "infinite" || !open || !hasNextPage || !onLoadMore)
+      return;
     const target = sentinelRef.current;
     const root = listRef.current;
     if (!target || !root) return;
@@ -272,9 +329,9 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
             className,
           )}
         >
-          <span className={cn("truncate", !selected && "text-gray-400")}>
-            {selected ? selected.label : placeholder}
-          </span>
+          <span className={cn("truncate", !selectedLabel && "text-gray-400")}>
+            {selectedLabel || placeholder}
+          </span>{" "}
           <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
         </button>
       </PopoverPrimitive.Trigger>
@@ -300,7 +357,11 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
             />
           </div>
 
-          <div ref={listRef} role="listbox" className="max-h-64 overflow-auto p-1">
+          <div
+            ref={listRef}
+            role="listbox"
+            className="max-h-64 overflow-auto p-1"
+          >
             {showLoading ? (
               <div className="flex items-center gap-2 p-3 text-sm text-gray-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -313,7 +374,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
                     key={option.value}
                     type="button"
                     role="option"
-                    aria-selected={option.value === value}
+                    aria-selected={isSelected(option)}
                     disabled={option.disabled}
                     onClick={() => selectOption(option)}
                     onMouseEnter={() => setActiveIndex(index)}
@@ -325,16 +386,19 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
                   >
                     {renderOption ? (
                       renderOption(option, {
-                        selected: option.value === value,
+                        selected: isSelected(option),
                         active: index === activeIndex,
                         search,
                       })
                     ) : (
                       <span className="truncate">
-                        {highlightMatch ? highlightLabel(option.label, search) : option.label}
+                        {highlightMatch
+                          ? highlightLabel(option.label, search)
+                          : option.label}
                       </span>
                     )}
-                    {option.value === value && (
+
+                    {isSelected(option) && (
                       <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
                         <Check className="h-4 w-4 text-primary" />
                       </span>
@@ -342,7 +406,10 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
                   </button>
                 ))}
                 {loadingMode === "infinite" && hasNextPage && (
-                  <div ref={sentinelRef} className="flex items-center justify-center py-2">
+                  <div
+                    ref={sentinelRef}
+                    className="flex items-center justify-center py-2"
+                  >
                     {isFetchingMore && (
                       <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
                     )}

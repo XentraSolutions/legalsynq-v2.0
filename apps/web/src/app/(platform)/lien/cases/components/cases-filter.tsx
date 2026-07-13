@@ -78,7 +78,7 @@ export function CasesFilter({
             return { key: c.id, value: c.code, label: c.name };
           }) ?? [],
         lawFirm: lawfirmRes.value.items.map((c) => {
-          return { key: c.id, value: c.id, label: c.organization };
+          return { key: c.id, value: c.id, label: c.displayName };
         }),
         caseManagers: caseManagersRes.value.items.map((c) => {
           return { key: c.id, value: c.id, label: c.displayName };

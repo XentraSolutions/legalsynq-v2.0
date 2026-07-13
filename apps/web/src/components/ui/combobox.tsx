@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ComboboxOption {
@@ -21,6 +21,8 @@ interface ComboboxProps {
   error?: boolean;
   footer?: React.ReactNode;
   className?: string;
+  /** Shows a clear (X) button when a value is selected. */
+  clearable?: boolean;
   // Fired on every keystroke in the search input, in addition to the
   // built-in client-side filtering — lets a parent drive a server-side
   // search (e.g. debounced) while `options` is still filtered locally.
@@ -38,6 +40,7 @@ export function Combobox({
   error,
   footer,
   className,
+  clearable,
   onSearchChange,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
@@ -75,7 +78,18 @@ export function Combobox({
           <span className={cn("truncate", !selected && "text-gray-400")}>
             {selected ? selected.label : placeholder}
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+          <span className="flex items-center gap-1 shrink-0">
+            {clearable && selected && !disabled && (
+              <X
+                className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange("");
+                }}
+              />
+            )}
+            <ChevronDown className="h-4 w-4 opacity-50" />
+          </span>
         </button>
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>

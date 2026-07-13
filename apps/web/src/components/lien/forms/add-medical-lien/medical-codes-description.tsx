@@ -7,6 +7,8 @@ import { CreateMedicalCode } from "../add-medical-code";
 import { casesService } from "@/lib/cases";
 import { ConfirmDialog } from "../../modal";
 import { useLienStore } from "@/stores/lien-store";
+import { ApiError } from "@/lib/api-client";
+import { CreateMedicalCodeLiensDto } from "@/lib/cases/cases.types";
 
 export interface MedicalCodesDescriptionProps {
   caseId?: string;
@@ -42,8 +44,8 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-function formatPercent(value: number) {
-  return `${value.toFixed(2)}%`;
+function roundToTwo(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function parseNumber(value: string) {
@@ -83,7 +85,7 @@ export default function MedicalCodesDescription(
     try {
       const codes = await lookupService.getMedicalProcedureCodes();
       const list = codes.data.map((item, index) => ({
-        key: item.code + index,
+        key: item.code,
         value: item.code,
         label: item.description,
       }));
@@ -108,19 +110,22 @@ export default function MedicalCodesDescription(
   function validateForm() {
     const previousRows = Array.isArray(data?.codeRows) ? data.codeRows : [];
     const rowsChanged = JSON.stringify(rows) !== JSON.stringify(previousRows);
-    const valid = rowsChanged ? rows.length > 0 : false;
+    const valid = rowsChanged ? rows.length > 0 && !form.procedure : false;
     if (valid) onFormValid?.(valid, { ...form, codeRows: rows });
   }
-
-  const currentBilling = parseNumber(form.billingAmount);
+  const currentBilling = form.billingAmount;
   const currentPurchase = form.purchaseAmount;
 
-  const calculatedValue = useMemo(() => {
-    if (form.purchaseAmountType === "amount") {
-      return currentBilling > 0 ? (currentPurchase / currentBilling) * 100 : 0;
-    }
-    return currentBilling * (currentPurchase / 100);
-  }, [form.purchaseAmountType, form.purchaseAmount, form.billingAmount]);
+  const handleTypeChange = (type: "amount" | "percent") => {
+    setForm((prev: any) => ({
+      ...prev,
+      purchaseAmountType: type,
+      purchaseAmount:
+        type === "amount"
+          ? ((prev.purchaseAmount / 100) * prev.billingAmount).toFixed(2)
+          : roundToTwo((prev.purchaseAmount / prev.billingAmount) * 100),
+    }));
+  };
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -153,7 +158,7 @@ export default function MedicalCodesDescription(
       code: form.procedureCode,
       description: selectedOption?.label ?? "",
       medicareCost: parseNumber(form.medicareCost),
-      billingAmount: currentBilling,
+      billingAmount: parseNumber(currentBilling),
       purchaseAmount:
         form.purchaseAmountType === "amount"
           ? parseNumber(currentPurchase)
@@ -166,8 +171,55 @@ export default function MedicalCodesDescription(
       }
       return [...current, nextRow];
     });
+    setTimeout(() => {
+      createMedicalCodeLiens(
+        { ...form, id: editingId ?? form.id },
+        editingId != "",
+      );
+    }, 100);
     resetLine();
   }
+
+  const createMedicalCodeLiens = async (
+    payload: CreateMedicalCodeLiensDto,
+    isEditing: boolean,
+  ) => {
+    try {
+      const request: CreateMedicalCodeLiensDto = {
+        id: payload.id,
+        liensId: props.lienId ?? "",
+        code: form.procedureCode,
+        medicareCost: parseFloat(payload.medicareCost).toFixed(2),
+        billingAmount: parseFloat(payload.billingAmount).toFixed(2),
+        purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
+        payee: payload.payee,
+        outboundCheckNumber: payload.outboundCheckNumber,
+      };
+      isEditing
+        ? await casesService.updateMedicalCodeLiens(request)
+        : await casesService.createMedicalCodeLiens(request);
+      addToast({
+        type: "success",
+        title: `Medical Code ${isEditing ? "Updated" : "Created"}`,
+        description: `Medical Code has been ${isEditing ? "updated" : "created"}.`,
+      });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Create Failed",
+          description: err.message,
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Create Failed",
+          description: "An unexpected error occurred",
+        });
+      }
+    } finally {
+    }
+  };
 
   function handleEditRow(row: typeof INITIAL_ROW) {
     setEditingId(row.id);
@@ -218,7 +270,8 @@ export default function MedicalCodesDescription(
     }
   }
 
-  const isLineValid = currentBilling > 0 && currentPurchase > 0;
+  const isLineValid =
+    currentBilling > 0 && currentPurchase > 0 && !!form.procedureCode;
 
   return (
     <div className="container-fluid">
@@ -290,8 +343,8 @@ export default function MedicalCodesDescription(
               <div className="flex flex-wrap items-center justify-end gap-2 mb-4">
                 <span className="text-sm text-gray-500">
                   {form.purchaseAmountType === "amount"
-                    ? formatPercent(calculatedValue)
-                    : formatCurrency(calculatedValue)}
+                    ? `$${form.purchaseAmount}`
+                    : `${form.purchaseAmount}%`}
                 </span>
                 <label
                   className={`inline-flex w-10 items-center justify-center p-1 rounded text-sm text-gray-600 ${form.purchaseAmountType === "amount" ? "border-2 border-gray-300 bg-gray-100" : ""}`}
@@ -299,9 +352,10 @@ export default function MedicalCodesDescription(
                   <input
                     type="radio"
                     checked={form.purchaseAmountType === "amount"}
-                    onChange={() =>
-                      setForm({ ...form, purchaseAmountType: "amount" })
-                    }
+                    onChange={() => {
+                      setForm({ ...form, purchaseAmountType: "amount" });
+                      handleTypeChange("amount");
+                    }}
                     className="appearance-none peer"
                   />
                   <i className="ri-exchange-dollar-line radio-icon"></i>
@@ -312,9 +366,10 @@ export default function MedicalCodesDescription(
                   <input
                     type="radio"
                     checked={form.purchaseAmountType === "percent"}
-                    onChange={() =>
-                      setForm({ ...form, purchaseAmountType: "percent" })
-                    }
+                    onChange={() => {
+                      setForm({ ...form, purchaseAmountType: "percent" });
+                      handleTypeChange("percent");
+                    }}
                     className="appearance-none peer"
                   />
 

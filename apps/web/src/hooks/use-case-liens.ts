@@ -6,7 +6,12 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { LiensQuery, liensService, type LienListItem } from "@/lib/liens";
+import {
+  LiensQuery,
+  liensService,
+  PaginationMeta,
+  type LienListItem,
+} from "@/lib/liens";
 import {
   CasesQuery,
   casesService,
@@ -16,10 +21,8 @@ import {
 } from "@/lib/cases";
 import { settlementService } from "@/lib/settlement";
 import type { CasePayment } from "@/lib/settlement/settlement.types";
-import { lookupService } from "@/lib/lookup";
-import { PaginationMeta } from "@/lib/contacts";
-import { servicingApi } from "@/lib/servicing/servicing.api";
-import { servicingService } from "@/lib/servicing";
+import { contactsService } from "@/lib/contacts";
+import { PaginatedResult } from "@/lib/reports/reports.types";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -42,30 +45,27 @@ async function fetchCaseLiens(
   caseId: string,
   query: LiensQuery,
   queryClient: QueryClient,
-): Promise<CaseLienRow[]> {
-  const [liensResult, allLiensResult, payments, reductions, facilities] =
-    await Promise.all([
-      liensService.getLiens({ caseId, ...query }).catch(() => ({
-        items: [] as LienListItem[],
-        pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
-      })),
-      servicingService.allLiensList(caseId).catch(() => ({
-        items: [] as LienListItem[],
-        pagination: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 },
-      })),
-      // Reuse the cached payments query if already fetched; otherwise fetch now
-      queryClient.ensureQueryData({
-        queryKey: CASE_PAYMENTS_QUERY_KEY(caseId),
-        queryFn: () =>
-          settlementService
-            .getLienPaymentsByCase(caseId)
-            .catch(() => [] as CasePayment[]),
-      }),
-      settlementService.getLienReductionsByCase(caseId).catch(() => []),
-      lookupService.getMedicalFacility().catch(() => ({
+): Promise<{ items: CaseLienRow[]; pagination: PaginationMeta }> {
+  const [liensResult, payments, reductions, facilities] = await Promise.all([
+    liensService.getLiens({ caseId, ...query }).catch(() => ({
+      items: [] as LienListItem[],
+      pagination: { page: 1, pageSize: 20, totalCount: 0, totalPages: 0 },
+    })),
+    // Reuse the cached payments query if already fetched; otherwise fetch now
+    queryClient.ensureQueryData({
+      queryKey: CASE_PAYMENTS_QUERY_KEY(caseId),
+      queryFn: () =>
+        settlementService
+          .getLienPaymentsByCase(caseId)
+          .catch(() => [] as CasePayment[]),
+    }),
+    settlementService.getLienReductionsByCase(caseId).catch(() => []),
+    contactsService
+      .getContacts({ ContactType: "MedicalFacility" })
+      .catch(() => ({
         items: [],
       })),
-    ]);
+  ]);
 
   // Sum all payments per lienId (amount may come back as a string from the legacy endpoint)
   const paymentsByLien = new Map<string, number>();
@@ -88,41 +88,72 @@ async function fetchCaseLiens(
     }
   }
   function facilityName(facilityId: string | null) {
-    if (!facilityId) return "";
-    return facilities.items.find((f) => f.id == facilityId)?.name;
+    return facilities.items.find((f) => f.id == facilityId)?.displayName;
   }
-  // console.log(allLiensResult);
-  return liensResult.items.map((lien) => {
-    const ext = lien as LienListItem & CaseLienItemMetadata;
-    const paymentAmount =
-      paymentsByLien.get(lien.id) ?? ext.paymentAmount ?? null;
-    const reductionAmount =
-      latestReductionByLien.get(lien.id) ?? ext.reductionAmount ?? null;
-    const originalAmount = ext.originalAmount ?? 0;
-    return {
-      ...lien,
-      facility: ext.facility ?? "---",
-      facilityName: facilityName(ext.facilityId ?? "") ?? "---",
-      serviceDate: ext.initialServiceDate,
-      purchaseDateDate: ext.purchaseDate,
-      originalAmount,
-      reductionAmount,
-      purchaseAmount: ext.purchaseAmount ?? 0,
-      paymentAmount,
-      balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
-      closedAtUtc: ext.closedAtUtc ?? null,
-    };
-  });
+  return {
+    items: liensResult.items.map((lien) => {
+      const ext = lien as LienListItem & CaseLienItemMetadata;
+      const paymentAmount =
+        paymentsByLien.get(lien.id) ?? ext.paymentAmount ?? null;
+      const reductionAmount =
+        latestReductionByLien.get(lien.id) ?? ext.reductionAmount ?? null;
+      const originalAmount = ext.originalAmount ?? 0;
+      return {
+        ...lien,
+        facility: ext.facility ?? "---",
+        facilityName: facilityName(ext.facilityId ?? "") ?? "---",
+        serviceDate: ext.initialServiceDate,
+        purchaseDateDate: ext.purchaseDate,
+        originalAmount,
+        reductionAmount,
+        purchaseAmount: ext.purchaseAmount ?? 0,
+        paymentAmount,
+        balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
+        closedAtUtc: ext.closedAtUtc ?? null,
+      };
+    }),
+    pagination: {
+      ...liensResult.pagination,
+    },
+  };
 }
 
-export function useCaseLiens(caseId: string, query: LiensQuery) {
+export function useCaseLiens(
+  caseId: string,
+  query: LiensQuery,
+  activeTab: string = "liens",
+) {
+  console.log(query);
   const queryClient = useQueryClient();
-  return useQuery({
+
+  // Lien tab
+  const pagedQuery = useQuery({
     queryKey: ["case-liens", caseId],
     queryFn: () => fetchCaseLiens(caseId, query, queryClient),
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
   });
+
+  // Servicing tab
+  const allQuery = useQuery({
+    queryKey: ["case-liens-all", caseId],
+    queryFn: () =>
+      fetchCaseLiens(
+        caseId,
+        {
+          ...query,
+          page: 1,
+          pageSize:
+            (pagedQuery?.data?.pagination.totalCount ?? 0) > 20
+              ? pagedQuery?.data?.pagination?.totalCount
+              : 10,
+        },
+        queryClient,
+      ),
+    enabled:
+      activeTab === "all-liens" &&
+      (pagedQuery?.data?.pagination?.totalCount ?? 0) > 20,
+  });
+
+  return activeTab == "liens" ? pagedQuery : allQuery;
 }
 
 export function useCases(query: CasesQuery) {
@@ -130,6 +161,7 @@ export function useCases(query: CasesQuery) {
     queryKey: ["cases", query],
     queryFn: () => casesService.getCases(query),
     staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -139,7 +171,19 @@ export function useCreateCase() {
   return useMutation({
     mutationFn: (payload: CreateCaseRequestDto) =>
       casesService.createCase(payload),
-    onSuccess: (data) => {
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["cases"],
+      });
+    },
+  });
+}
+export function useDeleteCase() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => casesService.deleteCase(id),
+    onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["cases"],
       });
