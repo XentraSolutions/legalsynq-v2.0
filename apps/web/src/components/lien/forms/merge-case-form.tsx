@@ -153,14 +153,14 @@ export function MergeCaseForm({
               onClick={onClose}
               className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
             >
-              Close
+              Cancel
             </button>
             <button
               onClick={() => {
                 handleSubmit();
                 setSubmitting(true);
               }}
-              disabled={submitting}
+              disabled={submitting || selectedId == ""}
               className="text-sm px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-50"
             >
               {submitting ? "Merging..." : "Merge"}
