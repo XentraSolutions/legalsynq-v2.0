@@ -3,7 +3,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xenia.Application.Adapters;
 using Xenia.Application.Adapters.Interfaces;
+using Xenia.Application.Assistant;
 using Xenia.Infrastructure.Automation;
+using Xenia.Infrastructure.Assistant;
 using Xenia.Infrastructure.Observability;
 using Xenia.Application.Configuration;
 using Xenia.Application.Email;
@@ -27,12 +29,14 @@ namespace Xenia.Infrastructure;
 public static class DependencyInjection
 {
     public const string XeniaDbConnectionStringName = "XeniaDb";
+    private const string SkipDatabaseStartupConfigurationKey = "Xenia:SkipDatabaseStartup";
 
     public static IServiceCollection AddXeniaInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration)
     {
         // ── Database ─────────────────────────────────────────────────────────
+        var skipDatabaseStartup = configuration.GetValue<bool>(SkipDatabaseStartupConfigurationKey);
         var connectionString = configuration.GetConnectionString(XeniaDbConnectionStringName);
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -59,7 +63,8 @@ public static class DependencyInjection
         });
 
         // ── Migrations (run before any seeding) ──────────────────────────────
-        services.AddHostedService<XeniaMigrationsHostedService>();
+        if (!skipDatabaseStartup)
+            services.AddHostedService<XeniaMigrationsHostedService>();
 
         // ── Module registry ───────────────────────────────────────────────────
         services.AddScoped<EfModuleRegistry>();
@@ -71,6 +76,19 @@ public static class DependencyInjection
 
         // ── Configuration service ─────────────────────────────────────────────
         services.AddScoped<IXeniaConfigurationService, EfXeniaConfigurationService>();
+
+        // ── Xenia assistant ──────────────────────────────────────────────────
+        services.Configure<XeniaAssistantOptions>(
+            configuration.GetSection(XeniaAssistantOptions.SectionName));
+        services.AddScoped<IAssistantRuntimeSettingsService, AssistantRuntimeSettingsService>();
+        services.AddScoped<OpenAiAssistantProvider>();
+        services.AddSingleton<FakeAssistantProvider>();
+        services.AddScoped<IAssistantToolRegistry, StaticAssistantToolRegistry>();
+        services.AddScoped<IAssistantToolExecutor, StaticAssistantToolExecutor>();
+        services.AddScoped<IAssistantProvider, ConfiguredAssistantProvider>();
+        services.AddScoped<IAssistantService, EfAssistantService>();
+        if (!skipDatabaseStartup)
+            services.AddHostedService<AssistantModuleSeeder>();
 
         // ── Tenant context resolver ───────────────────────────────────────────
         services.AddScoped<ITenantContextResolver, JwtTenantContextResolver>();
@@ -91,12 +109,15 @@ public static class DependencyInjection
         services.AddScoped<IAiAdapter, UnavailableAiAdapter>();
 
         // ── Email module ──────────────────────────────────────────────────────
-        AddEmailModule(services, configuration);
+        AddEmailModule(services, configuration, skipDatabaseStartup);
 
         return services;
     }
 
-    private static void AddEmailModule(IServiceCollection services, IConfiguration configuration)
+    private static void AddEmailModule(
+        IServiceCollection services,
+        IConfiguration configuration,
+        bool skipDatabaseStartup)
     {
         // Secret reference service (development stub — replace in production)
         services.AddScoped<ISecretReferenceService, UnavailableSecretReferenceService>();
@@ -107,8 +128,8 @@ public static class DependencyInjection
         // Email settings service
         services.AddScoped<IEmailSettingsService, EfEmailSettingsService>();
 
-        // Connector registry (singleton — connectors are stateless)
-        services.AddSingleton<EmailSourceConnectorRegistry>(sp =>
+        // Connector registry is scoped because some connectors depend on scoped secrets/services.
+        services.AddScoped<EmailSourceConnectorRegistry>(sp =>
         {
             var registry = new EmailSourceConnectorRegistry();
             // Register all 5 connectors
@@ -124,18 +145,19 @@ public static class DependencyInjection
                 sp.GetRequiredService<ExchangeImapEmailConnector>());
             return registry;
         });
-        services.AddSingleton<IEmailConnectorRegistry>(
+        services.AddScoped<IEmailConnectorRegistry>(
             sp => sp.GetRequiredService<EmailSourceConnectorRegistry>());
 
-        // Connector implementations (transient — no state)
-        services.AddTransient<Microsoft365EmailConnector>();
-        services.AddTransient<GoogleEmailConnector>();
-        services.AddTransient<ImapEmailConnector>();
-        services.AddTransient<Pop3EmailConnector>();
-        services.AddTransient<ExchangeImapEmailConnector>();
+        // Connector implementations are scoped because some depend on scoped services.
+        services.AddScoped<Microsoft365EmailConnector>();
+        services.AddScoped<GoogleEmailConnector>();
+        services.AddScoped<ImapEmailConnector>();
+        services.AddScoped<Pop3EmailConnector>();
+        services.AddScoped<ExchangeImapEmailConnector>();
 
         // Email module seeder (runs after migrations)
-        services.AddHostedService<EmailModuleSeeder>();
+        if (!skipDatabaseStartup)
+            services.AddHostedService<EmailModuleSeeder>();
 
         // ── Email ingestion engine ─────────────────────────────────────────
         services.Configure<XeniaIngestionOptions>(
@@ -166,7 +188,8 @@ public static class DependencyInjection
         services.AddScoped<IEmailSyncService>(sp => sp.GetRequiredService<EmailSyncOrchestrator>());
 
         // Background worker (disabled by default via XeniaIngestionOptions.WorkerEnabled = false)
-        services.AddHostedService<EmailIngestionWorker>();
+        if (!skipDatabaseStartup)
+            services.AddHostedService<EmailIngestionWorker>();
 
         // ── Email operations & monitoring ──────────────────────────────────
         services.AddSingleton<IEmailHeaderSanitizer, EmailHeaderSanitizer>();
@@ -181,7 +204,8 @@ public static class DependencyInjection
         services.AddScoped<IRetentionService, EfRetentionService>();
 
         // Lock lease renewal background service
-        services.AddHostedService<LockLeaseRenewalService>();
+        if (!skipDatabaseStartup)
+            services.AddHostedService<LockLeaseRenewalService>();
 
         // Automation framework
         services.AddXeniaAutomation(configuration);

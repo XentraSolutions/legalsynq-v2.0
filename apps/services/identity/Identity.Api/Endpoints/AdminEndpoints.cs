@@ -1415,6 +1415,8 @@ public static class AdminEndpoints
         ["SynqFund"]      = "SYNQ_FUND",
         ["SynqLien"]      = "SYNQ_LIENS",
         ["CareConnect"]   = "SYNQ_CARECONNECT",
+        ["Xenia"]         = "SYNQ_AI",
+        ["SynqAI"]        = "SYNQ_AI",
         ["SynqInsights"]  = "SYNQ_INSIGHTS",
     };
 
@@ -1424,6 +1426,7 @@ public static class AdminEndpoints
         ["SYNQ_FUND"]        = "SynqFund",
         ["SYNQ_LIENS"]       = "SynqLien",
         ["SYNQ_CARECONNECT"] = "CareConnect",
+        ["SYNQ_AI"]          = "Xenia",
         ["SYNQ_INSIGHTS"]    = "SynqInsights",
     };
 

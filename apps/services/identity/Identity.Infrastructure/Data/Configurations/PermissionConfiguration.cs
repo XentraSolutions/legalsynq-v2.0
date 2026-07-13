@@ -45,6 +45,7 @@ public class PermissionConfiguration : IEntityTypeConfiguration<Permission>
         var cc  = SeedIds.ProductSynqCareConnect;
         var sl  = SeedIds.ProductSynqLiens;
         var sf  = SeedIds.ProductSynqFund;
+        var ai  = SeedIds.ProductSynqAI;
         var at  = SeedIds.SeededAt;
 
         builder.HasData(
@@ -102,7 +103,12 @@ public class PermissionConfiguration : IEntityTypeConfiguration<Permission>
             new { Id = SeedIds.PermTenantProductsAssign,    ProductId = SeedIds.ProductSynqPlatform, Code = "TENANT.products:assign",    Name = "Assign Product Access",     Description = (string?)"Assign or revoke product access for tenant users",      Category = (string?)"Products",     IsActive = true, CreatedAtUtc = at, UpdatedAtUtc = (DateTime?)null, CreatedBy = (Guid?)null, UpdatedBy = (Guid?)null },
             new { Id = SeedIds.PermTenantSettingsManage,    ProductId = SeedIds.ProductSynqPlatform, Code = "TENANT.settings:manage",    Name = "Manage Tenant Settings",    Description = (string?)"Update tenant configuration and preferences",           Category = (string?)"Settings",     IsActive = true, CreatedAtUtc = at, UpdatedAtUtc = (DateTime?)null, CreatedBy = (Guid?)null, UpdatedBy = (Guid?)null },
             new { Id = SeedIds.PermTenantAuditView,         ProductId = SeedIds.ProductSynqPlatform, Code = "TENANT.audit:view",         Name = "View Audit Logs",           Description = (string?)"View identity and access audit events for the tenant",  Category = (string?)"Audit",        IsActive = true, CreatedAtUtc = at, UpdatedAtUtc = (DateTime?)null, CreatedBy = (Guid?)null, UpdatedBy = (Guid?)null },
-            new { Id = SeedIds.PermTenantInvitationsManage, ProductId = SeedIds.ProductSynqPlatform, Code = "TENANT.invitations:manage", Name = "Manage User Invitations",   Description = (string?)"Send, resend, and revoke user invitations",             Category = (string?)"Invitations",  IsActive = true, CreatedAtUtc = at, UpdatedAtUtc = (DateTime?)null, CreatedBy = (Guid?)null, UpdatedBy = (Guid?)null }
+            new { Id = SeedIds.PermTenantInvitationsManage, ProductId = SeedIds.ProductSynqPlatform, Code = "TENANT.invitations:manage", Name = "Manage User Invitations",   Description = (string?)"Send, resend, and revoke user invitations",             Category = (string?)"Invitations",  IsActive = true, CreatedAtUtc = at, UpdatedAtUtc = (DateTime?)null, CreatedBy = (Guid?)null, UpdatedBy = (Guid?)null },
+
+            // Xenia / SynqAI
+            new { Id = SeedIds.PermXeniaAssistantUse,    ProductId = ai, Code = "SYNQ_AI.assistant:use",    Name = "Use Xenia Assistant",    Description = (string?)"Create and use Xenia assistant conversations",          Category = (string?)"Assistant", IsActive = true, CreatedAtUtc = at, UpdatedAtUtc = (DateTime?)null, CreatedBy = (Guid?)null, UpdatedBy = (Guid?)null },
+            new { Id = SeedIds.PermXeniaAssistantManage, ProductId = ai, Code = "SYNQ_AI.assistant:manage", Name = "Manage Xenia Assistant", Description = (string?)"Configure Xenia assistant providers, agents, and quotas", Category = (string?)"Assistant", IsActive = true, CreatedAtUtc = at, UpdatedAtUtc = (DateTime?)null, CreatedBy = (Guid?)null, UpdatedBy = (Guid?)null },
+            new { Id = SeedIds.PermXeniaUsageRead,       ProductId = ai, Code = "SYNQ_AI.usage:read",       Name = "View Xenia Usage",       Description = (string?)"View Xenia assistant usage and cost telemetry",          Category = (string?)"Usage",     IsActive = true, CreatedAtUtc = at, UpdatedAtUtc = (DateTime?)null, CreatedBy = (Guid?)null, UpdatedBy = (Guid?)null }
         );
     }
 }

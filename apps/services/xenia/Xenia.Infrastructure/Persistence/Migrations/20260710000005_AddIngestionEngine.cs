@@ -37,7 +37,9 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                     email_source_id         = table.Column<string>(type: "char(36)", nullable: false),
                     provider_type           = table.Column<int>(nullable: false),
                     provider_message_id     = table.Column<string>(maxLength: 1024, nullable: false),
+                    provider_message_id_hash= table.Column<string>(type: "char(64)", nullable: false, computedColumnSql: "sha2(`provider_message_id`, 256)", stored: true),
                     internet_message_id     = table.Column<string>(maxLength: 998, nullable: true),
+                    internet_message_id_hash= table.Column<string>(type: "char(64)", nullable: true, computedColumnSql: "case when `internet_message_id` is null then null else sha2(`internet_message_id`, 256) end", stored: true),
                     thread_id               = table.Column<string>(maxLength: 500, nullable: true),
                     conversation_id         = table.Column<string>(maxLength: 500, nullable: true),
                     subject                 = table.Column<string>(maxLength: 998, nullable: true),
@@ -73,13 +75,13 @@ namespace Xenia.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "ux_email_messages_provider_unique",
                 table: "xn_email_messages",
-                columns: new[] { "tenant_id", "email_source_id", "provider_type", "provider_message_id" },
+                columns: new[] { "tenant_id", "email_source_id", "provider_type", "provider_message_id_hash" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "ix_email_messages_internet_message_id",
                 table: "xn_email_messages",
-                columns: new[] { "tenant_id", "internet_message_id" });
+                columns: new[] { "tenant_id", "internet_message_id_hash" });
 
             migrationBuilder.CreateIndex("ix_email_messages_tenant",  "xn_email_messages", "tenant_id");
             migrationBuilder.CreateIndex("ix_email_messages_source",  "xn_email_messages", new[] { "tenant_id", "email_source_id" });
@@ -116,6 +118,7 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                     tenant_id               = table.Column<string>(type: "char(36)", nullable: false),
                     email_message_id        = table.Column<string>(type: "char(36)", nullable: false),
                     provider_attachment_id  = table.Column<string>(maxLength: 1024, nullable: true),
+                    provider_attachment_id_hash = table.Column<string>(type: "char(64)", nullable: true, computedColumnSql: "case when `provider_attachment_id` is null then null else sha2(`provider_attachment_id`, 256) end", stored: true),
                     document_reference_id   = table.Column<string>(type: "char(36)", nullable: true),
                     file_name               = table.Column<string>(maxLength: 500, nullable: false),
                     mime_type               = table.Column<string>(maxLength: 255, nullable: true),
@@ -132,7 +135,7 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                 },
                 constraints: table => { table.PrimaryKey("PK_xn_email_attachment_references", x => x.id); });
 
-            migrationBuilder.CreateIndex("ix_email_attachments_provider_id", "xn_email_attachment_references", new[] { "tenant_id", "email_message_id", "provider_attachment_id" });
+            migrationBuilder.CreateIndex("ix_email_attachments_provider_id", "xn_email_attachment_references", new[] { "tenant_id", "email_message_id", "provider_attachment_id_hash" });
             migrationBuilder.CreateIndex("ix_email_attachments_message", "xn_email_attachment_references", "email_message_id");
             migrationBuilder.CreateIndex("ix_email_attachments_dispatch_status", "xn_email_attachment_references", new[] { "tenant_id", "dispatch_status" });
 

@@ -237,6 +237,9 @@ const PRODUCT_CODE_ALIASES: Record<string, ProductCode> = {
   synqlien: 'SynqLien',
   synq_liens: 'SynqLien',
   synqliens: 'SynqLien',
+  xenia: 'Xenia',
+  synqai: 'Xenia',
+  synq_ai: 'Xenia',
   synqbill: 'SynqBill',
   synq_bill: 'SynqBill',
   synqrx: 'SynqRx',
@@ -277,7 +280,7 @@ export function mapTenantSummary(raw: unknown): TenantSummary {
 function mapEntitlement(raw: unknown): ProductEntitlementSummary {
   const r = asObj(raw);
   const PRODUCT_CODES: readonly ProductCode[] = [
-    'SynqFund', 'SynqLien', 'SynqBill', 'SynqRx', 'SynqPayout', 'CareConnect',
+    'SynqFund', 'SynqLien', 'SynqBill', 'SynqRx', 'SynqPayout', 'CareConnect', 'Xenia', 'SynqAI',
   ];
   const ENTITLEMENT_STATUSES: readonly EntitlementStatus[] = ['Active', 'Disabled'];
   const enabled = bool(r, 'enabled', 'enabled', false);

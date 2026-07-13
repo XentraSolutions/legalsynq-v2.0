@@ -25,6 +25,11 @@ internal sealed class EmailAttachmentReferenceConfiguration : IEntityTypeConfigu
         builder.Property(e => e.ProviderAttachmentId)
             .HasColumnName("provider_attachment_id").HasMaxLength(EmailAttachmentReference.ProviderAttachmentIdMaxLength);
 
+        builder.Property<string?>("ProviderAttachmentIdHash")
+            .HasColumnName("provider_attachment_id_hash")
+            .HasColumnType("char(64)")
+            .HasComputedColumnSql("case when `provider_attachment_id` is null then null else sha2(`provider_attachment_id`, 256) end", stored: true);
+
         builder.Property(e => e.DocumentReferenceId)
             .HasColumnName("document_reference_id").HasColumnType("char(36)");
 
@@ -66,7 +71,13 @@ internal sealed class EmailAttachmentReferenceConfiguration : IEntityTypeConfigu
             .HasColumnName("updated_at_utc").HasColumnType("datetime(6)").IsRequired();
 
         // Partial unique: provider attachment ID per message (if not null)
-        builder.HasIndex(e => new { e.TenantId, e.EmailMessageId, e.ProviderAttachmentId })
+        builder.HasIndex(
+                new[]
+                {
+                    nameof(EmailAttachmentReference.TenantId),
+                    nameof(EmailAttachmentReference.EmailMessageId),
+                    "ProviderAttachmentIdHash",
+                })
             .HasDatabaseName("ix_email_attachments_provider_id");
 
         builder.HasIndex(e => e.EmailMessageId).HasDatabaseName("ix_email_attachments_message");

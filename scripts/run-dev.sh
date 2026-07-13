@@ -7,6 +7,25 @@ NODE="$(command -v node)"
 
 echo "====== LegalSynq dev startup ======"
 
+require_free_port() {
+  local port="$1"
+  local label="$2"
+  local pids
+  pids="$(lsof -ti tcp:"$port" 2>/dev/null || true)"
+  if [ -n "$pids" ]; then
+    echo "ERROR: Port :$port is already in use before startup ($label)." >&2
+    echo "PID(s): $pids" >&2
+    echo "Run 'bash scripts/stop-dev.sh' to clear leftover LegalSynq dev processes," >&2
+    echo "or stop the conflicting process manually and retry." >&2
+    exit 1
+  fi
+}
+
+require_free_port 3050 "web internal Next.js"
+require_free_port 5000 "web dev proxy"
+require_free_port 5004 "control-center Next.js"
+require_free_port 5020 "artifacts API"
+
 # Start Next.js on an internal port; the proxy on :5000 gates requests
 # until the cold-compile race condition is resolved (HTTP 200 on /login).
 NEXT_INTERNAL_PORT=3050
@@ -33,9 +52,6 @@ if [ -d "$PNPM_NEXT16" ]; then
   ln -s "../next/dist/bin/next" "$WEB_NM/.bin/next"
   echo "[web] Pinned node_modules/next → 16.2.6"
 fi
-# Clear stale .next build artefacts so Next.js 16 dev mode starts fresh
-# and does not fail looking for required-server-files.json from a prior build.
-rm -rf "$ROOT/apps/web/.next"
 (cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 \
   CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
   exec "$NODE" "$WEB_NEXT_BIN" dev -p "$NEXT_INTERNAL_PORT") &
@@ -66,8 +82,6 @@ if [ -z "$CC_NEXT_BIN" ] || [ ! -f "$CC_NEXT_BIN" ]; then
   CC_NEXT_BIN="$ROOT/node_modules/next/dist/bin/next"
 fi
 echo "[control-center] Using next binary: $CC_NEXT_BIN"
-# Clear stale .next artefacts for control-center as well.
-rm -rf "$ROOT/apps/control-center/.next"
 (cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 MONITORING_SOURCE=service exec "$NODE" "$CC_NEXT_BIN" dev -p 5004) &
 PID_CC=$!
 

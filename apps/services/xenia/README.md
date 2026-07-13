@@ -76,6 +76,9 @@ Configuration resolves in ascending precedence:
 4. **TenantModule** — highest precedence, tenant + module specific
 
 Secrets are stored as references (not plaintext). The `/configuration` endpoint never returns secret values.
+Assistant provider settings use the same store for non-secret runtime overrides. Control-center `/xenia/settings`
+persists the OpenAI provider selection, model key, reasoning effort, text verbosity, output token cap, base URL,
+and timeout without editing `appsettings`.
 
 ---
 
@@ -115,6 +118,8 @@ Production: Replace with a durable broker adapter (SQS, RabbitMQ).
 | GET | `/modules/tenant` | `xenia.read` | Tenant module list |
 | GET | `/adapters` | `xenia.read` | Adapter status |
 | GET | `/configuration` | `xenia.read` | Non-secret config |
+| GET | `/admin/settings` | `xenia.assistant.manage` | Effective assistant runtime settings |
+| PUT | `/admin/settings` | `xenia.assistant.manage` | Update global assistant runtime settings |
 
 ---
 
@@ -141,6 +146,11 @@ Connection string: `ConnectionStrings__XeniaDb`
 export ConnectionStrings__XeniaDb="Server=127.0.0.1;Port=3306;Database=xenia_db;User=xenia;Password=xenia;"
 export Jwt__SigningKey="dev-only-signing-key-minimum-32-chars-long!"
 export ASPNETCORE_ENVIRONMENT="Development"
+export XeniaAssistant__Provider="Fake"
+export XeniaAssistant__ModelKey="xenia-fake"
+export XeniaAssistant__OpenAI__ReasoningEffort="medium"
+export XeniaAssistant__OpenAI__TextVerbosity="medium"
+export XeniaAssistant__OpenAI__MaxOutputTokens="4096"
 
 # Run service
 cd apps/services/xenia/Xenia.Api
@@ -180,8 +190,22 @@ Xenia defines its own permission constants:
 | `xenia.modules.manage` | Enable/disable modules |
 | `xenia.configuration.read` | Read non-secret configuration |
 | `xenia.configuration.manage` | Set configuration values |
+| `xenia.assistant.use` | Use the Xenia assistant |
+| `xenia.assistant.manage` | Manage assistant runtime settings |
 
 These must be provisioned in the Identity service permission catalog for production use.
+
+---
+
+## Assistant Provider Configuration
+
+Use control-center `/xenia/settings` for OpenAI assistant runtime configuration. The UI writes global overrides into
+the Xenia configuration store for non-secret runtime fields only. `appsettings` provides the OpenAI API key and
+safe fallback defaults for local bootstrap and fake-provider startup. Current persisted OpenAI runtime fields include
+provider, model key, reasoning effort, text verbosity, max output tokens, base URL, and timeout. Set the actual key
+in `XeniaAssistant:OpenAI:ApiKey` in the Xenia service appsettings; it is not persisted from control-center. During
+local `dotnet run`, Xenia resolves those appsettings from the source `Xenia.Api` project directory so changes are not
+stuck behind stale `bin/...` copies.
 
 ---
 

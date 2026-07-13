@@ -1,0 +1,413 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { xeniaClient } from '@/lib/xenia/client';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { normalizeStreamEvent, type XeniaStreamEvent } from '@/lib/xenia/stream';
+import type {
+  XeniaAgent,
+  XeniaBootstrap,
+  XeniaConversation,
+  XeniaConversationSummary,
+  XeniaMessage,
+} from '@/lib/xenia/types';
+
+type AssistantMode = 'page' | 'drawer';
+
+interface XeniaAssistantProps {
+  mode?: AssistantMode;
+  initialContext?: Record<string, unknown>;
+}
+
+export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistantProps) {
+  const pathname = usePathname();
+  const [bootstrap, setBootstrap] = useState<XeniaBootstrap | null>(null);
+  const [conversations, setConversations] = useState<XeniaConversationSummary[]>([]);
+  const [activeConversation, setActiveConversation] = useState<XeniaConversation | null>(null);
+  const [selectedAgentKey, setSelectedAgentKey] = useState('generic');
+  const [input, setInput] = useState('');
+  const [draftAssistant, setDraftAssistant] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  const contextJson = useMemo(() => JSON.stringify({
+    path: pathname,
+    source: mode,
+    ...(initialContext ?? {}),
+  }), [initialContext, mode, pathname]);
+
+  const agents = useMemo(() => {
+    const items = bootstrap?.agents ?? [];
+    return [...items].sort((a, b) => {
+      if (a.agentKey === 'generic') return -1;
+      if (b.agentKey === 'generic') return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [bootstrap?.agents]);
+
+  const agentSelectionLocked = isStreaming || (mode === 'page' && !!activeConversation);
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [boot, list] = await Promise.all([
+          xeniaClient.bootstrap(),
+          xeniaClient.conversations(),
+        ]);
+        if (!alive) return;
+        setBootstrap(boot);
+        setConversations(list);
+        setSelectedAgentKey(boot.preferences.defaultAgentKey || boot.agents[0]?.agentKey || 'generic');
+        if (list[0]) {
+          const conversation = await xeniaClient.getConversation(list[0].id);
+          if (alive) {
+            setActiveConversation(conversation);
+            setSelectedAgentKey(conversation.agentKey);
+          }
+        }
+      } catch (err) {
+        if (alive) setError(err instanceof Error ? err.message : 'Unable to load Xenia.');
+      } finally {
+        if (alive) setIsLoading(false);
+      }
+    }
+    load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'end' });
+  }, [activeConversation?.messages, draftAssistant]);
+
+  const selectedAgent = agents.find(agent => agent.agentKey === selectedAgentKey) ?? agents[0];
+
+  async function startConversation(agentKey = selectedAgentKey): Promise<XeniaConversation> {
+    const conversation = await xeniaClient.createConversation(agentKey, mode, contextJson);
+    setActiveConversation(conversation);
+    setConversations(prev => [
+      {
+        id: conversation.id,
+        agentKey: conversation.agentKey,
+        agentVersion: conversation.agentVersion,
+        title: conversation.title,
+        source: conversation.source,
+        status: conversation.status,
+        lastMessageAtUtc: conversation.lastMessageAtUtc,
+        createdAtUtc: conversation.createdAtUtc,
+        updatedAtUtc: conversation.updatedAtUtc,
+      },
+      ...prev.filter(item => item.id !== conversation.id),
+    ]);
+    return conversation;
+  }
+
+  async function selectConversation(id: string) {
+    if (isStreaming) return;
+    setError(null);
+    const conversation = await xeniaClient.getConversation(id);
+    setActiveConversation(conversation);
+    setSelectedAgentKey(conversation.agentKey);
+  }
+
+  async function archiveConversation(id: string) {
+    if (isStreaming) return;
+    await xeniaClient.archiveConversation(id);
+    setConversations(prev => prev.filter(item => item.id !== id));
+    if (activeConversation?.id === id) setActiveConversation(null);
+  }
+
+  async function submit() {
+    const content = input.trim();
+    if (!content || isStreaming) return;
+
+    setInput('');
+    setDraftAssistant('');
+    setError(null);
+    setIsStreaming(true);
+
+    try {
+      const conversation = activeConversation ?? await startConversation(selectedAgentKey);
+      await streamMessage(conversation.id, content);
+      const refreshed = await xeniaClient.getConversation(conversation.id);
+      setActiveConversation(refreshed);
+      setConversations(prev => [
+        {
+          id: refreshed.id,
+          agentKey: refreshed.agentKey,
+          agentVersion: refreshed.agentVersion,
+          title: refreshed.title,
+          source: refreshed.source,
+          status: refreshed.status,
+          lastMessageAtUtc: refreshed.lastMessageAtUtc,
+          createdAtUtc: refreshed.createdAtUtc,
+          updatedAtUtc: refreshed.updatedAtUtc,
+        },
+        ...prev.filter(item => item.id !== refreshed.id),
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Xenia could not send the message.');
+    } finally {
+      setIsStreaming(false);
+      setDraftAssistant('');
+    }
+  }
+
+  async function streamMessage(conversationId: string, content: string) {
+    const res = await fetch(`/api/xenia/assistant/conversations/${conversationId}/messages:stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ content, contextJson }),
+    });
+
+    if (!res.ok || !res.body) {
+      throw new Error(`Xenia stream failed (${res.status})`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop() ?? '';
+
+      for (const raw of events) {
+        const dataLine = raw.split('\n').find(line => line.startsWith('data:'));
+        if (!dataLine) continue;
+        const evt = normalizeStreamEvent(JSON.parse(dataLine.slice('data:'.length).trim()));
+        if (!evt) continue;
+        applyStreamEvent(evt);
+      }
+    }
+  }
+
+  function applyStreamEvent(evt: XeniaStreamEvent) {
+    if (evt.type === 'delta' && evt.delta) {
+      setDraftAssistant(prev => prev + evt.delta);
+      return;
+    }
+
+    if (evt.type === 'user_message' && evt.message) {
+      setActiveConversation(prev => prev
+        ? { ...prev, messages: [...prev.messages, evt.message as XeniaMessage] }
+        : prev);
+      return;
+    }
+
+    if (evt.type === 'message' && evt.message) {
+      setActiveConversation(prev => prev
+        ? { ...prev, messages: [...prev.messages, evt.message as XeniaMessage] }
+        : prev);
+      setDraftAssistant('');
+      return;
+    }
+
+    if (evt.type === 'error') {
+      setError(evt.error ?? 'Xenia provider failed.');
+    }
+  }
+
+  return (
+    <div className={mode === 'drawer' ? 'flex h-full min-h-0 flex-col bg-white' : 'flex min-h-[calc(100vh-7rem)] overflow-hidden rounded-lg border border-gray-200 bg-white'}>
+      <aside className={mode === 'drawer' ? 'border-b border-gray-200 p-3' : 'hidden w-72 shrink-0 border-r border-gray-200 bg-gray-50 p-3 md:block'}>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Xenia</p>
+            <p className="text-xs text-gray-500">{selectedAgent?.name ?? 'Assistant'}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveConversation(null)}
+            disabled={isStreaming}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50"
+            title="New conversation"
+          >
+            <i className="ri-add-line text-base" />
+          </button>
+        </div>
+
+        <label className="mt-3 block text-xs font-medium text-gray-500">
+          Agent
+          <Select
+            value={selectedAgentKey}
+            onValueChange={(value) => {
+              setSelectedAgentKey(value);
+              if (mode === 'drawer') setActiveConversation(null);
+            }}
+            disabled={agentSelectionLocked}
+          >
+            <SelectTrigger className="mt-1.5 h-11 text-sm font-medium text-gray-900 shadow-sm">
+              <SelectValue placeholder="Select an agent" />
+            </SelectTrigger>
+            <SelectContent className="z-[90]">
+              {agents.map(agent => (
+                <SelectItem key={agent.agentKey} value={agent.agentKey}>
+                  {agent.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+
+        {mode === 'page' && (
+          <div className="mt-4 space-y-1">
+            {conversations.map(conversation => (
+              <div
+                key={conversation.id}
+                className={[
+                  'group flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm',
+                  activeConversation?.id === conversation.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-white',
+                ].join(' ')}
+              >
+                <button
+                  type="button"
+                  onClick={() => selectConversation(conversation.id)}
+                  className="min-w-0 flex-1 truncate text-left"
+                >
+                  {conversation.title}
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    archiveConversation(conversation.id);
+                  }}
+                  className="hidden h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 group-hover:inline-flex"
+                  title="Archive"
+                >
+                  <i className="ri-archive-line text-sm" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </aside>
+
+      <main className="flex min-h-0 flex-1 flex-col">
+        <div className="border-b border-gray-100 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-semibold text-gray-900">
+                {activeConversation?.title ?? 'New conversation'}
+              </h1>
+              <p className="truncate text-xs text-gray-500">
+                {selectedAgent?.description ?? 'Tenant-aware AI assistant'}
+              </p>
+            </div>
+            {bootstrap?.usage.monthlyRequestLimit != null && (
+              <span className="shrink-0 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600">
+                {bootstrap.usage.requestsThisMonth}/{bootstrap.usage.monthlyRequestLimit}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          {isLoading ? (
+            <div className="space-y-3">
+              <div className="h-16 animate-pulse rounded-lg bg-gray-100" />
+              <div className="h-24 animate-pulse rounded-lg bg-gray-100" />
+            </div>
+          ) : (
+            <div className="mx-auto max-w-3xl space-y-4">
+              {(activeConversation?.messages.length ?? 0) === 0 && !draftAssistant && (
+                <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
+                  <p className="text-sm font-medium text-gray-700">Ask Xenia about your current work.</p>
+                  <p className="mt-1 text-xs text-gray-500">Xenia only uses tenant context and product data you are authorized to access.</p>
+                </div>
+              )}
+
+              {activeConversation?.messages.map(message => (
+                <MessageBubble key={message.id} message={message} />
+              ))}
+
+              {draftAssistant && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm">
+                    {draftAssistant}
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+              <div ref={endRef} />
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-gray-100 p-3">
+          <div className="mx-auto flex max-w-3xl items-end gap-2">
+            <textarea
+              value={input}
+              onChange={event => setInput(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+              rows={2}
+              placeholder="Message Xenia"
+              disabled={isLoading || isStreaming}
+              className="min-h-11 flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-orange-500 disabled:bg-gray-50"
+            />
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!input.trim() || isLoading || isStreaming}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#0f1928] text-white hover:bg-[#16243a] disabled:cursor-not-allowed disabled:opacity-50"
+              title="Send"
+            >
+              {isStreaming ? <i className="ri-loader-4-line animate-spin text-base" /> : <i className="ri-send-plane-2-line text-base" />}
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function MessageBubble({ message }: { message: XeniaMessage }) {
+  const isUser = message.role === 'user';
+  return (
+    <div className={isUser ? 'flex justify-end' : 'flex justify-start'}>
+      <div className={[
+        'max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-6',
+        isUser ? 'bg-[#0f1928] text-white' : 'border border-gray-200 bg-white text-gray-800 shadow-sm',
+      ].join(' ')}>
+        {message.content}
+        {message.citations.length > 0 && (
+          <div className="mt-2 space-y-1 border-t border-gray-100 pt-2">
+            {message.citations.map(citation => (
+              <div key={citation.id} className="text-xs text-gray-500">
+                {citation.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

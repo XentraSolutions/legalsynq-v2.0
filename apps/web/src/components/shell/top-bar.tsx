@@ -10,6 +10,8 @@ import { getClientPortalConfig, type PortalConfig } from "@/lib/portal";
 import { isEligibleForCareConnectCommonPortal } from "@/lib/careconnect-common-portal-access";
 import { useTenantBranding } from "@/providers/tenant-branding-provider";
 import { NotificationBell } from "@/components/shell/notification-bell";
+import { XeniaAssistant } from "@/components/xenia/xenia-assistant";
+import type { PlatformSession } from "@/types";
 
 // ── All platform products shown in the app switcher ──────────────────────────
 
@@ -36,9 +38,9 @@ const ALL_PRODUCTS = [
     bg: "#f5f3ff",
   },
   {
-    id: "ai",
-    label: "Synq AI",
-    href: "/ai/dashboard",
+    id: "xenia",
+    label: "Xenia",
+    href: "/xenia",
     iconSrc: "/product-icons/synqai.png",
     bg: "#fffbeb",
   },
@@ -106,6 +108,8 @@ export function TopBar() {
       <div className="flex-1" />
 
       {/* ── Notification bell ──────────────────────────────────────────── */}
+      {session && hasProductAccess(session, "xenia") && <XeniaAssistantDrawer />}
+
       <NotificationBell />
 
       {/* ── User menu ────────────────────────────────────────────────────────── */}
@@ -122,6 +126,88 @@ export function TopBar() {
         <div className="w-8 h-8 rounded-full bg-white/15 animate-pulse shrink-0" />
       )}
     </header>
+  );
+}
+
+function hasProductAccess(session: PlatformSession, productId: string): boolean {
+  const productList = session.userProducts?.length
+    ? session.userProducts
+    : (session.enabledProducts ?? []);
+  return productList
+    .map((code) => PRODUCT_CODE_TO_NAV_KEY[code])
+    .filter(Boolean)
+    .includes(productId);
+}
+
+function XeniaAssistantDrawer() {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title="Open Xenia"
+        className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md bg-white px-3 text-[#0f1928] shadow-sm transition-colors hover:bg-slate-50"
+      >
+        <img
+          src="/product-icons/synqai.png"
+          alt=""
+          aria-hidden
+          className="h-4 w-4 object-contain"
+        />
+        <span className="text-sm font-medium leading-none">Xenia</span>
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-[80] flex justify-end bg-black/30">
+          <button
+            type="button"
+            aria-label="Close Xenia"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <section className="relative flex h-full w-full max-w-[460px] flex-col bg-white shadow-2xl">
+            <div className="flex h-14 items-center justify-between border-b border-gray-200 px-4">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50">
+                  <img
+                    src="/product-icons/synqai.png"
+                    alt=""
+                    aria-hidden
+                    className="h-4 w-4 object-contain"
+                  />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Xenia</p>
+                  <p className="text-xs text-gray-500">Assistant drawer</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                title="Close"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+              >
+                <i className="ri-close-line text-lg" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <XeniaAssistant mode="drawer" />
+            </div>
+          </section>
+        </div>
+      )}
+    </>
   );
 }
 

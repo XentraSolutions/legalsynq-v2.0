@@ -1,10 +1,8 @@
-import { requireOrg } from '@/lib/auth-guards';
-import { BlankPage } from '@/components/ui/blank-page';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 
 export default async function Page() {
-  await requireOrg();
-  return <BlankPage />;
+  redirect('/xenia');
 }

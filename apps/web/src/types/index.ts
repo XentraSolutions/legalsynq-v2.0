@@ -40,6 +40,9 @@ export const ProductRole = {
   SynqLienSeller: 'SYNQ_LIENS:SYNQLIEN_SELLER',
   SynqLienBuyer:  'SYNQ_LIENS:SYNQLIEN_BUYER',
   SynqLienHolder: 'SYNQ_LIENS:SYNQLIEN_HOLDER',
+  // Xenia (product code: SYNQ_AI)
+  XeniaUser:  'SYNQ_AI:XENIA_USER',
+  XeniaAdmin: 'SYNQ_AI:XENIA_ADMIN',
 } as const;
 export type ProductRoleValue = typeof ProductRole[keyof typeof ProductRole];
 

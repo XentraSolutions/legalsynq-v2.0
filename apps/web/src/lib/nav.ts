@@ -89,8 +89,8 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     },
   ],
 
-  ai: [
-    { items: [{ href: '/ai/dashboard', label: 'Dashboard', icon: 'ri-dashboard-line' }] },
+  xenia: [
+    { items: [{ href: '/xenia', label: 'Assistant', icon: 'ri-robot-line' }] },
   ],
 
   insights: [
@@ -110,7 +110,7 @@ export const PRODUCT_META: Record<string, { label: string; icon: string; color: 
   careconnect: { label: 'Synq CareConnect', icon: 'ri-shield-cross-line',  color: '#2563eb', iconSrc: '/product-icons/synqconnect.png' },
   fund:        { label: 'Synq Funds',        icon: 'ri-bank-line',           color: '#16a34a', iconSrc: '/product-icons/synqfund.png'    },
   lien:        { label: 'Synq Liens',        icon: 'ri-stack-line',          color: '#7c3aed', iconSrc: '/product-icons/synqlien.png'    },
-  ai:          { label: 'Synq AI',           icon: 'ri-robot-line',          color: '#d97706', iconSrc: '/product-icons/synqai.png'      },
+  xenia:      { label: 'Xenia',              icon: 'ri-robot-line',          color: '#d97706', iconSrc: '/product-icons/synqai.png'      },
   insights:    { label: 'Synq Insights',     icon: 'ri-bar-chart-2-line',    color: '#0891b2', iconSrc: '/product-icons/synqinsight.png' },
 };
 
@@ -124,7 +124,9 @@ export const PRODUCT_CODE_TO_NAV_KEY: Record<string, string> = {
   CareConnect:  'careconnect',
   SynqFund:     'fund',
   SynqLien:     'lien',
-  SynqAI:       'ai',
+  Xenia:        'xenia',
+  XENIA:        'xenia',
+  SynqAI:       'xenia',
   SynqInsights: 'insights',
   SynqBill:     'bill',
   SynqRx:       'rx',
@@ -201,7 +203,8 @@ export function inferProductFromPath(pathname: string): string | null {
   if (pathname.startsWith('/careconnect')) return 'careconnect';
   if (pathname.startsWith('/fund'))        return 'fund';
   if (pathname.startsWith('/lien'))        return 'lien';
-  if (pathname.startsWith('/ai'))          return 'ai';
+  if (pathname.startsWith('/xenia'))       return 'xenia';
+  if (pathname.startsWith('/ai'))          return 'xenia';
   if (pathname.startsWith('/insights'))    return 'insights';
   return null;
 }

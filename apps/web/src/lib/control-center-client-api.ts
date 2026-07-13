@@ -27,7 +27,7 @@ export const controlCenterClientApi = {
   products: {
     setTenantEntitlement: (tenantId: string, productCode: string, enabled: boolean) =>
       apiClient.post<void>(
-        `/identity/api/admin/tenants/${tenantId}/entitlements/${productCode}`,
+        `/tenant/api/v1/admin/tenants/${tenantId}/entitlements/${productCode}`,
         { enabled },
       ),
   },

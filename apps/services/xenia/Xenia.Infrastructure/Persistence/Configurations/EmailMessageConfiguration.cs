@@ -29,8 +29,18 @@ internal sealed class EmailMessageConfiguration : IEntityTypeConfiguration<Email
         builder.Property(e => e.ProviderMessageId)
             .HasColumnName("provider_message_id").HasMaxLength(EmailMessage.ProviderMessageIdMaxLength).IsRequired();
 
+        builder.Property<string>("ProviderMessageIdHash")
+            .HasColumnName("provider_message_id_hash")
+            .HasColumnType("char(64)")
+            .HasComputedColumnSql("sha2(`provider_message_id`, 256)", stored: true);
+
         builder.Property(e => e.InternetMessageId)
             .HasColumnName("internet_message_id").HasMaxLength(EmailMessage.InternetMessageIdMaxLength);
+
+        builder.Property<string?>("InternetMessageIdHash")
+            .HasColumnName("internet_message_id_hash")
+            .HasColumnType("char(64)")
+            .HasComputedColumnSql("case when `internet_message_id` is null then null else sha2(`internet_message_id`, 256) end", stored: true);
 
         builder.Property(e => e.ThreadId)
             .HasColumnName("thread_id").HasMaxLength(EmailMessage.ThreadIdMaxLength);
@@ -124,12 +134,24 @@ internal sealed class EmailMessageConfiguration : IEntityTypeConfiguration<Email
             .HasColumnName("updated_at_utc").HasColumnType("datetime(6)").IsRequired();
 
         // Unique constraint: one provider message per tenant/source/provider
-        builder.HasIndex(e => new { e.TenantId, e.EmailSourceId, e.ProviderType, e.ProviderMessageId })
+        builder.HasIndex(
+                new[]
+                {
+                    nameof(EmailMessage.TenantId),
+                    nameof(EmailMessage.EmailSourceId),
+                    nameof(EmailMessage.ProviderType),
+                    "ProviderMessageIdHash",
+                })
             .IsUnique()
             .HasDatabaseName("ux_email_messages_provider_unique");
 
         // Secondary duplicate signal
-        builder.HasIndex(e => new { e.TenantId, e.InternetMessageId })
+        builder.HasIndex(
+                new[]
+                {
+                    nameof(EmailMessage.TenantId),
+                    "InternetMessageIdHash",
+                })
             .HasDatabaseName("ix_email_messages_internet_message_id");
 
         // Query indexes

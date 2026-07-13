@@ -682,7 +682,7 @@ public class AuthService : IAuthService
         ["SYNQ_FUND"]        = "SynqFund",
         ["SYNQ_LIENS"]       = "SynqLien",
         ["SYNQ_CARECONNECT"] = "CareConnect",
-        ["SYNQ_AI"]          = "SynqAI",
+        ["SYNQ_AI"]          = "Xenia",
         ["SYNQ_INSIGHTS"]    = "SynqInsights",
         ["SYNQ_BILL"]        = "SynqBill",
         ["SYNQ_RX"]          = "SynqRx",

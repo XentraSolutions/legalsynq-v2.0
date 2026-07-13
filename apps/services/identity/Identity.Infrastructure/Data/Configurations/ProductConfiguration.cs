@@ -37,7 +37,7 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             new { Id = SeedIds.ProductSynqLiens,       Name = "SynqLiens",       Code = "SYNQ_LIENS",       Description = (string?)"Lien management platform",              IsActive = true, CreatedAtUtc = SeedIds.SeededAt },
             new { Id = SeedIds.ProductSynqCareConnect, Name = "SynqCareConnect", Code = "SYNQ_CARECONNECT", Description = (string?)"Care coordination platform",            IsActive = true, CreatedAtUtc = SeedIds.SeededAt },
             new { Id = SeedIds.ProductSynqPay,         Name = "SynqPay",         Code = "SYNQ_PAY",         Description = (string?)"Payment processing platform",           IsActive = true, CreatedAtUtc = SeedIds.SeededAt },
-            new { Id = SeedIds.ProductSynqAI,          Name = "SynqAI",          Code = "SYNQ_AI",          Description = (string?)"AI-powered legal intelligence platform", IsActive = true, CreatedAtUtc = SeedIds.SeededAt },
+            new { Id = SeedIds.ProductSynqAI,          Name = "Xenia",           Code = "SYNQ_AI",          Description = (string?)"Tenant-aware AI assistant and agent platform", IsActive = true, CreatedAtUtc = SeedIds.SeededAt },
             // LS-ID-TNT-011: Virtual platform product — not a subscribable tenant product.
             // Serves as the FK anchor for tenant-level permission codes (TENANT.*).
             // Never added to TenantProducts; excluded from tenant product entitlement flows.

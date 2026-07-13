@@ -50,6 +50,8 @@ internal static class SeedIds
     public static readonly Guid PrSynqFundReferrer        = new("50000000-0000-0000-0000-000000000006");
     public static readonly Guid PrSynqFundFunder          = new("50000000-0000-0000-0000-000000000007");
     public static readonly Guid PrSynqFundApplicantPortal = new("50000000-0000-0000-0000-000000000008");
+    public static readonly Guid PrXeniaUser               = new("50000000-0000-0000-0000-000000000009");
+    public static readonly Guid PrXeniaAdmin              = new("50000000-0000-0000-0000-000000000010");
 
     // ── Permissions — CareConnect ───────────────────────────────────────────
     public static readonly Guid PermReferralCreate        = new("60000000-0000-0000-0000-000000000001");
@@ -165,4 +167,16 @@ internal static class SeedIds
     public static readonly Guid PermPlatformMonitoringRead= new("60000000-0000-0000-0000-000000000060");
     public static readonly Guid PermPlatformAuditRead     = new("60000000-0000-0000-0000-000000000061");
     public static readonly Guid PermTenantSettingsRead    = new("60000000-0000-0000-0000-000000000062");
+
+    // ── Permissions — Xenia / SynqAI ─────────────────────────────────────────
+    public static readonly Guid PermXeniaAssistantUse     = new("60000000-0000-0000-0000-000000000063");
+    public static readonly Guid PermXeniaAssistantManage  = new("60000000-0000-0000-0000-000000000064");
+    public static readonly Guid PermXeniaUsageRead        = new("60000000-0000-0000-0000-000000000065");
+
+    // ── Product–OrgType Rules — Xenia / SynqAI ───────────────────────────────
+    public static readonly Guid PrOrgTypeRuleXeniaUserLawFirm    = new("90000000-0000-0000-0000-000000000008");
+    public static readonly Guid PrOrgTypeRuleXeniaUserProvider   = new("90000000-0000-0000-0000-000000000009");
+    public static readonly Guid PrOrgTypeRuleXeniaUserFunder     = new("90000000-0000-0000-0000-000000000010");
+    public static readonly Guid PrOrgTypeRuleXeniaUserLienOwner  = new("90000000-0000-0000-0000-000000000011");
+    public static readonly Guid PrOrgTypeRuleXeniaAdminInternal  = new("90000000-0000-0000-0000-000000000012");
 }

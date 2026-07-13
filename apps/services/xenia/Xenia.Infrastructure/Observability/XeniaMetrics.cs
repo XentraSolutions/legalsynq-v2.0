@@ -49,6 +49,12 @@ public sealed class XeniaMetrics : IDisposable
     public Counter<long> AutomationDeadLettered { get; }
     public Counter<long> AutomationRegistrations { get; }
 
+    // ── Assistant counters ──────────────────────────────────────────
+    public Counter<long> AssistantConversationsCreated { get; }
+    public Counter<long> AssistantRequestsCompleted { get; }
+    public Counter<long> AssistantRequestsFailed { get; }
+    public Counter<long> AssistantTokens { get; }
+
     // ── Alert counters ─────────────────────────────────────────────
     public Counter<long> AlertsOpened { get; }
     public Counter<long> AlertsResolved { get; }
@@ -57,6 +63,7 @@ public sealed class XeniaMetrics : IDisposable
     public Histogram<double> SyncDurationMs { get; }
     public Histogram<double> AttachmentDispatchDurationMs { get; }
     public Histogram<double> AutomationExecutionDurationMs { get; }
+    public Histogram<double> AssistantResponseDurationMs { get; }
     public Histogram<long> MessagesPerSyncRun { get; }
     public Histogram<long> PagesPerSyncRun { get; }
 
@@ -95,12 +102,18 @@ public sealed class XeniaMetrics : IDisposable
         AutomationDeadLettered        = _meter.CreateCounter<long>("xenia.automation.executions.dead_lettered.total", "executions");
         AutomationRegistrations       = _meter.CreateCounter<long>("xenia.automation.registrations.total", "automations");
 
+        AssistantConversationsCreated = _meter.CreateCounter<long>("xenia.assistant.conversations.created.total", "conversations");
+        AssistantRequestsCompleted    = _meter.CreateCounter<long>("xenia.assistant.requests.completed.total", "requests");
+        AssistantRequestsFailed       = _meter.CreateCounter<long>("xenia.assistant.requests.failed.total", "requests");
+        AssistantTokens               = _meter.CreateCounter<long>("xenia.assistant.tokens.total", "tokens");
+
         AlertsOpened   = _meter.CreateCounter<long>("xenia.email.alerts.opened.total", "alerts");
         AlertsResolved = _meter.CreateCounter<long>("xenia.email.alerts.resolved.total", "alerts");
 
         SyncDurationMs               = _meter.CreateHistogram<double>("xenia.email.sync.duration.ms", "ms", "Email sync run duration.");
         AttachmentDispatchDurationMs = _meter.CreateHistogram<double>("xenia.email.attachment.dispatch.duration.ms", "ms", "Attachment dispatch duration.");
         AutomationExecutionDurationMs = _meter.CreateHistogram<double>("xenia.automation.execution.duration.ms", "ms", "Automation execution duration.");
+        AssistantResponseDurationMs   = _meter.CreateHistogram<double>("xenia.assistant.response.duration.ms", "ms", "Assistant provider response duration.");
         MessagesPerSyncRun           = _meter.CreateHistogram<long>("xenia.email.sync.messages_per_run", "messages", "Messages processed per sync run.");
         PagesPerSyncRun              = _meter.CreateHistogram<long>("xenia.email.sync.pages_per_run", "pages", "Pages fetched per sync run.");
 
