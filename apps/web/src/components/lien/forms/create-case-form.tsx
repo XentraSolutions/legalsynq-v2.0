@@ -307,11 +307,12 @@ export function CreateCaseForm({
               label="State"
               value={form.clientState}
               options={data.state}
-              onChange={(v) => updateField("clientState", v.toString())}
+              onChange={(v: string) => updateField("clientState", v.toString())}
               error={touched.clientState ? errors.clientState : undefined}
               placeholder="State"
               type="select"
             />
+
             <Field
               label="Zipcode"
               value={form.clientZipcode}
@@ -325,7 +326,6 @@ export function CreateCaseForm({
               type="checkbox"
               label="SERVICING"
               isChecked={form.isServicing == "true"}
-              value={form.isServicing}
               onChange={(v) => setForm({ ...form, isServicing: v.toString() })}
             />
           </div>
@@ -342,7 +342,7 @@ export function CreateCaseForm({
               value={form.caseStatusId}
               options={data?.status}
               placeholder=""
-              onChange={(v) => {
+              onChange={(v: string) => {
                 setForm({
                   ...form,
                   caseStatusId: v.toString(),
@@ -356,7 +356,7 @@ export function CreateCaseForm({
               value={form.accidentTypeId}
               options={data?.accidentType}
               placeholder=""
-              onChange={(v) => {
+              onChange={(v: string) => {
                 setForm({
                   ...form,
                   accidentTypeId: v.toString(),
@@ -372,7 +372,7 @@ export function CreateCaseForm({
               value={form.accidentStateId}
               options={data?.accidentState}
               placeholder=""
-              onChange={(v) => {
+              onChange={(v: string) => {
                 setForm({
                   ...form,
                   accidentStateId: v.toString(),

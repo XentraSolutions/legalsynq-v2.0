@@ -1,51 +1,86 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  BaseSelect,
+  BaseSelectOption,
+  BaseSelectProps,
+} from "../ui/base-select";
 
-export default function Field({
-  label,
-  value,
-  onChange,
-  onFocus,
-  onClick,
-  error,
-  placeholder,
-  type = "text",
-  required,
-  options,
-  optionValueKey,
-  optionLabelKey,
-  multiple,
-  isChecked,
-  children,
-  disabled,
-  prefix,
-  suffix,
-}: {
+type FieldType = "text" | "textarea" | "select" | "checkbox";
+interface BaseFieldProps {
   label: string;
-  value: string | string[] | null;
-  onChange: (v: string | string[] | boolean) => void;
   onFocus?: () => void;
   onClick?: () => void;
   error?: string;
   placeholder?: string;
-  type?: string;
   required?: boolean;
-  options?: any[];
-  optionValueKey?: string;
-  optionLabelKey?: string;
-  multiple?: boolean;
-  isChecked?: boolean;
-  children?: ReactNode;
   disabled?: boolean;
   prefix?: ReactNode;
   suffix?: ReactNode;
-}) {
+  children?: ReactNode;
+}
+
+interface TextFieldProps {
+  type?: "text" | "textarea" | "date";
+  value?: string | null;
+  onChange: (value: string) => void;
+}
+
+interface CheckboxFieldProps {
+  type: "checkbox";
+  isChecked?: boolean;
+  onChange: (value: boolean) => void;
+}
+
+interface SelectFieldProps<TOption extends BaseSelectOption> {
+  type: "select";
+  options: TOption[];
+
+  multiple?: false;
+  value?: string | null;
+  onChange: (value: string, option: TOption) => void;
+}
+
+interface MultiSelectFieldProps<TOption extends BaseSelectOption> {
+  type: "select";
+  options: TOption[];
+
+  multiple: true;
+  value?: string[];
+  onChange: (values: string[], options: TOption[]) => void;
+}
+
+export type FieldProps<TOption extends BaseSelectOption = BaseSelectOption> =
+  BaseFieldProps &
+    (
+      | TextFieldProps
+      | CheckboxFieldProps
+      | SelectFieldProps<TOption>
+      | MultiSelectFieldProps<TOption>
+    );
+
+export default function Field<
+  TOption extends BaseSelectOption = BaseSelectOption,
+>(props: FieldProps<TOption>) {
+  const {
+    label,
+    onFocus,
+    onClick,
+    error,
+    placeholder,
+    required,
+    children,
+    disabled,
+    prefix,
+    suffix,
+  } = props;
+
   const hasAdornment = Boolean(prefix || suffix);
   const inputPadding = `${prefix ? "pl-9" : "pl-3"} ${suffix ? "pr-9" : "pr-3"}`;
 
   return (
     <div
       className={
-        type == "checkbox"
+        props.type === "checkbox"
           ? "flex items-center gap-3 cursor-pointer"
           : "overflow-visible"
       }
@@ -54,42 +89,46 @@ export default function Field({
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
-      {type === "textarea" ? (
+
+      {props.type === "textarea" ? (
         <textarea
-          value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
+          value={props.value ?? ""}
+          onChange={(e) => props.onChange(e.target.value)}
           onFocus={onFocus}
           onClick={onClick}
           placeholder={placeholder}
-          className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
-          children={children}
+          className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
+            error ? "border-red-300" : "border-gray-200"
+          }`}
           disabled={disabled}
+        >
+          {children}
+        </textarea>
+      ) : props.type === "select" && props.multiple === true ? (
+        <BaseSelect
+          multiple
+          value={props.value}
+          onChange={props.onChange}
+          options={props.options}
+          placeholder={props.placeholder}
+          disabled={props.disabled}
+          error={!!props.error}
         />
-      ) : type === "select" ? (
-        <SelectField
-          label={label}
-          value={value ?? ""}
-          onChange={onChange}
-          onFocus={onFocus}
-          onClick={onClick}
-          placeholder={placeholder}
-          error={error}
-          options={options}
-          optionValueKey={optionValueKey}
-          optionLabelKey={optionLabelKey}
-          multiple={multiple}
-          children={children}
-          disabled={disabled}
+      ) : props.type === "select" ? (
+        <BaseSelect
+          value={props.value}
+          onChange={props.onChange}
+          options={props.options}
+          placeholder={props.placeholder}
+          disabled={props.disabled}
+          error={!!props.error}
         />
-      ) : type === "checkbox" ? (
+      ) : props.type === "checkbox" ? (
         <input
           type="checkbox"
-          value={value ?? ""}
-          checked={isChecked}
-          onChange={(e) => onChange(e.target.checked)}
-          placeholder={placeholder}
+          checked={props.isChecked}
+          onChange={(e) => props.onChange(e.target.checked)}
           className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary mb-1"
-          children={children}
           disabled={disabled}
         />
       ) : (
@@ -99,16 +138,20 @@ export default function Field({
               {prefix}
             </span>
           )}
+
           <input
-            type={type}
-            value={value ?? ""}
-            onChange={(e) => onChange(e.target.value)}
+            type={props.type}
+            value={props.value ?? ""}
+            onChange={(e) => props.onChange(e.target.value)}
             onFocus={onFocus}
             onClick={onClick}
             placeholder={placeholder}
             disabled={disabled}
-            className={`w-full border rounded-lg ${inputPadding} py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
+            className={`w-full border rounded-lg ${inputPadding} py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
+              error ? "border-red-300" : "border-gray-200"
+            }`}
           />
+
           {suffix && (
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
               {suffix}
@@ -116,170 +159,8 @@ export default function Field({
           )}
         </div>
       )}
+
       {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-    </div>
-  );
-}
-
-// Helper select field used by Field when `type === 'select'`.
-function SelectField({
-  value,
-  onChange,
-  onFocus,
-  onClick,
-  placeholder,
-  error,
-  options,
-  optionValueKey = "value",
-  optionLabelKey = "label",
-  multiple,
-  children,
-  disabled,
-}: {
-  label: string;
-  value: string | string[] | null;
-  onChange: (v: string | string[]) => void;
-  onFocus?: () => void;
-  onClick?: () => void;
-  placeholder?: string;
-  error?: string;
-  options?: Array<{ key: string; value: string; label: string }>;
-  optionValueKey?: string;
-  optionLabelKey?: string;
-  multiple?: boolean;
-  children?: React.ReactNode;
-  disabled?: boolean;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const opts: any[] = (options ?? (window as any).__FIELD_OPTIONS__) || [];
-  const selectedValues = Array.isArray(value) ? value : value ? [value] : [];
-
-  useEffect(() => {
-    const onClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
-  const getOptionLabel = (optionValue: string) => {
-    const selected = opts.find(
-      (o) => String(o[optionValueKey] ?? "") === optionValue,
-    );
-    return String(selected?.[optionLabelKey] ?? optionValue);
-  };
-
-  const displayLabel = () => {
-    if (multiple) {
-      if (selectedValues.length === 0) return placeholder ?? "Select…";
-      if (selectedValues.length === 1) return getOptionLabel(selectedValues[0]);
-      return `${selectedValues.length} selected`;
-    }
-
-    if (!selectedValues.length) return placeholder ?? "Select…";
-    return getOptionLabel(selectedValues[0]);
-  };
-
-  const filteredOptions =
-    opts?.filter((option) => {
-      const label = String(option[optionLabelKey] ?? "").toLowerCase();
-      const valueText = String(option[optionValueKey] ?? "").toLowerCase();
-      const keyText = String(option.key ?? "").toLowerCase();
-      const searchValue = search.toLowerCase();
-
-      return (
-        label.includes(searchValue) ||
-        valueText.includes(searchValue) ||
-        keyText.includes(searchValue)
-      );
-    }) ?? [];
-
-  const toggleOption = (optionValue: string) => {
-    if (!multiple) {
-      onChange(optionValue);
-      setOpen(false);
-      return;
-    }
-
-    const next = selectedValues.includes(optionValue)
-      ? selectedValues.filter((value) => value !== optionValue)
-      : [...selectedValues, optionValue];
-    onChange(next);
-  };
-
-  return (
-    <div className="relative overflow-visible" ref={containerRef}>
-      <button
-        type="button"
-        onClick={() => {
-          onClick?.();
-          setOpen((current) => !current);
-        }}
-        disabled={disabled}
-        className={`w-full text-left border rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${error ? "border-red-300" : "border-gray-200"}`}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <span
-            className={`truncate ${selectedValues.length ? "text-gray-900" : "text-gray-400"}`}
-          >
-            {displayLabel()}
-          </span>
-          <span className="text-xs text-gray-500">{open ? "▲" : "▼"}</span>
-        </div>
-      </button>
-
-      {open && (
-        <div className="absolute z-50 mt-2 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
-          <div className="p-2">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="w-full border border-gray-300 rounded px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-
-          <div className="max-h-64 overflow-auto">
-            {filteredOptions.length > 0 ? (
-              filteredOptions.map((option) => {
-                const optionValue = String(option[optionValueKey] ?? "");
-                const optionLabel = String(
-                  option[optionLabelKey] ?? optionValue,
-                );
-                const checked = selectedValues.includes(optionValue);
-
-                return (
-                  <label
-                    key={String(option.key ?? optionValue)}
-                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    <input
-                      type={multiple ? "checkbox" : "radio"}
-                      checked={checked}
-                      onChange={() => toggleOption(optionValue)}
-                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                    />
-                    <div className="min-w-0 truncate">
-                      <div>{optionLabel}</div>
-                    </div>
-                  </label>
-                );
-              })
-            ) : (
-              <div className="p-3 text-sm text-gray-500">No options found.</div>
-            )}
-          </div>
-          {children}
-        </div>
-      )}
     </div>
   );
 }
