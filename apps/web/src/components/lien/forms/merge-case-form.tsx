@@ -134,9 +134,7 @@ export function MergeCaseForm({
     fetchCase();
   }, [selectedId]);
 
-  useEffect(() => {
-    console.log(clientData);
-  }, [clientData]);
+  useEffect(() => {}, [clientData]);
 
   return (
     <>

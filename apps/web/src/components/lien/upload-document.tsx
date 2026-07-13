@@ -56,7 +56,6 @@ const UploadDocumentComponent = forwardRef<
     typeof acceptedFiles === "string"
       ? acceptedFiles
       : ".pdf,.jpg,.jpeg,.png,.csv,.xlsx,.xls,.docx";
-  console.log(acceptedFiles);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     multiple,

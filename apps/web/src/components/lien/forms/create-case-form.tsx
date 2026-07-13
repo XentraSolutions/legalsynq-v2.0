@@ -196,7 +196,6 @@ export function CreateCaseForm({
         title: "Case Created",
         description: `Case has been created.`,
       });
-      console.log(res);
 
       setTimeout(() => {
         onCreated?.(res.id);

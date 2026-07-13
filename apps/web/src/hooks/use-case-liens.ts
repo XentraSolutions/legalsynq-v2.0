@@ -123,7 +123,6 @@ export function useCaseLiens(
   query: LiensQuery,
   activeTab: string = "liens",
 ) {
-  console.log(query);
   const queryClient = useQueryClient();
 
   // Lien tab
