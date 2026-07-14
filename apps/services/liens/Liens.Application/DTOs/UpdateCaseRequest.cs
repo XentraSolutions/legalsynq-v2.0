@@ -25,4 +25,7 @@ public sealed class UpdateCaseRequest
     public string? StateOfIncident { get; init; }
     public DateOnly? TrackingFollowUpDate { get; init; }
     public string? LeadId { get; init; }
+    public string? LawFirmId { get; init; }
+    public string? AccidentTypeId { get; init; }
+    public string? CaseManagerId { get; init; }
 }

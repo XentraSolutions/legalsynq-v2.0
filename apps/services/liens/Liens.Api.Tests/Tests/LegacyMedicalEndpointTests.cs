@@ -68,13 +68,48 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task UpdateMedical_persists_and_resolves_funding_company()
+    {
+        var payload = new
+        {
+            id = SeedHelper.LienId.ToString(),
+            caseId = SeedHelper.CaseId.ToString(),
+            status = "Offered",
+            purchaseDate = "06/22/2026",
+            initialServiceDate = "07/07/2026",
+            endServiceDate = "07/03/2026",
+            note = "test",
+            isBulk = "Yes",
+            isServicing = "Yes",
+            fundingCompanyId = SeedHelper.FundingCompanyId.ToString(),
+        };
+
+        var updateResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            payload);
+
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var getResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medical/{SeedHelper.LienId}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = JsonNode.Parse(await getResponse.Content.ReadAsStringAsync())!;
+        body["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+
+        var data = body["data"]!;
+        data["fundingCompanyId"]!.GetValue<string>().Should().Be(SeedHelper.FundingCompanyId.ToString());
+        data["fundingCompany"]!.GetValue<string>().Should().Be("Capital Fund LLC");
+    }
+
+    [Fact]
     public async Task MedicalCode_create_can_be_retrieved_by_lien_id()
     {
+        var code = $"MC-{Guid.NewGuid():N}"[..10];
         var payload = new
         {
             id = (string?)null,
             liensId = SeedHelper.LienId.ToString(),
-            code = "12345",
+            code,
             medicareCost = "100.00",
             billingAmount = "100.00",
             purchaseAmount = "100.00",
@@ -95,16 +130,72 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         body["isSuccess"]!.GetValue<bool>().Should().BeTrue();
 
         var data = body["data"]!.AsArray();
-        data.Should().ContainSingle();
-
-        var item = data[0]!;
+        var item = data.Single(item => item!["code"]!.GetValue<string>() == code)!;
         item["liensId"]!.GetValue<string>().Should().Be(SeedHelper.LienId.ToString());
-        item["code"]!.GetValue<string>().Should().Be("12345");
+        item["code"]!.GetValue<string>().Should().Be(code);
         item["medicareCost"]!.GetValue<string>().Should().Be("100.00");
         item["billingAmount"]!.GetValue<string>().Should().Be("100.00");
         item["purchaseAmount"]!.GetValue<string>().Should().Be("100.00");
         item["payee"]!.GetValue<string>().Should().Be("test payee");
         item["outboundCheckNumber"]!.GetValue<string>().Should().Be("chck-1000");
+    }
+
+    [Fact]
+    public async Task DeleteMedicalCode_deletes_single_row_when_given_medical_code_id()
+    {
+        var codeA = $"A-{Guid.NewGuid():N}"[..10];
+        var codeB = $"B-{Guid.NewGuid():N}"[..10];
+
+        foreach (var code in new[] { codeA, codeB })
+        {
+            var createResponse = await _client.PostAsJsonAsync(
+                "/api/liens/cases/liens/medicalcode",
+                new
+                {
+                    id = (string?)null,
+                    liensId = SeedHelper.LienId.ToString(),
+                    code,
+                    medicareCost = "100.00",
+                    billingAmount = "100.00",
+                    purchaseAmount = "100.00",
+                    payee = "test payee",
+                    outboundCheckNumber = "chck-1000",
+                });
+
+            createResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        var beforeDelete = JsonNode.Parse(await (await _client.GetAsync(
+            $"/api/liens/cases/liens/get-medicalcode/{SeedHelper.LienId}"))
+            .Content.ReadAsStringAsync())!;
+
+        var createdRows = beforeDelete["data"]!
+            .AsArray()
+            .Where(item => item is not null)
+            .ToList();
+
+        var rowToDelete = createdRows.Single(item => item!["code"]!.GetValue<string>() == codeA)!;
+        var rowToKeep = createdRows.Single(item => item!["code"]!.GetValue<string>() == codeB)!;
+
+        var deleteResponse = await _client.DeleteAsync(
+            $"/api/liens/cases/liens/delete-medicalcode/{rowToDelete["id"]!.GetValue<string>()}");
+
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var afterDeleteResponse = await _client.GetAsync(
+            $"/api/liens/cases/liens/get-medicalcode/{SeedHelper.LienId}");
+        afterDeleteResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var afterDelete = JsonNode.Parse(await afterDeleteResponse.Content.ReadAsStringAsync())!;
+        var remainingRows = afterDelete["data"]!
+            .AsArray()
+            .Where(item => item is not null)
+            .ToList();
+
+        remainingRows.Should().NotContain(item =>
+            item!["id"]!.GetValue<string>() == rowToDelete["id"]!.GetValue<string>());
+        remainingRows.Should().Contain(item =>
+            item!["id"]!.GetValue<string>() == rowToKeep["id"]!.GetValue<string>());
     }
 
     [Fact]

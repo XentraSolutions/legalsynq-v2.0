@@ -23,6 +23,12 @@ export interface CaseResponseDto {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
+  lawFirmId?: string | null;
+  lawFirm?: string | null;
+  caseManagerId?: string | null;
+  caseManager?: string | null;
+  accidentTypeId?: string | null;
+  accidentType?: string | null;
   insuranceCarrier?: string | null;
   policyNumber?: string | null;
   claimNumber?: string | null;
@@ -34,10 +40,6 @@ export interface CaseResponseDto {
   closedAtUtc?: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
-  lawFirm: string;
-  lawFirmId: string;
-  caseManager: string;
-  accidentType: string;
 }
 
 export interface PaginatedResultDto<T> {
@@ -182,7 +184,6 @@ export interface LienResponseDto {
   currentBalance?: number | null;
   offerPrice?: number | null;
   purchasePrice?: number | null;
-  purchaseDate?: string | null;
   totalPurchase?: number | null;
   totalBilling?: number | null;
   jurisdiction?: string | null;

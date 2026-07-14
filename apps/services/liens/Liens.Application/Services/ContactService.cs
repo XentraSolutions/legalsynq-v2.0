@@ -43,9 +43,17 @@ public sealed class ContactService : IContactService
                 IsStandaloneFacilityContact(parentFacilityContact) &&
                 (!isActive.HasValue || parentFacilityContact.IsActive == isActive.Value) &&
                 MatchesSearch(parentFacilityContact, search);
+            var parentActiveCaseCounts = parentFacilityContact is null
+                ? new Dictionary<Guid, int>()
+                : await _repo.GetActiveCaseCountsAsync(tenantId, new[] { parentFacilityContact }, ct);
 
             var parentItems = parentMatches
-                ? new List<ContactResponse> { MapToResponse(parentFacilityContact!) }
+                ? new List<ContactResponse>
+                {
+                    MapToResponse(
+                        parentFacilityContact!,
+                        parentActiveCaseCounts.GetValueOrDefault(parentFacilityContact!.Id))
+                }
                 : new List<ContactResponse>();
 
             return new PaginatedResult<ContactResponse>
@@ -63,10 +71,11 @@ public sealed class ContactService : IContactService
 
         var (items, totalCount) = await _repo.SearchAsync(
             tenantId, search, contactType, isActive, page, pageSize, lawFirmId, resolvedFacilityId, contactSubtype, ct);
+        var activeCaseCounts = await _repo.GetActiveCaseCountsAsync(tenantId, items, ct);
 
         return new PaginatedResult<ContactResponse>
         {
-            Items = items.Select(MapToResponse).ToList(),
+            Items = items.Select(item => MapToResponse(item, activeCaseCounts.GetValueOrDefault(item.Id))).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount,
@@ -76,21 +85,29 @@ public sealed class ContactService : IContactService
     public async Task<ContactResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         var entity = await _repo.GetByIdAsync(tenantId, id, ct);
-        return entity is null ? null : MapToResponse(entity);
+        if (entity is null)
+            return null;
+
+        var activeCaseCounts = await _repo.GetActiveCaseCountsAsync(tenantId, new[] { entity }, ct);
+        return MapToResponse(entity, activeCaseCounts.GetValueOrDefault(entity.Id));
     }
 
     public async Task<ContactResponse> CreateAsync(
         Guid tenantId, Guid orgId, Guid actingUserId,
         CreateContactRequest request, CancellationToken ct = default)
     {
+        var (firstName, lastName) = ResolveContactNames(
+            request.FullName,
+            request.FirstName,
+            request.LastName);
         var resolvedFacilityId = request.FacilityId.HasValue
             ? await ResolveFacilityIdAsync(tenantId, request.FacilityId.Value, actingUserId, ct)
             : (Guid?)null;
 
         var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(request.FirstName))
+        if (string.IsNullOrWhiteSpace(firstName))
             errors["firstName"] = new[] { "First name is required." };
-        if (string.IsNullOrWhiteSpace(request.LastName))
+        if (string.IsNullOrWhiteSpace(lastName))
             errors["lastName"] = new[] { "Last name is required." };
         if (!ContactType.All.Contains(request.ContactType))
             errors["contactType"] = new[] { $"Invalid contact type: '{request.ContactType}'. Valid types: {string.Join(", ", ContactType.All)}" };
@@ -142,7 +159,7 @@ public sealed class ContactService : IContactService
         {
             var entity = Contact.Create(
                 tenantId, orgId, request.ContactType,
-                request.FirstName, request.LastName, actingUserId,
+                firstName, lastName, actingUserId,
                 resolvedFacilityId, request.LawFirmId, request.ContactSubtype,
                 request.Title, ResolveOrganization(request.Organization, parentLawFirm),
                 request.Email, request.Phone, request.Fax, request.Website,
@@ -179,15 +196,19 @@ public sealed class ContactService : IContactService
     {
         var entity = await _repo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Contact '{id}' not found for tenant '{tenantId}'.");
+        var (firstName, lastName) = ResolveContactNames(
+            request.FullName,
+            request.FirstName,
+            request.LastName);
 
         var resolvedFacilityId = request.FacilityId.HasValue
             ? await ResolveFacilityIdAsync(tenantId, request.FacilityId.Value, actingUserId, ct)
             : (Guid?)null;
 
         var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(request.FirstName))
+        if (string.IsNullOrWhiteSpace(firstName))
             errors["firstName"] = new[] { "First name is required." };
-        if (string.IsNullOrWhiteSpace(request.LastName))
+        if (string.IsNullOrWhiteSpace(lastName))
             errors["lastName"] = new[] { "Last name is required." };
         if (!ContactType.All.Contains(request.ContactType))
             errors["contactType"] = new[] { $"Invalid contact type: '{request.ContactType}'." };
@@ -245,7 +266,7 @@ public sealed class ContactService : IContactService
         try
         {
             entity.Update(
-                request.FirstName, request.LastName, request.ContactType, actingUserId,
+                firstName, lastName, request.ContactType, actingUserId,
                 resolvedFacilityId, request.LawFirmId, request.ContactSubtype,
                 request.Title, ResolveOrganization(request.Organization, parentLawFirm),
                 request.Email, request.Phone, request.Fax, request.Website,
@@ -327,10 +348,11 @@ public sealed class ContactService : IContactService
         Guid tenantId, string? contactType, bool? isActive = true, CancellationToken ct = default)
     {
         var items = await _repo.GetAllByTypeAsync(tenantId, contactType, isActive, ct);
-        return items.Select(MapToResponse).ToList();
+        var activeCaseCounts = await _repo.GetActiveCaseCountsAsync(tenantId, items, ct);
+        return items.Select(item => MapToResponse(item, activeCaseCounts.GetValueOrDefault(item.Id))).ToList();
     }
 
-    private static ContactResponse MapToResponse(Contact entity) => new()
+    private static ContactResponse MapToResponse(Contact entity, int activeCases = 0) => new()
     {
         Id = entity.Id,
         FacilityId = entity.FacilityId,
@@ -352,6 +374,7 @@ public sealed class ContactService : IContactService
         PostalCode = entity.PostalCode,
         Notes = entity.Notes,
         IsActive = entity.IsActive,
+        ActiveCases = activeCases,
         CreatedAtUtc = entity.CreatedAtUtc,
         UpdatedAtUtc = entity.UpdatedAtUtc,
     };
@@ -362,6 +385,31 @@ public sealed class ContactService : IContactService
             return organization;
 
         return parentLawFirm?.Organization ?? parentLawFirm?.DisplayName;
+    }
+
+    private static (string FirstName, string LastName) ResolveContactNames(
+        string? fullName,
+        string? firstName,
+        string? lastName)
+    {
+        if (!string.IsNullOrWhiteSpace(fullName))
+            return SplitFullName(fullName);
+
+        return (firstName?.Trim() ?? string.Empty, lastName?.Trim() ?? string.Empty);
+    }
+
+    private static (string FirstName, string LastName) SplitFullName(string fullName)
+    {
+        var parts = fullName
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length == 0)
+            return (string.Empty, string.Empty);
+
+        if (parts.Length == 1)
+            return (parts[0], string.Empty);
+
+        return (string.Join(" ", parts[..^1]), parts[^1]);
     }
 
     private async Task<Guid?> ResolveFacilityIdAsync(

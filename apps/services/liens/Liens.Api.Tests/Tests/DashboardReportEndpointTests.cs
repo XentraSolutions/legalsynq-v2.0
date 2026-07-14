@@ -66,6 +66,9 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
 
         var item = payload.RootElement.GetProperty("items")[0];
         item.GetProperty("lienNumber").GetString().Should().Be("LIEN-TEST-001");
+        item.GetProperty("caseId").GetString().Should().Be("CASE-TEST-001");
+        item.GetProperty("caseRecordId").GetString().Should().Be(SeedHelper.CaseId.ToString());
+        item.GetProperty("caseNumber").GetString().Should().Be("CASE-TEST-001");
         item.GetProperty("medicalProvider").GetString().Should().Be("City Medical Center");
         item.GetProperty("totalPurchaseAmount").GetDecimal().Should().Be(100m);
         item.GetProperty("totalBillingAmount").GetDecimal().Should().Be(150m);
