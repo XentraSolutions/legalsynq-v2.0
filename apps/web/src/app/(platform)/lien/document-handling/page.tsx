@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import type { ColumnDef, OnChangeFn, RowSelectionState } from '@tanstack/react-table';
+import { BaseTable } from '@/components/ui/base-table';
 import { PageHeader } from '@/components/lien/page-header';
 import { FilterToolbar } from '@/components/lien/filter-toolbar';
 import { StatusBadge } from '@/components/lien/status-badge';
@@ -137,6 +139,104 @@ export default function DocumentHandlingPage() {
 
   const allIds = filtered.map((d) => d.id);
 
+  const rowSelection = useMemo<RowSelectionState>(() => {
+    const obj: RowSelectionState = {};
+    selection.selectedIds.forEach((id) => {
+      obj[id] = true;
+    });
+    return obj;
+  }, [selection.selectedIds]);
+
+  const handleRowSelectionChange: OnChangeFn<RowSelectionState> = (updater) => {
+    const next = typeof updater === 'function' ? updater(rowSelection) : updater;
+    const nextIds = new Set(Object.keys(next).filter((id) => next[id]));
+    const prevIds = selection.selectedIds;
+
+    if (nextIds.size === prevIds.size) return;
+
+    const allNowSelected = nextIds.size === filtered.length && prevIds.size !== filtered.length;
+    const allNowDeselected = nextIds.size === 0 && prevIds.size === filtered.length;
+    if (allNowSelected || allNowDeselected) {
+      selection.toggleAll(allIds);
+      return;
+    }
+
+    const toggled = filtered.find((d) => prevIds.has(d.id) !== nextIds.has(d.id));
+    if (toggled) selection.toggle(toggled.id);
+  };
+
+  const columns = useMemo<ColumnDef<DocumentListItem, any>[]>(
+    () => [
+      {
+        id: 'title',
+        header: 'Title',
+        cell: ({ row }) => (
+          <>
+            <Link href={`/lien/document-handling/${row.original.id}`} className="text-sm font-medium text-primary hover:underline">
+              {row.original.title}
+            </Link>
+            {row.original.mimeType && <p className="text-xs text-gray-400 mt-0.5">{row.original.mimeType}</p>}
+          </>
+        ),
+      },
+      {
+        id: 'referenceType',
+        header: 'Type',
+        cell: ({ row }) => <span className="text-sm text-gray-600">{row.original.referenceType}</span>,
+      },
+      {
+        id: 'referenceId',
+        header: 'Linked To',
+        cell: ({ row }) => <span className="text-xs text-gray-500">{row.original.referenceId || '—'}</span>,
+      },
+      {
+        id: 'fileSize',
+        header: 'Size',
+        cell: ({ row }) => <span className="text-xs text-gray-400">{row.original.fileSize}</span>,
+      },
+      {
+        id: 'versionCount',
+        header: 'Versions',
+        cell: ({ row }) => <span className="text-xs text-gray-500">v{row.original.versionCount}</span>,
+      },
+      {
+        id: 'scanStatus',
+        header: 'Scan',
+        cell: ({ row }) => <StatusBadge status={row.original.scanStatus} />,
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: ({ row }) => <StatusBadge status={STATUS_DISPLAY[row.original.status] ?? row.original.status} />,
+      },
+      {
+        id: 'createdAt',
+        header: 'Date',
+        cell: ({ row }) => (
+          <span className="text-xs text-gray-400 whitespace-nowrap">{row.original.createdAt}</span>
+        ),
+      },
+      {
+        id: 'actions',
+        header: '',
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const d = row.original;
+          return (
+            <ActionMenu
+              items={[
+                { label: 'View Details', icon: 'ri-eye-line', onClick: () => {} },
+                { label: 'Download', icon: 'ri-download-2-line', onClick: () => handleDownload(d) },
+                ...(canEdit && d.status !== 'ARCHIVED' ? [{ label: 'Archive', icon: 'ri-archive-line', onClick: () => setConfirmAction({ id: d.id, status: 'ARCHIVED', label: 'Archive Document' }), divider: true }] : []),
+              ]}
+            />
+          );
+        },
+      },
+    ],
+    [canEdit],
+  );
+
   return (
     <div className="space-y-5">
       <PageHeader title="Document Handling" subtitle={`${total} documents`}
@@ -152,64 +252,18 @@ export default function DocumentHandlingPage() {
 
       <BulkResultBanner result={bulkResult} onDismiss={() => setBulkResult(null)} entityLabel="documents" />
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        {loading ? (
-          <div className="p-10 text-center text-sm text-gray-400">Loading documents...</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-100">
-              <thead><tr className="bg-gray-50">
-                {canEdit && (
-                  <th className="px-4 py-3 w-10">
-                    <input type="checkbox" checked={selection.isAllSelected(allIds)} onChange={() => selection.toggleAll(allIds)}
-                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
-                  </th>
-                )}
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Linked To</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Size</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Versions</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Scan</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
-                <th className="px-4 py-3" />
-              </tr></thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((d) => (
-                  <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${selection.isSelected(d.id) ? 'bg-primary/5' : ''}`}>
-                    {canEdit && (
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" checked={selection.isSelected(d.id)} onChange={() => selection.toggle(d.id)}
-                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
-                      </td>
-                    )}
-                    <td className="px-4 py-3">
-                      <Link href={`/lien/document-handling/${d.id}`} className="text-sm font-medium text-primary hover:underline">{d.title}</Link>
-                      {d.mimeType && <p className="text-xs text-gray-400 mt-0.5">{d.mimeType}</p>}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{d.referenceType}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{d.referenceId || '\u2014'}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{d.fileSize}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">v{d.versionCount}</td>
-                    <td className="px-4 py-3"><StatusBadge status={d.scanStatus} /></td>
-                    <td className="px-4 py-3"><StatusBadge status={STATUS_DISPLAY[d.status] ?? d.status} /></td>
-                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{d.createdAt}</td>
-                    <td className="px-4 py-3 text-right">
-                      <ActionMenu items={[
-                        { label: 'View Details', icon: 'ri-eye-line', onClick: () => {} },
-                        { label: 'Download', icon: 'ri-download-2-line', onClick: () => handleDownload(d) },
-                        ...(canEdit && d.status !== 'ARCHIVED' ? [{ label: 'Archive', icon: 'ri-archive-line', onClick: () => setConfirmAction({ id: d.id, status: 'ARCHIVED', label: 'Archive Document' }), divider: true }] : []),
-                      ]} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {!loading && filtered.length === 0 && <div className="p-10 text-center text-sm text-gray-400">No documents found.</div>}
-      </div>
+      <BaseTable
+        data={filtered}
+        columns={columns}
+        getRowId={(d) => d.id}
+        isLoading={loading}
+        emptyMessage="No documents found."
+        enablePagination={false}
+        rowSelection={canEdit ? rowSelection : undefined}
+        onRowSelectionChange={handleRowSelectionChange}
+        getRowClassName={(d) => (selection.isSelected(d.id) ? 'bg-primary/5' : undefined)}
+        className="bg-white border-gray-200 rounded-xl"
+      />
 
       {canEdit && (
         <BulkActionBar count={selection.count} actions={BULK_ACTIONS} onAction={handleBulkAction} onClear={selection.clear} />

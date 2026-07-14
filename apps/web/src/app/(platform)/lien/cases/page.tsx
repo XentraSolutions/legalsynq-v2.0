@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import { BaseTable } from "@/components/ui/base-table";
 import { PageHeader } from "@/components/lien/page-header";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { StatusBadge } from "@/components/lien/status-badge";
-import { ActionMenu } from "@/components/lien/action-menu";
 import { ConfirmDialog } from "@/components/lien/modal";
 import { CreateCaseForm } from "@/components/lien/forms/create-case-form";
 import { BulkActionBar } from "@/components/lien/bulk-action-bar";
@@ -49,6 +49,21 @@ const STATUS_LABELS: Record<string, string> = {
   Closed: "Closed",
 };
 
+// Maps table column ids to the sortBy keys the cases v3 endpoint recognizes
+// (see CaseRepository.GetPagedAsync's sortBy switch). lawFirm/caseManager/
+// accidentType aren't handled by that switch yet (backend support pending) —
+// once added, these keys should match whatever the backend expects.
+const SORT_BY_MAP: Record<string, string> = {
+  caseNumber: "caseCode",
+  clientName: "fullName",
+  dateOfIncident: "dateOfLoss",
+  clientDob: "dateOfBirth",
+  status: "status",
+  lawFirm: "lawFirm",
+  caseManager: "caseManager",
+  accidentType: "accidentType",
+};
+
 const BULK_ACTIONS: BulkActionConfig[] = [
   {
     key: "advance-status",
@@ -72,7 +87,7 @@ export default function CasesPage() {
 
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
-    pageSize: 20,
+    pageSize: 10,
     totalCount: 0,
     totalPages: 0,
   });
@@ -108,12 +123,16 @@ export default function CasesPage() {
   );
   const [caseId, setCaseId] = useState("");
 
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "createdAt", desc: true },
+  ]);
+
   const query = {
     keyword: search || "",
     page: pagination.page,
-    limit: 20,
-    sortBy: "createdAt",
-    sortDirection: "desc",
+    limit: 10,
+    sortBy: (sorting[0] && SORT_BY_MAP[sorting[0].id]) ?? "createdAt",
+    sortDirection: sorting[0]?.desc === false ? "asc" : "desc",
     accidentTypeId: params?.accidentTypeId?.toString() ?? "",
     caseManagerId: params?.caseManagerId?.toString() ?? "",
     lawFirmId: params?.lawFirmId?.toString() ?? "",
@@ -174,6 +193,10 @@ export default function CasesPage() {
   }, [searchInput]);
 
   useEffect(() => {
+    setPagination((p) => ({ ...p, page: 1 }));
+  }, [sorting]);
+
+  useEffect(() => {
     // fetchCases();
   }, [pagination.page, search]);
 
@@ -227,6 +250,74 @@ export default function CasesPage() {
   };
 
   const allIds = cases?.items.map((c) => c.id) ?? [];
+
+  const columns = useMemo<ColumnDef<CaseListItem, any>[]>(
+    () => [
+      {
+        id: "caseNumber",
+        header: "Case ID",
+        accessorFn: (row) => row.caseNumber,
+        cell: ({ row }) => (
+          <span className="text-xs font-mono text-gray-700">{row.original.caseNumber}</span>
+        ),
+      },
+      {
+        id: "clientName",
+        header: "Plaintiff Name",
+        accessorFn: (row) => row.clientName,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700 font-medium">{row.original.clientName}</span>
+        ),
+      },
+      {
+        id: "lawFirm",
+        header: "Law Firm",
+        accessorFn: (row) => row.lawFirm,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-600">{row.original.lawFirm || "—"}</span>
+        ),
+      },
+      {
+        id: "caseManager",
+        header: "Case Manager",
+        accessorFn: (row) => row.caseManager,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-600">{row.original.caseManager || "—"}</span>
+        ),
+      },
+      {
+        id: "accidentType",
+        header: "Accident Type",
+        accessorFn: (row) => row.accidentType,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-600">{row.original.accidentType || "—"}</span>
+        ),
+      },
+      {
+        id: "dateOfIncident",
+        header: "Date of Loss",
+        accessorFn: (row) => row.dateOfIncident,
+        cell: ({ row }) => (
+          <span className="text-xs text-gray-500 tabular-nums">{row.original.dateOfIncident || "—"}</span>
+        ),
+      },
+      {
+        id: "clientDob",
+        header: "DOB",
+        accessorFn: (row) => row.clientDob,
+        cell: ({ row }) => (
+          <span className="text-xs text-gray-500 tabular-nums">{row.original.clientDob || "—"}</span>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        accessorFn: (row) => row.status,
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+    ],
+    [router],
+  );
 
   return (
     <div className="space-y-4">
@@ -324,139 +415,30 @@ export default function CasesPage() {
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        {isLoading ? (
-          <div className="py-12 text-center">
-            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="text-sm text-gray-400 mt-2">Loading cases...</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-100">
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Case ID
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Plaintiff Name
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Law Firm
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Case Manager
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Accident Type
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Date of Loss
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      DOB
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Status
-                    </th>
-                    <th className="px-3 py-2.5 w-10" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {cases != undefined &&
-                    cases.items.map((c) => (
-                      <tr
-                        key={c.id}
-                        className={`hover:bg-gray-50/80 transition-colors cursor-pointer ${selection.isSelected(c.id) ? "bg-primary/5" : ""}`}
-                        onClick={() => router.push(`/lien/cases/${c.id}`)}
-                      >
-                        <td className="px-3 py-2.5">
-                          <Link
-                            href={`/lien/cases/${c.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-xs font-mono text-primary hover:underline"
-                          >
-                            {c.caseNumber}
-                          </Link>
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-700 font-medium">
-                          {c.clientName}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-600">
-                          {c.lawFirm || "—"}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-600">
-                          {c.caseManager || "—"}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-600">
-                          {c.accidentType || "—"}
-                        </td>
-                        <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">
-                          {c.dateOfIncident || "—"}
-                        </td>
-                        <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">
-                          {c.clientDob || "—"}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <StatusBadge status={c.status} />
-                        </td>
-                        <td
-                          className="px-3 py-2.5 text-right"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ActionMenu
-                            items={[
-                              {
-                                label: "View Details",
-                                icon: "ri-eye-line",
-                                onClick: () =>
-                                  router.push(`/lien/cases/${c.id}`),
-                              },
-                            ]}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-            {cases?.items?.length === 0 && !loading && (
-              <div className="py-12 text-center">
-                <i className="ri-folder-open-line text-2xl text-gray-300" />
-                <p className="text-sm text-gray-400 mt-2">
-                  No cases match your filters.
-                </p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {pagination.totalPages > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-500">
-            Page {pagination.page} of {pagination.totalPages} ·{" "}
-            {pagination.totalCount} total
-          </p>
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-              disabled={pagination.page <= 1}
-              className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-              disabled={pagination.page >= pagination.totalPages}
-              className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+      <BaseTable
+        data={cases?.items ?? []}
+        columns={columns}
+        getRowId={(c) => c.id}
+        isLoading={isLoading}
+        emptyMessage="No cases match your filters."
+        onRowClick={(c) => router.push(`/lien/cases/${c.id}`)}
+        getRowClassName={(c) => (selection.isSelected(c.id) ? "bg-primary/5" : undefined)}
+        sorting={sorting}
+        onSortingChange={setSorting}
+        manualSorting
+        manualPagination
+        pageCount={pagination.totalPages}
+        totalCount={pagination.totalCount}
+        pagination={{ pageIndex: pagination.page - 1, pageSize: pagination.pageSize }}
+        onPaginationChange={(updater) => {
+          const next =
+            typeof updater === "function"
+              ? updater({ pageIndex: pagination.page - 1, pageSize: pagination.pageSize })
+              : updater;
+          setPagination((p) => ({ ...p, page: next.pageIndex + 1 }));
+        }}
+        className="bg-white border-gray-200 rounded-xl"
+      />
 
       {showCreate && (
         <CreateCaseForm

@@ -78,12 +78,13 @@ export const casesService = {
   async updateCasePersonal(
     request: UpdateCasePersonalRequestDto,
   ): Promise<CaseDetail> {
-    const dto: UpdateCaseDetailsRequestDto = {
-      firstname: request.firstName,
-      lastname: request.lastName,
-      ...(request.dob && { dateOfIncident: request.dob }),
-    };
-    const { data } = await casesApi.updatePersonal(dto);
+    // const dto: UpdateCaseDetailsRequestDto = {
+    //   firstname: request.firstName,
+    //   lastname: request.lastName,
+    //   request.dob && { dateOfIncident: request.dob }),
+    // };
+    console.log(request);
+    const { data } = await casesApi.updatePersonal(request);
     return mapCaseToDetail(data);
   },
 
@@ -144,16 +145,18 @@ export const casesService = {
 
   async getLawFirmCaseAllocation(
     request: CaseAllocationReportRequest,
-  ): Promise<AllocationSegment[]> {
+  ): Promise<{ segments: AllocationSegment[]; rows: CaseReportItem[] }> {
     const { data } = await casesApi.getLawFirmCaseReport(request);
-    return groupAndCount(data.items ?? [], (item) => item.lawFirm);
+    const rows = data.items ?? [];
+    return { segments: groupAndCount(rows, (item) => item.lawFirm), rows };
   },
 
   async getMedicalFacilityCaseAllocation(
     request: CaseAllocationReportRequest,
-  ): Promise<AllocationSegment[]> {
+  ): Promise<{ segments: AllocationSegment[]; rows: CaseReportItem[] }> {
     const { data } = await casesApi.getMedicalProviderCaseReport(request);
-    return groupAndCount(data.items ?? [], (item) => item.medicalFacility);
+    const rows = data.items ?? [];
+    return { segments: groupAndCount(rows, (item) => item.medicalFacility), rows };
   },
 
   async getTotalLienReportRows(

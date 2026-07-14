@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useState } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
+import type { ColumnDef, OnChangeFn, RowSelectionState } from "@tanstack/react-table";
+import { BaseTable, type BaseTableFooterCell } from "@/components/ui/base-table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
@@ -48,6 +48,10 @@ interface LienTableProps {
   isRefreshing?: boolean;
   /** Set to false to hide the expand/collapse chevron column. Defaults to true. */
   expandable?: boolean;
+  /** Set to false to render every row with no pagination controls. Defaults to true. */
+  paginated?: boolean;
+  /** Rows per page when paginated. Defaults to 10. */
+  pageSize?: number;
 }
 
 interface LienTableToolbarProps {
@@ -113,163 +117,90 @@ export function LienTable({
   onRefresh,
   isRefreshing,
   expandable = true,
+  paginated = true,
+  pageSize = 10,
 }: LienTableProps) {
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-
   const selectable = checkedIds !== undefined;
-  const allChecked = selectable && liens.length > 0 && checkedIds!.size === liens.length;
-
-  const toggleExpand = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const showLastLoaded = loadedAt !== undefined || onRefresh !== undefined;
 
-  // checkbox col (when selectable) + optional chevron col + data columns
-  const totalCols = (selectable ? 1 : 0) + (expandable ? 1 : 0) + columns.length;
+  const rowSelection = React.useMemo<RowSelectionState>(() => {
+    const obj: RowSelectionState = {};
+    checkedIds?.forEach((id) => {
+      obj[id] = true;
+    });
+    return obj;
+  }, [checkedIds]);
+
+  const handleRowSelectionChange: OnChangeFn<RowSelectionState> = (updater) => {
+    const next = typeof updater === "function" ? updater(rowSelection) : updater;
+    const nextIds = new Set(Object.keys(next).filter((id) => next[id]));
+    const prevIds = checkedIds ?? new Set<string>();
+
+    if (nextIds.size === prevIds.size) return;
+
+    const allNowSelected = nextIds.size === liens.length && prevIds.size !== liens.length;
+    const allNowDeselected = nextIds.size === 0 && prevIds.size === liens.length;
+    if (allNowSelected || allNowDeselected) {
+      onToggleAll?.();
+      return;
+    }
+
+    const toggled = liens.find((lien) => prevIds.has(lien.id) !== nextIds.has(lien.id));
+    if (toggled) onToggleCheck?.(toggled.id);
+  };
+
+  const tanstackColumns = React.useMemo<ColumnDef<LienRow, any>[]>(
+    () =>
+      columns.map((col) => ({
+        id: col.id,
+        header: col.header,
+        meta: { align: col.align },
+        enableSorting: false,
+        cell: ({ row }) =>
+          col.cell(row.original, selectable ? checkedIds!.has(row.original.id) : false),
+      })),
+    [columns, checkedIds, selectable],
+  );
+
+  const footerCells: BaseTableFooterCell[] | undefined = footer?.map((cell) => ({
+    content: cell.content,
+    colSpan: cell.colSpan,
+    align: cell.align,
+    className: cell.className,
+  }));
 
   return (
-    <div className={cn("border border-gray-100 rounded-lg overflow-hidden", className)}>
-      {showLastLoaded && (
-        <LienTableToolbar
-          loadedAt={loadedAt}
-          onRefresh={onRefresh}
-          isRefreshing={isRefreshing}
-        />
-      )}
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 bg-gray-50">
-              {selectable && (
-                <th className="px-3 py-2 text-left w-10">
-                  <Checkbox
-                    checked={allChecked}
-                    onCheckedChange={onToggleAll}
-                  />
-                </th>
-              )}
-              {expandable && (
-                <th className="w-7">
-                  <span className="sr-only">Expand</span>
-                </th>
-              )}
-              {columns.map((col) => (
-                <th
-                  key={col.id}
-                  className={cn(
-                    "px-3 py-2 text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap",
-                    col.align === "right" ? "text-right" : "text-left",
-                  )}
-                >
-                  {col.header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {liens.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={totalCols}
-                  className="px-3 py-8 text-center text-sm text-gray-400"
-                >
-                  {emptyMessage}
-                </td>
-              </tr>
-            ) : (
-              liens.map((lien) => {
-                const isChecked = selectable ? checkedIds!.has(lien.id) : false;
-                const isExpanded = expandedIds.has(lien.id);
-                return (
-                  <React.Fragment key={lien.id}>
-                    <tr className="hover:bg-gray-50/50 transition-colors">
-                      {selectable && (
-                        <td className="px-3 py-2.5">
-                          <Checkbox
-                            checked={checkedIds!.has(lien.id)}
-                            onCheckedChange={() => onToggleCheck!(lien.id)}
-                          />
-                        </td>
-                      )}
-                      {expandable && (
-                        <td className="pl-2 py-2.5">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(lien.id)}
-                            aria-label={isExpanded ? "Collapse row" : "Expand row"}
-                            className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
-                          >
-                            <i
-                              className={cn(
-                                "ri-arrow-right-s-line text-sm transition-transform duration-150 leading-none",
-                                isExpanded && "rotate-90",
-                              )}
-                            />
-                          </button>
-                        </td>
-                      )}
-                      {columns.map((col) => (
-                        <td
-                          key={col.id}
-                          className={cn(
-                            "px-3 py-2.5",
-                            col.align === "right" && "text-right",
-                          )}
-                        >
-                          {col.cell(lien, isChecked)}
-                        </td>
-                      ))}
-                    </tr>
+    <BaseTable
+      data={liens}
+      columns={tanstackColumns}
+      getRowId={(lien) => lien.id}
+      rowSelection={selectable ? rowSelection : undefined}
+      onRowSelectionChange={handleRowSelectionChange}
+      enablePagination={paginated}
+      pageSize={pageSize}
+      enableExpanding={expandable}
+      renderSubRow={(row) => <LienExpandedRow lien={row.original} />}
+      footerCells={footerCells}
+      emptyMessage={emptyMessage}
+      className={className}
+      toolbar={
+        showLastLoaded ? (
+          <LienTableToolbar loadedAt={loadedAt} onRefresh={onRefresh} isRefreshing={isRefreshing} />
+        ) : undefined
+      }
+    />
+  );
+}
 
-                    {expandable && isExpanded && (
-                      <tr className="bg-gray-50/70 border-t-0">
-                        <td colSpan={totalCols} className="px-4 pb-3 pt-2">
-                          <div className="flex items-center flex-wrap gap-x-6 gap-y-1">
-                            <LienExpandedField
-                              label="Facility"
-                              value={lien.facility ?? "—"}
-                            />
-                            {lien.status && (
-                              <LienExpandedField label="Status">
-                                <Badge variant="outline">{lien.status}</Badge>
-                              </LienExpandedField>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })
-            )}
-          </tbody>
-          {footer && (
-            <tfoot>
-              <tr className="border-t-2 border-gray-200 bg-gray-50/80">
-                {footer.map((cell, i) => (
-                  <td
-                    key={i}
-                    colSpan={cell.colSpan}
-                    className={cn(
-                      "px-3 py-2.5",
-                      cell.align === "right" && "text-right",
-                      cell.className,
-                    )}
-                  >
-                    {cell.content}
-                  </td>
-                ))}
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
+function LienExpandedRow({ lien }: { lien: LienRow }) {
+  return (
+    <div className="flex items-center flex-wrap gap-x-6 gap-y-1">
+      <LienExpandedField label="Facility" value={lien.facility ?? "—"} />
+      {lien.status && (
+        <LienExpandedField label="Status">
+          <Badge variant="outline">{lien.status}</Badge>
+        </LienExpandedField>
+      )}
     </div>
   );
 }
