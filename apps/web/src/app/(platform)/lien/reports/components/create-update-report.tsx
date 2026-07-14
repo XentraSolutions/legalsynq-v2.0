@@ -54,37 +54,6 @@ type ColsType = {
   label: string;
 };
 
-function normalizeColumnOption(column: unknown): ColsType | null {
-  if (typeof column === "string") {
-    return {
-      code: column,
-      label:
-        AVAILABLE_COLUMNS.find((available) => available.code === column)?.label ??
-        column,
-    };
-  }
-
-  if (
-    column &&
-    typeof column === "object" &&
-    "key" in column &&
-    typeof column.key === "string"
-  ) {
-    const label =
-      "label" in column && typeof column.label === "string"
-        ? column.label
-        : AVAILABLE_COLUMNS.find((available) => available.code === column.key)
-            ?.label ?? column.key;
-
-    return {
-      code: column.key,
-      label,
-    };
-  }
-
-  return null;
-}
-
 const STEPS = ["Details", "Filters", "Columns"];
 
 export default function CreateUpdateReport({
@@ -212,15 +181,17 @@ export default function CreateUpdateReport({
     }));
 
     const filteredSelectedColumns =
-      initialData?.config?.columns
-        ?.map((c: unknown) => normalizeColumnOption(c))
-        .filter((c: ColsType | null): c is ColsType => c !== null) ?? [];
+      initialData?.config?.columns?.map((c: string) => {
+        return {
+          code: c,
+          label: AVAILABLE_COLUMNS.find((col) => col.code == c)?.label,
+        };
+      }) ?? [];
     const filteredAvailableColumns =
       AVAILABLE_COLUMNS.filter(
         (availableCol) =>
           !initialData?.config?.columns?.some(
-            (selectedCol: unknown) =>
-              normalizeColumnOption(selectedCol)?.code === availableCol.code,
+            (selectedCol: string) => selectedCol === availableCol.code,
           ),
       ) ?? [];
     setSelectedCols(filteredSelectedColumns);
@@ -311,12 +282,7 @@ export default function CreateUpdateReport({
       })),
       summaryTotals: reportDataRes.summaryTotals,
       ...payload,
-      config: {
-        columns: selectedCols.map((c: ColsType) => ({
-          key: c.code,
-          label: c.label,
-        })),
-      },
+      config: { columns: selectedCols.map((c: ColsType) => c.code) },
       name: form.name,
       description: form.description,
     };

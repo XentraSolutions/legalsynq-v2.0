@@ -1,18 +1,11 @@
 import { CaseListItem } from "../cases";
 import { ReportListItem } from "./lien-reports.mapper";
 
-export interface ReportColumnOption {
-  key: string;
-  label: string;
-}
-
-export type ReportColumnValue = string | ReportColumnOption;
-
 export interface CreateReports {
   name: string;
   description: string;
   config: {
-    columns: Array<ReportColumnValue>;
+    columns: Array<string>;
   };
   attorneyIds: Array<string>;
   caseManagerIds: Array<string>;
@@ -60,7 +53,7 @@ export interface ReportListResponse {
 
 export interface ReportConfigResponse {
   config: {
-    columns: Array<ReportColumnValue>;
+    columns: Array<string>;
   };
 
   createdAt: string;
@@ -71,7 +64,7 @@ export interface ReportConfigResponse {
   reportDescription: string | undefined | null;
   description?: string | null;
   reportConfig: {
-    columns: Array<ReportColumnValue>;
+    columns: Array<string>;
   };
   reportId: string;
   reportName: string;
@@ -144,7 +137,7 @@ interface ReportConfig {
   medicalFacilityIds: Array<string>;
   caseManagerIds: Array<string>;
   medicalProviderIds: Array<string>;
-  columns: Array<ReportColumnValue>;
+  columns: Array<string>;
   page: number | string;
   limit: number | string;
 }

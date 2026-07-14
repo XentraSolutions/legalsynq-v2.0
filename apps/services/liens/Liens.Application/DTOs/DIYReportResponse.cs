@@ -27,9 +27,6 @@ public sealed class SaveDIYReportRequest
 {
     public string      Name   { get; init; } = string.Empty;
     public JsonElement Config { get; init; }
-
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement>? ExtensionData { get; init; }
 }
 
 public sealed class DIYReportRunRequest

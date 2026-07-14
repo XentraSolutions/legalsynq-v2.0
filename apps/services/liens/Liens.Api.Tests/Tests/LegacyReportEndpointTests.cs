@@ -247,77 +247,9 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             .GetProperty("reportConfig")
             .GetProperty("columns")
             .EnumerateArray()
-            .Select(c => c.GetProperty("key").GetString())
+            .Select(c => c.GetString())
             .ToList();
         reportConfigColumns.Should().Equal("billing_amt", "case_id");
-    }
-
-    [Fact]
-    public async Task SaveReport_preserves_top_level_filter_ids_in_saved_response()
-    {
-        var resp = await _client.PostAsJsonAsync("/api/liens/reports/diy/save", new
-        {
-            name = "Saved Filters Report",
-            config = new
-            {
-                reportType = "LIENS",
-                statusView = "ALL",
-                lienStatusIds = Array.Empty<string>(),
-                purchaseDateFrom = "06/01/2026",
-                purchaseDateTo = "06/26/2026",
-                closedDateFrom = (string?)null,
-                closedDateTo = (string?)null,
-                isBulk = "N",
-                plaintiffCaseIds = Array.Empty<string>(),
-                lawFirmIds = Array.Empty<string>(),
-                attorneyIds = Array.Empty<string>(),
-                fundingCompanyIds = Array.Empty<string>(),
-                medicalFacilityIds = Array.Empty<string>(),
-                caseManagerIds = Array.Empty<string>(),
-                medicalProviderIds = Array.Empty<string>(),
-                columns = new[]
-                {
-                    new { key = "billing_amt", label = "Billing Amt" },
-                    new { key = "case_id", label = "Case Id" },
-                },
-                page = 1,
-                limit = 50,
-            },
-            lawFirmIds = new[] { SeedHelper.LawFirmId.ToString() },
-            fundingCompanyIds = new[] { SeedHelper.FundingCompanyId.ToString() },
-            medicalProviderIds = new[] { SeedHelper.MedicalProviderId.ToString() },
-            plaintiffCaseIds = new[] { SeedHelper.CaseId.ToString() },
-        });
-        resp.StatusCode.Should().Be(HttpStatusCode.Created,
-            $"Body: {await resp.Content.ReadAsStringAsync()}");
-
-        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
-        var reportConfig = doc!.RootElement.GetProperty("reportConfig");
-
-        reportConfig.GetProperty("lawFirmIds").EnumerateArray()
-            .Select(v => v.GetString())
-            .Should().Equal(SeedHelper.LawFirmId.ToString());
-        reportConfig.GetProperty("fundingCompanyIds").EnumerateArray()
-            .Select(v => v.GetString())
-            .Should().Equal(SeedHelper.FundingCompanyId.ToString());
-        reportConfig.GetProperty("medicalProviderIds").EnumerateArray()
-            .Select(v => v.GetString())
-            .Should().Equal(SeedHelper.MedicalProviderId.ToString());
-        reportConfig.GetProperty("plaintiffCaseIds").EnumerateArray()
-            .Select(v => v.GetString())
-            .Should().Equal(SeedHelper.CaseId.ToString());
-
-        var reportConfigColumns = reportConfig
-            .GetProperty("columns")
-            .EnumerateArray()
-            .Select(c => new
-            {
-                key = c.GetProperty("key").GetString(),
-                label = c.GetProperty("label").GetString(),
-            })
-            .ToList();
-        reportConfigColumns.Should().ContainSingle(c => c.key == "billing_amt" && c.label == "Billing Amt");
-        reportConfigColumns.Should().ContainSingle(c => c.key == "case_id" && c.label == "Case Id");
     }
 
     // ── DELETE /report/diy/{id} ───────────────────────────────────────────────

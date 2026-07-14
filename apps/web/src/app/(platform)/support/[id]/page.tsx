@@ -165,9 +165,6 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                 <dl className="divide-y divide-gray-100">
                   {ticket.requesterName  && <MetaRow label="Requester" value={ticket.requesterName} />}
                   {ticket.requesterEmail && <MetaRow label="Email"     value={ticket.requesterEmail} />}
-                  {ticket.caseManagerName && <MetaRow label="Case manager" value={ticket.caseManagerName} />}
-                  {!ticket.caseManagerName && ticket.caseManagerUserId && <MetaRow label="Case manager" value={ticket.caseManagerUserId} />}
-                  {ticket.caseManagerEmail && <MetaRow label="Manager email" value={ticket.caseManagerEmail} />}
                   <MetaRow label="Source"  value={ticket.source} />
                   <MetaRow label="Created" value={formatDate(ticket.createdAt)} />
                   <MetaRow label="Updated" value={formatDate(ticket.updatedAt)} />

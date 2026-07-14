@@ -62,18 +62,7 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
     {
         _factory.Recorder.Clear();
         var c = ClientFor("tenant-N1");
-        var resp = await c.PostAsJsonAsync("/support/api/tickets", new CreateTicketRequest
-        {
-            Title = "hello",
-            Priority = TicketPriority.Normal,
-            Source = TicketSource.Portal,
-            RequesterUserId = "user-1",
-            RequesterEmail = "a@b.com",
-            CaseManagerName = "Pat Morgan",
-            CaseManagerEmail = "pat.morgan@example.com",
-        });
-        resp.EnsureSuccessStatusCode();
-        var t = (await resp.Content.ReadFromJsonAsync<TicketResponse>(JsonOpts))!;
+        var t = await CreateTicket(c, "hello", requesterUserId: "user-1", requesterEmail: "a@b.com");
 
         var emitted = _factory.Recorder.ForTicket(t.Id);
         emitted.Should().ContainSingle(n => n.EventType == SupportNotificationEventTypes.TicketCreated);
@@ -84,8 +73,6 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
         n.Payload["title"].Should().Be("hello");
         n.Payload["requester_user_id"].Should().Be("user-1");
         n.Payload["requester_email"].Should().Be("a@b.com");
-        n.Payload["case_manager_name"].Should().Be("Pat Morgan");
-        n.Payload["case_manager_email"].Should().Be("pat.morgan@example.com");
         // When RequesterEmail is stored, it is used directly (email kind preferred over userId kind).
         n.Recipients.Should().Contain(r => r.Kind == NotificationRecipientKind.Email && r.Email == "a@b.com");
     }
@@ -99,7 +86,7 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
         var t = await CreateTicket(c, "for update", requesterEmail: "u@example.com");
 
         var resp = await c.PutAsJsonAsync($"/support/api/tickets/{t.Id}",
-            new UpdateTicketRequest { Title = "renamed", CaseManagerName = "Jamie Case" });
+            new UpdateTicketRequest { Title = "renamed" });
         resp.EnsureSuccessStatusCode();
 
         var emitted = _factory.Recorder.ForTicket(t.Id);
@@ -107,7 +94,6 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
         var u = emitted.First(n => n.EventType == SupportNotificationEventTypes.TicketUpdated);
         u.Payload["title"].Should().Be("renamed");
         u.Payload["status"].Should().Be(TicketStatus.Open.ToString());
-        u.Payload["case_manager_name"].Should().Be("Jamie Case");
     }
 
     // 3

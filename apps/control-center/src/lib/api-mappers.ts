@@ -1014,8 +1014,6 @@ function mapTicketPriority(raw: unknown): SupportCasePriority {
 export function mapSupportCase(raw: unknown): SupportCase {
   const r   = asObj(raw);
   const now = new Date().toISOString();
-  const rawStatus = r['caseStatus'] ?? r['case_status'] ?? r['status'];
-  const rawCaseType = r['caseType'] ?? r['case_type'] ?? r['category'];
 
   const userId = (
     r['requesterUserId'] ?? r['requester_user_id'] ?? r['userId'] ?? r['user_id']
@@ -1036,41 +1034,21 @@ export function mapSupportCase(raw: unknown): SupportCase {
   const assignedUserId = (
     r['assignedUserId'] ?? r['assigned_user_id']
   );
-  const caseManagerUserId = (
-    r['caseManagerUserId'] ?? r['case_manager_user_id']
-  );
-  const caseManagerName = (
-    r['caseManagerName'] ?? r['case_manager_name']
-  );
-  const caseManagerEmail = (
-    r['caseManagerEmail'] ?? r['case_manager_email']
-  );
   const updatedByUserId = (
     r['updatedByUserId'] ?? r['updated_by_user_id']
   );
-  const rawId = (
-    r['id'] ?? r['ticketId'] ?? r['ticket_id'] ?? r['caseId'] ?? r['case_id']
-  );
-  const id = typeof rawId === 'string' ? rawId : '';
-  const caseStatus = mapTicketStatus(rawStatus);
-  const caseType = typeof rawCaseType === 'string' && rawCaseType.length > 0 ? rawCaseType : '';
 
   return {
-    id,
+    id:               str(r, 'id',          'id',         '',  'mapSupportCase.id'),
     title:            str(r, 'title',       'title',      ''),
     tenantId:         str(r, 'tenant_id',   'tenantId',   ''),
     tenantName:       str(r, 'tenant_name', 'tenantName', ''),
     userId:           typeof userId   === 'string' && userId.length   > 0 ? userId   : undefined,
     userName:         typeof userName === 'string' && userName.length > 0 ? userName : undefined,
     requesterEmail:   typeof requesterEmail   === 'string' && requesterEmail.length   > 0 ? requesterEmail   : undefined,
-    status:           caseStatus,
-    caseStatus,
-    category:         caseType,
-    caseType,
+    status:           mapTicketStatus(r['status']),
+    category:         str(r, 'category', 'category', ''),
     priority:         mapTicketPriority(r['priority']),
-    caseManagerUserId: typeof caseManagerUserId === 'string' && caseManagerUserId.length > 0 ? caseManagerUserId : undefined,
-    caseManagerName:   typeof caseManagerName === 'string' && caseManagerName.length > 0 ? caseManagerName : undefined,
-    caseManagerEmail:  typeof caseManagerEmail === 'string' && caseManagerEmail.length > 0 ? caseManagerEmail : undefined,
     assignedUserId:   typeof assignedUserId   === 'string' && assignedUserId.length   > 0 ? assignedUserId   : undefined,
     createdAtUtc:     typeof createdRaw === 'string' && createdRaw.length > 0 ? createdRaw : now,
     updatedAtUtc:     typeof updatedRaw === 'string' && updatedRaw.length > 0 ? updatedRaw : now,

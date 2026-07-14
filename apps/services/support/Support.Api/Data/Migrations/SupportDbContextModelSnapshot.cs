@@ -75,6 +75,40 @@ namespace Support.Api.Data.Migrations
                     b.ToTable("support_external_customers", (string)null);
                 });
 
+            modelBuilder.Entity("Support.Api.Domain.SupportTenantSettings", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("CustomerPortalEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("customer_portal_enabled");
+
+                    b.Property<string>("SupportMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasDefaultValue("InternalOnly")
+                        .HasColumnName("support_mode");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("support_tenant_settings", (string)null);
+                });
+
             modelBuilder.Entity("Support.Api.Domain.SupportQueue", b =>
                 {
                     b.Property<Guid>("Id")
@@ -206,40 +240,6 @@ namespace Support.Api.Data.Migrations
                     b.ToTable("support_queue_members", (string)null);
                 });
 
-            modelBuilder.Entity("Support.Api.Domain.SupportTenantSettings", b =>
-                {
-                    b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("created_at");
-
-                    b.Property<bool>("CustomerPortalEnabled")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("tinyint(1)")
-                        .HasDefaultValue(false)
-                        .HasColumnName("customer_portal_enabled");
-
-                    b.Property<string>("SupportMode")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("varchar(30)")
-                        .HasDefaultValue("InternalOnly")
-                        .HasColumnName("support_mode");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("TenantId");
-
-                    b.ToTable("support_tenant_settings", (string)null);
-                });
-
             modelBuilder.Entity("Support.Api.Domain.SupportTicket", b =>
                 {
                     b.Property<Guid>("Id")
@@ -257,21 +257,6 @@ namespace Support.Api.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)")
                         .HasColumnName("assigned_user_id");
-
-                    b.Property<string>("CaseManagerEmail")
-                        .HasMaxLength(320)
-                        .HasColumnType("varchar(320)")
-                        .HasColumnName("case_manager_email");
-
-                    b.Property<string>("CaseManagerName")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)")
-                        .HasColumnName("case_manager_name");
-
-                    b.Property<string>("CaseManagerUserId")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)")
-                        .HasColumnName("case_manager_user_id");
 
                     b.Property<string>("Category")
                         .HasMaxLength(100)
@@ -327,10 +312,9 @@ namespace Support.Api.Data.Migrations
 
                     b.Property<string>("RequesterType")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("varchar(20)")
                         .HasDefaultValue("InternalUser")
+                        .HasColumnType("varchar(20)")
                         .HasColumnName("requester_type");
 
                     b.Property<string>("RequesterUserId")
@@ -388,10 +372,9 @@ namespace Support.Api.Data.Migrations
 
                     b.Property<string>("VisibilityScope")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("varchar(20)")
                         .HasDefaultValue("Internal")
+                        .HasColumnType("varchar(20)")
                         .HasColumnName("visibility_scope");
 
                     b.HasKey("Id");
@@ -401,9 +384,6 @@ namespace Support.Api.Data.Migrations
 
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_support_tickets_tenant");
-
-                    b.HasIndex("TenantId", "CaseManagerUserId")
-                        .HasDatabaseName("ix_support_tickets_tenant_case_manager");
 
                     b.HasIndex("TenantId", "ExternalCustomerId")
                         .HasDatabaseName("ix_support_tickets_tenant_ext_customer");

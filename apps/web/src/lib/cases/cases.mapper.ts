@@ -129,9 +129,9 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     closedAt: formatDateField(dto.closedAtUtc),
     createdAt: formatDateField(dto.createdAtUtc),
     updatedAt: formatDateField(dto.updatedAtUtc),
-    caseManager: safeString(dto.caseManager),
-    lawFirm: safeString(dto.lawFirm),
-    accidentType: safeString(dto.accidentType),
+    caseManager: dto.caseManager,
+    lawFirm: dto.lawFirm,
+    accidentType: dto.accidentType,
   };
 }
 

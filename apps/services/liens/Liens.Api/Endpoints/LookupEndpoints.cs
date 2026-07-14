@@ -80,11 +80,11 @@ public static class LookupEndpoints
             .RequirePermission(LiensPermissions.LienRead);
         legacy.MapGet("/contact/medical-facility",(IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.MedicalFacility, ct))
             .RequirePermission(LiensPermissions.LienRead);
-        legacy.MapGet("/contact/funding-company", LegacyGetFundingCompanies)
+        legacy.MapGet("/contact/funding-company", (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.LienHolder, ct))
             .RequirePermission(LiensPermissions.LienRead);
 
-        // Law firm roles — exposed as law-firm contact subtype options.
-        legacy.MapGet("/contact/lawfirm/role",    () => Results.Ok(GetLawFirmRoleOptions()))
+        // Law firm roles — returns case-manager contacts (closest equivalent to legacy "roles")
+        legacy.MapGet("/contact/lawfirm/role",    (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.CaseManager, ct))
             .RequirePermission(LiensPermissions.LienRead);
 
         // Case managers by law-firm org (best-effort: returns all CaseManager contacts for tenant)
@@ -259,57 +259,7 @@ public static class LookupEndpoints
             ?? throw new UnauthorizedAccessException("Tenant context is required.");
 
         var result = await contactService.GetAllByTypeAsync(tenantId, contactType, isActive: true, ct);
-
-        if (string.Equals(contactType, ContactType.LawFirm, StringComparison.Ordinal))
-        {
-            result = result
-                .Where(contact => string.IsNullOrWhiteSpace(contact.ContactSubtype))
-                .ToList();
-        }
-
         return Results.Ok(result);
-    }
-
-    private static async Task<IResult> LegacyGetFundingCompanies(
-        IContactService contactService,
-        ICurrentRequestContext ctx,
-        CancellationToken ct)
-    {
-        var tenantId = ctx.TenantId
-            ?? throw new UnauthorizedAccessException("Tenant context is required.");
-
-        var lienHolders = await contactService.GetAllByTypeAsync(tenantId, ContactType.LienHolder, isActive: true, ct);
-        var fundingCompanies = await contactService.GetAllByTypeAsync(tenantId, ContactType.FundingCompany, isActive: true, ct);
-
-        var result = lienHolders
-            .Concat(fundingCompanies)
-            .DistinctBy(item => item.Id)
-            .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return Results.Ok(result);
-    }
-
-    private static IReadOnlyList<object> GetLawFirmRoleOptions()
-    {
-        return new[]
-        {
-            new
-            {
-                code = ContactSubtype.LawFirmCaseManager,
-                name = "Case Manager",
-            },
-            new
-            {
-                code = ContactSubtype.LawFirmAttorney,
-                name = "Attorney",
-            },
-            new
-            {
-                code = ContactSubtype.LawFirmOther,
-                name = "Other",
-            },
-        };
     }
 
     private static async Task<IResult> LegacyGetAllFacilities(

@@ -20,11 +20,6 @@ public class CreateTicketRequestValidator : AbstractValidator<CreateTicketReques
             .EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.ExternalCustomerEmail))
             .MaximumLength(320);
         RuleFor(x => x.ExternalCustomerName).MaximumLength(200);
-        RuleFor(x => x.CaseManagerUserId).MaximumLength(64);
-        RuleFor(x => x.CaseManagerName).MaximumLength(200);
-        RuleFor(x => x.CaseManagerEmail)
-            .EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.CaseManagerEmail))
-            .MaximumLength(320);
     }
 }
 
@@ -40,11 +35,6 @@ public class UpdateTicketRequestValidator : AbstractValidator<UpdateTicketReques
         RuleFor(x => x.Severity!).IsInEnum().When(x => x.Severity.HasValue);
         RuleFor(x => x.Category).MaximumLength(100);
         RuleFor(x => x.RequesterName).MaximumLength(200);
-        RuleFor(x => x.CaseManagerUserId).MaximumLength(64);
-        RuleFor(x => x.CaseManagerName).MaximumLength(200);
-        RuleFor(x => x.CaseManagerEmail)
-            .EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.CaseManagerEmail))
-            .MaximumLength(320);
         RuleFor(x => x.DueAt!)
             .Must(d => d >= DateTime.UtcNow.AddMinutes(-1))
             .When(x => x.DueAt.HasValue)

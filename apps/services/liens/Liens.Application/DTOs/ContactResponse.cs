@@ -3,10 +3,7 @@ namespace Liens.Application.DTOs;
 public sealed class ContactResponse
 {
     public Guid Id { get; init; }
-    public Guid? FacilityId { get; init; }
-    public Guid? LawFirmId { get; init; }
     public string ContactType { get; init; } = string.Empty;
-    public string? ContactSubtype { get; init; }
     public string FirstName { get; init; } = string.Empty;
     public string LastName { get; init; } = string.Empty;
     public string DisplayName { get; init; } = string.Empty;
@@ -22,7 +19,6 @@ public sealed class ContactResponse
     public string? PostalCode { get; init; }
     public string? Notes { get; init; }
     public bool IsActive { get; init; }
-    public int ActiveCases { get; init; }
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; init; }
 }

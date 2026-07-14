@@ -228,12 +228,6 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
                                 )}
                               </span>
                             )}
-                            {(t.caseManagerName || t.caseManagerEmail) && (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
-                                <span className="font-medium text-gray-700">Case manager:</span>
-                                <span>{t.caseManagerName ?? t.caseManagerEmail}</span>
-                              </span>
-                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-xs font-mono text-gray-500 hidden md:table-cell">

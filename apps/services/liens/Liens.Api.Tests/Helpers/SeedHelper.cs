@@ -58,7 +58,6 @@ public static class SeedHelper
             (LookupCategory.ServicingPriority, "Normal",      "Normal"),
             (LookupCategory.ContactType,       ContactType.LawFirm,    "Law Firm"),
             (LookupCategory.ContactType,       ContactType.Provider,   "Medical Provider"),
-            (LookupCategory.ContactType,       ContactType.Facility,   "Facility"),
             (LookupCategory.ContactType,       ContactType.MedicalFacility, "Medical Facility"),
             (LookupCategory.ContactType,       ContactType.LienHolder, "Funding Company"),
             (LookupCategory.ContactType,       ContactType.FundingCompany, "Funding Company"),
@@ -120,26 +119,16 @@ public static class SeedHelper
         SetId(lead, LeadContactId);
         db.Contacts.Add(lead);
 
-        // ── Facility + facility-linked contact person ─────────────────────────
+        // ── Facility + contact person ─────────────────────────────────────────
         var facility = Facility.Create(TenantId, OrgId, "Sunrise Clinic", UserId,
             code: "FAC001", city: "Los Angeles", state: "CA");
         SetId(facility, FacilityId);
         db.Facilities.Add(facility);
 
-        var cp = Contact.Create(
-            TenantId,
-            OrgId,
-            ContactType.Facility,
-            "Alice",
-            "Nurse",
-            UserId,
-            facilityId: FacilityId,
-            contactSubtype: ContactSubtype.FacilityContactPerson,
-            title: "Head Nurse",
-            organization: facility.Name,
-            email: "alice@sunrise.com");
+        var cp = FacilityContactPerson.Create(TenantId, FacilityId,
+            "Alice", "Nurse", UserId, position: "Head Nurse", email: "alice@sunrise.com");
         SetId(cp, FacilityContactId);
-        db.Contacts.Add(cp);
+        db.FacilityContactPersons.Add(cp);
 
         // ── Case + Lien ───────────────────────────────────────────────────────
         var caseEntity = Case.Create(TenantId, OrgId, "CASE-TEST-001",

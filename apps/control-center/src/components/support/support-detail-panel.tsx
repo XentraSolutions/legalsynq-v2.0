@@ -262,14 +262,10 @@ export function SupportDetailPanel({
         </div>
         <dl className="divide-y divide-gray-100">
           <MetaRow label="Tenant"   value={kase.tenantName} />
-          <MetaRow label="Case type" value={kase.caseType || kase.category} />
-          <MetaRow label="Case status" value={kase.caseStatus || kase.status} />
+          <MetaRow label="Category" value={kase.category} />
           <MetaRow label="Priority" value={kase.priority} />
           {kase.userName      && <MetaRow label="User"      value={kase.userName} />}
           {kase.requesterEmail && <MetaRow label="Email"    value={kase.requesterEmail} />}
-          {kase.caseManagerName && <MetaRow label="Case manager" value={kase.caseManagerName} />}
-          {!kase.caseManagerName && kase.caseManagerUserId && <MetaRow label="Case manager" value={kase.caseManagerUserId} />}
-          {kase.caseManagerEmail && <MetaRow label="Manager email" value={kase.caseManagerEmail} />}
           <div className="flex items-start gap-4 px-5 py-2.5">
             <dt className="text-xs text-gray-400 font-medium w-20 shrink-0 pt-0.5">Assigned</dt>
             <dd className="flex-1 flex items-center gap-3 flex-wrap">

@@ -27,8 +27,6 @@ export interface LienResponseDto {
   buyingOrgId?: string | null;
   holdingOrgId?: string | null;
   incidentDate?: string | null;
-  totalPurchase?: number | null;
-  totalBilling?: number | null;
   description?: string | null;
   openedAtUtc?: string | null;
   closedAtUtc?: string | null;

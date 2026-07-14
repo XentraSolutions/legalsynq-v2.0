@@ -28,15 +28,11 @@ public class TicketApiTests : IClassFixture<SupportApiFactory>
             Title = "Login broken",
             Priority = TicketPriority.High,
             Source = TicketSource.Portal,
-            CaseManagerName = "Pat Morgan",
-            CaseManagerEmail = "pat.morgan@example.com",
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = await resp.Content.ReadFromJsonAsync<TicketResponse>();
         body!.TicketNumber.Should().StartWith("SUP-");
         body.Status.Should().Be(TicketStatus.Open);
-        body.CaseManagerName.Should().Be("Pat Morgan");
-        body.CaseManagerEmail.Should().Be("pat.morgan@example.com");
     }
 
     [Fact]
@@ -92,28 +88,6 @@ public class TicketApiTests : IClassFixture<SupportApiFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<TicketResponse>();
         body!.Status.Should().Be(TicketStatus.InProgress);
-    }
-
-    [Fact]
-    public async Task Update_Case_Manager_Fields_Succeeds()
-    {
-        var a = ClientForTenant("tenant-A-CM");
-        var created = await (await a.PostAsJsonAsync("/support/api/tickets",
-                new CreateTicketRequest { Title = "t", Priority = TicketPriority.Normal, Source = TicketSource.Portal }))
-            .Content.ReadFromJsonAsync<TicketResponse>();
-
-        var resp = await a.PutAsJsonAsync($"/support/api/tickets/{created!.Id}",
-            new UpdateTicketRequest
-            {
-                CaseManagerUserId = "cm-42",
-                CaseManagerName = "Jamie Case",
-                CaseManagerEmail = "jamie.case@example.com",
-            });
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<TicketResponse>();
-        body!.CaseManagerUserId.Should().Be("cm-42");
-        body.CaseManagerName.Should().Be("Jamie Case");
-        body.CaseManagerEmail.Should().Be("jamie.case@example.com");
     }
 
     [Fact]

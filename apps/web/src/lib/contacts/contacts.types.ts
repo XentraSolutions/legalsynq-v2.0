@@ -34,7 +34,6 @@ export interface PaginatedResultDto<T> {
 export interface CreateContactRequestDto {
   contactType: string;
   fullName?: string;
-  fullname?: string;
   firstName?: string;
   lastName?: string;
   title?: string;
@@ -56,7 +55,6 @@ export interface CreateContactRequestDto {
 export interface UpdateContactRequestDto {
   contactType: string;
   fullName?: string;
-  fullname?: string;
   firstName?: string;
   lastName?: string;
   title?: string;

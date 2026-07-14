@@ -1,7 +1,7 @@
 export interface CreateBatchRequestDto {
   label: string;
   template: string;
-  caseId?: string;
+  caseId: string;
   file: string;
   date: string;
   rows: number | string;
@@ -28,7 +28,7 @@ export interface UpdateBatchRequestDto {
   id: string;
   label: string;
   template: string;
-  caseId?: string;
+  caseId: string;
   file: string;
   date: string;
   rows: number | string;
@@ -38,7 +38,7 @@ export interface UpdateBatchRequestDto {
 export interface ProcessBatchDto {
   batchUploadId: string;
   templateId: string;
-  caseId?: string;
+  caseId: string;
 }
 
 export interface PaginationMeta {

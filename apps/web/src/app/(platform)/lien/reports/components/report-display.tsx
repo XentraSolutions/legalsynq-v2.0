@@ -103,7 +103,7 @@ export default function ReportDisplay({
       const response = await lienReportsService.createReports({
         name: report.name,
         description: report.description ?? report.reportDescription,
-        config: { columns: report.config?.columns ?? report.columns },
+        config: { columns: report.columns },
         attorneyIds: report.attorneyIds,
         caseManagerIds: report.caseManagerIds,
         closedDateFrom: null,

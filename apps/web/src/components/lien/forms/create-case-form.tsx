@@ -47,61 +47,6 @@ const INITIAL_FORM = {
   isServicing: "true",
 };
 
-const LEGACY_CASE_STATUS_OPTIONS = [
-  { key: "legacy-case-status-new", value: "New", label: "New" },
-  {
-    key: "legacy-case-status-processing",
-    value: "Processing",
-    label: "Processing",
-  },
-  { key: "legacy-case-status-closed", value: "Closed", label: "Closed" },
-  {
-    key: "legacy-case-status-pre-demand",
-    value: "Pre-demand",
-    label: "Pre-demand",
-  },
-  {
-    key: "legacy-case-status-demand-sent",
-    value: "Demand Sent",
-    label: "Demand Sent",
-  },
-  {
-    key: "legacy-case-status-negotiations",
-    value: "Negotiations",
-    label: "Negotiations",
-  },
-  {
-    key: "legacy-case-status-litigation",
-    value: "Litigation",
-    label: "Litigation",
-  },
-  {
-    key: "legacy-case-status-case-settled",
-    value: "Case Settled",
-    label: "Case Settled",
-  },
-] as const;
-
-const LEGACY_ACCIDENT_TYPE_NAMES = [
-  "Dog Bite",
-  "Motor Vehicle Accident",
-  "Other",
-  "Slip and Fall",
-  "Workers Compensation",
-  "Medical Malpractice",
-] as const;
-
-const LEGACY_ACCIDENT_TYPE_FALLBACKS: Record<
-  string,
-  { key: string; value: string; label: string }
-> = {
-  "Medical Malpractice": {
-    key: "legacy-accident-type-medical-malpractice",
-    value: "MedicalMalpractice",
-    label: "Medical Malpractice",
-  },
-};
-
 export function CreateCaseForm({
   caseNumber,
   open,
@@ -147,10 +92,6 @@ export function CreateCaseForm({
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
 
-  const selectedAccidentType = data.accidentType.find(
-    (option) => option.value === form.accidentTypeId,
-  );
-
   const validate = () => {
     const newErrors = getCreateCaseFormErrors(form);
 
@@ -161,47 +102,26 @@ export function CreateCaseForm({
   };
 
   const fetchData = useCallback(async () => {
-    const [lawfirmRes, caseManagersRes] = await Promise.allSettled([
-      lookupService.getLawfirm(),
-      contactsService.getCaseManagers(),
-    ]);
-    if (
-      lawfirmRes.status === "fulfilled" &&
-      caseManagersRes.status === "fulfilled"
-    ) {
-      setData((prev: any) => ({
-        ...prev,
-        status: [...LEGACY_CASE_STATUS_OPTIONS],
-        state:
-          lookup?.State?.map((c) => {
-            return { key: c.id, value: c.code, label: c.code };
-          }) ?? [],
-        accidentState:
-          lookup?.State?.map((c) => {
-            return { key: c.id, value: c.code, label: c.code };
-          }) ?? [],
-        lawFirm:
-          lawfirmRes.value.items.map((c) => {
-            return { key: c.id, value: c.id, label: c.displayName };
-          }) ?? [],
-        caseManagers:
-          caseManagersRes.value.items.map((c) => {
-            return { key: c.id, value: c.id, label: c.displayName };
-          }) ?? [],
-        accidentType:
-          LEGACY_ACCIDENT_TYPE_NAMES.flatMap((name) => {
-            const match = lookup?.AccidentType?.find((c) => c.name === name);
-
-            if (match) {
-              return [{ key: match.id, value: match.id, label: match.name }];
-            }
-
-            const fallback = LEGACY_ACCIDENT_TYPE_FALLBACKS[name];
-            return fallback ? [fallback] : [];
-          }),
-      }));
-    }
-  }, []);
+    setData((prev) => ({
+      ...prev,
+      status:
+        lookup?.CaseStatus?.map((c) => {
+          return { key: c.id, value: c.code, label: c.name };
+        }) ?? [],
+      state:
+        lookup?.State?.map((c) => {
+          return { key: c.id, value: c.code, label: c.code };
+        }) ?? [],
+      accidentState:
+        lookup?.State?.map((c) => {
+          return { key: c.id, value: c.code, label: c.code };
+        }) ?? [],
+      accidentType:
+        lookup?.AccidentType?.map((c) => {
+          return { key: c.id, value: c.id, label: c.name };
+        }) ?? [],
+    }));
+  }, [lookup]);
 
   useEffect(() => {
     if (!Object.values(touched).some(Boolean)) return;
@@ -265,7 +185,7 @@ export function CreateCaseForm({
         accidentStateId: form.accidentStateId || undefined,
         caseManagerId: form.caseManagerId || undefined,
         isServicing: form.isServicing == "true",
-        caseType: selectedAccidentType?.label || undefined,
+        caseType: form.accidentTypeId || undefined,
         dateOfIncident: dateConverter(form.dateOfIncident) || undefined,
         stateOfIncident: form.accidentStateId || undefined,
       };

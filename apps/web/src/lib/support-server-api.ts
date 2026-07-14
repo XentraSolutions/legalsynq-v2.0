@@ -19,9 +19,6 @@ export interface TicketSummary {
   source:          TicketSource;
   requesterName?:  string;
   requesterEmail?: string;
-  caseManagerUserId?: string;
-  caseManagerName?: string;
-  caseManagerEmail?: string;
   assignedUserId?: string;
   assignedQueueId?: string;
   dueAt?:          string;
@@ -130,9 +127,6 @@ export interface CreateTicketRequest {
   requesterUserId?: string;
   requesterName?:  string;
   requesterEmail?: string;
-  caseManagerUserId?: string;
-  caseManagerName?: string;
-  caseManagerEmail?: string;
   source?:         TicketSource;
 }
 

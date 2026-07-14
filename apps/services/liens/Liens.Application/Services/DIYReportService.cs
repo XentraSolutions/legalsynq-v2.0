@@ -43,7 +43,7 @@ public class DIYReportService : IDIYReportService
     public async Task<DIYReportConfigResponse> SaveReportAsync(
         Guid tenantId, Guid userId, SaveDIYReportRequest request, CancellationToken ct = default)
     {
-        var configJson = BuildPersistedConfigJson(request);
+        var configJson = request.Config.GetRawText();
         var entity = DIYReportConfig.Create(tenantId, userId, request.Name, configJson, userId);
         await _repo.AddAsync(entity, ct);
         return Map(entity);
@@ -448,7 +448,7 @@ public class DIYReportService : IDIYReportService
         }
 
         var reportType = GetString(config, "reportType") ?? "LIENS";
-        var reportConfig = config;
+        var reportConfig = BuildReportConfig(config);
         var columnCount = CountColumns(config);
 
         return new DIYReportConfigResponse
@@ -472,26 +472,32 @@ public class DIYReportService : IDIYReportService
         };
     }
 
-    private static string BuildPersistedConfigJson(SaveDIYReportRequest request)
+    private static JsonElement BuildReportConfig(JsonElement config)
     {
-        var node = request.Config.ValueKind == JsonValueKind.Object
-            ? JsonNode.Parse(request.Config.GetRawText()) as JsonObject ?? new JsonObject()
-            : new JsonObject();
+        var node = JsonNode.Parse(config.GetRawText()) as JsonObject ?? new JsonObject();
+        var columns = new JsonArray();
 
-        if (request.ExtensionData is not null)
+        if (config.ValueKind == JsonValueKind.Object &&
+            config.TryGetProperty("columns", out var configColumns) &&
+            configColumns.ValueKind == JsonValueKind.Array)
         {
-            foreach (var (key, value) in request.ExtensionData)
+            foreach (var column in configColumns.EnumerateArray())
             {
-                if (string.Equals(key, "name", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(key, "config", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(key, "description", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                node[key] = JsonNode.Parse(value.GetRawText());
+                if (column.ValueKind == JsonValueKind.String)
+                {
+                    columns.Add(column.GetString());
+                }
+                else if (column.ValueKind == JsonValueKind.Object &&
+                         column.TryGetProperty("key", out var key) &&
+                         key.ValueKind == JsonValueKind.String)
+                {
+                    columns.Add(key.GetString());
+                }
             }
         }
 
-        return node.ToJsonString();
+        node["columns"] = columns;
+        return JsonDocument.Parse(node.ToJsonString()).RootElement;
     }
 
     private static int CountColumns(JsonElement config)

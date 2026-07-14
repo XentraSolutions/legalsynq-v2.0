@@ -2,9 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
-using Liens.Domain.Entities;
-using Liens.Domain.Enums;
-using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -115,36 +112,6 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         => await GetOk("/lookup/contact/lawfirm");
 
     [Fact]
-    public async Task LookupContactLawfirm_excludes_case_manager_subtype_contacts()
-    {
-        Guid lawFirmCaseManagerId;
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-            var caseManagerContact = Contact.Create(
-                SeedHelper.TenantId,
-                SeedHelper.OrgId,
-                ContactType.LawFirm,
-                "Case",
-                "Manager",
-                SeedHelper.UserId,
-                lawFirmId: SeedHelper.LawFirmId,
-                contactSubtype: ContactSubtype.LawFirmCaseManager,
-                organization: "Smith & Associates LLP");
-            lawFirmCaseManagerId = caseManagerContact.Id;
-            db.Contacts.Add(caseManagerContact);
-            await db.SaveChangesAsync();
-        }
-
-        var resp = await _client.GetAsync("/lookup/contact/lawfirm");
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!.AsArray();
-        payload.Any(item => item?["id"]?.GetValue<Guid>() == lawFirmCaseManagerId).Should().BeFalse();
-    }
-
-    [Fact]
     public async Task LookupContactMedicalProvider_returns200()
         => await GetOk("/lookup/contact/medical-provider");
 
@@ -153,54 +120,8 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         => await GetOk("/lookup/contact/funding-company");
 
     [Fact]
-    public async Task LookupContactFundingCompany_includes_new_funding_company_contact_type()
-    {
-        var fundingCompanyId = Guid.CreateVersion7();
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-            var contact = Contact.Create(
-                SeedHelper.TenantId,
-                SeedHelper.OrgId,
-                ContactType.FundingCompany,
-                "Future",
-                "Capital",
-                SeedHelper.UserId,
-                organization: "Future Capital");
-            typeof(Contact).GetProperty("Id")!.SetValue(contact, fundingCompanyId);
-            db.Contacts.Add(contact);
-            await db.SaveChangesAsync();
-        }
-
-        var resp = await _client.GetAsync("/lookup/contact/funding-company");
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!.AsArray();
-        payload.Any(item => item?["id"]?.GetValue<Guid>() == fundingCompanyId).Should().BeTrue();
-    }
-
-    [Fact]
     public async Task LookupContactLawfirmRole_returns200()
         => await GetOk("/lookup/contact/lawfirm/role");
-
-    [Fact]
-    public async Task LookupContactLawfirmRole_returns_law_firm_subtype_options()
-    {
-        var resp = await _client.GetAsync("/lookup/contact/lawfirm/role");
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
-        var roles = payload.AsArray()
-            .Select(item => (
-                Code: item?["code"]?.GetValue<string>(),
-                Name: item?["name"]?.GetValue<string>()))
-            .ToList();
-
-        roles.Should().Contain((Liens.Domain.Enums.ContactSubtype.LawFirmCaseManager, "Case Manager"));
-        roles.Should().Contain((Liens.Domain.Enums.ContactSubtype.LawFirmAttorney, "Attorney"));
-        roles.Should().Contain((Liens.Domain.Enums.ContactSubtype.LawFirmOther, "Other"));
-    }
 
     [Fact]
     public async Task LookupBackupCaseManager_returns200()

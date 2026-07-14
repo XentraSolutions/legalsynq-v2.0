@@ -41,9 +41,6 @@ public class SupportDbContext : DbContext
         ticket.Property(t => t.RequesterType).HasColumnName("requester_type").HasConversion<string>().HasMaxLength(20).IsRequired().HasDefaultValue(TicketRequesterType.InternalUser);
         ticket.Property(t => t.ExternalCustomerId).HasColumnName("external_customer_id").HasMaxLength(36);
         ticket.Property(t => t.VisibilityScope).HasColumnName("visibility_scope").HasConversion<string>().HasMaxLength(20).IsRequired().HasDefaultValue(TicketVisibilityScope.Internal);
-        ticket.Property(t => t.CaseManagerUserId).HasColumnName("case_manager_user_id").HasMaxLength(64);
-        ticket.Property(t => t.CaseManagerName).HasColumnName("case_manager_name").HasMaxLength(200);
-        ticket.Property(t => t.CaseManagerEmail).HasColumnName("case_manager_email").HasMaxLength(320);
         ticket.Property(t => t.AssignedUserId).HasColumnName("assigned_user_id").HasMaxLength(64);
         ticket.Property(t => t.AssignedQueueId).HasColumnName("assigned_queue_id").HasMaxLength(64);
         ticket.Property(t => t.DueAt).HasColumnName("due_at");
@@ -63,7 +60,6 @@ public class SupportDbContext : DbContext
         ticket.HasIndex(t => new { t.TenantId, t.ExternalCustomerId }).HasDatabaseName("ix_support_tickets_tenant_ext_customer");
         ticket.HasIndex(t => new { t.TenantId, t.RequesterType }).HasDatabaseName("ix_support_tickets_tenant_requester_type");
         ticket.HasIndex(t => new { t.TenantId, t.VisibilityScope }).HasDatabaseName("ix_support_tickets_tenant_visibility");
-        ticket.HasIndex(t => new { t.TenantId, t.CaseManagerUserId }).HasDatabaseName("ix_support_tickets_tenant_case_manager");
 
         var seq = modelBuilder.Entity<TicketNumberSequence>();
         seq.ToTable("support_ticket_number_sequences");
