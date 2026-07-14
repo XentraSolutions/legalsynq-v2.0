@@ -182,7 +182,9 @@ export function CreateCaseForm({
         caseStatusId: form.caseStatusId,
         lawfirmId: form.lawfirmId || undefined,
         accidentTypeId: form.accidentTypeId || undefined,
-        accidentStateId: form.accidentStateId || undefined,
+        accidentStateId:
+          data.accidentState.find((s) => s.value == form.accidentStateId)
+            ?.key ?? "",
         caseManagerId: form.caseManagerId || undefined,
         isServicing: form.isServicing == "true",
         caseType: form.accidentTypeId || undefined,
