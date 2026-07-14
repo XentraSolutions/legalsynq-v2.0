@@ -824,8 +824,13 @@ export interface SupportCase {
   userName?:        string;
   requesterEmail?:  string;
   status:           SupportCaseStatus;
+  caseStatus:       SupportCaseStatus;
   category:         string;
+  caseType:         string;
   priority:         SupportCasePriority;
+  caseManagerUserId?: string;
+  caseManagerName?:   string;
+  caseManagerEmail?:  string;
   assignedUserId?:  string;
   createdAtUtc:     string;
   updatedAtUtc:     string;

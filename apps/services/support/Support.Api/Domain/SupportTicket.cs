@@ -19,6 +19,9 @@ public class SupportTicket
     public TicketRequesterType RequesterType { get; set; } = TicketRequesterType.InternalUser;
     public Guid? ExternalCustomerId { get; set; }
     public TicketVisibilityScope VisibilityScope { get; set; } = TicketVisibilityScope.Internal;
+    public string? CaseManagerUserId { get; set; }
+    public string? CaseManagerName { get; set; }
+    public string? CaseManagerEmail { get; set; }
     public string? AssignedUserId { get; set; }
     public string? AssignedQueueId { get; set; }
     public DateTime? DueAt { get; set; }

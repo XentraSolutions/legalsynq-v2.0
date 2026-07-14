@@ -449,6 +449,10 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("ContactSubtype")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
                     b.Property<string>("ContactType")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -469,6 +473,12 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<string>("Email")
                         .HasMaxLength(320)
                         .HasColumnType("varchar(320)");
+
+                    b.Property<Guid?>("FacilityId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("LawFirmId")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("Fax")
                         .HasMaxLength(30)
@@ -531,6 +541,12 @@ namespace Liens.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "Email")
                         .HasDatabaseName("IX_Contacts_TenantId_Email");
+
+                    b.HasIndex("TenantId", "FacilityId", "ContactSubtype")
+                        .HasDatabaseName("IX_Contacts_TenantId_FacilityId_ContactSubtype");
+
+                    b.HasIndex("TenantId", "LawFirmId", "ContactSubtype")
+                        .HasDatabaseName("IX_Contacts_TenantId_LawFirmId_ContactSubtype");
 
                     b.HasIndex("TenantId", "OrgId", "ContactType")
                         .HasDatabaseName("IX_Contacts_TenantId_OrgId_ContactType");
