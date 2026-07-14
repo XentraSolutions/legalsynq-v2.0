@@ -205,7 +205,11 @@ export function CreateCaseForm({
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isConflict) {
-          setErrors({ caseNumber: "A case with this number already exists" });
+          addToast({
+            type: "error",
+            title: "Create Failed",
+            description: err.message,
+          });
         } else {
           addToast({
             type: "error",
