@@ -17,15 +17,14 @@ import {
 } from '@/lib/unified-activity';
 import { useProviderMode } from '@/hooks/use-provider-mode';
 import { useRoleAccess } from '@/hooks/use-role-access';
-import { casesService } from '@/lib/cases';
-import {
-  DashboardStats,
-  AllocationSegment,
-  CaseReportItem,
-  LienReportItem,
-  CashMetricResponse,
-} from '@/lib/cases/cases.types';
+import { useDashboardStats, useDashboardReports } from '@/hooks/use-lien-dashboard';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/date-range-picker';
+import { StatCard } from '@/components/lien/dashboard/stat-card';
+import { ReportDetailModal } from '@/components/lien/dashboard/report-detail-modal';
+import { getAllocationColor } from '@/components/lien/dashboard/status-colors';
+import { STATUS_LABELS } from '@/components/lien/status-badge';
+import type { Segment, ReportModalConfig } from '@/components/lien/dashboard/types';
+import type { CaseReportItem, LienReportItem } from '@/lib/cases/cases.types';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +42,12 @@ function last30DaysRange(): DateRangeValue {
   return { from: toDateString(from), to: toDateString(to) };
 }
 
+function formatPeriodLabel(range: DateRangeValue): string {
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+  const from = range.from ? new Date(`${range.from}T00:00:00`).toLocaleDateString('en-US', opts) : '—';
+  const to = range.to ? new Date(`${range.to}T00:00:00`).toLocaleDateString('en-US', opts) : '—';
+  return `${from} – ${to}`;
+}
 
 const SOURCE_LABELS: Record<string, string> = {
   audit: 'Audit',
@@ -66,6 +71,9 @@ function getItemHref(item: UnifiedActivityItem): string | null {
   return null;
 }
 
+const LIEN_STATUS_ORDER = ['Draft', 'Offered', 'Sold', 'Withdrawn'];
+const CASE_STATUS_ORDER = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
+
 export default function LienDashboardPage() {
   const servicing = useLienStore((s) => s.servicing);
   const [showCreateCase, setShowCreateCase] = useState(false);
@@ -74,17 +82,24 @@ export default function LienDashboardPage() {
   const [recentActivity, setRecentActivity] = useState<UnifiedActivityItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
-  const [dashboardStats, setDashboardStats] = useState<DashboardStats>();
   const [dashboardRange, setDashboardRange] = useState<DateRangeValue>(last30DaysRange);
-  const [lawFirmAllocation, setLawFirmAllocation] = useState<AllocationSegment[]>([]);
-  const [facilityAllocation, setFacilityAllocation] = useState<AllocationSegment[]>([]);
-  const [lienRows, setLienRows] = useState<LienReportItem[]>([]);
-  const [totalLienCount, setTotalLienCount] = useState(0);
-  const [caseRows, setCaseRows] = useState<CaseReportItem[]>([]);
-  const [totalCaseCount, setTotalCaseCount] = useState(0);
-  const [cashDeployed, setCashDeployed] = useState<CashMetricResponse>();
-  const [cashReceived, setCashReceived] = useState<CashMetricResponse>();
-  const [reportLoading, setReportLoading] = useState(false);
+  const [activeReport, setActiveReport] = useState<'liens' | 'cases' | 'lawFirm' | 'facility' | null>(null);
+
+  const { data: dashboardStats } = useDashboardStats();
+  const { data: reports, isLoading: reportLoading } = useDashboardReports(dashboardRange);
+
+  const lawFirmAllocation = reports?.lawFirms.segments ?? [];
+  const lawFirmRows = reports?.lawFirms.rows ?? [];
+  const facilityAllocation = reports?.facilities.segments ?? [];
+  const facilityRows = reports?.facilities.rows ?? [];
+  const lienRows = reports?.liens.items ?? [];
+  const totalLienCount = reports?.liens.totalCount ?? 0;
+  const caseRows = reports?.cases.items ?? [];
+  const totalCaseCount = reports?.cases.totalCount ?? 0;
+  const cashDeployed = reports?.deployed;
+  const cashReceived = reports?.received;
+
+  const periodLabel = useMemo(() => formatPeriodLabel(dashboardRange), [dashboardRange]);
 
   const loadActivity = useCallback(async () => {
     setActivityLoading(true);
@@ -100,60 +115,6 @@ export default function LienDashboardPage() {
   }, [isSellMode]);
 
   useEffect(() => { loadActivity(); }, [loadActivity]);
-
-  useEffect(() => {
-    const getDashboardStats = async () => {
-      try {
-        const stats = await casesService.getDashboardStats();
-        setDashboardStats(stats);
-      } catch (error) {}
-    }
-
-    getDashboardStats()
-  }, []);
-
-  useEffect(() => {
-    const loadReports = async () => {
-      setReportLoading(true);
-      try {
-        const request = {
-          page: 1,
-          limit: 1000,
-          startDate: dashboardRange.from,
-          endDate: dashboardRange.to,
-        };
-        const [lawFirms, facilities, liens, cases, deployed, received] = await Promise.all([
-          casesService.getLawFirmCaseAllocation(request),
-          casesService.getMedicalFacilityCaseAllocation(request),
-          casesService.getTotalLienReportRows(request),
-          casesService.getTotalCaseReportRows(request),
-          casesService.getCashDeployed(request),
-          casesService.getCashReceived(request),
-        ]);
-        setLawFirmAllocation(lawFirms);
-        setFacilityAllocation(facilities);
-        setLienRows(liens.items);
-        setTotalLienCount(liens.totalCount);
-        setCaseRows(cases.items);
-        setTotalCaseCount(cases.totalCount);
-        setCashDeployed(deployed);
-        setCashReceived(received);
-      } catch (error) {
-        setLawFirmAllocation([]);
-        setFacilityAllocation([]);
-        setLienRows([]);
-        setTotalLienCount(0);
-        setCaseRows([]);
-        setTotalCaseCount(0);
-        setCashDeployed(undefined);
-        setCashReceived(undefined);
-      } finally {
-        setReportLoading(false);
-      }
-    };
-
-    loadReports();
-  }, [dashboardRange.from, dashboardRange.to]);
 
   const pendingTasks = servicing.filter((s) => s.status !== 'Completed');
   const overdueTasks = pendingTasks.filter((s) => new Date(s.dueDate) < new Date());
@@ -190,19 +151,101 @@ export default function LienDashboardPage() {
   const totalLienPurchase = lienRows.reduce((s, l) => s + (l.purchasePrice ?? 0), 0);
   const totalLienBilling = lienRows.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
 
-  const ALLOC_COLORS = ['#22d3ee', '#818cf8', '#f472b6', '#34d399', '#f59e0b', '#6366f1', '#fb923c', '#a78bfa'];
+  // Built from the known status order plus whatever the API actually returns, so a
+  // status this list doesn't anticipate still shows up instead of silently dropping
+  // out of the total (previously hardcoded to 4 lien statuses / 5 case statuses).
+  const lienSegments: Segment[] = useMemo(() => {
+    const keys = Array.from(new Set([...LIEN_STATUS_ORDER, ...Object.keys(lienStatusCounts)]));
+    return keys.map((key, i) => ({
+      label: STATUS_LABELS[key] ?? key,
+      value: lienStatusCounts[key] ?? 0,
+      color: getAllocationColor(i),
+      subStats: [
+        { label: 'Purchase', value: formatCurrency(lienAmountsByStatus[key]?.purchase ?? 0) },
+        { label: 'Billing', value: formatCurrency(lienAmountsByStatus[key]?.billing ?? 0) },
+      ],
+    }));
+  }, [lienStatusCounts, lienAmountsByStatus]);
 
-  const lawFirmSegments = useMemo(() => {
+  const caseSegments: Segment[] = useMemo(() => {
+    const keys = Array.from(new Set([...CASE_STATUS_ORDER, ...Object.keys(caseStatusCounts)]));
+    return keys.map((key, i) => ({
+      label: STATUS_LABELS[key] ?? key,
+      value: caseStatusCounts[key] ?? 0,
+      color: getAllocationColor(i),
+    }));
+  }, [caseStatusCounts]);
+
+  const lawFirmSegments: Segment[] = useMemo(() => {
     return [...lawFirmAllocation]
       .sort((a, b) => b.value - a.value)
-      .map((seg, i) => ({ ...seg, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
+      .map((seg, i) => ({ ...seg, color: getAllocationColor(i) }));
   }, [lawFirmAllocation]);
 
-  const facilitySegments = useMemo(() => {
+  const facilitySegments: Segment[] = useMemo(() => {
     return [...facilityAllocation]
       .sort((a, b) => b.value - a.value)
-      .map((seg, i) => ({ ...seg, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
+      .map((seg, i) => ({ ...seg, color: getAllocationColor(i) }));
   }, [facilityAllocation]);
+
+  const reportConfig: Record<'liens' | 'cases' | 'lawFirm' | 'facility', ReportModalConfig> = {
+    liens: {
+      title: 'Total Lien Report',
+      totalLabel: 'Total Liens',
+      total: totalLienCount,
+      segments: lienSegments,
+      columns: [
+        { label: 'Lien ID', render: (r: LienReportItem) => r.lienNumber ?? '—' },
+        { label: 'Case ID', render: (r: LienReportItem) => r.caseNumber ?? '—' },
+        { label: 'Plaintiff Name', render: (r: LienReportItem) => r.clientName ?? '—' },
+        { label: 'Lien Status', render: (r: LienReportItem) => STATUS_LABELS[r.status ?? ''] ?? r.status ?? '—' },
+      ],
+      rows: lienRows,
+      rowKey: (r: LienReportItem) => r.id,
+    },
+    cases: {
+      title: 'Total Case Report',
+      totalLabel: 'Total Cases',
+      total: totalCaseCount,
+      segments: caseSegments,
+      columns: [
+        { label: 'Case ID', render: (r: CaseReportItem) => r.caseNumber ?? '—' },
+        { label: 'Plaintiff Name', render: (r: CaseReportItem) => r.clientName ?? '—' },
+        { label: 'Date of Loss', render: (r: CaseReportItem) => r.dateOfIncident ?? '—' },
+        { label: 'Status', render: (r: CaseReportItem) => STATUS_LABELS[r.status ?? ''] ?? r.status ?? '—' },
+      ],
+      rows: caseRows,
+      rowKey: (r: CaseReportItem) => r.id,
+    },
+    lawFirm: {
+      title: 'Total Law Firm Case Allocation Report',
+      totalLabel: 'Total Cases Allocated',
+      total: lawFirmSegments.reduce((s, seg) => s + seg.value, 0),
+      segments: lawFirmSegments,
+      columns: [
+        { label: 'Case ID', render: (r: CaseReportItem) => r.caseNumber ?? '—' },
+        { label: 'Plaintiff Name', render: (r: CaseReportItem) => r.clientName ?? '—' },
+        { label: 'Date of Loss', render: (r: CaseReportItem) => r.dateOfIncident ?? '—' },
+        { label: 'Law Firm', render: (r: CaseReportItem) => r.lawFirm ?? '—' },
+      ],
+      rows: lawFirmRows,
+      rowKey: (r: CaseReportItem) => r.id,
+    },
+    facility: {
+      title: 'Total Medical Facility Case Allocation Report',
+      totalLabel: 'Total Cases Allocated',
+      total: facilitySegments.reduce((s, seg) => s + seg.value, 0),
+      segments: facilitySegments,
+      columns: [
+        { label: 'Case ID', render: (r: CaseReportItem) => r.caseNumber ?? '—' },
+        { label: 'Plaintiff Name', render: (r: CaseReportItem) => r.clientName ?? '—' },
+        { label: 'Date of Loss', render: (r: CaseReportItem) => r.dateOfIncident ?? '—' },
+        { label: 'Medical Facility', render: (r: CaseReportItem) => r.medicalFacility ?? '—' },
+      ],
+      rows: facilityRows,
+      rowKey: (r: CaseReportItem) => r.id,
+    },
+  };
 
   return (
     <div className="space-y-6">
@@ -217,22 +260,23 @@ export default function LienDashboardPage() {
               {mode === 'sell' ? 'Sell Mode' : 'Internal Mode'}
             </span>
           </div>
-          <p className="text-sm text-gray-500 mt-0.5">SynqLien operational overview</p>
         </div>
-        {ra.can('case:create') && (
+        {/* not part of phase 1 migration */}
+        {/* {ra.can('case:create') && (
           <button onClick={() => setShowCreateCase(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-add-line text-base" />
             New Case
           </button>
-        )}
+        )} */}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Cards not part of phase 1 mgiration */}
+      {/* <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="Total Liens" value={dashboardStats?.totalLiens ?? 0} change={`${dashboardStats?.lienStatus?.find((ls) => ls.label === 'Draft')?.value ?? 0} draft`} changeType="neutral" icon="ri-stack-line" iconColor="text-indigo-600" href="/lien/liens" />
         <KpiCard title="Active Cases" value={dashboardStats?.totalActiveCases ?? 0} change={`${dashboardStats?.totalCases ?? 0} total`} changeType="neutral" icon="ri-folder-open-line" iconColor="text-blue-600" href="/lien/cases" />
         <KpiCard title="Pending Tasks" value={pendingTasks.length} change={overdueTasks.length > 0 ? `${overdueTasks.length} overdue` : 'All on track'} changeType={overdueTasks.length > 0 ? 'down' : 'up'} icon="ri-task-line" iconColor="text-amber-600" href="/lien/servicing" />
         <KpiCard title="Monthly Volume" value={formatCurrency(dashboardStats?.totalLienValue ?? 0)} change="All liens" changeType="neutral" icon="ri-money-dollar-circle-line" iconColor="text-emerald-600" />
-      </div>
+      </div> */}
 
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-gray-800">Reporting Period</h2>
@@ -276,53 +320,16 @@ export default function LienDashboardPage() {
             { label: 'Total Purchase Amount', value: formatCurrency(totalLienPurchase) },
             { label: 'Total Billing Amount', value: formatCurrency(totalLienBilling) },
           ]}
-          segments={[
-            {
-              label: 'Draft', color: '#94a3b8',
-              value: lienStatusCounts['Draft'] ?? 0,
-              subStats: [
-                { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Draft']?.purchase ?? 0) },
-                { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Draft']?.billing ?? 0) },
-              ],
-            },
-            {
-              label: 'Offered', color: '#4f46e5',
-              value: lienStatusCounts['Offered'] ?? 0,
-              subStats: [
-                { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Offered']?.purchase ?? 0) },
-                { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Offered']?.billing ?? 0) },
-              ],
-            },
-            {
-              label: 'Sold', color: '#10b981',
-              value: lienStatusCounts['Sold'] ?? 0,
-              subStats: [
-                { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Sold']?.purchase ?? 0) },
-                { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Sold']?.billing ?? 0) },
-              ],
-            },
-            {
-              label: 'Withdrawn', color: '#f59e0b',
-              value: lienStatusCounts['Withdrawn'] ?? 0,
-              subStats: [
-                { label: 'Purchase', value: formatCurrency(lienAmountsByStatus['Withdrawn']?.purchase ?? 0) },
-                { label: 'Billing', value: formatCurrency(lienAmountsByStatus['Withdrawn']?.billing ?? 0) },
-              ],
-            },
-          ]}
+          segments={lienSegments}
           href="/lien/liens"
+          onViewDetails={() => setActiveReport('liens')}
         />
         <StatCard
           title="Total Cases"
           total={reportLoading ? 0 : totalCaseCount}
-          segments={[
-            { label: 'Pre-Demand', value: caseStatusCounts['PreDemand'] ?? 0, color: '#f472b6' },
-            { label: 'Demand Sent', value: caseStatusCounts['DemandSent'] ?? 0, color: '#6366f1' },
-            { label: 'In Negotiation', value: caseStatusCounts['InNegotiation'] ?? 0, color: '#3b82f6' },
-            { label: 'Settled', value: caseStatusCounts['CaseSettled'] ?? 0, color: '#10b981' },
-            { label: 'Closed', value: caseStatusCounts['Closed'] ?? 0, color: '#94a3b8' },
-          ]}
+          segments={caseSegments}
           href="/lien/cases"
+          onViewDetails={() => setActiveReport('cases')}
         />
       </div>
 
@@ -333,6 +340,7 @@ export default function LienDashboardPage() {
           total={reportLoading ? 0 : lawFirmSegments.reduce((s, seg) => s + seg.value, 0)}
           segments={lawFirmSegments}
           href="/lien/cases"
+          onViewDetails={() => setActiveReport('lawFirm')}
         />
         <StatCard
           title="Medical Facility Case Allocation"
@@ -340,10 +348,20 @@ export default function LienDashboardPage() {
           total={reportLoading ? 0 : facilitySegments.reduce((s, seg) => s + seg.value, 0)}
           segments={facilitySegments}
           href="/lien/cases"
+          onViewDetails={() => setActiveReport('facility')}
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {activeReport && (
+        <ReportDetailModal
+          open={!!activeReport}
+          onClose={() => setActiveReport(null)}
+          config={reportConfig[activeReport]}
+          periodLabel={periodLabel}
+        />
+      )}
+      {/* not part of phase 1 migration */}
+      {/* <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-800">Task Queue</h2>
@@ -445,123 +463,7 @@ export default function LienDashboardPage() {
       </div>
 
       <CreateCaseForm open={showCreateCase} onClose={() => setShowCreateCase(false)} />
-    </div>
-  );
-}
-
-interface SubStat { label: string; value: string | number; }
-interface Segment { label: string; value: number; color: string; subStats?: SubStat[]; }
-interface AdditionalStat { label: string; value: string | number; }
-
-function StatCard({ title, total, segments, href, additionalStats, icon = 'ri-todo-line' }: {
-  title: string;
-  total: number;
-  segments: Segment[];
-  href: string;
-  additionalStats?: AdditionalStat[];
-  icon?: string;
-}) {
-  const filteredSegments = segments.filter((s) => s.value > 0);
-  const grandTotal = filteredSegments.reduce((s, seg) => s + seg.value, 0);
-  const dominant = filteredSegments.length > 0 ? filteredSegments.reduce((a, b) => a.value > b.value ? a : b) : { value: 0 };
-  const pct = grandTotal > 0 ? ((dominant.value / grandTotal) * 100).toFixed(1) : '0';
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
-        <Link href={href} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors">
-          <i className="ri-file-list-line text-sm leading-none" />
-          View Details
-        </Link>
-      </div>
-      <div className="flex items-start gap-6">
-        <div className="flex flex-col flex-1 min-w-0">
-          <div className="space-y-3 mb-4">
-            <div className="flex items-start gap-2">
-              <i className={`${icon} text-gray-400 text-sm mt-0.5 shrink-0`} />
-              <div>
-                <p className="text-xs text-gray-500">{title}</p>
-                <p className="text-2xl font-bold text-blue-600 leading-tight">{total.toLocaleString()}</p>
-              </div>
-            </div>
-            {additionalStats?.map((stat, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <i className={`${icon} text-gray-400 text-sm mt-0.5 shrink-0`} />
-                <div>
-                  <p className="text-xs text-gray-500">{stat.label}</p>
-                  <p className="text-sm font-bold text-blue-600">{stat.value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          {filteredSegments.length > 0 && <hr className="border-gray-100 mb-3" />}
-          <ul className="space-y-2">
-            {filteredSegments.map((seg, i) => (
-              <li key={i}>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-                    <span className="text-gray-700 font-medium">{seg.label}</span>
-                  </span>
-                  <span className="font-medium text-gray-700 tabular-nums">{seg.value.toLocaleString()}</span>
-                </div>
-                {seg.subStats && seg.subStats.length > 0 && (
-                  <ul className="mt-1 space-y-0.5 pl-3.5">
-                    {seg.subStats.map((sub, j) => (
-                      <li key={j} className="flex items-center justify-between text-xs text-gray-400">
-                        <span>{sub.label}</span>
-                        <span className="tabular-nums">{sub.value}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="shrink-0">
-          <DonutChart segments={filteredSegments.length > 0 ? filteredSegments : [{ label: 'None', value: 1, color: '#e5e7eb' }]} pctLabel={`${pct}%`} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DonutChart({ segments, pctLabel }: { segments: Segment[]; pctLabel: string }) {
-  const [tooltip, setTooltip] = useState<{ label: string; value: number } | null>(null);
-  const SIZE = 120; const CX = SIZE / 2; const CY = SIZE / 2; const R = 44; const SW = 18;
-  const CIRC = 2 * Math.PI * R;
-  const total = segments.reduce((s, seg) => s + seg.value, 0);
-  const arcs: { offset: number; dash: string; color: string; label: string; value: number }[] = [];
-  let cumulative = 0;
-  for (const seg of segments) {
-    const fraction = total > 0 ? seg.value / total : 0;
-    const arcLen = fraction * CIRC;
-    arcs.push({ color: seg.color, dash: `${arcLen} ${CIRC - arcLen}`, offset: CIRC / 4 - cumulative, label: seg.label, value: seg.value });
-    cumulative += arcLen;
-  }
-  return (
-    <div className="relative">
-      {tooltip && (
-        <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none">
-          {tooltip.label}: {tooltip.value}
-        </div>
-      )}
-      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-        <circle cx={CX} cy={CY} r={R} fill="none" stroke="#f3f4f6" strokeWidth={SW} />
-        {arcs.map((arc, i) => (
-          <circle
-            key={i} cx={CX} cy={CY} r={R} fill="none"
-            stroke={arc.color} strokeWidth={SW}
-            strokeDasharray={arc.dash} strokeDashoffset={arc.offset}
-            strokeLinecap="butt" className="cursor-pointer"
-            onMouseEnter={() => setTooltip({ label: arc.label, value: arc.value })}
-            onMouseLeave={() => setTooltip(null)}
-          />
-        ))}
-        <text x={CX} y={CY + 4} textAnchor="middle" fontSize="12" fontWeight="600" fill="#374151">{pctLabel}</text>
-      </svg>
+        */}
     </div>
   );
 }

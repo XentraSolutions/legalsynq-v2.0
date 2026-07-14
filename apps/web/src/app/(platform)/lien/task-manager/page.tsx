@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
+import { BaseTable } from '@/components/ui/base-table';
 import { lienTasksService } from '@/lib/liens/lien-tasks.service';
 import { apiClient } from '@/lib/api-client';
 import type { TaskDto, TaskStatus, TaskPriority, TasksQuery } from '@/lib/liens/lien-tasks.types';
@@ -131,6 +133,118 @@ export default function TaskManagerPage() {
     items: tasks.filter((t) => t.status === status),
   }));
 
+  const columns = useMemo<ColumnDef<TaskDto, any>[]>(
+    () => [
+      {
+        id: 'title',
+        header: 'Title',
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <i className={`${TASK_PRIORITY_ICONS[row.original.priority]} text-xs ${TASK_PRIORITY_COLORS[row.original.priority]}`} />
+            <span className="text-xs font-medium text-gray-800 line-clamp-1">{row.original.title}</span>
+          </div>
+        ),
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: ({ row }) => {
+          const task = row.original;
+          return (
+            <span className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full
+              ${task.status === 'COMPLETED'       ? 'bg-green-100 text-green-700' :
+                task.status === 'CANCELLED'       ? 'bg-red-100 text-red-700' :
+                task.status === 'IN_PROGRESS'     ? 'bg-blue-100 text-blue-700' :
+                task.status === 'WAITING_BLOCKED' ? 'bg-amber-100 text-amber-700' :
+                                                    'bg-gray-100 text-gray-600'}`}>
+              {TASK_STATUS_LABELS[task.status]}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'priority',
+        header: 'Priority',
+        cell: ({ row }) => (
+          <span className={`text-[10px] font-medium ${TASK_PRIORITY_COLORS[row.original.priority]}`}>
+            {PRIORITY_LABELS[row.original.priority] ?? row.original.priority}
+          </span>
+        ),
+      },
+      {
+        id: 'assignee',
+        header: 'Assignee',
+        cell: ({ row }) => {
+          const task = row.original;
+          const assignee = task.assignedUserId ? usersById.get(task.assignedUserId) : undefined;
+          return assignee ? (
+            <div className="flex items-center gap-1.5">
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0 ${avatarColor(task.assignedUserId!)}`}>
+                {getInitials(assignee.firstName, assignee.lastName)}
+              </div>
+              <span className="text-xs text-gray-700 whitespace-nowrap">
+                {assignee.firstName} {assignee.lastName}
+              </span>
+            </div>
+          ) : task.assignedUserId ? (
+            <span className="flex items-center gap-1 text-[10px] text-gray-400">
+              <i className="ri-user-line" />Assigned
+            </span>
+          ) : (
+            <span className="text-gray-300 text-[10px]">&mdash;</span>
+          );
+        },
+      },
+      {
+        id: 'case',
+        header: 'Case',
+        cell: ({ row }) =>
+          row.original.caseId ? (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200 rounded px-1.5 py-0.5">
+              <i className="ri-briefcase-line text-[10px]" />
+              {shortCaseId(row.original.caseId)}
+            </span>
+          ) : (
+            <span className="text-gray-300 text-[10px]">&mdash;</span>
+          ),
+      },
+      {
+        id: 'liens',
+        header: 'Liens',
+        cell: ({ row }) =>
+          row.original.linkedLiens.length > 0 ? (
+            <span className="bg-purple-50 text-purple-700 text-[10px] rounded px-1.5 py-0.5">
+              {row.original.linkedLiens.length}
+            </span>
+          ) : (
+            <span className="text-gray-300 text-[10px]">&mdash;</span>
+          ),
+      },
+      {
+        id: 'due',
+        header: 'Due',
+        cell: ({ row }) => {
+          const task = row.original;
+          const overdue = isOverdue(task.dueDate, task.status);
+          return (
+            <span className={`text-[10px] ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+              {formatDate(task.dueDate, timezone)}
+              {overdue && <i className="ri-error-warning-line ml-1" />}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'updated',
+        header: 'Updated',
+        cell: ({ row }) => (
+          <span className="text-[10px] text-gray-400">{formatDate(row.original.updatedAtUtc, timezone)}</span>
+        ),
+      },
+    ],
+    [usersById, timezone],
+  );
+
   const activeFilterCount = [search, statusFilter, priorityFilter, assignmentScope !== 'all' ? assignmentScope : ''].filter(Boolean).length;
 
   function clearFilters() {
@@ -208,103 +322,15 @@ export default function TaskManagerPage() {
         />
       ) : (
         /* ── List view ───────────────────────────────────────────── */
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-100">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">Title</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">Priority</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">Assignee</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">Case</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">Liens</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">Due</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">Updated</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {tasks.map((task) => {
-                  const assignee = task.assignedUserId ? usersById.get(task.assignedUserId) : undefined;
-                  return (
-                    <tr
-                      key={task.id}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => setDetailTask(task)}
-                    >
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <i className={`${TASK_PRIORITY_ICONS[task.priority]} text-xs ${TASK_PRIORITY_COLORS[task.priority]}`} />
-                          <span className="text-xs font-medium text-gray-800 line-clamp-1">{task.title}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full
-                          ${task.status === 'COMPLETED'       ? 'bg-green-100 text-green-700' :
-                            task.status === 'CANCELLED'       ? 'bg-red-100 text-red-700' :
-                            task.status === 'IN_PROGRESS'     ? 'bg-blue-100 text-blue-700' :
-                            task.status === 'WAITING_BLOCKED' ? 'bg-amber-100 text-amber-700' :
-                                                                'bg-gray-100 text-gray-600'}`}>
-                          {TASK_STATUS_LABELS[task.status]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className={`text-[10px] font-medium ${TASK_PRIORITY_COLORS[task.priority]}`}>
-                          {PRIORITY_LABELS[task.priority] ?? task.priority}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        {assignee ? (
-                          <div className="flex items-center gap-1.5">
-                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0 ${avatarColor(task.assignedUserId!)}`}>
-                              {getInitials(assignee.firstName, assignee.lastName)}
-                            </div>
-                            <span className="text-xs text-gray-700 whitespace-nowrap">
-                              {assignee.firstName} {assignee.lastName}
-                            </span>
-                          </div>
-                        ) : task.assignedUserId ? (
-                          <span className="flex items-center gap-1 text-[10px] text-gray-400">
-                            <i className="ri-user-line" />Assigned
-                          </span>
-                        ) : (
-                          <span className="text-gray-300 text-[10px]">&mdash;</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2">
-                        {task.caseId ? (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200 rounded px-1.5 py-0.5">
-                            <i className="ri-briefcase-line text-[10px]" />
-                            {shortCaseId(task.caseId)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-300 text-[10px]">&mdash;</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2">
-                        {task.linkedLiens.length > 0 ? (
-                          <span className="bg-purple-50 text-purple-700 text-[10px] rounded px-1.5 py-0.5">
-                            {task.linkedLiens.length}
-                          </span>
-                        ) : <span className="text-gray-300 text-[10px]">&mdash;</span>}
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className={`text-[10px] ${isOverdue(task.dueDate, task.status) ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-                          {formatDate(task.dueDate, timezone)}
-                          {isOverdue(task.dueDate, task.status) && <i className="ri-error-warning-line ml-1" />}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-[10px] text-gray-400">{formatDate(task.updatedAtUtc, timezone)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {tasks.length === 0 && !loading && (
-            <div className="py-8 text-center text-xs text-gray-400">No tasks match your filters.</div>
-          )}
-        </div>
+        <BaseTable
+          data={tasks}
+          columns={columns}
+          getRowId={(t) => t.id}
+          enablePagination={false}
+          emptyMessage="No tasks match your filters."
+          onRowClick={setDetailTask}
+          className="bg-white border-gray-200 rounded-xl"
+        />
       )}
 
       <CreateEditTaskForm
