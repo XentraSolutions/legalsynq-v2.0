@@ -91,7 +91,13 @@ public class TenantAdminService : ITenantAdminService
         if (pageSize > 200) pageSize = 200;
 
         var (tenants, total) = await _tenantRepo.ListAsync(page, pageSize, ct);
-        var items = tenants.Select(ToSummary).ToList();
+        var items = new List<TenantAdminSummaryResponse>(tenants.Count);
+        foreach (var tenant in tenants)
+        {
+            var compat = await _identityCompat.GetTenantAdminSnapshotAsync(tenant.Id, ct);
+            items.Add(ToSummary(tenant, compat));
+        }
+
         return (items, total);
     }
 
@@ -107,7 +113,8 @@ public class TenantAdminService : ITenantAdminService
         var domains        = await _domainRepo.ListByTenantAsync(id, ct);
         var capabilities   = await _capabilityRepo.ListByTenantAsync(id, ct);
         var settings       = await _settingRepo.ListByTenantAsync(id, ct);
-        var sessionTimeout = await _identityCompat.GetSessionTimeoutMinutesAsync(id, ct);
+        var compatSnapshot = await _identityCompat.GetTenantAdminSnapshotAsync(id, ct);
+        var sessionTimeout = compatSnapshot?.SessionTimeoutMinutes;
 
         var logoDocumentId      = branding?.LogoDocumentId      ?? tenant.LogoDocumentId;
         var logoWhiteDocumentId = branding?.LogoWhiteDocumentId ?? tenant.LogoWhiteDocumentId;
@@ -144,7 +151,7 @@ public class TenantAdminService : ITenantAdminService
             DisplayName:         tenant.DisplayName,
             Status:              tenant.Status.ToString(),
             IsActive:            tenant.Status == TenantStatus.Active,
-            Type:                "LawFirm",
+            Type:                NormalizeTenantType(compatSnapshot?.Type),
             PrimaryContactName:  "",
             UserCount:           0,
             OrgCount:            0,
@@ -152,6 +159,7 @@ public class TenantAdminService : ITenantAdminService
             LinkedOrgCount:      0,
             Email:               tenant.SupportEmail,
             Subdomain:           tenant.Subdomain,
+            Url:                 BuildTenantUrl(compatSnapshot?.Hostname, domains, tenant.Subdomain),
             CreatedAtUtc:        tenant.CreatedAtUtc,
             UpdatedAtUtc:        tenant.UpdatedAtUtc,
             LogoDocumentId:      logoDocumentId,
@@ -204,7 +212,8 @@ public class TenantAdminService : ITenantAdminService
                 ["newStatus"]   = parsed.ToString()
             }), ct);
 
-        return ToSummary(tenant);
+        var compat = await _identityCompat.GetTenantAdminSnapshotAsync(id, ct);
+        return ToSummary(tenant, compat);
     }
 
     // ── B12: Canonical Tenant Create (Tenant-first) ───────────────────────────
@@ -455,17 +464,63 @@ public class TenantAdminService : ITenantAdminService
 
     // ── Mapping ───────────────────────────────────────────────────────────────
 
-    private static TenantAdminSummaryResponse ToSummary(Domain.Tenant t) =>
+    private static TenantAdminSummaryResponse ToSummary(
+        Domain.Tenant t,
+        TenantIdentityCompatSnapshot? compat) =>
         new(
             Id:                 t.Id,
             Code:               t.Code,
             DisplayName:        t.DisplayName,
             Status:             t.Status.ToString(),
             IsActive:           t.Status == TenantStatus.Active,
-            Type:               "LawFirm",
+            Type:               NormalizeTenantType(compat?.Type),
             PrimaryContactName: "",
             UserCount:          0,
             OrgCount:           0,
             Subdomain:          t.Subdomain,
+            Url:                BuildTenantUrl(compat?.Hostname, null, t.Subdomain),
             CreatedAtUtc:       t.CreatedAtUtc);
+
+    private static string NormalizeTenantType(string? tenantType)
+    {
+        var normalized = tenantType?.Trim();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? "LAW_FIRM"
+            : normalized;
+    }
+
+    private static string BuildTenantUrl(
+        string? hostname,
+        IEnumerable<TenantDomain>? domains,
+        string? subdomain)
+    {
+        var host = NormalizeHost(hostname);
+        if (string.IsNullOrWhiteSpace(host) && domains is not null)
+        {
+            host = domains
+                .Where(d => d is not null)
+                .Where(d => d.Status == TenantDomainStatus.Active)
+                .OrderByDescending(d => d.IsPrimary)
+                .ThenBy(d => d.DomainType == TenantDomainType.Subdomain ? 0 : 1)
+                .Select(d => d.Host)
+                .FirstOrDefault();
+        }
+
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            var normalizedSubdomain = NormalizeHost(subdomain);
+            if (!string.IsNullOrWhiteSpace(normalizedSubdomain) && normalizedSubdomain.Contains('.'))
+                host = normalizedSubdomain;
+        }
+
+        return string.IsNullOrWhiteSpace(host) ? string.Empty : $"https://{host}";
+    }
+
+    private static string? NormalizeHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return null;
+
+        return TenantDomain.NormalizeHost(host);
+    }
 }

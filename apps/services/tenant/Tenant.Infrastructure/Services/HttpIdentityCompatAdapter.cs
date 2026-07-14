@@ -32,9 +32,9 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
         _logger            = logger;
     }
 
-    // ── Read: session timeout ─────────────────────────────────────────────────
-
-    public async Task<int?> GetSessionTimeoutMinutesAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<TenantIdentityCompatSnapshot?> GetTenantAdminSnapshotAsync(
+        Guid tenantId,
+        CancellationToken ct = default)
     {
         try
         {
@@ -58,30 +58,46 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
 
             var body = await response.Content.ReadAsStringAsync(cts.Token);
             using var doc = JsonDocument.Parse(body);
-            var root    = doc.RootElement;
+            var root = doc.RootElement;
 
-            if (root.TryGetProperty("sessionTimeoutMinutes", out var prop) &&
-                prop.ValueKind == JsonValueKind.Number)
+            int? sessionTimeoutMinutes = null;
+            if (root.TryGetProperty("sessionTimeoutMinutes", out var sessionTimeoutProp) &&
+                sessionTimeoutProp.ValueKind == JsonValueKind.Number)
             {
-                return prop.GetInt32();
+                sessionTimeoutMinutes = sessionTimeoutProp.GetInt32();
             }
 
-            return null;
+            return new TenantIdentityCompatSnapshot(
+                Type: root.TryGetProperty("type", out var typeProp) && typeProp.ValueKind == JsonValueKind.String
+                    ? typeProp.GetString()
+                    : null,
+                SessionTimeoutMinutes: sessionTimeoutMinutes,
+                Hostname: root.TryGetProperty("hostname", out var hostnameProp) && hostnameProp.ValueKind == JsonValueKind.String
+                    ? hostnameProp.GetString()
+                    : null);
         }
         catch (OperationCanceledException)
         {
             _logger.LogWarning(
-                "IdentityCompatAdapter: timed out reading sessionTimeoutMinutes for tenant {TenantId}",
+                "IdentityCompatAdapter: timed out reading admin snapshot for tenant {TenantId}",
                 tenantId);
             return null;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "IdentityCompatAdapter: failed reading sessionTimeoutMinutes for tenant {TenantId}",
+                "IdentityCompatAdapter: failed reading admin snapshot for tenant {TenantId}",
                 tenantId);
             return null;
         }
+    }
+
+    // ── Read: session timeout ─────────────────────────────────────────────────
+
+    public async Task<int?> GetSessionTimeoutMinutesAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var snapshot = await GetTenantAdminSnapshotAsync(tenantId, ct);
+        return snapshot?.SessionTimeoutMinutes;
     }
 
     // ── Write: session timeout proxy ──────────────────────────────────────────

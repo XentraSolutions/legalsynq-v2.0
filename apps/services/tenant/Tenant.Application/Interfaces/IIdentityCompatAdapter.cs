@@ -17,6 +17,14 @@ namespace Tenant.Application.Interfaces;
 public interface IIdentityCompatAdapter
 {
     /// <summary>
+    /// Returns the Identity-owned admin snapshot for a tenant, or <c>null</c>
+    /// when Identity is unreachable or the tenant is missing there.
+    /// </summary>
+    Task<TenantIdentityCompatSnapshot?> GetTenantAdminSnapshotAsync(
+        Guid              tenantId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Returns the per-tenant idle session timeout (minutes) from Identity,
     /// or <c>null</c> if Identity is unreachable or has no override configured.
     /// </summary>
@@ -42,3 +50,8 @@ public interface IIdentityCompatAdapter
         bool              enabled,
         CancellationToken ct = default);
 }
+
+public sealed record TenantIdentityCompatSnapshot(
+    string? Type,
+    int? SessionTimeoutMinutes,
+    string? Hostname);
