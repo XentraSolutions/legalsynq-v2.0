@@ -259,19 +259,6 @@ export function LiensTab({
       header: "Status",
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
     },
-    {
-      id: "view",
-      header: "",
-      meta: { align: "right" },
-      cell: ({ row }) => (
-        <Link
-          href={`/lien/liens/${row.original.id}`}
-          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <i className="ri-eye-line text-sm" />
-        </Link>
-      ),
-    },
   ];
 
   const exportCaseLiens = async () => {
