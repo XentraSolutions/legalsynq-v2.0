@@ -16,6 +16,7 @@ export interface ContactResponseDto {
   postalCode?: string | null;
   notes?: string | null;
   isActive: boolean;
+  activeCases: number;
   createdAtUtc: string;
   updatedAtUtc: string;
   contactSubtype?: string | null;
@@ -32,8 +33,10 @@ export interface PaginatedResultDto<T> {
 
 export interface CreateContactRequestDto {
   contactType: string;
-  firstName: string;
-  lastName: string;
+  fullName?: string;
+  fullname?: string;
+  firstName?: string;
+  lastName?: string;
   title?: string;
   organization?: string;
   email?: string;
@@ -52,8 +55,10 @@ export interface CreateContactRequestDto {
 
 export interface UpdateContactRequestDto {
   contactType: string;
-  firstName: string;
-  lastName: string;
+  fullName?: string;
+  fullname?: string;
+  firstName?: string;
+  lastName?: string;
   title?: string;
   organization?: string;
   email?: string;
@@ -96,6 +101,7 @@ export interface ContactListItem {
   city: string;
   state: string;
   isActive: boolean;
+  activeCases: number;
   createdAt: string;
   facilityId: string | null;
   lawFirmId: string | null;

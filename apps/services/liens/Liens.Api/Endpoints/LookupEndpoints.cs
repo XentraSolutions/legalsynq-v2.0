@@ -80,7 +80,7 @@ public static class LookupEndpoints
             .RequirePermission(LiensPermissions.LienRead);
         legacy.MapGet("/contact/medical-facility",(IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.MedicalFacility, ct))
             .RequirePermission(LiensPermissions.LienRead);
-        legacy.MapGet("/contact/funding-company", (IContactService cs, ICurrentRequestContext c, CancellationToken ct) => LegacyGetContactsByType(cs, c, ContactType.LienHolder, ct))
+        legacy.MapGet("/contact/funding-company", LegacyGetFundingCompanies)
             .RequirePermission(LiensPermissions.LienRead);
 
         // Law firm roles — exposed as law-firm contact subtype options.
@@ -259,6 +259,34 @@ public static class LookupEndpoints
             ?? throw new UnauthorizedAccessException("Tenant context is required.");
 
         var result = await contactService.GetAllByTypeAsync(tenantId, contactType, isActive: true, ct);
+
+        if (string.Equals(contactType, ContactType.LawFirm, StringComparison.Ordinal))
+        {
+            result = result
+                .Where(contact => string.IsNullOrWhiteSpace(contact.ContactSubtype))
+                .ToList();
+        }
+
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> LegacyGetFundingCompanies(
+        IContactService contactService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        var tenantId = ctx.TenantId
+            ?? throw new UnauthorizedAccessException("Tenant context is required.");
+
+        var lienHolders = await contactService.GetAllByTypeAsync(tenantId, ContactType.LienHolder, isActive: true, ct);
+        var fundingCompanies = await contactService.GetAllByTypeAsync(tenantId, ContactType.FundingCompany, isActive: true, ct);
+
+        var result = lienHolders
+            .Concat(fundingCompanies)
+            .DistinctBy(item => item.Id)
+            .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         return Results.Ok(result);
     }
 

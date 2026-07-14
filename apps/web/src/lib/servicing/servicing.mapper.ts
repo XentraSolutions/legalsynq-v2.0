@@ -56,7 +56,7 @@ export function mapServicingToListItem(
     caseId: safeString(dto.caseId),
     caseCode: safeString(dto.caseCode),
     name: safeString(dto.plaintiffName ?? dto.description ?? dto.taskNumber),
-    lawfirm: safeString(dto.lawfirm ?? dto.assignedTo),
+    lawfirm: safeString(dto.lawfirm),
     currentStatus: safeString(dto.status),
     settlementStatus: safeString(dto.settlementStatus),
     settlementDate:

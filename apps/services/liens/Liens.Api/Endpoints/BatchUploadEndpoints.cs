@@ -2,11 +2,14 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Liens.Application.DTOs;
+using Liens.Application.Interfaces;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using Liens.Domain;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -87,6 +90,9 @@ public static class BatchUploadEndpoints
 
     private static Guid RequireUserId(ICurrentRequestContext ctx) =>
         ctx.UserId ?? throw new UnauthorizedAccessException("User context is required.");
+
+    private static Guid RequireOrgId(ICurrentRequestContext ctx) =>
+        ctx.OrgId ?? throw new UnauthorizedAccessException("Organization context is required.");
 
     private static async Task SeedDefaultTemplatesAsync(LiensDbContext db, Guid userId, CancellationToken ct)
     {
@@ -247,11 +253,13 @@ public static class BatchUploadEndpoints
     private static async Task<IResult> CreateBatchUpload(
         BatchUploadRequest request,
         LiensDbContext db,
+        ICaseService caseService,
         ICurrentRequestContext ctx,
         CancellationToken ct)
     {
         var tenantId = RequireTenantId(ctx);
         var userId = RequireUserId(ctx);
+        var orgId = RequireOrgId(ctx);
         await SeedDefaultTemplatesAsync(db, userId, ct);
 
         var validated = await BuildBatchUploadAsync(request.label, request.template, request.caseId, request.file, request.date, request.rows, request.dataContext, tenantId, userId, db, ct);
@@ -262,12 +270,28 @@ public static class BatchUploadEndpoints
         db.BatchUploadDetails.AddRange(validated.Details!);
         await db.SaveChangesAsync(ct);
         var createdBatch = validated.Batch!;
+        var importResult = await ImportBatchRowsAsync(
+            createdBatch,
+            validated.Details!,
+            validated.ParsedDataContext,
+            request.template,
+            tenantId,
+            orgId,
+            userId,
+            db,
+            caseService,
+            ct);
 
         return Results.Ok(new
         {
             isSuccess = true,
-            message = "Successfully Created.",
+            message = importResult.Message,
             id = createdBatch.Id.ToString(),
+            totalRows = importResult.TotalRows,
+            importedCount = importResult.ImportedCount,
+            createdCount = importResult.CreatedCount,
+            updatedCount = importResult.UpdatedCount,
+            failedCount = importResult.FailedCount,
             data = validated.ParsedDataContext,
         });
     }
@@ -406,6 +430,10 @@ public static class BatchUploadEndpoints
             .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(h => h.EndsWith('*'))
             .ToList();
+        var allowsGeneratedCaseCode = string.Equals(
+            template.Code,
+            "INITIAL_CASE_IMPORT",
+            StringComparison.OrdinalIgnoreCase);
 
         var processed = new List<object>();
         var successCount = 0;
@@ -418,6 +446,12 @@ public static class BatchUploadEndpoints
 
             foreach (var required in requiredHeaders)
             {
+                if (allowsGeneratedCaseCode &&
+                    string.Equals(required, "Case Code*", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 var value = ResolveRowValue(row, required);
                 if (string.IsNullOrWhiteSpace(value))
                     reasons.Add($"{required} is required.");
@@ -617,6 +651,216 @@ public static class BatchUploadEndpoints
         return (batch, details, parsedDataContext, null);
     }
 
+    private sealed record BatchImportResult(
+        string Message,
+        int TotalRows,
+        int ImportedCount,
+        int CreatedCount,
+        int UpdatedCount,
+        int FailedCount);
+
+    private static async Task<BatchImportResult> ImportBatchRowsAsync(
+        BatchUpload batch,
+        List<BatchUploadDetail> details,
+        JsonArray parsedRows,
+        string? templateCode,
+        Guid tenantId,
+        Guid orgId,
+        Guid userId,
+        LiensDbContext db,
+        ICaseService caseService,
+        CancellationToken ct)
+    {
+        var normalizedTemplate = templateCode?.Trim() ?? batch.Template;
+        if (!SupportsDirectImport(normalizedTemplate))
+        {
+            return new BatchImportResult(
+                "Successfully Created.",
+                details.Count,
+                0,
+                0,
+                0,
+                0);
+        }
+
+        var importedCount = 0;
+        var createdCount = 0;
+        var updatedCount = 0;
+        var failedCount = 0;
+
+        for (var i = 0; i < details.Count; i++)
+        {
+            var detail = details[i];
+            var row = (parsedRows.ElementAtOrDefault(i) as JsonObject) ?? new JsonObject();
+
+            try
+            {
+                switch (normalizedTemplate)
+                {
+                    case "INITIAL_CASE_IMPORT":
+                        await ImportInitialCaseRowAsync(row, tenantId, orgId, userId, caseService, ct);
+                        detail.SetResult("SUCCESS", null, userId);
+                        importedCount++;
+                        createdCount++;
+                        break;
+                    case "UPDATE_CASE_TRACKING_STATUS":
+                        await ImportCaseTrackingRowAsync(row, tenantId, userId, caseService, ct);
+                        detail.SetResult("SUCCESS", null, userId);
+                        importedCount++;
+                        updatedCount++;
+                        break;
+                    default:
+                        detail.SetResult("FAILED", "Template import is not supported yet.", userId);
+                        failedCount++;
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                detail.SetResult("FAILED", ex.Message, userId);
+                failedCount++;
+            }
+        }
+
+        batch.SetProcessStatus(
+            failedCount == 0 ? "PROCESSED" : importedCount == 0 ? "FAILED" : "PARTIAL",
+            userId);
+        await db.SaveChangesAsync(ct);
+
+        return new BatchImportResult(
+            $"Import complete. {importedCount} imported, {failedCount} failed out of {details.Count} rows.",
+            details.Count,
+            importedCount,
+            createdCount,
+            updatedCount,
+            failedCount);
+    }
+
+    private static bool SupportsDirectImport(string? templateCode) =>
+        string.Equals(templateCode, "INITIAL_CASE_IMPORT", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(templateCode, "UPDATE_CASE_TRACKING_STATUS", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task ImportInitialCaseRowAsync(
+        JsonObject row,
+        Guid tenantId,
+        Guid orgId,
+        Guid userId,
+        ICaseService caseService,
+        CancellationToken ct)
+    {
+        var request = new CreateCaseRequest
+        {
+            CaseNumber = ResolveRowValue(row, "Case Code*")?.Trim() ?? string.Empty,
+            ClientFirstName = RequireRowValue(row, "First Name*"),
+            ClientLastName = RequireRowValue(row, "Last Name*"),
+            DateOfIncident = ParseBatchDate(ResolveRowValue(row, "Date Of Loss")),
+            ClientDob = ParseBatchDate(ResolveRowValue(row, "Date Of Birth")),
+            ClientAddress = BuildAddress(
+                ResolveRowValue(row, "Address"),
+                ResolveRowValue(row, "City"),
+                ResolveRowValue(row, "State"),
+                ResolveRowValue(row, "Zipcode")),
+            Notes = ResolveRowValue(row, "Note"),
+            ExternalReference = ResolveRowValue(row, "External Case Id"),
+        };
+
+        await caseService.CreateAsync(tenantId, orgId, userId, request, ct);
+    }
+
+    private static async Task ImportCaseTrackingRowAsync(
+        JsonObject row,
+        Guid tenantId,
+        Guid userId,
+        ICaseService caseService,
+        CancellationToken ct)
+    {
+        var caseNumber = RequireRowValue(row, "Case Code*");
+        var existing = await caseService.GetByCaseNumberAsync(tenantId, caseNumber, ct)
+            ?? throw new InvalidOperationException($"Case '{caseNumber}' not found.");
+
+        var request = new UpdateCaseRequest
+        {
+            ClientFirstName = existing.ClientFirstName,
+            ClientLastName = existing.ClientLastName,
+            Title = existing.Title,
+            ExternalReference = existing.ExternalReference,
+            ClientDob = existing.ClientDob,
+            ClientPhone = existing.ClientPhone,
+            ClientEmail = existing.ClientEmail,
+            ClientAddress = existing.ClientAddress,
+            DateOfIncident = existing.DateOfIncident,
+            InsuranceCarrier = existing.InsuranceCarrier,
+            PolicyNumber = existing.PolicyNumber,
+            ClaimNumber = existing.ClaimNumber,
+            Description = existing.Description,
+            Notes = FirstNonEmpty(ResolveRowValue(row, "Note"), existing.Notes),
+            Status = NormalizeImportedCaseStatus(RequireRowValue(row, "Case Status*")),
+            DemandAmount = existing.DemandAmount,
+            SettlementAmount = existing.SettlementAmount,
+            Sex = existing.Sex,
+            CaseType = existing.CaseType,
+            CurrentMedicalStatus = existing.CurrentMedicalStatus,
+            StateOfIncident = existing.StateOfIncident,
+            TrackingFollowUpDate = existing.TrackingFollowUpDate,
+            LeadId = existing.LeadId,
+        };
+
+        await caseService.UpdateAsync(tenantId, existing.Id, userId, request, ct);
+    }
+
+    private static string RequireRowValue(JsonObject row, string key)
+    {
+        var value = ResolveRowValue(row, key);
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException($"{key} is required.");
+
+        return value.Trim();
+    }
+
+    private static DateOnly? ParseBatchDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return DateOnly.TryParseExact(
+            value.Trim(),
+            ["M/d/yyyy", "MM/dd/yyyy", "yyyy-MM-dd"],
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var date)
+            ? date
+            : throw new InvalidOperationException($"Invalid date value '{value}'. Expected MM/DD/YYYY.");
+    }
+
+    private static string? BuildAddress(string? address, string? city, string? state, string? zipcode)
+    {
+        var parts = new[] { address, city, state, zipcode }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .ToList();
+
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
+
+    private static string NormalizeImportedCaseStatus(string value)
+    {
+        var normalized = value.Trim();
+        var compact = normalized
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+
+        return compact.ToUpperInvariant() switch
+        {
+            "OPEN" or "PREDEMAND" => CaseStatus.PreDemand,
+            "DEMANDSENT" => CaseStatus.DemandSent,
+            "INNEGOTIATION" => CaseStatus.InNegotiation,
+            "CASESETTLED" => CaseStatus.CaseSettled,
+            "CLOSED" => CaseStatus.Closed,
+            _ when CaseStatus.All.Contains(normalized) => normalized,
+            _ => throw new InvalidOperationException($"Invalid case status '{value}'."),
+        };
+    }
+
     private static JsonArray ParseDataContext(string? dataContext)
     {
         var result = new JsonArray();
@@ -765,10 +1009,26 @@ public static class BatchUploadEndpoints
 
     private static string? ResolveRowValue(JsonObject row, string key)
     {
+        var normalizedKey = NormalizeHeaderKey(key);
         foreach (var property in row)
         {
-            if (string.Equals(property.Key.Trim(), key.Trim(), StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(NormalizeHeaderKey(property.Key), normalizedKey, StringComparison.OrdinalIgnoreCase))
                 return property.Value?.ToString();
+        }
+
+        return null;
+    }
+
+    private static string NormalizeHeaderKey(string value) =>
+        value.Replace("*", string.Empty, StringComparison.Ordinal)
+            .Trim();
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
         }
 
         return null;

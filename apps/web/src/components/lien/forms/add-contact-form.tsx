@@ -47,6 +47,30 @@ const EMPTY_FORM = {
 // MedicalFacility routes through the legacy facility API,
 // which uses a single "name" field rather than firstName/lastName.
 const LEGACY_FACILITY_TYPES = ["MedicalFacility"];
+const LEGACY_CONTACT_TYPE_OPTIONS = [
+  { code: "LawFirm", name: "LAW FIRMS" },
+  { code: "Provider", name: "MEDICAL PROVIDERS" },
+  { code: "FundingCompany", name: "FUNDING COMPANIES" },
+  { code: "MedicalFacility", name: "MEDICAL FACILITIES" },
+  { code: "Lead", name: "LEADS" },
+] as const;
+
+const LEGACY_CONTACT_TYPE_CODE_ALIASES: Record<string, string> = {
+  LienHolder: "FundingCompany",
+  Facility: "MedicalFacility",
+};
+
+const FALLBACK_CONTACT_TYPE_LABELS: Record<string, string> = {
+  CaseManager: "Case Manager",
+  Facility: "Facility",
+  FundingCompany: "FUNDING COMPANIES",
+  InternalUser: "Internal User",
+  LawFirm: "LAW FIRMS",
+  Lead: "LEADS",
+  LienHolder: "FUNDING COMPANIES",
+  MedicalFacility: "MEDICAL FACILITIES",
+  Provider: "MEDICAL PROVIDERS",
+};
 
 export function AddContactForm({
   open,
@@ -79,6 +103,51 @@ export function AddContactForm({
 
   const isLegacyFacilityCreate =
     mode === "create" && LEGACY_FACILITY_TYPES.includes(form.contactType);
+
+  const normalizedContactTypes = LEGACY_CONTACT_TYPE_OPTIONS.flatMap(
+    ({ code, name }) => {
+      const match =
+        data.contactTypes.find((option) => option.code === code) ??
+        (code === "FundingCompany"
+          ? data.contactTypes.find((option) => option.code === "LienHolder")
+          : undefined) ??
+        (code === "MedicalFacility"
+          ? data.contactTypes.find((option) => option.code === "Facility")
+          : undefined);
+
+      if (!match) return [];
+
+      return [{ ...match, code, name }];
+    },
+  );
+
+  const selectedContactTypeValue =
+    mode === "edit"
+      ? LEGACY_CONTACT_TYPE_CODE_ALIASES[form.contactType] ?? form.contactType
+      : form.contactType;
+
+  const currentContactTypeOption =
+    mode === "edit" &&
+    form.contactType &&
+    !normalizedContactTypes.some(
+      (option) => option.code === selectedContactTypeValue,
+    )
+      ? data.contactTypes.find((option) => option.code === form.contactType) ?? {
+          id: form.contactType,
+          category: "ContactType",
+          code: form.contactType,
+          description: null,
+          isActive: true,
+          isSystem: true,
+          name:
+            FALLBACK_CONTACT_TYPE_LABELS[form.contactType] ?? form.contactType,
+          sortOrder: Number.MAX_SAFE_INTEGER,
+        }
+      : null;
+
+  const contactTypeOptions = currentContactTypeOption
+    ? [...normalizedContactTypes, currentContactTypeOption]
+    : normalizedContactTypes;
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -207,14 +276,14 @@ export function AddContactForm({
             Contact Type<span className="text-red-500 ml-0.5">*</span>
           </label>
           <select
-            value={form.contactType}
+            value={selectedContactTypeValue}
             onChange={(e) => setForm({ ...form, contactType: e.target.value })}
             disabled={mode === "edit"}
             className={inputCls("contactType")}
           >
             <option value="">Select...</option>
-            {data?.contactTypes?.length > 0 &&
-              data.contactTypes.map((v) => (
+            {contactTypeOptions.length > 0 &&
+              contactTypeOptions.map((v) => (
                 <option key={v.id} value={v.code}>
                   {v.name}
                 </option>

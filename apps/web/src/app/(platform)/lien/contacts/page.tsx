@@ -371,7 +371,9 @@ export default function ContactsPage() {
                     <TableCell className="text-sm text-gray-500">
                       {c.email || "—"}
                     </TableCell>
-                    <TableCell className="text-sm text-gray-500">0</TableCell>
+                    <TableCell className="text-sm text-gray-500">
+                      {c.activeCases}
+                    </TableCell>
                     <TableCell
                       className="text-right"
                       onClick={(e) => e.stopPropagation()}

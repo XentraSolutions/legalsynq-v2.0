@@ -46,6 +46,14 @@ export default function BatchEntryPage() {
       data: Record<string, unknown>;
     }>;
   } | null>(null);
+  const [importSummary, setImportSummary] = useState<{
+    totalRows?: number;
+    importedCount?: number;
+    createdCount?: number;
+    updatedCount?: number;
+    failedCount?: number;
+    message?: string;
+  } | null>(null);
 
   const templateList = [
     {
@@ -142,7 +150,6 @@ export default function BatchEntryPage() {
     const response = await batchService.process({
       batchUploadId: template.id,
       templateId: selectedTemplate ?? "INITIAL_CASE_IMPORT",
-      caseId: template.caseId,
     });
 
     setValidations(response);
@@ -173,7 +180,15 @@ export default function BatchEntryPage() {
       dataContext: dataContextLines.join("\n"),
     };
 
-    await batchService.createBatch(importPayload);
+    const response = await batchService.createBatch(importPayload);
+    setImportSummary({
+      totalRows: response.totalRows,
+      importedCount: response.importedCount,
+      createdCount: response.createdCount,
+      updatedCount: response.updatedCount,
+      failedCount: response.failedCount,
+      message: response.message,
+    });
   };
 
   const nextStep = async () => {
@@ -495,8 +510,13 @@ export default function BatchEntryPage() {
               Import Complete
             </h3>
             <p className="text-sm text-gray-500 mb-4">
-              245 records have been successfully imported.
+              {(importSummary?.importedCount ?? 0).toString()} records have been successfully imported.
             </p>
+            {importSummary?.failedCount ? (
+              <p className="text-xs text-amber-600 mb-4">
+                {importSummary.failedCount} rows failed during import.
+              </p>
+            ) : null}
             <button
               onClick={() => setCurrentStep(0)}
               className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
