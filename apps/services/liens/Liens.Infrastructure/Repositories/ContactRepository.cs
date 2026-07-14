@@ -130,7 +130,6 @@ public class ContactRepository : IContactRepository
         return result;
     }
 
-
     public async Task<Contact?> GetFacilityContactByReferenceAsync(
         Guid tenantId, Guid facilityReferenceId, CancellationToken ct = default)
     {
@@ -208,8 +207,6 @@ public class ContactRepository : IContactRepository
 
         return q;
     }
-
-
     private async Task ApplyLawFirmCountsAsync(
         Guid tenantId,
         IReadOnlyCollection<Contact> contacts,

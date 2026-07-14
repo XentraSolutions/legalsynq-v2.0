@@ -161,30 +161,47 @@ export function CreateCaseForm({
   };
 
   const fetchData = useCallback(async () => {
-    setData((prev) => ({
-      ...prev,
-      status: [...LEGACY_CASE_STATUS_OPTIONS],
-      state:
-        lookup?.State?.map((c) => {
-          return { key: c.id, value: c.code, label: c.code };
-        }) ?? [],
-      accidentState:
-        lookup?.State?.map((c) => {
-          return { key: c.id, value: c.code, label: c.code };
-        }) ?? [],
-      accidentType:
-        LEGACY_ACCIDENT_TYPE_NAMES.flatMap((name) => {
-          const match = lookup?.AccidentType?.find((c) => c.name === name);
+    const [lawfirmRes, caseManagersRes] = await Promise.allSettled([
+      lookupService.getLawfirm(),
+      contactsService.getCaseManagers(),
+    ]);
+    if (
+      lawfirmRes.status === "fulfilled" &&
+      caseManagersRes.status === "fulfilled"
+    ) {
+      setData((prev: any) => ({
+        ...prev,
+        status: [...LEGACY_CASE_STATUS_OPTIONS],
+        state:
+          lookup?.State?.map((c) => {
+            return { key: c.id, value: c.code, label: c.code };
+          }) ?? [],
+        accidentState:
+          lookup?.State?.map((c) => {
+            return { key: c.id, value: c.code, label: c.code };
+          }) ?? [],
+        lawFirm:
+          lawfirmRes.value.items.map((c) => {
+            return { key: c.id, value: c.id, label: c.displayName };
+          }) ?? [],
+        caseManagers:
+          caseManagersRes.value.items.map((c) => {
+            return { key: c.id, value: c.id, label: c.displayName };
+          }) ?? [],
+        accidentType:
+          LEGACY_ACCIDENT_TYPE_NAMES.flatMap((name) => {
+            const match = lookup?.AccidentType?.find((c) => c.name === name);
 
-          if (match) {
-            return [{ key: match.id, value: match.id, label: match.name }];
-          }
+            if (match) {
+              return [{ key: match.id, value: match.id, label: match.name }];
+            }
 
-          const fallback = LEGACY_ACCIDENT_TYPE_FALLBACKS[name];
-          return fallback ? [fallback] : [];
-        }),
-    }));
-  }, [lookup]);
+            const fallback = LEGACY_ACCIDENT_TYPE_FALLBACKS[name];
+            return fallback ? [fallback] : [];
+          }),
+      }));
+    }
+  }, []);
 
   useEffect(() => {
     if (!Object.values(touched).some(Boolean)) return;
