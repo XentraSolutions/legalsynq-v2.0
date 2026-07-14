@@ -5,8 +5,8 @@ namespace Tenant.Application.DTOs;
 ///
 /// Field names are intentionally camelCase-compatible with the control-center
 /// mapTenantSummary mapper. Identity-owned fields not tracked in Tenant DB are
-/// returned as sensible defaults (type="LawFirm", userCount=0, orgCount=0) so
-/// the mapper handles them without errors.
+/// returned as sensible defaults where the canonical Tenant service does not
+/// own the source data directly.
 /// </summary>
 public record TenantAdminSummaryResponse(
     Guid    Id,
@@ -19,6 +19,7 @@ public record TenantAdminSummaryResponse(
     int     UserCount,
     int     OrgCount,
     string? Subdomain,
+    string  Url,
     DateTime CreatedAtUtc);
 
 /// <summary>
@@ -43,6 +44,7 @@ public record TenantAdminDetailResponse(
     int     LinkedOrgCount,
     string? Email,
     string? Subdomain,
+    string  Url,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     Guid?   LogoDocumentId,
