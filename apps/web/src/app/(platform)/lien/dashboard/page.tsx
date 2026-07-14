@@ -217,22 +217,23 @@ export default function LienDashboardPage() {
               {mode === 'sell' ? 'Sell Mode' : 'Internal Mode'}
             </span>
           </div>
-          <p className="text-sm text-gray-500 mt-0.5">SynqLien operational overview</p>
         </div>
-        {ra.can('case:create') && (
+        {/* not part of phase 1 migration */}
+        {/* {ra.can('case:create') && (
           <button onClick={() => setShowCreateCase(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-add-line text-base" />
             New Case
           </button>
-        )}
+        )} */}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Cards not part of phase 1 mgiration */}
+      {/* <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="Total Liens" value={dashboardStats?.totalLiens ?? 0} change={`${dashboardStats?.lienStatus?.find((ls) => ls.label === 'Draft')?.value ?? 0} draft`} changeType="neutral" icon="ri-stack-line" iconColor="text-indigo-600" href="/lien/liens" />
         <KpiCard title="Active Cases" value={dashboardStats?.totalActiveCases ?? 0} change={`${dashboardStats?.totalCases ?? 0} total`} changeType="neutral" icon="ri-folder-open-line" iconColor="text-blue-600" href="/lien/cases" />
         <KpiCard title="Pending Tasks" value={pendingTasks.length} change={overdueTasks.length > 0 ? `${overdueTasks.length} overdue` : 'All on track'} changeType={overdueTasks.length > 0 ? 'down' : 'up'} icon="ri-task-line" iconColor="text-amber-600" href="/lien/servicing" />
         <KpiCard title="Monthly Volume" value={formatCurrency(dashboardStats?.totalLienValue ?? 0)} change="All liens" changeType="neutral" icon="ri-money-dollar-circle-line" iconColor="text-emerald-600" />
-      </div>
+      </div> */}
 
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-gray-800">Reporting Period</h2>
@@ -342,8 +343,8 @@ export default function LienDashboardPage() {
           href="/lien/cases"
         />
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* not part of phase 1 migration */}
+      {/* <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-800">Task Queue</h2>
@@ -421,7 +422,7 @@ export default function LienDashboardPage() {
             })}
           </div>
         </div>
-      </div>
+      </div> 
 
       <div className="bg-white border border-gray-200 rounded-xl p-5">
         <h2 className="text-sm font-semibold text-gray-800 mb-4">Quick Actions</h2>
@@ -445,6 +446,7 @@ export default function LienDashboardPage() {
       </div>
 
       <CreateCaseForm open={showCreateCase} onClose={() => setShowCreateCase(false)} />
+        */}
     </div>
   );
 }
