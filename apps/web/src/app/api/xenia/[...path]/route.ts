@@ -45,8 +45,21 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Re
   }
 
   const responseHeaders = new Headers();
-  responseHeaders.set('Content-Type', gatewayRes.headers.get('Content-Type') ?? 'application/json');
-  responseHeaders.set('Cache-Control', gatewayRes.headers.get('Cache-Control') ?? 'no-store');
+  const responseContentType = gatewayRes.headers.get('Content-Type') ?? 'application/json';
+  const isEventStream = responseContentType.startsWith('text/event-stream');
+
+  responseHeaders.set('Content-Type', responseContentType);
+  responseHeaders.set(
+    'Cache-Control',
+    isEventStream
+      ? 'no-cache, no-transform'
+      : (gatewayRes.headers.get('Cache-Control') ?? 'no-store'),
+  );
+
+  if (isEventStream) {
+    responseHeaders.set('Connection', 'keep-alive');
+    responseHeaders.set('X-Accel-Buffering', 'no');
+  }
 
   const upstreamCorrelationId = gatewayRes.headers.get('X-Correlation-Id');
   if (upstreamCorrelationId) responseHeaders.set('X-Correlation-Id', upstreamCorrelationId);

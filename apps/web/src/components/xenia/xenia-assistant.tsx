@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { flushSync } from 'react-dom';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { xeniaClient } from '@/lib/xenia/client';
 import {
   Select,
@@ -16,12 +17,23 @@ import {
   type MarkdownBlock,
   type MarkdownInlineToken,
 } from '@/lib/xenia/markdown';
-import { normalizeStreamEvent, type XeniaStreamEvent } from '@/lib/xenia/stream';
+import {
+  buildStarterPrompts,
+  buildXeniaContext,
+  parseXeniaMessageMetadata,
+  serializeXeniaContext,
+} from '@/lib/xenia/context';
+import {
+  drainSseBuffer,
+  flushSseBuffer,
+  type XeniaStreamEvent,
+} from '@/lib/xenia/stream';
 import type {
   XeniaAgent,
   XeniaBootstrap,
   XeniaConversation,
   XeniaConversationSummary,
+  XeniaLookupResult,
   XeniaMessage,
 } from '@/lib/xenia/types';
 
@@ -34,6 +46,7 @@ interface XeniaAssistantProps {
 
 export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistantProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [bootstrap, setBootstrap] = useState<XeniaBootstrap | null>(null);
   const [conversations, setConversations] = useState<XeniaConversationSummary[]>([]);
   const [activeConversation, setActiveConversation] = useState<XeniaConversation | null>(null);
@@ -45,11 +58,14 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const contextJson = useMemo(() => JSON.stringify({
-    path: pathname,
-    source: mode,
-    ...(initialContext ?? {}),
-  }), [initialContext, mode, pathname]);
+  const structuredContext = useMemo(() => buildXeniaContext(
+    pathname,
+    searchParams,
+    mode,
+    initialContext,
+  ), [initialContext, mode, pathname, searchParams]);
+
+  const contextJson = useMemo(() => serializeXeniaContext(structuredContext), [structuredContext]);
 
   const agents = useMemo(() => {
     const items = bootstrap?.agents ?? [];
@@ -61,6 +77,10 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
   }, [bootstrap?.agents]);
 
   const agentSelectionLocked = isStreaming || (mode === 'page' && !!activeConversation);
+  const starterPrompts = useMemo(
+    () => buildStarterPrompts(selectedAgentKey, structuredContext),
+    [selectedAgentKey, structuredContext],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -136,11 +156,15 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
     if (activeConversation?.id === id) setActiveConversation(null);
   }
 
-  async function submit() {
-    const content = input.trim();
+  async function submit(overrideContent?: string) {
+    const content = (overrideContent ?? input).trim();
     if (!content || isStreaming) return;
 
-    setInput('');
+    if (!overrideContent) {
+      setInput('');
+    } else {
+      setInput('');
+    }
     setDraftAssistant('');
     setError(null);
     setIsStreaming(true);
@@ -192,22 +216,25 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      const events = buffer.split('\n\n');
-      buffer = events.pop() ?? '';
-
-      for (const raw of events) {
-        const dataLine = raw.split('\n').find(line => line.startsWith('data:'));
-        if (!dataLine) continue;
-        const evt = normalizeStreamEvent(JSON.parse(dataLine.slice('data:'.length).trim()));
-        if (!evt) continue;
-        applyStreamEvent(evt);
+      const drained = drainSseBuffer(buffer);
+      buffer = drained.rest;
+      drained.events.forEach(applyStreamEvent);
+      if (drained.events.some(event => event.type === 'delta')) {
+        await yieldForBrowserPaint();
       }
     }
+
+    buffer += decoder.decode();
+    const drained = drainSseBuffer(buffer);
+    drained.events.forEach(applyStreamEvent);
+    flushSseBuffer(drained.rest).forEach(applyStreamEvent);
   }
 
   function applyStreamEvent(evt: XeniaStreamEvent) {
     if (evt.type === 'delta' && evt.delta) {
-      setDraftAssistant(prev => prev + evt.delta);
+      flushSync(() => {
+        setDraftAssistant(prev => prev + evt.delta);
+      });
       return;
     }
 
@@ -338,11 +365,30 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
                 <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
                   <p className="text-sm font-medium text-gray-700">Ask Xenia about your current work.</p>
                   <p className="mt-1 text-xs text-gray-500">Xenia only uses tenant context and product data you are authorized to access.</p>
+                  <div className="mt-4 flex flex-wrap justify-center gap-2">
+                    {starterPrompts.map(prompt => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => submit(prompt)}
+                        disabled={isLoading || isStreaming}
+                        className="inline-flex rounded-full border border-orange-200 bg-white px-3 py-1.5 text-xs font-medium text-orange-700 hover:border-orange-300 hover:bg-orange-50 disabled:opacity-50"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
               {activeConversation?.messages.map(message => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  onPromptClick={prompt => {
+                    setInput(prompt);
+                  }}
+                />
               ))}
 
               {draftAssistant && (
@@ -350,6 +396,12 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
                   <div className="max-w-[85%] break-words rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 shadow-sm">
                     <AssistantMessageContent content={draftAssistant} isStreaming />
                   </div>
+                </div>
+              )}
+
+              {isStreaming && !draftAssistant && (
+                <div className="flex justify-start px-2 py-1">
+                  <ThinkingIndicator />
                 </div>
               )}
 
@@ -381,7 +433,9 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
             />
             <button
               type="button"
-              onClick={submit}
+              onClick={() => {
+                void submit();
+              }}
               disabled={!input.trim() || isLoading || isStreaming}
               className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#0f1928] text-white hover:bg-[#16243a] disabled:cursor-not-allowed disabled:opacity-50"
               title="Send"
@@ -395,8 +449,26 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
   );
 }
 
-function MessageBubble({ message }: { message: XeniaMessage }) {
+async function yieldForBrowserPaint() {
+  await new Promise<void>(resolve => {
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      setTimeout(resolve, 0);
+      return;
+    }
+
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+function MessageBubble({
+  message,
+  onPromptClick,
+}: {
+  message: XeniaMessage;
+  onPromptClick: (prompt: string) => void;
+}) {
   const isUser = message.role === 'user';
+  const metadata = useMemo(() => parseXeniaMessageMetadata(message.metadataJson), [message.metadataJson]);
   return (
     <div className={isUser ? 'flex justify-end' : 'flex justify-start'}>
       <div className={[
@@ -407,6 +479,9 @@ function MessageBubble({ message }: { message: XeniaMessage }) {
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
           <AssistantMessageContent content={message.content} />
+        )}
+        {!isUser && metadata.lookupResults.length > 0 && (
+          <LookupResultCards results={metadata.lookupResults} />
         )}
         {message.citations.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
@@ -430,7 +505,99 @@ function MessageBubble({ message }: { message: XeniaMessage }) {
             ))}
           </div>
         )}
+        {!isUser && metadata.followUpPrompts.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+            {metadata.followUpPrompts.map(prompt => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => onPromptClick(prompt)}
+                className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-100"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function LookupResultCards({ results }: { results: XeniaLookupResult[] }) {
+  return (
+    <div className="mt-3 space-y-2">
+      {results.map(result => (
+        result.url ? (
+          <a
+            key={`${result.kind}:${result.id}`}
+            href={result.url}
+            className="block rounded-xl border border-gray-200 bg-gray-50/70 px-3 py-3 transition-colors hover:border-orange-300 hover:bg-orange-50/60"
+          >
+            <LookupResultCardBody result={result} />
+          </a>
+        ) : (
+          <div
+            key={`${result.kind}:${result.id}`}
+            className="rounded-xl border border-gray-200 bg-gray-50/70 px-3 py-3"
+          >
+            <LookupResultCardBody result={result} />
+          </div>
+        )
+      ))}
+    </div>
+  );
+}
+
+function ThinkingIndicator() {
+  return (
+    <div
+      aria-label="Xenia is thinking"
+      className="inline-flex items-center gap-2 text-sm text-gray-500"
+      role="status"
+    >
+      <img
+        src="/product-icons/synqai.png"
+        alt=""
+        aria-hidden="true"
+        className="h-5 w-5 animate-spin object-contain"
+      />
+      <span className="animate-pulse font-medium">Thinking...</span>
+    </div>
+  );
+}
+
+function LookupResultCardBody({ result }: { result: XeniaLookupResult }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-gray-900">{result.title}</p>
+          {result.subtitle && (
+            <p className="truncate text-xs text-gray-500">{result.subtitle}</p>
+          )}
+        </div>
+        {result.status && (
+          <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-gray-700">
+            {result.status}
+          </span>
+        )}
+      </div>
+      {result.description && (
+        <p className="text-xs leading-5 text-gray-600">{result.description}</p>
+      )}
+      {result.badges.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {result.badges.map(badge => (
+            <span
+              key={badge}
+              className="inline-flex rounded-full border border-orange-200 bg-white px-2 py-0.5 text-[11px] font-medium text-orange-700"
+            >
+              {badge}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

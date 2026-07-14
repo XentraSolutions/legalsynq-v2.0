@@ -51,6 +51,7 @@ public sealed class EfAssistantServiceTests : IDisposable
             _db,
             _tenantAccessor,
             new HttpContextAccessor { HttpContext = httpContext },
+            new StaticAssistantToolRegistry(),
             _toolExecutor,
             _provider,
             new StaticRuntimeSettingsService(),
@@ -60,6 +61,7 @@ public sealed class EfAssistantServiceTests : IDisposable
                 ModelKey = "xenia-fake",
                 MaxConversationMessages = 10,
                 MaxPromptCharacters = 8000,
+                MaxToolIterations = 4,
             }),
             _metrics,
             NullLogger<EfAssistantService>.Instance);
@@ -70,7 +72,7 @@ public sealed class EfAssistantServiceTests : IDisposable
             "drawer",
             $$"""{"path":"/careconnect/referrals/{{referralId}}","source":"drawer"}"""));
 
-        await ConsumeAsync(sut.StreamMessageAsync(
+        var events = await CollectAsync(sut.StreamMessageAsync(
             conversation.Id,
             new CreateAssistantMessageRequest("What is the status of this referral?", null, null)));
 
@@ -78,10 +80,15 @@ public sealed class EfAssistantServiceTests : IDisposable
         Assert.Equal("careconnect.referral.lookup", _toolExecutor.LastRequest!.ToolKey);
         Assert.Contains(referralId.ToString(), _toolExecutor.LastRequest.InputJson, StringComparison.Ordinal);
 
-        Assert.NotNull(_provider.LastRequest);
+        Assert.Equal(3, _provider.Requests.Count);
+        Assert.Equal(AssistantProviderPurpose.ToolSelection, _provider.Requests[0].Purpose);
+        Assert.Equal(AssistantProviderPurpose.ToolSelection, _provider.Requests[1].Purpose);
+        Assert.Equal(AssistantProviderPurpose.Chat, _provider.Requests[2].Purpose);
         Assert.Contains(
-            _provider.LastRequest!.Messages,
-            message => message.Content.StartsWith("Authorized CareConnect referral context:", StringComparison.Ordinal));
+            _provider.Requests[1].Messages,
+            message => message.Role == "tool" && message.Content.Contains("careconnect.referral.lookup", StringComparison.Ordinal));
+        Assert.Contains(events, evt => evt.Type == "delta" && evt.Delta == "Grounded ");
+        Assert.Contains(events, evt => evt.Type == "delta" && evt.Delta == "answer.");
 
         var refreshed = await sut.GetConversationAsync(conversation.Id);
         Assert.NotNull(refreshed);
@@ -89,9 +96,11 @@ public sealed class EfAssistantServiceTests : IDisposable
         Assert.Equal("Grounded answer.", assistantMessage.Content);
         Assert.Single(assistantMessage.Citations);
         Assert.Equal("careconnect.referral", assistantMessage.Citations[0].SourceType);
+        Assert.Contains("lookupResults", assistantMessage.MetadataJson, StringComparison.Ordinal);
 
         var invocation = Assert.Single(_db.AssistantToolInvocations);
         Assert.Equal("completed", invocation.Status);
+        Assert.Single(_db.AssistantMessages.Where(message => message.Role == AssistantMessageRole.Tool));
     }
 
     private void SeedGenericAgent()
@@ -109,11 +118,15 @@ public sealed class EfAssistantServiceTests : IDisposable
         _db.SaveChanges();
     }
 
-    private static async Task ConsumeAsync(IAsyncEnumerable<AssistantStreamEventDto> stream)
+    private static async Task<List<AssistantStreamEventDto>> CollectAsync(IAsyncEnumerable<AssistantStreamEventDto> stream)
     {
-        await foreach (var _ in stream)
+        var events = new List<AssistantStreamEventDto>();
+        await foreach (var evt in stream)
         {
+            events.Add(evt);
         }
+
+        return events;
     }
 
     public void Dispose()
@@ -183,7 +196,7 @@ public sealed class EfAssistantServiceTests : IDisposable
 
     private sealed class RecordingAssistantProvider : IAssistantProvider
     {
-        public AssistantProviderRequest? LastRequest { get; private set; }
+        public List<AssistantProviderRequest> Requests { get; } = [];
 
         public Task<string> GetProviderKeyAsync(CancellationToken ct = default)
             => Task.FromResult("fake");
@@ -192,15 +205,58 @@ public sealed class EfAssistantServiceTests : IDisposable
             AssistantProviderRequest request,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
         {
-            LastRequest = request;
+            Requests.Add(request);
             await Task.Yield();
-            yield return new AssistantProviderEvent("delta", Delta: "Grounded answer.");
+
+            if (request.Purpose == AssistantProviderPurpose.ToolSelection &&
+                !request.Messages.Any(message => message.Role == "tool"))
+            {
+                var referralId = ExtractReferralId(request.SystemPrompt) ?? Guid.Parse("11111111-1111-1111-1111-111111111111");
+                yield return new AssistantProviderEvent(
+                    "delta",
+                    Delta: $"{{\"action\":\"tool\",\"toolKey\":\"careconnect.referral.lookup\",\"input\":{{\"referralId\":\"{referralId}\"}}}}");
+                yield return new AssistantProviderEvent(
+                    "completed",
+                    ProviderResponseId: "resp-plan-1",
+                    InputTokens: 12,
+                    OutputTokens: 12,
+                    FinishReason: "stop");
+                yield break;
+            }
+
+            if (request.Purpose == AssistantProviderPurpose.ToolSelection)
+            {
+                yield return new AssistantProviderEvent("delta", Delta: """{"action":"final","message":"Grounded answer."}""");
+                yield return new AssistantProviderEvent(
+                    "completed",
+                    ProviderResponseId: "resp-plan-2",
+                    InputTokens: 12,
+                    OutputTokens: 4,
+                    FinishReason: "stop");
+                yield break;
+            }
+
+            yield return new AssistantProviderEvent("delta", Delta: "Grounded ");
+            yield return new AssistantProviderEvent("delta", Delta: "answer.");
             yield return new AssistantProviderEvent(
                 "completed",
-                ProviderResponseId: "resp-1",
+                ProviderResponseId: "resp-chat-1",
                 InputTokens: 12,
                 OutputTokens: 4,
                 FinishReason: "stop");
+        }
+
+        private static Guid? ExtractReferralId(string value)
+        {
+            var marker = "\"referralId\":\"";
+            var index = value.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) return null;
+
+            var start = index + marker.Length;
+            var end = value.IndexOf('"', start);
+            if (end <= start) return null;
+
+            return Guid.TryParse(value[start..end], out var parsed) ? parsed : null;
         }
     }
 

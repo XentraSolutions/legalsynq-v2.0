@@ -54,7 +54,24 @@ export interface XeniaMessage {
   outputTokens: number | null;
   finishReason: string | null;
   createdAtUtc: string;
+  metadataJson: string;
   citations: XeniaCitation[];
+}
+
+export interface XeniaMessageMetadata {
+  lookupResults: XeniaLookupResult[];
+  followUpPrompts: string[];
+}
+
+export interface XeniaLookupResult {
+  kind: string;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  status: string | null;
+  url: string | null;
+  badges: string[];
 }
 
 export interface XeniaCitation {

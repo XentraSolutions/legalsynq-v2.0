@@ -190,6 +190,7 @@ If changing startup, ports, service URLs, frontend dev behavior, or gateway rout
 - Internal service-to-service calls generally bypass the gateway and use direct HTTP with service tokens/provisioning secrets.
 - Flow is a separate workflow boundary. Keep workflow orchestration contracts explicit and avoid leaking one service's EF/domain model into Flow.
 - Xenia is a standalone automation platform. Keep its core independent from LegalSynq-specific domain logic and use adapter interfaces for platform capabilities.
+- Product-specific assistant tools must be owned by the product/service that owns the domain data and exposed through a dedicated assistant-tools API surface in that service. Xenia may orchestrate tool selection and aggregate results for the UI, but it must not implement product-domain lookup composition by calling user-facing product APIs directly.
 - For EF changes, update the correct service DbContext and create migrations in that service's infrastructure/migrations location. Do not put one service's schema change in another service.
 - Table prefix conventions matter. For example, Identity uses `idt_` tables and Xenia uses `xn_` tables; check existing migrations/configuration before adding tables.
 

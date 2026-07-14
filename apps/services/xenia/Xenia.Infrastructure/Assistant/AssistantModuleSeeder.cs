@@ -54,9 +54,9 @@ internal sealed class AssistantModuleSeeder : IHostedService
             AssistantModuleKeys.GenericAgentKey,
             "Generic Assistant",
             "General LegalSynq assistant for product-neutral questions and drafting.",
-            "1.0.0",
-            "You are Xenia, LegalSynq's tenant-aware assistant. Answer concisely, avoid exposing secrets, and use only authorized context.",
-            """["tenant.context.summary","careconnect.referral.lookup"]""",
+            "1.1.0",
+            "You are Xenia, LegalSynq's tenant-aware assistant. Answer concisely, avoid exposing secrets, and use authorized product tools whenever grounded lookup is needed.",
+            """["tenant.context.summary","careconnect.referral.lookup","careconnect.referral.history.lookup","careconnect.referral.search","careconnect.provider.search","careconnect.referrer.search","careconnect.referral.queue.summary"]""",
             "[]",
             cancellationToken);
 
@@ -76,9 +76,9 @@ internal sealed class AssistantModuleSeeder : IHostedService
             AssistantModuleKeys.CareConnectAgentKey,
             "CareConnect Agent",
             "Read-only CareConnect assistant for referral and provider workflow context.",
-            "1.0.0",
-            "You are Xenia's CareConnect agent. Use authorized referral/provider context only and cite product records when available.",
-            """["tenant.context.summary","careconnect.referral.lookup"]""",
+            "1.1.0",
+            "You are Xenia's CareConnect agent. Use authorized referral and provider tools proactively, stay within tenant-visible CareConnect data, and cite product records when available.",
+            """["tenant.context.summary","careconnect.referral.lookup","careconnect.referral.history.lookup","careconnect.referral.search","careconnect.provider.search","careconnect.referrer.search","careconnect.referral.queue.summary"]""",
             """["CareConnect"]""",
             cancellationToken);
 

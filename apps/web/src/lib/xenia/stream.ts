@@ -7,6 +7,11 @@ export interface XeniaStreamEvent {
   error?: string | null;
 }
 
+export interface XeniaSseDrainResult {
+  events: XeniaStreamEvent[];
+  rest: string;
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): UnknownRecord | null {
@@ -49,6 +54,7 @@ function normalizeMessage(raw: unknown): XeniaMessage | null {
   const content = pick<string>(record, 'content', 'Content');
   const provider = pick<string>(record, 'provider', 'Provider');
   const createdAtUtc = pick<string>(record, 'createdAtUtc', 'CreatedAtUtc');
+  const metadataJson = pick<string>(record, 'metadataJson', 'MetadataJson') ?? '{}';
 
   if (!id || !conversationId || !role || !content || !provider || !createdAtUtc) {
     return null;
@@ -67,6 +73,7 @@ function normalizeMessage(raw: unknown): XeniaMessage | null {
     outputTokens: pick<number | null>(record, 'outputTokens', 'OutputTokens') ?? null,
     finishReason: pick<string | null>(record, 'finishReason', 'FinishReason') ?? null,
     createdAtUtc,
+    metadataJson,
     citations: citationsRaw
       .map(normalizeCitation)
       .filter((citation): citation is XeniaCitation => citation !== null),
@@ -86,4 +93,44 @@ export function normalizeStreamEvent(raw: unknown): XeniaStreamEvent | null {
     message: normalizeMessage(pick(record, 'message', 'Message')) ?? null,
     error: pick<string | null>(record, 'error', 'Error') ?? null,
   };
+}
+
+function parseSseFrame(frame: string): XeniaStreamEvent | null {
+  const data = frame
+    .split(/\r?\n/)
+    .filter(line => line.startsWith('data:'))
+    .map(line => line.slice('data:'.length).trimStart())
+    .join('\n')
+    .trim();
+
+  if (!data) return null;
+
+  try {
+    return normalizeStreamEvent(JSON.parse(data));
+  } catch {
+    return null;
+  }
+}
+
+export function drainSseBuffer(buffer: string): XeniaSseDrainResult {
+  const frames = buffer.split(/\r?\n\r?\n/);
+  if (frames.length === 1) {
+    return { events: [], rest: buffer };
+  }
+
+  const rest = frames.pop() ?? '';
+  return {
+    events: frames
+      .map(parseSseFrame)
+      .filter((event): event is XeniaStreamEvent => event !== null),
+    rest,
+  };
+}
+
+export function flushSseBuffer(buffer: string): XeniaStreamEvent[] {
+  const trimmed = buffer.trim();
+  if (!trimmed) return [];
+
+  const event = parseSseFrame(trimmed);
+  return event ? [event] : [];
 }

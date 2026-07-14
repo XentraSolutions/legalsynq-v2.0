@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { normalizeStreamEvent } from '../xenia/stream';
+import {
+  drainSseBuffer,
+  flushSseBuffer,
+  normalizeStreamEvent,
+} from '../xenia/stream';
 
 test('normalizeStreamEvent accepts PascalCase SSE payloads from Xenia', () => {
   const evt = normalizeStreamEvent({
@@ -32,6 +36,7 @@ test('normalizeStreamEvent normalizes nested PascalCase assistant messages', () 
       OutputTokens: 7,
       FinishReason: 'stop',
       CreatedAtUtc: '2026-07-13T16:13:13.797333Z',
+      MetadataJson: '{"lookupResults":[],"followUpPrompts":[]}',
       Citations: [
         {
           Id: 'citation-1',
@@ -59,6 +64,7 @@ test('normalizeStreamEvent normalizes nested PascalCase assistant messages', () 
       outputTokens: 7,
       finishReason: 'stop',
       createdAtUtc: '2026-07-13T16:13:13.797333Z',
+      metadataJson: '{"lookupResults":[],"followUpPrompts":[]}',
       citations: [
         {
           id: 'citation-1',
@@ -70,4 +76,26 @@ test('normalizeStreamEvent normalizes nested PascalCase assistant messages', () 
       ],
     },
   });
+});
+
+test('drainSseBuffer parses CRLF-delimited SSE frames', () => {
+  const drained = drainSseBuffer(
+    'event: delta\r\ndata: {"Type":"delta","Delta":"Hel"}\r\n\r\nevent: delta\r\ndata: {"Type":"delta","Delta":"lo"}\r\n\r\npartial',
+  );
+
+  assert.deepEqual(drained, {
+    events: [
+      { type: 'delta', delta: 'Hel', message: null, error: null },
+      { type: 'delta', delta: 'lo', message: null, error: null },
+    ],
+    rest: 'partial',
+  });
+});
+
+test('flushSseBuffer parses a final unterminated SSE frame', () => {
+  const events = flushSseBuffer('event: done\ndata: {"Type":"done"}');
+
+  assert.deepEqual(events, [
+    { type: 'done', delta: null, message: null, error: null },
+  ]);
 });

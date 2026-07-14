@@ -21,6 +21,7 @@ internal sealed class EfAssistantService : IAssistantService
     private readonly XeniaDbContext _db;
     private readonly XeniaTenantContextAccessor _tenantAccessor;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IAssistantToolRegistry _toolRegistry;
     private readonly IAssistantToolExecutor _toolExecutor;
     private readonly IAssistantProvider _provider;
     private readonly IAssistantRuntimeSettingsService _runtimeSettings;
@@ -32,6 +33,7 @@ internal sealed class EfAssistantService : IAssistantService
         XeniaDbContext db,
         XeniaTenantContextAccessor tenantAccessor,
         IHttpContextAccessor httpContextAccessor,
+        IAssistantToolRegistry toolRegistry,
         IAssistantToolExecutor toolExecutor,
         IAssistantProvider provider,
         IAssistantRuntimeSettingsService runtimeSettings,
@@ -42,6 +44,7 @@ internal sealed class EfAssistantService : IAssistantService
         _db = db;
         _tenantAccessor = tenantAccessor;
         _httpContextAccessor = httpContextAccessor;
+        _toolRegistry = toolRegistry;
         _toolExecutor = toolExecutor;
         _provider = provider;
         _runtimeSettings = runtimeSettings;
@@ -63,7 +66,7 @@ internal sealed class EfAssistantService : IAssistantService
             {
                 ["streaming"] = "enabled",
                 ["provider"] = providerKey,
-                ["tool_runtime"] = "registry-only",
+                ["tool_runtime"] = "orchestrated",
             });
     }
 
@@ -196,6 +199,10 @@ internal sealed class EfAssistantService : IAssistantService
         if (content.Length > Math.Max(1000, options.MaxPromptCharacters))
             throw new ArgumentException($"Message content must be {options.MaxPromptCharacters} characters or fewer.", nameof(request));
 
+        var providerModelKey = string.IsNullOrWhiteSpace(runtimeSettings.ModelKey)
+            ? "xenia-fake"
+            : runtimeSettings.ModelKey;
+
         var conversation = await _db.AssistantConversations
             .FirstOrDefaultAsync(c => c.Id == conversationId && c.TenantId == tenantId && c.ActorId == actorId, ct)
             ?? throw new KeyNotFoundException($"Conversation '{conversationId}' was not found.");
@@ -233,73 +240,166 @@ internal sealed class EfAssistantService : IAssistantService
         yield return new AssistantStreamEventDto("user_message", null, ToMessageDto(userMessage, []), null);
 
         var mergedContextJson = MergeContextJson(conversation.ContextJson, request.ContextJson);
-        var grounding = await TryBuildGroundingAsync(
-            conversationId,
-            userMessage.Id,
-            tenantId,
-            actorId,
-            agent.AgentKey,
-            mergedContextJson,
-            ct);
-
-        var providerMessages = priorMessages
-            .Where(m => m.Role is AssistantMessageRole.User or AssistantMessageRole.Assistant)
-            .Select(m => new AssistantProviderMessage(ToProviderRole(m.Role), m.Content))
-            .ToList();
-
-        if (!string.IsNullOrWhiteSpace(grounding?.PromptMessage))
-        {
-            providerMessages.Add(new AssistantProviderMessage("user", grounding.PromptMessage));
-        }
-
-        providerMessages.Add(new AssistantProviderMessage("user", content));
-
-        var providerRequest = new AssistantProviderRequest(
-            agent.AgentKey,
-            agent.Version,
-            agent.SystemPrompt,
-            string.IsNullOrWhiteSpace(runtimeSettings.ModelKey) ? "xenia-fake" : runtimeSettings.ModelKey,
-            providerMessages,
-            mergedContextJson,
-            correlationId ?? string.Empty);
-
-        var chunks = new List<string>();
+        var toolDefinitions = _toolRegistry.ListToolsForAgent(agent.AgentKey);
+        var contextualToolHint = TryBuildContextualToolHint(mergedContextJson);
+        var workingMessages = new List<AssistantMessage>(priorMessages) { userMessage };
+        var toolRuns = new List<AssistantToolRun>();
+        var assistantContent = string.Empty;
         string? providerResponseId = null;
-        int? inputTokens = null;
-        int? outputTokens = null;
+        var totalInputTokens = 0;
+        var totalOutputTokens = 0;
         string? finishReason = null;
+        string? providerError = null;
+        string? plannedFinalMessage = null;
+        var shouldStreamFinalAnswer = false;
 
-        await foreach (var evt in _provider.StreamAsync(providerRequest, ct).WithCancellation(ct))
+        for (var iteration = 0; iteration < Math.Max(1, options.MaxToolIterations); iteration++)
         {
-            if (evt.Type == "delta" && !string.IsNullOrEmpty(evt.Delta))
+            var planRequest = new AssistantProviderRequest(
+                agent.AgentKey,
+                agent.Version,
+                BuildToolSelectionPrompt(agent.SystemPrompt, toolDefinitions, contextualToolHint),
+                providerModelKey,
+                BuildProviderMessages(workingMessages),
+                mergedContextJson,
+                correlationId ?? string.Empty,
+                AssistantProviderPurpose.ToolSelection);
+
+            var providerResult = await CollectProviderTextAsync(planRequest, ct);
+            providerResponseId = providerResult.ProviderResponseId ?? providerResponseId;
+            totalInputTokens += providerResult.InputTokens ?? EstimateTokens(planRequest.Messages.Sum(m => m.Content.Length) + planRequest.SystemPrompt.Length);
+            totalOutputTokens += providerResult.OutputTokens ?? EstimateTokens(providerResult.Text.Length);
+            finishReason = providerResult.FinishReason ?? finishReason;
+
+            if (!string.IsNullOrWhiteSpace(providerResult.SafeError))
             {
-                chunks.Add(evt.Delta);
-                yield return new AssistantStreamEventDto("delta", evt.Delta, null, null);
-                continue;
+                providerError = providerResult.SafeError;
+                break;
             }
 
-            if (!string.IsNullOrWhiteSpace(evt.ProviderResponseId))
-                providerResponseId = evt.ProviderResponseId;
-
-            inputTokens ??= evt.InputTokens;
-            outputTokens ??= evt.OutputTokens;
-            finishReason ??= evt.FinishReason;
-
-            if (evt.Type == "error")
+            var plan = TryParseToolPlan(providerResult.Text);
+            if (plan is null)
             {
-                _metrics.AssistantRequestsFailed.Add(1, KeyValuePair.Create<string, object?>("provider", providerKey));
-                yield return new AssistantStreamEventDto("error", null, null, evt.SafeError ?? "Assistant provider failed.");
-                yield break;
+                assistantContent = FallbackPlanMessage(providerResult.Text);
+                break;
+            }
+
+            if (plan.Action.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                plannedFinalMessage = string.IsNullOrWhiteSpace(plan.Message)
+                    ? null
+                    : plan.Message.Trim();
+                shouldStreamFinalAnswer = true;
+                break;
+            }
+
+            if (!plan.Action.Equals("tool", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(plan.ToolKey))
+            {
+                assistantContent = FallbackPlanMessage(providerResult.Text);
+                break;
+            }
+
+            var toolInputJson = ResolvePlannedToolInput(plan, contextualToolHint);
+            var toolRun = await ExecuteToolAsync(
+                conversationId,
+                userMessage.Id,
+                tenantId,
+                actorId,
+                agent.AgentKey,
+                plan.ToolKey,
+                toolInputJson,
+                mergedContextJson,
+                ct);
+
+            toolRuns.Add(toolRun);
+            workingMessages.Add(toolRun.ToolMessage);
+        }
+
+        if (!string.IsNullOrWhiteSpace(providerError))
+        {
+            _metrics.AssistantRequestsFailed.Add(1, KeyValuePair.Create<string, object?>("provider", providerKey));
+            yield return new AssistantStreamEventDto("error", null, null, providerError);
+            yield break;
+        }
+
+        if (shouldStreamFinalAnswer)
+        {
+            var answerRequest = new AssistantProviderRequest(
+                agent.AgentKey,
+                agent.Version,
+                BuildAnswerPrompt(agent.SystemPrompt),
+                providerModelKey,
+                BuildProviderMessages(workingMessages),
+                mergedContextJson,
+                correlationId ?? string.Empty,
+                AssistantProviderPurpose.Chat);
+
+            var answerChunks = new List<string>();
+
+            await foreach (var evt in _provider.StreamAsync(answerRequest, ct).WithCancellation(ct))
+            {
+                if (evt.Type == "delta" && !string.IsNullOrEmpty(evt.Delta))
+                {
+                    answerChunks.Add(evt.Delta);
+                    yield return new AssistantStreamEventDto("delta", evt.Delta, null, null);
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(evt.ProviderResponseId))
+                    providerResponseId = evt.ProviderResponseId;
+
+                totalInputTokens += evt.InputTokens ?? 0;
+                totalOutputTokens += evt.OutputTokens ?? 0;
+                finishReason = evt.FinishReason ?? finishReason;
+
+                if (evt.Type == "error")
+                {
+                    providerError = evt.SafeError ?? "Assistant provider failed.";
+                    break;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(providerError))
+            {
+                if (!string.IsNullOrWhiteSpace(plannedFinalMessage))
+                {
+                    assistantContent = plannedFinalMessage;
+                    providerError = null;
+                }
+                else
+                {
+                    _metrics.AssistantRequestsFailed.Add(1, KeyValuePair.Create<string, object?>("provider", providerKey));
+                    yield return new AssistantStreamEventDto("error", null, null, providerError);
+                    yield break;
+                }
+            }
+            else
+            {
+                assistantContent = string.Concat(answerChunks).Trim();
             }
         }
 
-        var assistantContent = string.Concat(chunks).Trim();
         if (string.IsNullOrWhiteSpace(assistantContent))
-            assistantContent = "I could not produce a response for this request.";
+            assistantContent = plannedFinalMessage
+                ?? "I could not produce a response for this request.";
 
-        inputTokens ??= EstimateTokens(providerMessages.Sum(m => m.Content.Length) + agent.SystemPrompt.Length);
-        outputTokens ??= EstimateTokens(assistantContent.Length);
+        if (!shouldStreamFinalAnswer)
+        {
+            foreach (var chunk in ChunkText(assistantContent, 72))
+                yield return new AssistantStreamEventDto("delta", chunk, null, null);
+        }
+
+        if (totalInputTokens == 0)
+            totalInputTokens = EstimateTokens(content.Length + agent.SystemPrompt.Length);
+
+        if (totalOutputTokens == 0)
+            totalOutputTokens = EstimateTokens(assistantContent.Length);
+
         finishReason ??= "stop";
+        var assistantMetadataJson = BuildAssistantMessageMetadataJson(
+            agent.AgentKey,
+            mergedContextJson,
+            toolRuns);
 
         var assistantMessage = new AssistantMessage(
             Guid.CreateVersion7(),
@@ -310,11 +410,11 @@ internal sealed class EfAssistantService : IAssistantService
             assistantContent,
             providerKey,
             providerResponseId,
-            "{}");
-        assistantMessage.SetUsage(inputTokens, outputTokens, finishReason);
+            assistantMetadataJson);
+        assistantMessage.SetUsage(totalInputTokens, totalOutputTokens, finishReason);
 
         _db.AssistantMessages.Add(assistantMessage);
-        var assistantCitations = (grounding?.Citations ?? [])
+        var assistantCitations = DeduplicateCitations(toolRuns.SelectMany(run => run.Result.Citations))
             .Select(citation => new AssistantMessageCitation(
                 Guid.CreateVersion7(),
                 assistantMessage.Id,
@@ -338,9 +438,9 @@ internal sealed class EfAssistantService : IAssistantService
             assistantMessage.Id,
             agent.AgentKey,
             providerKey,
-            providerRequest.ModelKey,
-            inputTokens.Value,
-            outputTokens.Value,
+            providerModelKey,
+            totalInputTokens,
+            totalOutputTokens,
             sw.ElapsedMilliseconds,
             ct);
 
@@ -348,7 +448,7 @@ internal sealed class EfAssistantService : IAssistantService
 
         _metrics.AssistantRequestsCompleted.Add(1, KeyValuePair.Create<string, object?>("provider", providerKey));
         _metrics.AssistantResponseDurationMs.Record(sw.Elapsed.TotalMilliseconds, KeyValuePair.Create<string, object?>("provider", providerKey));
-        _metrics.AssistantTokens.Add(inputTokens.Value + outputTokens.Value, KeyValuePair.Create<string, object?>("provider", providerKey));
+        _metrics.AssistantTokens.Add(totalInputTokens + totalOutputTokens, KeyValuePair.Create<string, object?>("provider", providerKey));
 
         yield return new AssistantStreamEventDto(
             "message",
@@ -572,6 +672,9 @@ internal sealed class EfAssistantService : IAssistantService
         IReadOnlyList<AssistantMessageCitation> citations)
     {
         var byMessage = citations.GroupBy(c => c.MessageId).ToDictionary(g => g.Key, g => g.ToList());
+        var visibleMessages = messages
+            .Where(m => m.Role is AssistantMessageRole.User or AssistantMessageRole.Assistant)
+            .ToList();
         return new AssistantConversationDto(
             conversation.Id,
             conversation.AgentKey,
@@ -583,7 +686,7 @@ internal sealed class EfAssistantService : IAssistantService
             conversation.LastMessageAtUtc,
             conversation.CreatedAtUtc,
             conversation.UpdatedAtUtc,
-            messages.Select(m => ToMessageDto(m, byMessage.TryGetValue(m.Id, out var messageCitations) ? messageCitations : [])).ToList());
+            visibleMessages.Select(m => ToMessageDto(m, byMessage.TryGetValue(m.Id, out var messageCitations) ? messageCitations : [])).ToList());
     }
 
     private static AssistantMessageDto ToMessageDto(
@@ -600,13 +703,11 @@ internal sealed class EfAssistantService : IAssistantService
             message.OutputTokens,
             message.FinishReason,
             message.CreatedAtMessageUtc,
+            message.MetadataJson,
             citations.Select(c => new AssistantCitationDto(c.Id, c.SourceType, c.SourceId, c.Label, c.Url)).ToList());
 
     private static AssistantUserPreferenceDto ToPreferenceDto(AssistantUserPreference preferences)
         => new(preferences.DefaultAgentKey, preferences.ContextHintsEnabled, preferences.PreferencesJson);
-
-    private static string ToProviderRole(AssistantMessageRole role)
-        => role == AssistantMessageRole.Assistant ? "assistant" : "user";
 
     private static string? SafeTitle(string? title)
     {
@@ -680,21 +781,119 @@ internal sealed class EfAssistantService : IAssistantService
     private static int EstimateTokens(int characters)
         => Math.Max(1, (int)Math.Ceiling(characters / 4.0));
 
-    private async Task<AssistantGroundingResult?> TryBuildGroundingAsync(
+    private static IReadOnlyList<AssistantProviderMessage> BuildProviderMessages(IReadOnlyList<AssistantMessage> messages)
+        => messages
+            .Where(m => m.Role is AssistantMessageRole.User or AssistantMessageRole.Assistant or AssistantMessageRole.Tool)
+            .Select(m => new AssistantProviderMessage(
+                m.Role switch
+                {
+                    AssistantMessageRole.Assistant => "assistant",
+                    AssistantMessageRole.Tool => "tool",
+                    _ => "user",
+                },
+                m.Content))
+            .ToList();
+
+    private static string BuildToolSelectionPrompt(
+        string agentSystemPrompt,
+        IReadOnlyList<AssistantToolDefinitionDto> tools,
+        ContextualToolHint? contextualHint)
+    {
+        var toolCatalog = string.Join(
+            "\n",
+            tools.Select(tool => $"- {tool.ToolKey}: {tool.Description} InputSchema={tool.InputSchemaJson}"));
+
+        var contextualHintLine = contextualHint is null
+            ? "No page-scoped tool hint is available."
+            : $"Contextual tool hint: {contextualHint.ToolKey} with input {contextualHint.InputJson}.";
+
+        return $@"{agentSystemPrompt}
+
+You are selecting the next step for Xenia's read-only assistant runtime.
+Return ONLY valid JSON with one of these shapes:
+{{""action"":""tool"",""toolKey"":""<tool-key>"",""input"":{{""example"":""value""}}}}
+{{""action"":""final"",""message"":""<user-facing answer>""}}
+
+Rules:
+- Use a tool whenever live product data or search results are needed.
+- Do not invent record identifiers or facts.
+- If the user refers to the current page record, prefer the contextual tool hint when it matches the request.
+- If the user is trying to find a referral by patient/client name, provider name, provider organization, law firm, or referrer contact, use careconnect.referral.search before considering provider-only or referrer-only directory tools.
+- Use careconnect.provider.search only when the user wants providers themselves, not when they want referrals involving a provider.
+- Use careconnect.referrer.search only when the user wants referrers or law firms themselves, not when they want referrals involving them.
+- After tool results are available, either request another tool or return a final grounded answer.
+- Keep the final answer concise and explicit about uncertainty.
+
+Available tools:
+{toolCatalog}
+
+{contextualHintLine}
+";
+    }
+
+    private static string BuildAnswerPrompt(string agentSystemPrompt)
+        => $@"{agentSystemPrompt}
+
+You are replying directly to the user in Xenia's read-only assistant runtime.
+- Use grounded product data from prior tool messages when available.
+- Do not invent facts, identifiers, or statuses.
+- If the grounded data is incomplete, say exactly what is missing.
+- Do not expose internal tool-selection steps unless the user asks.
+- Keep the answer concise and helpful.";
+
+    private async Task<ProviderTextResult> CollectProviderTextAsync(
+        AssistantProviderRequest request,
+        CancellationToken ct)
+    {
+        var chunks = new List<string>();
+        string? providerResponseId = null;
+        int? inputTokens = null;
+        int? outputTokens = null;
+        string? finishReason = null;
+        string? safeError = null;
+
+        await foreach (var evt in _provider.StreamAsync(request, ct).WithCancellation(ct))
+        {
+            if (evt.Type == "delta" && !string.IsNullOrEmpty(evt.Delta))
+            {
+                chunks.Add(evt.Delta);
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(evt.ProviderResponseId))
+                providerResponseId = evt.ProviderResponseId;
+
+            inputTokens ??= evt.InputTokens;
+            outputTokens ??= evt.OutputTokens;
+            finishReason ??= evt.FinishReason;
+
+            if (evt.Type == "error")
+            {
+                safeError = evt.SafeError ?? "Assistant provider failed.";
+                break;
+            }
+        }
+
+        return new ProviderTextResult(
+            string.Concat(chunks).Trim(),
+            providerResponseId,
+            inputTokens,
+            outputTokens,
+            finishReason,
+            safeError);
+    }
+
+    private async Task<AssistantToolRun> ExecuteToolAsync(
         Guid conversationId,
         Guid userMessageId,
         Guid tenantId,
         Guid actorId,
         string agentKey,
+        string toolKey,
+        string inputJson,
         string mergedContextJson,
         CancellationToken ct)
     {
-        var toolKey = TryResolveGroundingToolKey(mergedContextJson);
-        if (toolKey is null) return null;
-
-        var inputJson = BuildGroundingInputJson(toolKey, mergedContextJson);
-        if (inputJson is null) return null;
-
         var invocation = new AssistantToolInvocation(
             Guid.CreateVersion7(),
             conversationId,
@@ -716,11 +915,13 @@ internal sealed class EfAssistantService : IAssistantService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Assistant grounding tool execution failed. tool={ToolKey}", toolKey);
-            invocation.Fail("The grounded product lookup failed.");
-            await _db.SaveChangesAsync(ct);
-            return new AssistantGroundingResult(
-                BuildGroundingFailurePrompt("The grounded product lookup failed."),
+            _logger.LogWarning(ex, "Assistant tool execution failed. tool={ToolKey}", toolKey);
+            result = new AssistantToolExecutionResultDto(
+                false,
+                "tool_execution_failed",
+                "{}",
+                "The requested product lookup failed.",
+                2,
                 []);
         }
 
@@ -733,51 +934,372 @@ internal sealed class EfAssistantService : IAssistantService
             if (string.Equals(result.Status, "confirmation_required", StringComparison.OrdinalIgnoreCase))
                 invocation.MarkConfirmationRequired();
 
-            invocation.Fail(result.SafeError ?? "The grounded product lookup failed.");
+            invocation.Fail(result.SafeError ?? "The requested product lookup failed.");
         }
 
+        var toolMessage = new AssistantMessage(
+            Guid.CreateVersion7(),
+            conversationId,
+            tenantId,
+            actorId,
+            AssistantMessageRole.Tool,
+            BuildToolMessageContent(toolKey, result),
+            "tool",
+            null,
+            JsonSerializer.Serialize(new
+            {
+                toolKey,
+                result.Status,
+                result.Succeeded,
+            }, JsonOptions));
+
+        _db.AssistantMessages.Add(toolMessage);
         await _db.SaveChangesAsync(ct);
 
-        return result.Succeeded
-            ? new AssistantGroundingResult(
-                BuildGroundingPrompt(toolKey, result.OutputJson),
-                result.Citations)
-            : new AssistantGroundingResult(
-                BuildGroundingFailurePrompt(result.SafeError ?? "The grounded product lookup failed."),
-                []);
+        return new AssistantToolRun(toolKey, result, toolMessage);
     }
 
-    private static string? TryResolveGroundingToolKey(string mergedContextJson)
-    {
-        var path = TryGetContextPath(mergedContextJson);
-        if (string.IsNullOrWhiteSpace(path)) return null;
+    private static string BuildToolMessageContent(string toolKey, AssistantToolExecutionResultDto result)
+        => result.Succeeded
+            ? $"Tool {toolKey} succeeded.\n{result.OutputJson}"
+            : $"Tool {toolKey} failed with status '{result.Status}'. SafeError: {result.SafeError ?? "The requested product lookup failed."}";
 
-        return TryParseCareConnectReferralId(path, out _)
-            ? "careconnect.referral.lookup"
+    private static AssistantToolPlan? TryParseToolPlan(string rawText)
+    {
+        var candidate = ExtractJsonObject(rawText);
+        if (string.IsNullOrWhiteSpace(candidate)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(candidate);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+                !doc.RootElement.TryGetProperty("action", out var actionElement) ||
+                actionElement.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            var action = actionElement.GetString()?.Trim();
+            if (string.IsNullOrWhiteSpace(action)) return null;
+
+            if (action.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                var message = doc.RootElement.TryGetProperty("message", out var messageElement) &&
+                              messageElement.ValueKind == JsonValueKind.String
+                    ? messageElement.GetString()
+                    : null;
+                return new AssistantToolPlan("final", null, "{}", message);
+            }
+
+            var toolKey = doc.RootElement.TryGetProperty("toolKey", out var toolElement) &&
+                          toolElement.ValueKind == JsonValueKind.String
+                ? toolElement.GetString()
+                : null;
+
+            var inputJson = "{}";
+            if (doc.RootElement.TryGetProperty("input", out var inputElement) &&
+                inputElement.ValueKind == JsonValueKind.Object)
+            {
+                inputJson = inputElement.GetRawText();
+            }
+            else if (doc.RootElement.TryGetProperty("arguments", out var argumentElement) &&
+                     argumentElement.ValueKind == JsonValueKind.Object)
+            {
+                inputJson = argumentElement.GetRawText();
+            }
+
+            return new AssistantToolPlan(action, toolKey, inputJson, null);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string ExtractJsonObject(string rawText)
+    {
+        if (string.IsNullOrWhiteSpace(rawText)) return string.Empty;
+        var trimmed = rawText.Trim();
+        if (trimmed.StartsWith("```", StringComparison.Ordinal))
+        {
+            var firstLineBreak = trimmed.IndexOf('\n');
+            var lastFence = trimmed.LastIndexOf("```", StringComparison.Ordinal);
+            if (firstLineBreak >= 0 && lastFence > firstLineBreak)
+                trimmed = trimmed[(firstLineBreak + 1)..lastFence].Trim();
+        }
+
+        var firstBrace = trimmed.IndexOf('{');
+        var lastBrace = trimmed.LastIndexOf('}');
+        return firstBrace >= 0 && lastBrace > firstBrace
+            ? trimmed[firstBrace..(lastBrace + 1)]
+            : trimmed;
+    }
+
+    private static string FallbackPlanMessage(string rawText)
+    {
+        var cleaned = ExtractJsonObject(rawText);
+        return string.IsNullOrWhiteSpace(cleaned)
+            ? "I could not produce a response for this request."
+            : cleaned.Trim();
+    }
+
+    private static string ResolvePlannedToolInput(AssistantToolPlan plan, ContextualToolHint? contextualHint)
+    {
+        if (!string.IsNullOrWhiteSpace(plan.InputJson) && plan.InputJson != "{}")
+            return SafeJsonObject(plan.InputJson);
+
+        if (contextualHint is not null &&
+            plan.ToolKey is not null &&
+            plan.ToolKey.Equals(contextualHint.ToolKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return contextualHint.InputJson;
+        }
+
+        return "{}";
+    }
+
+    private static IEnumerable<string> ChunkText(string value, int chunkSize)
+    {
+        if (string.IsNullOrEmpty(value))
+            yield break;
+
+        for (var index = 0; index < value.Length; index += chunkSize)
+            yield return value.Substring(index, Math.Min(chunkSize, value.Length - index));
+    }
+
+    private static IReadOnlyList<AssistantToolCitationDto> DeduplicateCitations(IEnumerable<AssistantToolCitationDto> citations)
+        => citations
+            .GroupBy(c => $"{c.SourceType}|{c.SourceId}|{c.Url}|{c.Label}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+    private static string BuildAssistantMessageMetadataJson(
+        string agentKey,
+        string mergedContextJson,
+        IReadOnlyList<AssistantToolRun> toolRuns)
+    {
+        var lookupResults = toolRuns
+            .SelectMany(run => BuildLookupResults(run.ToolKey, run.Result.OutputJson))
+            .Take(8)
+            .ToList();
+
+        var followUpPrompts = BuildFollowUpPrompts(agentKey, mergedContextJson, toolRuns);
+        if (lookupResults.Count == 0 && followUpPrompts.Count == 0)
+            return "{}";
+
+        return JsonSerializer.Serialize(new
+        {
+            lookupResults,
+            followUpPrompts,
+        }, JsonOptions);
+    }
+
+    private static IReadOnlyList<AssistantLookupResultCard> BuildLookupResults(string toolKey, string outputJson)
+    {
+        if (string.IsNullOrWhiteSpace(outputJson) || outputJson == "{}")
+            return [];
+
+        try
+        {
+            using var doc = JsonDocument.Parse(outputJson);
+            var root = doc.RootElement;
+
+            return toolKey switch
+            {
+                "careconnect.referral.lookup" => root.TryGetProperty("referral", out var referral)
+                    ? BuildReferralCards([referral])
+                    : [],
+                "careconnect.referral.history.lookup" => root.TryGetProperty("referral", out var historyReferral)
+                    ? BuildReferralCards([historyReferral])
+                    : [],
+                "careconnect.referral.search" => root.TryGetProperty("results", out var referralResults)
+                    ? BuildReferralCards(referralResults.EnumerateArray())
+                    : [],
+                "careconnect.referral.queue.summary" => root.TryGetProperty("recentResults", out var recentResults)
+                    ? BuildReferralCards(recentResults.EnumerateArray())
+                    : [],
+                "careconnect.provider.search" => root.TryGetProperty("results", out var providerResults)
+                    ? BuildProviderCards(providerResults.EnumerateArray())
+                    : [],
+                "careconnect.referrer.search" => root.TryGetProperty("results", out var referrerResults)
+                    ? BuildReferrerCards(referrerResults.EnumerateArray())
+                    : [],
+                _ => [],
+            };
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<AssistantLookupResultCard> BuildReferralCards(IEnumerable<JsonElement> items)
+        => items
+            .Select(item => new AssistantLookupResultCard(
+                "referral",
+                GetString(item, "id") ?? string.Empty,
+                GetString(item, "clientDisplayName") ?? "Referral",
+                GetString(item, "providerName"),
+                BuildReferralDescription(item),
+                GetString(item, "status"),
+                GetString(item, "url"),
+                BuildBadges(GetString(item, "urgency"), GetString(item, "treatmentTypeName"))))
+            .Where(card => !string.IsNullOrWhiteSpace(card.Id))
+            .ToList();
+
+    private static IReadOnlyList<AssistantLookupResultCard> BuildProviderCards(IEnumerable<JsonElement> items)
+        => items
+            .Select(item => new AssistantLookupResultCard(
+                "provider",
+                GetString(item, "id") ?? string.Empty,
+                GetString(item, "displayLabel") ?? GetString(item, "name") ?? "Provider",
+                CombineText(GetString(item, "city"), GetString(item, "state")),
+                GetString(item, "organizationName"),
+                GetBool(item, "acceptingReferrals") == true ? "Accepting referrals" : "Directory result",
+                GetString(item, "url"),
+                BuildBadges(GetString(item, "primaryCategory"), GetBool(item, "isActive") == true ? "Active" : null)))
+            .Where(card => !string.IsNullOrWhiteSpace(card.Id))
+            .ToList();
+
+    private static IReadOnlyList<AssistantLookupResultCard> BuildReferrerCards(IEnumerable<JsonElement> items)
+        => items
+            .Select(item => new AssistantLookupResultCard(
+                "referrer",
+                GetString(item, "referrerEmail") ?? GetString(item, "referrerName") ?? string.Empty,
+                GetString(item, "referrerName") ?? "Referrer",
+                GetString(item, "referrerEmail"),
+                BuildReferrerDescription(item),
+                GetInt(item, "openReferralCount") is { } count ? $"{count} open referrals" : null,
+                GetString(item, "url"),
+                []))
+            .Where(card => !string.IsNullOrWhiteSpace(card.Id))
+            .ToList();
+
+    private static List<string> BuildFollowUpPrompts(
+        string agentKey,
+        string mergedContextJson,
+        IReadOnlyList<AssistantToolRun> toolRuns)
+    {
+        var prompts = new List<string>();
+        if (toolRuns.Any(run => run.ToolKey.Equals("careconnect.referral.search", StringComparison.OrdinalIgnoreCase)))
+        {
+            prompts.Add("Show only New referrals");
+            prompts.Add("Find the status history for the best match");
+            prompts.Add("Narrow these results by provider or referrer");
+        }
+
+        if (toolRuns.Any(run => run.ToolKey.Equals("careconnect.provider.search", StringComparison.OrdinalIgnoreCase)))
+        {
+            prompts.Add("Find referrals for one of these providers");
+        }
+
+        if (toolRuns.Any(run => run.ToolKey.Equals("careconnect.referrer.search", StringComparison.OrdinalIgnoreCase)))
+        {
+            prompts.Add("Show the most recent referrals from this law firm");
+        }
+
+        if (toolRuns.Any(run => run.ToolKey.Equals("careconnect.referral.queue.summary", StringComparison.OrdinalIgnoreCase)))
+        {
+            prompts.Add("Which referrals need attention first?");
+            prompts.Add("Show the recent referrals behind this queue summary");
+        }
+
+        if (toolRuns.Count == 0 && agentKey.Equals(AssistantModuleKeys.CareConnectAgentKey, StringComparison.OrdinalIgnoreCase))
+        {
+            prompts.Add("Search referrals by client, provider, or referrer");
+            prompts.Add("Summarize my referral queue");
+        }
+
+        if (toolRuns.Count == 0 && TryBuildContextualToolHint(mergedContextJson) is { ToolKey: "careconnect.referral.lookup" })
+        {
+            prompts.Add("Summarize this referral");
+            prompts.Add("Show this referral's history");
+        }
+
+        return prompts
+            .Where(prompt => !string.IsNullOrWhiteSpace(prompt))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToList();
+    }
+
+    private static string? BuildReferralDescription(JsonElement item)
+    {
+        var requestedService = GetString(item, "requestedService");
+        return requestedService;
+    }
+
+    private static string? BuildReferrerDescription(JsonElement item)
+    {
+        var recentCases = item.TryGetProperty("recentCaseNumbers", out var casesElement) && casesElement.ValueKind == JsonValueKind.Array
+            ? casesElement.EnumerateArray()
+                .Select(value => value.ValueKind == JsonValueKind.String ? value.GetString() : null)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Take(3)
+                .ToList()
+            : [];
+
+        if (recentCases.Count == 0) return null;
+        return $"Recent cases: {string.Join(", ", recentCases)}";
+    }
+
+    private static IReadOnlyList<string> BuildBadges(params string?[] values)
+        => values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static string? CombineText(string? first, string? second)
+    {
+        var parts = new[] { first, second }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .ToList();
+        return parts.Count == 0 ? null : string.Join(" • ", parts);
+    }
+
+    private static string? GetString(JsonElement item, string propertyName)
+        => item.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
             : null;
-    }
 
-    private static string? BuildGroundingInputJson(string toolKey, string mergedContextJson)
+    private static bool? GetBool(JsonElement item, string propertyName)
+        => item.TryGetProperty(propertyName, out var value)
+            ? value.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => null,
+            }
+            : null;
+
+    private static int? GetInt(JsonElement item, string propertyName)
+        => item.TryGetProperty(propertyName, out var value) && value.TryGetInt32(out var parsed)
+            ? parsed
+            : null;
+
+    private static ContextualToolHint? TryBuildContextualToolHint(string mergedContextJson)
     {
-        var path = TryGetContextPath(mergedContextJson);
-        if (string.IsNullOrWhiteSpace(path)) return null;
+        var entityId = TryGetContextEntityId(mergedContextJson);
+        if (entityId.HasValue)
+        {
+            return new ContextualToolHint(
+                "careconnect.referral.lookup",
+                JsonSerializer.Serialize(new { referralId = entityId.Value }, JsonOptions));
+        }
 
-        if (toolKey.Equals("careconnect.referral.lookup", StringComparison.OrdinalIgnoreCase) &&
+        var path = TryGetContextPath(mergedContextJson);
+        if (!string.IsNullOrWhiteSpace(path) &&
             TryParseCareConnectReferralId(path, out var referralId))
         {
-            return JsonSerializer.Serialize(new { referralId }, JsonOptions);
+            return new ContextualToolHint(
+                "careconnect.referral.lookup",
+                JsonSerializer.Serialize(new { referralId }, JsonOptions));
         }
 
         return null;
     }
-
-    private static string BuildGroundingPrompt(string toolKey, string outputJson)
-        => toolKey.Equals("careconnect.referral.lookup", StringComparison.OrdinalIgnoreCase)
-            ? $"Authorized CareConnect referral context:\n{outputJson}\nUse only this grounded referral data when answering the next question. If the user asks beyond it, say that the current lookup does not provide that detail."
-            : outputJson;
-
-    private static string BuildGroundingFailurePrompt(string safeError)
-        => $"Authorized product lookup was unavailable for the current page: {safeError} Do not make record-specific claims without grounded data.";
 
     private static string? TryGetContextPath(string mergedContextJson)
     {
@@ -801,6 +1323,38 @@ internal sealed class EfAssistantService : IAssistantService
         }
     }
 
+    private static Guid? TryGetContextEntityId(string mergedContextJson)
+    {
+        if (string.IsNullOrWhiteSpace(mergedContextJson)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(mergedContextJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+                !doc.RootElement.TryGetProperty("entity", out var entityElement) ||
+                entityElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var kind = entityElement.TryGetProperty("kind", out var kindElement) && kindElement.ValueKind == JsonValueKind.String
+                ? kindElement.GetString()
+                : null;
+            var id = entityElement.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String
+                ? idElement.GetString()
+                : null;
+
+            return kind?.Equals("referral", StringComparison.OrdinalIgnoreCase) == true &&
+                   Guid.TryParse(id, out var parsed)
+                ? parsed
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static bool TryParseCareConnectReferralId(string path, out Guid referralId)
     {
         referralId = Guid.Empty;
@@ -812,7 +1366,36 @@ internal sealed class EfAssistantService : IAssistantService
                referralId != Guid.Empty;
     }
 
-    private sealed record AssistantGroundingResult(
-        string PromptMessage,
-        IReadOnlyList<AssistantToolCitationDto> Citations);
+    private sealed record ProviderTextResult(
+        string Text,
+        string? ProviderResponseId,
+        int? InputTokens,
+        int? OutputTokens,
+        string? FinishReason,
+        string? SafeError);
+
+    private sealed record AssistantToolPlan(
+        string Action,
+        string? ToolKey,
+        string InputJson,
+        string? Message);
+
+    private sealed record ContextualToolHint(
+        string ToolKey,
+        string InputJson);
+
+    private sealed record AssistantToolRun(
+        string ToolKey,
+        AssistantToolExecutionResultDto Result,
+        AssistantMessage ToolMessage);
+
+    private sealed record AssistantLookupResultCard(
+        string Kind,
+        string Id,
+        string Title,
+        string? Subtitle,
+        string? Description,
+        string? Status,
+        string? Url,
+        IReadOnlyList<string> Badges);
 }

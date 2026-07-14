@@ -5,11 +5,22 @@ using CareConnect.Domain;
 using CareConnect.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
+using System.Text.RegularExpressions;
 
 namespace CareConnect.Infrastructure.Repositories;
 
 public class ReferralRepository : IReferralRepository
 {
+    private static readonly HashSet<string> ReferralSearchStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "a", "an", "and", "at", "by", "client", "clients", "contact", "contacts",
+        "find", "for", "from", "in", "last", "latest", "law", "list", "look",
+        "lookup", "me", "name", "of", "org", "recent", "recently",
+        "organization", "organizations", "patient", "patients", "provider", "providers",
+        "referral", "referrals", "referrer", "referrers", "search", "sent", "show",
+        "the", "to", "up", "with",
+    };
+
     private readonly CareConnectDbContext _db;
 
     public ReferralRepository(CareConnectDbContext db)
@@ -29,7 +40,9 @@ public class ReferralRepository : IReferralRepository
         {
             q = _db.Referrals
                 .AsNoTracking()
-                .Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
+                .Where(r =>
+                    r.ReceivingOrganizationId == query.ReceivingOrgId.Value ||
+                    (r.Provider != null && r.Provider.OrganizationId == query.ReceivingOrgId.Value));
         }
         else if (query.CrossTenantReferrer &&
                  (query.ReferringOrgId.HasValue || !string.IsNullOrWhiteSpace(query.ReferrerEmail)))
@@ -65,6 +78,26 @@ public class ReferralRepository : IReferralRepository
         if (query.ProviderId.HasValue)
             q = q.Where(r => r.ProviderId == query.ProviderId.Value);
 
+        if (!string.IsNullOrWhiteSpace(query.SearchText))
+        {
+            foreach (var token in BuildSearchTokens(query.SearchText, ReferralSearchStopWords))
+            {
+                var search = token;
+                q = q.Where(r =>
+                    r.ClientFirstName.ToLower().Contains(search) ||
+                    r.ClientLastName.ToLower().Contains(search) ||
+                    (r.ClientFirstName.ToLower() + " " + r.ClientLastName.ToLower()).Contains(search) ||
+                    (r.SubjectNameSnapshot != null && r.SubjectNameSnapshot.ToLower().Contains(search)) ||
+                    (r.CaseNumber != null && r.CaseNumber.ToLower().Contains(search)) ||
+                    (r.ReferrerName != null && r.ReferrerName.ToLower().Contains(search)) ||
+                    (r.ReferrerFirmName != null && r.ReferrerFirmName.ToLower().Contains(search)) ||
+                    (r.ReferrerEmail != null && r.ReferrerEmail.ToLower().Contains(search)) ||
+                    (r.Provider != null && (
+                        r.Provider.Name.ToLower().Contains(search) ||
+                        (r.Provider.OrganizationName != null && r.Provider.OrganizationName.ToLower().Contains(search)))));
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(query.ClientName))
         {
             var name = query.ClientName.Trim().ToLower();
@@ -78,6 +111,28 @@ public class ReferralRepository : IReferralRepository
         {
             var cn = query.CaseNumber.Trim().ToLower();
             q = q.Where(r => r.CaseNumber != null && r.CaseNumber.ToLower().Contains(cn));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.ProviderName))
+        {
+            foreach (var token in BuildSearchTokens(query.ProviderName, ReferralSearchStopWords))
+            {
+                var providerName = token;
+                q = q.Where(r => r.Provider != null && (
+                    r.Provider.Name.ToLower().Contains(providerName) ||
+                    (r.Provider.OrganizationName != null && r.Provider.OrganizationName.ToLower().Contains(providerName))));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.ReferrerName))
+        {
+            foreach (var token in BuildSearchTokens(query.ReferrerName, ReferralSearchStopWords))
+            {
+                var referrerName = token;
+                q = q.Where(r =>
+                    (r.ReferrerName != null && r.ReferrerName.ToLower().Contains(referrerName)) ||
+                    (r.ReferrerFirmName != null && r.ReferrerFirmName.ToLower().Contains(referrerName)));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(query.Urgency))
@@ -105,7 +160,9 @@ public class ReferralRepository : IReferralRepository
         }
 
         if (!query.CrossTenantReceiver && query.ReceivingOrgId.HasValue)
-            q = q.Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
+            q = q.Where(r =>
+                r.ReceivingOrganizationId == query.ReceivingOrgId.Value ||
+                (r.Provider != null && r.Provider.OrganizationId == query.ReceivingOrgId.Value));
 
         var totalCount = await q.CountAsync(ct);
 
@@ -118,6 +175,31 @@ public class ReferralRepository : IReferralRepository
             .ToListAsync(ct);
 
         return (items, totalCount);
+    }
+
+    private static IReadOnlyList<string> BuildSearchTokens(string? value, ISet<string> stopWords)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return [];
+
+        var tokens = Regex.Split(value.Trim().ToLowerInvariant(), "[^a-z0-9]+")
+            .Where(token => token.Length > 1 && !stopWords.Contains(token))
+            .Distinct()
+            .ToList();
+
+        if (tokens.Count > 1 && tokens.Any(token => token.Length > 2))
+        {
+            var descriptiveTokens = tokens
+                .Where(token => token.Length > 2 || token.Any(char.IsDigit))
+                .ToList();
+
+            if (descriptiveTokens.Count > 0)
+                tokens = descriptiveTokens;
+        }
+
+        return tokens.Count > 0
+            ? tokens
+            : [value.Trim().ToLowerInvariant()];
     }
 
     public async Task<Referral?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)

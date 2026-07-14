@@ -8,6 +8,7 @@ public sealed class XeniaAssistantOptions
     public string ModelKey { get; set; } = "xenia-fake";
     public int MaxPromptCharacters { get; set; } = 8000;
     public int MaxConversationMessages { get; set; } = 40;
+    public int MaxToolIterations { get; set; } = 4;
     public int? MonthlyRequestLimit { get; set; }
     public int? MonthlyTokenLimit { get; set; }
     public OpenAiOptions OpenAI { get; set; } = new();

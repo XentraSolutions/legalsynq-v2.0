@@ -18,6 +18,7 @@ public sealed class XeniaAssistantOptionsTests
     {
         var options = new XeniaAssistantOptions();
 
+        Assert.Equal(4, options.MaxToolIterations);
         Assert.Equal("http://127.0.0.1:5003", options.CareConnect.BaseUrl);
         Assert.Equal(20, options.CareConnect.TimeoutSeconds);
         Assert.Equal(5, options.CareConnect.MaxHistoryItems);

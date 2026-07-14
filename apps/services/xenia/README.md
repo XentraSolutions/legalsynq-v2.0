@@ -120,6 +120,17 @@ Production: Replace with a durable broker adapter (SQS, RabbitMQ).
 | GET | `/configuration` | `xenia.read` | Non-secret config |
 | GET | `/admin/settings` | `xenia.assistant.manage` | Effective assistant runtime settings |
 | PUT | `/admin/settings` | `xenia.assistant.manage` | Update global assistant runtime settings |
+| GET | `/assistant/bootstrap` | `xenia.assistant.use` | Assistant feature flags, agent catalog, and starter state |
+| GET | `/assistant/agents` | `xenia.assistant.use` | Available assistant agents for the tenant |
+| GET | `/assistant/conversations` | `xenia.assistant.use` | List visible conversations |
+| POST | `/assistant/conversations` | `xenia.assistant.use` | Create a conversation |
+| GET | `/assistant/conversations/{conversationId}` | `xenia.assistant.use` | Read a conversation with user/assistant messages only |
+| PATCH | `/assistant/conversations/{conversationId}` | `xenia.assistant.use` | Rename or update conversation metadata |
+| DELETE | `/assistant/conversations/{conversationId}` | `xenia.assistant.use` | Archive a conversation |
+| POST | `/assistant/conversations/{conversationId}/messages` | `xenia.assistant.use` | Create a non-streaming message |
+| POST | `/assistant/conversations/{conversationId}/messages:stream` | `xenia.assistant.use` | Stream an assistant response with grounded tool execution |
+| GET | `/assistant/preferences` | `xenia.assistant.use` | Read assistant UI preferences |
+| PUT | `/assistant/preferences` | `xenia.assistant.use` | Update assistant UI preferences |
 | GET | `/email/module` | `xenia.email.read` | Email module status for the current tenant |
 | PUT | `/email/module/enable` | `xenia.email.manage` | Enable the email module for the current tenant |
 | PUT | `/email/module/disable` | `xenia.email.manage` | Disable the email module for the current tenant |
@@ -258,23 +269,51 @@ safe fallback defaults for local bootstrap and fake-provider startup. Current pe
 provider, model key, reasoning effort, text verbosity, max output tokens, base URL, and timeout. Set the actual key
 in `XeniaAssistant:OpenAI:ApiKey` in the Xenia service appsettings; it is not persisted from control-center. During
 local `dotnet run`, Xenia resolves those appsettings from the source `Xenia.Api` project directory so changes are not
-stuck behind stale `bin/...` copies.
+stuck behind stale `bin/...` copies. `XeniaAssistant:MaxToolIterations` caps how many internal tool-planning passes
+Xenia can make before it must return a final answer.
 
 ## Assistant Product Grounding
 
-The first grounded assistant integration is CareConnect referral lookup. When the user opens Xenia from a
-`/careconnect/referrals/{id}` route, Xenia resolves the referral id from the current page context, performs a
-read-only server-side referral lookup against CareConnect, and injects a sanitized summary plus recent status history
-into the assistant prompt. Assistant replies cite the current referral record when grounding succeeds.
+Xenia now uses an internal tool loop for grounded replies instead of a single prompt-only referral snapshot. The
+assistant stores user-visible conversation messages separately from hidden tool messages, asks the provider to either
+select a tool or finalize an answer, executes the selected tool server-side, and then synthesizes the final assistant
+reply from the grounded results.
 
-CareConnect grounding is configured from `appsettings` only:
+Product-specific tools are no longer composed from Xenia against user-facing product endpoints. Xenia now treats each
+product service as the owner of its own assistant-tool API and calls those dedicated tool endpoints over HTTP using the
+caller's bearer token and correlation id.
+
+Current tenant-portal integration also sends structured page context with every message:
+
+- Product, section, and route path
+- Current CareConnect entity type and entity id when present
+- Current list filters such as `search`, `status`, `providerName`, `referrerName`, `createdFrom`, and `createdTo`
+- Page-scoped starter prompts for the Xenia drawer
+
+Assistant message payloads now include `metadataJson` for UI-only enrichment. The tenant portal uses that metadata to
+render lookup result cards, follow-up prompts, and grounded links without exposing tool messages in the transcript.
+
+The first grounded assistant integration is CareConnect. When the user opens Xenia from a CareConnect route, Xenia can
+resolve contextual ids from the current page and execute read-only CareConnect lookups before answering. Current tools
+cover:
+
+- Referral detail lookup with recent status history
+- Referral history lookup for an explicit referral id
+- Referral search across patient/client, provider, provider organization, law firm/referrer, and status/date filters
+- Provider lookup by name, city, state, status, and specialty
+- Referrer lookup from referral traffic
+- Referral queue summary counts plus recent items
+
+CareConnect assistant access is configured from `appsettings` only:
 
 - `XeniaAssistant:CareConnect:BaseUrl`
 - `XeniaAssistant:CareConnect:TimeoutSeconds`
 - `XeniaAssistant:CareConnect:MaxHistoryItems`
 
-Xenia forwards the caller's bearer token to CareConnect for this lookup so downstream product and participant
-authorization still applies.
+Xenia forwards the caller's bearer token to CareConnect for these requests so downstream product and participant
+authorization still applies. The assistant registry currently exposes these CareConnect tools to both the generic
+tenant agent and the CareConnect-specific agent, while the authoritative tool implementation lives behind
+CareConnect's `/api/assistant-tools/*` API surface.
 
 ---
 

@@ -9,7 +9,7 @@ using Xenia.Application.Assistant;
 
 namespace Xenia.Infrastructure.Assistant;
 
-internal sealed class CareConnectAssistantSource : ICareConnectAssistantSource
+internal sealed class CareConnectAssistantSource : ProductAssistantToolApiSource, ICareConnectAssistantSource
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -34,54 +34,130 @@ internal sealed class CareConnectAssistantSource : ICareConnectAssistantSource
         Guid referralId,
         CancellationToken ct = default)
     {
-        var detail = await SendAsync<ReferralWire>($"/api/referrals/{referralId}", ct);
-        if (!detail.Succeeded || detail.Value is null)
-        {
-            return new CareConnectReferralLookupOutcome(
-                detail.Succeeded,
-                detail.Status,
-                detail.SafeError,
-                null);
-        }
+        var response = await SendAsync<CareConnectReferralLookupOutcome>(
+            $"{BuildAssistantToolPath($"referrals/{referralId}")}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["historyTop"] = Math.Max(1, _options.Value.CareConnect.MaxHistoryItems),
+            })}",
+            "CareConnect referral",
+            ct);
 
-        var history = await SendAsync<List<ReferralHistoryWire>>($"/api/referrals/{referralId}/history", ct);
-        var maxHistoryItems = Math.Max(1, _options.Value.CareConnect.MaxHistoryItems);
-
-        var normalizedHistory = history.Value?
-            .OrderByDescending(item => item.ChangedAtUtc)
-            .Take(maxHistoryItems)
-            .Select(item => new CareConnectReferralHistoryLookupItem(
-                item.OldStatus,
-                item.NewStatus,
-                item.ChangedAtUtc,
-                NormalizeNotes(item.Notes)))
-            .ToList()
-            ?? [];
-
-        var referral = new CareConnectReferralLookupResult(
-            detail.Value.Id,
-            detail.Value.Status,
-            detail.Value.Urgency,
-            detail.Value.ProviderName,
-            BuildClientDisplayName(detail.Value.ClientFirstName, detail.Value.ClientLastName),
-            NullIfWhiteSpace(detail.Value.RequestedService),
-            NullIfWhiteSpace(detail.Value.TreatmentTypeName),
-            NullIfWhiteSpace(detail.Value.CaseNumber),
-            NullIfWhiteSpace(detail.Value.ReferringOrganizationName),
-            NullIfWhiteSpace(detail.Value.ReferrerName),
-            detail.Value.CreatedAtUtc,
-            detail.Value.UpdatedAtUtc,
-            normalizedHistory);
-
-        return new CareConnectReferralLookupOutcome(
-            true,
-            history.Succeeded ? "completed" : "completed_with_partial_history",
-            history.Succeeded ? null : history.SafeError,
-            referral);
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new CareConnectReferralLookupOutcome(false, response.Status, response.SafeError, null);
     }
 
-    private async Task<HttpLookupResult<T>> SendAsync<T>(string path, CancellationToken ct)
+    public async Task<CareConnectReferralHistoryLookupOutcome> LookupReferralHistoryAsync(
+        Guid referralId,
+        int top,
+        CancellationToken ct = default)
     {
+        var response = await SendAsync<CareConnectReferralHistoryLookupOutcome>(
+            $"{BuildAssistantToolPath($"referrals/{referralId}/history")}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["top"] = Math.Clamp(top, 1, 50),
+            })}",
+            "CareConnect referral history",
+            ct);
+
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new CareConnectReferralHistoryLookupOutcome(false, response.Status, response.SafeError, null);
+    }
+
+    public async Task<CareConnectReferralSearchOutcome> SearchReferralsAsync(
+        CareConnectReferralSearchRequest request,
+        CancellationToken ct = default)
+    {
+        var response = await SendAsync<CareConnectReferralSearchOutcome>(
+            $"{BuildAssistantToolPath("referrals/search")}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["search"] = request.SearchText,
+                ["clientName"] = request.ClientName,
+                ["caseNumber"] = request.CaseNumber,
+                ["providerName"] = request.ProviderName,
+                ["referrerName"] = request.ReferrerName,
+                ["status"] = request.Status,
+                ["createdFrom"] = request.CreatedFromUtc,
+                ["createdTo"] = request.CreatedToUtc,
+                ["top"] = Math.Clamp(request.Top, 1, 25),
+            })}",
+            "CareConnect referral search",
+            ct);
+
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new CareConnectReferralSearchOutcome(false, response.Status, response.SafeError, 0, []);
+    }
+
+    public async Task<CareConnectProviderSearchOutcome> SearchProvidersAsync(
+        CareConnectProviderSearchRequest request,
+        CancellationToken ct = default)
+    {
+        var response = await SendAsync<CareConnectProviderSearchOutcome>(
+            $"{BuildAssistantToolPath("providers/search")}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["name"] = request.Name,
+                ["city"] = request.City,
+                ["state"] = request.State,
+                ["acceptingReferrals"] = request.AcceptingReferrals,
+                ["top"] = Math.Clamp(request.Top, 1, 25),
+            })}",
+            "CareConnect provider search",
+            ct);
+
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new CareConnectProviderSearchOutcome(false, response.Status, response.SafeError, 0, []);
+    }
+
+    public async Task<CareConnectReferrerSearchOutcome> SearchReferrersAsync(
+        CareConnectReferrerSearchRequest request,
+        CancellationToken ct = default)
+    {
+        var response = await SendAsync<CareConnectReferrerSearchOutcome>(
+            $"{BuildAssistantToolPath("referrers/search")}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["search"] = request.SearchText,
+                ["referrerName"] = request.ReferrerName,
+                ["status"] = request.Status,
+                ["top"] = Math.Clamp(request.Top, 1, 15),
+            })}",
+            "CareConnect referrer search",
+            ct);
+
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new CareConnectReferrerSearchOutcome(false, response.Status, response.SafeError, 0, []);
+    }
+
+    public async Task<CareConnectReferralQueueSummaryOutcome> GetReferralQueueSummaryAsync(
+        CareConnectReferralQueueSummaryRequest request,
+        CancellationToken ct = default)
+    {
+        var response = await SendAsync<CareConnectReferralQueueSummaryOutcome>(
+            $"{BuildAssistantToolPath("referrals/queue-summary")}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["search"] = request.SearchText,
+                ["providerName"] = request.ProviderName,
+                ["referrerName"] = request.ReferrerName,
+                ["recentTop"] = Math.Clamp(request.RecentTop, 1, 10),
+            })}",
+            "CareConnect referral queue summary",
+            ct);
+
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new CareConnectReferralQueueSummaryOutcome(false, response.Status, response.SafeError, 0, [], []);
+    }
+
+    private async Task<HttpLookupResult<T>> SendAsync<T>(
+        string path,
+        string resourceLabel,
+        CancellationToken ct)
+    {
+        EnsureAssistantToolPath(path);
+
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
         ApplyCallerHeaders(request);
 
@@ -92,45 +168,45 @@ internal sealed class CareConnectAssistantSource : ICareConnectAssistantSource
             {
                 return HttpLookupResult<T>.Fail(
                     "not_found",
-                    "CareConnect referral not found or not accessible.");
+                    $"{resourceLabel} was not found or is not accessible.");
             }
 
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             {
                 return HttpLookupResult<T>.Fail(
                     "forbidden",
-                    "You are not authorized to access this CareConnect referral.");
+                    $"You are not authorized to access {resourceLabel.ToLowerInvariant()}.");
             }
 
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning(
-                    "CareConnect assistant lookup failed. path={Path} status={StatusCode}",
+                    "CareConnect assistant tool request failed. path={Path} status={StatusCode}",
                     path,
                     (int)response.StatusCode);
 
                 return HttpLookupResult<T>.Fail(
                     "service_unavailable",
-                    "CareConnect referral lookup is currently unavailable.");
+                    $"{resourceLabel} is currently unavailable.");
             }
 
             var value = await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct);
             return value is null
-                ? HttpLookupResult<T>.Fail("empty", "CareConnect returned an empty response.")
+                ? HttpLookupResult<T>.Fail("empty", $"{resourceLabel} returned an empty response.")
                 : HttpLookupResult<T>.Success(value);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             return HttpLookupResult<T>.Fail(
                 "timeout",
-                "CareConnect referral lookup timed out.");
+                $"{resourceLabel} timed out.");
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "CareConnect assistant lookup transport failure. path={Path}", path);
+            _logger.LogWarning(ex, "CareConnect assistant tool transport failure. path={Path}", path);
             return HttpLookupResult<T>.Fail(
                 "service_unavailable",
-                "CareConnect referral lookup is currently unavailable.");
+                $"{resourceLabel} is currently unavailable.");
         }
     }
 
@@ -155,22 +231,23 @@ internal sealed class CareConnectAssistantSource : ICareConnectAssistantSource
         }
     }
 
-    private static string BuildClientDisplayName(string firstName, string lastName)
+    private static string BuildQueryString(IReadOnlyDictionary<string, object?> parameters)
     {
-        var combined = string.Join(' ', new[] { firstName?.Trim(), lastName?.Trim() }
-            .Where(value => !string.IsNullOrWhiteSpace(value)));
-        return string.IsNullOrWhiteSpace(combined) ? "Unnamed client" : combined;
+        var parts = parameters
+            .Where(pair => pair.Value is not null && !string.IsNullOrWhiteSpace(pair.Value.ToString()))
+            .Select(pair => $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(FormatQueryValue(pair.Value!))}")
+            .ToList();
+
+        return parts.Count == 0 ? string.Empty : $"?{string.Join("&", parts)}";
     }
 
-    private static string? NormalizeNotes(string? notes)
-    {
-        if (string.IsNullOrWhiteSpace(notes)) return null;
-        var trimmed = notes.Trim();
-        return trimmed.Length <= 160 ? trimmed : trimmed[..160];
-    }
-
-    private static string? NullIfWhiteSpace(string? value)
-        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string FormatQueryValue(object value)
+        => value switch
+        {
+            DateTime dt => dt.ToUniversalTime().ToString("O"),
+            bool b => b ? "true" : "false",
+            _ => value.ToString() ?? string.Empty,
+        };
 
     private sealed record HttpLookupResult<T>(
         bool Succeeded,
@@ -178,35 +255,9 @@ internal sealed class CareConnectAssistantSource : ICareConnectAssistantSource
         string? SafeError,
         T? Value)
     {
-        public static HttpLookupResult<T> Success(T value)
-            => new(true, "completed", null, value);
+        public static HttpLookupResult<T> Success(T value) => new(true, "completed", null, value);
 
         public static HttpLookupResult<T> Fail(string status, string safeError)
             => new(false, status, safeError, default);
-    }
-
-    private sealed class ReferralWire
-    {
-        public Guid Id { get; init; }
-        public string Status { get; init; } = string.Empty;
-        public string Urgency { get; init; } = string.Empty;
-        public string ProviderName { get; init; } = string.Empty;
-        public string ClientFirstName { get; init; } = string.Empty;
-        public string ClientLastName { get; init; } = string.Empty;
-        public string? RequestedService { get; init; }
-        public string? TreatmentTypeName { get; init; }
-        public string? CaseNumber { get; init; }
-        public string? ReferringOrganizationName { get; init; }
-        public string? ReferrerName { get; init; }
-        public DateTime CreatedAtUtc { get; init; }
-        public DateTime UpdatedAtUtc { get; init; }
-    }
-
-    private sealed class ReferralHistoryWire
-    {
-        public string OldStatus { get; init; } = string.Empty;
-        public string NewStatus { get; init; } = string.Empty;
-        public DateTime ChangedAtUtc { get; init; }
-        public string? Notes { get; init; }
     }
 }

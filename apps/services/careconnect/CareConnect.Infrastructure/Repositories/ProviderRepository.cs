@@ -5,11 +5,20 @@ using CareConnect.Application.Repositories;
 using CareConnect.Domain;
 using CareConnect.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 
 namespace CareConnect.Infrastructure.Repositories;
 
 public class ProviderRepository : IProviderRepository
 {
+    private static readonly HashSet<string> ProviderSearchStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "a", "an", "and", "at", "by", "find", "last", "latest", "list", "look",
+        "lookup", "me", "org", "organization", "organizations", "provider",
+        "providers", "recent", "recently", "search", "sent", "show", "the",
+        "to", "up", "with",
+    };
+
     private readonly CareConnectDbContext _db;
 
     public ProviderRepository(CareConnectDbContext db)
@@ -126,7 +135,18 @@ public class ProviderRepository : IProviderRepository
         var q = _db.Providers.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(query.Name))
-            q = q.Where(p => p.Name.Contains(query.Name));
+        {
+            foreach (var token in BuildSearchTokens(query.Name))
+            {
+                var name = token;
+                q = q.Where(p =>
+                    p.Name.ToLower().Contains(name) ||
+                    (p.OrganizationName != null && p.OrganizationName.ToLower().Contains(name)) ||
+                    (p.FirstName != null && p.FirstName.ToLower().Contains(name)) ||
+                    (p.LastName != null && p.LastName.ToLower().Contains(name)) ||
+                    ((p.FirstName ?? string.Empty).ToLower() + " " + (p.LastName ?? string.Empty).ToLower()).Contains(name));
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(query.CategoryCode))
             q = q.Where(p => p.ProviderCategories
@@ -169,6 +189,31 @@ public class ProviderRepository : IProviderRepository
         }
 
         return q;
+    }
+
+    private static IReadOnlyList<string> BuildSearchTokens(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return [];
+
+        var tokens = Regex.Split(value.Trim().ToLowerInvariant(), "[^a-z0-9]+")
+            .Where(token => token.Length > 1 && !ProviderSearchStopWords.Contains(token))
+            .Distinct()
+            .ToList();
+
+        if (tokens.Count > 1 && tokens.Any(token => token.Length > 2))
+        {
+            var descriptiveTokens = tokens
+                .Where(token => token.Length > 2 || token.Any(char.IsDigit))
+                .ToList();
+
+            if (descriptiveTokens.Count > 0)
+                tokens = descriptiveTokens;
+        }
+
+        return tokens.Count > 0
+            ? tokens
+            : [value.Trim().ToLowerInvariant()];
     }
 
     public async Task<List<Provider>> GetUnlinkedAsync(Guid tenantId, CancellationToken ct = default)

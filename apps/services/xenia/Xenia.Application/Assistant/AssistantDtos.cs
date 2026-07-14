@@ -51,6 +51,7 @@ public sealed record AssistantMessageDto(
     int? OutputTokens,
     string? FinishReason,
     DateTime CreatedAtUtc,
+    string MetadataJson,
     IReadOnlyList<AssistantCitationDto> Citations);
 
 public sealed record AssistantCitationDto(

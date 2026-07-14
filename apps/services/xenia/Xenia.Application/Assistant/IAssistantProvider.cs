@@ -16,9 +16,16 @@ public sealed record AssistantProviderRequest(
     string ModelKey,
     IReadOnlyList<AssistantProviderMessage> Messages,
     string ContextJson,
-    string CorrelationId);
+    string CorrelationId,
+    AssistantProviderPurpose Purpose = AssistantProviderPurpose.Chat);
 
 public sealed record AssistantProviderMessage(string Role, string Content);
+
+public enum AssistantProviderPurpose
+{
+    Chat = 0,
+    ToolSelection = 1,
+}
 
 public sealed record AssistantProviderEvent(
     string Type,

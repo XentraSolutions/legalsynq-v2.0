@@ -1,32 +1,4 @@
-namespace Xenia.Application.Assistant;
-
-public interface ICareConnectAssistantSource
-{
-    Task<CareConnectReferralLookupOutcome> LookupReferralAsync(
-        Guid referralId,
-        CancellationToken ct = default);
-
-    Task<CareConnectReferralHistoryLookupOutcome> LookupReferralHistoryAsync(
-        Guid referralId,
-        int top,
-        CancellationToken ct = default);
-
-    Task<CareConnectReferralSearchOutcome> SearchReferralsAsync(
-        CareConnectReferralSearchRequest request,
-        CancellationToken ct = default);
-
-    Task<CareConnectProviderSearchOutcome> SearchProvidersAsync(
-        CareConnectProviderSearchRequest request,
-        CancellationToken ct = default);
-
-    Task<CareConnectReferrerSearchOutcome> SearchReferrersAsync(
-        CareConnectReferrerSearchRequest request,
-        CancellationToken ct = default);
-
-    Task<CareConnectReferralQueueSummaryOutcome> GetReferralQueueSummaryAsync(
-        CareConnectReferralQueueSummaryRequest request,
-        CancellationToken ct = default);
-}
+namespace CareConnect.Application.DTOs;
 
 public sealed record CareConnectReferralLookupOutcome(
     bool Succeeded,
@@ -67,17 +39,6 @@ public sealed record CareConnectReferralHistoryLookupResult(
     string CurrentStatus,
     IReadOnlyList<CareConnectReferralHistoryLookupItem> History);
 
-public sealed record CareConnectReferralSearchRequest(
-    string? SearchText,
-    string? ClientName,
-    string? CaseNumber,
-    string? ProviderName,
-    string? ReferrerName,
-    string? Status,
-    DateTime? CreatedFromUtc,
-    DateTime? CreatedToUtc,
-    int Top);
-
 public sealed record CareConnectReferralSearchOutcome(
     bool Succeeded,
     string Status,
@@ -98,13 +59,6 @@ public sealed record CareConnectReferralSearchResult(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
-public sealed record CareConnectProviderSearchRequest(
-    string? Name,
-    string? City,
-    string? State,
-    bool? AcceptingReferrals,
-    int Top);
-
 public sealed record CareConnectProviderSearchOutcome(
     bool Succeeded,
     string Status,
@@ -123,12 +77,6 @@ public sealed record CareConnectProviderSearchResult(
     string? PrimaryCategory,
     string DisplayLabel);
 
-public sealed record CareConnectReferrerSearchRequest(
-    string? SearchText,
-    string? ReferrerName,
-    string? Status,
-    int Top);
-
 public sealed record CareConnectReferrerSearchOutcome(
     bool Succeeded,
     string Status,
@@ -142,12 +90,6 @@ public sealed record CareConnectReferrerSearchResult(
     int ReferralCount,
     int OpenReferralCount,
     DateTime? LastReferralAtUtc);
-
-public sealed record CareConnectReferralQueueSummaryRequest(
-    string? SearchText,
-    string? ProviderName,
-    string? ReferrerName,
-    int RecentTop);
 
 public sealed record CareConnectReferralQueueSummaryOutcome(
     bool Succeeded,
