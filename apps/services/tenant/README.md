@@ -37,8 +37,8 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 |---|---|---|
 | `POST` | `/api/admin/tenants` | Create tenant (admin; canonical path) |
 | `PATCH` | `/api/admin/tenants/{id}/status` | Update tenant status |
-| `GET` | `/api/admin/tenants` | List tenants (paged) |
-| `GET` | `/api/admin/tenants/{id}` | Tenant admin detail |
+| `GET` | `/api/admin/tenants` | List tenants (paged; includes Identity-backed `type` and full `url`) |
+| `GET` | `/api/admin/tenants/{id}` | Tenant admin detail (includes Identity-backed `type` and full `url`) |
 | `POST` | `/api/tenants/provision` | Minimal provision (internal) |
 | `PUT` | `/api/internal/sync` | Idempotent upsert from Identity dual-write |
 | `GET` | `/api/resolution/{code}` | Resolve tenant by code |
