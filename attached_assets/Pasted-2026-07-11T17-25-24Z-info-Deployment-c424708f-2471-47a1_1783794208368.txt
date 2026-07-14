@@ -1,0 +1,405 @@
+2026-07-11T17:25:24Z info: Deployment: c424708f-2471-47a1-abec-0f9b07cf77b7
+2026-07-11T17:25:24Z info: Build: 1eb33f61-4830-41d8-b0bd-8da37a70089c
+2026-07-11T17:25:24Z info: Running Security Scan
+2026-07-11T17:25:29Z info: Installing packages
+--> npm install
+
+--> npm install
+
+--> npm install
+
+npm warn deprecated @types/dompurify@3.2.0: This is a stub types definition. dompurify provides its own type definitions, so you do not need this installed.
+
+npm warn deprecated @types/dompurify@3.2.0: This is a stub types definition. dompurify provides its own type definitions, so you do not need this installed.
+
+npm warn deprecated @types/dompurify@3.2.0: This is a stub types definition. dompurify provides its own type definitions, so you do not need this installed.
+
+
+added 7 packages, removed 1 package, changed 111 packages, and audited 240 packages in 9s
+
+
+added 7 packages, removed 1 package, changed 111 packages, and audited 240 packages in 9s
+
+
+added 7 packages, removed 1 package, changed 111 packages, and audited 240 packages in 9s
+
+48 packages are looking for funding
+
+48 packages are looking for funding
+
+48 packages are looking for funding
+
+  run `npm fund` for details
+
+  run `npm fund` for details
+
+  run `npm fund` for details
+
+
+4 vulnerabilities (1 low, 1 moderate, 2 high)
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+
+
+4 vulnerabilities (1 low, 1 moderate, 2 high)
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+
+
+4 vulnerabilities (1 low, 1 moderate, 2 high)
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 12.0.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1
+npm notice To update run: npm install -g npm@12.0.1
+npm notice
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 12.0.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1
+npm notice To update run: npm install -g npm@12.0.1
+npm notice
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 12.0.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1
+npm notice To update run: npm install -g npm@12.0.1
+npm notice
+
+2026-07-11T17:25:40Z info: Starting Build
+[pnpm-restore] Restoring pnpm-managed node_modules after npm install...
+
+Lockfile is up to date, resolution step is skipped
+
+
+   ╭──────────────────────────────────────────╮
+   │                                          │
+   │   Update available! 10.26.1 → 11.11.0.   │
+   │   Changelog: https://pnpm.io/v/11.11.0   │
+   │     To update, run: pnpm add -g pnpm     │
+   │                                          │
+   ╰──────────────────────────────────────────╯
+
+
+Already up to date
+
+
+dependencies:
++ @playwright/test 1.59.1
++ @tailwindcss/postcss 4.2.2
++ @testing-library/jest-dom 6.9.1
++ @testing-library/react 16.3.2
++ @testing-library/user-event 14.6.1
++ @types/dompurify 3.2.0
++ @types/node 25.5.0
++ @types/react 18.3.28
++ @types/react-dom 18.3.7
++ @types/testing-library__jest-dom 5.14.9
++ @vitejs/plugin-react 6.0.1
++ autoprefixer 10.4.27
++ clsx 2.1.1
++ dompurify 3.4.2
++ jose 6.2.2
++ jsdom 29.0.2
++ leaflet 1.9.4
++ lucide-react 1.7.0
++ mysql2 3.22.1
++ next 16.2.6
++ postcss 8.5.10
++ react 18.3.1
++ react-dom 18.3.1
++ react-leaflet 4.2.1
++ remixicon 4.9.1
++ tailwindcss 4.2.2
++ typescript 6.0.3
++ vitest 4.1.5
++ zustand 5.0.12
+
+devDependencies:
++ @types/google.maps 3.64.0
++ @types/leaflet 1.9.21
++ tsx 4.21.0
+
+
+Done in 3.4s using pnpm v10.26.1
+
+[pnpm-restore] Done
+
+Using next binary: /home/runner/workspace/node_modules/next/dist/bin/next
+====== Pre-build disk cleanup ======
+[pre-cleanup] Removing git history...
+
+[pre-cleanup] Removing archived files...
+
+[pre-cleanup] Removing analysis/exports/downloads...
+
+[pre-cleanup] Removing attached_assets...
+
+[pre-cleanup] Removing Replit agent/workflow state...
+
+[pre-cleanup] Done
+
+====== Building web app ======
+
+[dedup] Linked apps/web/node_modules/react → root pnpm store
+
+[dedup] Linked apps/web/node_modules/react-dom → root pnpm store
+
+▲ Next.js 16.2.6 (webpack)
+
+- Environments: .env.local, .env.production
+
+- Experiments (use with caution):
+  · serverActions
+  ⨯ webpackBuildWorker
+  ✓ webpackMemoryOptimizations
+
+
+  Creating an optimized production build ...
+
+✓ Compiled successfully in 36.7s
+
+  Running TypeScript ...
+
+  Finished TypeScript in 21.8s ...
+
+  Collecting page data using 1 worker ...
+
+[forgot-password] CC_COMMON_PORTAL_HOSTNAME is not set — CareConnect common-portal forgot-password will not work. Set CC_COMMON_PORTAL_HOSTNAME in the environment.
+
+  Generating static pages using 1 worker (0/25) ...
+
+  Generating static pages using 1 worker (6/25) 
+  Generating static pages using 1 worker (12/25) 
+
+  Generating static pages using 1 worker (18/25) 
+✓ Generating static pages using 1 worker (25/25) in 416ms
+
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /.well-known/tenant-verify
+├ ƒ /accept-invite
+├ ƒ /access-denied
+├ ƒ /activity
+├ ƒ /admin/organizations
+├ ƒ /admin/products
+├ ƒ /admin/tenants
+├ ƒ /admin/users
+├ ƒ /ai/dashboard
+├ ƒ /api/admin/branding-metrics
+├ ƒ /api/audit/[...path]
+├ ƒ /api/auth/accept-invite
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/forgot-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/reset-password
+├ ƒ /api/branding/logo/[docId]
+├ ƒ /api/branding/logo/public
+├ ƒ /api/careconnect/[...path]
+├ ƒ /api/flow/[...path]
+├ ƒ /api/fund/[...path]
+├ ƒ /api/geocode/address
+├ ƒ /api/health
+├ ƒ /api/identity/[...path]
+├ ƒ /api/lien/[...path]
+├ ƒ /api/notifications/list
+├ ƒ /api/notifications/stats
+├ ƒ /api/org-config
+├ ƒ /api/profile/avatar
+├ ƒ /api/profile/avatar/[id]
+├ ƒ /api/profile/phone
+├ ƒ /api/public/careconnect/[...path]
+├ ƒ /api/public/careconnect/access-code/status
+├ ƒ /api/public/careconnect/access-code/verify
+├ ƒ /api/public/careconnect/map-provider
+├ ƒ /api/support/[...path]
+├ ƒ /api/tenant-branding
+├ ƒ /api/tenant/[...path]
+├ ○ /apple-icon.png
+├ ƒ /careconnect/admin/activations
+├ ƒ /careconnect/admin/activations/[id]
+├ ƒ /careconnect/admin/analytics/activation
+├ ƒ /careconnect/admin/dashboard
+├ ƒ /careconnect/admin/performance
+├ ƒ /careconnect/admin/providers/blocked
+├ ƒ /careconnect/admin/providers/provisioning
+├ ƒ /careconnect/admin/referrals
+├ ƒ /careconnect/appointments
+├ ƒ /careconnect/appointments/[id]
+├ ƒ /careconnect/browse-networks
+├ ƒ /careconnect/browse-networks/[id]
+├ ƒ /careconnect/dashboard
+├ ƒ /careconnect/my-network
+├ ƒ /careconnect/network
+├ ƒ /careconnect/networks
+├ ƒ /careconnect/networks/[id]
+├ ƒ /careconnect/providers
+├ ƒ /careconnect/providers/[id]
+├ ƒ /careconnect/providers/[id]/availability
+├ ƒ /careconnect/referrals
+├ ƒ /careconnect/referrals/[id]
+├ ƒ /coming-soon
+├ ƒ /control-center
+├ ƒ /control-center/liens/task-automation
+├ ƒ /control-center/liens/task-governance
+├ ƒ /control-center/liens/task-templates
+├ ƒ /control-center/liens/workflow
+├ ƒ /control-center/notifications
+├ ƒ /control-center/notifications/billing
+├ ƒ /control-center/notifications/contacts/policies
+├ ƒ /control-center/notifications/log
+├ ƒ /control-center/notifications/providers
+├ ƒ /control-center/notifications/templates
+├ ƒ /control-center/products
+├ ƒ /control-center/tenants
+├ ƒ /dashboard
+├ ƒ /enroll
+├ ƒ /enroll/welcome
+├ ƒ /forgot-password
+├ ƒ /fund/applications
+├ ƒ /fund/applications/[id]
+├ ƒ /fund/applications/new
+├ ƒ /fund/dashboard
+├ ƒ /fund/payouts
+├ ƒ /fund/processing
+├ ƒ /fund/reports
+├ ƒ /fund/underwriting
+├ ○ /icon.png
+├ ƒ /insights/dashboard
+├ ƒ /insights/reports
+├ ƒ /insights/reports/[id]
+├ ƒ /insights/reports/[id]/builder
+├ ƒ /insights/schedules
+├ ƒ /insights/schedules/[id]
+├ ƒ /lien/activity
+├ ƒ /lien/batch-entry
+├ ƒ /lien/bill-of-sales
+├ ƒ /lien/bill-of-sales/[id]
+├ ƒ /lien/cases
+├ ƒ /lien/cases/[id]
+├ ƒ /lien/contacts
+├ ƒ /lien/contacts/[id]
+├ ƒ /lien/dashboard
+├ ƒ /lien/document-handling
+├ ƒ /lien/document-handling/[id]
+├ ƒ /lien/home
+├ ƒ /lien/liens
+├ ƒ /lien/liens/[id]
+├ ƒ /lien/marketplace
+├ ƒ /lien/marketplace/[id]
+├ ƒ /lien/my-liens
+├ ƒ /lien/my-liens/[id]
+├ ƒ /lien/my-liens/new
+├ ƒ /lien/portfolio
+├ ƒ /lien/portfolio/[id]
+├ ƒ /lien/reports
+├ ƒ /lien/reports/[id]
+├ ƒ /lien/servicing
+├ ƒ /lien/servicing/[id]
+├ ƒ /lien/settings/task-automation
+├ ƒ /lien/settings/task-governance
+├ ƒ /lien/settings/task-templates
+├ ƒ /lien/settings/workflow
+├ ƒ /lien/task-manager
+├ ƒ /lien/user-management
+├ ƒ /lien/user-management/[id]
+├ ƒ /login
+├ ƒ /my-work
+├ ƒ /network
+├ ƒ /no-org
+├ ƒ /notifications
+├ ƒ /notifications/activity
+├ ƒ /notifications/activity/[notificationId]
+├ ƒ /notifications/branding
+├ ƒ /notifications/log
+├ ƒ /notifications/templates
+├ ƒ /notifications/templates/[productType]
+├ ƒ /notifications/templates/[productType]/[templateId]
+├ ƒ /portal/login
+├ ƒ /portal/my-application
+├ ƒ /profile
+├ ƒ /provider/dashboard
+├ ƒ /provider/onboarding
+├ ƒ /provider/referrals/[id]
+├ ƒ /referrals/accept/[referralId]
+├ ƒ /referrals/activate
+├ ƒ /referrals/firm-status
+├ ƒ /referra
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+====== Building control center ======
+
+[dedup] Linked control-center/node_modules/react → pnpm store
+
+[dedup] Linked control-center/node_modules/react-dom → pnpm store
+
+[control-center] Using next binary: /home/runner/workspace/apps/control-center/node_modules/next/dist/bin/next
+
+▲ Next.js 16.2.6 (webpack)
+- Environments: .env.local
+- Experiments (use with caution):
+  · serverActions
+
+  Creating an optimized production build ...
+
+
+<--- Last few GCs --->
+
+[261:0x563246041990]    32243 ms: Mark-Compact 500.6 (524.6) -> 499.2 (524.1) MB, 318.21 / 0.00 ms  (average mu = 0.291, current mu = 0.044) allocation failure; scavenge might not succeed
+[261:0x563246041990]    32709 ms: Mark-Compact 503.4 (526.5) -> 502.0 (530.8) MB, 435.46 / 0.00 ms  (average mu = 0.177, current mu = 0.066) allocation failure; scavenge might not succeed
+
+
+<--- JS stacktrace --->
+
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+
+ 1: 0x56322abc05cb node::OOMErrorHandler(char const*, v8::OOMDetails const&) [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+ 2: 0x56322afae7c0 v8::Utils::ReportOOMFailure(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+ 3: 0x56322afaead6 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+ 4: 0x56322b1ef977  [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+ 5: 0x56322b208e29 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags) [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+ 6: 0x56322b1e022b v8::internal::HeapAllocator::AllocateRawWithLightRetrySlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+ 7: 0x56322b1e18d5 v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+ 8: 0x56322b1bebf7 v8::internal::Factory::AllocateRaw(int, v8::internal::AllocationType, v8::internal::AllocationAlignment) [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+ 9: 0x56322b1b074c v8::internal::FactoryBase<v8::internal::Factory>::NewRawTwoByteString(int, v8::internal::AllocationType) [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+10: 0x56322b5478f5 v8::internal::String::SlowFlatten(v8::internal::Isolate*, v8::internal::Handle<v8::internal::ConsString>, v8::internal::AllocationType) [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+11: 0x56322afbd6c1 v8::String::Utf8Length(v8::Isolate*) const [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+12: 0x56322ad05e67  [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+13: 0x56322ba1a546  [/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/bin/node]
+
+scripts/build-prod.sh: line 152:   261 Aborted                 NODE_OPTIONS="--max-old-space-size=512" node "$CC_NEXT_BIN" build --webpack
+
+2026-07-11T17:28:00Z warn: Security scan skipped: connection lost
