@@ -512,7 +512,7 @@ export function CaseDetailClient({
         {activeTab === "servicing" && (
           <ServicingTab
             caseDetail={d}
-            liens={relatedLiensWithMetadata.items}
+            liensList={relatedLiensWithMetadata.items}
             liensLoadedAt={liensUpdatedAt ? new Date(liensUpdatedAt) : null}
             onRefreshLiens={refetchLiens}
             isLiensFetching={isLiensFetching}
@@ -3087,6 +3087,7 @@ const SERVICING_SUB_TABS: {
 
 function ServicingTab({
   caseDetail,
+  liensList,
   liensLoadedAt,
   onRefreshLiens,
   isLiensFetching,
@@ -3098,7 +3099,7 @@ function ServicingTab({
   onPanelModeChange,
 }: {
   caseDetail: CaseDetail;
-  liens: (CaseLienItem & CaseLienItemMetadata)[];
+  liensList: (CaseLienItem & CaseLienItemMetadata)[];
   liensLoadedAt: Date | null;
   onRefreshLiens: () => void;
   isLiensFetching: boolean;
@@ -3110,9 +3111,8 @@ function ServicingTab({
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const addToast = useLienStore((s) => s.addToast);
-  const { data = { items: [], pagination: {} }, refetch: refetchLiens } =
-    useCaseLiens(caseDetail.id, {}, "all-liens");
-  const liens = data.items ?? [];
+  const { data } = useCaseLiens(caseDetail.id, {}, "all-liens");
+  const liens = data?.items ?? liensList;
   const timezone = useTimezone();
   const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);

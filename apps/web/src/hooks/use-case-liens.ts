@@ -124,7 +124,6 @@ export function useCaseLiens(
   activeTab: string = "liens",
 ) {
   const queryClient = useQueryClient();
-
   // Lien tab
   const pagedQuery = useQuery({
     queryKey: ["case-liens", caseId],
