@@ -4,8 +4,9 @@ import {
   BaseSelectOption,
   BaseSelectProps,
 } from "../ui/base-select";
+import { DatePicker } from "../ui/date-picker";
+import { PhoneInput } from "../ui/phone-input";
 
-type FieldType = "text" | "textarea" | "select" | "checkbox";
 interface BaseFieldProps {
   label: string;
   onFocus?: () => void;
@@ -20,11 +21,22 @@ interface BaseFieldProps {
 }
 
 interface TextFieldProps {
-  type?: "text" | "textarea" | "date" | "number" | "email";
+  type?: "text" | "textarea" | "number" | "email";
   value?: string | null | number;
   onChange: (value: string) => void;
 }
 
+interface DateFieldProps {
+  type?: "date";
+  maxDate?: Date | null;
+  value?: string;
+  onChange: (value: string) => void;
+}
+export interface PhoneFieldProps {
+  type: "tel";
+  value: string; // Formatted input value managed by parent state
+  onChange: (value: string) => void; // Emits the formatted string upward
+}
 interface CheckboxFieldProps {
   type: "checkbox";
   isChecked?: boolean;
@@ -54,6 +66,8 @@ export type FieldProps<TOption extends BaseSelectOption = BaseSelectOption> =
     (
       | TextFieldProps
       | CheckboxFieldProps
+      | DateFieldProps
+      | PhoneFieldProps
       | SelectFieldProps<TOption>
       | MultiSelectFieldProps<TOption>
     );
@@ -131,6 +145,19 @@ export default function Field<
           className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary mb-1"
           disabled={disabled}
         />
+      ) : props.type === "date" ? (
+        <DatePicker
+          maxDate={props?.maxDate}
+          value={props.value}
+          onChange={props.onChange}
+        />
+      ) : props.type === "tel" ? (
+        <PhoneInput
+          label=""
+          value={props.value}
+          onValueChange={props.onChange}
+          className="shadow-sm" // Optional styling overrides
+        />
       ) : (
         <div className={hasAdornment ? "relative" : ""}>
           {prefix && (
@@ -143,7 +170,6 @@ export default function Field<
             type={props.type}
             value={props.value ?? ""}
             onChange={(e) => props.onChange(e.target.value)}
-            max={props.type == "date" ? "9999-12-31" : ""}
             onFocus={onFocus}
             onClick={onClick}
             placeholder={placeholder}

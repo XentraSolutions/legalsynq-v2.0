@@ -78,12 +78,13 @@ export const casesService = {
   async updateCasePersonal(
     request: UpdateCasePersonalRequestDto,
   ): Promise<CaseDetail> {
-    const dto: UpdateCaseDetailsRequestDto = {
-      firstname: request.firstName,
-      lastname: request.lastName,
-      ...(request.dob && { dateOfIncident: request.dob }),
-    };
-    const { data } = await casesApi.updatePersonal(dto);
+    // const dto: UpdateCaseDetailsRequestDto = {
+    //   firstname: request.firstName,
+    //   lastname: request.lastName,
+    //   request.dob && { dateOfIncident: request.dob }),
+    // };
+    console.log(request);
+    const { data } = await casesApi.updatePersonal(request);
     return mapCaseToDetail(data);
   },
 

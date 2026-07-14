@@ -360,7 +360,6 @@ export default function CasesPage() {
                     <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
                       Status
                     </th>
-                    <th className="px-3 py-2.5 w-10" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -371,15 +370,7 @@ export default function CasesPage() {
                         className={`hover:bg-gray-50/80 transition-colors cursor-pointer ${selection.isSelected(c.id) ? "bg-primary/5" : ""}`}
                         onClick={() => router.push(`/lien/cases/${c.id}`)}
                       >
-                        <td className="px-3 py-2.5">
-                          <Link
-                            href={`/lien/cases/${c.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-xs font-mono text-primary hover:underline"
-                          >
-                            {c.caseNumber}
-                          </Link>
-                        </td>
+                        <td className="px-3 py-2.5">{c.caseNumber}</td>
                         <td className="px-3 py-2.5 text-sm text-gray-700 font-medium">
                           {c.clientName}
                         </td>
@@ -400,21 +391,6 @@ export default function CasesPage() {
                         </td>
                         <td className="px-3 py-2.5">
                           <StatusBadge status={c.status} />
-                        </td>
-                        <td
-                          className="px-3 py-2.5 text-right"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ActionMenu
-                            items={[
-                              {
-                                label: "View Details",
-                                icon: "ri-eye-line",
-                                onClick: () =>
-                                  router.push(`/lien/cases/${c.id}`),
-                              },
-                            ]}
-                          />
                         </td>
                       </tr>
                     ))}

@@ -666,7 +666,7 @@ function CollapsibleSection({
 }
 
 function FieldGrid({ children }: { children: ReactNode }) {
-  return <dl className="grid grid-cols-2 gap-x-8 gap-y-4">{children}</dl>;
+  return <dl className="grid grid-cols-3 gap-x-8 gap-y-4">{children}</dl>;
 }
 
 function FieldItem({ label, value }: { label: string; value?: string | null }) {
@@ -735,9 +735,10 @@ function DetailsTab({
 
   const [pFirstName, setPFirstName] = useState(d.clientFirstName);
   const [pLastName, setPLastName] = useState(d.clientLastName);
-  const [pPhone, setPPhone] = useState(d.clientPhone);
+  const [pPhone, setPPhone] = useState(formatPhoneNumber(d.clientPhone));
   const [pEmail, setPEmail] = useState(d.clientEmail);
-  const [pDob, setPDob] = useState(d.clientDob);
+  const formattedpDob = dateConvertertoIso(d.clientDob);
+  const [pDob, setPDob] = useState(formattedpDob);
   const [pAddress, setPAddress] = useState(d.clientAddress);
   const [pSaving, setPSaving] = useState(false);
   const [pErrors, setPErrors] = useState<Record<string, string>>({});
@@ -784,6 +785,17 @@ function DetailsTab({
       return { key: s.id, value: s.code, label: s.name };
     }) ?? [];
 
+  function formatPhoneNumber(rawValue: string | number): string {
+    // Convert to string and strip any non-digit characters just in case
+    const digits = String(rawValue).replace(/\D/g, "");
+
+    // If the number is incomplete, just return what we have so far
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+
+    // Return the full standard formatting capped at 10 digits
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  }
   const resetPlaintiffForm = useCallback(() => {
     setForm({ ...d });
     setPErrors({});
@@ -838,7 +850,7 @@ function DetailsTab({
       caseId: d.id,
       firstName: form.clientFirstName.trim(),
       lastName: form.clientLastName.trim(),
-      phone: form.clientPhone.trim() || "",
+      phone: form.clientPhone.trim().replace(/\D/g, "") || "",
       email: form.clientEmail.trim() || "",
       dob: dateConverter(form.clientDob) || "",
       address: form.clientStreetAddress.trim() || "",
@@ -939,9 +951,9 @@ function DetailsTab({
 
         {editingTracking ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+            <div className="grid grid-cols-3 gap-x-8 gap-y-3">
               <div>
-                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Tracking Follow Up
                 </label>
 
@@ -987,7 +999,7 @@ function DetailsTab({
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Current Medical Status
                 </label>
                 <Field
@@ -1031,10 +1043,11 @@ function DetailsTab({
                     updateField("dateOfIncident", e.toString());
                   }}
                   placeholder={tDateOfIncident}
+                  maxDate={new Date()}
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   State of Incident
                 </label>
                 <Field
@@ -1049,7 +1062,7 @@ function DetailsTab({
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Lead
                 </label>
                 <ContactEntitySelect
@@ -1206,7 +1219,7 @@ function DetailsTab({
 
         {editingPlaintiff ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3 relative">
+            <div className="grid grid-cols-3 gap-x-8 gap-y-3 relative">
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   First Name *
@@ -1233,8 +1246,12 @@ function DetailsTab({
                 </label>
                 <Field
                   label=""
-                  value={form.clientPhone}
-                  onChange={(e) => updateField("clientPhone", e.toString())}
+                  type="tel"
+                  value={pPhone}
+                  onChange={(e) => {
+                    setPPhone(e);
+                    updateField("clientPhone", e.toString());
+                  }}
                 />
               </div>
               <div>
@@ -1254,12 +1271,16 @@ function DetailsTab({
                 <Field
                   label=""
                   type="date"
-                  value={form.clientDob}
-                  onChange={(e) => updateField("clientDob", e.toString())}
+                  value={pDob}
+                  onChange={(e) => {
+                    setPDob(e.toString());
+                    updateField("clientDob", e.toString());
+                  }}
+                  maxDate={new Date()}
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
                   Sex
                 </label>
                 <Field
@@ -1355,7 +1376,7 @@ function DetailsTab({
         ) : (
           <FieldGrid>
             <FieldItem label="Full Name" value={d.clientName} />
-            <FieldItem label="Phone Number" value={d.clientPhone} />
+            <FieldItem label="Phone Number" value={pPhone} />
             <FieldItem label="Email" value={d.clientEmail} />
             <FieldItem label="Date of Birth" value={d.clientDob} />
             <FieldItem label="Sex" value={d.sex} />
@@ -3111,7 +3132,11 @@ function ServicingTab({
   onPanelModeChange: (m: PanelMode) => void;
 }) {
   const addToast = useLienStore((s) => s.addToast);
-  const { data } = useCaseLiens(caseDetail.id, {}, "all-liens");
+  const { data, refetch: refetchLiens } = useCaseLiens(
+    caseDetail.id,
+    {},
+    "all-liens",
+  );
   const liens = data?.items ?? liensList;
   const timezone = useTimezone();
   const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");

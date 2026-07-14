@@ -282,9 +282,13 @@ export function CreateCaseForm({
             label="Date of Birth"
             required
             value={form.clientDob}
-            onChange={(v) => updateField("clientDob", v.toString())}
+            onChange={(v) => {
+              console.log(v);
+              updateField("clientDob", v.toString());
+            }}
             error={touched.clientDob ? errors.clientDob : undefined}
             type="date"
+            maxDate={new Date()}
           />
           <div className="grid grid-cols-2 gap-3">
             <Field
@@ -386,6 +390,7 @@ export function CreateCaseForm({
               value={form.dateOfIncident}
               onChange={(v) => updateField("dateOfIncident", v.toString())}
               type="date"
+              maxDate={new Date()}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
