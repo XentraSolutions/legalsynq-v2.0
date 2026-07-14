@@ -2,8 +2,10 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import type { ColumnDef, OnChangeFn, RowSelectionState } from "@tanstack/react-table";
+import { BaseTable } from "@/components/ui/base-table";
 import { PageHeader } from "@/components/lien/page-header";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { StatusBadge } from "@/components/lien/status-badge";
@@ -59,7 +61,7 @@ export default function LiensPage() {
   const [liens, setLiens] = useState<LienListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
-    pageSize: 20,
+    pageSize: 10,
     totalCount: 0,
     totalPages: 0,
   });
@@ -87,7 +89,7 @@ export default function LiensPage() {
       status: statusFilter || undefined,
       lienType: typeFilter || undefined,
       page: 1,
-      pageSize: 50,
+      pageSize: 10,
     }),
     [search, statusFilter, typeFilter],
   );
@@ -167,6 +169,102 @@ export default function LiensPage() {
   };
 
   const allIds = liens.map((l) => l.id);
+
+  const rowSelection = useMemo<RowSelectionState>(() => {
+    const obj: RowSelectionState = {};
+    selection.selectedIds.forEach((id) => {
+      obj[id] = true;
+    });
+    return obj;
+  }, [selection.selectedIds]);
+
+  const handleRowSelectionChange: OnChangeFn<RowSelectionState> = (updater) => {
+    const next = typeof updater === "function" ? updater(rowSelection) : updater;
+    const nextIds = new Set(Object.keys(next).filter((id) => next[id]));
+    const prevIds = selection.selectedIds;
+
+    if (nextIds.size === prevIds.size) return;
+
+    const allNowSelected = nextIds.size === liens.length && prevIds.size !== liens.length;
+    const allNowDeselected = nextIds.size === 0 && prevIds.size === liens.length;
+    if (allNowSelected || allNowDeselected) {
+      selection.toggleAll(allIds);
+      return;
+    }
+
+    const toggled = liens.find((l) => prevIds.has(l.id) !== nextIds.has(l.id));
+    if (toggled) selection.toggle(toggled.id);
+  };
+
+  const columns = useMemo<ColumnDef<LienListItem, any>[]>(
+    () => [
+      {
+        id: "lienNumber",
+        header: "Lien #",
+        cell: ({ row }) => (
+          <Link
+            href={`/lien/liens/${row.original.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs font-mono text-primary hover:underline"
+          >
+            {row.original.lienNumber}
+          </Link>
+        ),
+      },
+      {
+        id: "lienTypeLabel",
+        header: "Type",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">{row.original.lienTypeLabel}</span>
+        ),
+      },
+      {
+        id: "subjectName",
+        header: "Subject",
+        cell: ({ row }) =>
+          row.original.isConfidential ? (
+            <span className="italic text-gray-400 text-sm">Confidential</span>
+          ) : (
+            <span className="text-sm text-gray-700">{row.original.subjectName || "—"}</span>
+          ),
+      },
+      {
+        id: "originalAmount",
+        header: "Original",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700 tabular-nums">
+            {formatCurrency(row.original.originalAmount)}
+          </span>
+        ),
+      },
+      ...(isSellMode
+        ? [
+            {
+              id: "offerPrice",
+              header: "Offer",
+              cell: ({ row }: { row: { original: LienListItem } }) => (
+                <span className="text-sm text-gray-700 tabular-nums">
+                  {formatCurrency(row.original.offerPrice)}
+                </span>
+              ),
+            } as ColumnDef<LienListItem, any>,
+          ]
+        : []),
+      {
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "createdAt",
+        header: "Created",
+        cell: ({ row }) => (
+          <span className="text-xs text-gray-400 whitespace-nowrap">{row.original.createdAt}</span>
+        ),
+      },
+    ],
+    [isSellMode],
+  );
 
   return (
     <div className="space-y-5">
@@ -285,139 +383,28 @@ export default function LiensPage() {
           <p className="text-sm text-gray-400 mt-2">Loading liens...</p>
         </div>
       ) : (
-        <>
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100">
-                <thead>
-                  <tr className="bg-gray-50">
-                    {canEdit && (
-                      <th className="px-4 py-3 w-10">
-                        <input
-                          type="checkbox"
-                          checked={selection.isAllSelected(allIds)}
-                          onChange={() => selection.toggleAll(allIds)}
-                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20"
-                        />
-                      </th>
-                    )}
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Lien #
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Type
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Subject
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Original
-                    </th>
-                    {isSellMode && (
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        Offer
-                      </th>
-                    )}
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Created
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {liens.map((l) => (
-                    <tr
-                      key={l.id}
-                      className={`hover:bg-gray-50 transition-colors cursor-pointer ${selection.isSelected(l.id) ? "bg-primary/5" : ""}`}
-                      onClick={() => setPreviewId(l.id)}
-                    >
-                      {canEdit && (
-                        <td
-                          className="px-4 py-3"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selection.isSelected(l.id)}
-                            onChange={() => selection.toggle(l.id)}
-                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20"
-                          />
-                        </td>
-                      )}
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/lien/liens/${l.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-xs font-mono text-primary hover:underline"
-                        >
-                          {l.lienNumber}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {l.lienTypeLabel}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {l.isConfidential ? (
-                          <span className="italic text-gray-400">
-                            Confidential
-                          </span>
-                        ) : (
-                          l.subjectName || "\u2014"
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 tabular-nums">
-                        {formatCurrency(l.originalAmount)}
-                      </td>
-                      {isSellMode && (
-                        <td className="px-4 py-3 text-sm text-gray-700 tabular-nums">
-                          {formatCurrency(l.offerPrice)}
-                        </td>
-                      )}
-                      <td className="px-4 py-3">
-                        <StatusBadge status={l.status} />
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                        {l.createdAt}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {liens.length === 0 && !error && (
-              <div className="p-10 text-center text-sm text-gray-400">
-                No liens match your filters.
-              </div>
-            )}
-          </div>
-
-          {pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500">
-                Page {pagination.page} of {pagination.totalPages} (
-                {pagination.totalCount} total)
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handlePageChange(pagination.page - 1)}
-                  disabled={pagination.page <= 1}
-                  className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => handlePageChange(pagination.page + 1)}
-                  disabled={pagination.page >= pagination.totalPages}
-                  className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+        <BaseTable
+          data={liens}
+          columns={columns}
+          getRowId={(l) => l.id}
+          emptyMessage="No liens match your filters."
+          onRowClick={(l) => setPreviewId(l.id)}
+          rowSelection={canEdit ? rowSelection : undefined}
+          onRowSelectionChange={handleRowSelectionChange}
+          getRowClassName={(l) => (selection.isSelected(l.id) ? "bg-primary/5" : undefined)}
+          manualPagination
+          pageCount={pagination.totalPages}
+          totalCount={pagination.totalCount}
+          pagination={{ pageIndex: pagination.page - 1, pageSize: pagination.pageSize }}
+          onPaginationChange={(updater) => {
+            const next =
+              typeof updater === "function"
+                ? updater({ pageIndex: pagination.page - 1, pageSize: pagination.pageSize })
+                : updater;
+            handlePageChange(next.pageIndex + 1);
+          }}
+          className="bg-white border-gray-200 rounded-xl"
+        />
       )}
 
       {canEdit && (

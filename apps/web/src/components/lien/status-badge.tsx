@@ -29,7 +29,7 @@ const STATUS_STYLES: Record<string, string> = {
   Locked:        'bg-red-50     text-red-600     border-red-200',
 };
 
-const STATUS_LABELS: Record<string, string> = {
+export const STATUS_LABELS: Record<string, string> = {
   PreDemand:     'Pre-Demand',
   DemandSent:    'Demand Sent',
   InNegotiation: 'In Negotiation',

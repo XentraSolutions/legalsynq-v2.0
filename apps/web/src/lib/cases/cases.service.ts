@@ -145,16 +145,18 @@ export const casesService = {
 
   async getLawFirmCaseAllocation(
     request: CaseAllocationReportRequest,
-  ): Promise<AllocationSegment[]> {
+  ): Promise<{ segments: AllocationSegment[]; rows: CaseReportItem[] }> {
     const { data } = await casesApi.getLawFirmCaseReport(request);
-    return groupAndCount(data.items ?? [], (item) => item.lawFirm);
+    const rows = data.items ?? [];
+    return { segments: groupAndCount(rows, (item) => item.lawFirm), rows };
   },
 
   async getMedicalFacilityCaseAllocation(
     request: CaseAllocationReportRequest,
-  ): Promise<AllocationSegment[]> {
+  ): Promise<{ segments: AllocationSegment[]; rows: CaseReportItem[] }> {
     const { data } = await casesApi.getMedicalProviderCaseReport(request);
-    return groupAndCount(data.items ?? [], (item) => item.medicalFacility);
+    const rows = data.items ?? [];
+    return { segments: groupAndCount(rows, (item) => item.medicalFacility), rows };
   },
 
   async getTotalLienReportRows(

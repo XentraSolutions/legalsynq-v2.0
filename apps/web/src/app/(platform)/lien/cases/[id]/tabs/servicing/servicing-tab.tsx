@@ -1,0 +1,402 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLienStore } from "@/stores/lien-store";
+import { useTimezone } from "@/lib/use-timezone";
+import { useSessionContext } from "@/providers/session-provider";
+import { useCaseLiens } from "@/hooks/use-case-liens";
+import { useSettlementHistory } from "@/hooks/use-settlement-history";
+import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
+import type { CaseDetail, CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
+import { lookupService } from "@/lib/lookup";
+import { contactsService } from "@/lib/contacts";
+import { servicingService } from "@/lib/servicing";
+import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types";
+import { SetupReductionForm } from "../../components/setup-reduction-form";
+import { NoRecoveryForm } from "../../components/no-recovery-form";
+import { AddPaymentForm } from "../../components/add-payment-form";
+import { EmailSection } from "../../components/email-section";
+import { SmsSection } from "../../components/sms-section";
+import { ContactsSection } from "../../components/contacts-section";
+import {
+  formatNoteTimestamp,
+  describeSettlementHistoryItem,
+} from "../../utils/case-detail-utils";
+import { PaymentHistoryWidget } from "../../widgets/payment-history-widget";
+import { ServicingDetailsSection } from "./servicing-details/sections/servicing-details-section";
+import { OpenLiensSection } from "./settlement-details/sections/open-liens-section";
+import { ClosedLiensSection } from "./settlement-details/sections/closed-liens-section";
+import { ServicingHistorySection } from "./history/sections/servicing-history-section";
+import { SERVICING_SUB_TABS, type ServicingSubTab } from "./types";
+
+export function ServicingTab({
+  caseDetail,
+  liensList,
+  liensLoadedAt,
+  onRefreshLiens,
+  isLiensFetching,
+  payments,
+  paymentsLoadedAt,
+  onRefreshPayments,
+  isPaymentsFetching,
+  panelMode,
+  onPanelModeChange,
+}: {
+  caseDetail: CaseDetail;
+  liensList: (CaseLienItem & CaseLienItemMetadata)[];
+  liensLoadedAt: Date | null;
+  onRefreshLiens: () => void;
+  isLiensFetching: boolean;
+  payments: import("@/lib/settlement/settlement.types").CasePayment[];
+  paymentsLoadedAt: Date | null;
+  onRefreshPayments: () => void;
+  isPaymentsFetching: boolean;
+  panelMode: PanelMode;
+  onPanelModeChange: (m: PanelMode) => void;
+}) {
+  const addToast = useLienStore((s) => s.addToast);
+  const { data } = useCaseLiens(caseDetail.id, {}, "all-liens");
+  const liens = data?.items ?? liensList;
+  const timezone = useTimezone();
+  const [subTab, setSubTab] = useState<ServicingSubTab>("servicing-details");
+  const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
+  const [isNoRecoveryOpen, setIsNoRecoveryOpen] = useState(false);
+  const [setupReductionFormShown, showSetupReductionForm] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PAGE_SIZE = 10;
+  const historyQueryClient = useQueryClient();
+  const isHistoryVisible = subTab === "history";
+  const historyQuery = useSettlementHistory(
+    { caseId: caseDetail.id, page: historyPage, limit: HISTORY_PAGE_SIZE },
+    { enabled: isHistoryVisible },
+  );
+  const historyItems = historyQuery.data?.items ?? [];
+  const historyTotalPages = historyQuery.data?.pagination.totalPages ?? 0;
+  const historyTotalCount = historyQuery.data?.pagination.totalCount ?? 0;
+  const historyLoadedAt = historyQuery.dataUpdatedAt
+    ? new Date(historyQuery.dataUpdatedAt)
+    : null;
+  // Mark history stale on servicing mutations; only force a refetch if the
+  // History sub-tab is actually visible, otherwise it'll refetch lazily
+  // once the user switches to it (query is disabled while hidden).
+  const refetchHistory = () => {
+    historyQueryClient.invalidateQueries({
+      queryKey: ["settlement-history"],
+      refetchType: isHistoryVisible ? "active" : "none",
+    });
+  };
+
+  /* TEMP: visual fallback data for UI review only */
+  const [caseStatus, setCaseStatus] = useState(
+    caseDetail.status || "PreDemand",
+  );
+  const [switchedLawFirm, setSwitchedLawFirm] = useState(false);
+  const [switchedDate, setSwitchedDate] = useState("");
+  const [currentLawFirm, setCurrentLawFirm] = useState("");
+  const [currentLawyer, setCurrentLawyer] = useState("");
+  const [currentCaseManager, setCurrentCaseManager] = useState("");
+
+  const [lawyerList, setLawyerList] = useState<
+    { key: string; value: string; label: string }[]
+  >([]);
+  const [caseManagerList, setCaseManagerList] = useState<
+    { key: string; value: string; label: string }[]
+  >([]);
+  const [lawFirmList, setLawFirmList] = useState<
+    { key: string; value: string; label: string }[]
+  >([]);
+
+  let openLiens = liens.filter((i) => i.closedAtUtc === null);
+  let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
+
+  const openLiensTotalBilling = openLiens.reduce(
+    (s, l) => s + l.originalAmount,
+    0,
+  );
+  const openLiensTotalBalance = openLiens.reduce((s, l) => s + l.balance, 0);
+  const closedLiensTotalBilling = closedLiens.reduce(
+    (s, l) => s + l.originalAmount,
+    0,
+  );
+  const closedLiensTotalReduction = closedLiens.reduce(
+    (s, l) => s + (l.reductionAmount ?? 0),
+    0,
+  );
+  const closedLiensTotalPayment = closedLiens.reduce(
+    (s, l) => s + (l.paymentAmount ?? 0),
+    0,
+  );
+
+  const { lookup } = useSessionContext();
+
+  const caseStatusList =
+    lookup?.CaseStatus.map((s) => {
+      return { key: s.id, value: s.code, label: s.name };
+    }) ?? [];
+  const fetchDataLawfirms = useCallback(async () => {
+    const lawfirms = await lookupService.getLawfirm();
+    setLawFirmList(
+      lawfirms.items.map((lf) => ({
+        key: lf.id,
+        value: lf.id,
+        label: lf.displayName,
+      })) ?? [],
+    );
+  }, []);
+  const fetchDataLawyers = useCallback(async () => {
+    const lawyers = await contactsService.getContacts({
+      ContactType: "Lawyer",
+    });
+    setLawyerList(
+      lawyers.items.map((lf) => ({
+        key: lf.id,
+        value: lf.id,
+        label: lf.displayName,
+      })) ?? [],
+    );
+  }, []);
+
+  const fetchDataCaseManagers = useCallback(async () => {
+    const caseManagers = await contactsService.getCaseManagers();
+    setCaseManagerList(
+      caseManagers.items.map((lf) => ({
+        key: lf.id,
+        value: lf.id,
+        label: lf.displayName,
+      })) ?? [],
+    );
+  }, []);
+
+  const handleSaveServicingDetails = async () => {
+    const payload = {
+      caseId: caseDetail.id,
+      caseStatusId: caseStatus,
+      isUCCFiled: switchedLawFirm ? "Yes" : "No",
+      switchedDate: switchedDate || new Date().toISOString(),
+      lawFirmId: currentLawFirm,
+      attorney: currentLawyer,
+      caseManager: currentCaseManager,
+    };
+
+    await servicingService.updateDetails(payload);
+    addToast({
+      type: "success",
+      title: "Servicing Details Saved",
+      description: "Your servicing details were saved.",
+    });
+    setSwitchedLawFirm(false);
+  };
+
+  useEffect(() => {
+    // getCase();
+  }, []);
+
+  const historyColumns: ColumnDef<SettlementHistoryItemV3, any>[] = [
+    {
+      id: "timestamp",
+      header: "Timestamp",
+      cell: ({ row }) => (
+        <span className="text-xs text-gray-500 whitespace-nowrap">
+          {formatNoteTimestamp(row.original.createdAt, timezone)}
+        </span>
+      ),
+    },
+    {
+      id: "description",
+      header: "Description",
+      cell: ({ row }) => (
+        <span className="text-sm text-gray-600">
+          {describeSettlementHistoryItem(row.original)}
+        </span>
+      ),
+    },
+    {
+      id: "updatedBy",
+      header: "Updated By",
+      cell: () => (
+        <span className="text-sm text-gray-500 whitespace-nowrap">—</span>
+      ),
+    },
+  ];
+
+  const leftContent = (
+    <div className="space-y-4">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="flex border-b border-gray-100">
+          {SERVICING_SUB_TABS.map((st) => (
+            <button
+              key={st.key}
+              onClick={() => setSubTab(st.key)}
+              className={[
+                "flex-1 px-4 py-2.5 text-xs font-medium transition-colors flex items-center justify-center gap-1.5",
+                subTab === st.key
+                  ? "text-primary border-b-2 border-primary bg-primary/5"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50",
+              ].join(" ")}
+            >
+              <i className={`${st.icon} text-sm`} />
+              {st.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {subTab === "servicing-details" && (
+        <ServicingDetailsSection
+          caseStatus={caseStatus}
+          onCaseStatusChange={setCaseStatus}
+          caseStatusList={caseStatusList}
+          switchedLawFirm={switchedLawFirm}
+          onSwitchedLawFirmChange={setSwitchedLawFirm}
+          switchedDate={switchedDate}
+          onSwitchedDateChange={setSwitchedDate}
+          currentLawFirm={currentLawFirm}
+          onCurrentLawFirmChange={setCurrentLawFirm}
+          lawFirmList={lawFirmList}
+          onLoadLawFirms={fetchDataLawfirms}
+          currentLawyer={currentLawyer}
+          onCurrentLawyerChange={setCurrentLawyer}
+          lawyerList={lawyerList}
+          onLoadLawyers={fetchDataLawyers}
+          currentCaseManager={currentCaseManager}
+          onCurrentCaseManagerChange={setCurrentCaseManager}
+          caseManagerList={caseManagerList}
+          onLoadCaseManagers={fetchDataCaseManagers}
+          onSave={handleSaveServicingDetails}
+        />
+      )}
+
+      {subTab === "settlement-details" && (
+        <div className="space-y-4">
+          <OpenLiensSection
+            openLiens={openLiens}
+            liensLoadedAt={liensLoadedAt}
+            onRefreshLiens={onRefreshLiens}
+            isLiensFetching={isLiensFetching}
+            openLiensTotalBilling={openLiensTotalBilling}
+            openLiensTotalBalance={openLiensTotalBalance}
+            onSetupReduction={() => showSetupReductionForm(true)}
+            onNoRecovery={() => setIsNoRecoveryOpen(true)}
+            onAddPayment={() => setIsAddPaymentOpen(true)}
+          />
+
+          <ClosedLiensSection
+            closedLiens={closedLiens}
+            liensLoadedAt={liensLoadedAt}
+            onRefreshLiens={onRefreshLiens}
+            isLiensFetching={isLiensFetching}
+            closedLiensTotalBilling={closedLiensTotalBilling}
+            closedLiensTotalReduction={closedLiensTotalReduction}
+            closedLiensTotalPayment={closedLiensTotalPayment}
+          />
+
+          <PaymentHistoryWidget
+            payments={payments}
+            liens={liens}
+            paymentsLoadedAt={paymentsLoadedAt}
+            onRefreshPayments={() => {
+              onRefreshPayments();
+              refetchHistory();
+            }}
+            isPaymentsFetching={isPaymentsFetching}
+          />
+        </div>
+      )}
+
+      {subTab === "history" && (
+        <ServicingHistorySection
+          isLoading={historyQuery.isLoading}
+          isFetching={historyQuery.isFetching}
+          historyItems={historyItems}
+          historyColumns={historyColumns}
+          historyLoadedAt={historyLoadedAt}
+          onRefresh={() => historyQuery.refetch()}
+          historyPage={historyPage}
+          historyTotalPages={historyTotalPages}
+          historyTotalCount={historyTotalCount}
+          onPageChange={setHistoryPage}
+        />
+      )}
+    </div>
+  );
+
+  const rightContent = (
+    <div className="space-y-4">
+      <EmailSection />
+      <SmsSection />
+      <ContactsSection
+        items={[
+          {
+            icon: "ri-user-line",
+            iconBgClass: "bg-primary/10",
+            iconColorClass: "text-primary",
+            name: "Sarah Mitchell",
+            role: "Case Manager",
+          },
+          {
+            icon: "ri-building-line",
+            iconBgClass: "bg-blue-50",
+            iconColorClass: "text-blue-500",
+            name: caseDetail.insuranceCarrier || "",
+            role: "Law Firm",
+          },
+        ]}
+      />
+    </div>
+  );
+
+  return (
+    <>
+      <LayoutSplit
+        left={leftContent}
+        right={rightContent}
+        mode={panelMode}
+        onModeChange={onPanelModeChange}
+      />
+      <SetupReductionForm
+        open={setupReductionFormShown}
+        onClose={() => showSetupReductionForm(false)}
+        caseId={caseDetail.id}
+        liens={liens}
+        liensLoadedAt={liensLoadedAt}
+        onRefreshLiens={onRefreshLiens}
+        isLiensFetching={isLiensFetching}
+        onSaved={() => {
+          showSetupReductionForm(false);
+          onRefreshLiens();
+          refetchHistory();
+        }}
+      />
+      <NoRecoveryForm
+        open={isNoRecoveryOpen}
+        onClose={() => setIsNoRecoveryOpen(false)}
+        caseId={caseDetail.id}
+        liens={liens}
+        liensLoadedAt={liensLoadedAt}
+        onRefreshLiens={onRefreshLiens}
+        isLiensFetching={isLiensFetching}
+        onSaved={() => {
+          setIsNoRecoveryOpen(false);
+          onRefreshLiens();
+          refetchHistory();
+        }}
+      />
+      <AddPaymentForm
+        open={isAddPaymentOpen}
+        onClose={() => setIsAddPaymentOpen(false)}
+        caseId={caseDetail.id}
+        liens={liens}
+        liensLoadedAt={liensLoadedAt}
+        onRefreshLiens={onRefreshLiens}
+        isLiensFetching={isLiensFetching}
+        onSaved={() => {
+          setIsAddPaymentOpen(false);
+          onRefreshPayments();
+          refetchHistory();
+        }}
+      />
+    </>
+  );
+}
