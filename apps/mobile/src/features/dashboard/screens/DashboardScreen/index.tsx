@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import Svg, { Circle, Defs, LinearGradient, Path, Polyline, Stop } from 'react-native-svg';
@@ -19,6 +18,7 @@ import {
 import type { DashboardDateRange, DashboardReportType } from '@/features/dashboard/types/types';
 import type { MainStackParamList } from '@/navigation/types/navigation';
 import { AppMenu } from '@/shared/components/AppMenu';
+import { DateRangePicker } from '@/shared/components/DateRangePicker';
 import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
@@ -213,32 +213,11 @@ function formatApiDate(date: Date): string {
   return `${padDatePart(date.getMonth() + 1)}/${padDatePart(date.getDate())}/${date.getFullYear()}`;
 }
 
-function parseApiDate(value: string): Date {
-  const [month, day, year] = value.split('/').map((part) => Number(part));
-  if (!month || !day || !year) {
-    return DEFAULT_DASHBOARD_DATE;
-  }
-
-  return new Date(year, month - 1, day);
-}
-
 function createSingleDayRange(date: Date): DashboardDateRange {
   const end = formatApiDate(date);
   const start = new Date(date);
   const lastMonth = new Date(start.setMonth(start.getMonth() - 1));
   return { startDate: formatApiDate(lastMonth), endDate: end };
-}
-
-function formatDateForDisplay(value: string): string {
-  return value.split('/').join(' / ');
-}
-
-function formatDateRangeLabel(dateRange: DashboardDateRange): string {
-  if (dateRange.startDate === dateRange.endDate) {
-    return formatDateForDisplay(dateRange.startDate);
-  }
-
-  return `${formatDateForDisplay(dateRange.startDate)} - ${formatDateForDisplay(dateRange.endDate)}`;
 }
 
 function buildDashboardReportFilter(dateRange: DashboardDateRange): ReportFilterRequest {
@@ -255,7 +234,6 @@ export function DashboardScreen() {
   const { colorScheme } = useNativeWindColorScheme();
   const [accountMode] = useAtom(accountModeAtom);
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [dateFilterVisible, setDateFilterVisible] = useState(false);
   const [dateRange, setDateRange] = useState<DashboardDateRange>(() =>
     createSingleDayRange(DEFAULT_DASHBOARD_DATE)
   );
@@ -280,10 +258,12 @@ export function DashboardScreen() {
           isDark={isDark}
           onOpenMenu={() => setDrawerVisible(true)}
         />
-        <DatePill
-          dateRange={dateRange}
+        <DateRangePicker
+          containerClassName="mt-4"
           isDark={isDark}
-          onPress={() => setDateFilterVisible(true)}
+          modalDescription="Filter dashboard reports by selected start and end dates."
+          value={dateRange}
+          onChange={setDateRange}
         />
         {accountMode === 'selling' ? (
           <SellingDashboard isDark={isDark} useDummyData={useDashboardDummyData} />
@@ -298,13 +278,6 @@ export function DashboardScreen() {
         )}
       </ScrollView>
       <AppMenu visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
-      <DateFilterModal
-        dateRange={dateRange}
-        isDark={isDark}
-        visible={dateFilterVisible}
-        onApply={setDateRange}
-        onClose={() => setDateFilterVisible(false)}
-      />
     </SafeAreaView>
   );
 }
@@ -376,145 +349,6 @@ function CircleButton({
       <Ionicons color={iconColor} name={icon} size={19} />
       {dot ? <View className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#ef4444]" /> : null}
     </Pressable>
-  );
-}
-
-function DatePill({
-  dateRange,
-  isDark,
-  onPress,
-}: {
-  dateRange: DashboardDateRange;
-  isDark: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      className="mt-4 h-9 flex-row items-center justify-between rounded-xl bg-white px-4 dark:bg-[#191a1f]"
-      style={{
-        shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
-        shadowOpacity: isDark ? 0.15 : 0.35,
-        shadowRadius: 8,
-        shadowOffset: { height: 3, width: 0 },
-        elevation: 1,
-      }}
-      onPress={onPress}
-    >
-      <Text className={cx(TYPE.dateLabel, 'text-[#6f737d] dark:text-[#a1a1aa]')}>
-        {formatDateRangeLabel(dateRange)}
-      </Text>
-      <Ionicons color={isDark ? '#a1a1aa' : '#6f737d'} name="calendar-clear-outline" size={16} />
-    </Pressable>
-  );
-}
-
-function DateFilterModal({
-  dateRange,
-  isDark,
-  visible,
-  onApply,
-  onClose,
-}: {
-  dateRange: DashboardDateRange;
-  isDark: boolean;
-  visible: boolean;
-  onApply: (dateRange: DashboardDateRange) => void;
-  onClose: () => void;
-}) {
-  const [draftStart, setDraftStart] = useState(() => parseApiDate(dateRange.startDate));
-  const [draftEnd, setDraftEnd] = useState(() => parseApiDate(dateRange.endDate));
-
-  useEffect(() => {
-    if (visible) {
-      setDraftStart(parseApiDate(dateRange.startDate));
-      setDraftEnd(parseApiDate(dateRange.endDate));
-    }
-  }, [dateRange.endDate, dateRange.startDate, visible]);
-
-  const handleStartChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (selectedDate) {
-      setDraftStart(selectedDate);
-    }
-  };
-
-  const handleEndChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (selectedDate) {
-      setDraftEnd(selectedDate);
-    }
-  };
-
-  const handleApply = () => {
-    const start = draftStart <= draftEnd ? draftStart : draftEnd;
-    const end = draftStart <= draftEnd ? draftEnd : draftStart;
-    onApply({
-      startDate: formatApiDate(start),
-      endDate: formatApiDate(end),
-    });
-    onClose();
-  };
-
-  return (
-    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
-      <View className="flex-1 justify-end bg-black/35 px-4 pb-6 dark:bg-black/70">
-        <View
-          className="rounded-[20px] bg-white p-5 dark:bg-[#191a1f]"
-          style={{
-            shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
-            shadowOpacity: isDark ? 0.28 : 0.45,
-            shadowRadius: 12,
-            shadowOffset: { height: 6, width: 0 },
-            elevation: 4,
-          }}
-        >
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className={cx(TYPE.cardTitle, 'text-[#202228] dark:text-white')}>
-              Filter dashboard dates
-            </Text>
-            <Pressable accessibilityRole="button" hitSlop={12} onPress={onClose}>
-              <Ionicons color={isDark ? '#a1a1aa' : '#6f737d'} name="close-outline" size={22} />
-            </Pressable>
-          </View>
-
-          <DatePickerRow date={draftStart} label="Start date" onChange={handleStartChange} />
-          <DatePickerRow date={draftEnd} label="End date" onChange={handleEndChange} />
-
-          <View className="mt-5 flex-row gap-3">
-            <Pressable
-              accessibilityRole="button"
-              className="h-10 flex-1 items-center justify-center rounded-full bg-[#ececee] dark:bg-[#2a2b30]"
-              onPress={onClose}
-            >
-              <Text className={cx(TYPE.cta, 'text-[#555964] dark:text-[#e7e7e9]')}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              className="h-10 flex-1 items-center justify-center rounded-full bg-[#f97332]"
-              onPress={handleApply}
-            >
-              <Text className={cx(TYPE.cta, 'text-[#15161a]')}>Apply</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function DatePickerRow({
-  date,
-  label,
-  onChange,
-}: {
-  date: Date;
-  label: string;
-  onChange: (event: DateTimePickerEvent, selectedDate?: Date) => void;
-}) {
-  return (
-    <View className="mb-3 rounded-[14px] bg-[#f6f6f7] px-4 py-3 dark:bg-[#222328]">
-      <Text className={cx(TYPE.formLabel, 'mb-2 text-[#71717a] dark:text-[#a1a1aa]')}>{label}</Text>
-      <DateTimePicker mode="date" value={date} onChange={onChange} />
-    </View>
   );
 }
 

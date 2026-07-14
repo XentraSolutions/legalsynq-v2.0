@@ -6,6 +6,7 @@ export * from './Button';
 export * from './Card';
 export * from './Checkbox';
 export * from './Chip';
+export * from './DateRangePicker';
 export * from './Divider';
 export * from './EmptyState';
 export * from './ErrorBoundary';

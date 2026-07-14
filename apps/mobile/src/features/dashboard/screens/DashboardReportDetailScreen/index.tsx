@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -15,6 +15,7 @@ import {
 } from '@/features/dashboard/hooks';
 import type { DashboardReportType } from '@/features/dashboard/types/types';
 import type { MainStackParamList } from '@/navigation/types/navigation';
+import { SearchBar } from '@/shared/components/SearchBar';
 import type {
   DashboardLawFirmCaseReportRow,
   DashboardMedicalProviderReportRow,
@@ -24,7 +25,6 @@ import type {
   ReportFilterRequest,
 } from '@/shared/api/endpoints/Cases';
 import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
-import type { PagedResult } from '@/shared/types/api';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
 
 type DetailRoute = RouteProp<MainStackParamList, 'DashboardReportDetail'>;
@@ -40,6 +40,7 @@ type DetailSlice = {
 
 type BreakdownItem = {
   id: string;
+  key: string;
   status: string;
   statusColor?: string;
   showStatus?: boolean;
@@ -82,6 +83,20 @@ type ReportPaginationMeta = {
   totalPages: number;
 };
 
+type BreakdownSortField = 'caseId' | 'dateOfLoss' | 'entity' | 'name' | 'plaintiff' | 'status';
+
+type BreakdownSortDirection = 'asc' | 'desc';
+
+type BreakdownSortOption = {
+  field: BreakdownSortField;
+  label: string;
+};
+
+type BreakdownFilterOption = {
+  id: string;
+  label: string;
+};
+
 const ORANGE = '#f97332';
 const BLUE = '#3b82f6';
 const GREEN = '#22c55e';
@@ -89,6 +104,8 @@ const YELLOW = '#f5b800';
 const RED = '#ef4444';
 const SLICE_COLORS = [BLUE, ORANGE, GREEN, YELLOW, RED];
 const DETAIL_PAGE_SIZE = 5;
+const DETAIL_FILTER_LIMIT = 10000;
+const ALL_FILTER_ID = 'all';
 
 const TOTAL_LIEN_FALLBACK: DetailSlice[] = [
   {
@@ -164,76 +181,14 @@ function formatDateRangeLabel(dateRange: { endDate: string; startDate: string })
 
 function buildDashboardReportFilter(
   dateRange: { endDate: string; startDate: string },
-  page: number
+  page: number,
+  limit = DETAIL_PAGE_SIZE
 ): ReportFilterRequest {
   return {
     page,
-    limit: DETAIL_PAGE_SIZE,
+    limit,
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
-  };
-}
-
-function getReportPagination(
-  reportType: DashboardReportType,
-  totalLienReport: PagedResult<DashboardTotalLienReportRow> | undefined,
-  totalCaseReport: PagedResult<DashboardTotalCaseReportRow> | undefined,
-  lawFirmReport: PagedResult<DashboardLawFirmCaseReportRow> | undefined,
-  medicalProviderReport: PagedResult<DashboardMedicalProviderReportRow> | undefined,
-  currentPage: number
-): ReportPaginationMeta | undefined {
-  if (reportType === 'total-cases') {
-    if (!totalCaseReport) return undefined;
-    const totalCount = totalCaseReport.totalCount;
-    if (!totalCount) return undefined;
-    return {
-      page: totalCaseReport.page,
-      pageSize: DETAIL_PAGE_SIZE,
-      totalCount,
-      totalPages: Math.max(1, Math.ceil(totalCount / DETAIL_PAGE_SIZE)),
-    };
-  }
-
-  if (reportType === 'law-firm-allocation') {
-    if (!lawFirmReport) return undefined;
-    const totalCount = lawFirmReport.totalCount;
-    if (!totalCount) return undefined;
-    return {
-      page: currentPage,
-      pageSize: DETAIL_PAGE_SIZE,
-      totalCount,
-      totalPages: Math.max(1, Math.ceil(totalCount / DETAIL_PAGE_SIZE)),
-    };
-  }
-
-  if (reportType === 'medical-facility-allocation') {
-    if (!medicalProviderReport) return undefined;
-    const totalCount = medicalProviderReport.totalCount;
-    if (!totalCount) return undefined;
-    return {
-      page: currentPage,
-      pageSize: DETAIL_PAGE_SIZE,
-      totalCount,
-      totalPages: Math.max(1, Math.ceil(totalCount / DETAIL_PAGE_SIZE)),
-    };
-  }
-
-  return totalLienReport;
-}
-
-function getDummyReportPagination(reportType: DashboardReportType): ReportPaginationMeta {
-  const totalCount = {
-    'law-firm-allocation': LAW_FIRM_FALLBACK.length,
-    'medical-facility-allocation': FACILITY_FALLBACK.length,
-    'total-cases': TOTAL_CASES_FALLBACK.length,
-    'total-liens': LIEN_BREAKDOWN.length,
-  }[reportType];
-
-  return {
-    page: 1,
-    pageSize: DETAIL_PAGE_SIZE,
-    totalCount,
-    totalPages: Math.max(1, Math.ceil(totalCount / DETAIL_PAGE_SIZE)),
   };
 }
 
@@ -259,6 +214,207 @@ function formatPaginationRange(pagination: ReportPaginationMeta): string {
   return `Showing ${start}-${end} of ${pagination.totalCount}`;
 }
 
+function normalizeFilterId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function buildBreakdownKey(prefix: string, index: number, ...parts: string[]): string {
+  const normalizedParts = parts
+    .map((part) => normalizeFilterId(part).replace(/[^a-z0-9]+/g, '-'))
+    .filter(Boolean)
+    .join('-');
+
+  return `${prefix}-${index}-${normalizedParts || 'row'}`;
+}
+
+function getBreakdownFieldValue(item: BreakdownItem, labels: string[]): string {
+  const normalizedLabels = labels.map((label) => normalizeFilterId(label));
+  return (
+    item.fields.find((field) => normalizedLabels.includes(normalizeFilterId(field.label)))?.value ??
+    ''
+  );
+}
+
+function getBreakdownFilterLabel(reportType: DashboardReportType): string {
+  if (reportType === 'total-liens') return 'Lien status';
+  if (reportType === 'total-cases') return 'Case status';
+  if (reportType === 'law-firm-allocation') return 'Law firm';
+  return 'Medical facility';
+}
+
+function getSearchPlaceholder(reportType: DashboardReportType): string {
+  if (reportType === 'total-liens') return 'Search liens';
+  if (reportType === 'total-cases') return 'Search cases';
+  if (reportType === 'law-firm-allocation') return 'Search law firm cases';
+  return 'Search medical facility cases';
+}
+
+function getBreakdownFilterValue(reportType: DashboardReportType, item: BreakdownItem): string {
+  if (reportType === 'total-liens' || reportType === 'total-cases') {
+    return item.status;
+  }
+
+  if (reportType === 'law-firm-allocation') {
+    return getBreakdownFieldValue(item, ['Law Firm']);
+  }
+
+  return getBreakdownFieldValue(item, ['Medical Facility', 'MedicalFacility']);
+}
+
+function getBreakdownFilterOptions(
+  reportType: DashboardReportType,
+  items: BreakdownItem[]
+): BreakdownFilterOption[] {
+  const options = new Map<string, string>();
+
+  for (const item of items) {
+    const value = getBreakdownFilterValue(reportType, item);
+    if (value && value !== 'N/A') {
+      options.set(normalizeFilterId(value), value);
+    }
+  }
+
+  return [
+    { id: ALL_FILTER_ID, label: 'All' },
+    ...Array.from(options.entries())
+      .sort((left, right) => left[1].localeCompare(right[1], undefined, { sensitivity: 'base' }))
+      .map(([id, label]) => ({ id, label })),
+  ];
+}
+
+function getSelectedFilterLabel(
+  options: BreakdownFilterOption[],
+  selectedFilterIds: string[]
+): string {
+  if (selectedFilterIds.includes(ALL_FILTER_ID)) return 'All';
+
+  const selectedLabels = options
+    .filter((option) => selectedFilterIds.includes(option.id))
+    .map((option) => option.label);
+
+  if (selectedLabels.length === 0) return 'All';
+  if (selectedLabels.length === 1) return selectedLabels[0];
+  return `${selectedLabels.length} selected`;
+}
+
+function getSelectableFilterIds(options: BreakdownFilterOption[]): string[] {
+  return options.filter((option) => option.id !== ALL_FILTER_ID).map((option) => option.id);
+}
+
+function toggleSelectedFilterId(
+  selectedFilterIds: string[],
+  filterId: string,
+  options: BreakdownFilterOption[]
+): string[] {
+  if (filterId === ALL_FILTER_ID) {
+    return [ALL_FILTER_ID];
+  }
+
+  const selectableFilterIds = getSelectableFilterIds(options);
+  const currentSelection = selectedFilterIds.includes(ALL_FILTER_ID)
+    ? []
+    : selectedFilterIds.filter((id) => selectableFilterIds.includes(id));
+  const nextSelection = currentSelection.includes(filterId)
+    ? currentSelection.filter((id) => id !== filterId)
+    : [...currentSelection, filterId];
+
+  if (nextSelection.length === 0 || nextSelection.length === selectableFilterIds.length) {
+    return [ALL_FILTER_ID];
+  }
+
+  return nextSelection;
+}
+
+function getBreakdownSortOptions(reportType: DashboardReportType): BreakdownSortOption[] {
+  if (reportType === 'total-liens') {
+    return [
+      { field: 'name', label: 'Lien ID' },
+      { field: 'status', label: 'Lien Status' },
+      { field: 'caseId', label: 'Case ID' },
+      { field: 'plaintiff', label: 'Plaintiff' },
+    ];
+  }
+
+  if (reportType === 'total-cases') {
+    return [
+      { field: 'name', label: 'Client' },
+      { field: 'status', label: 'Case Status' },
+      { field: 'caseId', label: 'Case ID' },
+      { field: 'dateOfLoss', label: 'Date of Loss' },
+    ];
+  }
+
+  return [
+    { field: 'name', label: 'Client' },
+    {
+      field: 'entity',
+      label: reportType === 'law-firm-allocation' ? 'Law Firm' : 'Medical Facility',
+    },
+    { field: 'caseId', label: 'Case ID' },
+    { field: 'dateOfLoss', label: 'Date of Loss' },
+  ];
+}
+
+function getSortValue(item: BreakdownItem, field: BreakdownSortField): string {
+  if (field === 'name') return item.id;
+  if (field === 'status') return item.status;
+  if (field === 'caseId') return getBreakdownFieldValue(item, ['Case ID']);
+  if (field === 'dateOfLoss') return getBreakdownFieldValue(item, ['Date of Loss']);
+  if (field === 'plaintiff') return getBreakdownFieldValue(item, ['Plaintiff Name']);
+  return getBreakdownFieldValue(item, ['Law Firm', 'Medical Facility', 'MedicalFacility']);
+}
+
+function matchesSearchQuery(item: BreakdownItem, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+
+  const searchableText = [
+    item.id,
+    item.status,
+    ...item.fields.flatMap((field) => [field.label, field.value]),
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return searchableText.includes(normalizedQuery);
+}
+
+function filterAndSortBreakdownItems({
+  filterIds,
+  items,
+  query,
+  reportType,
+  sortDirection,
+  sortField,
+}: {
+  filterIds: string[];
+  items: BreakdownItem[];
+  query: string;
+  reportType: DashboardReportType;
+  sortDirection: BreakdownSortDirection;
+  sortField: BreakdownSortField;
+}): BreakdownItem[] {
+  const filtered = items.filter((item) => {
+    const filterMatches =
+      filterIds.length === 0 ||
+      filterIds.includes(ALL_FILTER_ID) ||
+      filterIds.includes(normalizeFilterId(getBreakdownFilterValue(reportType, item)));
+    return filterMatches && matchesSearchQuery(item, query);
+  });
+
+  return filtered.sort((left, right) => {
+    const comparison = getSortValue(left, sortField).localeCompare(
+      getSortValue(right, sortField),
+      undefined,
+      {
+        numeric: true,
+        sensitivity: 'base',
+      }
+    );
+    return sortDirection === 'asc' ? comparison : -comparison;
+  });
+}
+
 export function DashboardReportDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<DetailRoute>();
@@ -269,14 +425,28 @@ export function DashboardReportDetailScreen() {
   const useDashboardDummyData = dashboardSettings.useDummyData;
   const reportsEnabled = dashboardSettingsHydrated && !useDashboardDummyData;
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFilterIds, setSelectedFilterIds] = useState<string[]>([ALL_FILTER_ID]);
+  const [sortField, setSortField] = useState<BreakdownSortField>('name');
+  const [sortDirection, setSortDirection] = useState<BreakdownSortDirection>('asc');
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [sortSheetVisible, setSortSheetVisible] = useState(false);
 
   useEffect(() => {
     setCurrentPage(1);
+    setSearchQuery('');
+    setSelectedFilterIds([ALL_FILTER_ID]);
+    setSortField('name');
+    setSortDirection('asc');
   }, [route.params.dateRange.endDate, route.params.dateRange.startDate, route.params.reportType]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedFilterIds, sortDirection, sortField]);
+
   const reportFilter = useMemo(
-    () => buildDashboardReportFilter(route.params.dateRange, currentPage),
-    [currentPage, route.params.dateRange]
+    () => buildDashboardReportFilter(route.params.dateRange, 1, DETAIL_FILTER_LIMIT),
+    [route.params.dateRange]
   );
   const reportPeriodLabel = useMemo(
     () => formatDateRangeLabel(route.params.dateRange),
@@ -284,48 +454,12 @@ export function DashboardReportDetailScreen() {
   );
   const { data: totalLienReport } = useDashboardTotalLienReport(reportFilter, reportsEnabled);
   const { data: totalCaseReport } = useDashboardTotalCaseReport(reportFilter, reportsEnabled);
-  const lawFirmAllRowsFilter = useMemo(
-    () => ({ ...buildDashboardReportFilter(route.params.dateRange, 1), limit: 10000 }),
-    [route.params.dateRange]
-  );
-  const { data: lawFirmReport } = useDashboardLawFirmCaseReport(
-    lawFirmAllRowsFilter,
-    reportsEnabled
-  );
-  const medicalProviderAllRowsFilter = useMemo(
-    () => ({ ...buildDashboardReportFilter(route.params.dateRange, 1), limit: 100 }),
-    [route.params.dateRange]
-  );
+  const { data: lawFirmReport } = useDashboardLawFirmCaseReport(reportFilter, reportsEnabled);
   const { data: medicalProviderReport } = useDashboardMedicalProviderReport(
-    medicalProviderAllRowsFilter,
+    reportFilter,
     reportsEnabled
   );
   const { data: piechartData } = useDashboardPiechart();
-  const pagination = useMemo(
-    () =>
-      useDashboardDummyData
-        ? getDummyReportPagination(route.params.reportType)
-        : getReportPagination(
-            route.params.reportType,
-            totalLienReport,
-            totalCaseReport,
-            lawFirmReport,
-            medicalProviderReport,
-            currentPage
-          ),
-    [
-      currentPage,
-      lawFirmReport,
-      medicalProviderReport,
-      route.params.reportType,
-      totalCaseReport,
-      totalLienReport,
-      useDashboardDummyData,
-    ]
-  );
-  const normalizedPagination = normalizePagination(pagination, currentPage);
-  const canGoPrevious = normalizedPagination.page > 1;
-  const canGoNext = normalizedPagination.page < normalizedPagination.totalPages;
   const report = useMemo(
     () =>
       buildReport(
@@ -336,11 +470,9 @@ export function DashboardReportDetailScreen() {
         medicalProviderReport?.items ?? [],
         reportPeriodLabel,
         useDashboardDummyData,
-        piechartData,
-        currentPage
+        piechartData
       ),
     [
-      currentPage,
       lawFirmReport?.items,
       medicalProviderReport?.items,
       piechartData,
@@ -351,6 +483,71 @@ export function DashboardReportDetailScreen() {
       useDashboardDummyData,
     ]
   );
+  const filterLabel = getBreakdownFilterLabel(route.params.reportType);
+  const filterOptions = useMemo(
+    () => getBreakdownFilterOptions(route.params.reportType, report.breakdownItems),
+    [report.breakdownItems, route.params.reportType]
+  );
+  const sortOptions = useMemo(
+    () => getBreakdownSortOptions(route.params.reportType),
+    [route.params.reportType]
+  );
+  const selectedFilterLabel = getSelectedFilterLabel(filterOptions, selectedFilterIds);
+  const selectedSortLabel =
+    sortOptions.find((option) => option.field === sortField)?.label ?? 'Name';
+  const filteredBreakdownItems = useMemo(
+    () =>
+      filterAndSortBreakdownItems({
+        filterIds: selectedFilterIds,
+        items: report.breakdownItems,
+        query: searchQuery,
+        reportType: route.params.reportType,
+        sortDirection,
+        sortField,
+      }),
+    [
+      report.breakdownItems,
+      route.params.reportType,
+      searchQuery,
+      selectedFilterIds,
+      sortDirection,
+      sortField,
+    ]
+  );
+  const normalizedPagination = normalizePagination(
+    {
+      page: currentPage,
+      pageSize: DETAIL_PAGE_SIZE,
+      totalCount: filteredBreakdownItems.length,
+      totalPages: Math.max(1, Math.ceil(filteredBreakdownItems.length / DETAIL_PAGE_SIZE)),
+    },
+    currentPage
+  );
+  const pagedBreakdownItems = filteredBreakdownItems.slice(
+    (normalizedPagination.page - 1) * normalizedPagination.pageSize,
+    normalizedPagination.page * normalizedPagination.pageSize
+  );
+  const canGoPrevious = normalizedPagination.page > 1;
+  const canGoNext = normalizedPagination.page < normalizedPagination.totalPages;
+
+  useEffect(() => {
+    const validFilterIds = new Set(filterOptions.map((option) => option.id));
+    const validSelection = selectedFilterIds.filter((filterId) => validFilterIds.has(filterId));
+    if (
+      validSelection.length === 0 ||
+      validSelection.includes(ALL_FILTER_ID) ||
+      validSelection.length === getSelectableFilterIds(filterOptions).length
+    ) {
+      if (selectedFilterIds.length !== 1 || selectedFilterIds[0] !== ALL_FILTER_ID) {
+        setSelectedFilterIds([ALL_FILTER_ID]);
+      }
+      return;
+    }
+
+    if (validSelection.length !== selectedFilterIds.length) {
+      setSelectedFilterIds(validSelection);
+    }
+  }, [filterOptions, selectedFilterIds]);
 
   useEffect(() => {
     if (currentPage > normalizedPagination.totalPages) {
@@ -388,6 +585,20 @@ export function DashboardReportDetailScreen() {
         </View>
 
         <View className="px-6 py-3">
+          <ReportTopControls
+            filterLabel={selectedFilterLabel}
+            isDark={isDark}
+            searchPlaceholder={getSearchPlaceholder(route.params.reportType)}
+            searchQuery={searchQuery}
+            sortDirection={sortDirection}
+            sortLabel={selectedSortLabel}
+            onOpenFilter={() => setFilterSheetVisible(true)}
+            onOpenSort={() => setSortSheetVisible(true)}
+            onSearchChange={setSearchQuery}
+          />
+        </View>
+
+        <View className="px-6 py-3">
           <ReportCard isDark={isDark}>
             <LargeDonutChart
               centerCaption={report.centerCaption}
@@ -398,7 +609,7 @@ export function DashboardReportDetailScreen() {
               {report.slices.length > 0 ? (
                 report.slices.map((slice, index) => (
                   <DetailLegendRow
-                    key={slice.label}
+                    key={`${slice.label}-${index}`}
                     isLast={index === report.slices.length - 1}
                     slice={slice}
                   />
@@ -430,19 +641,21 @@ export function DashboardReportDetailScreen() {
               />
             </View>
 
-            {report.breakdownItems.length > 0 ? (
-              report.breakdownItems.map((item, index) => (
+            {pagedBreakdownItems.length > 0 ? (
+              pagedBreakdownItems.map((item, index) => (
                 <BreakdownCard
-                  isLast={index === report.breakdownItems.length - 1}
+                  isLast={index === pagedBreakdownItems.length - 1}
                   item={item}
-                  key={item.id}
+                  key={item.key}
                 />
               ))
             ) : (
               <Text
                 className={cx(TYPE.rowMuted, 'py-6 text-center text-[#8d9098] dark:text-[#8f929b]')}
               >
-                No detailed records available.
+                {report.breakdownItems.length > 0
+                  ? 'No records match the active filters.'
+                  : 'No detailed records available.'}
               </Text>
             )}
 
@@ -480,6 +693,29 @@ export function DashboardReportDetailScreen() {
           </ReportCard>
         </View>
       </ScrollView>
+      <FilterBySheet
+        filterLabel={filterLabel}
+        isDark={isDark}
+        options={filterOptions}
+        selectedFilterIds={selectedFilterIds}
+        visible={filterSheetVisible}
+        onClose={() => setFilterSheetVisible(false)}
+        onSelect={(filterId) => {
+          setSelectedFilterIds((currentFilterIds) =>
+            toggleSelectedFilterId(currentFilterIds, filterId, filterOptions)
+          );
+        }}
+      />
+      <SortBySheet
+        isDark={isDark}
+        selectedDirection={sortDirection}
+        selectedField={sortField}
+        visible={sortSheetVisible}
+        options={sortOptions}
+        onClose={() => setSortSheetVisible(false)}
+        onDirectionChange={setSortDirection}
+        onFieldChange={setSortField}
+      />
     </SafeAreaView>
   );
 }
@@ -536,6 +772,269 @@ function ReportCard({
   );
 }
 
+function ReportTopControls({
+  filterLabel,
+  isDark,
+  searchPlaceholder,
+  searchQuery,
+  sortDirection,
+  sortLabel,
+  onOpenFilter,
+  onOpenSort,
+  onSearchChange,
+}: {
+  filterLabel: string;
+  isDark: boolean;
+  searchPlaceholder: string;
+  searchQuery: string;
+  sortDirection: BreakdownSortDirection;
+  sortLabel: string;
+  onOpenFilter: () => void;
+  onOpenSort: () => void;
+  onSearchChange: (query: string) => void;
+}) {
+  return (
+    <View className="gap-3">
+      <SearchBar
+        placeholder={searchPlaceholder}
+        value={searchQuery}
+        onChangeText={onSearchChange}
+      />
+      <View className="flex-row gap-3">
+        <ReportActionButton
+          icon="filter-outline"
+          isDark={isDark}
+          label="Filter By"
+          value={filterLabel}
+          onPress={onOpenFilter}
+        />
+        <ReportActionButton
+          icon="swap-vertical-outline"
+          isDark={isDark}
+          label="Sort By"
+          value={`${sortLabel} · ${sortDirection === 'asc' ? 'Asc' : 'Desc'}`}
+          onPress={onOpenSort}
+        />
+      </View>
+    </View>
+  );
+}
+
+function ReportActionButton({
+  icon,
+  isDark,
+  label,
+  value,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  isDark: boolean;
+  label: string;
+  value: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      className="h-12 flex-1 flex-row items-center gap-2 rounded-[14px] bg-white px-3 dark:bg-[#191a1f]"
+      style={{
+        shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
+        shadowOpacity: isDark ? 0.16 : 0.4,
+        shadowRadius: 8,
+        shadowOffset: { height: 3, width: 0 },
+        elevation: 2,
+      }}
+      onPress={onPress}
+    >
+      <View className="h-8 w-8 items-center justify-center rounded-full bg-[#f3f4f6] dark:bg-[#25262b]">
+        <Ionicons color={isDark ? '#e7e7e9' : '#525762'} name={icon} size={16} />
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text className={cx(TYPE.microStrong, 'text-[#18181b] dark:text-white')}>{label}</Text>
+        <Text
+          className={cx(TYPE.formLabel, 'mt-0.5 text-[#71717a] dark:text-[#a1a1aa]')}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+      </View>
+      <Ionicons color={isDark ? '#a1a1aa' : '#71717a'} name="chevron-down-outline" size={15} />
+    </Pressable>
+  );
+}
+
+function FilterBySheet({
+  filterLabel,
+  isDark,
+  options,
+  selectedFilterIds,
+  visible,
+  onClose,
+  onSelect,
+}: {
+  filterLabel: string;
+  isDark: boolean;
+  options: BreakdownFilterOption[];
+  selectedFilterIds: string[];
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (filterId: string) => void;
+}) {
+  return (
+    <ReportOptionSheet
+      description={`Choose one or more ${filterLabel.toLowerCase()} values to narrow the detailed breakdown.`}
+      isDark={isDark}
+      title={`Filter by ${filterLabel}`}
+      visible={visible}
+      onClose={onClose}
+    >
+      {options.map((option) => (
+        <OptionRow
+          key={option.id}
+          label={option.label}
+          selected={selectedFilterIds.includes(option.id)}
+          onPress={() => onSelect(option.id)}
+        />
+      ))}
+    </ReportOptionSheet>
+  );
+}
+
+function SortBySheet({
+  isDark,
+  options,
+  selectedDirection,
+  selectedField,
+  visible,
+  onClose,
+  onDirectionChange,
+  onFieldChange,
+}: {
+  isDark: boolean;
+  options: BreakdownSortOption[];
+  selectedDirection: BreakdownSortDirection;
+  selectedField: BreakdownSortField;
+  visible: boolean;
+  onClose: () => void;
+  onDirectionChange: (direction: BreakdownSortDirection) => void;
+  onFieldChange: (field: BreakdownSortField) => void;
+}) {
+  return (
+    <ReportOptionSheet
+      description="Choose the field and direction for the detailed breakdown."
+      isDark={isDark}
+      title="Sort by"
+      visible={visible}
+      onClose={onClose}
+    >
+      <Text className={cx(TYPE.formLabel, 'mb-2 text-[#71717a] dark:text-[#a1a1aa]')}>Field</Text>
+      {options.map((option) => (
+        <OptionRow
+          key={option.field}
+          label={option.label}
+          selected={selectedField === option.field}
+          onPress={() => onFieldChange(option.field)}
+        />
+      ))}
+      <Text className={cx(TYPE.formLabel, 'mb-2 mt-4 text-[#71717a] dark:text-[#a1a1aa]')}>
+        Direction
+      </Text>
+      <OptionRow
+        label="Ascending"
+        selected={selectedDirection === 'asc'}
+        onPress={() => onDirectionChange('asc')}
+      />
+      <OptionRow
+        label="Descending"
+        selected={selectedDirection === 'desc'}
+        onPress={() => onDirectionChange('desc')}
+      />
+    </ReportOptionSheet>
+  );
+}
+
+function ReportOptionSheet({
+  children,
+  description,
+  isDark,
+  title,
+  visible,
+  onClose,
+}: {
+  children: ReactNode;
+  description: string;
+  isDark: boolean;
+  title: string;
+  visible: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <View className="flex-1 justify-end bg-black/35 px-4 pb-6 dark:bg-black/70">
+        <View
+          className="max-h-[80%] rounded-[24px] bg-white p-4 dark:bg-[#191a1f]"
+          style={{
+            shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
+            shadowOpacity: isDark ? 0.28 : 0.45,
+            shadowRadius: 12,
+            shadowOffset: { height: 6, width: 0 },
+            elevation: 4,
+          }}
+        >
+          <View className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#d7d9de] dark:bg-[#3a3b42]" />
+          <View className="mb-4 flex-row items-start justify-between gap-4">
+            <View className="flex-1">
+              <Text className={cx(TYPE.cardTitle, 'text-[#18181b] dark:text-white')}>{title}</Text>
+              <Text className={cx(TYPE.cardDescription, 'mt-1 text-[#71717a] dark:text-[#a1a1aa]')}>
+                {description}
+              </Text>
+            </View>
+            <Pressable accessibilityRole="button" hitSlop={12} onPress={onClose}>
+              <Ionicons color={isDark ? '#a1a1aa' : '#71717a'} name="close-outline" size={22} />
+            </Pressable>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View className="pb-2">{children}</View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function OptionRow({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      className={cx(
+        'mb-2 min-h-[48px] flex-row items-center justify-between rounded-[14px] border px-4',
+        selected
+          ? 'border-[#f97332] bg-[#fff1e9] dark:bg-[#3b2418]'
+          : 'border-[#eeeeef] bg-white dark:border-[#33343a] dark:bg-[#202126]'
+      )}
+      onPress={onPress}
+    >
+      <Text
+        className={cx(
+          TYPE.rowValue,
+          selected ? 'text-[#18181b] dark:text-white' : 'text-[#525762] dark:text-[#e7e7e9]'
+        )}
+      >
+        {label}
+      </Text>
+      {selected ? <Ionicons color="#f97332" name="checkmark-circle" size={20} /> : null}
+    </Pressable>
+  );
+}
+
 function LargeDonutChart({
   centerCaption,
   centerValue,
@@ -556,7 +1055,7 @@ function LargeDonutChart({
     <View className="items-center justify-center">
       <View className="h-[192px] w-[192px] items-center justify-center">
         <Svg height={size} width={size}>
-          {slices.map((slice) => {
+          {slices.map((slice, index) => {
             const length = (slice.value / total) * circumference;
             const dashOffset = -accumulated;
             accumulated += length;
@@ -565,7 +1064,7 @@ function LargeDonutChart({
                 cx={size / 2}
                 cy={size / 2}
                 fill="transparent"
-                key={slice.label}
+                key={`${slice.label}-${index}`}
                 r={radius}
                 stroke={slice.color}
                 strokeDasharray={`${length} ${circumference - length}`}
@@ -611,8 +1110,11 @@ function DetailLegendRow({ isLast, slice }: { isLast: boolean; slice: DetailSlic
           {slice.amount} {slice.percent}
         </Text>
       </View>
-      {slice.details?.map((detail) => (
-        <View className="mt-3 flex-row items-center justify-between pl-8" key={detail.label}>
+      {slice.details?.map((detail, detailIndex) => (
+        <View
+          className="mt-3 flex-row items-center justify-between pl-8"
+          key={`${detail.label}-${detailIndex}`}
+        >
           <Text className={cx(TYPE.rowMuted, 'text-[#8b8f99] dark:text-[#8f929b]')}>
             {detail.label}
           </Text>
@@ -642,8 +1144,11 @@ function BreakdownCard({ isLast, item }: { isLast: boolean; item: BreakdownItem 
         )}
       </View>
       <View className="mt-3 gap-3">
-        {item.fields.map((field) => (
-          <View className="flex-row items-center justify-between gap-3" key={field.label}>
+        {item.fields.map((field, fieldIndex) => (
+          <View
+            className="flex-row items-center justify-between gap-3"
+            key={`${field.label}-${fieldIndex}`}
+          >
             <View className="flex-row items-center gap-2">
               <Ionicons color="#8f929b" name={field.icon} size={14} />
               <Text className={cx(TYPE.rowMuted, 'text-[#71717a] dark:text-[#a1a1aa]')}>
@@ -789,8 +1294,7 @@ function buildReport(
   medicalProviderReport: DashboardMedicalProviderReportRow[],
   reportPeriodLabel: string,
   useDummyData: boolean,
-  piechartData: DashboardPiechart | undefined,
-  currentPage: number
+  piechartData: DashboardPiechart | undefined
 ): ReportModel {
   if (reportType === 'total-cases') {
     const reportData = useDummyData ? undefined : mapTotalCaseReportToDetail(totalCaseRows);
@@ -833,14 +1337,7 @@ function buildReport(
       centerCaption: 'Total Cases',
       slices,
       breakdownTitle: 'Detailed Breakdown',
-      breakdownItems: useDummyData
-        ? []
-        : lawFirmCaseRowsToBreakdownItems(
-            lawFirmReport.slice(
-              (currentPage - 1) * DETAIL_PAGE_SIZE,
-              currentPage * DETAIL_PAGE_SIZE
-            )
-          ),
+      breakdownItems: useDummyData ? [] : lawFirmCaseRowsToBreakdownItems(lawFirmReport),
     };
   }
 
@@ -858,12 +1355,7 @@ function buildReport(
       breakdownTitle: 'Detailed Breakdown',
       breakdownItems: useDummyData
         ? []
-        : medicalFacilityCaseRowsToBreakdownItems(
-            medicalProviderReport.slice(
-              (currentPage - 1) * DETAIL_PAGE_SIZE,
-              currentPage * DETAIL_PAGE_SIZE
-            )
-          ),
+        : medicalFacilityCaseRowsToBreakdownItems(medicalProviderReport),
     };
   }
 
@@ -891,7 +1383,7 @@ function totalCaseRowsToBreakdownItems(
   rows: DashboardTotalCaseReportRow[],
   statusColorMap: Map<string, string>
 ): BreakdownItem[] {
-  return rows.map((row) => {
+  return rows.map((row, index) => {
     const r = row as Record<string, unknown>;
 
     const name =
@@ -927,6 +1419,7 @@ function totalCaseRowsToBreakdownItems(
 
     return {
       id: name,
+      key: buildBreakdownKey('total-case', index, caseId, name, rawStatus),
       status: rawStatus,
       statusColor,
       fields: [
@@ -938,7 +1431,7 @@ function totalCaseRowsToBreakdownItems(
 }
 
 function lawFirmCaseRowsToBreakdownItems(rows: DashboardLawFirmCaseReportRow[]): BreakdownItem[] {
-  return rows.map((row) => {
+  return rows.map((row, index) => {
     const r = row as Record<string, unknown>;
 
     const name =
@@ -970,12 +1463,13 @@ function lawFirmCaseRowsToBreakdownItems(rows: DashboardLawFirmCaseReportRow[]):
 
     return {
       id: name,
+      key: buildBreakdownKey('law-firm-case', index, caseId, name, lawFirm),
       status: readReportText(r, ['status']) ?? 'Active',
       showStatus: false,
       fields: [
         { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
-        { icon: 'business-outline', label: 'Law Firm', value: lawFirm },
         { icon: 'calendar-outline', label: 'Date of Loss', value: dateOfLoss },
+        { icon: 'business-outline', label: 'Law Firm', value: lawFirm },
       ],
     };
   });
@@ -984,7 +1478,7 @@ function lawFirmCaseRowsToBreakdownItems(rows: DashboardLawFirmCaseReportRow[]):
 function medicalFacilityCaseRowsToBreakdownItems(
   rows: DashboardMedicalProviderReportRow[]
 ): BreakdownItem[] {
-  return rows.map((row) => {
+  return rows.map((row, index) => {
     const r = row as Record<string, unknown>;
 
     const name =
@@ -1016,12 +1510,13 @@ function medicalFacilityCaseRowsToBreakdownItems(
 
     return {
       id: name,
+      key: buildBreakdownKey('medical-case', index, caseId, name, facilityName),
       status: 'Active',
       showStatus: false,
       fields: [
         { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
         { icon: 'calendar-outline', label: 'Date of Loss', value: dateOfLoss },
-        { icon: 'medical-outline', label: 'MedicalFacility', value: facilityName },
+        { icon: 'medical-outline', label: 'Medical Facility', value: facilityName },
       ],
     };
   });
@@ -1035,6 +1530,7 @@ function createLienBreakdownItem(
 ): BreakdownItem {
   return {
     id: `Lien ID: ${lienId}`,
+    key: buildBreakdownKey('lien-fallback', 0, lienId, caseId, plaintiffName),
     status,
     fields: [
       { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
@@ -1244,48 +1740,41 @@ function mapTotalCaseReportToDetail(
 }
 
 function lienRowsToBreakdownItems(rows: DashboardTotalLienReportRow[]): BreakdownItem[] {
-  return rows
-    .map((row, index) => {
-      const record = row as Record<string, unknown>;
-      const status = normalizeLienStatusLabel(
-        readReportText(record, [
-          'status',
-          'lienStatus',
-          'lienStatusName',
-          'statusName',
-          'label',
-          'name',
-        ])
-      );
-      const lienId =
-        readReportText(record, [
-          'lienId',
-          'liensId',
-          'lienCode',
-          'liensCode',
-          'lienNumber',
-          'id',
-        ]) ?? String(index + 1);
-      const fields: BreakdownItem['fields'] = [
-        {
-          icon: 'briefcase-outline',
-          label: 'Case ID',
-          value: readReportText(record, ['caseId']) ?? 'N/A',
-        },
-        {
-          icon: 'person-outline',
-          label: 'Plaintiff Name',
-          value: readReportText(record, ['clientName']) ?? 'N/A',
-        },
-      ];
+  return rows.map((row, index) => {
+    const record = row as Record<string, unknown>;
+    const status = normalizeLienStatusLabel(
+      readReportText(record, [
+        'status',
+        'lienStatus',
+        'lienStatusName',
+        'statusName',
+        'label',
+        'name',
+      ])
+    );
+    const lienId =
+      readReportText(record, ['lienId', 'liensId', 'lienCode', 'liensCode', 'lienNumber', 'id']) ??
+      String(index + 1);
+    const fields: BreakdownItem['fields'] = [
+      {
+        icon: 'briefcase-outline',
+        label: 'Case ID',
+        value: readReportText(record, ['caseId']) ?? 'N/A',
+      },
+      {
+        icon: 'person-outline',
+        label: 'Plaintiff Name',
+        value: readReportText(record, ['clientName']) ?? 'N/A',
+      },
+    ];
 
-      return {
-        id: `Lien ID: ${lienId}`,
-        status,
-        fields,
-      };
-    })
-    .slice(0, 5);
+    return {
+      id: `Lien ID: ${lienId}`,
+      key: buildBreakdownKey('total-lien', index, lienId, status),
+      status,
+      fields,
+    };
+  });
 }
 
 function readLawFirmId(row: DashboardLawFirmCaseReportRow): string {
