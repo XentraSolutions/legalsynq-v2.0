@@ -27,32 +27,41 @@ internal sealed class EmailModuleSeeder : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        using var scope = _services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<XeniaDbContext>();
-
-        var exists = await db.Modules
-            .AnyAsync(m => m.ModuleKey == EmailModuleKeys.ModuleKey, cancellationToken);
-
-        if (exists)
+        try
         {
-            _logger.LogDebug(
-                "Email module already registered — skipping seed. ModuleKey={ModuleKey}",
-                EmailModuleKeys.ModuleKey);
-            return;
+            using var scope = _services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<XeniaDbContext>();
+
+            var exists = await db.Modules
+                .AnyAsync(m => m.ModuleKey == EmailModuleKeys.ModuleKey, cancellationToken);
+
+            if (exists)
+            {
+                _logger.LogDebug(
+                    "Email module already registered — skipping seed. ModuleKey={ModuleKey}",
+                    EmailModuleKeys.ModuleKey);
+                return;
+            }
+
+            var registry = scope.ServiceProvider.GetRequiredService<IModuleRegistry>();
+            await registry.RegisterModuleAsync(
+                moduleKey: EmailModuleKeys.ModuleKey,
+                name: EmailModuleKeys.ModuleName,
+                version: EmailModuleKeys.ModuleVersion,
+                description: EmailModuleKeys.ModuleDescription,
+                configurationNamespace: EmailModuleKeys.ConfigurationNamespace,
+                cancellationToken);
+
+            _logger.LogInformation(
+                "Email module registered. Key={ModuleKey} Version={Version}",
+                EmailModuleKeys.ModuleKey, EmailModuleKeys.ModuleVersion);
         }
-
-        var registry = scope.ServiceProvider.GetRequiredService<IModuleRegistry>();
-        await registry.RegisterModuleAsync(
-            moduleKey: EmailModuleKeys.ModuleKey,
-            name: EmailModuleKeys.ModuleName,
-            version: EmailModuleKeys.ModuleVersion,
-            description: EmailModuleKeys.ModuleDescription,
-            configurationNamespace: EmailModuleKeys.ConfigurationNamespace,
-            cancellationToken);
-
-        _logger.LogInformation(
-            "Email module registered. Key={ModuleKey} Version={Version}",
-            EmailModuleKeys.ModuleKey, EmailModuleKeys.ModuleVersion);
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "EmailModuleSeeder failed (no database connection). " +
+                "Email module will not be registered in the module registry until a database is configured.");
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

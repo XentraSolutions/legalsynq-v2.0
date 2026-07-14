@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Xenia.Application.Adapters;
 using Xenia.Application.Adapters.Interfaces;
 using Xenia.Application.Assistant;
+using Xenia.Application.Automation;
 using Xenia.Infrastructure.Automation;
 using Xenia.Infrastructure.Assistant;
 using Xenia.Infrastructure.Observability;
@@ -38,33 +39,33 @@ public static class DependencyInjection
         // ── Database ─────────────────────────────────────────────────────────
         var skipDatabaseStartup = configuration.GetValue<bool>(SkipDatabaseStartupConfigurationKey);
         var connectionString = configuration.GetConnectionString(XeniaDbConnectionStringName);
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException(
-                $"Connection string 'ConnectionStrings:{XeniaDbConnectionStringName}' is missing. " +
-                "Set it via the environment variable 'ConnectionStrings__XeniaDb'.");
-        }
+        // Treat placeholder values (appsettings.json defaults) as "no real database".
+        // A real connection string must not contain "REPLACE_VIA_SECRET".
+        var hasDatabase = !string.IsNullOrWhiteSpace(connectionString)
+            && !connectionString.Contains("REPLACE_VIA_SECRET", StringComparison.OrdinalIgnoreCase);
 
-        // AddDbContextFactory registers:
-        //   - IDbContextFactory<XeniaDbContext> as Singleton (used by automation EF stores)
-        //   - XeniaDbContext itself as Scoped (used by all existing scoped infrastructure services)
-        // This replaces the previous AddDbContext call — no separate AddDbContext needed.
-        services.AddDbContextFactory<XeniaDbContext>(options =>
+        if (hasDatabase)
         {
+            // AddDbContextFactory registers:
+            //   - IDbContextFactory<XeniaDbContext> as Singleton (used by automation EF stores)
+            //   - XeniaDbContext itself as Scoped (used by all existing scoped infrastructure services)
             var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
-            options.UseMySql(
-                connectionString,
-                serverVersion,
-                mySqlOptions =>
-                {
-                    mySqlOptions.MigrationsAssembly(typeof(XeniaDbContext).Assembly.GetName().Name);
-                    mySqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
-                });
-        });
+            services.AddDbContextFactory<XeniaDbContext>(options =>
+            {
+                options.UseMySql(
+                    connectionString!,
+                    serverVersion,
+                    mySqlOptions =>
+                    {
+                        mySqlOptions.MigrationsAssembly(typeof(XeniaDbContext).Assembly.GetName().Name);
+                        mySqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
+                    });
+            });
 
-        // ── Migrations (run before any seeding) ──────────────────────────────
-        if (!skipDatabaseStartup)
-            services.AddHostedService<XeniaMigrationsHostedService>();
+            // ── Migrations (run before any seeding) ──────────────────────────
+            if (!skipDatabaseStartup)
+                services.AddHostedService<XeniaMigrationsHostedService>();
+        }
 
         // ── Module registry ───────────────────────────────────────────────────
         services.AddScoped<EfModuleRegistry>();
@@ -93,7 +94,7 @@ public static class DependencyInjection
         services.AddScoped<IAssistantToolExecutor, StaticAssistantToolExecutor>();
         services.AddScoped<IAssistantProvider, ConfiguredAssistantProvider>();
         services.AddScoped<IAssistantService, EfAssistantService>();
-        if (!skipDatabaseStartup)
+        if (hasDatabase && !skipDatabaseStartup)
             services.AddHostedService<AssistantModuleSeeder>();
 
         // ── Tenant context resolver ───────────────────────────────────────────
@@ -115,7 +116,7 @@ public static class DependencyInjection
         services.AddScoped<IAiAdapter, UnavailableAiAdapter>();
 
         // ── Email module ──────────────────────────────────────────────────────
-        AddEmailModule(services, configuration, skipDatabaseStartup);
+        AddEmailModule(services, configuration, hasDatabase, skipDatabaseStartup);
 
         return services;
     }
@@ -123,13 +124,22 @@ public static class DependencyInjection
     private static void AddEmailModule(
         IServiceCollection services,
         IConfiguration configuration,
+        bool hasDatabase,
         bool skipDatabaseStartup)
     {
         // Secret reference service (development stub — replace in production)
         services.AddScoped<ISecretReferenceService, UnavailableSecretReferenceService>();
 
-        // Email source service
-        services.AddScoped<IEmailSourceService, EfEmailSourceService>();
+        // Email source service — use persistent EF Core impl when a database is configured,
+        // otherwise fall back to a volatile in-memory store (no new package dependencies).
+        if (hasDatabase)
+        {
+            services.AddScoped<IEmailSourceService, EfEmailSourceService>();
+        }
+        else
+        {
+            services.AddSingleton<IEmailSourceService, InMemoryEmailSourceService>();
+        }
 
         // Email settings service
         services.AddScoped<IEmailSettingsService, EfEmailSettingsService>();
@@ -162,7 +172,7 @@ public static class DependencyInjection
         services.AddScoped<ExchangeImapEmailConnector>();
 
         // Email module seeder (runs after migrations)
-        if (!skipDatabaseStartup)
+        if (hasDatabase && !skipDatabaseStartup)
             services.AddHostedService<EmailModuleSeeder>();
 
         // ── Email ingestion engine ─────────────────────────────────────────
@@ -176,8 +186,12 @@ public static class DependencyInjection
         services.AddScoped<ISyncStateService, EfSyncStateService>();
         services.AddScoped<IEmailMessageService, EfEmailMessageService>();
 
-        // Per-source sync lock — durable database-backed (default); in-process kept for tests.
-        services.AddSingleton<IEmailSourceSyncLock, DbEmailSourceSyncLock>();
+        // Per-source sync lock — durable database-backed when DB is configured;
+        // falls back to in-process for single-instance no-DB deployments.
+        if (hasDatabase)
+            services.AddSingleton<IEmailSourceSyncLock, DbEmailSourceSyncLock>();
+        else
+            services.AddSingleton<IEmailSourceSyncLock, InProcessEmailSourceSyncLock>();
 
         // Cursor protection — AES-256-GCM with tenant+source binding
         services.AddSingleton<IProviderCursorProtector, AesCursorProtector>();
@@ -193,28 +207,57 @@ public static class DependencyInjection
         services.AddScoped<EmailSyncOrchestrator>();
         services.AddScoped<IEmailSyncService>(sp => sp.GetRequiredService<EmailSyncOrchestrator>());
 
-        // Background worker (disabled by default via XeniaIngestionOptions.WorkerEnabled = false)
-        if (!skipDatabaseStartup)
+        // Background worker and lock renewal — require XeniaDbContext; skip when no DB.
+        if (hasDatabase && !skipDatabaseStartup)
+        {
             services.AddHostedService<EmailIngestionWorker>();
+            services.AddHostedService<LockLeaseRenewalService>();
+        }
 
         // ── Email operations & monitoring ──────────────────────────────────
         services.AddSingleton<IEmailHeaderSanitizer, EmailHeaderSanitizer>();
 
-        services.AddScoped<IEmailOperationalSettingsService, EfEmailOperationalSettingsService>();
-        services.AddScoped<IAlertService, EfAlertService>();
-        services.AddScoped<IAlertRuleEngine, DefaultAlertRuleEngine>();
-        services.AddScoped<IOperationsSummaryService, EfOperationsSummaryService>();
-        services.AddScoped<ISourceHealthService, EfSourceHealthService>();
-        services.AddScoped<IProviderHealthService, EfProviderHealthService>();
-        services.AddScoped<IRunQueryService, EfRunQueryService>();
-        services.AddScoped<IRetentionService, EfRetentionService>();
+        if (hasDatabase)
+        {
+            services.AddScoped<IEmailOperationalSettingsService, EfEmailOperationalSettingsService>();
+            services.AddScoped<IAlertService, EfAlertService>();
+            services.AddScoped<IAlertRuleEngine, DefaultAlertRuleEngine>();
+            services.AddScoped<IOperationsSummaryService, EfOperationsSummaryService>();
+            services.AddScoped<ISourceHealthService, EfSourceHealthService>();
+            services.AddScoped<IProviderHealthService, EfProviderHealthService>();
+            services.AddScoped<IRunQueryService, EfRunQueryService>();
+            services.AddScoped<IRetentionService, EfRetentionService>();
+        }
+        else
+        {
+            // Noop fallbacks so ASP.NET Core minimal-API endpoint mapping can always
+            // resolve these services at startup (prevents "Body was inferred" crash).
+            services.AddScoped<IEmailOperationalSettingsService, UnavailableEmailOperationalSettingsService>();
+            services.AddScoped<IAlertService, UnavailableAlertService>();
+            services.AddScoped<IOperationsSummaryService, UnavailableOperationsSummaryService>();
+            services.AddScoped<ISourceHealthService, UnavailableSourceHealthService>();
+            services.AddScoped<IProviderHealthService, UnavailableProviderHealthService>();
+            services.AddScoped<IRunQueryService, UnavailableRunQueryService>();
+            services.AddScoped<IRetentionService, UnavailableRetentionService>();
+        }
 
-        // Lock lease renewal background service
-        if (!skipDatabaseStartup)
-            services.AddHostedService<LockLeaseRenewalService>();
-
-        // Automation framework
-        services.AddXeniaAutomation(configuration);
+        // Automation framework — requires database-backed stores.
+        // When no DB: register noop fallbacks so ASP.NET Core minimal-API can
+        // always resolve these services at endpoint-mapping time (prevents
+        // "Body was inferred but method does not allow inferred body parameters").
+        if (hasDatabase)
+        {
+            services.AddXeniaAutomation(configuration);
+        }
+        else
+        {
+            services.AddScoped<IAutomationDiscoveryService, UnavailableAutomationDiscoveryService>();
+            services.AddScoped<IAutomationRegistry, UnavailableAutomationRegistry>();
+            services.AddScoped<IAutomationExecutionService, UnavailableAutomationExecutionService>();
+            services.AddScoped<IAutomationDeadLetterStore, UnavailableAutomationDeadLetterStore>();
+            services.AddScoped<IAutomationDiagnosticsService, UnavailableAutomationDiagnosticsService>();
+            services.AddScoped<IAutomationScheduler, UnavailableAutomationScheduler>();
+        }
 
         // Observability — System.Diagnostics.Metrics (Phase B)
         services.AddXeniaObservability();

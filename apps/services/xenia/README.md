@@ -120,6 +120,31 @@ Production: Replace with a durable broker adapter (SQS, RabbitMQ).
 | GET | `/configuration` | `xenia.read` | Non-secret config |
 | GET | `/admin/settings` | `xenia.assistant.manage` | Effective assistant runtime settings |
 | PUT | `/admin/settings` | `xenia.assistant.manage` | Update global assistant runtime settings |
+| GET | `/email/module` | `xenia.email.read` | Email module status for the current tenant |
+| PUT | `/email/module/enable` | `xenia.email.manage` | Enable the email module for the current tenant |
+| PUT | `/email/module/disable` | `xenia.email.manage` | Disable the email module for the current tenant |
+| GET | `/email/providers` | `xenia.email.read` | Supported provider catalog and connector defaults |
+| GET | `/email/sources` | `xenia.email.read` | List tenant email sources |
+| POST | `/email/sources` | `xenia.email.manage` | Create an email source |
+| GET | `/email/sources/{id}` | `xenia.email.read` | Get one email source |
+| PUT | `/email/sources/{id}` | `xenia.email.manage` | Update an email source |
+| DELETE | `/email/sources/{id}` | `xenia.email.manage` | Delete an email source |
+| PUT | `/email/sources/{id}/enable` | `xenia.email.manage` | Enable an email source |
+| PUT | `/email/sources/{id}/disable` | `xenia.email.manage` | Disable an email source |
+| POST | `/email/sources/{id}/validate` | `xenia.email.validate` | Run a source connectivity validation |
+| GET | `/email/sources/{id}/validation-history` | `xenia.email.read` | Read recent validation results |
+| GET | `/email/settings` | `xenia.email.read` | Read tenant email settings |
+| PUT | `/email/settings` | `xenia.email.manage` | Update tenant email settings |
+| POST | `/email/sources/{sourceId}/sync` | `xenia.email.sync` | Trigger a sync run for a source |
+| GET | `/email/sources/{sourceId}/sync-state` | `xenia.email.sync` | Read current sync cursor/lease state |
+| GET | `/email/sources/{sourceId}/ingestion-history` | `xenia.email.sync` | Read source ingestion history |
+| GET | `/email/messages` | `xenia.email.read` | Browse imported email messages |
+| GET | `/email/messages/{id}` | `xenia.email.read` | Read one imported message |
+| GET | `/api/v1/email/operations/summary` | `xenia.email.operations.read` | Operations dashboard summary |
+| GET | `/api/v1/email/operations/runs` | `xenia.email.operations.read` | List ingestion runs |
+| GET | `/api/v1/email/operations/alerts` | `xenia.email.operations.read` | List operational alerts |
+| POST | `/api/v1/email/operations/alerts/{alertId}/acknowledge` | `xenia.email.alerts.manage` | Acknowledge an alert |
+| POST | `/api/v1/email/operations/retention/run` | `xenia.email.retention.manage` | Run retention cleanup |
 
 ---
 
@@ -152,6 +177,7 @@ export XeniaAssistant__OpenAI__ReasoningEffort="medium"
 export XeniaAssistant__OpenAI__TextVerbosity="medium"
 export XeniaAssistant__OpenAI__MaxOutputTokens="4096"
 export XeniaAssistant__CareConnect__BaseUrl="http://127.0.0.1:5003"
+export Xenia__SkipDatabaseStartup="false"
 
 # Run service
 cd apps/services/xenia/Xenia.Api
@@ -159,6 +185,12 @@ dotnet run
 ```
 
 Service starts on port **5035**.
+
+If `ConnectionStrings__XeniaDb` is missing or still uses the placeholder value from `appsettings`, Xenia starts in a
+degraded no-database mode for local bootstrap: DB-backed migrations, seeders, email ingestion workers, and durable
+automation stores stay off, while selected email and automation endpoints fall back to in-memory or unavailable
+implementations so the service can still boot. Set `Xenia__SkipDatabaseStartup=true` when you have a real database
+configured but need to suppress migrations, seeders, and background workers for a local session.
 
 ---
 
@@ -175,7 +207,17 @@ Tests use `Microsoft.EntityFrameworkCore.InMemory` — no real DB required.
 
 ## Email Module
 
-Email automation is **not implemented in this ticket**. It will be delivered as the first functional module under **XENIA-P1-T2**. The `IModuleRegistry` and adapter interfaces are designed to support it without changes to core orchestration logic.
+Email automation is the first operational Xenia module. Current scope includes:
+
+- Tenant-scoped email source CRUD, enable/disable, and connectivity validation.
+- Provider catalog and connector defaults for Microsoft 365, Google, IMAP, POP3, and Exchange IMAP.
+- Inbox/message browsing APIs plus attachment re-dispatch hooks.
+- Manual sync, sync-state/history, and email operations endpoints for runs, alerts, metrics, and retention.
+- Tenant portal integration through SynqLien settings pages at `/lien/settings/email-sources` and `/lien/settings/email-inbox`, with BFF route handlers under `/api/xenia/email/*`.
+
+When a real `XeniaDb` connection is present and `Xenia:SkipDatabaseStartup` is false, Xenia also runs migrations,
+seeders, ingestion workers, and lock renewal services for the email module. Without a real database, only the
+bootstrap-safe fallback surfaces are available.
 
 ---
 
@@ -189,10 +231,20 @@ Xenia defines its own permission constants:
 | `xenia.admin` | Manage modules and configuration |
 | `xenia.modules.read` | Read module registry |
 | `xenia.modules.manage` | Enable/disable modules |
+| `xenia.adapters.read` | Read platform adapter status |
 | `xenia.configuration.read` | Read non-secret configuration |
 | `xenia.configuration.manage` | Set configuration values |
+| `xenia.email.read` | Read module state, providers, sources, settings, and imported messages |
+| `xenia.email.manage` | Create/update/delete/enable/disable sources and settings |
+| `xenia.email.validate` | Run source validation checks |
+| `xenia.email.sync` | Trigger or inspect source sync state and history |
+| `xenia.email.operations.read` | View operational summaries, runs, alerts, and health state |
+| `xenia.email.operations.manage` | Retry/cancel runs and update operational settings |
+| `xenia.email.alerts.manage` | Acknowledge, resolve, or suppress alerts |
+| `xenia.email.retention.manage` | Run or simulate retention cleanup |
 | `xenia.assistant.use` | Use the Xenia assistant |
 | `xenia.assistant.manage` | Manage assistant runtime settings |
+| `xenia.usage.read` | Read assistant usage summaries |
 
 These must be provisioned in the Identity service permission catalog for production use.
 

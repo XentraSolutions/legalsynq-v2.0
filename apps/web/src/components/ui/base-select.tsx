@@ -391,7 +391,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
                         search,
                       })
                     ) : (
-                      <span className="truncate">
+                      <span className="truncate whitespace-pre-line">
                         {highlightMatch
                           ? highlightLabel(option.label, search)
                           : option.label}

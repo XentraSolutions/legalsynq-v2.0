@@ -149,7 +149,7 @@ if [ ! -f "$CC_NEXT_BIN" ]; then
   CC_NEXT_BIN="$NEXT_BIN"
 fi
 echo "[control-center] Using next binary: $CC_NEXT_BIN"
-NODE_OPTIONS="--max-old-space-size=512" node "$CC_NEXT_BIN" build --webpack
+NODE_OPTIONS="--max-old-space-size=2048" node "$CC_NEXT_BIN" build --webpack
 
 echo "====== Building .NET services ======"
 cd "$ROOT"
@@ -192,11 +192,25 @@ if command -v dotnet &>/dev/null; then
   build_service "Documents"     "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
   build_service "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
   build_service "Comms"         "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj"
+
+  # Xenia build is non-fatal: if it fails, run-prod.sh keeps the previous binary
+  # (or skips Xenia) so all other services remain unaffected.
+  XENIA_FAIL=0
+  echo "[dotnet] Building Xenia..."
+  if dotnet build "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj" --configuration Release --verbosity minimal 2>&1; then
+    echo "[dotnet] Xenia — OK"
+  else
+    echo "[dotnet] Xenia — FAILED (non-fatal: email features may be unavailable)"
+    XENIA_FAIL=1
+  fi
+
   build_service "Support"       "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
 
   if [ "$DOTNET_FAIL" -gt 0 ]; then
-    echo "[dotnet] ERROR: $DOTNET_FAIL service(s) failed to build"
+    echo "[dotnet] ERROR: $DOTNET_FAIL core service(s) failed to build"
     exit 1
+  elif [ "$XENIA_FAIL" -gt 0 ]; then
+    echo "[dotnet] WARNING: Xenia build failed — email features unavailable in this deployment"
   else
     echo "[dotnet] All services built successfully"
   fi

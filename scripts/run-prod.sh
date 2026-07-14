@@ -216,9 +216,6 @@ if command -v dotnet &>/dev/null; then
         Monitoring.Api) launch_svc "$_svc_label" "$csproj"; PID_MONITORING=$! ;;
         Task.Api)      launch_svc "$_svc_label" "$csproj"; PID_TASK=$! ;;
         Tenant.Api)    launch_svc "$_svc_label" "$csproj"; PID_TENANT=$! ;;
-        Xenia.Api)
-          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
-          PID_XENIA=$! ;;
         Support.Api)
           # Jwt:SigningKey is read from the Jwt__SigningKey Replit secret (env var).
           # Notifications are forwarded to the Notifications service on :5008.
@@ -279,6 +276,9 @@ if command -v dotnet &>/dev/null; then
           launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5029
           PID_REPORTS=$! ;;
         Comms.Api)     launch_svc "$_svc_label" "$csproj"; PID_COMMS=$! ;;
+        Xenia.Api)
+          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
+          PID_XENIA=$! ;;
         *)             launch_svc "$_svc_label" "$csproj" ;;
       esac
       # $! is the PID of the dotnet process just backgrounded by launch_svc
@@ -324,6 +324,9 @@ if command -v dotnet &>/dev/null; then
     _probe_svc "Liens"         5009 /health            "${PID_LIENS:-}"         "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Comms"         5011 /health            "${PID_COMMS:-}"         "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Support"       5017 /support/api/health "${PID_SUPPORT:-}"      "$PROBE_TIMEOUT_DOTNET"
+    if [ -n "${PID_XENIA:-}" ]; then
+      _probe_svc "Xenia"       5035 /health            "$PID_XENIA"             "$PROBE_TIMEOUT_DOTNET"
+    fi
 
     wait
   ) &

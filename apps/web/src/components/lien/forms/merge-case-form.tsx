@@ -88,7 +88,7 @@ export function MergeCaseForm({
   });
 
   const [selectedId, setSelectedId] = useState("");
-  const [cases, setCases] = useState<any>();
+  const [cases, setCases] = useState<any>([]);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   useEffect(() => {
@@ -96,7 +96,11 @@ export function MergeCaseForm({
       setCases(
         data
           ? data.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.clientName };
+              return {
+                key: c.id,
+                value: c.id,
+                label: `${c.clientName}\nDate of loss:${c.dateOfIncident || "---"}, Date of Birth: ${c.clientDob}, ${c.lawFirm}, Case Number: ${c.caseNumber}`,
+              };
             })
           : [],
       );
@@ -146,17 +150,17 @@ export function MergeCaseForm({
         footer={
           <>
             <button
-              onClick={() => {}}
+              onClick={onClose}
               className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
             >
-              Close
+              Cancel
             </button>
             <button
               onClick={() => {
                 handleSubmit();
                 setSubmitting(true);
               }}
-              disabled={submitting}
+              disabled={submitting || selectedId == ""}
               className="text-sm px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-50"
             >
               {submitting ? "Merging..." : "Merge"}
@@ -239,7 +243,7 @@ export function MergeCaseForm({
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
                 Law firm
               </label>
-              {clientData?.lawfirm ?? "---"}
+              {clientData?.lawFirm ?? "---"}
             </div>
 
             <div>
