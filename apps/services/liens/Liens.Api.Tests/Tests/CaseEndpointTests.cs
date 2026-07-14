@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -96,6 +98,170 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         var detailBody = await detail.Content.ReadFromJsonAsync<CaseDetailResponseBody>();
         detailBody!.ClientEmail.Should().Be("legacy.client@example.com");
         detailBody.ClientPhone.Should().Be("555-0110");
+    }
+
+    [Fact]
+    public async Task LegacyCreateCase_persists_case_manager_and_accident_type_metadata()
+    {
+        var caseManagerId = Guid.CreateVersion7();
+        var caseNumber = $"LEGACY-{Guid.CreateVersion7():N}"[..20];
+        Guid accidentTypeLookupId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            accidentTypeLookupId = db.LookupValues
+                .Where(x => x.TenantId == SeedHelper.TenantId
+                    && x.Category == LookupCategory.AccidentType
+                    && x.Code == "MVA")
+                .Select(x => x.Id)
+                .Single();
+
+            var caseManager = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.CaseManager,
+                "John",
+                "Doe",
+                SeedHelper.UserId);
+            typeof(Contact).GetProperty(nameof(Contact.Id))!.SetValue(caseManager, caseManagerId);
+
+            db.Contacts.Add(caseManager);
+            await db.SaveChangesAsync();
+        }
+
+        var create = await _client.PostAsJsonAsync("/api/liens/cases/create", new
+        {
+            code = caseNumber,
+            firstname = "Legacy",
+            lastname = "Metadata",
+            externalReference = "EXT-LEGACY-META",
+            policyNumber = "POL-123",
+            claimNumber = "CLM-456",
+            notes = "legacy metadata note",
+            caseStatusId = "DemandSent",
+            lawFirmId = SeedHelper.LawFirmId.ToString(),
+            accidentTypeId = accidentTypeLookupId.ToString(),
+            accidentStateId = "AL",
+            caseManagerId = caseManagerId.ToString(),
+            caseType = accidentTypeLookupId.ToString(),
+            stateOfIncident = "AL",
+        });
+
+        create.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await create.Content.ReadAsStringAsync()}");
+
+        var createBody = await create.Content.ReadFromJsonAsync<LegacyCreateCaseResponseBody>();
+        createBody!.Data.Should().ContainKey("id");
+
+        var caseId = createBody.Data["id"];
+        var detail = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        detail.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detail.Content.ReadAsStringAsync()}");
+
+        var detailBody = await detail.Content.ReadFromJsonAsync<JsonDocument>();
+        var detailRoot = detailBody!.RootElement;
+        detailRoot.GetProperty("externalReference").GetString().Should().Be("EXT-LEGACY-META");
+        detailRoot.GetProperty("policyNumber").GetString().Should().Be("POL-123");
+        detailRoot.GetProperty("claimNumber").GetString().Should().Be("CLM-456");
+        detailRoot.GetProperty("notes").GetString().Should().Be("legacy metadata note");
+        detailRoot.GetProperty("status").GetString().Should().Be("DemandSent");
+        detailRoot.GetProperty("lawFirmId").GetString().Should().Be(SeedHelper.LawFirmId.ToString());
+        detailRoot.GetProperty("lawFirm").GetString().Should().Be("Smith & Associates LLP");
+        detailRoot.GetProperty("caseManagerId").GetString().Should().Be(caseManagerId.ToString());
+        detailRoot.GetProperty("caseManager").GetString().Should().Be("John Doe");
+        detailRoot.GetProperty("accidentTypeId").GetString().Should().Be(accidentTypeLookupId.ToString());
+        detailRoot.GetProperty("accidentType").GetString().Should().Be("Motor Vehicle Accident");
+        detailRoot.GetProperty("stateOfIncident").GetString().Should().Be("AL");
+
+        var search = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword = caseNumber,
+            page = 1,
+            limit = 20,
+            sortBy = "",
+            sortDirection = "",
+            statusId = "DemandSent",
+        });
+
+        search.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await search.Content.ReadAsStringAsync()}");
+
+        var searchBody = await search.Content.ReadFromJsonAsync<JsonDocument>();
+        searchBody!.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+
+        var item = searchBody.RootElement.GetProperty("data").EnumerateArray().Single();
+        item.GetProperty("lawFirmId").GetString().Should().Be(SeedHelper.LawFirmId.ToString());
+        item.GetProperty("lawFirm").GetString().Should().Be("Smith & Associates LLP");
+        item.GetProperty("caseManagerId").GetString().Should().Be(caseManagerId.ToString());
+        item.GetProperty("caseManager").GetString().Should().Be("John Doe");
+        item.GetProperty("accidentTypeId").GetString().Should().Be(accidentTypeLookupId.ToString());
+        item.GetProperty("accidentType").GetString().Should().Be("Motor Vehicle Accident");
+    }
+
+    [Theory]
+    [InlineData("New", CaseStatus.PreDemand)]
+    [InlineData("Processing", CaseStatus.PreDemand)]
+    [InlineData("Pre-demand", CaseStatus.PreDemand)]
+    [InlineData("Demand Sent", CaseStatus.DemandSent)]
+    [InlineData("Negotiations", CaseStatus.InNegotiation)]
+    [InlineData("Litigation", CaseStatus.InNegotiation)]
+    [InlineData("Case Settled", CaseStatus.CaseSettled)]
+    [InlineData("Closed", CaseStatus.Closed)]
+    public async Task LegacyCreateCase_accepts_legacy_status_labels(
+        string legacyStatus,
+        string expectedStatus)
+    {
+        var create = await _client.PostAsJsonAsync("/api/liens/cases/create", new
+        {
+            code = $"LEGACY-{Guid.CreateVersion7():N}"[..20],
+            firstname = "Legacy",
+            lastname = "Status",
+            caseStatusId = legacyStatus,
+        });
+
+        create.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await create.Content.ReadAsStringAsync()}");
+
+        var createBody = await create.Content.ReadFromJsonAsync<LegacyCreateCaseResponseBody>();
+        createBody!.Data.Should().ContainKey("id");
+
+        var caseId = createBody.Data["id"];
+        var detail = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        detail.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detail.Content.ReadAsStringAsync()}");
+
+        var detailBody = await detail.Content.ReadFromJsonAsync<JsonDocument>();
+        detailBody!.RootElement.GetProperty("status").GetString().Should().Be(expectedStatus);
+    }
+
+    [Fact]
+    public async Task LegacyCreateCase_accepts_accident_type_label_without_lookup_id()
+    {
+        var create = await _client.PostAsJsonAsync("/api/liens/cases/create", new
+        {
+            code = $"LEGACY-{Guid.CreateVersion7():N}"[..20],
+            firstname = "Legacy",
+            lastname = "AccidentType",
+            accidentTypeId = "MedicalMalpractice",
+            caseType = "Medical Malpractice",
+        });
+
+        create.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await create.Content.ReadAsStringAsync()}");
+
+        var createBody = await create.Content.ReadFromJsonAsync<LegacyCreateCaseResponseBody>();
+        createBody!.Data.Should().ContainKey("id");
+
+        var caseId = createBody.Data["id"];
+        var detail = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        detail.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detail.Content.ReadAsStringAsync()}");
+
+        var detailBody = await detail.Content.ReadFromJsonAsync<JsonDocument>();
+        var root = detailBody!.RootElement;
+        root.GetProperty("accidentTypeId").GetString().Should().Be("MedicalMalpractice");
+        root.GetProperty("accidentType").GetString().Should().Be("Medical Malpractice");
     }
 
     [Fact]

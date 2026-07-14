@@ -121,7 +121,10 @@ export const casesService = {
       page: 1,
       limit: 10,
     });
-    return data;
+    const payload = data as unknown as { data?: unknown };
+    return Array.isArray(payload.data)
+      ? payload.data
+      : [];
   },
 
   async getCaseLiensUpdates(caseId: string): Promise<any> {

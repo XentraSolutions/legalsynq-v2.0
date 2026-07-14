@@ -22,6 +22,7 @@ public sealed class ContactResponse
     public string? PostalCode { get; init; }
     public string? Notes { get; init; }
     public bool IsActive { get; init; }
+    public int ActiveCases { get; init; }
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; init; }
 }
