@@ -631,8 +631,8 @@ public static class AdminEndpoints
         {
             foreach (var rawCode in body.Products)
             {
-                var dbCode = FrontendToDbProductCode.TryGetValue(rawCode, out var mapped)
-                    ? mapped : rawCode;
+                var dbCode = await ResolveExistingDbProductCodeAsync(rawCode, db, ct)
+                    ?? GetDbProductCodeCandidates(rawCode).First();
                 try
                 {
                     var pr = await productProvisioningEngine.ProvisionAsync(
@@ -1427,8 +1427,47 @@ public static class AdminEndpoints
         ["SYNQ_LIENS"]       = "SynqLien",
         ["SYNQ_CARECONNECT"] = "CareConnect",
         ["SYNQ_AI"]          = "Xenia",
+        ["XENIA"]           = "Xenia",
         ["SYNQ_INSIGHTS"]    = "SynqInsights",
     };
+
+    private static IEnumerable<string> GetDbProductCodeCandidates(string productCode)
+    {
+        if (string.Equals(productCode, "Xenia", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(productCode, "SynqAI", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(productCode, "SYNQ_AI", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(productCode, "XENIA", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return "SYNQ_AI";
+            yield return "XENIA";
+            yield break;
+        }
+
+        if (FrontendToDbProductCode.TryGetValue(productCode, out var mapped))
+        {
+            yield return mapped;
+            yield break;
+        }
+
+        yield return productCode.Trim().ToUpperInvariant();
+    }
+
+    private static async Task<string?> ResolveExistingDbProductCodeAsync(
+        string productCode,
+        IdentityDbContext db,
+        CancellationToken ct = default,
+        bool requireActive = false)
+    {
+        foreach (var candidate in GetDbProductCodeCandidates(productCode))
+        {
+            var exists = requireActive
+                ? await db.Products.AnyAsync(p => p.Code == candidate && p.IsActive, ct)
+                : await db.Products.AnyAsync(p => p.Code == candidate, ct);
+            if (exists) return candidate;
+        }
+
+        return null;
+    }
 
     private static async Task<IResult> UpdateEntitlement(
         Guid   id,
@@ -1436,16 +1475,14 @@ public static class AdminEndpoints
         IdentityDbContext db,
         EntitlementRequest body,
         IAuditEventClient auditClient,
-        IProductProvisioningService provisioningEngine)
+        IProductProvisioningService provisioningEngine,
+        CancellationToken ct)
     {
-        if (!FrontendToDbProductCode.TryGetValue(productCode, out var dbCode))
-            dbCode = productCode;
-
         var tenantExists = await db.Tenants.AnyAsync(t => t.Id == id);
         if (!tenantExists) return Results.NotFound();
 
-        var productExists = await db.Products.AnyAsync(p => p.Code == dbCode);
-        if (!productExists)
+        var dbCode = await ResolveExistingDbProductCodeAsync(productCode, db, ct);
+        if (dbCode is null)
             return Results.NotFound(new { error = $"Product '{productCode}' not found." });
 
         var result = await provisioningEngine.ProvisionAsync(
@@ -7067,17 +7104,7 @@ public static class AdminEndpoints
     /// </summary>
     private static async Task<string?> ResolveProductCode(string productKey, IdentityDbContext db, CancellationToken ct = default)
     {
-        // Try the frontend-to-DB alias map first
-        if (FrontendToDbProductCode.TryGetValue(productKey, out var mapped))
-        {
-            var exists = await db.Products.AnyAsync(p => p.Code == mapped && p.IsActive, ct);
-            return exists ? mapped : null;
-        }
-
-        // Otherwise uppercase + trim the raw key and look it up directly
-        var code = productKey.ToUpperInvariant().Trim();
-        var found = await db.Products.AnyAsync(p => p.Code == code && p.IsActive, ct);
-        return found ? code : null;
+        return await ResolveExistingDbProductCodeAsync(productKey, db, ct, requireActive: true);
     }
 
     /// <summary>
@@ -7634,9 +7661,8 @@ public static class AdminEndpoints
         // productKey filter — join via UserProductAccessRecords
         if (!string.IsNullOrWhiteSpace(productKey))
         {
-            var filterCode = FrontendToDbProductCode.TryGetValue(productKey, out var mapped)
-                ? mapped
-                : productKey.ToUpperInvariant().Trim();
+            var filterCode = await ResolveExistingDbProductCodeAsync(productKey, db, ct, requireActive: true)
+                ?? productKey.ToUpperInvariant().Trim();
             q = q.Where(u => db.UserProductAccessRecords.Any(a =>
                 a.UserId == u.Id && a.ProductCode == filterCode &&
                 a.AccessStatus == AccessStatus.Granted));

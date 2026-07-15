@@ -683,6 +683,7 @@ public class AuthService : IAuthService
         ["SYNQ_LIENS"]       = "SynqLien",
         ["SYNQ_CARECONNECT"] = "CareConnect",
         ["SYNQ_AI"]          = "Xenia",
+        ["XENIA"]            = "Xenia",
         ["SYNQ_INSIGHTS"]    = "SynqInsights",
         ["SYNQ_BILL"]        = "SynqBill",
         ["SYNQ_RX"]          = "SynqRx",
