@@ -31,6 +31,12 @@ import { BaseTable } from "@/components/ui/base-table";
 
 const PAGE_SIZE = 10;
 
+function pluralize(name: string): string {
+  if (/s$/i.test(name)) return name;
+  if (/[^aeiou]y$/i.test(name)) return `${name.slice(0, -1)}ies`;
+  return `${name}s`;
+}
+
 export const dynamic = "force-dynamic";
 
 export default function ContactsPage() {
@@ -290,7 +296,10 @@ export default function ContactsPage() {
   const tabs = useMemo(
     () => [
       { key: "", label: "All" },
-      ...activeKnownContactTypes.map((t) => ({ key: t.code, label: t.name })),
+      ...activeKnownContactTypes.map((t) => ({
+        key: t.code,
+        label: pluralize(t.name),
+      })),
     ],
     [activeKnownContactTypes],
   );
