@@ -51,7 +51,6 @@ export function CaseTrackingSection({
     { label: "Child Support", key: "childSupportLiens" },
     { label: "Minor Comp", key: "minorComp" },
   ];
-  console.log(form)
   return (
     <CollapsibleSection
       title="Case Tracking"
