@@ -4,6 +4,7 @@ using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
+using Liens.Domain.Enums;
 using System.Globalization;
 
 namespace Liens.Api.Endpoints;
@@ -190,6 +191,7 @@ public static class LienEndpoints
 
     private static async Task<IResult> ListLiens(
         ILienService lienService,
+        IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         string? search = null,
         string? status = null,
@@ -203,12 +205,20 @@ public static class LienEndpoints
         var tenantId = RequireTenantId(ctx);
         var result = await lienService.SearchAsync(
             tenantId, search, status, lienType, caseId, facilityId, page, pageSize, ct);
-        return Results.Ok(result);
+        var enriched = await EnrichLienResponsesAsync(result.Items, tenantId, servicingItemService, ct);
+        return Results.Ok(new PaginatedResult<LienResponse>
+        {
+            Items = enriched,
+            Page = result.Page,
+            PageSize = result.PageSize,
+            TotalCount = result.TotalCount,
+        });
     }
 
     private static async Task<IResult> GetLienById(
         Guid id,
         ILienService lienService,
+        IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -216,12 +226,13 @@ public static class LienEndpoints
         var result = await lienService.GetByIdAsync(tenantId, id, ct);
         return result is null
             ? Results.NotFound(new { error = new { code = "not_found", message = $"Lien '{id}' not found." } })
-            : Results.Ok(result);
+            : Results.Ok((await EnrichLienResponsesAsync([result], tenantId, servicingItemService, ct)).Single());
     }
 
     private static async Task<IResult> GetLienByNumber(
         string lienNumber,
         ILienService lienService,
+        IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -229,7 +240,84 @@ public static class LienEndpoints
         var result = await lienService.GetByLienNumberAsync(tenantId, lienNumber, ct);
         return result is null
             ? Results.NotFound(new { error = new { code = "not_found", message = $"Lien with number '{lienNumber}' not found." } })
-            : Results.Ok(result);
+            : Results.Ok((await EnrichLienResponsesAsync([result], tenantId, servicingItemService, ct)).Single());
+    }
+
+    private static async Task<List<LienResponse>> EnrichLienResponsesAsync(
+        List<LienResponse> liens,
+        Guid tenantId,
+        IServicingItemService servicingItemService,
+        CancellationToken ct)
+    {
+        var enriched = new List<LienResponse>(liens.Count);
+
+        foreach (var lien in liens)
+        {
+            var codeResults = await servicingItemService.SearchAsync(
+                tenantId,
+                search: "LegacyMedicalCode",
+                status: null,
+                priority: null,
+                assignedTo: null,
+                caseId: null,
+                lienId: lien.Id,
+                page: 1,
+                pageSize: 500,
+                ct);
+
+            var totalPurchase = 0m;
+            var totalBilling = 0m;
+
+            foreach (var item in codeResults.Items.Where(i =>
+                         string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal)))
+            {
+                var codeFields = ParseLegacyNoteFields(item.Notes);
+                if (decimal.TryParse(codeFields.GetValueOrDefault("purchaseAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var purchase))
+                    totalPurchase += purchase;
+                if (decimal.TryParse(codeFields.GetValueOrDefault("billingAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var billing))
+                    totalBilling += billing;
+            }
+
+            enriched.Add(new LienResponse
+            {
+                Id = lien.Id,
+                LienNumber = lien.LienNumber,
+                ExternalReference = lien.ExternalReference,
+                LienType = lien.LienType,
+                Status = lien.Status,
+                CaseId = lien.CaseId,
+                FacilityId = lien.FacilityId,
+                OriginalAmount = lien.OriginalAmount,
+                CurrentBalance = lien.CurrentBalance,
+                OfferPrice = lien.OfferPrice,
+                PurchasePrice = lien.PurchasePrice,
+                PayoffAmount = lien.PayoffAmount,
+                Jurisdiction = lien.Jurisdiction,
+                IsConfidential = lien.IsConfidential,
+                SubjectFirstName = lien.SubjectFirstName,
+                SubjectLastName = lien.SubjectLastName,
+                SubjectDisplayName = lien.SubjectDisplayName,
+                OrgId = lien.OrgId,
+                SellingOrgId = lien.SellingOrgId,
+                BuyingOrgId = lien.BuyingOrgId,
+                HoldingOrgId = lien.HoldingOrgId,
+                IncidentDate = lien.IncidentDate,
+                PurchaseDate = lien.IncidentDate.HasValue ? FormatLegacyDate(lien.IncidentDate) : lien.PurchaseDate,
+                InitialServiceDate = lien.InitialServiceDate,
+                EndServiceDate = lien.EndServiceDate,
+                TotalPurchase = totalPurchase,
+                TotalBilling = totalBilling,
+                IsBulk = lien.IsBulk,
+                IsServicing = lien.IsServicing,
+                Description = lien.Description,
+                OpenedAtUtc = lien.OpenedAtUtc,
+                ClosedAtUtc = lien.ClosedAtUtc,
+                CreatedAtUtc = lien.CreatedAtUtc,
+                UpdatedAtUtc = lien.UpdatedAtUtc,
+            });
+        }
+
+        return enriched;
     }
 
     private static async Task<IResult> CreateLien(
@@ -640,6 +728,8 @@ public static class LienEndpoints
     private static async Task<IResult> ReassignFacilityLegacy(
         LegacyReassignFacilityRequest request,
         ILienService lienService,
+        IContactService contactService,
+        IFacilityService facilityService,
         IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
@@ -686,6 +776,12 @@ public static class LienEndpoints
             };
 
             await lienService.UpdateAsync(tenantId, lienId, userId, mapped, ct);
+            var facilityName = await ResolveLegacyFacilityNameAsync(
+                tenantId,
+                facilityId,
+                contactService,
+                facilityService,
+                ct);
 
             var infoResult = await servicingItemService.SearchAsync(
                 tenantId,
@@ -705,6 +801,14 @@ public static class LienEndpoints
 
             if (existing is null)
             {
+                var fields = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["facilityId"] = facilityId.ToString(),
+                };
+
+                if (!string.IsNullOrWhiteSpace(facilityName))
+                    fields["facilityName"] = facilityName;
+
                 var create = new CreateServicingItemRequest
                 {
                     TaskNumber = $"LMFI-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
@@ -713,7 +817,7 @@ public static class LienEndpoints
                     AssignedTo = "system",
                     CaseId = lien.CaseId,
                     LienId = lienId,
-                    Notes = $"facilityId={facilityId}",
+                    Notes = SerializeLegacyNoteFields(fields),
                 };
 
                 await servicingItemService.CreateAsync(tenantId, orgId, userId, create, ct);
@@ -722,6 +826,8 @@ public static class LienEndpoints
             {
                 var fields = ParseLegacyNoteFields(existing.Notes);
                 fields["facilityId"] = facilityId.ToString();
+                if (!string.IsNullOrWhiteSpace(facilityName))
+                    fields["facilityName"] = facilityName;
 
                 var update = new UpdateServicingItemRequest
                 {
@@ -997,6 +1103,41 @@ public static class LienEndpoints
 
         return data;
     }
+
+    private static async Task<string?> ResolveLegacyFacilityNameAsync(
+        Guid tenantId,
+        Guid requestedFacilityId,
+        IContactService contactService,
+        IFacilityService facilityService,
+        CancellationToken ct)
+    {
+        var facilityContact = await contactService.GetByIdAsync(tenantId, requestedFacilityId, ct);
+        if (facilityContact is not null && IsStandaloneFacilityContact(facilityContact))
+            return ResolveFacilityDisplayName(facilityContact);
+
+        var facility = await facilityService.GetByIdAsync(tenantId, requestedFacilityId, ct);
+        if (facility is not null && !string.IsNullOrWhiteSpace(facility.Name))
+            return facility.Name.Trim();
+
+        if (facilityContact?.FacilityId is Guid linkedFacilityId)
+        {
+            var linkedFacility = await facilityService.GetByIdAsync(tenantId, linkedFacilityId, ct);
+            if (linkedFacility is not null && !string.IsNullOrWhiteSpace(linkedFacility.Name))
+                return linkedFacility.Name.Trim();
+        }
+
+        return null;
+    }
+
+    private static bool IsStandaloneFacilityContact(ContactResponse contact) =>
+        (string.Equals(contact.ContactType, ContactType.Facility, StringComparison.Ordinal) ||
+         string.Equals(contact.ContactType, ContactType.MedicalFacility, StringComparison.Ordinal)) &&
+        string.IsNullOrWhiteSpace(contact.ContactSubtype);
+
+    private static string ResolveFacilityDisplayName(ContactResponse contact)
+        => string.IsNullOrWhiteSpace(contact.Organization)
+            ? contact.DisplayName
+            : contact.Organization.Trim();
 
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {

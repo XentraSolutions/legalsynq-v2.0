@@ -15,6 +15,7 @@ namespace Liens.Api.Endpoints;
 
 public static class CaseEndpoints
 {
+    private const string LegacyMetadataMarker = "[legacy-meta]";
     private static readonly Guid LegacyFallbackDocumentTypeId =
         Guid.Parse("00000000-0000-0000-0000-000000000001");
 
@@ -37,13 +38,28 @@ public static class CaseEndpoints
         public string? firstname { get; init; }
         public string? lastname { get; init; }
         public string? dob { get; init; }
+        public string? email { get; init; }
+        public string? phone { get; init; }
+        public string? clientEmail { get; init; }
+        public string? clientPhone { get; init; }
         public string? address { get; init; }
         public string? city { get; init; }
         public string? state { get; init; }
         public string? zipcode { get; init; }
         public string? dateOfLoss { get; init; }
         public string? note { get; init; }
+        public string? notes { get; init; }
         public string? externalCaseId { get; init; }
+        public string? externalReference { get; init; }
+        public string? lawFirmId { get; init; }
+        public string? policyNumber { get; init; }
+        public string? claimNumber { get; init; }
+        public string? caseStatusId { get; init; }
+        public string? caseManagerId { get; init; }
+        public string? accidentTypeId { get; init; }
+        public string? accidentStateId { get; init; }
+        public string? caseType { get; init; }
+        public string? stateOfIncident { get; init; }
     }
 
     private sealed class LegacyUpdateCaseRequest
@@ -51,6 +67,10 @@ public static class CaseEndpoints
         public string? firstname { get; init; }
         public string? lastname { get; init; }
         public string? dob { get; init; }
+        public string? email { get; init; }
+        public string? phone { get; init; }
+        public string? clientEmail { get; init; }
+        public string? clientPhone { get; init; }
         public string? address { get; init; }
         public string? city { get; init; }
         public string? state { get; init; }
@@ -58,6 +78,7 @@ public static class CaseEndpoints
         public string? dateOfLoss { get; init; }
         public string? note { get; init; }
         public string? externalCaseId { get; init; }
+        public string? lawFirmId { get; init; }
     }
 
     private sealed class LegacyCaseV3FilterRequest
@@ -1167,6 +1188,7 @@ public static class CaseEndpoints
     private static async Task<IResult> GetLiensMedicaLegacy(
         string id,
         ILienService lienService,
+        IContactService contactService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -1191,6 +1213,15 @@ public static class CaseEndpoints
             });
         }
 
+        var fundingCompanyName = string.Empty;
+        if (Guid.TryParse(lien.ExternalReference, out var fundingCompanyContactId))
+        {
+            var fundingCompanyContact = await contactService.GetByIdAsync(tenantId, fundingCompanyContactId, ct);
+            fundingCompanyName = fundingCompanyContact?.Organization ??
+                                 fundingCompanyContact?.DisplayName ??
+                                 string.Empty;
+        }
+
         var data = new LegacyLiensMedicalResponse
         {
             id = lien.Id.ToString(),
@@ -1205,7 +1236,7 @@ public static class CaseEndpoints
             updated = FormatLegacyTimestamp(lien.UpdatedAtUtc),
             updatedBy = string.Empty,
             fundingCompanyId = lien.ExternalReference ?? string.Empty,
-            fundingCompany = string.Empty,
+            fundingCompany = fundingCompanyName,
             isBulk = lien.IsBulk ?? string.Empty,
             isServicing = lien.IsServicing ?? string.Empty,
         };
@@ -1871,6 +1902,169 @@ public static class CaseEndpoints
         return items;
     }
 
+    private static async Task<List<CaseResponse>> SearchAllCasesAsync(
+        ICaseService caseService,
+        Guid tenantId,
+        CancellationToken ct)
+    {
+        const int pageSize = 200;
+        var page = 1;
+        var items = new List<CaseResponse>();
+
+        while (true)
+        {
+            var result = await caseService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                page: page,
+                pageSize: pageSize,
+                orgId: null,
+                ct: ct);
+
+            if (result.Items.Count == 0)
+                break;
+
+            items.AddRange(result.Items);
+            if (items.Count >= result.TotalCount)
+                break;
+
+            page++;
+        }
+
+        return items;
+    }
+
+    private static bool MatchesLegacyCaseKeyword(CaseResponse item, string keyword)
+    {
+        return item.CaseNumber.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+               item.ClientFirstName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+               item.ClientLastName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+               (!string.IsNullOrWhiteSpace(item.ClientDisplayName) &&
+                item.ClientDisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IResult BuildLegacyLinkedCasesResult(
+        IEnumerable<CaseResponse> cases,
+        string? keyword,
+        int requestedPage,
+        int requestedLimit,
+        string notFoundMessage)
+    {
+        var filtered = cases.ToList();
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var term = keyword.Trim();
+            filtered = filtered
+                .Where(item => MatchesLegacyCaseKeyword(item, term))
+                .ToList();
+        }
+
+        if (filtered.Count == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = notFoundMessage,
+            });
+        }
+
+        var page = requestedPage < 1 ? 1 : requestedPage;
+        var limit = requestedLimit < 1 ? 10 : requestedLimit;
+
+        var paged = filtered
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .ToList();
+
+        var totalCount = filtered.Count;
+        var totalCases = totalCount;
+        var totalActiveCases = filtered.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
+        var totalValue = filtered.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Case list retrieved successfully.",
+            data = paged,
+            totalCount,
+            totalCases,
+            totalActiveCases,
+            totalValue,
+        });
+    }
+
+    private static async Task<List<CaseResponse>> GetCasesFromDashboardCaseFilterAsync(
+        string filterType,
+        string filterId,
+        ICaseService caseService,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct,
+        bool requireLawFirm = false)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var allCases = await SearchAllCasesAsync(caseService, tenantId, ct);
+        var casesById = allCases.ToDictionary(c => c.Id, EqualityComparer<Guid>.Default);
+
+        var rows = await BuildDashboardCaseReportResultAsync(
+            new ReportFilterRequest
+            {
+                Page = 1,
+                Limit = int.MaxValue,
+                FilterType = filterType,
+                FilterId = filterId,
+            },
+            db,
+            ctx,
+            ct,
+            requireLawFirm);
+
+        return rows.Items
+            .Select(row => casesById.GetValueOrDefault(row.Id))
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .DistinctBy(item => item.Id)
+            .ToList();
+    }
+
+    private static async Task<List<CaseResponse>> GetCasesFromDashboardLienFilterAsync(
+        string filterType,
+        string filterId,
+        ICaseService caseService,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct,
+        bool requireMedicalProvider = false)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var allCases = await SearchAllCasesAsync(caseService, tenantId, ct);
+        var casesById = allCases.ToDictionary(c => c.Id, EqualityComparer<Guid>.Default);
+
+        var rows = await BuildDashboardLienReportResultAsync(
+            new ReportFilterRequest
+            {
+                Page = 1,
+                Limit = int.MaxValue,
+                FilterType = filterType,
+                FilterId = filterId,
+            },
+            db,
+            ctx,
+            ct,
+            requireMedicalProvider);
+
+        return rows.Items
+            .Where(row => row.CaseRecordId.HasValue)
+            .Select(row => casesById.GetValueOrDefault(row.CaseRecordId!.Value))
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .DistinctBy(item => item.Id)
+            .ToList();
+    }
+
     private static bool IsLegacyLienDocumentTaskType(ServicingItemResponse item)
         => string.Equals(item.TaskType, "LegacyLienDocument", StringComparison.Ordinal) ||
            string.Equals(item.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal);
@@ -2263,6 +2457,18 @@ public static class CaseEndpoints
             });
         }
 
+        var directMatch = await servicingItemService.GetByIdAsync(tenantId, parsedLienId, ct);
+        if (directMatch is not null &&
+            string.Equals(directMatch.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
+        {
+            await servicingItemService.DeleteAsync(tenantId, directMatch.Id, userId, ct);
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully deleted medical code record(s).",
+            });
+        }
+
         var results = await servicingItemService.SearchAsync(
             tenantId,
             search: "LegacyMedicalCode",
@@ -2315,7 +2521,18 @@ public static class CaseEndpoints
         if (string.IsNullOrWhiteSpace(notes))
             return result;
 
-        foreach (var segment in notes.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+        {
+            rawMetadata = notes[(markerIndex + LegacyMetadataMarker.Length)..].Trim();
+        }
+        else if (!LooksLikeLegacyMetadata(notes))
+        {
+            return result;
+        }
+
+        foreach (var segment in rawMetadata.Split("; ", StringSplitOptions.RemoveEmptyEntries))
         {
             var eq = segment.IndexOf('=');
             if (eq > 0)
@@ -2327,6 +2544,46 @@ public static class CaseEndpoints
         }
 
         return result;
+    }
+
+    private static string? ExtractLegacyNoteText(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+            return null;
+
+        var markerIndex = notes.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+        {
+            var body = notes[..markerIndex].Trim();
+            return body.Length == 0 ? null : body;
+        }
+
+        return LooksLikeLegacyMetadata(notes) ? null : notes;
+    }
+
+    private static bool LooksLikeLegacyMetadata(string notes)
+    {
+        var segments = notes.Split("; ", StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length > 0 && segments.All(segment => segment.Contains('='));
+    }
+
+    private static string NormalizeLegacyCaseStatus(string value)
+    {
+        var normalized = value.Trim();
+        var compact = normalized
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+
+        return compact.ToUpperInvariant() switch
+        {
+            "NEW" or "PROCESSING" or "OPEN" or "PREDEMAND" => CaseStatus.PreDemand,
+            "DEMANDSENT" => CaseStatus.DemandSent,
+            "NEGOTIATIONS" or "INNEGOTIATION" or "LITIGATION" => CaseStatus.InNegotiation,
+            "CASESETTLED" => CaseStatus.CaseSettled,
+            "CLOSED" => CaseStatus.Closed,
+            _ when CaseStatus.All.Contains(normalized) => normalized,
+            _ => throw new InvalidOperationException($"Invalid case status '{value}'."),
+        };
     }
 
     private static string SerializeLegacyNoteFields(Dictionary<string, string> fields)
@@ -2847,7 +3104,7 @@ public static class CaseEndpoints
 
         try
         {
-            switch (request.contactType)
+            switch (NormalizeLegacyBatchReassignContactType(request.contactType))
             {
                 case "1": // law firm
                 {
@@ -3237,18 +3494,20 @@ public static class CaseEndpoints
                 });
             }
 
-            return Results.NotFound(new
+            return Results.Ok(new
             {
                 isSuccess = false,
-                message = "Error: Unable to retrieve Payoff Quote",
+                message = "No payoff quote found.",
+                url = string.Empty,
             });
         }
         catch
         {
-            return Results.NotFound(new
+            return Results.Ok(new
             {
                 isSuccess = false,
-                message = "Error: Unable to retrieve Payoff Quote",
+                message = "No payoff quote found.",
+                url = string.Empty,
             });
         }
     }
@@ -3546,7 +3805,7 @@ public static class CaseEndpoints
                 EscapeLegacyCsv(FormatLegacyDate(item.DateOfIncident)),
                 EscapeLegacyCsv(fields.GetValueOrDefault("lawFirm", string.Empty)),
                 EscapeLegacyCsv(fields.GetValueOrDefault("caseManager", string.Empty)),
-                EscapeLegacyCsv(item.Notes ?? string.Empty),
+                EscapeLegacyCsv(ExtractLegacyNoteText(item.Notes) ?? string.Empty),
                 EscapeLegacyCsv(FormatLegacyTimestamp(item.CreatedAtUtc)),
                 EscapeLegacyCsv(string.Empty),
                 EscapeLegacyCsv(FormatLegacyTimestamp(item.UpdatedAtUtc)),
@@ -4079,38 +4338,38 @@ public static class CaseEndpoints
             isServicing = string.Empty,
             isUccFiled = string.Empty,
             isBulk = string.Empty,
-            accidentType = string.Empty,
-            accidentState = string.Empty,
+            accidentType = caseMetadata.GetValueOrDefault("accidentType", string.Empty),
+            accidentState = caseMetadata.GetValueOrDefault("accidentState", string.Empty),
             dateOfLoss = FormatLegacyDate(item.DateOfIncident),
             lawFirm = string.Empty,
             caseManager = string.Empty,
-            note = item.Notes ?? string.Empty,
+            note = ExtractLegacyNoteText(item.Notes) ?? string.Empty,
             created = FormatLegacyTimestamp(item.CreatedAtUtc),
             createBy = string.Empty,
             updated = FormatLegacyTimestamp(item.UpdatedAtUtc),
             updateBy = string.Empty,
             status = item.Status,
             currentStatus = item.Status,
-            currentMedicalStatus = string.Empty,
+            currentMedicalStatus = caseMetadata.GetValueOrDefault("currentMedicalStatus", string.Empty),
             currentAttributes = string.Empty,
             email = item.ClientEmail ?? string.Empty,
             phone = item.ClientPhone ?? string.Empty,
-            gender = string.Empty,
+            gender = caseMetadata.GetValueOrDefault("gender", string.Empty),
             ssn = string.Empty,
             summary = item.Description ?? string.Empty,
             countIndex = string.Empty,
-            accidentTypeId = string.Empty,
+            accidentTypeId = caseMetadata.GetValueOrDefault("accidentTypeId", string.Empty),
             currentStatusId = string.Empty,
-            currentMedicalStatusId = string.Empty,
+            currentMedicalStatusId = caseMetadata.GetValueOrDefault("currentMedicalStatusId", string.Empty),
             currentAttributesId = string.Empty,
             toGeneratePdf = string.Empty,
             switchedDate = string.Empty,
             lawFirmId = string.Empty,
             caseManagerId = caseMetadata.GetValueOrDefault("caseManagerId", string.Empty),
-            trackingFollowUpDate = string.Empty,
+            trackingFollowUpDate = caseMetadata.GetValueOrDefault("trackingFollowUpDate", string.Empty),
             childSupportLiens = string.Empty,
             minorComp = string.Empty,
-            leadId = string.Empty,
+            leadId = caseMetadata.GetValueOrDefault("leadId", string.Empty),
             caseManagerDesc = string.Empty,
             shareCase = string.Empty,
             confirmedWriting = string.Empty,
@@ -4211,12 +4470,12 @@ public static class CaseEndpoints
     private static async Task<IResult> GetLawFirmV3Legacy(
         LegacyLawFirmV3Request req,
         ICaseService caseService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
-        var tenantId = RequireTenantId(ctx);
-
-        if (!Guid.TryParse(req.LawFirmId, out var lawFirmOrgId))
+        var lawFirmId = req.LawFirmId?.Trim();
+        if (string.IsNullOrWhiteSpace(lawFirmId))
         {
             return Results.NotFound(new
             {
@@ -4225,71 +4484,32 @@ public static class CaseEndpoints
             });
         }
 
-        var page = req.Page < 1 ? 1 : req.Page;
-        var limit = req.Limit < 1 ? 10 : req.Limit;
+        var cases = await GetCasesFromDashboardCaseFilterAsync(
+            "lawFirmId",
+            lawFirmId,
+            caseService,
+            db,
+            ctx,
+            ct,
+            requireLawFirm: true);
 
-        var paged = await caseService.SearchAsync(
-            tenantId,
+        return BuildLegacyLinkedCasesResult(
+            cases,
             req.Keyword,
-            status: null,
-            page,
-            limit,
-            orgId: lawFirmOrgId,
-            ct);
-
-        if (paged.TotalCount == 0)
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "Error: No cases found.",
-            });
-        }
-
-        var allCases = new List<CaseResponse>();
-        var totalPages = (int)Math.Ceiling((double)paged.TotalCount / limit);
-
-        for (var currentPage = 1; currentPage <= totalPages; currentPage++)
-        {
-            var chunk = await caseService.SearchAsync(
-                tenantId,
-                req.Keyword,
-                status: null,
-                page: currentPage,
-                pageSize: limit,
-                orgId: lawFirmOrgId,
-                ct);
-
-            allCases.AddRange(chunk.Items);
-        }
-
-        var totalCount = paged.TotalCount;
-        var totalCases = totalCount;
-        var totalActiveCases = allCases.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
-        var totalValue = allCases.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
-
-        return Results.Ok(new
-        {
-            isSuccess = true,
-            message = "Case list retrieved successfully.",
-            data = paged.Items,
-            totalCount,
-            totalCases,
-            totalActiveCases,
-            totalValue,
-        });
+            req.Page,
+            req.Limit,
+            "Error: No cases found.");
     }
 
     private static async Task<IResult> GetLiensByMedicalIdV3Legacy(
         LegacyMedicalLiensV3Request req,
         ICaseService caseService,
-        ILienService lienService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
-        var tenantId = RequireTenantId(ctx);
-
-        if (!Guid.TryParse(req.MedicalId, out var medicalId))
+        var medicalId = req.MedicalId?.Trim();
+        if (string.IsNullOrWhiteSpace(medicalId))
         {
             return Results.NotFound(new
             {
@@ -4298,114 +4518,30 @@ public static class CaseEndpoints
             });
         }
 
-        var allLiens = new List<LienResponse>();
-        var lienPage = 1;
-        const int lienPageSize = 200;
+        var cases = await GetCasesFromDashboardLienFilterAsync(
+            "medicalProviderId",
+            medicalId,
+            caseService,
+            db,
+            ctx,
+            ct,
+            requireMedicalProvider: true);
 
-        while (true)
-        {
-            var liens = await lienService.SearchAsync(
-                tenantId,
-                search: null,
-                status: null,
-                lienType: null,
-                caseId: null,
-                facilityId: medicalId,
-                page: lienPage,
-                pageSize: lienPageSize,
-                ct);
-
-            if (liens.Items.Count == 0)
-                break;
-
-            allLiens.AddRange(liens.Items);
-
-            if (allLiens.Count >= liens.TotalCount)
-                break;
-
-            lienPage++;
-        }
-
-        var caseIds = allLiens
-            .Select(l => l.CaseId)
-            .Where(id => id.HasValue)
-            .Select(id => id!.Value)
-            .Distinct()
-            .ToList();
-
-        if (caseIds.Count == 0)
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "Error: No cases found.",
-            });
-        }
-
-        var allCases = new List<CaseResponse>();
-        foreach (var caseId in caseIds)
-        {
-            var item = await caseService.GetByIdAsync(tenantId, caseId, ct);
-            if (item is not null)
-                allCases.Add(item);
-        }
-
-        IEnumerable<CaseResponse> query = allCases;
-        if (!string.IsNullOrWhiteSpace(req.Keyword))
-        {
-            var keyword = req.Keyword.Trim();
-            query = query.Where(c =>
-                c.CaseNumber.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                c.ClientFirstName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                c.ClientLastName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrWhiteSpace(c.ClientDisplayName) && c.ClientDisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        var filtered = query.ToList();
-        if (filtered.Count == 0)
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "Error: No cases found.",
-            });
-        }
-
-        var page = req.Page < 1 ? 1 : req.Page;
-        var limit = req.Limit < 1 ? 10 : req.Limit;
-
-        var paged = filtered
-            .OrderByDescending(c => c.CreatedAtUtc)
-            .Skip((page - 1) * limit)
-            .Take(limit)
-            .ToList();
-
-        var totalCount = filtered.Count;
-        var totalCases = totalCount;
-        var totalActiveCases = filtered.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
-        var totalValue = filtered.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
-
-        return Results.Ok(new
-        {
-            isSuccess = true,
-            message = "Case list retrieved successfully.",
-            data = paged,
-            totalCount,
-            totalCases,
-            totalActiveCases,
-            totalValue,
-        });
+        return BuildLegacyLinkedCasesResult(
+            cases,
+            req.Keyword,
+            req.Page,
+            req.Limit,
+            "Error: No cases found.");
     }
 
     private static async Task<IResult> GetLiensByFundingCompanyIdV3Legacy(
         LegacyFundingCompanyLiensV3Request req,
         ICaseService caseService,
-        ILienService lienService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
-        var tenantId = RequireTenantId(ctx);
-
         var fundingCompanyId = req.FundingCompanyId?.Trim();
         if (string.IsNullOrWhiteSpace(fundingCompanyId))
         {
@@ -4416,116 +4552,31 @@ public static class CaseEndpoints
             });
         }
 
-        var allLiens = new List<LienResponse>();
-        var lienPage = 1;
-        const int lienPageSize = 200;
+        var cases = await GetCasesFromDashboardLienFilterAsync(
+            "fundingCompanyId",
+            fundingCompanyId,
+            caseService,
+            db,
+            ctx,
+            ct);
 
-        while (true)
-        {
-            var liens = await lienService.SearchAsync(
-                tenantId,
-                search: null,
-                status: null,
-                lienType: null,
-                caseId: null,
-                facilityId: null,
-                page: lienPage,
-                pageSize: lienPageSize,
-                ct);
-
-            if (liens.Items.Count == 0)
-                break;
-
-            allLiens.AddRange(liens.Items);
-
-            if (allLiens.Count >= liens.TotalCount)
-                break;
-
-            lienPage++;
-        }
-
-        var caseIds = allLiens
-            .Where(l => string.Equals(l.ExternalReference, fundingCompanyId, StringComparison.OrdinalIgnoreCase))
-            .Select(l => l.CaseId)
-            .Where(id => id.HasValue)
-            .Select(id => id!.Value)
-            .Distinct()
-            .ToList();
-
-        if (caseIds.Count == 0)
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "Error: No cases found.",
-            });
-        }
-
-        var allCases = new List<CaseResponse>();
-        foreach (var caseId in caseIds)
-        {
-            var item = await caseService.GetByIdAsync(tenantId, caseId, ct);
-            if (item is not null)
-                allCases.Add(item);
-        }
-
-        IEnumerable<CaseResponse> query = allCases;
-        if (!string.IsNullOrWhiteSpace(req.Keyword))
-        {
-            var keyword = req.Keyword.Trim();
-            query = query.Where(c =>
-                c.CaseNumber.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                c.ClientFirstName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                c.ClientLastName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrWhiteSpace(c.ClientDisplayName) && c.ClientDisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        var filtered = query.ToList();
-        if (filtered.Count == 0)
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "Error: No cases found.",
-            });
-        }
-
-        var page = req.Page < 1 ? 1 : req.Page;
-        var limit = req.Limit < 1 ? 10 : req.Limit;
-
-        var paged = filtered
-            .OrderByDescending(c => c.CreatedAtUtc)
-            .Skip((page - 1) * limit)
-            .Take(limit)
-            .ToList();
-
-        var totalCount = filtered.Count;
-        var totalCases = totalCount;
-        var totalActiveCases = filtered.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
-        var totalValue = filtered.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
-
-        return Results.Ok(new
-        {
-            isSuccess = true,
-            message = "Case list retrieved successfully.",
-            data = paged,
-            totalCount,
-            totalCases,
-            totalActiveCases,
-            totalValue,
-        });
+        return BuildLegacyLinkedCasesResult(
+            cases,
+            req.Keyword,
+            req.Page,
+            req.Limit,
+            "Error: No cases found.");
     }
 
     private static async Task<IResult> GetLiensByMedicalFacilityIdV3Legacy(
         LegacyFacilityLiensV3Request req,
         ICaseService caseService,
-        ILienService lienService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
-        var tenantId = RequireTenantId(ctx);
-
-        if (!Guid.TryParse(req.FacilityId, out var facilityId))
+        var facilityId = req.FacilityId?.Trim();
+        if (string.IsNullOrWhiteSpace(facilityId))
         {
             return Results.NotFound(new
             {
@@ -4534,103 +4585,20 @@ public static class CaseEndpoints
             });
         }
 
-        var allLiens = new List<LienResponse>();
-        var lienPage = 1;
-        const int lienPageSize = 200;
+        var cases = await GetCasesFromDashboardLienFilterAsync(
+            "facilityId",
+            facilityId,
+            caseService,
+            db,
+            ctx,
+            ct);
 
-        while (true)
-        {
-            var liens = await lienService.SearchAsync(
-                tenantId,
-                search: null,
-                status: null,
-                lienType: null,
-                caseId: null,
-                facilityId: facilityId,
-                page: lienPage,
-                pageSize: lienPageSize,
-                ct);
-
-            if (liens.Items.Count == 0)
-                break;
-
-            allLiens.AddRange(liens.Items);
-
-            if (allLiens.Count >= liens.TotalCount)
-                break;
-
-            lienPage++;
-        }
-
-        var caseIds = allLiens
-            .Select(l => l.CaseId)
-            .Where(id => id.HasValue)
-            .Select(id => id!.Value)
-            .Distinct()
-            .ToList();
-
-        if (caseIds.Count == 0)
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "Error: No cases found.",
-            });
-        }
-
-        var allCases = new List<CaseResponse>();
-        foreach (var caseId in caseIds)
-        {
-            var item = await caseService.GetByIdAsync(tenantId, caseId, ct);
-            if (item is not null)
-                allCases.Add(item);
-        }
-
-        IEnumerable<CaseResponse> query = allCases;
-        if (!string.IsNullOrWhiteSpace(req.Keyword))
-        {
-            var keyword = req.Keyword.Trim();
-            query = query.Where(c =>
-                c.CaseNumber.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                c.ClientFirstName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                c.ClientLastName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrWhiteSpace(c.ClientDisplayName) && c.ClientDisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        var filtered = query.ToList();
-        if (filtered.Count == 0)
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "Error: No cases found.",
-            });
-        }
-
-        var page = req.Page < 1 ? 1 : req.Page;
-        var limit = req.Limit < 1 ? 10 : req.Limit;
-
-        var paged = filtered
-            .OrderByDescending(c => c.CreatedAtUtc)
-            .Skip((page - 1) * limit)
-            .Take(limit)
-            .ToList();
-
-        var totalCount = filtered.Count;
-        var totalCases = totalCount;
-        var totalActiveCases = filtered.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
-        var totalValue = filtered.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
-
-        return Results.Ok(new
-        {
-            isSuccess = true,
-            message = "Case list retrieved successfully.",
-            data = paged,
-            totalCount,
-            totalCases,
-            totalActiveCases,
-            totalValue,
-        });
+        return BuildLegacyLinkedCasesResult(
+            cases,
+            req.Keyword,
+            req.Page,
+            req.Limit,
+            "Error: No cases found.");
     }
 
     private static async Task<IResult> GetLeadV3Legacy(
@@ -4651,87 +4619,18 @@ public static class CaseEndpoints
             });
         }
 
-        var allCases = new List<CaseResponse>();
-        var page = 1;
-        const int fetchPageSize = 200;
-
-        while (true)
-        {
-            var chunk = await caseService.SearchAsync(
-                tenantId,
-                search: null,
-                status: null,
-                page: page,
-                pageSize: fetchPageSize,
-                orgId: null,
-                ct);
-
-            if (chunk.Items.Count == 0)
-                break;
-
-            allCases.AddRange(chunk.Items);
-
-            if (allCases.Count >= chunk.TotalCount)
-                break;
-
-            page++;
-        }
+        var allCases = await SearchAllCasesAsync(caseService, tenantId, ct);
 
         var filteredByLead = allCases
-            .Where(c =>
-            {
-                var fields = ParseLegacyNoteFields(c.Notes);
-                var value = fields.GetValueOrDefault("leadId", string.Empty);
-                return string.Equals(value, leadId, StringComparison.OrdinalIgnoreCase);
-            })
+            .Where(c => string.Equals(c.LeadId, leadId, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        IEnumerable<CaseResponse> query = filteredByLead;
-        if (!string.IsNullOrWhiteSpace(req.Keyword))
-        {
-            var keyword = req.Keyword.Trim();
-            query = query.Where(c =>
-                c.CaseNumber.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                c.ClientFirstName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                c.ClientLastName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrWhiteSpace(c.ClientDisplayName) &&
-                 c.ClientDisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        var filtered = query.ToList();
-        if (filtered.Count == 0)
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "Error: No cases found.",
-            });
-        }
-
-        var requestPage = req.Page < 1 ? 1 : req.Page;
-        var requestLimit = req.Limit < 1 ? 10 : req.Limit;
-
-        var paged = filtered
-            .OrderByDescending(c => c.CreatedAtUtc)
-            .Skip((requestPage - 1) * requestLimit)
-            .Take(requestLimit)
-            .ToList();
-
-        var totalCount = filtered.Count;
-        var totalCases = totalCount;
-        var totalActiveCases = filtered.Count(c => !string.Equals(c.Status, CaseStatus.Closed, StringComparison.Ordinal));
-        var totalValue = filtered.Sum(c => (double)(c.SettlementAmount ?? c.DemandAmount ?? 0m));
-
-        return Results.Ok(new
-        {
-            isSuccess = true,
-            message = "Case list retrieved successfully.",
-            data = paged,
-            totalCount,
-            totalCases,
-            totalActiveCases,
-            totalValue,
-        });
+        return BuildLegacyLinkedCasesResult(
+            filteredByLead,
+            req.Keyword,
+            req.Page,
+            req.Limit,
+            "Error: No cases found.");
     }
 
     private static async Task<IResult> GetCaseUpdatesV3Legacy(
@@ -4756,15 +4655,6 @@ public static class CaseEndpoints
             .OrderByDescending(n => n.UpdatedAtUtc ?? n.CreatedAtUtc)
             .ToList();
 
-        if (ordered.Count == 0)
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "Error: No case updates found.",
-            });
-        }
-
         var page = req.Page < 1 ? 1 : req.Page;
         var limit = req.Limit < 1 ? 10 : req.Limit;
 
@@ -4775,6 +4665,9 @@ public static class CaseEndpoints
             {
                 id = n.Id.ToString(),
                 caseId = n.CaseId.ToString(),
+                action = string.IsNullOrWhiteSpace(n.Category) ? "CaseNote" : n.Category,
+                description = n.Content,
+                timestamp = FormatLegacyTimestamp(n.UpdatedAtUtc ?? n.CreatedAtUtc),
                 note = n.Content,
                 category = n.Category,
                 isPinned = n.IsPinned,
@@ -5001,26 +4894,78 @@ public static class CaseEndpoints
     private static async Task<IResult> CreateCaseLegacy(
         LegacyCreateCaseRequest request,
         ICaseService caseService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var orgId = RequireOrgId(ctx);
         var userId = RequireUserId(ctx);
+        var accidentTypeId = FirstNonEmpty(request.accidentTypeId, LooksLikeGuid(request.caseType) ? request.caseType : null);
+        var accidentType = await ResolveLegacyAccidentTypeAsync(db, accidentTypeId, request.caseType, ct);
 
         var mappedRequest = new CreateCaseRequest
         {
             CaseNumber = request.code ?? string.Empty,
             ClientFirstName = request.firstname ?? string.Empty,
             ClientLastName = request.lastname ?? string.Empty,
-            ExternalReference = request.externalCaseId,
+            ExternalReference = FirstNonEmpty(request.externalReference, request.externalCaseId),
             ClientDob = ParseLegacyDate(request.dob),
+            ClientPhone = FirstNonEmpty(request.clientPhone, request.phone),
+            ClientEmail = FirstNonEmpty(request.clientEmail, request.email),
             ClientAddress = BuildAddress(request.address, request.city, request.state, request.zipcode),
             DateOfIncident = ParseLegacyDate(request.dateOfLoss),
-            Notes = request.note,
+            PolicyNumber = request.policyNumber,
+            ClaimNumber = request.claimNumber,
+            Notes = FirstNonEmpty(request.notes, request.note),
+            LawFirmId = request.lawFirmId,
+            AccidentTypeId = accidentTypeId,
+            CaseType = accidentType,
+            StateOfIncident = FirstNonEmpty(request.stateOfIncident, request.accidentStateId),
+            CaseManagerId = request.caseManagerId,
         };
 
         var result = await caseService.CreateAsync(tenantId, orgId, userId, mappedRequest, ct);
+
+        var normalizedCaseStatus = !string.IsNullOrWhiteSpace(request.caseStatusId)
+            ? NormalizeLegacyCaseStatus(request.caseStatusId)
+            : null;
+
+        if (!string.IsNullOrWhiteSpace(normalizedCaseStatus) &&
+            !string.Equals(normalizedCaseStatus, result.Status, StringComparison.Ordinal))
+        {
+            var updateRequest = new UpdateCaseRequest
+            {
+                ClientFirstName = result.ClientFirstName,
+                ClientLastName = result.ClientLastName,
+                ExternalReference = result.ExternalReference,
+                Title = result.Title,
+                ClientDob = result.ClientDob,
+                ClientPhone = result.ClientPhone,
+                ClientEmail = result.ClientEmail,
+                ClientAddress = result.ClientAddress,
+                DateOfIncident = result.DateOfIncident,
+                InsuranceCarrier = result.InsuranceCarrier,
+                PolicyNumber = result.PolicyNumber,
+                ClaimNumber = result.ClaimNumber,
+                Description = result.Description,
+                Notes = result.Notes,
+                Status = normalizedCaseStatus,
+                DemandAmount = result.DemandAmount,
+                SettlementAmount = result.SettlementAmount,
+                Sex = result.Sex,
+                CaseType = result.CaseType,
+                CurrentMedicalStatus = result.CurrentMedicalStatus,
+                StateOfIncident = result.StateOfIncident,
+                TrackingFollowUpDate = result.TrackingFollowUpDate,
+                LeadId = result.LeadId,
+                LawFirmId = result.LawFirmId,
+                AccidentTypeId = result.AccidentTypeId,
+                CaseManagerId = result.CaseManagerId,
+            };
+
+            result = await caseService.UpdateAsync(tenantId, result.Id, userId, updateRequest, ct);
+        }
 
         return Results.Ok(new
         {
@@ -5068,9 +5013,12 @@ public static class CaseEndpoints
             ClientLastName = request.lastname ?? string.Empty,
             ExternalReference = request.externalCaseId,
             ClientDob = ParseLegacyDate(request.dob),
+            ClientPhone = FirstNonEmpty(request.clientPhone, request.phone),
+            ClientEmail = FirstNonEmpty(request.clientEmail, request.email),
             ClientAddress = BuildAddress(request.address, request.city, request.state, request.zipcode),
             DateOfIncident = ParseLegacyDate(request.dateOfLoss),
             Notes = request.note,
+            LawFirmId = request.lawFirmId,
         };
 
         var isNoChanges =
@@ -5078,6 +5026,8 @@ public static class CaseEndpoints
             string.Equals(existing.ClientLastName, mappedRequest.ClientLastName, StringComparison.Ordinal) &&
             string.Equals(existing.ExternalReference, mappedRequest.ExternalReference, StringComparison.Ordinal) &&
             existing.ClientDob == mappedRequest.ClientDob &&
+            string.Equals(existing.ClientPhone, mappedRequest.ClientPhone, StringComparison.Ordinal) &&
+            string.Equals(existing.ClientEmail, mappedRequest.ClientEmail, StringComparison.Ordinal) &&
             string.Equals(existing.ClientAddress, mappedRequest.ClientAddress, StringComparison.Ordinal) &&
             existing.DateOfIncident == mappedRequest.DateOfIncident &&
             string.Equals(existing.Notes, mappedRequest.Notes, StringComparison.Ordinal);
@@ -5113,6 +5063,64 @@ public static class CaseEndpoints
         return Results.Ok(result);
     }
 
+    private static string NormalizeLegacyBatchReassignContactType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var normalized = value.Trim();
+        if (normalized is "1" or "2" or "3" or "4" or "5")
+            return normalized;
+
+        var canonical = string.Concat(normalized.Where(char.IsLetterOrDigit)).ToLowerInvariant();
+
+        return canonical switch
+        {
+            "lawfirm" => "1",
+            "provider" or "medicalprovider" => "2",
+            "fundingcompany" or "lienholder" => "3",
+            "medicalfacility" or "facility" => "4",
+            "lead" or "leads" => "5",
+            _ => normalized,
+        };
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
+    }
+
+    private static bool LooksLikeGuid(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && Guid.TryParse(value, out _);
+
+    private static async Task<string?> ResolveLegacyAccidentTypeAsync(
+        LiensDbContext db,
+        string? accidentTypeId,
+        string? caseType,
+        CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(caseType) && !LooksLikeGuid(caseType))
+            return caseType.Trim();
+
+        if (Guid.TryParse(accidentTypeId, out var parsedAccidentTypeId))
+        {
+            var lookup = await db.LookupValues.AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.Id == parsedAccidentTypeId && x.Category == LookupCategory.AccidentType,
+                    ct);
+            if (lookup is not null)
+                return FirstNonEmpty(lookup.Name, lookup.Code);
+        }
+
+        return FirstNonEmpty(accidentTypeId, caseType);
+    }
+
     // ── Partial-update handlers ───────────────────────────────────────────────
 
     private sealed class PersonalUpdateRequest
@@ -5120,6 +5128,7 @@ public static class CaseEndpoints
         public Guid    CaseId        { get; init; }
         public string  FirstName     { get; init; } = string.Empty;
         public string  LastName      { get; init; } = string.Empty;
+        public string? Sex           { get; init; }
         public string? Dob           { get; init; }
         public string? Phone         { get; init; }
         public string? Email         { get; init; }
@@ -5143,6 +5152,13 @@ public static class CaseEndpoints
     private sealed class CaseDetailsUpdateRequest
     {
         public Guid     CaseId           { get; init; }
+        public string?  CurrentStatus    { get; init; }
+        public string?  CurrentMedicalStatus { get; init; }
+        public string?  CaseType         { get; init; }
+        public string?  StateOfIncident  { get; init; }
+        public string?  TrackingFollowUp { get; init; }
+        public string?  DateOfLoss       { get; init; }
+        public string?  LeadId           { get; init; }
         public string?  Description      { get; init; }
         public string?  Notes            { get; init; }
         public decimal? DemandAmount     { get; init; }
@@ -5185,6 +5201,12 @@ public static class CaseEndpoints
             Notes            = existing.Notes,
             DemandAmount     = existing.DemandAmount,
             SettlementAmount = existing.SettlementAmount,
+            Sex              = req.Sex ?? existing.Sex,
+            CaseType         = existing.CaseType,
+            CurrentMedicalStatus = existing.CurrentMedicalStatus,
+            StateOfIncident  = existing.StateOfIncident,
+            TrackingFollowUpDate = existing.TrackingFollowUpDate,
+            LeadId           = existing.LeadId,
         };
         await caseService.UpdateAsync(tenantId, req.CaseId, userId, request, ct);
         return Results.Ok(new { isSuccess = true, message = "Successfully Updated." });
@@ -5239,6 +5261,9 @@ public static class CaseEndpoints
         if (existing is null)
             return Results.NotFound(new { isSuccess = false, message = "Case not found." });
 
+        DateOnly? dateOfLoss = DateOnly.TryParse(req.DateOfLoss, out var dl) ? dl : existing.DateOfIncident;
+        DateOnly? trackingFollowUp = DateOnly.TryParse(req.TrackingFollowUp, out var tfu) ? tfu : existing.TrackingFollowUpDate;
+
         var request = new UpdateCaseRequest
         {
             ClientFirstName  = existing.ClientFirstName,
@@ -5249,8 +5274,8 @@ public static class CaseEndpoints
             ClientAddress    = existing.ClientAddress,
             ExternalReference= existing.ExternalReference,
             Title            = existing.Title,
-            DateOfIncident   = existing.DateOfIncident,
-            Status           = existing.Status,
+            DateOfIncident   = dateOfLoss,
+            Status           = req.CurrentStatus ?? existing.Status,
             InsuranceCarrier = existing.InsuranceCarrier,
             PolicyNumber     = existing.PolicyNumber,
             ClaimNumber      = existing.ClaimNumber,
@@ -5258,6 +5283,12 @@ public static class CaseEndpoints
             Notes            = req.Notes ?? existing.Notes,
             DemandAmount     = req.DemandAmount ?? existing.DemandAmount,
             SettlementAmount = req.SettlementAmount ?? existing.SettlementAmount,
+            Sex              = existing.Sex,
+            CaseType         = req.CaseType ?? existing.CaseType,
+            CurrentMedicalStatus = req.CurrentMedicalStatus ?? existing.CurrentMedicalStatus,
+            StateOfIncident  = req.StateOfIncident ?? existing.StateOfIncident,
+            TrackingFollowUpDate = trackingFollowUp,
+            LeadId           = req.LeadId ?? existing.LeadId,
         };
         await caseService.UpdateAsync(tenantId, req.CaseId, userId, request, ct);
         return Results.Ok(new { isSuccess = true, message = "Successfully Updated." });
@@ -5504,6 +5535,64 @@ public static class CaseEndpoints
         public int    Limit         { get; init; } = 20;
         public string? FilterType   { get; init; }
         public string? FilterId     { get; init; }
+        public string? startDate    { get; init; }
+        public string? endDate      { get; init; }
+        public string? purchaseDateFrom { get; init; }
+        public string? purchaseDateTo   { get; init; }
+    }
+
+    private sealed class DashboardCaseReportRow
+    {
+        public Guid Id { get; init; }
+        public string CaseNumber { get; init; } = string.Empty;
+        public string ClientFirstName { get; init; } = string.Empty;
+        public string ClientLastName { get; init; } = string.Empty;
+        public string ClientName { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+        public string DateOfIncident { get; init; } = string.Empty;
+        public string ClientDob { get; init; } = string.Empty;
+        public string LawFirmId { get; init; } = string.Empty;
+        public string LawFirm { get; init; } = string.Empty;
+        public string CaseManagerId { get; init; } = string.Empty;
+        public string CaseManager { get; init; } = string.Empty;
+        public string AccidentTypeId { get; init; } = string.Empty;
+        public string AccidentType { get; init; } = string.Empty;
+        public decimal TotalLienAmount { get; init; }
+        public int LienCount { get; init; }
+        public DateTime CreatedAtUtc { get; init; }
+        public DateTime UpdatedAtUtc { get; init; }
+    }
+
+    private sealed class DashboardLienReportRow
+    {
+        public Guid Id { get; init; }
+        public string LienNumber { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+        public string LienType { get; init; } = string.Empty;
+        public string CaseId { get; init; } = string.Empty;
+        public Guid? CaseRecordId { get; init; }
+        public string CaseNumber { get; init; } = string.Empty;
+        public string ClientName { get; init; } = string.Empty;
+        public string LawFirmId { get; init; } = string.Empty;
+        public string LawFirm { get; init; } = string.Empty;
+        public string CaseManagerId { get; init; } = string.Empty;
+        public string CaseManager { get; init; } = string.Empty;
+        public string FacilityId { get; init; } = string.Empty;
+        public string FacilityName { get; init; } = string.Empty;
+        public string MedicalProviderId { get; init; } = string.Empty;
+        public string MedicalProvider { get; init; } = string.Empty;
+        public string FundingCompanyId { get; init; } = string.Empty;
+        public string FundingCompany { get; init; } = string.Empty;
+        public string IncidentDate { get; init; } = string.Empty;
+        public string InitialServiceDate { get; init; } = string.Empty;
+        public string EndServiceDate { get; init; } = string.Empty;
+        public decimal OriginalAmount { get; init; }
+        public decimal CurrentBalance { get; init; }
+        public decimal PurchasePrice { get; init; }
+        public decimal TotalPurchaseAmount { get; init; }
+        public decimal TotalBillingAmount { get; init; }
+        public DateTime CreatedAtUtc { get; init; }
+        public DateTime UpdatedAtUtc { get; init; }
     }
 
     private sealed class LegacyDashboardMetricRequest
@@ -5653,25 +5742,562 @@ public static class CaseEndpoints
     private static Task<IResult> GetDashboardTaskSummary(ICurrentRequestContext _) =>
         Task.FromResult<IResult>(Results.Ok(new { totalTasks = 0, overdue = 0, dueToday = 0 }));
 
-    private static Task<IResult> GetTotalLienReport(ICurrentRequestContext _) =>
-        Task.FromResult<IResult>(Results.Ok(Array.Empty<object>()));
-    private static Task<IResult> GetTotalLienReportV3(ReportFilterRequest _, ICurrentRequestContext __) =>
-        Task.FromResult<IResult>(Results.Ok(new PaginatedResult<object>()));
+    private static async Task<IResult> GetTotalLienReport(
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var result = await BuildDashboardLienReportResultAsync(
+            new ReportFilterRequest { Page = 1, Limit = 500 },
+            db,
+            ctx,
+            ct);
+        return Results.Ok(result.Items);
+    }
 
-    private static Task<IResult> GetTotalCaseReport(ICurrentRequestContext _) =>
-        Task.FromResult<IResult>(Results.Ok(Array.Empty<object>()));
-    private static Task<IResult> GetTotalCaseReportV3(ReportFilterRequest _, ICurrentRequestContext __) =>
-        Task.FromResult<IResult>(Results.Ok(new PaginatedResult<object>()));
+    private static async Task<IResult> GetTotalLienReportV3(
+        ReportFilterRequest request,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+        => Results.Ok(await BuildDashboardLienReportResultAsync(request, db, ctx, ct));
 
-    private static Task<IResult> GetLawFirmCaseReport(ICurrentRequestContext _) =>
-        Task.FromResult<IResult>(Results.Ok(Array.Empty<object>()));
-    private static Task<IResult> GetLawFirmCaseReportV3(ReportFilterRequest _, ICurrentRequestContext __) =>
-        Task.FromResult<IResult>(Results.Ok(new PaginatedResult<object>()));
+    private static async Task<IResult> GetTotalCaseReport(
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var result = await BuildDashboardCaseReportResultAsync(
+            new ReportFilterRequest { Page = 1, Limit = 500 },
+            db,
+            ctx,
+            ct);
+        return Results.Ok(result.Items);
+    }
 
-    private static Task<IResult> GetMedicalProviderReport(ICurrentRequestContext _) =>
-        Task.FromResult<IResult>(Results.Ok(Array.Empty<object>()));
-    private static Task<IResult> GetMedicalProviderReportV3(ReportFilterRequest _, ICurrentRequestContext __) =>
-        Task.FromResult<IResult>(Results.Ok(new PaginatedResult<object>()));
+    private static async Task<IResult> GetTotalCaseReportV3(
+        ReportFilterRequest request,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+        => Results.Ok(await BuildDashboardCaseReportResultAsync(request, db, ctx, ct));
+
+    private static async Task<IResult> GetLawFirmCaseReport(
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var result = await BuildDashboardCaseReportResultAsync(
+            new ReportFilterRequest { Page = 1, Limit = 500 },
+            db,
+            ctx,
+            ct,
+            requireLawFirm: true);
+        return Results.Ok(result.Items);
+    }
+
+    private static async Task<IResult> GetLawFirmCaseReportV3(
+        ReportFilterRequest request,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+        => Results.Ok(await BuildDashboardCaseReportResultAsync(request, db, ctx, ct, requireLawFirm: true));
+
+    private static async Task<IResult> GetMedicalProviderReport(
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var result = await BuildDashboardLienReportResultAsync(
+            new ReportFilterRequest { Page = 1, Limit = 500 },
+            db,
+            ctx,
+            ct,
+            requireMedicalProvider: true);
+        return Results.Ok(result.Items);
+    }
+
+    private static async Task<IResult> GetMedicalProviderReportV3(
+        ReportFilterRequest request,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+        => Results.Ok(await BuildDashboardLienReportResultAsync(request, db, ctx, ct, requireMedicalProvider: true));
+
+    private static async Task<PaginatedResult<DashboardCaseReportRow>> BuildDashboardCaseReportResultAsync(
+        ReportFilterRequest? request,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct,
+        bool requireLawFirm = false)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var (page, limit) = NormalizeDashboardReportPaging(request);
+
+        var cases = await db.Cases
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId)
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .ToListAsync(ct);
+
+        if (ctx.OrgId.HasValue)
+            cases = cases.Where(c => c.OrgId == ctx.OrgId.Value).ToList();
+
+        var caseIds = cases.Select(c => c.Id).ToHashSet();
+        var caseLiens = await db.Liens
+            .AsNoTracking()
+            .Where(l => l.TenantId == tenantId && l.CaseId.HasValue && caseIds.Contains(l.CaseId.Value))
+            .ToListAsync(ct);
+
+        var liensByCaseId = caseLiens
+            .GroupBy(l => l.CaseId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    TotalLienAmount = g.Sum(x => x.OriginalAmount),
+                    LienCount = g.Count(),
+                });
+
+        var lawFirmContacts = await db.Contacts
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.ContactType == ContactType.LawFirm)
+            .OrderBy(c => c.DisplayName)
+            .ToListAsync(ct);
+
+        var caseManagerContactsById = await db.Contacts
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.ContactType == ContactType.CaseManager)
+            .ToDictionaryAsync(c => c.Id, ct);
+
+        var lawFirmByOrgId = lawFirmContacts
+            .GroupBy(c => c.OrgId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.First(),
+                EqualityComparer<Guid>.Default);
+
+        var rows = cases
+            .Select(c =>
+            {
+                var fields = ParseLegacyNoteFields(c.Notes);
+                var lawFirmContact = lawFirmByOrgId.GetValueOrDefault(c.OrgId);
+                var lawFirmId = fields.GetValueOrDefault("lawFirmId", string.Empty);
+                if (string.IsNullOrWhiteSpace(lawFirmId))
+                    lawFirmId = lawFirmContact?.Id.ToString() ?? c.OrgId.ToString();
+
+                var lawFirm = fields.GetValueOrDefault("lawFirm", string.Empty);
+                if (string.IsNullOrWhiteSpace(lawFirm))
+                    lawFirm = lawFirmContact?.Organization ?? lawFirmContact?.DisplayName ?? string.Empty;
+
+                var caseManagerId = fields.GetValueOrDefault("caseManagerId", string.Empty);
+                var caseManager = fields.GetValueOrDefault("caseManager", string.Empty);
+                if (Guid.TryParse(caseManagerId, out var parsedCaseManagerId) &&
+                    caseManagerContactsById.TryGetValue(parsedCaseManagerId, out var caseManagerContact))
+                {
+                    if (string.IsNullOrWhiteSpace(caseManager))
+                        caseManager = caseManagerContact.DisplayName;
+                }
+
+                liensByCaseId.TryGetValue(c.Id, out var lienAggregate);
+
+                return new DashboardCaseReportRow
+                {
+                    Id = c.Id,
+                    CaseNumber = c.CaseNumber,
+                    ClientFirstName = c.ClientFirstName,
+                    ClientLastName = c.ClientLastName,
+                    ClientName = $"{c.ClientFirstName} {c.ClientLastName}".Trim(),
+                    Status = c.Status,
+                    DateOfIncident = FormatLegacyDate(c.DateOfIncident),
+                    ClientDob = FormatLegacyDate(c.ClientDob),
+                    LawFirmId = lawFirmId,
+                    LawFirm = lawFirm,
+                    CaseManagerId = caseManagerId,
+                    CaseManager = caseManager,
+                    AccidentTypeId = fields.GetValueOrDefault("accidentTypeId", string.Empty),
+                    AccidentType = fields.GetValueOrDefault("accidentType", string.Empty),
+                    TotalLienAmount = lienAggregate?.TotalLienAmount ?? 0m,
+                    LienCount = lienAggregate?.LienCount ?? 0,
+                    CreatedAtUtc = c.CreatedAtUtc,
+                    UpdatedAtUtc = c.UpdatedAtUtc,
+                };
+            })
+            .Where(r => !requireLawFirm || !string.IsNullOrWhiteSpace(r.LawFirm) || !string.IsNullOrWhiteSpace(r.LawFirmId))
+            .Where(r => MatchesDashboardCaseFilter(request, r))
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .ThenByDescending(r => r.CaseNumber, StringComparer.Ordinal)
+            .ToList();
+
+        return PaginateDashboardRows(rows, page, limit);
+    }
+
+    private static async Task<PaginatedResult<DashboardLienReportRow>> BuildDashboardLienReportResultAsync(
+        ReportFilterRequest? request,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct,
+        bool requireMedicalProvider = false)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var (page, limit) = NormalizeDashboardReportPaging(request);
+        var hasDateRange = TryResolveDashboardLienReportPeriod(request, out var periodStart, out var periodEnd);
+
+        var liens = await db.Liens
+            .AsNoTracking()
+            .Where(l => l.TenantId == tenantId)
+            .OrderByDescending(l => l.CreatedAtUtc)
+            .ToListAsync(ct);
+
+        if (ctx.OrgId.HasValue)
+        {
+            var orgId = ctx.OrgId.Value;
+            liens = liens.Where(l =>
+                l.OrgId == orgId ||
+                l.SellingOrgId == orgId ||
+                l.BuyingOrgId == orgId ||
+                l.HoldingOrgId == orgId).ToList();
+        }
+
+        if (hasDateRange)
+        {
+            if (requireMedicalProvider)
+            {
+                var purchaseStart = DateOnly.FromDateTime(periodStart);
+                var purchaseEnd = DateOnly.FromDateTime(periodEnd);
+                liens = liens
+                    .Where(l => l.IncidentDate.HasValue &&
+                                l.IncidentDate.Value >= purchaseStart &&
+                                l.IncidentDate.Value <= purchaseEnd)
+                    .ToList();
+            }
+            else
+            {
+                liens = liens
+                    .Where(l => l.CreatedAtUtc.Date >= periodStart && l.CreatedAtUtc.Date <= periodEnd)
+                    .ToList();
+            }
+        }
+
+        var caseIds = liens.Where(l => l.CaseId.HasValue).Select(l => l.CaseId!.Value).Distinct().ToList();
+        var lienIds = liens.Select(l => l.Id).ToList();
+
+        var casesById = await db.Cases
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && caseIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, ct);
+
+        var lawFirmContacts = await db.Contacts
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.ContactType == ContactType.LawFirm)
+            .OrderBy(c => c.DisplayName)
+            .ToListAsync(ct);
+
+        var contactsById = await db.Contacts
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId)
+            .ToDictionaryAsync(c => c.Id, ct);
+
+        var facilityContacts = contactsById.Values
+            .Where(IsStandaloneFacilityContact)
+            .ToList();
+        var facilityContactsById = facilityContacts.ToDictionary(c => c.Id, EqualityComparer<Guid>.Default);
+        var facilityContactsByLinkedFacilityId = facilityContacts
+            .Where(c => c.FacilityId.HasValue)
+            .GroupBy(c => c.FacilityId!.Value)
+            .ToDictionary(g => g.Key, g => g.First(), EqualityComparer<Guid>.Default);
+        var facilityContactsByName = facilityContacts
+            .SelectMany(c => GetFacilityContactLookupNames(c).Select(name => new { Name = name, Contact = c }))
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Contact, StringComparer.OrdinalIgnoreCase);
+
+        var servicingItems = await db.ServicingItems
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId &&
+                        s.LienId.HasValue &&
+                        lienIds.Contains(s.LienId.Value) &&
+                        (s.TaskType == "LegacyMedicalCode" || s.TaskType == "LegacyMedicalFacilityInfo"))
+            .ToListAsync(ct);
+
+        var lawFirmByOrgId = lawFirmContacts
+            .GroupBy(c => c.OrgId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.First(),
+                EqualityComparer<Guid>.Default);
+
+        var medicalCodesByLienId = servicingItems
+            .Where(s => s.LienId.HasValue && string.Equals(s.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
+            .GroupBy(s => s.LienId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var facilityInfoByLienId = servicingItems
+            .Where(s => s.LienId.HasValue && string.Equals(s.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal))
+            .GroupBy(s => s.LienId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAtUtc).First());
+
+        var rows = liens
+            .Select(l =>
+            {
+                casesById.TryGetValue(l.CaseId ?? Guid.Empty, out var caseInfo);
+                var caseFields = caseInfo is null
+                    ? new Dictionary<string, string>(StringComparer.Ordinal)
+                    : ParseLegacyNoteFields(caseInfo.Notes);
+
+                var lawFirmContact = caseInfo is not null
+                    ? lawFirmByOrgId.GetValueOrDefault(caseInfo.OrgId)
+                    : null;
+
+                var lawFirmId = caseFields.GetValueOrDefault("lawFirmId", string.Empty);
+                if (string.IsNullOrWhiteSpace(lawFirmId) && caseInfo is not null)
+                    lawFirmId = lawFirmContact?.Id.ToString() ?? caseInfo.OrgId.ToString();
+
+                var lawFirm = caseFields.GetValueOrDefault("lawFirm", string.Empty);
+                if (string.IsNullOrWhiteSpace(lawFirm))
+                    lawFirm = lawFirmContact?.Organization ?? lawFirmContact?.DisplayName ?? string.Empty;
+
+                var caseManagerId = caseFields.GetValueOrDefault("caseManagerId", string.Empty);
+                var caseManager = caseFields.GetValueOrDefault("caseManager", string.Empty);
+                if (Guid.TryParse(caseManagerId, out var parsedCaseManagerId) &&
+                    contactsById.TryGetValue(parsedCaseManagerId, out var caseManagerContact) &&
+                    string.IsNullOrWhiteSpace(caseManager))
+                {
+                    caseManager = caseManagerContact.DisplayName;
+                }
+
+                var facilityId = l.FacilityId?.ToString() ?? string.Empty;
+                var facilityName = string.Empty;
+                var medicalProviderId = string.Empty;
+                var medicalProvider = string.Empty;
+
+                if (facilityInfoByLienId.TryGetValue(l.Id, out var facilityInfo))
+                {
+                    var fields = ParseLegacyNoteFields(facilityInfo.Notes);
+                    facilityId = fields.GetValueOrDefault("facilityId", facilityId);
+                    facilityName = fields.GetValueOrDefault("facilityName", string.Empty);
+                    medicalProviderId = fields.GetValueOrDefault("medicalProviderId", string.Empty);
+                    medicalProvider = fields.GetValueOrDefault("medicalProvider", string.Empty);
+                }
+
+                if (Guid.TryParse(facilityId, out var parsedFacilityId))
+                {
+                    if (facilityContactsById.TryGetValue(parsedFacilityId, out var facilityContact) ||
+                        facilityContactsByLinkedFacilityId.TryGetValue(parsedFacilityId, out facilityContact))
+                    {
+                        facilityId = facilityContact.Id.ToString();
+                        if (string.IsNullOrWhiteSpace(facilityName))
+                            facilityName = ResolveFacilityContactName(facilityContact);
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(facilityId) &&
+                    !string.IsNullOrWhiteSpace(facilityName) &&
+                    facilityContactsByName.TryGetValue(facilityName.Trim(), out var facilityContactByName))
+                {
+                    facilityId = facilityContactByName.Id.ToString();
+                    facilityName = ResolveFacilityContactName(facilityContactByName);
+                }
+
+                if (string.IsNullOrWhiteSpace(medicalProvider) &&
+                    Guid.TryParse(medicalProviderId, out var parsedMedicalProviderId) &&
+                    contactsById.TryGetValue(parsedMedicalProviderId, out var medicalProviderContact))
+                {
+                    medicalProvider = medicalProviderContact.Organization ?? medicalProviderContact.DisplayName;
+                }
+
+                var fundingCompanyId = l.ExternalReference ?? string.Empty;
+                var fundingCompany = string.Empty;
+                if (Guid.TryParse(fundingCompanyId, out var parsedFundingCompanyId) &&
+                    contactsById.TryGetValue(parsedFundingCompanyId, out var fundingCompanyContact))
+                {
+                    fundingCompany = fundingCompanyContact.Organization ?? fundingCompanyContact.DisplayName;
+                }
+
+                var totalPurchaseAmount = 0m;
+                var totalBillingAmount = 0m;
+                if (medicalCodesByLienId.TryGetValue(l.Id, out var medicalCodeItems))
+                {
+                    foreach (var item in medicalCodeItems)
+                    {
+                        var fields = ParseLegacyNoteFields(item.Notes);
+                        if (decimal.TryParse(fields.GetValueOrDefault("purchaseAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var purchase))
+                            totalPurchaseAmount += purchase;
+                        if (decimal.TryParse(fields.GetValueOrDefault("billingAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var billing))
+                            totalBillingAmount += billing;
+                    }
+                }
+
+                return new DashboardLienReportRow
+                {
+                    Id = l.Id,
+                    LienNumber = l.LienNumber,
+                    Status = l.Status,
+                    LienType = l.LienType,
+                    CaseId = caseInfo?.CaseNumber ?? string.Empty,
+                    CaseRecordId = l.CaseId,
+                    CaseNumber = caseInfo?.CaseNumber ?? string.Empty,
+                    ClientName = caseInfo is null
+                        ? string.Empty
+                        : $"{caseInfo.ClientFirstName} {caseInfo.ClientLastName}".Trim(),
+                    LawFirmId = lawFirmId,
+                    LawFirm = lawFirm,
+                    CaseManagerId = caseManagerId,
+                    CaseManager = caseManager,
+                    FacilityId = facilityId,
+                    FacilityName = facilityName,
+                    MedicalProviderId = medicalProviderId,
+                    MedicalProvider = medicalProvider,
+                    FundingCompanyId = fundingCompanyId,
+                    FundingCompany = fundingCompany,
+                    IncidentDate = FormatLegacyDate(l.IncidentDate),
+                    InitialServiceDate = FormatLegacyDate(l.InitialServiceDate),
+                    EndServiceDate = FormatLegacyDate(l.EndServiceDate),
+                    OriginalAmount = l.OriginalAmount,
+                    CurrentBalance = l.CurrentBalance ?? 0m,
+                    PurchasePrice = l.PurchasePrice ?? 0m,
+                    TotalPurchaseAmount = totalPurchaseAmount,
+                    TotalBillingAmount = totalBillingAmount,
+                    CreatedAtUtc = l.CreatedAtUtc,
+                    UpdatedAtUtc = l.UpdatedAtUtc,
+                };
+            })
+            .Where(r => !requireMedicalProvider || !string.IsNullOrWhiteSpace(r.MedicalProvider) || !string.IsNullOrWhiteSpace(r.MedicalProviderId))
+            .Where(r => MatchesDashboardLienFilter(request, r))
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .ThenByDescending(r => r.LienNumber, StringComparer.Ordinal)
+            .ToList();
+
+        return PaginateDashboardRows(rows, page, limit);
+    }
+
+    private static bool IsStandaloneFacilityContact(Liens.Domain.Entities.Contact contact) =>
+        (string.Equals(contact.ContactType, ContactType.Facility, StringComparison.Ordinal) ||
+         string.Equals(contact.ContactType, ContactType.MedicalFacility, StringComparison.Ordinal)) &&
+        string.IsNullOrWhiteSpace(contact.ContactSubtype);
+
+    private static string ResolveFacilityContactName(Liens.Domain.Entities.Contact contact)
+        => string.IsNullOrWhiteSpace(contact.Organization)
+            ? contact.DisplayName
+            : contact.Organization.Trim();
+
+    private static IEnumerable<string> GetFacilityContactLookupNames(Liens.Domain.Entities.Contact contact)
+    {
+        if (!string.IsNullOrWhiteSpace(contact.Organization))
+            yield return contact.Organization.Trim();
+
+        if (!string.IsNullOrWhiteSpace(contact.DisplayName))
+            yield return contact.DisplayName.Trim();
+    }
+
+    private static bool TryResolveDashboardLienReportPeriod(
+        ReportFilterRequest? request,
+        out DateTime periodStart,
+        out DateTime periodEnd)
+    {
+        periodStart = default;
+        periodEnd = default;
+
+        var startDate = string.IsNullOrWhiteSpace(request?.purchaseDateFrom)
+            ? request?.startDate
+            : request?.purchaseDateFrom;
+        var endDate = string.IsNullOrWhiteSpace(request?.purchaseDateTo)
+            ? request?.endDate
+            : request?.purchaseDateTo;
+
+        var hasStart = !string.IsNullOrWhiteSpace(startDate);
+        var hasEnd = !string.IsNullOrWhiteSpace(endDate);
+        if (!hasStart && !hasEnd)
+            return false;
+
+        if (hasStart != hasEnd)
+            return false;
+
+        return TryResolveDashboardMetricPeriod(
+            startDate,
+            endDate,
+            DateTime.UtcNow.Date,
+            out periodStart,
+            out periodEnd,
+            out _);
+    }
+
+    private static (int Page, int Limit) NormalizeDashboardReportPaging(ReportFilterRequest? request)
+    {
+        var page = request?.Page ?? 1;
+        var limit = request?.Limit ?? 20;
+
+        if (page < 1)
+            page = 1;
+        if (limit < 1)
+            limit = 20;
+        if (limit > 500)
+            limit = 500;
+
+        return (page, limit);
+    }
+
+    private static PaginatedResult<T> PaginateDashboardRows<T>(List<T> rows, int page, int limit)
+    {
+        return new PaginatedResult<T>
+        {
+            Items = rows.Skip((page - 1) * limit).Take(limit).ToList(),
+            Page = page,
+            PageSize = limit,
+            TotalCount = rows.Count,
+        };
+    }
+
+    private static bool MatchesDashboardCaseFilter(ReportFilterRequest? request, DashboardCaseReportRow row)
+    {
+        if (string.IsNullOrWhiteSpace(request?.FilterType) || string.IsNullOrWhiteSpace(request.FilterId))
+            return true;
+
+        var filterType = request.FilterType.Trim().ToLowerInvariant();
+        var filterId = request.FilterId.Trim();
+
+        return filterType switch
+        {
+            "case" or "caseid" => MatchesFilterValue(filterId, row.Id.ToString(), row.CaseNumber),
+            "status" or "casestatus" => MatchesFilterValue(filterId, row.Status),
+            "lawfirm" or "lawfirmid" => MatchesFilterValue(filterId, row.LawFirmId, row.LawFirm),
+            "casemanager" or "casemanagerid" => MatchesFilterValue(filterId, row.CaseManagerId, row.CaseManager),
+            "accidenttype" or "accidenttypeid" => MatchesFilterValue(filterId, row.AccidentTypeId, row.AccidentType),
+            _ => true,
+        };
+    }
+
+    private static bool MatchesDashboardLienFilter(ReportFilterRequest? request, DashboardLienReportRow row)
+    {
+        if (string.IsNullOrWhiteSpace(request?.FilterType) || string.IsNullOrWhiteSpace(request.FilterId))
+            return true;
+
+        var filterType = request.FilterType.Trim().ToLowerInvariant();
+        var filterId = request.FilterId.Trim();
+
+        return filterType switch
+        {
+            "lien" or "lienid" => MatchesFilterValue(filterId, row.Id.ToString(), row.LienNumber),
+            "case" or "caseid" => MatchesFilterValue(
+                filterId,
+                row.CaseId,
+                row.CaseNumber,
+                row.CaseRecordId?.ToString() ?? string.Empty),
+            "status" or "lienstatus" => MatchesFilterValue(filterId, row.Status),
+            "lawfirm" or "lawfirmid" => MatchesFilterValue(filterId, row.LawFirmId, row.LawFirm),
+            "casemanager" or "casemanagerid" => MatchesFilterValue(filterId, row.CaseManagerId, row.CaseManager),
+            "medicalprovider" or "medicalproviderid" => MatchesFilterValue(filterId, row.MedicalProviderId, row.MedicalProvider),
+            "medicalfacility" or "facility" or "facilityid" => MatchesFilterValue(filterId, row.FacilityId, row.FacilityName),
+            "fundingcompany" or "fundingcompanyid" => MatchesFilterValue(filterId, row.FundingCompanyId, row.FundingCompany),
+            _ => true,
+        };
+    }
+
+    private static bool MatchesFilterValue(string filterId, params string[] candidates)
+    {
+        return candidates.Any(candidate =>
+            !string.IsNullOrWhiteSpace(candidate) &&
+            string.Equals(candidate.Trim(), filterId, StringComparison.OrdinalIgnoreCase));
+    }
 
     private static Task<IResult> GetLienReportCsv(ICurrentRequestContext _) =>
         Task.FromResult<IResult>(Results.Ok(new { data = string.Empty }));

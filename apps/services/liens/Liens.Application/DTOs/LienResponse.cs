@@ -24,8 +24,11 @@ public sealed class LienResponse
     public Guid? BuyingOrgId { get; init; }
     public Guid? HoldingOrgId { get; init; }
     public DateOnly? IncidentDate { get; init; }
+    public string? PurchaseDate { get; init; }
     public DateOnly? InitialServiceDate { get; init; }
     public DateOnly? EndServiceDate { get; init; }
+    public decimal? TotalPurchase { get; init; }
+    public decimal? TotalBilling { get; init; }
     public string? IsBulk { get; init; }
     public string? IsServicing { get; init; }
     public string? Description { get; init; }

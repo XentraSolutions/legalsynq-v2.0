@@ -12,25 +12,28 @@ public sealed class LienService : ILienService
 {
     private readonly ILienRepository           _lienRepo;
     private readonly ICaseRepository           _caseRepo;
+    private readonly IContactRepository        _contactRepo;
     private readonly IFacilityRepository       _facilityRepo;
     private readonly IAuditPublisher           _audit;
-    private readonly ILienTaskGenerationEngine _taskGenEngine;
-    private readonly ILogger<LienService>      _logger;
+    private readonly ILienTaskGenerationDispatcher _taskGenDispatcher;
+    private readonly ILogger<LienService>          _logger;
 
     public LienService(
         ILienRepository lienRepo,
         ICaseRepository caseRepo,
+        IContactRepository contactRepo,
         IFacilityRepository facilityRepo,
         IAuditPublisher audit,
-        ILienTaskGenerationEngine taskGenEngine,
+        ILienTaskGenerationDispatcher taskGenDispatcher,
         ILogger<LienService> logger)
     {
-        _lienRepo      = lienRepo;
-        _caseRepo      = caseRepo;
-        _facilityRepo  = facilityRepo;
-        _audit         = audit;
-        _taskGenEngine = taskGenEngine;
-        _logger        = logger;
+        _lienRepo          = lienRepo;
+        _caseRepo          = caseRepo;
+        _contactRepo       = contactRepo;
+        _facilityRepo      = facilityRepo;
+        _audit             = audit;
+        _taskGenDispatcher = taskGenDispatcher;
+        _logger            = logger;
     }
 
     public async Task<PaginatedResult<LienResponse>> SearchAsync(
@@ -101,12 +104,14 @@ public sealed class LienService : ILienService
                 $"A lien with number '{lienNumber}' already exists.",
                 "LIEN_NUMBER_DUPLICATE");
 
-        if (request.FacilityId.HasValue)
+        var resolvedFacilityId = request.FacilityId.HasValue
+            ? await ResolveFacilityIdAsync(tenantId, request.FacilityId.Value, actingUserId, ct)
+            : null;
+
+        if (request.FacilityId.HasValue && !resolvedFacilityId.HasValue)
         {
-            var facilityEntity = await _facilityRepo.GetByIdAsync(tenantId, request.FacilityId.Value, ct);
-            if (facilityEntity is null)
-                throw new ValidationException("Referenced facility does not exist.",
-                    new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
+            throw new ValidationException("Referenced facility does not exist.",
+                new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
         }
 
         var entity = Lien.Create(
@@ -118,7 +123,7 @@ public sealed class LienService : ILienService
             createdByUserId: actingUserId,
             externalReference: request.ExternalReference,
             caseId: request.CaseId,
-            facilityId: request.FacilityId,
+            facilityId: resolvedFacilityId,
             subjectFirstName: request.SubjectFirstName,
             subjectLastName: request.SubjectLastName,
             isConfidential: request.IsConfidential,
@@ -145,9 +150,9 @@ public sealed class LienService : ILienService
             entityType: "Lien",
             entityId: entity.Id.ToString());
 
-        // Fire-and-observe: task generation failure must not block lien creation
-        var lienId     = entity.Id;
-        var genContext  = new TaskGenerationContext(
+        // Run task generation in an isolated scope so it never reuses the request DbContext.
+        var lienId = entity.Id;
+        var genContext = new TaskGenerationContext(
             TenantId:       tenantId,
             EventType:      Domain.Enums.TaskGenerationEventType.LienCreated,
             EntityType:     "LIEN",
@@ -157,12 +162,7 @@ public sealed class LienService : ILienService
             WorkflowStageId: null,
             ActorUserId:    actingUserId);
 
-        _ = _taskGenEngine.TriggerAsync(genContext, CancellationToken.None)
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                    _logger.LogWarning(t.Exception, "Task generation failed for lien {LienId}.", lienId);
-            }, TaskContinuationOptions.OnlyOnFaulted);
+        _taskGenDispatcher.Dispatch(genContext);
 
         return MapToResponse(entity);
     }
@@ -216,12 +216,14 @@ public sealed class LienService : ILienService
                     new Dictionary<string, string[]> { ["caseId"] = [$"Case '{request.CaseId.Value}' not found."] });
         }
 
-        if (request.FacilityId.HasValue && request.FacilityId != entity.FacilityId)
+        var resolvedFacilityId = request.FacilityId.HasValue
+            ? await ResolveFacilityIdAsync(tenantId, request.FacilityId.Value, actingUserId, ct)
+            : null;
+
+        if (request.FacilityId.HasValue && !resolvedFacilityId.HasValue)
         {
-            var facilityEntity = await _facilityRepo.GetByIdAsync(tenantId, request.FacilityId.Value, ct);
-            if (facilityEntity is null)
-                throw new ValidationException("Referenced facility does not exist.",
-                    new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
+            throw new ValidationException("Referenced facility does not exist.",
+                new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
         }
 
         entity.Update(
@@ -243,8 +245,8 @@ public sealed class LienService : ILienService
         if (request.CaseId.HasValue)
             entity.AttachCase(request.CaseId.Value, actingUserId);
 
-        if (request.FacilityId.HasValue)
-            entity.AttachFacility(request.FacilityId.Value, actingUserId);
+        if (resolvedFacilityId.HasValue && resolvedFacilityId != entity.FacilityId)
+            entity.AttachFacility(resolvedFacilityId.Value, actingUserId);
 
         await _lienRepo.UpdateAsync(entity, ct);
 
@@ -316,8 +318,11 @@ public sealed class LienService : ILienService
             BuyingOrgId = entity.BuyingOrgId,
             HoldingOrgId = entity.HoldingOrgId,
             IncidentDate = entity.IncidentDate,
+            PurchaseDate = entity.IncidentDate?.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture),
             InitialServiceDate = entity.InitialServiceDate,
             EndServiceDate = entity.EndServiceDate,
+            TotalPurchase = null,
+            TotalBilling = null,
             IsBulk = entity.IsBulk,
             IsServicing = entity.IsServicing,
             Description = entity.Description,
@@ -332,6 +337,87 @@ public sealed class LienService : ILienService
     {
         var display = $"{firstName} {lastName}".Trim();
         return string.IsNullOrEmpty(display) ? null : display;
+    }
+
+    private async Task<Guid?> ResolveFacilityIdAsync(
+        Guid tenantId,
+        Guid requestedFacilityId,
+        Guid actingUserId,
+        CancellationToken ct)
+    {
+        if (requestedFacilityId == Guid.Empty)
+            return null;
+
+        var facility = await _facilityRepo.GetByIdAsync(tenantId, requestedFacilityId, ct);
+        if (facility is not null)
+            return facility.Id;
+
+        var legacyFacilityContact = await _contactRepo.GetByIdAsync(tenantId, requestedFacilityId, ct);
+        if (legacyFacilityContact is null || !IsStandaloneFacilityContact(legacyFacilityContact))
+            return null;
+
+        if (legacyFacilityContact.FacilityId.HasValue)
+        {
+            var linkedFacility = await _facilityRepo.GetByIdAsync(tenantId, legacyFacilityContact.FacilityId.Value, ct);
+            if (linkedFacility is not null)
+                return linkedFacility.Id;
+        }
+
+        var createdFacility = Facility.Create(
+            legacyFacilityContact.TenantId,
+            legacyFacilityContact.OrgId,
+            ResolveFacilityName(legacyFacilityContact),
+            actingUserId,
+            addressLine1: legacyFacilityContact.AddressLine1,
+            city: legacyFacilityContact.City,
+            state: legacyFacilityContact.State,
+            postalCode: legacyFacilityContact.PostalCode,
+            phone: legacyFacilityContact.Phone,
+            email: legacyFacilityContact.Email,
+            fax: legacyFacilityContact.Fax);
+
+        await _facilityRepo.AddAsync(createdFacility, ct);
+
+        legacyFacilityContact.Update(
+            legacyFacilityContact.FirstName,
+            legacyFacilityContact.LastName,
+            legacyFacilityContact.ContactType,
+            actingUserId,
+            facilityId: createdFacility.Id,
+            contactSubtype: legacyFacilityContact.ContactSubtype,
+            title: legacyFacilityContact.Title,
+            organization: legacyFacilityContact.Organization,
+            email: legacyFacilityContact.Email,
+            phone: legacyFacilityContact.Phone,
+            fax: legacyFacilityContact.Fax,
+            website: legacyFacilityContact.Website,
+            addressLine1: legacyFacilityContact.AddressLine1,
+            city: legacyFacilityContact.City,
+            state: legacyFacilityContact.State,
+            postalCode: legacyFacilityContact.PostalCode,
+            notes: legacyFacilityContact.Notes);
+
+        await _contactRepo.UpdateAsync(legacyFacilityContact, ct);
+
+        _logger.LogInformation(
+            "Legacy facility contact {ContactId} linked to facility {FacilityId} for tenant {TenantId}",
+            legacyFacilityContact.Id,
+            createdFacility.Id,
+            tenantId);
+
+        return createdFacility.Id;
+    }
+
+    private static bool IsStandaloneFacilityContact(Contact contact) =>
+        (contact.ContactType == ContactType.Facility || contact.ContactType == ContactType.MedicalFacility)
+        && string.IsNullOrWhiteSpace(contact.ContactSubtype);
+
+    private static string ResolveFacilityName(Contact contact)
+    {
+        if (!string.IsNullOrWhiteSpace(contact.Organization))
+            return contact.Organization.Trim();
+
+        return contact.DisplayName;
     }
 
     public async Task DeleteAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default)

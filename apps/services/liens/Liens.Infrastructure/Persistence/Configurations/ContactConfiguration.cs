@@ -15,9 +15,14 @@ public class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.Property(c => c.Id).IsRequired();
         builder.Property(c => c.TenantId).IsRequired();
         builder.Property(c => c.OrgId).IsRequired();
+        builder.Property(c => c.FacilityId);
+        builder.Property(c => c.LawFirmId);
 
         builder.Property(c => c.ContactType)
             .IsRequired()
+            .HasMaxLength(50);
+
+        builder.Property(c => c.ContactSubtype)
             .HasMaxLength(50);
 
         builder.Property(c => c.FirstName)
@@ -81,5 +86,11 @@ public class ContactConfiguration : IEntityTypeConfiguration<Contact>
 
         builder.HasIndex(c => new { c.TenantId, c.Email })
             .HasDatabaseName("IX_Contacts_TenantId_Email");
+
+        builder.HasIndex(c => new { c.TenantId, c.FacilityId, c.ContactSubtype })
+            .HasDatabaseName("IX_Contacts_TenantId_FacilityId_ContactSubtype");
+
+        builder.HasIndex(c => new { c.TenantId, c.LawFirmId, c.ContactSubtype })
+            .HasDatabaseName("IX_Contacts_TenantId_LawFirmId_ContactSubtype");
     }
 }
