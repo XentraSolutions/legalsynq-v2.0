@@ -147,21 +147,21 @@ export const TenantSelectionService = {
     return tenant;
   },
 
-  async removeRememberedTenant(id: string): Promise<void> {
+  async removeRememberedTenant(id: string): Promise<boolean> {
     const tenants = await readTenants();
-    const updatedTenants = tenants.filter((tenant) => tenant.id !== id);
     const activeTenantId = await SecureStorageService.getItem(STORAGE_KEYS.ACTIVE_TENANT_ID);
-    const nextActiveTenant = sortTenants(updatedTenants)[0];
+
+    if (tenants.length <= 1 || activeTenantId === id) {
+      return false;
+    }
+
+    const updatedTenants = tenants.filter((tenant) => tenant.id !== id);
+    if (updatedTenants.length === tenants.length) {
+      return false;
+    }
 
     await writeTenants(updatedTenants);
-
-    if (activeTenantId === id) {
-      if (nextActiveTenant) {
-        await writeActiveTenantId(nextActiveTenant.id);
-      } else {
-        await SecureStorageService.deleteItem(STORAGE_KEYS.ACTIVE_TENANT_ID);
-      }
-    }
+    return true;
   },
 
   async clearRememberedTenants(): Promise<void> {

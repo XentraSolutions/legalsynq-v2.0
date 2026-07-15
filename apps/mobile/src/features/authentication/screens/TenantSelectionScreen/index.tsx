@@ -79,6 +79,34 @@ export function TenantSelectionScreen() {
     }
   }
 
+  async function removeTenant(tenant: RememberedTenant) {
+    if (tenants.length <= 1) {
+      toast.showWarning('At least one tenant code must remain.');
+      return;
+    }
+
+    if (tenant.id === activeTenant?.id) {
+      toast.showWarning('Switch to another tenant before removing this one.');
+      return;
+    }
+
+    setLoadingTenantId(tenant.id);
+    try {
+      const removed = await TenantSelectionService.removeRememberedTenant(tenant.id);
+      if (!removed) {
+        toast.showWarning('This tenant code cannot be removed right now.');
+        return;
+      }
+
+      await loadTenants();
+      toast.showSuccess('Tenant code removed.');
+    } catch (error) {
+      toast.showError(error instanceof Error ? error.message : 'Unable to remove tenant');
+    } finally {
+      setLoadingTenantId(null);
+    }
+  }
+
   return (
     <View className="flex-1 bg-[#f7f7f8] dark:bg-[#050506]">
       <Header showBack title="Select Tenant" onBack={() => navigation.navigate('Login')} />
@@ -91,41 +119,56 @@ export function TenantSelectionScreen() {
           {tenants.length ? (
             tenants.map((tenant) => {
               const selected = tenant.id === activeTenant?.id;
+              const canRemove = tenants.length > 1 && !selected;
               return (
-                <Pressable
+                <View
                   key={tenant.id}
-                  accessibilityRole="button"
                   className={cx(
-                    'rounded-[18px] border bg-white p-4 active:opacity-90 dark:bg-[#191a1f]',
+                    'rounded-[18px] border bg-white p-4 dark:bg-[#191a1f]',
                     selected ? 'border-[#f97332]' : 'border-[#ececee] dark:border-[#303138]'
                   )}
-                  disabled={Boolean(loadingTenantId)}
-                  onPress={() => selectTenant(tenant)}
                 >
                   <View className="flex-row items-start justify-between gap-4">
-                    <View className="flex-1">
-                      <Text className="font-jakarta-bold text-[16px] leading-[22px] text-[#202228] dark:text-white">
-                        {tenant.tenantName}
-                      </Text>
-                      <Text
-                        className={cx(
-                          FIGMA_TEXT.formLabel,
-                          'mt-1 text-[#6f737d] dark:text-[#a1a1aa]'
-                        )}
-                      >
-                        {tenant.tenantCode}
-                      </Text>
-                      {!tenant.isConfirmed ? (
-                        <Text className={cx(FIGMA_TEXT.formLabel, 'mt-1 text-[#8f929b]')}>
-                          Pending confirmation on next sign in
+                    <Pressable
+                      accessibilityRole="button"
+                      className="flex-1 active:opacity-90"
+                      disabled={Boolean(loadingTenantId)}
+                      onPress={() => selectTenant(tenant)}
+                    >
+                      <View>
+                        <Text className="font-jakarta-bold text-[16px] leading-[22px] text-[#202228] dark:text-white">
+                          {tenant.tenantName}
                         </Text>
-                      ) : null}
-                    </View>
+                        <Text
+                          className={cx(
+                            FIGMA_TEXT.formLabel,
+                            'mt-1 text-[#6f737d] dark:text-[#a1a1aa]'
+                          )}
+                        >
+                          {tenant.tenantCode}
+                        </Text>
+                        {!tenant.isConfirmed ? (
+                          <Text className={cx(FIGMA_TEXT.formLabel, 'mt-1 text-[#8f929b]')}>
+                            Pending confirmation on next sign in
+                          </Text>
+                        ) : null}
+                      </View>
+                    </Pressable>
                     {selected ? (
                       <Ionicons color="#f97332" name="checkmark-circle" size={24} />
+                    ) : canRemove ? (
+                      <Pressable
+                        accessibilityLabel={`Remove ${tenant.tenantCode}`}
+                        accessibilityRole="button"
+                        className="h-9 w-9 items-center justify-center rounded-full bg-[#f4f4f5] active:opacity-80 dark:bg-[#2a2b30]"
+                        disabled={loadingTenantId === tenant.id}
+                        onPress={() => removeTenant(tenant)}
+                      >
+                        <Ionicons color="#ef4444" name="trash-outline" size={18} />
+                      </Pressable>
                     ) : null}
                   </View>
-                </Pressable>
+                </View>
               );
             })
           ) : (
@@ -149,7 +192,7 @@ export function TenantSelectionScreen() {
             name="tenantCode"
             render={({ field: { onChange, value } }) => (
               <Input
-                autoCapitalize="characters"
+                autoCapitalize='none'
                 className="mt-4"
                 errorMessage={errors.tenantCode?.message}
                 label="Tenant code"

@@ -4,12 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
-import Svg, { Circle } from 'react-native-svg';
 
 import {
   useDashboardLawFirmCaseReport,
   useDashboardMedicalProviderReport,
-  useDashboardPiechart,
   useDashboardTotalCaseReport,
   useDashboardTotalLienReport,
 } from '@/features/dashboard/hooks';
@@ -19,7 +17,6 @@ import { SearchBar } from '@/shared/components/SearchBar';
 import type {
   DashboardLawFirmCaseReportRow,
   DashboardMedicalProviderReportRow,
-  DashboardPiechart,
   DashboardTotalCaseReportRow,
   DashboardTotalLienReportRow,
   ReportFilterRequest,
@@ -28,15 +25,6 @@ import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
 
 type DetailRoute = RouteProp<MainStackParamList, 'DashboardReportDetail'>;
-
-type DetailSlice = {
-  label: string;
-  value: number;
-  color: string;
-  amount?: string;
-  percent?: string;
-  details?: Array<{ label: string; value: string }>;
-};
 
 type BreakdownItem = {
   id: string;
@@ -54,26 +42,8 @@ type BreakdownItem = {
 type ReportModel = {
   title: string;
   subtitle: string;
-  centerValue: string;
-  centerCaption: string;
-  slices: DetailSlice[];
   breakdownTitle: string;
   breakdownItems: BreakdownItem[];
-};
-
-type LienReportStatus = 'Open' | 'Close';
-
-type LienReportStatusSummary = {
-  billing: number;
-  count: number;
-  purchase: number;
-};
-
-type TotalLienReportSummary = {
-  byStatus: Record<LienReportStatus, LienReportStatusSummary>;
-  totalBilling: number;
-  totalLiens: number;
-  totalPurchase: number;
 };
 
 type ReportPaginationMeta = {
@@ -97,67 +67,9 @@ type BreakdownFilterOption = {
   label: string;
 };
 
-const ORANGE = '#f97332';
-const BLUE = '#3b82f6';
-const GREEN = '#22c55e';
-const YELLOW = '#f5b800';
-const RED = '#ef4444';
-const SLICE_COLORS = [BLUE, ORANGE, GREEN, YELLOW, RED];
 const DETAIL_PAGE_SIZE = 5;
 const DETAIL_FILTER_LIMIT = 10000;
 const ALL_FILTER_ID = 'all';
-
-const TOTAL_LIEN_FALLBACK: DetailSlice[] = [
-  {
-    label: 'Open',
-    value: 92.9,
-    amount: '222',
-    percent: '(92.9%)',
-    color: BLUE,
-    details: [
-      { label: 'Purchase', value: '$563,238.44' },
-      { label: 'Billing', value: '$2,232,740.12' },
-    ],
-  },
-  {
-    label: 'Close',
-    value: 6.3,
-    amount: '15',
-    percent: '(6.3%)',
-    color: ORANGE,
-    details: [
-      { label: 'Purchase', value: '$10,337.30' },
-      { label: 'Billing', value: '$54,646.00' },
-    ],
-  },
-];
-
-const TOTAL_CASES_FALLBACK: DetailSlice[] = [
-  { label: 'Case Settled', value: 93.83, amount: '4,479', percent: '(93.83%)', color: BLUE },
-  { label: 'Closed', value: 2.51, amount: '120', percent: '(2.51%)', color: ORANGE },
-  { label: 'Litigation (Open)', value: 2.39, amount: '114', percent: '(2.39%)', color: GREEN },
-  { label: 'Demand Sent', value: 1.26, amount: '60', percent: '(1.26%)', color: YELLOW },
-];
-
-const LAW_FIRM_FALLBACK: DetailSlice[] = [
-  { label: 'James Law Group', value: 42.86, amount: '75', percent: '(42.86%)', color: BLUE },
-  { label: 'Adam Associates', value: 22.86, amount: '40', percent: '(22.86%)', color: ORANGE },
-  { label: 'Anthony Injury Law', value: 17.14, amount: '30', percent: '(17.14%)', color: GREEN },
-  { label: 'Benson & Bingham', value: 17.14, amount: '30', percent: '(17.14%)', color: YELLOW },
-];
-
-const FACILITY_FALLBACK: DetailSlice[] = [
-  { label: 'Pueblo Medical', value: 41.84, amount: '100', percent: '(41.84%)', color: BLUE },
-  { label: 'MUIR MD Associates', value: 26.78, amount: '64', percent: '(26.78%)', color: ORANGE },
-  { label: 'Surgical Arts Center', value: 20.92, amount: '50', percent: '(20.92%)', color: GREEN },
-  {
-    label: 'Summit Surgical Center',
-    value: 10.46,
-    amount: '25',
-    percent: '(10.46%)',
-    color: YELLOW,
-  },
-];
 
 const LIEN_BREAKDOWN: BreakdownItem[] = [
   createLienBreakdownItem('84517', 'Close', '26-42803', 'Sarah Kimura'),
@@ -459,7 +371,6 @@ export function DashboardReportDetailScreen() {
     reportFilter,
     reportsEnabled
   );
-  const { data: piechartData } = useDashboardPiechart();
   const report = useMemo(
     () =>
       buildReport(
@@ -469,13 +380,11 @@ export function DashboardReportDetailScreen() {
         lawFirmReport?.items ?? [],
         medicalProviderReport?.items ?? [],
         reportPeriodLabel,
-        useDashboardDummyData,
-        piechartData
+        useDashboardDummyData
       ),
     [
       lawFirmReport?.items,
       medicalProviderReport?.items,
-      piechartData,
       reportPeriodLabel,
       route.params.reportType,
       totalCaseReport?.items,
@@ -596,33 +505,6 @@ export function DashboardReportDetailScreen() {
             onOpenSort={() => setSortSheetVisible(true)}
             onSearchChange={setSearchQuery}
           />
-        </View>
-
-        <View className="px-6 py-3">
-          <ReportCard isDark={isDark}>
-            <LargeDonutChart
-              centerCaption={report.centerCaption}
-              centerValue={report.centerValue}
-              slices={report.slices}
-            />
-            <View className="mt-5 w-full">
-              {report.slices.length > 0 ? (
-                report.slices.map((slice, index) => (
-                  <DetailLegendRow
-                    key={`${slice.label}-${index}`}
-                    isLast={index === report.slices.length - 1}
-                    slice={slice}
-                  />
-                ))
-              ) : (
-                <Text
-                  className={cx(TYPE.rowMuted, 'text-center text-[#8d9098] dark:text-[#8f929b]')}
-                >
-                  No report data available for the selected date range.
-                </Text>
-              )}
-            </View>
-          </ReportCard>
         </View>
 
         <View className="px-6 pt-2">
@@ -1035,98 +917,6 @@ function OptionRow({
   );
 }
 
-function LargeDonutChart({
-  centerCaption,
-  centerValue,
-  slices,
-}: {
-  centerCaption: string;
-  centerValue: string;
-  slices: DetailSlice[];
-}) {
-  const size = 192;
-  const strokeWidth = 38;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const total = slices.reduce((sum, slice) => sum + slice.value, 0) || 1;
-  let accumulated = 0;
-
-  return (
-    <View className="items-center justify-center">
-      <View className="h-[192px] w-[192px] items-center justify-center">
-        <Svg height={size} width={size}>
-          {slices.map((slice, index) => {
-            const length = (slice.value / total) * circumference;
-            const dashOffset = -accumulated;
-            accumulated += length;
-            return (
-              <Circle
-                cx={size / 2}
-                cy={size / 2}
-                fill="transparent"
-                key={`${slice.label}-${index}`}
-                r={radius}
-                stroke={slice.color}
-                strokeDasharray={`${length} ${circumference - length}`}
-                strokeDashoffset={dashOffset}
-                strokeLinecap="butt"
-                strokeWidth={strokeWidth}
-                transform={`rotate(-90 ${size / 2} ${size / 2})`}
-              />
-            );
-          })}
-        </Svg>
-        <View className="absolute h-[96px] w-[96px] items-center justify-center rounded-full bg-white dark:bg-[#191a1f]">
-          <Text className={cx(TYPE.donutValue, 'text-center text-[#18181b] dark:text-white')}>
-            {centerValue}
-          </Text>
-          <Text
-            className={cx(
-              TYPE.donutCaption,
-              'mt-0.5 text-center text-[#525762] dark:text-[#a1a1aa]'
-            )}
-          >
-            {centerCaption}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function DetailLegendRow({ isLast, slice }: { isLast: boolean; slice: DetailSlice }) {
-  return (
-    <View
-      className={`${isLast ? '' : 'border-b border-dashed border-[#e4e4e7] dark:border-[#2a2b30]'} py-3`}
-    >
-      <View className="flex-row items-center justify-between gap-3">
-        <View className="flex-row items-center gap-3">
-          <View className="h-4 w-1.5 rounded-full" style={{ backgroundColor: slice.color }} />
-          <Text className={cx(TYPE.rowMuted, 'text-[#18181b] dark:text-[#f4f4f5]')}>
-            {slice.label}
-          </Text>
-        </View>
-        <Text className={cx(TYPE.rowValue, 'text-[#71717a] dark:text-[#a1a1aa]')}>
-          {slice.amount} {slice.percent}
-        </Text>
-      </View>
-      {slice.details?.map((detail, detailIndex) => (
-        <View
-          className="mt-3 flex-row items-center justify-between pl-8"
-          key={`${detail.label}-${detailIndex}`}
-        >
-          <Text className={cx(TYPE.rowMuted, 'text-[#8b8f99] dark:text-[#8f929b]')}>
-            {detail.label}
-          </Text>
-          <Text className={cx(TYPE.rowValue, 'text-[#8b8f99] dark:text-[#a3a4ab]')}>
-            {detail.value}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
 function BreakdownCard({ isLast, item }: { isLast: boolean; item: BreakdownItem }) {
   const statusTone =
     item.status === 'Open' ? 'warning' : item.status === 'Active' ? 'info' : 'success';
@@ -1245,144 +1035,78 @@ function PaginationButton({
   );
 }
 
-function mapPiechartCaseSlices(data: DashboardPiechart): DetailSlice[] {
-  const total = data.totalCases || 1;
-  return data.caseStatus.map((s, i) => {
-    const pct = (s.value / total) * 100;
-    return {
-      label: s.label,
-      value: s.value,
-      amount: s.value.toLocaleString(),
-      percent: `(${pct.toFixed(2)}%)`,
-      color: SLICE_COLORS[i % SLICE_COLORS.length],
-    };
-  });
-}
-
-function mapPiechartLienSlices(data: DashboardPiechart): DetailSlice[] {
-  const total = data.totalLiens || 1;
-  const closedCount = data.lienStatus
-    .filter((s) => s.label.toLowerCase() === 'closed')
-    .reduce((sum, s) => sum + s.value, 0);
-  const openCount = total - closedCount;
-  const openPct = (openCount / total) * 100;
-  const closedPct = (closedCount / total) * 100;
-
-  return [
-    {
-      label: 'Open',
-      value: openCount,
-      amount: openCount.toLocaleString(),
-      percent: `(${openPct.toFixed(1)}%)`,
-      color: BLUE,
-    },
-    {
-      label: 'Close',
-      value: closedCount,
-      amount: closedCount.toLocaleString(),
-      percent: `(${closedPct.toFixed(1)}%)`,
-      color: ORANGE,
-    },
-  ];
-}
-
 function buildReport(
   reportType: DashboardReportType,
   totalLienRows: DashboardTotalLienReportRow[],
   totalCaseRows: DashboardTotalCaseReportRow[],
-  lawFirmReport: DashboardLawFirmCaseReportRow[],
-  medicalProviderReport: DashboardMedicalProviderReportRow[],
+  lawFirmRows: DashboardLawFirmCaseReportRow[],
+  medicalProviderRows: DashboardMedicalProviderReportRow[],
   reportPeriodLabel: string,
-  useDummyData: boolean,
-  piechartData: DashboardPiechart | undefined
+  useDummyData: boolean
 ): ReportModel {
   if (reportType === 'total-cases') {
-    const reportData = useDummyData ? undefined : mapTotalCaseReportToDetail(totalCaseRows);
-    const piechartSlices =
-      !useDummyData && piechartData ? mapPiechartCaseSlices(piechartData) : undefined;
-    const slices = useDummyData
-      ? TOTAL_CASES_FALLBACK
-      : (reportData?.slices ?? piechartSlices ?? []);
-    const centerValue = useDummyData
-      ? '4,773'
-      : (reportData?.totalCases.toLocaleString() ??
-        piechartData?.totalCases.toLocaleString() ??
-        '0');
     return {
       title: 'Total Cases',
       subtitle:
         'Track the overall number of cases and view their current status distribution at a glance.',
-      centerValue,
-      centerCaption: 'Total Cases',
-      slices,
       breakdownTitle: 'Detailed Breakdown',
-      breakdownItems: useDummyData
-        ? []
-        : totalCaseRowsToBreakdownItems(
-            totalCaseRows,
-            new Map(slices.map((s) => [s.label.toLowerCase(), s.color]))
-          ),
+      breakdownItems: useDummyData ? [] : totalCaseRowsToBreakdownItems(totalCaseRows),
     };
   }
 
   if (reportType === 'law-firm-allocation') {
-    const reportSlices = useDummyData ? [] : mapLawFirmReportGrouped(lawFirmReport);
-    const slices = useDummyData ? LAW_FIRM_FALLBACK : reportSlices;
     return {
       title: 'Law Firm Case Allocation',
       subtitle: 'Distribution of total case volume across assigned legal firms.',
-      centerValue: useDummyData
-        ? '175'
-        : reportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString(),
-      centerCaption: 'Total Cases',
-      slices,
       breakdownTitle: 'Detailed Breakdown',
-      breakdownItems: useDummyData ? [] : lawFirmCaseRowsToBreakdownItems(lawFirmReport),
+      breakdownItems: useDummyData ? [] : lawFirmCaseRowsToBreakdownItems(lawFirmRows),
     };
   }
 
   if (reportType === 'medical-facility-allocation') {
-    const reportSlices = useDummyData ? [] : mapMedicalFacilityReportGrouped(medicalProviderReport);
-    const slices = useDummyData ? FACILITY_FALLBACK : reportSlices;
     return {
       title: 'Medical Facility Case Allocation',
       subtitle: 'Distribution of total case volume across assigned healthcare facilities.',
-      centerValue: useDummyData
-        ? '239'
-        : reportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString(),
-      centerCaption: 'Total MD Cases',
-      slices,
       breakdownTitle: 'Detailed Breakdown',
       breakdownItems: useDummyData
         ? []
-        : medicalFacilityCaseRowsToBreakdownItems(medicalProviderReport),
+        : medicalFacilityCaseRowsToBreakdownItems(medicalProviderRows),
     };
   }
 
-  const reportData = useDummyData ? undefined : mapTotalLienReportToDetail(totalLienRows);
-  const piechartLienSlices =
-    !useDummyData && piechartData ? mapPiechartLienSlices(piechartData) : undefined;
-  const slices = useDummyData
-    ? TOTAL_LIEN_FALLBACK
-    : (reportData?.slices ?? piechartLienSlices ?? []);
-  const centerValue = useDummyData
-    ? '239'
-    : (reportData?.totalLiens.toLocaleString() ?? piechartData?.totalLiens.toLocaleString() ?? '0');
   return {
     title: 'Total Lien',
     subtitle: 'Breakdown of open and closed claims with total purchase and billing values.',
-    centerValue,
-    centerCaption: 'Total Liens',
-    slices,
     breakdownTitle: 'Detailed Breakdown',
     breakdownItems: useDummyData ? LIEN_BREAKDOWN : lienRowsToBreakdownItems(totalLienRows),
   };
 }
 
-function totalCaseRowsToBreakdownItems(
-  rows: DashboardTotalCaseReportRow[],
-  statusColorMap: Map<string, string>
-): BreakdownItem[] {
+function readReportText(row: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeLienStatusLabel(label?: string): 'Open' | 'Close' {
+  const normalized = label?.trim().toLowerCase() ?? '';
+  return normalized.includes('close') ||
+    normalized.includes('settled') ||
+    normalized.includes('paid')
+    ? 'Close'
+    : 'Open';
+}
+
+function totalCaseRowsToBreakdownItems(rows: DashboardTotalCaseReportRow[]): BreakdownItem[] {
   return rows.map((row, index) => {
     const r = row as Record<string, unknown>;
 
@@ -1415,13 +1139,10 @@ function totalCaseRowsToBreakdownItems(
       readReportText(r, ['dateOfLoss', 'lossDate', 'incidentDate', 'dateOfIncident']) ??
       'N/A';
 
-    const statusColor = statusColorMap.get(rawStatus.toLowerCase());
-
     return {
       id: name,
       key: buildBreakdownKey('total-case', index, caseId, name, rawStatus),
       status: rawStatus,
-      statusColor,
       fields: [
         { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
         { icon: 'calendar-outline', label: 'Date of Loss', value: dateOfLoss },
@@ -1539,206 +1260,6 @@ function createLienBreakdownItem(
   };
 }
 
-function formatCurrency(value: number): string {
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-}
-
-function numericValue(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const parsed = Number(value.replace(/[^0-9.-]/g, ''));
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-
-  return undefined;
-}
-
-function readReportText(row: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = row[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value;
-    }
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return String(value);
-    }
-  }
-
-  return undefined;
-}
-
-function readReportNumber(row: Record<string, unknown>, keys: string[]): number | undefined {
-  for (const key of keys) {
-    const value = numericValue(row[key]);
-    if (value !== undefined) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-function normalizeLienStatusLabel(label?: string): 'Open' | 'Close' {
-  const normalized = label?.trim().toLowerCase() ?? '';
-  return normalized.includes('close') ||
-    normalized.includes('settled') ||
-    normalized.includes('paid')
-    ? 'Close'
-    : 'Open';
-}
-
-function mapTotalLienReportToDetail(
-  rows: DashboardTotalLienReportRow[]
-):
-  | { slices: DetailSlice[]; totalBilling: number; totalLiens: number; totalPurchase: number }
-  | undefined {
-  if (!rows.length) {
-    return undefined;
-  }
-
-  const totals = rows.reduce<TotalLienReportSummary>(
-    (summary, row) => {
-      const record = row as Record<string, unknown>;
-      const status = normalizeLienStatusLabel(
-        readReportText(record, [
-          'status',
-          'lienStatus',
-          'lienStatusName',
-          'statusName',
-          'label',
-          'name',
-        ])
-      );
-      const count =
-        readReportNumber(record, [
-          'count',
-          'total',
-          'value',
-          'lienCount',
-          'liensCount',
-          'totalLiens',
-        ]) ?? 0;
-      const purchase =
-        readReportNumber(record, [
-          'purchase',
-          'purchaseAmount',
-          'totalPurchase',
-          'totalPurchaseAmount',
-        ]) ?? 0;
-      const billing =
-        readReportNumber(record, [
-          'billing',
-          'billingAmount',
-          'totalBilling',
-          'totalBillingAmount',
-        ]) ?? 0;
-
-      summary.byStatus[status].count += count;
-      summary.byStatus[status].purchase += purchase;
-      summary.byStatus[status].billing += billing;
-      summary.totalLiens += count;
-      summary.totalPurchase += purchase;
-      summary.totalBilling += billing;
-      return summary;
-    },
-    {
-      byStatus: {
-        Close: { billing: 0, count: 0, purchase: 0 },
-        Open: { billing: 0, count: 0, purchase: 0 },
-      },
-      totalBilling: 0,
-      totalLiens: 0,
-      totalPurchase: 0,
-    }
-  );
-
-  if (totals.totalLiens === 0) {
-    return undefined;
-  }
-
-  const totalLiens = totals.totalLiens || 1;
-  const slices = (['Open', 'Close'] as const)
-    .map((status) => {
-      const statusTotal = totals.byStatus[status];
-      const pct = (statusTotal.count / totalLiens) * 100;
-      return {
-        label: status,
-        value: statusTotal.count,
-        amount: statusTotal.count.toLocaleString(),
-        percent: `(${pct.toFixed(1)}%)`,
-        color: status === 'Open' ? BLUE : ORANGE,
-        details: [
-          { label: 'Purchase', value: formatCurrency(statusTotal.purchase) },
-          { label: 'Billing', value: formatCurrency(statusTotal.billing) },
-        ],
-      } satisfies DetailSlice;
-    })
-    .filter((slice) => slice.value > 0);
-
-  return {
-    slices,
-    totalBilling: totals.totalBilling,
-    totalLiens: totals.totalLiens,
-    totalPurchase: totals.totalPurchase,
-  };
-}
-
-function mapTotalCaseReportToDetail(
-  rows: DashboardTotalCaseReportRow[]
-): { slices: DetailSlice[]; totalCases: number } | undefined {
-  if (!rows.length) {
-    return undefined;
-  }
-
-  const rowsWithCounts = rows
-    .map((row) => {
-      const record = row as Record<string, unknown>;
-      return {
-        count:
-          readReportNumber(record, [
-            'count',
-            'total',
-            'value',
-            'caseCount',
-            'cases',
-            'totalCases',
-          ]) ?? 0,
-        label:
-          readReportText(record, [
-            'status',
-            'caseStatus',
-            'caseStatusName',
-            'statusName',
-            'label',
-            'name',
-          ]) ?? 'Unknown Status',
-      };
-    })
-    .filter((row) => row.count > 0);
-
-  if (!rowsWithCounts.length) {
-    return undefined;
-  }
-
-  const totalCases = rowsWithCounts.reduce((sum, row) => sum + row.count, 0);
-  const slices = rowsWithCounts.map((row, index) => {
-    const pct = (row.count / totalCases) * 100;
-    return {
-      label: row.label,
-      value: row.count,
-      amount: row.count.toLocaleString(),
-      percent: `(${pct.toFixed(2)}%)`,
-      color: SLICE_COLORS[index % SLICE_COLORS.length],
-    };
-  });
-
-  return { slices, totalCases };
-}
-
 function lienRowsToBreakdownItems(rows: DashboardTotalLienReportRow[]): BreakdownItem[] {
   return rows.map((row, index) => {
     const record = row as Record<string, unknown>;
@@ -1811,33 +1332,6 @@ function readLawFirmName(row: DashboardLawFirmCaseReportRow): string {
   return row.label ?? 'Unknown Law Firm';
 }
 
-function mapLawFirmReportGrouped(rows: DashboardLawFirmCaseReportRow[]): DetailSlice[] {
-  const groups = new Map<string, { label: string; count: number }>();
-  for (const row of rows) {
-    const r = row as Record<string, unknown>;
-    const name = readLawFirmName(row);
-    const rowCount = readReportNumber(r, ['totalCases', 'totalCase', 'caseCount', 'cases']) ?? 1;
-    const existing = groups.get(name);
-    if (existing) {
-      existing.count += rowCount;
-    } else {
-      groups.set(name, { label: name, count: rowCount });
-    }
-  }
-  const entries = Array.from(groups.values()).filter((g) => g.count > 0);
-  const total = entries.reduce((sum, g) => sum + g.count, 0) || 1;
-  return entries.map((g, i) => {
-    const pct = (g.count / total) * 100;
-    return {
-      label: g.label,
-      value: g.count,
-      amount: g.count.toLocaleString(),
-      percent: `(${pct.toFixed(2)}%)`,
-      color: SLICE_COLORS[i % SLICE_COLORS.length],
-    };
-  });
-}
-
 function readFacilityName(row: DashboardMedicalProviderReportRow): string {
   const r = row as Record<string, unknown>;
   const candidates = [
@@ -1877,29 +1371,4 @@ function readFacilityName(row: DashboardMedicalProviderReportRow): string {
     if (typeof val === 'string' && val.trim().length > 2) return val;
   }
   return row.label ?? 'Unknown Facility';
-}
-
-function mapMedicalFacilityReportGrouped(rows: DashboardMedicalProviderReportRow[]): DetailSlice[] {
-  const groups = new Map<string, { label: string; count: number }>();
-  for (const row of rows) {
-    const name = readFacilityName(row);
-    const existing = groups.get(name);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      groups.set(name, { label: name, count: 1 });
-    }
-  }
-  const entries = Array.from(groups.values()).filter((g) => g.count > 0);
-  const total = entries.reduce((sum, g) => sum + g.count, 0) || 1;
-  return entries.map((g, i) => {
-    const pct = (g.count / total) * 100;
-    return {
-      label: g.label,
-      value: g.count,
-      amount: g.count.toLocaleString(),
-      percent: `(${pct.toFixed(2)}%)`,
-      color: SLICE_COLORS[i % SLICE_COLORS.length],
-    };
-  });
 }

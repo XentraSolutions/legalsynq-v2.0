@@ -80,4 +80,41 @@ describe('TenantSelectionService', () => {
     expect(secureStore.__store.has(STORAGE_KEYS.REMEMBERED_TENANTS)).toBe(false);
     expect(secureStore.__store.has(STORAGE_KEYS.ACTIVE_TENANT_ID)).toBe(false);
   });
+
+  it('does not remove the only remembered tenant', async () => {
+    const tenant = await TenantSelectionService.addLocalTenantCode('smith-law');
+
+    await expect(TenantSelectionService.removeRememberedTenant(tenant.id)).resolves.toBe(false);
+    await expect(TenantSelectionService.getRememberedTenants()).resolves.toHaveLength(1);
+  });
+
+  it('does not remove the active tenant when multiple tenants exist', async () => {
+    const firstTenant = await TenantSelectionService.addLocalTenantCode('smith-law');
+    await TenantSelectionService.addLocalTenantCode('nova-care');
+    await TenantSelectionService.setActiveTenant(firstTenant.id);
+
+    await expect(TenantSelectionService.removeRememberedTenant(firstTenant.id)).resolves.toBe(
+      false
+    );
+    await expect(TenantSelectionService.getActiveTenant()).resolves.toMatchObject({
+      id: firstTenant.id,
+    });
+    await expect(TenantSelectionService.getRememberedTenants()).resolves.toHaveLength(2);
+  });
+
+  it('removes a non-active tenant when multiple tenants exist', async () => {
+    const firstTenant = await TenantSelectionService.addLocalTenantCode('smith-law');
+    const secondTenant = await TenantSelectionService.addLocalTenantCode('nova-care');
+    await TenantSelectionService.setActiveTenant(firstTenant.id);
+
+    await expect(TenantSelectionService.removeRememberedTenant(secondTenant.id)).resolves.toBe(
+      true
+    );
+    await expect(TenantSelectionService.getActiveTenant()).resolves.toMatchObject({
+      id: firstTenant.id,
+    });
+    const tenants = await TenantSelectionService.getRememberedTenants();
+    expect(tenants).toHaveLength(1);
+    expect(tenants[0]).toMatchObject({ id: firstTenant.id });
+  });
 });
