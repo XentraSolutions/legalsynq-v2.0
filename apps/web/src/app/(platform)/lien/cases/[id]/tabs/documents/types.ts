@@ -5,4 +5,5 @@ export type DocumentType = {
   updated: string;
   liensId: string;
   size: string;
+  url: string;
 };

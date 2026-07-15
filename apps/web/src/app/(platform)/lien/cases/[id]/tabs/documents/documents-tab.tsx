@@ -14,6 +14,7 @@ import { UploadDocumentSection } from "./sections/upload-document-section";
 import { CaseDocumentsSection } from "./sections/case-documents-section";
 import { LienDocumentsSection } from "./sections/lien-documents-section";
 import type { DocumentType } from "./types";
+import { ConfirmDialog } from "@/components/lien/modal";
 
 export function DocumentsTab({
   docTypes,
@@ -36,6 +37,11 @@ export function DocumentsTab({
 
   const [caseDocuments, setCaseDocuments] = useState<DocumentType[]>([]);
   const [liensDocuments, setLiensDocuments] = useState<DocumentType[]>([]);
+  const [confirmAction, showConfirmAction] = useState<{
+    id: string;
+    isOpen: boolean;
+    type: string;
+  }>({ id: "", isOpen: false, type: "" });
 
   const uploadCaseDocuments = async (payload: any) => {
     if (!payload || payload.length == 0) return;
@@ -83,8 +89,35 @@ export function DocumentsTab({
     setLiensDocuments(docs.liensDocuments);
   };
 
-  function download(file: any) {
-    window.open(file.url || URL.createObjectURL(file as any), "_blank");
+  async function deleteFileConfimation(fileId: string, type: string) {
+    showConfirmAction({ isOpen: true, id: fileId, type: type });
+  }
+  const deleteFile = useCallback(async () => {
+    try {
+      if (confirmAction.type == "case")
+        await casesService.deleteCaseDocument(confirmAction.id);
+      if (confirmAction.type == "liens")
+        await casesService.deleteLiensDocument(confirmAction.id);
+      addToast({
+        type: "success",
+        title: "Delete Document",
+        description: "Delete Document Successfully",
+      });
+      showConfirmAction({ id: "", isOpen: false, type: "" });
+      fetchDocuments();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Delete Failed",
+          description: err.message,
+        });
+      }
+    }
+  }, [confirmAction]);
+
+  function download(file: string) {
+    window.open(file || URL.createObjectURL(file as any), "_blank");
   }
 
   useEffect(() => {
@@ -107,9 +140,31 @@ export function DocumentsTab({
       <CaseDocumentsSection
         caseDocuments={caseDocuments}
         onDownload={download}
+        onDelete={(d) => deleteFileConfimation(d, "case")}
       />
 
-      <LienDocumentsSection liensDocuments={liensDocuments} />
+      <LienDocumentsSection
+        onDownload={download}
+        onDelete={(d) => deleteFileConfimation(d, "liens")}
+        liensDocuments={liensDocuments}
+      />
+
+      {confirmAction.isOpen && (
+        <ConfirmDialog
+          open
+          onClose={() => showConfirmAction({ id: "", isOpen: false, type: "" })}
+          onConfirm={deleteFile}
+          title="Delete Document"
+          description={
+            <>
+              Are you sure you want to delete document? This action cannot be
+              undone and will permanently remove the document.
+            </>
+          }
+          confirmLabel="Delete"
+          confirmVariant="danger"
+        />
+      )}
     </div>
   );
 

@@ -5,8 +5,12 @@ import type { DocumentType } from "../types";
 
 export function LienDocumentsSection({
   liensDocuments,
+  onDownload,
+  onDelete,
 }: {
   liensDocuments: DocumentType[];
+  onDownload: (url: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const liensDocumentsColumns: ColumnDef<DocumentType, any>[] = [
     {
@@ -52,13 +56,21 @@ export function LienDocumentsSection({
       id: "action",
       header: "Action",
       meta: { align: "right" },
-      cell: () => (
+      cell: ({ row }) => (
         <div className="inline-flex items-center gap-1">
           <button
             className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
             title="Download"
+            onClick={() => onDownload(row.original.url)}
           >
             <i className="ri-download-2-line text-sm" />
+          </button>
+          <button
+            className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors"
+            title="Delete"
+            onClick={() => onDelete(row.id)}
+          >
+            <i className="ri-delete-bin-6-line text-sm" />
           </button>
         </div>
       ),

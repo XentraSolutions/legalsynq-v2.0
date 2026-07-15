@@ -115,6 +115,17 @@ export const casesApi = {
     );
   },
 
+  deleteDocumentsByLiens(id: string) {
+    return apiClient.delete<CaseLiensApiResponse>(
+      `/lien/liens/delete-medicaldocument/${id}`,
+    );
+  },
+  deleteDocumentsByCase(id: string) {
+    return apiClient.delete<CaseLiensApiResponse>(
+      `/lien/api/liens/liens/delete-casedocument/${id}`,
+    );
+  },
+
   listLiensByCase(request: CasePaginatedParams) {
     return apiClient.post<CaseLiensApiResponse>(
       `/lien/api/liens/cases/liens/v3`,

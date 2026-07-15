@@ -16,6 +16,7 @@ import UploadDocumentComponent, {
 import { casesService } from "@/lib/cases";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
+import { ConfirmDialog } from "../../modal";
 
 export interface UploadDocumentsProps {
   caseId?: string;
@@ -84,6 +85,10 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   const [form, setForm] = useState<UploadForm>(initialForm);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [confirmAction, showConfirmAction] = useState<{
+    id: string;
+    isOpen: boolean;
+  }>({ id: "", isOpen: false });
 
   const documentTypes =
     lookup?.DocumentCategory.map((d) => {
@@ -112,9 +117,23 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     window.open(file.url || URL.createObjectURL(file as any), "_blank");
   }
 
-  function deleteFile(file: any) {
-    return "";
+  async function deleteFileConfimation(fileId: string) {
+    showConfirmAction({ isOpen: true, id: fileId });
   }
+  const deleteFile = useCallback(async () => {
+    try {
+      await casesService.deleteLiensDocument(confirmAction.id);
+      fetchDocument();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Delete Failed",
+          description: err.message,
+        });
+      }
+    }
+  }, [confirmAction]);
 
   const uploadLiensDocuments = async () => {
     if (!files || files.length == 0) return;
@@ -162,6 +181,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         return {
           name: d.filename,
           type: d.typeId,
+          id: d.id,
         };
       }),
     );
@@ -176,6 +196,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           return {
             name: d.filename,
             type: d.typeId,
+            id: d.id,
           };
         }),
       );
@@ -293,7 +314,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                             <button
                               className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors"
                               title="Delete"
-                              onClick={() => deleteFile(doc)}
+                              onClick={() => deleteFileConfimation(doc.id)}
                             >
                               <i className="ri-delete-bin-6-line text-sm" />
                             </button>
@@ -313,6 +334,23 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           </>
         )}
       </div>
+
+      {confirmAction.isOpen && (
+        <ConfirmDialog
+          open
+          onClose={() => showConfirmAction({ id: "", isOpen: false })}
+          onConfirm={deleteFile}
+          title="Delete Document"
+          description={
+            <>
+              Are you sure you want to delete document? This action cannot be
+              undone and will permanently remove the document.
+            </>
+          }
+          confirmLabel="Delete"
+          confirmVariant="danger"
+        />
+      )}
     </div>
   );
 }

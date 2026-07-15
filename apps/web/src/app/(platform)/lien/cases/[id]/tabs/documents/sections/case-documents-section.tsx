@@ -6,9 +6,11 @@ import type { DocumentType } from "../types";
 export function CaseDocumentsSection({
   caseDocuments,
   onDownload,
+  onDelete,
 }: {
   caseDocuments: DocumentType[];
-  onDownload: (file: DocumentType) => void;
+  onDownload: (url: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const caseDocumentsColumns: ColumnDef<DocumentType, any>[] = [
     {
@@ -50,13 +52,14 @@ export function CaseDocumentsSection({
           <button
             className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
             title="Download"
-            onClick={() => onDownload(row.original)}
+            onClick={() => onDownload(row.original.url)}
           >
             <i className="ri-download-2-line text-sm" />
           </button>
           <button
             className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors"
             title="Delete"
+            onClick={() => onDelete(row.id)}
           >
             <i className="ri-delete-bin-6-line text-sm" />
           </button>

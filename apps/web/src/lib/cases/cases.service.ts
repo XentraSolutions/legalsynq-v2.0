@@ -159,7 +159,10 @@ export const casesService = {
   ): Promise<{ segments: AllocationSegment[]; rows: CaseReportItem[] }> {
     const { data } = await casesApi.getMedicalProviderCaseReport(request);
     const rows = data.items ?? [];
-    return { segments: groupAndCount(rows, (item) => item.medicalFacility), rows };
+    return {
+      segments: groupAndCount(rows, (item) => item.medicalFacility),
+      rows,
+    };
   },
 
   async getTotalLienReportRows(
@@ -310,6 +313,16 @@ export const casesService = {
 
   async loadLiensDocuments(liensId: string): Promise<any> {
     const { data } = await casesApi.listDocumentsByLiens(liensId);
+    return data;
+  },
+
+  async deleteLiensDocument(documentId: string): Promise<any> {
+    const { data } = await casesApi.deleteDocumentsByLiens(documentId);
+    return data;
+  },
+
+  async deleteCaseDocument(documentId: string): Promise<any> {
+    const { data } = await casesApi.deleteDocumentsByCase(documentId);
     return data;
   },
 
