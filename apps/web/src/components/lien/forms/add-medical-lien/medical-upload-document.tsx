@@ -17,6 +17,7 @@ import { casesService } from "@/lib/cases";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { ConfirmDialog } from "../../modal";
+import { documentsService } from "@/lib/documents";
 
 export interface UploadDocumentsProps {
   caseId?: string;
@@ -113,10 +114,22 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     return "ri-file-text-line";
   }
 
-  function download(file: any) {
-    window.open(file || URL.createObjectURL(file as any), "_blank");
+  async function download(url: string) {
+    if (!url) return;
+    const documentId = url.split("/").filter(Boolean).pop();
+    if (!documentId) return;
+    try {
+      const viewUrl = await documentsService.getViewUrl(documentId);
+      window.open(viewUrl, "_blank");
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Download Failed",
+        description:
+          err instanceof ApiError ? err.message : "An unexpected error occurred",
+      });
+    }
   }
-
   async function deleteFileConfimation(fileId: string) {
     showConfirmAction({ isOpen: true, id: fileId });
   }
