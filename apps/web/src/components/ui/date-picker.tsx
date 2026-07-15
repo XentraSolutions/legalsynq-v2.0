@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, Matcher } from "react-day-picker";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,7 @@ interface DatePickerProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  maxDate?: Date | null;
 }
 
 function parseDate(value?: string): Date | undefined {
@@ -43,6 +44,7 @@ export function DatePicker({
   placeholder = "Pick a date",
   className,
   disabled,
+  maxDate,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false);
   const selected = parseDate(value);
@@ -63,8 +65,14 @@ export function DatePicker({
     setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
   }
 
-  const monthLabel = month.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const monthLabel = month.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 
+  const disabledDays: Matcher | Matcher[] | undefined = maxDate
+    ? { after: maxDate }
+    : undefined;
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
       <PopoverPrimitive.Trigger asChild>
@@ -98,7 +106,9 @@ export function DatePicker({
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-sm font-medium text-gray-800">{monthLabel}</span>
+            <span className="text-sm font-medium text-gray-800">
+              {monthLabel}
+            </span>
             <button
               type="button"
               onClick={nextMonth}
@@ -114,6 +124,7 @@ export function DatePicker({
             month={month}
             onMonthChange={setMonth}
             hideNavigation
+            disabled={disabledDays}
             classNames={{
               root: "text-sm",
               months: "flex flex-col",
@@ -124,11 +135,14 @@ export function DatePicker({
               weeks: "flex flex-col",
               week: "flex",
               day: "w-9 text-center",
-              day_button: "h-9 w-9 rounded-md text-sm hover:bg-gray-100 transition-colors focus:outline-none",
-              selected: "[&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
+              day_button:
+                "h-9 w-9 rounded-md text-sm hover:bg-gray-100 transition-colors focus:outline-none",
+              selected:
+                "[&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
               today: "[&>button]:font-semibold [&>button]:text-primary",
               outside: "[&>button]:text-gray-300",
-              disabled: "[&>button]:text-gray-300 [&>button]:cursor-not-allowed",
+              disabled:
+                "[&>button]:text-gray-300 [&>button]:cursor-not-allowed",
             }}
           />
         </PopoverPrimitive.Content>

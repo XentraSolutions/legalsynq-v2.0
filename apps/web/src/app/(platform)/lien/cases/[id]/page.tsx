@@ -1,4 +1,13 @@
-import { CaseDetailClient } from "./case-detail-client";
+import { redirect } from "next/navigation";
+
+const VALID_TABS = [
+  "details",
+  "liens",
+  "documents",
+  "servicing",
+  "notes",
+  "taskmanager",
+];
 
 export default async function CaseDetailPage({
   params,
@@ -11,9 +20,12 @@ export default async function CaseDetailPage({
   const resolvedSearchParams = await searchParams;
   const rawValue = resolvedSearchParams[""];
 
-  // Flatten if it's an array, otherwise fallback to an empty string
-  const servicing: string = Array.isArray(rawValue)
-    ? rawValue[0]
-    : (rawValue ?? "details");
-  return <CaseDetailClient id={id} tab={servicing} />;
+  // Flatten if it's an array, otherwise fallback to the details tab.
+  // TEMP: legacy links used `?=<tab>` to deep-link a tab; honor it once
+  // more while redirecting into the new nested routes.
+  const requestedTab = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+  const tab =
+    requestedTab && VALID_TABS.includes(requestedTab) ? requestedTab : "details";
+
+  redirect(`/lien/cases/${id}/${tab}`);
 }

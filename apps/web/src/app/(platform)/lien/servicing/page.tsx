@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { ColumnDef } from "@tanstack/react-table";
+import { BaseTable } from "@/components/ui/base-table";
 import { PageHeader } from "@/components/lien/page-header";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { StatusBadge, PriorityBadge } from "@/components/lien/status-badge";
@@ -64,7 +66,7 @@ export default function ServicingPage() {
   const [items, setItems] = useState<ServicingListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
-    pageSize: 20,
+    pageSize: 10,
     totalCount: 0,
     totalPages: 0,
   });
@@ -98,7 +100,8 @@ export default function ServicingPage() {
           status: statusFilter || undefined,
           priority: priorityFilter || undefined,
           page,
-          pageSize: 20,
+          pageSize: 10,
+          limit: 10,
         });
         setItems(result.items);
         setPagination(result.pagination);
@@ -189,17 +192,81 @@ export default function ServicingPage() {
     link.remove();
   };
 
-  const tableHeaders = [
-    "Case number",
-    "Plaintiff Name",
-    "Current Law Firm",
-    "Current Status",
-    "Settlement Status",
-    "Billing Amount",
-    "Purchase Amount",
-    "Amount Settled",
-    "Settled Date",
-  ];
+  const columns = useMemo<ColumnDef<ServicingListItem, any>[]>(
+    () => [
+      {
+        id: "caseCode",
+        header: "Case number",
+        cell: ({ row }) => (
+          <Link
+            href={`/lien/cases/${row.original.caseId}/servicing`}
+            className="text-xs font-mono text-primary hover:underline"
+          >
+            {row.original.caseCode}
+          </Link>
+        ),
+      },
+      {
+        id: "name",
+        header: "Plaintiff Name",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">{row.original.name}</span>
+        ),
+      },
+      {
+        id: "lawfirm",
+        header: "Current Law Firm",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-600 max-w-xs truncate block">
+            {row.original.lawfirm}
+          </span>
+        ),
+      },
+      {
+        id: "currentStatus",
+        header: "Current Status",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-500">{row.original.currentStatus}</span>
+        ),
+      },
+      {
+        id: "settlementStatus",
+        header: "Settlement Status",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-500">{row.original.settlementStatus}</span>
+        ),
+      },
+      {
+        id: "billingAmount",
+        header: "Billing Amount",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-500">{row.original.billingAmount}</span>
+        ),
+      },
+      {
+        id: "purchaseAmount",
+        header: "Purchase Amount",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-500">{row.original.purchaseAmount}</span>
+        ),
+      },
+      {
+        id: "settlementAmount",
+        header: "Amount Settled",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-500">{row.original.settlementAmount}</span>
+        ),
+      },
+      {
+        id: "settlementDate",
+        header: "Settled Date",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-500">{row.original.settlementDate}</span>
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
     <div className="space-y-5">
@@ -268,104 +335,32 @@ export default function ServicingPage() {
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        {loading ? (
-          <div className="p-10 text-center">
-            <i className="ri-loader-4-line animate-spin text-2xl text-gray-400" />
-            <p className="text-sm text-gray-400 mt-2">Loading tasks...</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100">
-                <thead>
-                  <tr className="bg-gray-50">
-                    {tableHeaders.map((h) => (
-                      <th
-                        key={h}
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {items.map((s) => (
-                    <tr
-                      key={s.caseId}
-                      className={`hover:bg-gray-50 transition-colors ${actionLoading === (s.id ?? s.caseId) ? "opacity-50" : ""} ${selection.isSelected(s.id ?? s.caseId) ? "bg-primary/5" : ""}`}
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/lien/cases/${s.caseId}?=servicing`}
-                          className="text-xs font-mono text-primary hover:underline"
-                        >
-                          {s.caseCode}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {s.name}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
-                        {s.lawfirm}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {s.currentStatus}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {s.settlementStatus}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {s.billingAmount}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {s.purchaseAmount}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {s.settlementAmount}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {s.settlementDate}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {items.length === 0 && !loading && (
-              <div className="p-10 text-center text-sm text-gray-400">
-                No tasks match your filters.
-              </div>
-            )}
-
-            {pagination.totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-                <span className="text-xs text-gray-500">
-                  Page {pagination.page} of {pagination.totalPages} (
-                  {pagination.totalCount} total)
-                </span>
-                <div className="flex gap-1">
-                  <button
-                    disabled={pagination.page <= 1}
-                    onClick={() => fetchData(pagination.page - 1)}
-                    className="px-3 py-1 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Prev
-                  </button>
-                  <button
-                    disabled={pagination.page >= pagination.totalPages}
-                    onClick={() => fetchData(pagination.page + 1)}
-                    className="px-3 py-1 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      <BaseTable
+        data={items}
+        columns={columns}
+        getRowId={(s) => s.id ?? s.caseId}
+        isLoading={loading}
+        emptyMessage="No tasks match your filters."
+        getRowClassName={(s) =>
+          actionLoading === (s.id ?? s.caseId)
+            ? "opacity-50"
+            : selection.isSelected(s.id ?? s.caseId)
+              ? "bg-primary/5"
+              : undefined
+        }
+        manualPagination
+        pageCount={pagination.totalPages}
+        totalCount={pagination.totalCount}
+        pagination={{ pageIndex: pagination.page - 1, pageSize: pagination.pageSize }}
+        onPaginationChange={(updater) => {
+          const next =
+            typeof updater === "function"
+              ? updater({ pageIndex: pagination.page - 1, pageSize: pagination.pageSize })
+              : updater;
+          fetchData(next.pageIndex + 1);
+        }}
+        className="bg-white border-gray-200 rounded-xl"
+      />
 
       {canEdit && (
         <BulkActionBar

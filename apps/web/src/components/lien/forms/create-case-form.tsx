@@ -182,7 +182,9 @@ export function CreateCaseForm({
         caseStatusId: form.caseStatusId,
         lawfirmId: form.lawfirmId || undefined,
         accidentTypeId: form.accidentTypeId || undefined,
-        accidentStateId: form.accidentStateId || undefined,
+        accidentStateId:
+          data.accidentState.find((s) => s.value == form.accidentStateId)
+            ?.key ?? "",
         caseManagerId: form.caseManagerId || undefined,
         isServicing: form.isServicing == "true",
         caseType: form.accidentTypeId || undefined,
@@ -205,7 +207,11 @@ export function CreateCaseForm({
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isConflict) {
-          setErrors({ caseNumber: "A case with this number already exists" });
+          addToast({
+            type: "error",
+            title: "Create Failed",
+            description: err.message,
+          });
         } else {
           addToast({
             type: "error",
@@ -282,9 +288,13 @@ export function CreateCaseForm({
             label="Date of Birth"
             required
             value={form.clientDob}
-            onChange={(v) => updateField("clientDob", v.toString())}
+            onChange={(v) => {
+              console.log(v);
+              updateField("clientDob", v.toString());
+            }}
             error={touched.clientDob ? errors.clientDob : undefined}
             type="date"
+            maxDate={new Date()}
           />
           <div className="grid grid-cols-2 gap-3">
             <Field
@@ -386,6 +396,7 @@ export function CreateCaseForm({
               value={form.dateOfIncident}
               onChange={(v) => updateField("dateOfIncident", v.toString())}
               type="date"
+              maxDate={new Date()}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">

@@ -41,16 +41,75 @@ export function useLienPaymentsByCase(caseId: string) {
   });
 }
 
-async function fetchCaseLiens(
+async function fetchLienPage(
   caseId: string,
   query: LiensQuery,
+): Promise<{ items: LienListItem[]; pagination: PaginationMeta }> {
+  return liensService.getLiens({ caseId, ...query }).catch(() => ({
+    items: [] as LienListItem[],
+    pagination: {
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? 20,
+      totalCount: 0,
+      totalPages: 0,
+    },
+  }));
+}
+
+// Server-enforced page size ceiling — requesting more than this per page is a no-op.
+const LIENS_PAGE_SIZE = 100;
+// Safety cap on how many pages fetchAllLienPages will walk (~2000 liens for one case).
+// Guards against runaway fetching if pagination metadata is ever wrong; a case that
+// legitimately exceeds this will silently show a partial set (logged via console.warn).
+const MAX_LIEN_PAGES = 20;
+
+/**
+ * TODO(liens API): there is no case-scoped "all liens" endpoint and no way to filter
+ * by open/closed status server-side, so the servicing tab (which needs every lien on
+ * the case, split into open/closed client-side) has to page through the capped list
+ * endpoint itself and concatenate. This is fine for realistic per-case lien counts but
+ * is a workaround — replace with a real endpoint (uncapped "all liens for case", or
+ * status-filterable server pagination) when available.
+ */
+async function fetchAllLienPages(
+  caseId: string,
+  query: LiensQuery,
+): Promise<LienListItem[]> {
+  const first = await fetchLienPage(caseId, {
+    ...query,
+    page: 1,
+    pageSize: LIENS_PAGE_SIZE,
+  });
+  const totalPages = first.pagination.totalPages;
+
+  if (totalPages > MAX_LIEN_PAGES) {
+    console.warn(
+      `[use-case-liens] case ${caseId} has ${totalPages} lien pages; only loading the first ${MAX_LIEN_PAGES} (${MAX_LIEN_PAGES * LIENS_PAGE_SIZE} liens). See TODO in use-case-liens.ts.`,
+    );
+  }
+
+  if (totalPages <= 1) return first.items;
+
+  const pagesToFetch = Math.min(totalPages, MAX_LIEN_PAGES);
+  const remainingPages = Array.from(
+    { length: pagesToFetch - 1 },
+    (_, i) => i + 2,
+  );
+  const rest = await Promise.all(
+    remainingPages.map((page) =>
+      fetchLienPage(caseId, { ...query, page, pageSize: LIENS_PAGE_SIZE }),
+    ),
+  );
+
+  return [first.items, ...rest.map((r) => r.items)].flat();
+}
+
+async function enrichLiens(
+  caseId: string,
+  liens: LienListItem[],
   queryClient: QueryClient,
-): Promise<{ items: CaseLienRow[]; pagination: PaginationMeta }> {
-  const [liensResult, payments, reductions, facilities] = await Promise.all([
-    liensService.getLiens({ caseId, ...query }).catch(() => ({
-      items: [] as LienListItem[],
-      pagination: { page: 1, pageSize: 20, totalCount: 0, totalPages: 0 },
-    })),
+): Promise<CaseLienRow[]> {
+  const [payments, reductions, facilities] = await Promise.all([
     // Reuse the cached payments query if already fetched; otherwise fetch now
     queryClient.ensureQueryData({
       queryKey: CASE_PAYMENTS_QUERY_KEY(caseId),
@@ -90,30 +149,53 @@ async function fetchCaseLiens(
   function facilityName(facilityId: string | null) {
     return facilities.items.find((f) => f.id == facilityId)?.displayName;
   }
+  return liens.map((lien) => {
+    const ext = lien as LienListItem & CaseLienItemMetadata;
+    const paymentAmount =
+      paymentsByLien.get(lien.id) ?? ext.paymentAmount ?? null;
+    const reductionAmount =
+      latestReductionByLien.get(lien.id) ?? ext.reductionAmount ?? null;
+    const originalAmount = ext.originalAmount ?? 0;
+    return {
+      ...lien,
+      facility: ext.facility ?? "---",
+      facilityName: facilityName(ext.facilityId ?? "") ?? "---",
+      serviceDate: ext.initialServiceDate,
+      purchaseDateDate: ext.purchaseDate,
+      originalAmount,
+      reductionAmount,
+      purchaseAmount: ext.purchaseAmount ?? 0,
+      paymentAmount,
+      balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
+      closedAtUtc: ext.closedAtUtc ?? null,
+    };
+  });
+}
+
+async function fetchCaseLiens(
+  caseId: string,
+  query: LiensQuery,
+  queryClient: QueryClient,
+): Promise<{ items: CaseLienRow[]; pagination: PaginationMeta }> {
+  const page = await fetchLienPage(caseId, query);
+  const items = await enrichLiens(caseId, page.items, queryClient);
+  return { items, pagination: page.pagination };
+}
+
+async function fetchAllCaseLiens(
+  caseId: string,
+  query: LiensQuery,
+  queryClient: QueryClient,
+): Promise<{ items: CaseLienRow[]; pagination: PaginationMeta }> {
+  const rawItems = await fetchAllLienPages(caseId, query);
+  const items = await enrichLiens(caseId, rawItems, queryClient);
   return {
-    items: liensResult.items.map((lien) => {
-      const ext = lien as LienListItem & CaseLienItemMetadata;
-      const paymentAmount =
-        paymentsByLien.get(lien.id) ?? ext.paymentAmount ?? null;
-      const reductionAmount =
-        latestReductionByLien.get(lien.id) ?? ext.reductionAmount ?? null;
-      const originalAmount = ext.originalAmount ?? 0;
-      return {
-        ...lien,
-        facility: ext.facility ?? "---",
-        facilityName: facilityName(ext.facilityId ?? "") ?? "---",
-        serviceDate: ext.initialServiceDate,
-        purchaseDateDate: ext.purchaseDate,
-        originalAmount,
-        reductionAmount,
-        purchaseAmount: ext.purchaseAmount ?? 0,
-        paymentAmount,
-        balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
-        closedAtUtc: ext.closedAtUtc ?? null,
-      };
-    }),
+    items,
     pagination: {
-      ...liensResult.pagination,
+      page: 1,
+      pageSize: items.length,
+      totalCount: items.length,
+      totalPages: 1,
     },
   };
 }
@@ -125,31 +207,20 @@ export function useCaseLiens(
 ) {
   const queryClient = useQueryClient();
 
-  // Lien tab
+  // Lien tab — server-paginated per the caller-supplied page/pageSize.
   const pagedQuery = useQuery({
-    queryKey: ["case-liens", caseId],
+    queryKey: ["case-liens", caseId, query],
     queryFn: () => fetchCaseLiens(caseId, query, queryClient),
+    enabled: activeTab === "liens",
   });
 
-  // Servicing tab
+  // Servicing tab — needs every lien on the case (split into open/closed and
+  // paginated client-side), so it walks every page of the capped list endpoint.
+  // See TODO on fetchAllLienPages.
   const allQuery = useQuery({
     queryKey: ["case-liens-all", caseId],
-    queryFn: () =>
-      fetchCaseLiens(
-        caseId,
-        {
-          ...query,
-          page: 1,
-          pageSize:
-            (pagedQuery?.data?.pagination.totalCount ?? 0) > 20
-              ? pagedQuery?.data?.pagination?.totalCount
-              : 10,
-        },
-        queryClient,
-      ),
-    enabled:
-      activeTab === "all-liens" &&
-      (pagedQuery?.data?.pagination?.totalCount ?? 0) > 20,
+    queryFn: () => fetchAllCaseLiens(caseId, query, queryClient),
+    enabled: activeTab === "all-liens",
   });
 
   return activeTab == "liens" ? pagedQuery : allQuery;
