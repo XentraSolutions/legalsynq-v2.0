@@ -23,7 +23,7 @@ export interface UploadDocumentsProps {
   data?: any;
   onFormValid?: (valid: boolean, data?: any) => void;
   openAddFundingCompanyModal?: () => void;
-  onUploaded?: () => void;
+  onUploaded?: (valid: boolean, data?: any) => void;
 }
 
 const INITIAL_FORM = {
@@ -135,7 +135,8 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         });
         dropzoneRef?.current?.reset();
         setForm(initialForm);
-        onUploaded?.();
+        props?.onUploaded?.(true, "");
+        props.onFormValid?.(true, "");
       });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -154,22 +155,34 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     }
   };
 
-  const documentIdToName = (id: any): string[] => {
-    const query = String(id ?? "").toLowerCase();
-    return documentTypes
-      .filter((t: any) =>
-        String(t.key ?? "")
-          .toLowerCase()
-          .includes(query),
-      )
-      .map((t: any) => t.label);
+  const fetchDocument = async () => {
+    const docs = await casesService.loadLiensDocuments(lienId ?? "");
+    setDocuments(
+      docs.data.map((d: any) => {
+        return {
+          name: d.filename,
+          type: d.typeId,
+        };
+      }),
+    );
   };
-
+  const getDocumentNameById = (id: string) => {
+    return documentTypes.find((t) => t.key == id)?.label;
+  };
   useEffect(() => {
-    if (data.length > 0) {
-      setDocuments(data);
+    if (data?.length > 0) {
+      setDocuments(
+        data.map((d: any) => {
+          return {
+            name: d.filename,
+            type: d.typeId,
+          };
+        }),
+      );
+    } else {
+      fetchDocument();
     }
-  }, [data]);
+  }, [data, onUploaded]);
 
   return (
     <div className="container-fluid">
@@ -244,7 +257,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {documents.length > 0 &&
+                  {documents?.length > 0 &&
                     documents?.map((doc) => (
                       <tr
                         key={doc.id}
@@ -262,7 +275,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                         </td>
                         <td className="px-3 py-2.5">
                           <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
-                            {documentIdToName(doc.typeId)}
+                            {getDocumentNameById(doc.type)}
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">

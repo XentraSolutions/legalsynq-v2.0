@@ -258,7 +258,9 @@ export default function CasesPage() {
         header: "Case ID",
         accessorFn: (row) => row.caseNumber,
         cell: ({ row }) => (
-          <span className="text-xs font-mono text-gray-700">{row.original.caseNumber}</span>
+          <span className="text-xs font-mono text-gray-700">
+            {row.original.caseNumber}
+          </span>
         ),
       },
       {
@@ -266,7 +268,9 @@ export default function CasesPage() {
         header: "Plaintiff Name",
         accessorFn: (row) => row.clientName,
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700 font-medium">{row.original.clientName}</span>
+          <span className="text-sm text-gray-700 font-medium">
+            {row.original.clientName}
+          </span>
         ),
       },
       {
@@ -274,7 +278,9 @@ export default function CasesPage() {
         header: "Law Firm",
         accessorFn: (row) => row.lawFirm,
         cell: ({ row }) => (
-          <span className="text-sm text-gray-600">{row.original.lawFirm || "—"}</span>
+          <span className="text-sm text-gray-600">
+            {row.original.lawFirm || "—"}
+          </span>
         ),
       },
       {
@@ -282,7 +288,9 @@ export default function CasesPage() {
         header: "Case Manager",
         accessorFn: (row) => row.caseManager,
         cell: ({ row }) => (
-          <span className="text-sm text-gray-600">{row.original.caseManager || "—"}</span>
+          <span className="text-sm text-gray-600">
+            {row.original.caseManager || "—"}
+          </span>
         ),
       },
       {
@@ -290,7 +298,9 @@ export default function CasesPage() {
         header: "Accident Type",
         accessorFn: (row) => row.accidentType,
         cell: ({ row }) => (
-          <span className="text-sm text-gray-600">{row.original.accidentType || "—"}</span>
+          <span className="text-sm text-gray-600">
+            {row.original.accidentType || "—"}
+          </span>
         ),
       },
       {
@@ -298,7 +308,9 @@ export default function CasesPage() {
         header: "Date of Loss",
         accessorFn: (row) => row.dateOfIncident,
         cell: ({ row }) => (
-          <span className="text-xs text-gray-500 tabular-nums">{row.original.dateOfIncident || "—"}</span>
+          <span className="text-xs text-gray-500 tabular-nums">
+            {row.original.dateOfIncident || "—"}
+          </span>
         ),
       },
       {
@@ -306,7 +318,9 @@ export default function CasesPage() {
         header: "DOB",
         accessorFn: (row) => row.clientDob,
         cell: ({ row }) => (
-          <span className="text-xs text-gray-500 tabular-nums">{row.original.clientDob || "—"}</span>
+          <span className="text-xs text-gray-500 tabular-nums">
+            {row.original.clientDob || "—"}
+          </span>
         ),
       },
       {
@@ -422,18 +436,26 @@ export default function CasesPage() {
         isLoading={isLoading}
         emptyMessage="No cases match your filters."
         onRowClick={(c) => router.push(`/lien/cases/${c.id}`)}
-        getRowClassName={(c) => (selection.isSelected(c.id) ? "bg-primary/5" : undefined)}
+        getRowClassName={(c) =>
+          selection.isSelected(c.id) ? "bg-primary/5" : undefined
+        }
         sorting={sorting}
         onSortingChange={setSorting}
         manualSorting
         manualPagination
         pageCount={pagination.totalPages}
         totalCount={pagination.totalCount}
-        pagination={{ pageIndex: pagination.page - 1, pageSize: pagination.pageSize }}
+        pagination={{
+          pageIndex: pagination.page - 1,
+          pageSize: pagination.pageSize,
+        }}
         onPaginationChange={(updater) => {
           const next =
             typeof updater === "function"
-              ? updater({ pageIndex: pagination.page - 1, pageSize: pagination.pageSize })
+              ? updater({
+                  pageIndex: pagination.page - 1,
+                  pageSize: pagination.pageSize,
+                })
               : updater;
           setPagination((p) => ({ ...p, page: next.pageIndex + 1 }));
         }}
@@ -467,7 +489,10 @@ export default function CasesPage() {
           <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full mx-4 my-6">
             <MedicalLienComponent
               caseId={caseId}
-              onClose={() => setShowMedicalLien(false)}
+              onClose={() => {
+                setShowMedicalLien(false);
+                router.push(`/lien/cases/${caseId}/liens`);
+              }}
             />
           </div>
         </div>

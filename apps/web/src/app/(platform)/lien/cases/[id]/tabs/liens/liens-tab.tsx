@@ -120,7 +120,9 @@ export function LiensTab({
       cell: ({ row }) => (
         <span
           className="text-xs font-mono cursor-pointer text-primary hover:underline"
-          onClick={() => router.push(`/lien/cases/${caseId}/liens/${row.original.id}`)}
+          onClick={() =>
+            router.push(`/lien/cases/${caseId}/liens/${row.original.id}`)
+          }
         >
           {row.original.id}
         </span>

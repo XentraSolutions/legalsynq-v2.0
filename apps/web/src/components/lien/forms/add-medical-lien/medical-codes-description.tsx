@@ -84,9 +84,15 @@ export default function MedicalCodesDescription(
   async function loadProcedureCodes() {
     try {
       const codes = await lookupService.getMedicalProcedureCodes();
-      const list = codes.data.map((item, index) => ({
+
+      const uniqueCodes = Array.from(
+        new Map(
+          codes.data.map((item) => [`${item.code}-${item.description}`, item]),
+        ).values(),
+      );
+      const list = uniqueCodes.map((item, index) => ({
         key: item.code,
-        value: item.code,
+        value: item.description,
         label: item.description,
       }));
       setProcedureOptions(list ?? []);
@@ -180,6 +186,10 @@ export default function MedicalCodesDescription(
     resetLine();
   }
 
+  const findCodeByDescription = (description: string) => {
+    return procedureOptions.find((c) => c.value == description)?.key ?? "";
+  };
+
   const createMedicalCodeLiens = async (
     payload: CreateMedicalCodeLiensDto,
     isEditing: boolean,
@@ -188,7 +198,7 @@ export default function MedicalCodesDescription(
       const request: CreateMedicalCodeLiensDto = {
         id: payload.id,
         liensId: props.lienId ?? "",
-        code: form.procedureCode,
+        code: findCodeByDescription(form.procedureCode),
         medicareCost: parseFloat(payload.medicareCost).toFixed(2),
         billingAmount: parseFloat(payload.billingAmount).toFixed(2),
         purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),

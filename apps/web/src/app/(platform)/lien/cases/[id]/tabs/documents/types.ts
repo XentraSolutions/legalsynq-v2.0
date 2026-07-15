@@ -1,6 +1,6 @@
 export type DocumentType = {
   id: string;
-  name: string;
+  filename: string;
   documentType: string;
   updated: string;
   liensId: string;

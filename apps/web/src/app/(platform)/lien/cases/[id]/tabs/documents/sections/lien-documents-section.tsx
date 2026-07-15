@@ -10,13 +10,13 @@ export function LienDocumentsSection({
 }) {
   const liensDocumentsColumns: ColumnDef<DocumentType, any>[] = [
     {
-      id: "name",
+      id: "filename",
       header: "Name",
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <i className="ri-file-line text-sm text-gray-400" />
           <span className="text-sm text-gray-700 truncate max-w-[200px]">
-            {row.original.name}
+            {row.original.filename}
           </span>
         </div>
       ),
