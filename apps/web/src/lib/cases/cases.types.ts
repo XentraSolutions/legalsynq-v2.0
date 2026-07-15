@@ -122,6 +122,11 @@ export interface UpdateCaseRequestDto {
   policyNumber?: string;
   claimNumber?: string;
   status?: string;
+  shareCase?: string;
+  minorComp?: string;
+  caseDropped?: string;
+  childSupportLiens?: string;
+  isUccFiled?: string;
 }
 
 export interface UpdateCaseDetailsRequestDto {
@@ -254,6 +259,19 @@ export interface CaseDetail {
   lawFirm: string;
   caseManager: string;
   accidentType: string;
+  shareCase: string;
+  minorComp: string;
+  caseDropped: string;
+  childSupportLiens: string;
+  isUccFiled: string;
+}
+
+export interface CaseFlagTypes {
+  shareCase: string;
+  minorComp: string;
+  caseDropped: string;
+  childSupportLiens: string;
+  isUccFiled: string;
 }
 
 export interface CaseLienItem {

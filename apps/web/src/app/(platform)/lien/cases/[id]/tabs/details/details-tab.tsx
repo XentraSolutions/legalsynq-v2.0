@@ -5,7 +5,10 @@ import { useLienStore } from "@/stores/lien-store";
 import { casesService, type CaseDetail } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
-import type { CaseUpdatesItem, UpdateCaseRequestDto } from "@/lib/cases/cases.types";
+import type {
+  CaseUpdatesItem,
+  UpdateCaseRequestDto,
+} from "@/lib/cases/cases.types";
 import { dateConverter, dateConvertertoIso } from "@/lib/cases/cases.mapper";
 import { useSessionContext } from "@/providers/session-provider";
 import { EmailSection } from "../../components/email-section";
@@ -172,6 +175,11 @@ export function DetailsTab({
       notes: form.notes || "",
       demandAmount: d.demandAmount ?? 0.0,
       settlementAmount: d.settlementAmount ?? 0.0,
+      shareCase: d.shareCase == "Yes" ? "true" : "false",
+      minorComp: d.minorComp == "Yes" ? "true" : "false",
+      caseDropped: d.caseDropped == "Yes" ? "true" : "false",
+      childSupportLiens: d.childSupportLiens == "Yes" ? "true" : "false",
+      isUccFiled: d.isUccFiled == "Yes" ? "true" : "false",
     };
     try {
       await casesService.updateCase(payload);
@@ -193,7 +201,14 @@ export function DetailsTab({
       setTSaving(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d, tDateOfIncident, tTrackingFollowUpDate, form, onCaseUpdated, addToast]);
+  }, [
+    d,
+    tDateOfIncident,
+    tTrackingFollowUpDate,
+    form,
+    onCaseUpdated,
+    addToast,
+  ]);
 
   const leftContent = (
     <div className="space-y-4">
@@ -218,6 +233,7 @@ export function DetailsTab({
         tSaving={tSaving}
         onSave={handleTrackingSave}
         onCancel={() => {
+          resetTrackingForm();
           setEditingTracking(false);
           setTErrors({});
         }}
@@ -241,6 +257,7 @@ export function DetailsTab({
         pSaving={pSaving}
         onSave={handlePlaintiffSave}
         onCancel={() => {
+          resetPlaintiffForm();
           setEditingPlaintiff(false);
           setPErrors({});
         }}

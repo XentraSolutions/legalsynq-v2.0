@@ -5,6 +5,7 @@ import type { CaseDetail } from "@/lib/cases";
 import type { DropdownOption } from "@/lib/lookup/lookup.types";
 import { CollapsibleSection } from "../../../components/collapsible-section";
 import { FieldGrid, FieldItem } from "../../../components/field-grid";
+import type { ChangeEvent } from "react";
 
 export function CaseTrackingSection({
   d,
@@ -43,6 +44,13 @@ export function CaseTrackingSection({
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const flags: { label: string; key: keyof CaseDetail }[] = [
+    { label: "Share with Law Firm", key: "shareCase" },
+    { label: "UCC Filed", key: "isUccFiled" },
+    { label: "Case Dropped", key: "caseDropped" },
+    { label: "Child Support", key: "childSupportLiens" },
+    { label: "Minor Comp", key: "minorComp" },
+  ];
   return (
     <CollapsibleSection
       title="Case Tracking"
@@ -256,30 +264,24 @@ export function CaseTrackingSection({
           <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">
             Case Flags
           </p>
-          <span className="text-[10px] text-gray-300 italic">
-            Not yet supported
-          </span>
         </div>
         <div className="grid grid-cols-3 gap-x-6 gap-y-2.5">
-          {[
-            "Share with Law Firm",
-            "UCC Filed",
-            "Case Dropped",
-            "Child Support",
-            "Minor Comp",
-          ].map((flag) => (
-            <label
-              key={flag}
-              className="flex items-center gap-2.5 opacity-50 cursor-not-allowed"
-            >
+          {flags.map((flag) => (
+            <label key={flag.key} className="flex items-center gap-2.5">
               <input
                 type="checkbox"
-                checked={false}
-                disabled
-                className="w-4 h-4 rounded border-gray-300 cursor-not-allowed"
+                disabled={!editing}
+                checked={form[flag.key as keyof CaseDetail] === "Yes"}
+                className="w-4 h-4 rounded border-gray-300"
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                  updateField(
+                    flag.key as keyof CaseDetail,
+                    e.target.checked ? "Yes" : "No",
+                  )
+                }
               />
               <span className="text-sm text-gray-400 select-none">
-                {flag}
+                {flag.label}
               </span>
             </label>
           ))}
