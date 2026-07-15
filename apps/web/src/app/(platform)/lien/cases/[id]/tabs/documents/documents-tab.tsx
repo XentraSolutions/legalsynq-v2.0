@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLienStore } from "@/stores/lien-store";
 import { casesService, type CaseDetail } from "@/lib/cases";
+import { documentsService } from "@/lib/documents";
 import { ApiError } from "@/lib/api-client";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import type { DropdownOption } from "@/lib/lookup/lookup.types";
@@ -116,8 +117,21 @@ export function DocumentsTab({
     }
   }, [confirmAction]);
 
-  function download(file: string) {
-    window.open(file || URL.createObjectURL(file as any), "_blank");
+  async function download(url: string) {
+    if (!url) return;
+    const documentId = url.split("/").filter(Boolean).pop();
+    if (!documentId) return;
+    try {
+      const viewUrl = await documentsService.getViewUrl(documentId);
+      window.open(viewUrl, "_blank");
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Download Failed",
+        description:
+          err instanceof ApiError ? err.message : "An unexpected error occurred",
+      });
+    }
   }
 
   useEffect(() => {
