@@ -114,7 +114,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   }
 
   function download(file: any) {
-    window.open(file.url || URL.createObjectURL(file as any), "_blank");
+    window.open(file || URL.createObjectURL(file as any), "_blank");
   }
 
   async function deleteFileConfimation(fileId: string) {
@@ -182,6 +182,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           name: d.filename,
           type: d.typeId,
           id: d.id,
+          url: d.url,
         };
       }),
     );
@@ -197,6 +198,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
             name: d.filename,
             type: d.typeId,
             id: d.id,
+            url: d.url,
           };
         }),
       );
@@ -307,7 +309,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                             <button
                               className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
                               title="Download"
-                              onClick={() => download(doc)}
+                              onClick={() => download(doc.url)}
                             >
                               <i className="ri-download-2-line text-sm" />
                             </button>
