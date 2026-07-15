@@ -180,25 +180,6 @@ export function LiensTab({
     },
   ];
 
-  const exportCaseLiens = async () => {
-    const response = await casesService.exportCaseLiens({
-      caseId: caseId,
-      liensId: null,
-      lawFirmId: null,
-      medicalFacilityId: null,
-      purchaseDate: null,
-      caseManagerId: null,
-      lienStatusId: null,
-    });
-
-    const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
-    const link = document.createElement("a");
-    link.href = src;
-    link.download = response.data[0]?.filename;
-    link.click();
-    link.remove();
-  };
-
   const leftContent = (
     <div className="space-y-4">
       <LienListSection
@@ -215,7 +196,6 @@ export function LiensTab({
         totalPurchase={totalPurchase}
         totalBilling={totalBilling}
         onAddMedicalLien={() => onAddMedicalLien(true)}
-        onExport={exportCaseLiens}
       />
 
       <LienUpdatesSection
