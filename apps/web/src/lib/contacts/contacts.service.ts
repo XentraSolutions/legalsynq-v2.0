@@ -65,19 +65,24 @@ function baseCaseFields(dto: CaseResponseDto) {
   };
 }
 
-function mapCaseToContactSummary(dto: CaseResponseDto): ContactCaseSummary {
+function mapCaseToContactSummary(
+  dto: CaseResponseDto,
+  totalBilling: number | null = null,
+): ContactCaseSummary {
   return {
     id: dto.id,
     ...baseCaseFields(dto),
     lienId: null,
     billingAmount: null,
     purchaseAmount: null,
+    totalBilling,
   };
 }
 
 function mapLienToContactCaseSummary(
   caseDto: CaseResponseDto,
   lien: LienResponseDto,
+  totalBilling: number,
 ): ContactCaseSummary {
   return {
     id: caseDto.id,
@@ -85,6 +90,7 @@ function mapLienToContactCaseSummary(
     lienId: lien.id,
     billingAmount: lien.originalAmount ?? null,
     purchaseAmount: lien.purchaseAmount ?? lien.purchasePrice ?? null,
+    totalBilling,
   };
 }
 
@@ -263,10 +269,38 @@ export const contactsService = {
     const { data } = await lookup(contactId, params);
     const cases = data.data ?? [];
 
+    // TODO: totalBilling is summed client-side from listLiensByCase because
+    // the contact-cases endpoint doesn't return a per-case billing total.
+    // If the API is updated to include it directly, fetch it from there
+    // instead of computing it here.
     if (!LIEN_LEVEL_CONTACT_TYPES.has(contactType)) {
-      return { items: cases.map(mapCaseToContactSummary), totalCount: data.totalCount };
+      const items = await Promise.all(
+        cases.map(async (caseDto) => {
+          const { data: lienData } = await casesApi.listLiensByCase({
+            CaseId: caseDto.id,
+            page: 1,
+            limit: 50,
+          });
+          const totalBilling = (lienData.items ?? []).reduce(
+            (sum, lien) => sum + (lien.originalAmount ?? 0),
+            0,
+          );
+          return mapCaseToContactSummary(caseDto, totalBilling);
+        }),
+      );
+      return { items, totalCount: data.totalCount };
     }
 
+    // KNOWN ISSUE: listLiensByCase (SearchLiensV3) only filters by CaseId —
+    // it has no facilityId/providerId/fundingCompanyId param, even though
+    // the Lien entity has FacilityId and ILienService.SearchAsync already
+    // supports filtering by it internally (see
+    // GetLiensByMedicalFacilityIdV3Legacy). So for a case with liens tied
+    // to multiple facilities/providers/funding companies, this fetches
+    // every lien on the case and sums them all into totalBilling — it can
+    // over-count billing that doesn't belong to this contact. Needs a
+    // backend endpoint change to scope liens by contact before this is
+    // accurate for lien-level contact types.
     const rowsByCase = await Promise.all(
       cases.map(async (caseDto) => {
         const { data: lienData } = await casesApi.listLiensByCase({
@@ -274,9 +308,9 @@ export const contactsService = {
           page: 1,
           limit: 50,
         });
-        return (lienData.items ?? []).map((lien) =>
-          mapLienToContactCaseSummary(caseDto, lien),
-        );
+        const liens = lienData.items ?? [];
+        const totalBilling = liens.reduce((sum, lien) => sum + (lien.originalAmount ?? 0), 0);
+        return liens.map((lien) => mapLienToContactCaseSummary(caseDto, lien, totalBilling));
       }),
     );
     return { items: rowsByCase.flat(), totalCount: data.totalCount };

@@ -5,16 +5,13 @@ import { useContactDetailContext } from "../contact-detail-context";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { useContactCases } from "@/hooks/use-contact-cases";
 import { CASE_REASSIGN_CONFIG } from "@/lib/contacts";
+import type { ContactCaseSummary } from "@/lib/contacts/contacts.types";
 
 const RECENT_CASES_LIMIT = 5;
-// Bounded sample used only to total billing across lien-level contact
-// types (facility/provider/funding) — there's no server-side aggregate
-// endpoint, so this is computed client-side over a capped page.
+// Bounded sample used only to total billing across a contact's cases —
+// there's no server-side aggregate endpoint, so this is computed
+// client-side over a capped page.
 const BILLING_STATS_SAMPLE_SIZE = 200;
-const LIEN_LEVEL_CONTACT_TYPES = new Set(["MedicalFacility", "Provider", "FundingCompany"]);
-// Statuses that represent a lien no longer open — excluded from the
-// "active" billing total since they're not outstanding.
-const CLOSED_LIKE_STATUSES = new Set(["Closed", "Withdrawn", "CaseSettled", "Cancelled", "Archived"]);
 
 const currency = (value: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
@@ -22,7 +19,6 @@ const currency = (value: number) =>
 export default function ContactOverviewPage() {
   const { contact } = useContactDetailContext();
   const casesSupported = Object.keys(CASE_REASSIGN_CONFIG).includes(contact.contactType);
-  const billingTracked = LIEN_LEVEL_CONTACT_TYPES.has(contact.contactType);
 
   const { data: recentData, isLoading: recentLoading } = useContactCases(
     contact.id,
@@ -34,15 +30,27 @@ export default function ContactOverviewPage() {
     contact.id,
     contact.contactType,
     { page: 1, limit: BILLING_STATS_SAMPLE_SIZE },
-    casesSupported && billingTracked,
+    casesSupported,
   );
 
-  const recentCases = recentData?.items ?? [];
+  // Lien-level contact types (facility/provider/funding) return one row
+  // per lien, so a case with multiple liens would otherwise take up
+  // several of the 5 "recent" slots and list itself repeatedly. Each row
+  // already carries that case's full totalBilling (summed server-side
+  // across all its liens), so grouping just keeps the first row per case.
+  const groupByCase = (items: ContactCaseSummary[]) => {
+    const byCase = new Map<string, ContactCaseSummary>();
+    items.forEach((c) => {
+      if (!byCase.has(c.id)) byCase.set(c.id, c);
+    });
+    return [...byCase.values()];
+  };
+
+  const recentCases = groupByCase(recentData?.items ?? []);
   const totalCases = recentData?.totalCount ?? 0;
-  const totalBillingForActiveCases = (billingData?.items ?? []).reduce(
-    (sum, c) => (c.billingAmount && !CLOSED_LIKE_STATUSES.has(c.status) ? sum + c.billingAmount : sum),
-    0,
-  );
+  const billingCases = groupByCase(billingData?.items ?? []);
+
+  const totalBillingForAllCases = billingCases.reduce((sum, c) => sum + (c.totalBilling ?? 0), 0);
 
   return (
     <div className="space-y-5">
@@ -77,9 +85,9 @@ export default function ContactOverviewPage() {
               ) : (
                 <ul className="space-y-2.5">
                   {recentCases.map((c) => {
-                    const amount = c.billingAmount ?? c.purchaseAmount;
+                    const amount = c.totalBilling ?? c.billingAmount ?? c.purchaseAmount;
                     return (
-                      <li key={c.lienId ?? c.id}>
+                      <li key={c.id}>
                         <Link
                           href={`/lien/cases/${c.id}`}
                           className="flex items-center justify-between gap-3 bg-gray-50/80 hover:bg-gray-100 rounded-lg px-4 py-3 transition-colors"
@@ -118,14 +126,12 @@ export default function ContactOverviewPage() {
                 <p className="text-2xl font-semibold text-amber-500">{contact.activeCases}</p>
                 <p className="text-xs text-gray-500 mt-1">Active Cases</p>
               </div>
-              {billingTracked && (
-                <div className="border border-gray-100 rounded-lg p-4">
-                  <p className="text-2xl font-semibold text-cyan-600">
-                    {currency(totalBillingForActiveCases)}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">Total Billing For Active Cases</p>
-                </div>
-              )}
+              <div className="border border-gray-100 rounded-lg p-4">
+                <p className="text-2xl font-semibold text-cyan-600">
+                  {currency(totalBillingForAllCases)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Total Billing</p>
+              </div>
             </div>
           </div>
         </div>
