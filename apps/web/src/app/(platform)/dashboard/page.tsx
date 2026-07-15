@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import { requireOrg } from '@/lib/auth-guards';
 import { PRODUCT_META, PRODUCT_NAV, orgTypeLabel, resolveEnabledNavKeys } from '@/lib/nav';
 import { getServerPortalConfig } from '@/lib/portal';
-import { AppShell } from '@/components/shell/app-shell';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -27,67 +26,65 @@ export default async function DashboardPage() {
   const productEntries = Object.entries(PRODUCT_META).filter(([id]) => enabledKeys.has(id));
 
   return (
-    <AppShell>
-      <div className="max-w-4xl space-y-8">
+    <div className="max-w-4xl space-y-8">
 
-        {/* Welcome header */}
-        <div>
-          <h1 className="text-xl font-bold text-[#0f1928]">
-            Welcome back{session.orgName ? `, ${session.orgName}` : ''}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {orgTypeLabel(session.orgType)} · {session.email}
-          </p>
-        </div>
+      {/* Welcome header */}
+      <div>
+        <h1 className="text-xl font-bold text-[#0f1928]">
+          Welcome back{session.orgName ? `, ${session.orgName}` : ''}
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">
+          {orgTypeLabel(session.orgType)} · {session.email}
+        </p>
+      </div>
 
-        {/* Product tiles */}
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-            Your Products
-          </p>
-          {productEntries.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {productEntries.map(([id, meta]) => (
-                <ProductCard
-                  key={id}
-                  id={id}
-                  meta={meta}
-                  items={(PRODUCT_NAV[id] ?? []).flatMap(s => s.items).slice(0, 3)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-gray-200 bg-white px-5 py-8 text-sm text-gray-400">
-              No products assigned.
-            </div>
-          )}
-        </div>
-
-        {/* Admin shortcut */}
-        {(session.isTenantAdmin || session.isPlatformAdmin) && (
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-              Administration
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <AdminCard
-                href="/admin/users"
-                icon="ri-group-line"
-                label="Users"
-                description="Manage users and their roles"
+      {/* Product tiles */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+          Your Products
+        </p>
+        {productEntries.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {productEntries.map(([id, meta]) => (
+              <ProductCard
+                key={id}
+                id={id}
+                meta={meta}
+                items={(PRODUCT_NAV[id] ?? []).flatMap(s => s.items).slice(0, 3)}
               />
-              <AdminCard
-                href="/admin/organizations"
-                icon="ri-building-line"
-                label="Organizations"
-                description="View and manage organizations"
-              />
-            </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-gray-200 bg-white px-5 py-8 text-sm text-gray-400">
+            No products assigned.
           </div>
         )}
-
       </div>
-    </AppShell>
+
+      {/* Admin shortcut */}
+      {(session.isTenantAdmin || session.isPlatformAdmin) && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+            Administration
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <AdminCard
+              href="/admin/users"
+              icon="ri-group-line"
+              label="Users"
+              description="Manage users and their roles"
+            />
+            <AdminCard
+              href="/admin/organizations"
+              icon="ri-building-line"
+              label="Organizations"
+              description="View and manage organizations"
+            />
+          </div>
+        </div>
+      )}
+
+    </div>
   );
 }
 
