@@ -5,7 +5,10 @@ Detect repo changes that usually require README.md, AGENTS.md, or scoped docs up
 Codex hook mode:
   - SessionStart records the dirty worktree baseline for this session.
   - Stop compares the current dirty worktree against that baseline and asks Codex
-    to continue if new doc-sensitive changes were made without doc updates.
+    to continue if new doc-sensitive changes were made without a final
+    `Documentation impact:` line in the assistant response.
+  - When the response includes a valid `Documentation impact:` line, Stop
+    advances the baseline so the same change set does not loop.
 
 Manual mode:
   - Run from the repo root with `python3 scripts/check-doc-sync.py`.
@@ -18,6 +21,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -53,6 +57,10 @@ DOC_SENSITIVE_PREFIXES = (
     ".agents/",
     "scripts/tests/",
     "shared/building-blocks/BuildingBlocks/Authorization/",
+)
+
+DOCUMENTATION_IMPACT_PATTERN = (
+    r"^Documentation impact: (None|Updated|EDR created/updated) — .+\.$"
 )
 
 
@@ -163,13 +171,6 @@ def is_doc_sensitive(path: str) -> bool:
     return False
 
 
-def changed_since_baseline(repo_root: Path, baseline: dict[str, str] | None) -> set[str]:
-    current = snapshot(repo_root)
-    if baseline is None:
-        return set(current)
-    return {path for path, fingerprint in current.items() if baseline.get(path) != fingerprint}
-
-
 def state_path(repo_root: Path, session_id: str | None) -> Path:
     safe_session = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in (session_id or "manual"))
     return repo_root / ".local" / "state" / "codex-doc-sync" / f"{safe_session}.json"
@@ -189,10 +190,15 @@ def write_hook_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, separators=(",", ":")))
 
 
-def record_baseline(repo_root: Path, hook_input: dict[str, Any]) -> int:
+def write_baseline(repo_root: Path, hook_input: dict[str, Any], snapshot_data: dict[str, str] | None = None) -> None:
     path = state_path(repo_root, hook_input.get("session_id"))
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(snapshot(repo_root), indent=2, sort_keys=True), encoding="utf-8")
+    baseline = snapshot(repo_root) if snapshot_data is None else snapshot_data
+    path.write_text(json.dumps(baseline, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def record_baseline(repo_root: Path, hook_input: dict[str, Any]) -> int:
+    write_baseline(repo_root, hook_input)
     return 0
 
 
@@ -215,6 +221,39 @@ def check_paths(paths: set[str]) -> tuple[list[str], list[str]]:
     return docs, sensitive
 
 
+def validate_documentation_impact_line(message: str, docs_changed: bool) -> str | None:
+    lines = [line.rstrip() for line in message.splitlines() if line.strip()]
+    impact_lines = [line for line in lines if line.startswith("Documentation impact:")]
+
+    if len(impact_lines) != 1:
+        return (
+            "Add exactly one final line beginning with 'Documentation impact:' using one of these formats: "
+            "'Documentation impact: None — ... .', "
+            "'Documentation impact: Updated — ... .', or "
+            "'Documentation impact: EDR created/updated — ... .'."
+        )
+
+    if lines[-1] != impact_lines[0]:
+        return "The Documentation impact summary must be the final non-empty line of the final response."
+
+    impact_line = impact_lines[0]
+    if not re.match(DOCUMENTATION_IMPACT_PATTERN, impact_line):
+        return (
+            "The Documentation impact line must use one of these formats: "
+            "'Documentation impact: None — ... .', "
+            "'Documentation impact: Updated — ... .', or "
+            "'Documentation impact: EDR created/updated — ... .'."
+        )
+
+    if docs_changed and impact_line.startswith("Documentation impact: None"):
+        return "Use 'Updated' or 'EDR created/updated' when documentation files changed in this task."
+
+    if not docs_changed and not impact_line.startswith("Documentation impact: None"):
+        return "Use 'None' when no README.md, AGENTS.md, or scoped docs files changed in this task."
+
+    return None
+
+
 def hook_main() -> int:
     hook_input = load_hook_input()
     repo_root = find_repo_root(hook_input.get("cwd"))
@@ -228,13 +267,25 @@ def hook_main() -> int:
     if event_name != "Stop":
         return 0
 
+    current = snapshot(repo_root)
     baseline = read_baseline(repo_root, hook_input)
     if baseline is None:
+        write_baseline(repo_root, hook_input, current)
         return 0
 
-    changed = changed_since_baseline(repo_root, baseline)
+    if current == baseline:
+        return 0
+
+    changed = {path for path, fingerprint in current.items() if baseline.get(path) != fingerprint}
     docs, sensitive = check_paths(changed)
-    if not sensitive or docs:
+    if not sensitive:
+        write_baseline(repo_root, hook_input, current)
+        return 0
+
+    message = hook_input.get("last_assistant_message") or ""
+    impact_error = validate_documentation_impact_line(message, docs_changed=bool(docs))
+    if impact_error is None:
+        write_baseline(repo_root, hook_input, current)
         return 0
 
     sample = ", ".join(sensitive[:8])
@@ -242,11 +293,11 @@ def hook_main() -> int:
         sample += f", and {len(sensitive) - 8} more"
 
     reason = (
-        "Documentation sync required before final response. "
-        f"Doc-sensitive files changed without README.md/AGENTS.md/scoped docs changes: {sample}. "
+        "Documentation impact summary required before final response. "
+        f"Doc-sensitive files changed in this task: {sample}. "
         "Review whether root README.md, AGENTS.md, relevant service README.md, scoped AGENTS.md, "
         "startup docs, port maps, product/auth docs, or validation commands need updates. "
-        "If no docs are needed, state that explicitly in the final response."
+        f"{impact_error}"
     )
     write_hook_json({"decision": "block", "reason": reason})
     return 0

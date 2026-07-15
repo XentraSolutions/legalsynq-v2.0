@@ -213,7 +213,7 @@ Check whether current code/config changes should include documentation updates:
 python3 scripts/check-doc-sync.py
 ```
 
-Codex also runs this check through the project-local `.codex/hooks.json` hook when the project hook is trusted.
+Codex also runs this check through the project-local `.codex/hooks.json` hook when the project hook is trusted. For doc-sensitive changes, the final response must end with exactly one `Documentation impact:` line using one of these formats: `Documentation impact: None — ... .`, `Documentation impact: Updated — ... .`, or `Documentation impact: EDR created/updated — ... .`. After a valid line is accepted, the hook advances its per-session baseline so the same change set does not keep re-triggering the stop check.
 
 ## Service READMEs
 

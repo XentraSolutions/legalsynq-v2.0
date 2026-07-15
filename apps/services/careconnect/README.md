@@ -32,7 +32,7 @@ CareConnect.Tests/         Tests
 | `POST` | `/api/careconnect/referrals` | Bearer | Create referral |
 | `GET` | `/api/careconnect/referrals` | Bearer | List referrals with queue and participant filters |
 | `GET` | `/api/assistant-tools/referrals/search` | Bearer | Assistant-only referral search surface |
-| `GET` | `/api/assistant-tools/referrals/queue-summary` | Bearer | Assistant-only referral queue summary |
+| `GET` | `/api/assistant-tools/referrals/queue-summary` | Bearer | Assistant-only referral queue and KPI summary |
 | `GET` | `/api/assistant-tools/referrals/{id}` | Bearer | Assistant referral lookup with recent history |
 | `GET` | `/api/assistant-tools/referrals/{id}/history` | Bearer | Assistant referral history lookup |
 | `GET` | `/api/assistant-tools/providers/search` | Bearer | Assistant-only provider lookup |
@@ -54,12 +54,22 @@ These read-only filters are used by the tenant portal and by CareConnect's dedic
 calls the assistant-only endpoints under `/api/assistant-tools/*` instead of composing results from the end-user
 referral and provider APIs itself.
 
+`GET /api/assistant-tools/referrals/queue-summary` also accepts assistant KPI filters for count-style questions:
+
+- `status` for a single canonical referral status
+- `statusGroup` for assistant-friendly groups: `new`, `open`, or `closed`
+- `days` for relative windows such as "last 7 days"
+- `createdFrom` and `createdTo` for explicit date ranges
+
+The response includes total visible referrals, counts within the requested window, matching count after any
+status/status-group filter, status breakdowns, and recent matching referrals for grounding.
+
 ### Assistant tool API
 
 CareConnect owns its grounded assistant contract for referral and provider workflows. The assistant-only endpoints:
 
 - Reuse the caller's normal bearer-token access and participant scoping
-- Return tool-shaped JSON for referral lookup/history, referral search, provider search, referrer search, and queue summaries
+- Return tool-shaped JSON for referral lookup/history, referral search, provider search, referrer search, and queue/KPI summaries
 - Keep product-specific lookup composition inside CareConnect instead of in Xenia
 
 ## Product Roles

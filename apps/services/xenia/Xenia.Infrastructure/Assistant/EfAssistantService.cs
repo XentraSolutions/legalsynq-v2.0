@@ -819,6 +819,9 @@ Rules:
 - Do not invent record identifiers or facts.
 - If the user refers to the current page record, prefer the contextual tool hint when it matches the request.
 - If the user is trying to find a referral by patient/client name, provider name, provider organization, law firm, or referrer contact, use careconnect.referral.search before considering provider-only or referrer-only directory tools.
+- Use careconnect.referral.queue.summary when the user asks for counts, KPI-style summaries, status mix, or date-window totals.
+- For questions about new referrals, prefer statusGroup=""new"" so both New and NewOpened are included.
+- Use days for relative windows like ""last 7 days"" and createdFromUtc/createdToUtc for explicit date ranges.
 - Use careconnect.provider.search only when the user wants providers themselves, not when they want referrals involving a provider.
 - Use careconnect.referrer.search only when the user wants referrers or law firms themselves, not when they want referrals involving them.
 - After tool results are available, either request another tool or return a final grounded answer.

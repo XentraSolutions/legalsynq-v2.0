@@ -12,10 +12,13 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
     private static readonly HashSet<string> SearchDirectiveStopWords = new(StringComparer.OrdinalIgnoreCase)
     {
         "a", "an", "and", "at", "by", "case", "cases", "client", "clients",
-        "find", "for", "from", "last", "latest", "law", "look", "lookup",
-        "me", "of", "patient", "patients", "provider", "providers", "recent",
-        "recently", "record", "records", "referral", "referrals", "referrer",
-        "referrers", "search", "sent", "show", "the", "to", "up", "with",
+        "count", "counts", "find", "for", "from", "how", "kpi", "kpis",
+        "last", "latest", "law", "look", "lookup", "many", "me", "metric",
+        "metrics", "number", "numbers", "of", "patient", "patients",
+        "provider", "providers", "queue", "recent", "recently", "record",
+        "records", "referral", "referrals", "referrer", "referrers", "search",
+        "sent", "show", "status", "summary", "the", "to", "total", "totals",
+        "up", "with",
     };
 
     private readonly IAssistantToolRegistry _registry;
@@ -471,15 +474,27 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
     {
         var providerName = TryGetString(request.InputJson, "providerName");
         var referrerName = TryGetString(request.InputJson, "referrerName");
+        var status = NormalizeReferralStatus(TryGetString(request.InputJson, "status"));
+        var statusGroup = NormalizeStatusGroup(TryGetString(request.InputJson, "statusGroup"));
+        var days = TryGetInt(request.InputJson, "days");
+        var createdFromUtc = TryGetDateTime(request.InputJson, "createdFromUtc");
+        var createdToUtc = TryGetDateTime(request.InputJson, "createdToUtc");
         var searchText = NormalizeSearchText(
             TryGetString(request.InputJson, "searchText"),
             providerName,
-            referrerName);
+            referrerName,
+            status,
+            statusGroup);
         var recentTop = Math.Clamp(TryGetInt(request.InputJson, "recentTop") ?? 5, 1, 10);
         var outcome = await _careConnect.GetReferralQueueSummaryAsync(new CareConnectReferralQueueSummaryRequest(
             searchText,
             providerName,
             referrerName,
+            status,
+            statusGroup,
+            days,
+            createdFromUtc,
+            createdToUtc,
             recentTop), ct);
 
         if (!outcome.Succeeded)
@@ -497,7 +512,28 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
         {
             tool = tool.ToolKey,
             status = "available",
-            totalVisibleReferrals = outcome.TotalVisibleReferrals,
+            filters = new
+            {
+                searchText,
+                providerName,
+                referrerName,
+                status = outcome.AppliedStatus ?? status,
+                statusGroup = outcome.AppliedStatusGroup ?? statusGroup,
+                days,
+                createdFromUtc = outcome.WindowFromUtc ?? createdFromUtc,
+                createdToUtc = outcome.WindowToUtc ?? createdToUtc,
+            },
+            summary = new
+            {
+                totalVisibleReferrals = outcome.TotalVisibleReferrals,
+                windowReferralCount = outcome.WindowReferralCount,
+                matchingReferralCount = outcome.MatchingReferralCount,
+                newReferralCount = outcome.NewReferralCount,
+                openReferralCount = outcome.OpenReferralCount,
+                closedReferralCount = outcome.ClosedReferralCount,
+                windowFromUtc = outcome.WindowFromUtc,
+                windowToUtc = outcome.WindowToUtc,
+            },
             statusCounts = outcome.StatusCounts.Select(item => new
             {
                 status = item.Status,
@@ -717,6 +753,44 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
         return DateTime.TryParse(value, out var parsed)
             ? parsed.ToUniversalTime()
             : null;
+    }
+
+    private static string? NormalizeReferralStatus(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = Regex.Replace(value.Trim(), "[\\s_-]+", string.Empty)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "NEW" => "New",
+            "NEWOPENED" => "NewOpened",
+            "ACCEPTED" or "RECEIVED" or "CONTACTED" => "Accepted",
+            "INPROGRESS" or "SCHEDULED" => "InProgress",
+            "COMPLETED" => "Completed",
+            "DECLINED" => "Declined",
+            "CANCELLED" or "CANCELED" => "Cancelled",
+            _ => value.Trim(),
+        };
+    }
+
+    private static string? NormalizeStatusGroup(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = Regex.Replace(value.Trim(), "[\\s_-]+", string.Empty)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "NEW" or "PENDING" or "INBOX" => "new",
+            "OPEN" or "ACTIVE" => "open",
+            "CLOSED" or "TERMINAL" or "RESOLVED" => "closed",
+            _ => null,
+        };
     }
 
     private static AssistantToolExecutionResultDto Trim(

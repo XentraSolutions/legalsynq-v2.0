@@ -302,7 +302,7 @@ cover:
 - Referral search across patient/client, provider, provider organization, law firm/referrer, and status/date filters
 - Provider lookup by name, city, state, status, and specialty
 - Referrer lookup from referral traffic
-- Referral queue summary counts plus recent items
+- Referral queue and KPI summaries with totals, status groups, date windows, and recent items
 
 CareConnect assistant access is configured from `appsettings` only:
 
@@ -313,7 +313,8 @@ CareConnect assistant access is configured from `appsettings` only:
 Xenia forwards the caller's bearer token to CareConnect for these requests so downstream product and participant
 authorization still applies. The assistant registry currently exposes these CareConnect tools to both the generic
 tenant agent and the CareConnect-specific agent, while the authoritative tool implementation lives behind
-CareConnect's `/api/assistant-tools/*` API surface.
+CareConnect's `/api/assistant-tools/*` API surface. That queue-summary tool is also the KPI surface used for questions
+such as "How many referrals do I have?" and "How many new referrals were created in the last 7 days?"
 
 ---
 

@@ -72,8 +72,8 @@ internal sealed class StaticAssistantToolRegistry : IAssistantToolRegistry
         new(
             ToolKey: "careconnect.referral.queue.summary",
             Name: "CareConnect referral queue summary",
-            Description: "Summarizes authorized referral counts by status and returns recent visible referrals.",
-            InputSchemaJson: """{"type":"object","additionalProperties":false,"properties":{"searchText":{"type":"string"},"providerName":{"type":"string"},"referrerName":{"type":"string"},"recentTop":{"type":"integer","minimum":1,"maximum":10}}}""",
+            Description: "Summarizes authorized referral counts, KPI-style status groups, time-window totals, and recent visible referrals.",
+            InputSchemaJson: """{"type":"object","additionalProperties":false,"properties":{"searchText":{"type":"string"},"providerName":{"type":"string"},"referrerName":{"type":"string"},"status":{"type":"string","enum":["New","NewOpened","Accepted","InProgress","Completed","Declined","Cancelled"]},"statusGroup":{"type":"string","enum":["new","open","closed"]},"days":{"type":"integer","minimum":1,"maximum":365},"createdFromUtc":{"type":"string","format":"date-time"},"createdToUtc":{"type":"string","format":"date-time"},"recentTop":{"type":"integer","minimum":1,"maximum":10}}}""",
             RequiredPermissions: ["SYNQ_CARECONNECT.referral:read:own", "SYNQ_CARECONNECT.referral:read:addressed"],
             RequiredProductCodes: ["CareConnect"],
             ConfirmationRequired: false,
