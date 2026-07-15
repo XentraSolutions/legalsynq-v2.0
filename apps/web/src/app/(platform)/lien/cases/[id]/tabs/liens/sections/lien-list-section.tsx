@@ -16,7 +16,6 @@ export function LienListSection<TLien>({
   totalPurchase,
   totalBilling,
   onAddMedicalLien,
-  onExport,
 }: {
   search: string;
   onSearchChange: (v: string) => void;
@@ -28,7 +27,6 @@ export function LienListSection<TLien>({
   totalPurchase: number;
   totalBilling: number;
   onAddMedicalLien: () => void;
-  onExport: () => void;
 }) {
   return (
     <CollapsibleSection title="Liens" icon="ri-stack-line">
@@ -49,13 +47,6 @@ export function LienListSection<TLien>({
         >
           <i className="ri-link text-sm" />
           Add Medical Lien
-        </button>
-
-        <button
-          className="px-3.5 py-2 text-sm font-medium text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
-          onClick={onExport}
-        >
-          Export
         </button>
       </div>
 

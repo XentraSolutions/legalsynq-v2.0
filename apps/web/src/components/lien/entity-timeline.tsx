@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { auditService, type TimelineItem, type TimelinePagination, type AuditEntityType } from '@/lib/audit';
-import { ApiError } from '@/lib/api-client';
 
 interface EntityTimelineProps {
   entityType: AuditEntityType;
@@ -15,22 +14,17 @@ export function EntityTimeline({ entityType, entityId, title = 'Activity History
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [pagination, setPagination] = useState<TimelinePagination | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (page = 1) => {
     setLoading(true);
-    setError(null);
     try {
       const result = await auditService.getEntityTimeline(entityType, entityId, { page, pageSize });
       setItems(result.items);
       setPagination(result.pagination);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setItems([]);
-        setPagination(null);
-      } else {
-        setError('Failed to load activity history.');
-      }
+    } catch {
+      // Demo: show empty state instead of surfacing load failures.
+      setItems([]);
+      setPagination(null);
     } finally {
       setLoading(false);
     }
@@ -49,15 +43,11 @@ export function EntityTimeline({ entityType, entityId, title = 'Activity History
         </div>
       )}
 
-      {!loading && error && (
-        <div className="text-sm text-red-500 py-2">{error}</div>
-      )}
-
-      {!loading && !error && items.length === 0 && (
+      {!loading && items.length === 0 && (
         <p className="text-sm text-gray-400">No activity yet.</p>
       )}
 
-      {!loading && !error && items.length > 0 && (
+      {!loading && items.length > 0 && (
         <>
           <div className="relative">
             <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gray-200" />

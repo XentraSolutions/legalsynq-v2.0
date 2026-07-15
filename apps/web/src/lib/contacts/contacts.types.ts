@@ -140,6 +140,12 @@ export interface ContactCaseSummary {
   lienId: string | null;
   billingAmount: number | null;
   purchaseAmount: number | null;
+  // Sum of originalAmount across the case's liens. For case-level contact
+  // types (LawFirm/Lead) this is the case's real total. For lien-level
+  // types (MedicalFacility/Provider/FundingCompany) this is currently
+  // summed over ALL of the case's liens, not just this contact's — see
+  // the KNOWN ISSUE note in contacts.service.ts#getCasesByContact.
+  totalBilling: number | null;
 }
 
 export interface PaginationMeta {

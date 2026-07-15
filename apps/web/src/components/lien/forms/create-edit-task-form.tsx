@@ -27,6 +27,7 @@ import type { TenantUser } from "@/types/tenant";
 import type { CaseResponseDto } from "@/lib/cases/cases.types";
 import { TemplatePicker } from "@/components/lien/template-picker";
 import { casesService } from "@/lib/cases";
+import { DatePicker } from "@/components/ui/date-picker";
 
 interface CreateEditTaskFormProps {
   open: boolean;
@@ -556,12 +557,7 @@ export function CreateEditTaskForm({
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Due Date
                   </label>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
+                  <DatePicker value={dueDate} onChange={setDueDate} />
                 </div>
               </div>
 

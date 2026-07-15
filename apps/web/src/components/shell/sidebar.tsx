@@ -10,6 +10,7 @@ import { getClientPortalConfig, type PortalConfig } from '@/lib/portal';
 import { useSession } from '@/hooks/use-session';
 import { useNavBadges } from '@/hooks/use-nav-badges';
 import { useProviderMode } from '@/hooks/use-provider-mode';
+import { useToast } from '@/lib/toast-context';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
@@ -213,18 +214,10 @@ function SidebarItem({
 }) {
   const isActive = isActiveProp ?? (pathname === item.href || pathname.startsWith(item.href + '/'));
   const showBadge = typeof badgeCount === 'number' && badgeCount > 0;
+  const { show } = useToast();
 
-  return (
-    <Link
-      href={item.href}
-      title={collapsed ? `${item.label}${showBadge ? ` (${badgeCount})` : ''}` : undefined}
-      className={clsx(
-        'relative flex items-center rounded-lg text-[12px] font-medium transition-colors',
-        collapsed ? 'w-8 h-8 justify-center mx-auto' : 'gap-2.5 px-3 py-2.5',
-        !isActive && 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
-      )}
-      style={isActive ? { backgroundColor: activeBg, color: '#0f1928' } : undefined}
-    >
+  const content = (
+    <>
       {/* Left accent bar (expanded active) */}
       {isActive && !collapsed && (
         <span
@@ -255,6 +248,38 @@ function SidebarItem({
       {showBadge && collapsed && (
         <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white" />
       )}
+    </>
+  );
+
+  const className = clsx(
+    'relative flex items-center rounded-lg text-[12px] font-medium transition-colors',
+    collapsed ? 'w-8 h-8 justify-center mx-auto' : 'gap-2.5 px-3 py-2.5',
+    !isActive && 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+  );
+  const style = isActive ? { backgroundColor: activeBg, color: '#0f1928' } : undefined;
+
+  if (item.disabledMessage) {
+    return (
+      <button
+        type="button"
+        onClick={() => show(item.disabledMessage!, 'info')}
+        title={collapsed ? `${item.label}${showBadge ? ` (${badgeCount})` : ''}` : undefined}
+        className={clsx(className, 'w-full text-left appearance-none bg-transparent border-0 cursor-pointer')}
+        style={style}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      href={item.href}
+      title={collapsed ? `${item.label}${showBadge ? ` (${badgeCount})` : ''}` : undefined}
+      className={className}
+      style={style}
+    >
+      {content}
     </Link>
   );
 }
