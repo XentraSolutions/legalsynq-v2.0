@@ -77,7 +77,7 @@ const CASE_STATUS_ORDER = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSett
 export default function LienDashboardPage() {
   const servicing = useLienStore((s) => s.servicing);
   const [showCreateCase, setShowCreateCase] = useState(false);
-  const { mode, isSellMode } = useProviderMode();
+  const { isSellMode } = useProviderMode();
   const ra = useRoleAccess();
   const [recentActivity, setRecentActivity] = useState<UnifiedActivityItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
@@ -253,12 +253,6 @@ export default function LienDashboardPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
-            <span className={[
-              'text-[10px] font-semibold px-2 py-0.5 rounded-full leading-none',
-              mode === 'sell' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200',
-            ].join(' ')}>
-              {mode === 'sell' ? 'Sell Mode' : 'Internal Mode'}
-            </span>
           </div>
         </div>
         {/* not part of phase 1 migration */}
