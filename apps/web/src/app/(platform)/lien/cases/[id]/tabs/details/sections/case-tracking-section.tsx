@@ -261,6 +261,7 @@ export function CaseTrackingSection({
             </label>
           ))}
         </div>
+        {editing && (
          <div className="flex items-center gap-2 pt-1 mt-4">
             <button
               onClick={onSave}
@@ -287,6 +288,7 @@ export function CaseTrackingSection({
               Cancel
             </button>
           </div>
+        )}
       </div>
     </CollapsibleSection>
   );
