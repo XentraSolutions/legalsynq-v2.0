@@ -270,7 +270,7 @@ export function CaseTrackingSection({
             <label key={flag.key} className="flex items-center gap-2.5">
               <input
                 type="checkbox"
-                disabled={!editing}
+                disabled={!editing || flag.key == "minorComp"}
                 checked={form[flag.key as keyof CaseDetail] === "Yes"}
                 className="w-4 h-4 rounded border-gray-300"
                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
