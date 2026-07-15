@@ -71,6 +71,16 @@ Login always calls the configured authentication API. No local demo credentials 
 
 The configured auth login URL is `${EXPO_PUBLIC_API_URL}/auth/login`.
 
+### Remembered Tenant Codes
+
+The login flow stores tenant codes locally on the device after successful login or when a user adds a tenant code from `Switch Tenant`.
+
+- Remembered tenants are app-local only. The app does not call tenant create, retrieve, list, or validation endpoints for this flow.
+- Passwords are never stored.
+- Tenant metadata is stored through Expo SecureStore and is retained after logout.
+- Logout clears authentication/session state but keeps the active tenant so returning users only enter email and password.
+- Adding or switching tenants clears the current authenticated session and requires the user to sign in again.
+
 ## Run The App
 
 Start Expo:
@@ -240,13 +250,14 @@ After `eas build --platform ios`, install through TestFlight or an internal dist
 ## Useful Smoke Test
 
 1. Open the app and confirm `LoginScreen` renders.
-2. Sign in with the demo credentials.
-3. Confirm the dashboard loads summary cards and recent activity.
-4. Open `Market`, select a lien, and submit an offer.
-5. Open `Offers` and confirm the sent offer appears.
-6. Open `Cases`, select a case, and add a note.
-7. Open `Profile` then `Settings`, toggle biometrics/theme.
-8. Sign out and confirm the app returns to login.
+2. If no tenant is stored, enter tenant code, email, and password.
+3. Sign out and confirm the app returns to login with the active tenant displayed and the tenant code field hidden.
+4. Open `Switch Tenant`, add or select a tenant code, and confirm the app returns to login before authenticating.
+5. Confirm the dashboard loads summary cards and recent activity after signing in.
+6. Open `Market`, select a lien, and submit an offer.
+7. Open `Offers` and confirm the sent offer appears.
+8. Open `Cases`, select a case, and add a note.
+9. Open `Profile` then `Settings`, toggle biometrics/theme.
 
 ## Known Notes
 

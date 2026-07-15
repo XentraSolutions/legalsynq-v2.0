@@ -10,6 +10,7 @@ export type RootStackParamList = {
 export type AuthStackParamList = {
   Login: undefined;
   ForgotPassword: undefined;
+  TenantSelection: undefined;
 };
 
 export type MainStackParamList = {

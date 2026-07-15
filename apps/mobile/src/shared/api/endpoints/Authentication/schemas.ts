@@ -4,7 +4,9 @@ import {
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
+  returningLoginSchema,
   resetPasswordSchema,
+  tenantCodeSchema,
 } from '@/shared/validation/authSchemas';
 
 export const userSessionSchema = z.object({
@@ -39,6 +41,9 @@ export const loginUserResponseSchema = z.object({
 export const tenantSummarySchema = z.object({
   tenantId: z.string(),
   tenantCode: z.string(),
+  tenantName: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  apiEndpoint: z.string().nullable().optional(),
 });
 
 export const loginResponseSchema = z.object({
@@ -52,5 +57,7 @@ export {
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
+  returningLoginSchema,
   resetPasswordSchema,
+  tenantCodeSchema,
 };

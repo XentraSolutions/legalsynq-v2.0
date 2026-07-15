@@ -12,3 +12,4 @@ export * from './Notifications';
 export * from './Permissions';
 export * from './SecureStorage';
 export * from './Storage';
+export * from './TenantSelection';

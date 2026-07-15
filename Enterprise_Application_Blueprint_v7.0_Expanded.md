@@ -2040,6 +2040,21 @@ Responsibilities:
 * Token management
 * Refresh tokens
 * Biometric authentication integration
+* Remembered tenant confirmation after successful login
+
+---
+
+### Tenant Selection Service
+
+Responsibilities:
+
+* Store remembered tenant records locally on device
+* Track one active tenant at a time
+* Support pending tenant codes before authentication
+* Confirm and enrich tenant records only after successful login
+* Prevent duplicate remembered tenant entries by normalized tenant code and tenant ID
+
+Tenant selection is an app-local capability. It shall not create, retrieve, list, or validate tenants through tenant APIs. The existing authentication login endpoint remains the only backend check that can confirm a tenant code for a user.
 
 ---
 
@@ -2444,6 +2459,8 @@ Applications shall support:
 * Token refresh
 * Forced logout
 * Secure session cleanup
+
+Remembered tenant codes and metadata shall be stored through the SecureStorage Service. Logout shall clear authentication tokens and user session state while preserving remembered tenants and the active tenant. Passwords shall never be stored locally. Switching tenants shall clear the authenticated session and require a fresh login for the selected tenant.
 
 ---
 

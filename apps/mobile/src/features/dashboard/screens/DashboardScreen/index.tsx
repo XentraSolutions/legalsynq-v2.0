@@ -410,23 +410,6 @@ function numericValue(value: unknown): number | undefined {
   return undefined;
 }
 
-function readLawFirmId(row: DashboardLawFirmCaseReportRow): string {
-  const r = row as Record<string, unknown>;
-  for (const key of [
-    'lawFirmId',
-    'lawfirmId',
-    'lawFirmOrgId',
-    'organizationId',
-    'orgId',
-    'firmId',
-  ]) {
-    const val = r[key];
-    if (typeof val === 'string' && val.trim()) return val;
-    if (typeof val === 'number') return String(val);
-  }
-  return readLawFirmName(row);
-}
-
 function readLawFirmName(row: DashboardLawFirmCaseReportRow): string {
   const r = row as Record<string, unknown>;
   const candidates = [row.lawFirm, row.lawfirm, row.lawFirmName, row.firmName, row.name];
@@ -465,13 +448,14 @@ function readLawFirmName(row: DashboardLawFirmCaseReportRow): string {
 function mapLawFirmReportGrouped(rows: DashboardLawFirmCaseReportRow[]): DonutSlice[] {
   const groups = new Map<string, { label: string; count: number }>();
   for (const row of rows) {
-    const id = readLawFirmId(row);
+    const r = row as Record<string, unknown>;
     const name = readLawFirmName(row);
-    const existing = groups.get(id);
+    const rowCount = readReportNumber(r, ['totalCases', 'totalCase', 'caseCount', 'cases']) ?? 1;
+    const existing = groups.get(name);
     if (existing) {
-      existing.count += 1;
+      existing.count += rowCount;
     } else {
-      groups.set(id, { label: name, count: 1 });
+      groups.set(name, { label: name, count: rowCount });
     }
   }
   const entries = Array.from(groups.values()).filter((g) => g.count > 0);

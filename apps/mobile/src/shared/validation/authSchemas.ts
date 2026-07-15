@@ -1,9 +1,20 @@
 import { z } from 'zod';
 
-export const loginSchema = z.object({
+const credentialsSchema = z.object({
   email: z.string().trim().email('Enter a valid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+export const tenantCodeSchema = z.object({
   tenantCode: z.string().trim().min(1, 'Tenant code is required'),
+});
+
+export const loginSchema = credentialsSchema.extend({
+  tenantCode: tenantCodeSchema.shape.tenantCode,
+});
+
+export const returningLoginSchema = credentialsSchema.extend({
+  tenantCode: z.string().trim().optional(),
 });
 
 export const forgotPasswordSchema = z.object({
@@ -21,4 +32,6 @@ export const changePasswordSchema = z.object({
 });
 
 export type LoginFormValues = z.infer<typeof loginSchema>;
+export type ReturningLoginFormValues = z.infer<typeof returningLoginSchema>;
+export type TenantCodeFormValues = z.infer<typeof tenantCodeSchema>;
 export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
