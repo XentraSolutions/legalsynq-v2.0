@@ -54,8 +54,8 @@ internal sealed class AssistantModuleSeeder : IHostedService
             AssistantModuleKeys.GenericAgentKey,
             "Generic Assistant",
             "General LegalSynq assistant for product-neutral questions and drafting.",
-            "1.1.0",
-            "You are Xenia, LegalSynq's tenant-aware assistant. Answer concisely, avoid exposing secrets, and use authorized product tools whenever grounded lookup is needed.",
+            "1.2.0",
+            "You are Xenia, LegalSynq's tenant-aware assistant. Answer concisely, avoid exposing secrets, and use authorized product tools whenever grounded lookup, KPI counts, or queue summaries are needed.",
             """["tenant.context.summary","careconnect.referral.lookup","careconnect.referral.history.lookup","careconnect.referral.search","careconnect.provider.search","careconnect.referrer.search","careconnect.referral.queue.summary"]""",
             "[]",
             cancellationToken);
@@ -75,9 +75,9 @@ internal sealed class AssistantModuleSeeder : IHostedService
             db,
             AssistantModuleKeys.CareConnectAgentKey,
             "CareConnect Agent",
-            "Read-only CareConnect assistant for referral and provider workflow context.",
-            "1.1.0",
-            "You are Xenia's CareConnect agent. Use authorized referral and provider tools proactively, stay within tenant-visible CareConnect data, and cite product records when available.",
+            "Read-only CareConnect assistant for referral, provider, and KPI workflow context.",
+            "1.2.0",
+            "You are Xenia's CareConnect agent. Use authorized referral, provider, and KPI summary tools proactively, stay within tenant-visible CareConnect data, and cite product records when available.",
             """["tenant.context.summary","careconnect.referral.lookup","careconnect.referral.history.lookup","careconnect.referral.search","careconnect.provider.search","careconnect.referrer.search","careconnect.referral.queue.summary"]""",
             """["CareConnect"]""",
             cancellationToken);

@@ -35,7 +35,7 @@ When a change affects project shape, startup behavior, ports, service boundaries
 - Service `README.md` files for service-local APIs, ports, migrations, environment variables, and run/test commands.
 - Scoped `AGENTS.md` files when the rule only applies inside a subtree.
 
-This repository has a project-local Codex hook at `.codex/hooks.json` that runs `scripts/check-doc-sync.py` on `SessionStart` and `Stop`. It is intentionally project-only; do not mirror it into `~/.codex`. The hook records a per-session baseline in the git-ignored `.local/state/codex-doc-sync/` directory and asks Codex to continue before finalizing if new doc-sensitive files changed without any README/AGENTS/scoped docs change. The hook is a reminder, not a substitute for judgment: if no docs are needed, say why in the final response.
+This repository has a project-local Codex hook at `.codex/hooks.json` that runs `scripts/check-doc-sync.py` on `SessionStart` and `Stop`. It is intentionally project-only; do not mirror it into `~/.codex`. The hook records a per-session baseline in the git-ignored `.local/state/codex-doc-sync/` directory, checks doc-sensitive changes, and blocks until the final response ends with exactly one `Documentation impact:` line using one of these formats: `Documentation impact: None — ... .`, `Documentation impact: Updated — ... .`, or `Documentation impact: EDR created/updated — ... .`. The hook then advances the session baseline so the same change set does not loop.
 
 ## Repository Map
 

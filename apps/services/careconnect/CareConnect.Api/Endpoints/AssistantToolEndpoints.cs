@@ -4,21 +4,31 @@ using BuildingBlocks.Context;
 using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
+using CareConnect.Domain;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CareConnect.Api.Endpoints;
 
 public static class AssistantToolEndpoints
 {
-    private static readonly string[] QueueStatuses =
+    private static readonly string[] QueueStatuses = Referral.ValidStatuses.All.ToArray();
+    private static readonly string[] NewStatusGroup =
     [
-        "New",
-        "NewOpened",
-        "Accepted",
-        "InProgress",
-        "Completed",
-        "Declined",
-        "Cancelled",
+        Referral.ValidStatuses.New,
+        Referral.ValidStatuses.NewOpened,
+    ];
+    private static readonly string[] OpenStatusGroup =
+    [
+        Referral.ValidStatuses.New,
+        Referral.ValidStatuses.NewOpened,
+        Referral.ValidStatuses.Accepted,
+        Referral.ValidStatuses.InProgress,
+    ];
+    private static readonly string[] ClosedStatusGroup =
+    [
+        Referral.ValidStatuses.Completed,
+        Referral.ValidStatuses.Declined,
+        Referral.ValidStatuses.Cancelled,
     ];
 
     public static void MapAssistantToolEndpoints(this WebApplication app)
@@ -61,34 +71,72 @@ public static class AssistantToolEndpoints
 
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var baseQuery = BuildScopedReferralQuery(ctx, p);
+            var (windowFromUtc, windowToUtc) = ResolveCreatedWindow(p);
+            var windowQuery = ApplyCreatedWindow(
+                CloneReferralQuery(baseQuery, status: null, pageSize: 1),
+                windowFromUtc,
+                windowToUtc);
             var recentTop = Math.Clamp(p.RecentTop ?? 5, 1, 10);
 
-            var countTasks = QueueStatuses
-                .Select(status => CountStatusAsync(referrals, tenantId, baseQuery, status, ct))
-                .ToList();
+            // Keep these queries sequential: the referral service shares one scoped EF DbContext,
+            // and parallel SearchAsync calls on the same scope cause runtime failures.
+            var counts = new List<CareConnectReferralQueueStatusCount>(QueueStatuses.Length);
+            foreach (var status in QueueStatuses)
+            {
+                counts.Add(await CountStatusAsync(referrals, tenantId, windowQuery, status, ct));
+            }
 
-            var recentTask = referrals.SearchAsync(
+            var totalVisible = await referrals.SearchAsync(
                 tenantId,
-                CloneReferralQuery(baseQuery, status: null, pageSize: recentTop),
+                CloneReferralQuery(baseQuery, status: null, pageSize: 1),
+                ct);
+            var recent = await SearchRecentSummaryItemsAsync(
+                referrals,
+                tenantId,
+                windowQuery,
+                p.Status,
+                p.StatusGroup,
+                recentTop,
                 ct);
 
-            await Task.WhenAll(countTasks.Cast<Task>());
-            var recent = await recentTask;
-
-            var counts = countTasks
-                .Select(task => task.Result)
+            counts = counts
                 .Where(item => item.Count > 0)
                 .OrderByDescending(item => item.Count)
                 .ThenBy(item => item.Status, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            var matchingStatuses = ResolveStatusFilterValues(p.Status, p.StatusGroup);
+            var windowReferralCount = counts.Sum(item => item.Count);
+            var matchingReferralCount = matchingStatuses.Count == 0
+                ? windowReferralCount
+                : counts
+                    .Where(item => matchingStatuses.Contains(item.Status, StringComparer.OrdinalIgnoreCase))
+                    .Sum(item => item.Count);
+            var newReferralCount = counts
+                .Where(item => NewStatusGroup.Contains(item.Status, StringComparer.OrdinalIgnoreCase))
+                .Sum(item => item.Count);
+            var openReferralCount = counts
+                .Where(item => OpenStatusGroup.Contains(item.Status, StringComparer.OrdinalIgnoreCase))
+                .Sum(item => item.Count);
+            var closedReferralCount = counts
+                .Where(item => ClosedStatusGroup.Contains(item.Status, StringComparer.OrdinalIgnoreCase))
+                .Sum(item => item.Count);
 
             return Results.Ok(new CareConnectReferralQueueSummaryOutcome(
                 true,
                 "completed",
                 null,
-                counts.Sum(item => item.Count),
+                totalVisible.TotalCount,
+                windowReferralCount,
+                matchingReferralCount,
+                newReferralCount,
+                openReferralCount,
+                closedReferralCount,
+                windowFromUtc,
+                windowToUtc,
+                NormalizeSummaryStatus(p.Status),
+                NormalizeSummaryStatusGroup(p.StatusGroup),
                 counts,
-                recent.Items.Select(ToReferralSearchResult).ToList()));
+                recent.Select(ToReferralSearchResult).ToList()));
         });
 
         group.MapGet("/referrals/{id:guid}", async (
@@ -340,6 +388,145 @@ public static class AssistantToolEndpoints
             TenantIds = source.TenantIds,
         };
 
+    private static GetReferralsQuery ApplyCreatedWindow(
+        GetReferralsQuery query,
+        DateTime? createdFromUtc,
+        DateTime? createdToUtc)
+    {
+        query.CreatedFrom = createdFromUtc;
+        query.CreatedTo = createdToUtc;
+        return query;
+    }
+
+    private static (DateTime? FromUtc, DateTime? ToUtc) ResolveCreatedWindow(
+        AssistantReferralQueueSummaryParams paramsModel)
+    {
+        var createdFromUtc = paramsModel.CreatedFrom?.ToUniversalTime();
+        var createdToUtc = paramsModel.CreatedTo?.ToUniversalTime();
+
+        if (createdFromUtc.HasValue || createdToUtc.HasValue)
+        {
+            if (createdFromUtc.HasValue && createdToUtc.HasValue && createdFromUtc > createdToUtc)
+                (createdFromUtc, createdToUtc) = (createdToUtc, createdFromUtc);
+
+            return (createdFromUtc, createdToUtc);
+        }
+
+        if (paramsModel.Days is not > 0)
+            return (null, null);
+
+        var windowToUtc = DateTime.UtcNow;
+        var clampedDays = Math.Clamp(paramsModel.Days.Value, 1, 365);
+        return (windowToUtc.AddDays(-clampedDays), windowToUtc);
+    }
+
+    private static IReadOnlyList<string> ResolveStatusFilterValues(string? status, string? statusGroup)
+    {
+        var normalizedStatus = NormalizeSummaryStatus(status);
+        if (!string.IsNullOrWhiteSpace(normalizedStatus))
+            return [normalizedStatus];
+
+        var normalizedGroup = NormalizeSummaryStatusGroup(statusGroup);
+        return normalizedGroup switch
+        {
+            "new" => NewStatusGroup,
+            "open" => OpenStatusGroup,
+            "closed" => ClosedStatusGroup,
+            _ => [],
+        };
+    }
+
+    private static async Task<List<ReferralResponse>> SearchRecentSummaryItemsAsync(
+        IReferralService referrals,
+        Guid tenantId,
+        GetReferralsQuery windowQuery,
+        string? status,
+        string? statusGroup,
+        int recentTop,
+        CancellationToken ct)
+    {
+        var matchingStatuses = ResolveStatusFilterValues(status, statusGroup);
+        if (matchingStatuses.Count == 0)
+        {
+            var result = await referrals.SearchAsync(
+                tenantId,
+                CloneReferralQuery(windowQuery, status: null, pageSize: recentTop),
+                ct);
+
+            return result.Items;
+        }
+
+        if (matchingStatuses.Count == 1)
+        {
+            var result = await referrals.SearchAsync(
+                tenantId,
+                CloneReferralQuery(windowQuery, matchingStatuses[0], recentTop),
+                ct);
+
+            return result.Items;
+        }
+
+        var results = new List<ReferralResponse>();
+        foreach (var value in matchingStatuses)
+        {
+            var result = await referrals.SearchAsync(
+                tenantId,
+                CloneReferralQuery(windowQuery, value, recentTop),
+                ct);
+            results.AddRange(result.Items);
+        }
+
+        return results
+            .OrderByDescending(item => item.CreatedAtUtc)
+            .ThenByDescending(item => item.UpdatedAtUtc)
+            .Take(recentTop)
+            .ToList();
+    }
+
+    private static string? NormalizeSummaryStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return null;
+
+        var normalized = status.Trim()
+            .Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("_", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace(" ", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "NEW" => Referral.ValidStatuses.New,
+            "NEWOPENED" => Referral.ValidStatuses.NewOpened,
+            "ACCEPTED" or "RECEIVED" or "CONTACTED" => Referral.ValidStatuses.Accepted,
+            "INPROGRESS" or "SCHEDULED" => Referral.ValidStatuses.InProgress,
+            "COMPLETED" => Referral.ValidStatuses.Completed,
+            "DECLINED" => Referral.ValidStatuses.Declined,
+            "CANCELLED" or "CANCELED" => Referral.ValidStatuses.Cancelled,
+            _ => status.Trim(),
+        };
+    }
+
+    private static string? NormalizeSummaryStatusGroup(string? statusGroup)
+    {
+        if (string.IsNullOrWhiteSpace(statusGroup))
+            return null;
+
+        var normalized = statusGroup.Trim()
+            .Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("_", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace(" ", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "NEW" or "PENDING" or "INBOX" => "new",
+            "OPEN" or "ACTIVE" => "open",
+            "CLOSED" or "TERMINAL" or "RESOLVED" => "closed",
+            _ => null,
+        };
+    }
+
     private static async Task<CareConnectReferralQueueStatusCount> CountStatusAsync(
         IReferralService referrals,
         Guid tenantId,
@@ -474,5 +661,10 @@ internal sealed class AssistantReferralQueueSummaryParams
     public string? Search { get; init; }
     public string? ProviderName { get; init; }
     public string? ReferrerName { get; init; }
+    public string? Status { get; init; }
+    public string? StatusGroup { get; init; }
+    public int? Days { get; init; }
+    public DateTime? CreatedFrom { get; init; }
+    public DateTime? CreatedTo { get; init; }
     public int? RecentTop { get; init; }
 }

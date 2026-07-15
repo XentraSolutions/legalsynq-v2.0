@@ -141,6 +141,11 @@ internal sealed class CareConnectAssistantSource : ProductAssistantToolApiSource
                 ["search"] = request.SearchText,
                 ["providerName"] = request.ProviderName,
                 ["referrerName"] = request.ReferrerName,
+                ["status"] = request.Status,
+                ["statusGroup"] = request.StatusGroup,
+                ["days"] = request.Days,
+                ["createdFrom"] = request.CreatedFromUtc,
+                ["createdTo"] = request.CreatedToUtc,
                 ["recentTop"] = Math.Clamp(request.RecentTop, 1, 10),
             })}",
             "CareConnect referral queue summary",
@@ -148,7 +153,7 @@ internal sealed class CareConnectAssistantSource : ProductAssistantToolApiSource
 
         return response.Succeeded && response.Value is not null
             ? response.Value
-            : new CareConnectReferralQueueSummaryOutcome(false, response.Status, response.SafeError, 0, [], []);
+            : new CareConnectReferralQueueSummaryOutcome(false, response.Status, response.SafeError, 0, 0, 0, 0, 0, 0, null, null, null, null, [], []);
     }
 
     private async Task<HttpLookupResult<T>> SendAsync<T>(

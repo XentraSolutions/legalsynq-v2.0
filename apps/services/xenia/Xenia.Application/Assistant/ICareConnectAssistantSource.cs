@@ -147,6 +147,11 @@ public sealed record CareConnectReferralQueueSummaryRequest(
     string? SearchText,
     string? ProviderName,
     string? ReferrerName,
+    string? Status,
+    string? StatusGroup,
+    int? Days,
+    DateTime? CreatedFromUtc,
+    DateTime? CreatedToUtc,
     int RecentTop);
 
 public sealed record CareConnectReferralQueueSummaryOutcome(
@@ -154,6 +159,15 @@ public sealed record CareConnectReferralQueueSummaryOutcome(
     string Status,
     string? SafeError,
     int TotalVisibleReferrals,
+    int WindowReferralCount,
+    int MatchingReferralCount,
+    int NewReferralCount,
+    int OpenReferralCount,
+    int ClosedReferralCount,
+    DateTime? WindowFromUtc,
+    DateTime? WindowToUtc,
+    string? AppliedStatus,
+    string? AppliedStatusGroup,
     IReadOnlyList<CareConnectReferralQueueStatusCount> StatusCounts,
     IReadOnlyList<CareConnectReferralSearchResult> RecentReferrals);
 

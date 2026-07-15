@@ -207,6 +207,65 @@ public sealed class StaticAssistantToolExecutorTests
         Assert.Equal("RL Medical Group", source.LastReferralSearchRequest.ProviderName);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_CareConnectQueueSummary_MapsKpiFiltersAndReturnsSummary()
+    {
+        var referralId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var source = new FakeCareConnectAssistantSource(
+            new CareConnectReferralLookupOutcome(false, "unused", null, null),
+            queueSummary: new CareConnectReferralQueueSummaryOutcome(
+                true,
+                "completed",
+                null,
+                24,
+                9,
+                4,
+                4,
+                7,
+                2,
+                DateTime.UtcNow.AddDays(-7),
+                DateTime.UtcNow,
+                null,
+                "new",
+                [new CareConnectReferralQueueStatusCount("New", 3), new CareConnectReferralQueueStatusCount("NewOpened", 1)],
+                [
+                    new CareConnectReferralSearchResult(
+                        referralId,
+                        "Jane Doe",
+                        "New",
+                        "Urgent",
+                        "Atlas Medical",
+                        "Physical Therapy",
+                        "Orthopedics",
+                        "Acme Law",
+                        "Pat Referrer",
+                        DateTime.UtcNow.AddDays(-2),
+                        DateTime.UtcNow),
+                ]));
+
+        var sut = new StaticAssistantToolExecutor(
+            new StaticAssistantToolRegistry(),
+            source,
+            BuildHttpContextAccessor());
+
+        var result = await sut.ExecuteAsync(new AssistantToolExecutionRequestDto(
+            "careconnect.referral.queue.summary",
+            "careconnect",
+            """{"searchText":"how many new referrals did I get in the last 7 days","statusGroup":"new","days":7,"recentTop":5}""",
+            "{}"));
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(source.LastQueueSummaryRequest);
+        Assert.Equal("new", source.LastQueueSummaryRequest!.StatusGroup);
+        Assert.Equal(7, source.LastQueueSummaryRequest.Days);
+        Assert.Null(source.LastQueueSummaryRequest.Status);
+        Assert.Null(source.LastQueueSummaryRequest.SearchText);
+        Assert.Contains("matchingReferralCount", result.OutputJson);
+        Assert.Contains("newReferralCount", result.OutputJson);
+        Assert.Single(result.Citations);
+        Assert.Equal(referralId.ToString(), result.Citations[0].SourceId);
+    }
+
     private static IHttpContextAccessor BuildHttpContextAccessor(bool withProviderSearch = false)
     {
         var claims = new List<Claim>
@@ -230,16 +289,20 @@ public sealed class StaticAssistantToolExecutorTests
         private readonly CareConnectReferralLookupOutcome _outcome;
         private readonly CareConnectReferralSearchOutcome _referralSearch;
         private readonly CareConnectProviderSearchOutcome _providerSearch;
+        private readonly CareConnectReferralQueueSummaryOutcome _queueSummary;
         public CareConnectReferralSearchRequest? LastReferralSearchRequest { get; private set; }
+        public CareConnectReferralQueueSummaryRequest? LastQueueSummaryRequest { get; private set; }
 
         public FakeCareConnectAssistantSource(
             CareConnectReferralLookupOutcome outcome,
             CareConnectReferralSearchOutcome? referralSearch = null,
-            CareConnectProviderSearchOutcome? providerSearch = null)
+            CareConnectProviderSearchOutcome? providerSearch = null,
+            CareConnectReferralQueueSummaryOutcome? queueSummary = null)
         {
             _outcome = outcome;
             _referralSearch = referralSearch ?? new CareConnectReferralSearchOutcome(true, "completed", null, 0, []);
             _providerSearch = providerSearch ?? new CareConnectProviderSearchOutcome(true, "completed", null, 0, []);
+            _queueSummary = queueSummary ?? new CareConnectReferralQueueSummaryOutcome(true, "completed", null, 0, 0, 0, 0, 0, 0, null, null, null, null, [], []);
         }
 
         public Task<CareConnectReferralLookupOutcome> LookupReferralAsync(Guid referralId, CancellationToken ct = default)
@@ -270,6 +333,9 @@ public sealed class StaticAssistantToolExecutorTests
             => Task.FromResult(new CareConnectReferrerSearchOutcome(true, "completed", null, 0, []));
 
         public Task<CareConnectReferralQueueSummaryOutcome> GetReferralQueueSummaryAsync(CareConnectReferralQueueSummaryRequest request, CancellationToken ct = default)
-            => Task.FromResult(new CareConnectReferralQueueSummaryOutcome(true, "completed", null, 0, [], []));
+        {
+            LastQueueSummaryRequest = request;
+            return Task.FromResult(_queueSummary);
+        }
     }
 }

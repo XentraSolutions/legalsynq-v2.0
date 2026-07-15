@@ -12,6 +12,9 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
     private static readonly Regex GuidRegex = new(
         "[0-9a-fA-F]{8}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{12}",
         RegexOptions.Compiled);
+    private static readonly Regex RelativeDaysRegex = new(
+        "(?:last|past)\\s+(\\d{1,3})\\s+days?",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly string[] ReferralSearchKeywords =
     [
         "referral", "referrals", "case", "cases", "client", "patient",
@@ -126,15 +129,22 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
             }, JsonOptions);
         }
 
-        if ((lowered.Contains("queue") || lowered.Contains("summary") || lowered.Contains("how many")) &&
-            !lowered.Contains("provider"))
+        if (LooksLikeReferralSummary(lowered))
         {
+            var days = TryExtractRelativeDays(lowered);
+            var statusGroup = DetectStatusGroup(lowered);
+            var status = statusGroup is null ? DetectExactStatus(lowered) : null;
+
             return JsonSerializer.Serialize(new
             {
                 action = "tool",
                 toolKey = "careconnect.referral.queue.summary",
                 input = new
                 {
+                    searchText = lastUserMessage.Trim(),
+                    status,
+                    statusGroup,
+                    days,
                     recentTop = 5,
                 },
             }, JsonOptions);
@@ -228,6 +238,15 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
         => SearchIntentKeywords.Any(lowered.Contains) &&
            ReferralSearchKeywords.Any(lowered.Contains);
 
+    private static bool LooksLikeReferralSummary(string lowered)
+        => lowered.Contains("queue") ||
+           lowered.Contains("summary") ||
+           lowered.Contains("how many") ||
+           lowered.Contains("count") ||
+           lowered.Contains("kpi") ||
+           lowered.Contains("metric") ||
+           lowered.Contains("total");
+
     private static bool LooksLikeProviderDirectorySearch(string lowered)
         => lowered.Contains("provider") &&
            !LooksLikeReferralSearch(lowered) &&
@@ -237,4 +256,44 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
         => (lowered.Contains("referrer") || lowered.Contains("law firm") || lowered.Contains("lawfirm")) &&
            !LooksLikeReferralSearch(lowered) &&
            (lowered.Contains("directory") || lowered.Contains("directories") || lowered.Contains("list referrers") || lowered.Contains("list law firms"));
+
+    private static int? TryExtractRelativeDays(string lowered)
+    {
+        var match = RelativeDaysRegex.Match(lowered);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var parsed))
+            return parsed;
+
+        return lowered switch
+        {
+            var value when value.Contains("today") => 1,
+            var value when value.Contains("last week") || value.Contains("past week") || value.Contains("this week") => 7,
+            var value when value.Contains("last month") || value.Contains("past month") || value.Contains("this month") => 30,
+            _ => null,
+        };
+    }
+
+    private static string? DetectStatusGroup(string lowered)
+    {
+        if (lowered.Contains("new referral") || lowered.Contains("new referrals") || lowered.Contains("pending referral") || lowered.Contains("pending referrals"))
+            return "new";
+
+        if (lowered.Contains("open referral") || lowered.Contains("open referrals") || lowered.Contains("active referral") || lowered.Contains("active referrals"))
+            return "open";
+
+        if (lowered.Contains("closed referral") || lowered.Contains("closed referrals"))
+            return "closed";
+
+        return null;
+    }
+
+    private static string? DetectExactStatus(string lowered)
+        => lowered switch
+        {
+            var value when value.Contains("accepted") => "Accepted",
+            var value when value.Contains("in progress") || value.Contains("inprogress") => "InProgress",
+            var value when value.Contains("completed") => "Completed",
+            var value when value.Contains("declined") => "Declined",
+            var value when value.Contains("cancelled") || value.Contains("canceled") => "Cancelled",
+            _ => null,
+        };
 }

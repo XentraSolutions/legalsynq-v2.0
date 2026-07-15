@@ -36,6 +36,34 @@ public sealed class FakeAssistantProviderTests
             doc.RootElement.GetProperty("input").GetProperty("searchText").GetString());
     }
 
+    [Fact]
+    public async Task StreamAsync_ToolSelection_UsesQueueSummary_ForKpiQuestion()
+    {
+        var provider = new FakeAssistantProvider();
+        var request = new AssistantProviderRequest(
+            AgentKey: "careconnect",
+            AgentVersion: "1.0.0",
+            SystemPrompt: "system",
+            ModelKey: "fake",
+            Messages:
+            [
+                new AssistantProviderMessage(
+                    "user",
+                    "How many new referrals do I have in the last 7 days?")
+            ],
+            ContextJson: "{}",
+            CorrelationId: "corr-2",
+            Purpose: AssistantProviderPurpose.ToolSelection);
+
+        var json = await CollectTextAsync(provider, request);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal("tool", doc.RootElement.GetProperty("action").GetString());
+        Assert.Equal("careconnect.referral.queue.summary", doc.RootElement.GetProperty("toolKey").GetString());
+        Assert.Equal("new", doc.RootElement.GetProperty("input").GetProperty("statusGroup").GetString());
+        Assert.Equal(7, doc.RootElement.GetProperty("input").GetProperty("days").GetInt32());
+    }
+
     private static async Task<string> CollectTextAsync(IAssistantProvider provider, AssistantProviderRequest request)
     {
         var chunks = new List<string>();
