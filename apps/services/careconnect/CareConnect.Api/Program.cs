@@ -331,6 +331,7 @@ app.MapActivationAdminEndpoints(); // LSCC-009
 app.MapAnalyticsEndpoints();      // LSCC-011
 // LS-FLOW-MERGE-P4 — product → Flow integration endpoints.
 app.MapWorkflowEndpoints();
+app.MapAssistantToolEndpoints();
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();

@@ -12,7 +12,7 @@ namespace Xenia.Infrastructure.Persistence.Migrations
     ///   Optional  — unavailability → degraded 200
     ///   Disabled  — excluded from readiness entirely
     ///
-    /// Default is 'Optional' so existing rows are not accidentally promoted to mandatory.
+    /// Default is Optional (0) so existing rows are not accidentally promoted to mandatory.
     /// Tenant and Identity adapters are updated to Mandatory after migration via seeding.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0058")]
@@ -25,7 +25,7 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                 name: "criticality",
                 table: "xn_platform_adapters",
                 nullable: false,
-                defaultValue: "Optional");
+                defaultValue: 0);
         }
 
         /// <inheritdoc />

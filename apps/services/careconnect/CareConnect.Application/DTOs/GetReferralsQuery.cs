@@ -4,8 +4,11 @@ public class GetReferralsQuery
 {
     public string?   Status          { get; set; }
     public Guid?     ProviderId      { get; set; }
+    public string?   SearchText      { get; set; }
     public string?   ClientName      { get; set; }
     public string?   CaseNumber      { get; set; }
+    public string?   ProviderName    { get; set; }
+    public string?   ReferrerName    { get; set; }
     public string?   Urgency         { get; set; }
     public DateTime? CreatedFrom     { get; set; }
     public DateTime? CreatedTo       { get; set; }

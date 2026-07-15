@@ -212,70 +212,76 @@ internal sealed class EfAutomationRegistry : IAutomationRegistry
         var manifestJson = JsonSerializer.Serialize(manifest);
         var manifestHash = ComputeManifestHash(manifestJson);
 
-        await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
-        await using var tx  = await ctx.Database.BeginTransactionAsync(ct);
+        await using var strategyContext = await _contextFactory.CreateDbContextAsync(ct);
+        var strategy = strategyContext.Database.CreateExecutionStrategy();
 
-        try
+        await strategy.ExecuteAsync(async () =>
         {
-            var reg = await ctx.AutomationRegistry
-                .FirstOrDefaultAsync(r => r.AutomationKey == provider.AutomationKey, ct);
+            await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
+            await using var tx  = await ctx.Database.BeginTransactionAsync(ct);
 
-            if (reg is null)
+            try
             {
-                reg = AutomationRegistration.Create(
-                    provider.AutomationKey,
-                    manifest.Provider,
-                    manifest.Category,
-                    provider.Version,
-                    manifestHash,
-                    manifest.MinimumPlatformVersion);
-                ctx.AutomationRegistry.Add(reg);
-            }
-            else
-            {
-                reg.Reconcile(provider.Version, manifestHash, DateTime.UtcNow);
-                // If previously Unavailable and now rediscovered, restore lifecycle
-                if (reg.LifecycleStatus == AutomationLifecycleState.Unavailable)
-                    reg.SetLifecycle(AutomationLifecycleState.Registered);
-                ctx.AutomationRegistry.Update(reg);
-            }
+                var reg = await ctx.AutomationRegistry
+                    .FirstOrDefaultAsync(r => r.AutomationKey == provider.AutomationKey, ct);
 
-            var ver = await ctx.AutomationVersions
-                .FirstOrDefaultAsync(v =>
-                    v.AutomationKey == provider.AutomationKey &&
-                    v.Version == provider.Version, ct);
+                if (reg is null)
+                {
+                    reg = AutomationRegistration.Create(
+                        provider.AutomationKey,
+                        manifest.Provider,
+                        manifest.Category,
+                        provider.Version,
+                        manifestHash,
+                        manifest.MinimumPlatformVersion);
+                    ctx.AutomationRegistry.Add(reg);
+                }
+                else
+                {
+                    reg.Reconcile(provider.Version, manifestHash, DateTime.UtcNow);
+                    // If previously Unavailable and now rediscovered, restore lifecycle
+                    if (reg.LifecycleStatus == AutomationLifecycleState.Unavailable)
+                        reg.SetLifecycle(AutomationLifecycleState.Registered);
+                    ctx.AutomationRegistry.Update(reg);
+                }
 
-            if (ver is null)
-            {
-                ver = AutomationVersionRecord.Create(
-                    provider.AutomationKey,
-                    provider.Version,
-                    manifestJson,
-                    ManifestSchemaVersion);
-                ver.Activate();
-                ctx.AutomationVersions.Add(ver);
-            }
-            else if (ver.Status != AutomationVersionStatus.Active)
-            {
-                ver.Activate();
-                ctx.AutomationVersions.Update(ver);
-            }
+                var ver = await ctx.AutomationVersions
+                    .FirstOrDefaultAsync(v =>
+                        v.AutomationKey == provider.AutomationKey &&
+                        v.Version == provider.Version, ct);
 
-            await ctx.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-        }
-        catch (DbUpdateException ex)
-        {
-            await tx.RollbackAsync(CancellationToken.None);
-            _logger.LogWarning(ex,
-                "Failed to upsert durable registration for key={Key}; " +
-                "transaction rolled back — continuing", provider.AutomationKey);
-        }
-        catch (Exception)
-        {
-            await tx.RollbackAsync(CancellationToken.None);
-            throw;
-        }
+                if (ver is null)
+                {
+                    ver = AutomationVersionRecord.Create(
+                        provider.AutomationKey,
+                        provider.Version,
+                        manifestJson,
+                        ManifestSchemaVersion);
+                    ver.Activate();
+                    ctx.AutomationVersions.Add(ver);
+                }
+                else if (ver.Status != AutomationVersionStatus.Active)
+                {
+                    ver.Activate();
+                    ctx.AutomationVersions.Update(ver);
+                }
+
+                await ctx.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+            catch (DbUpdateException ex)
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+                _logger.LogWarning(ex,
+                    "Failed to upsert durable registration for key={Key}; " +
+                    "transaction rolled back — continuing", provider.AutomationKey);
+            }
+            catch (Exception)
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+        });
     }
 
     /// <summary>
@@ -288,58 +294,64 @@ internal sealed class EfAutomationRegistry : IAutomationRegistry
         var manifestJson = JsonSerializer.Serialize(manifest);
         var manifestHash = ComputeManifestHash(manifestJson);
 
-        await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
+        await using var strategyContext = await _contextFactory.CreateDbContextAsync(ct);
+        var strategy = strategyContext.Database.CreateExecutionStrategy();
 
-        var reg = await ctx.AutomationRegistry
-            .FirstOrDefaultAsync(r => r.AutomationKey == provider.AutomationKey, ct);
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
 
-        bool needsSave;
-        if (reg is null)
-        {
-            reg = AutomationRegistration.Create(
-                provider.AutomationKey,
-                manifest.Provider,
-                manifest.Category,
-                provider.Version,
-                manifestHash,
-                manifest.MinimumPlatformVersion);
-            ctx.AutomationRegistry.Add(reg);
-            needsSave = true;
-        }
-        else if (reg.ManifestHash != manifestHash ||
-                 reg.LifecycleStatus == AutomationLifecycleState.Unavailable)
-        {
-            reg.Reconcile(provider.Version, manifestHash, DateTime.UtcNow);
-            if (reg.LifecycleStatus == AutomationLifecycleState.Unavailable)
-                reg.SetLifecycle(AutomationLifecycleState.Registered);
-            ctx.AutomationRegistry.Update(reg);
-            needsSave = true;
-        }
-        else
-        {
-            return;
-        }
+            var reg = await ctx.AutomationRegistry
+                .FirstOrDefaultAsync(r => r.AutomationKey == provider.AutomationKey, ct);
 
-        if (!needsSave) return;
+            bool needsSave;
+            if (reg is null)
+            {
+                reg = AutomationRegistration.Create(
+                    provider.AutomationKey,
+                    manifest.Provider,
+                    manifest.Category,
+                    provider.Version,
+                    manifestHash,
+                    manifest.MinimumPlatformVersion);
+                ctx.AutomationRegistry.Add(reg);
+                needsSave = true;
+            }
+            else if (reg.ManifestHash != manifestHash ||
+                     reg.LifecycleStatus == AutomationLifecycleState.Unavailable)
+            {
+                reg.Reconcile(provider.Version, manifestHash, DateTime.UtcNow);
+                if (reg.LifecycleStatus == AutomationLifecycleState.Unavailable)
+                    reg.SetLifecycle(AutomationLifecycleState.Registered);
+                ctx.AutomationRegistry.Update(reg);
+                needsSave = true;
+            }
+            else
+            {
+                return;
+            }
 
-        await using var tx = await ctx.Database.BeginTransactionAsync(ct);
-        try
-        {
-            await ctx.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-        }
-        catch (DbUpdateException ex)
-        {
-            await tx.RollbackAsync(CancellationToken.None);
-            _logger.LogWarning(ex,
-                "Reconcile upsert failed for key={Key} — transaction rolled back, non-fatal",
-                provider.AutomationKey);
-        }
-        catch (Exception)
-        {
-            await tx.RollbackAsync(CancellationToken.None);
-            throw;
-        }
+            if (!needsSave) return;
+
+            await using var tx = await ctx.Database.BeginTransactionAsync(ct);
+            try
+            {
+                await ctx.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+            catch (DbUpdateException ex)
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+                _logger.LogWarning(ex,
+                    "Reconcile upsert failed for key={Key} — transaction rolled back, non-fatal",
+                    provider.AutomationKey);
+            }
+            catch (Exception)
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+        });
     }
 
     private async Task<bool> UpdateRegistrationLifecycleAsync(

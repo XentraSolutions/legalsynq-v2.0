@@ -70,6 +70,8 @@ export type ProductCode =
   | 'SynqBill'
   | 'SynqRx'
   | 'SynqPayout'
+  | 'Xenia'
+  | 'SynqAI'
   | 'CareConnect';
 
 /** Live status of a product entitlement for a tenant. */

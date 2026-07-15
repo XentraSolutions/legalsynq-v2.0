@@ -17,8 +17,9 @@ namespace Tenant.Application.Services;
 /// B12: Adds canonical tenant creation (Tenant-first) and entitlement toggle.
 ///      CreateTenantAsync: creates canonical Tenant record, then calls
 ///      IIdentityProvisioningAdapter to handle downstream auth/provisioning work.
-///      ToggleEntitlementAsync: upserts TenantProductEntitlement, then best-effort
-///      syncs to Identity via IIdentityCompatAdapter/sync path.
+///      ToggleEntitlementAsync: upserts TenantProductEntitlement, then syncs to
+///      Identity via IIdentityCompatAdapter. Failed syncs are rolled back so
+///      admin state does not drift from portal auth state.
 ///
 /// LS-COMMERCE-ECO-02: Commerce lifecycle notifications wired for tenant created
 ///      and status transitions (activated/suspended).  Notifications are noop-first
@@ -47,6 +48,9 @@ public class TenantAdminService : ITenantAdminService
         ["synqliens"] = "SynqLien",
         ["synq_liens"] = "SynqLien",
         ["synqlien"] = "SynqLien",
+        ["xenia"] = "Xenia",
+        ["synqai"] = "Xenia",
+        ["synq_ai"] = "Xenia",
         ["synqbill"] = "SynqBill",
         ["synq_bill"] = "SynqBill",
         ["synqrx"] = "SynqRx",
@@ -389,6 +393,9 @@ public class TenantAdminService : ITenantAdminService
         var normalizedKey = productCode.Trim().ToLowerInvariant();
 
         var entitlement = await _entitlementRepo.GetByTenantAndProductKeyAsync(tenantId, normalizedKey, ct);
+        var wasCreated = false;
+        var previousEnabled = entitlement?.IsEnabled;
+        var previousDefault = entitlement?.IsDefault;
         DateTime? enabledAtUtc = null;
 
         if (entitlement is null)
@@ -403,6 +410,7 @@ public class TenantAdminService : ITenantAdminService
                 effectiveFromUtc:   enabled ? DateTime.UtcNow : null);
 
             await _entitlementRepo.AddAsync(entitlement, ct);
+            wasCreated = true;
             enabledAtUtc = entitlement.EffectiveFromUtc;
         }
         else
@@ -420,6 +428,40 @@ public class TenantAdminService : ITenantAdminService
             productCode,
             enabled,
             ct);
+
+        if (!identitySynced)
+        {
+            _logger.LogWarning(
+                "Tenant entitlement toggle rolled back because Identity sync failed: TenantId={TenantId}, ProductCode={ProductCode}, Enabled={Enabled}",
+                tenantId,
+                productCode,
+                enabled);
+
+            if (wasCreated)
+            {
+                await _entitlementRepo.DeleteAsync(entitlement, ct);
+            }
+            else
+            {
+                if (previousEnabled == true) entitlement.Enable();
+                else entitlement.Disable();
+
+                if (previousDefault == true && !entitlement.IsDefault) entitlement.SetDefault();
+                if (previousDefault != true && entitlement.IsDefault) entitlement.ClearDefault();
+
+                await _entitlementRepo.UpdateAsync(entitlement, ct);
+            }
+
+            return new AdminEntitlementToggleResponse(
+                EntitlementId: entitlement.Id,
+                TenantId: tenantId,
+                ProductCode: ToCanonicalProductCode(productCode),
+                ProductName: entitlement.ProductDisplayName ?? ToCanonicalProductCode(productCode),
+                Enabled: previousEnabled ?? false,
+                Status: (previousEnabled ?? false) ? "Active" : "Disabled",
+                EnabledAtUtc: previousEnabled == true ? entitlement.EffectiveFromUtc?.ToString("o") : null,
+                IdentitySynced: false);
+        }
 
         return new AdminEntitlementToggleResponse(
             EntitlementId: entitlement.Id,

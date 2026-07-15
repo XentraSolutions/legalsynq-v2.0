@@ -1,0 +1,240 @@
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Xenia.Application.Assistant;
+
+namespace Xenia.Infrastructure.Assistant;
+
+internal sealed class FakeAssistantProvider : IAssistantProvider
+{
+    private const string CareConnectGroundingPrefix = "Authorized CareConnect referral context:";
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly Regex GuidRegex = new(
+        "[0-9a-fA-F]{8}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{12}",
+        RegexOptions.Compiled);
+    private static readonly string[] ReferralSearchKeywords =
+    [
+        "referral", "referrals", "case", "cases", "client", "patient",
+        "provider", "law firm", "lawfirm", "referrer", "organization", "firm"
+    ];
+    private static readonly string[] SearchIntentKeywords =
+    [
+        "find", "search", "show", "lookup", "look up", "match", "which", "where"
+    ];
+
+    public Task<string> GetProviderKeyAsync(CancellationToken ct = default)
+        => Task.FromResult("fake");
+
+    public async IAsyncEnumerable<AssistantProviderEvent> StreamAsync(
+        AssistantProviderRequest request,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (request.Purpose == AssistantProviderPurpose.ToolSelection)
+        {
+            var decision = BuildToolDecisionPayload(request);
+            foreach (var chunk in Chunk(decision, 40))
+            {
+                ct.ThrowIfCancellationRequested();
+                await Task.Delay(10, ct);
+                yield return new AssistantProviderEvent("delta", Delta: chunk);
+            }
+
+            yield return new AssistantProviderEvent(
+                "completed",
+                ProviderResponseId: $"fake-{Guid.CreateVersion7()}",
+                InputTokens: EstimateTokens(request.Messages.Sum(m => m.Content.Length) + request.SystemPrompt.Length),
+                OutputTokens: EstimateTokens(decision.Length),
+                FinishReason: "stop");
+            yield break;
+        }
+
+        var lastUserMessage = request.Messages.LastOrDefault(m => m.Role.Equals("user", StringComparison.OrdinalIgnoreCase))?.Content
+            ?? "How can I help?";
+        var lastToolMessage = request.Messages.LastOrDefault(m => m.Role.Equals("tool", StringComparison.OrdinalIgnoreCase))?.Content;
+        var grounding = request.Messages
+            .FirstOrDefault(m => m.Content.StartsWith(CareConnectGroundingPrefix, StringComparison.OrdinalIgnoreCase))
+            ?.Content;
+
+        var text = lastToolMessage is not null
+            ? $"Grounded response based on current product data:\n\n{CompactToolResult(lastToolMessage)}"
+            : grounding is null
+                ? $"Xenia {request.AgentKey} is running in fake-provider mode. I received: {lastUserMessage.Trim()}"
+                : $"Xenia {request.AgentKey} is running in fake-provider mode. I received: {lastUserMessage.Trim()}\n\nGrounded context:\n{CompactGrounding(grounding)}";
+
+        foreach (var chunk in Chunk(text, 24))
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Delay(15, ct);
+            yield return new AssistantProviderEvent("delta", Delta: chunk);
+        }
+
+        yield return new AssistantProviderEvent(
+            "completed",
+            ProviderResponseId: $"fake-{Guid.CreateVersion7()}",
+            InputTokens: EstimateTokens(request.Messages.Sum(m => m.Content.Length) + request.SystemPrompt.Length),
+            OutputTokens: EstimateTokens(text.Length),
+            FinishReason: "stop");
+    }
+
+    private static IEnumerable<string> Chunk(string value, int size)
+    {
+        for (var i = 0; i < value.Length; i += size)
+            yield return value.Substring(i, Math.Min(size, value.Length - i));
+    }
+
+    private static int EstimateTokens(int characters)
+        => Math.Max(1, (int)Math.Ceiling(characters / 4.0));
+
+    private static string CompactGrounding(string grounding)
+    {
+        var compact = grounding.Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n\n", "\n", StringComparison.Ordinal)
+            .Trim();
+        return compact.Length <= 320 ? compact : compact[..320];
+    }
+
+    private static string BuildToolDecisionPayload(AssistantProviderRequest request)
+    {
+        var lastTool = request.Messages.LastOrDefault(m => m.Role.Equals("tool", StringComparison.OrdinalIgnoreCase));
+        if (lastTool is not null)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "final",
+                message = $"Xenia {request.AgentKey} is running in fake-provider mode. I completed a grounded lookup and have tool results available:\n\n{CompactToolResult(lastTool.Content)}",
+            }, JsonOptions);
+        }
+
+        var lastUserMessage = request.Messages.LastOrDefault(m => m.Role.Equals("user", StringComparison.OrdinalIgnoreCase))?.Content
+            ?? "How can I help?";
+        var lowered = lastUserMessage.ToLowerInvariant();
+        var contextualReferralId = TryExtractContextualReferralId(request.SystemPrompt, request.ContextJson);
+        var explicitReferralId = TryExtractGuid(lastUserMessage);
+        var referralId = explicitReferralId ?? contextualReferralId;
+
+        if (lowered.Contains("history") && referralId.HasValue)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "careconnect.referral.history.lookup",
+                input = new
+                {
+                    referralId = referralId.Value,
+                    top = 10,
+                },
+            }, JsonOptions);
+        }
+
+        if ((lowered.Contains("queue") || lowered.Contains("summary") || lowered.Contains("how many")) &&
+            !lowered.Contains("provider"))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "careconnect.referral.queue.summary",
+                input = new
+                {
+                    recentTop = 5,
+                },
+            }, JsonOptions);
+        }
+
+        if (LooksLikeReferralSearch(lowered))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "careconnect.referral.search",
+                input = new
+                {
+                    searchText = lastUserMessage.Trim(),
+                    top = 6,
+                },
+            }, JsonOptions);
+        }
+
+        if (LooksLikeProviderDirectorySearch(lowered))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "careconnect.provider.search",
+                input = new
+                {
+                    name = lastUserMessage.Trim(),
+                    top = 6,
+                },
+            }, JsonOptions);
+        }
+
+        if (LooksLikeReferrerDirectorySearch(lowered))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "careconnect.referrer.search",
+                input = new
+                {
+                    searchText = lastUserMessage.Trim(),
+                    top = 6,
+                },
+            }, JsonOptions);
+        }
+
+        if (referralId.HasValue)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "careconnect.referral.lookup",
+                input = new
+                {
+                    referralId = referralId.Value,
+                },
+            }, JsonOptions);
+        }
+
+        return JsonSerializer.Serialize(new
+        {
+            action = "final",
+            message = $"Xenia {request.AgentKey} is running in fake-provider mode. I received: {lastUserMessage.Trim()}",
+        }, JsonOptions);
+    }
+
+    private static Guid? TryExtractGuid(string value)
+    {
+        var match = GuidRegex.Match(value);
+        return match.Success && Guid.TryParse(match.Value, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static Guid? TryExtractContextualReferralId(string systemPrompt, string contextJson)
+    {
+        var fromPrompt = TryExtractGuid(systemPrompt);
+        return fromPrompt ?? TryExtractGuid(contextJson);
+    }
+
+    private static string CompactToolResult(string result)
+    {
+        var compact = result.Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n\n", "\n", StringComparison.Ordinal)
+            .Trim();
+        return compact.Length <= 360 ? compact : compact[..360];
+    }
+
+    private static bool LooksLikeReferralSearch(string lowered)
+        => SearchIntentKeywords.Any(lowered.Contains) &&
+           ReferralSearchKeywords.Any(lowered.Contains);
+
+    private static bool LooksLikeProviderDirectorySearch(string lowered)
+        => lowered.Contains("provider") &&
+           !LooksLikeReferralSearch(lowered) &&
+           (lowered.Contains("directory") || lowered.Contains("directories") || lowered.Contains("list providers"));
+
+    private static bool LooksLikeReferrerDirectorySearch(string lowered)
+        => (lowered.Contains("referrer") || lowered.Contains("law firm") || lowered.Contains("lawfirm")) &&
+           !LooksLikeReferralSearch(lowered) &&
+           (lowered.Contains("directory") || lowered.Contains("directories") || lowered.Contains("list referrers") || lowered.Contains("list law firms"));
+}

@@ -34,6 +34,8 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
         var fReferrer = SeedIds.PrSynqFundReferrer;
         var funder    = SeedIds.PrSynqFundFunder;
         var portal    = SeedIds.PrSynqFundApplicantPortal;
+        var xeniaUser = SeedIds.PrXeniaUser;
+        var xeniaAdmin = SeedIds.PrXeniaAdmin;
 
         builder.HasData(
             new { ProductRoleId = referrer, PermissionId = SeedIds.PermReferralCreate },
@@ -94,7 +96,12 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
             new { ProductRoleId = funder, PermissionId = SeedIds.PermApplicationDecline },
 
             new { ProductRoleId = portal, PermissionId = SeedIds.PermApplicationStatusView },
-            new { ProductRoleId = portal, PermissionId = SeedIds.PermPartyReadOwn }
+            new { ProductRoleId = portal, PermissionId = SeedIds.PermPartyReadOwn },
+
+            new { ProductRoleId = xeniaUser, PermissionId = SeedIds.PermXeniaAssistantUse },
+            new { ProductRoleId = xeniaAdmin, PermissionId = SeedIds.PermXeniaAssistantUse },
+            new { ProductRoleId = xeniaAdmin, PermissionId = SeedIds.PermXeniaAssistantManage },
+            new { ProductRoleId = xeniaAdmin, PermissionId = SeedIds.PermXeniaUsageRead }
         );
     }
 }

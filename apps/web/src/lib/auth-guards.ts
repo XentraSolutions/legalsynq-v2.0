@@ -13,6 +13,7 @@ export const FrontendProductCode = {
   SynqInsights: 'SynqInsights',
   SynqComms:    'SynqComms',
   SynqAI:       'SynqAI',
+  Xenia:        'Xenia',
 } as const;
 export type FrontendProductCodeValue = (typeof FrontendProductCode)[keyof typeof FrontendProductCode];
 
@@ -20,7 +21,11 @@ export function sessionHasProductAccess(
   session: Pick<PlatformSession, 'isPlatformAdmin' | 'isTenantAdmin' | 'userProducts' | 'enabledProducts'>,
   productCode: FrontendProductCodeValue,
 ): boolean {
-  if (session.isPlatformAdmin || session.isTenantAdmin) return true;
+  const isXeniaProduct =
+    productCode === FrontendProductCode.Xenia ||
+    productCode === FrontendProductCode.SynqAI;
+
+  if (!isXeniaProduct && (session.isPlatformAdmin || session.isTenantAdmin)) return true;
 
   // `userProducts` is the authoritative explicit-access list from Identity.
   // Only fall back to tenant-enabled products when the field is truly absent,
@@ -30,7 +35,13 @@ export function sessionHasProductAccess(
       ? session.userProducts
       : (session.enabledProducts ?? []);
 
-  return products.includes(productCode);
+  if (products.includes(productCode)) return true;
+  if (products.includes('XENIA')) {
+    return productCode === FrontendProductCode.Xenia || productCode === FrontendProductCode.SynqAI;
+  }
+  if (productCode === FrontendProductCode.Xenia) return products.includes(FrontendProductCode.SynqAI);
+  if (productCode === FrontendProductCode.SynqAI) return products.includes(FrontendProductCode.Xenia);
+  return false;
 }
 
 /**
@@ -69,7 +80,8 @@ export async function requireProductRole(role: ProductRoleValue): Promise<Platfo
  *
  * Ensures the authenticated user has access to the given product before
  * rendering any page under a product route group layout. PlatformAdmins
- * and TenantAdmins bypass the check (they have implicit full access).
+ * and TenantAdmins bypass the check for legacy product routes, but Xenia
+ * requires explicit product access.
  *
  * For regular users, checks `session.userProducts` (JWT-derived per-user
  * list from LS-ID-TNT-009). Falls back to `session.enabledProducts`

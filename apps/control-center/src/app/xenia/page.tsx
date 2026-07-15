@@ -28,11 +28,20 @@ export default async function XeniaDashboardPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">Dashboard</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Xenia service status, module registry, and platform adapter health.
-        </p>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Dashboard</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Xenia service status, module registry, platform adapter health, and assistant runtime entry points.
+          </p>
+        </div>
+        <a
+          href="/xenia/settings"
+          className="inline-flex items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+        >
+          <i className="ri-settings-3-line text-base" aria-hidden />
+          Xenia Assistant Settings
+        </a>
       </div>
 
       <XeniaDashboard

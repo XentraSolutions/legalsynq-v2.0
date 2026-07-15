@@ -85,4 +85,9 @@ public static class PermissionCodes
     public const string InsightsReportsBuild    = "SYNQ_INSIGHTS.reports:build";
     public const string InsightsSchedulesManage = "SYNQ_INSIGHTS.schedules:manage";
     public const string InsightsSchedulesRun    = "SYNQ_INSIGHTS.schedules:run";
+
+    // ── Xenia / SynqAI ───────────────────────────────────────────────────────
+    public const string XeniaAssistantUse    = "SYNQ_AI.assistant:use";
+    public const string XeniaAssistantManage = "SYNQ_AI.assistant:manage";
+    public const string XeniaUsageRead       = "SYNQ_AI.usage:read";
 }

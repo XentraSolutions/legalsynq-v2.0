@@ -313,6 +313,52 @@ public class TenantAdminServiceGetAdminDetailTests
     }
 
     [Fact]
+    public async Task ToggleEntitlementAsync_RollsBackExistingEntitlement_WhenIdentitySyncFails()
+    {
+        var tenant = Domain.Tenant.Create(code: "acme", displayName: "Acme Corp");
+        var existing = TenantProductEntitlement.Create(
+            tenantId: tenant.Id,
+            productKey: "xenia",
+            productDisplayName: "Xenia",
+            isEnabled: true,
+            isDefault: true,
+            effectiveFromUtc: new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var entitlementRepo = new StubEntitlementRepository([existing]);
+        var identityCompat = new StubIdentityCompatAdapter(setTenantProductEntitlementResult: false);
+        var svc = BuildService(
+            tenantRepo: new StubTenantRepository(tenant),
+            entitlementRepo: entitlementRepo,
+            identityCompat: identityCompat);
+
+        var result = await svc.ToggleEntitlementAsync(tenant.Id, "Xenia", enabled: false);
+        var reloaded = await entitlementRepo.GetByTenantAndProductKeyAsync(tenant.Id, "xenia");
+
+        Assert.False(result.IdentitySynced);
+        Assert.NotNull(reloaded);
+        Assert.True(reloaded!.IsEnabled);
+        Assert.True(reloaded.IsDefault);
+    }
+
+    [Fact]
+    public async Task ToggleEntitlementAsync_RemovesCreatedEntitlement_WhenIdentitySyncFails()
+    {
+        var tenant = Domain.Tenant.Create(code: "acme", displayName: "Acme Corp");
+        var entitlementRepo = new StubEntitlementRepository();
+        var identityCompat = new StubIdentityCompatAdapter(setTenantProductEntitlementResult: false);
+        var svc = BuildService(
+            tenantRepo: new StubTenantRepository(tenant),
+            entitlementRepo: entitlementRepo,
+            identityCompat: identityCompat);
+
+        var result = await svc.ToggleEntitlementAsync(tenant.Id, "Xenia", enabled: true);
+        var reloaded = await entitlementRepo.GetByTenantAndProductKeyAsync(tenant.Id, "xenia");
+
+        Assert.False(result.IdentitySynced);
+        Assert.Null(reloaded);
+        Assert.Empty(await entitlementRepo.ListByTenantAsync(tenant.Id));
+    }
+
+    [Fact]
     public async Task GetAdminDetailAsync_SettingsSummary_FallsBackToTenantFields_WhenNoSettings()
     {
         var tenant = Domain.Tenant.Create(
@@ -685,22 +731,25 @@ public class TenantAdminServiceGetAdminDetailTests
             => _entitlements = entitlements ?? new List<TenantProductEntitlement>();
 
         public Task<List<TenantProductEntitlement>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default)
-            => Task.FromResult(_entitlements);
+            => Task.FromResult(_entitlements.Where(e => e.TenantId == tenantId).ToList());
 
         public Task<TenantProductEntitlement?> GetByIdAsync(Guid id, CancellationToken ct = default)
-            => Task.FromResult<TenantProductEntitlement?>(null);
+            => Task.FromResult(_entitlements.FirstOrDefault(e => e.Id == id));
 
         public Task<TenantProductEntitlement?> GetByTenantAndProductKeyAsync(Guid tenantId, string productKey, CancellationToken ct = default)
-            => Task.FromResult<TenantProductEntitlement?>(null);
+            => Task.FromResult(_entitlements.FirstOrDefault(e => e.TenantId == tenantId && e.ProductKey == productKey));
 
         public Task<TenantProductEntitlement?> GetDefaultForTenantAsync(Guid tenantId, CancellationToken ct = default)
-            => Task.FromResult<TenantProductEntitlement?>(null);
+            => Task.FromResult(_entitlements.FirstOrDefault(e => e.TenantId == tenantId && e.IsDefault));
 
         public Task<List<TenantProductEntitlement>> GetDefaultsForTenantAsync(Guid tenantId, CancellationToken ct = default)
-            => Task.FromResult(new List<TenantProductEntitlement>());
+            => Task.FromResult(_entitlements.Where(e => e.TenantId == tenantId && e.IsDefault).ToList());
 
         public Task AddAsync(TenantProductEntitlement entitlement, CancellationToken ct = default)
-            => Task.CompletedTask;
+        {
+            _entitlements.Add(entitlement);
+            return Task.CompletedTask;
+        }
 
         public Task UpdateAsync(TenantProductEntitlement entitlement, CancellationToken ct = default)
             => Task.CompletedTask;
@@ -709,7 +758,10 @@ public class TenantAdminServiceGetAdminDetailTests
             => Task.CompletedTask;
 
         public Task DeleteAsync(TenantProductEntitlement entitlement, CancellationToken ct = default)
-            => Task.CompletedTask;
+        {
+            _entitlements.Remove(entitlement);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubDomainRepository : IDomainRepository
@@ -801,13 +853,16 @@ public class TenantAdminServiceGetAdminDetailTests
     {
         private readonly int? _sessionTimeoutMinutes;
         private readonly TenantIdentityCompatSnapshot? _snapshot;
+        private readonly bool _setTenantProductEntitlementResult;
 
         public StubIdentityCompatAdapter(
             int? sessionTimeoutMinutes = null,
-            TenantIdentityCompatSnapshot? snapshot = null)
+            TenantIdentityCompatSnapshot? snapshot = null,
+            bool setTenantProductEntitlementResult = true)
         {
             _sessionTimeoutMinutes = sessionTimeoutMinutes;
             _snapshot = snapshot;
+            _setTenantProductEntitlementResult = setTenantProductEntitlementResult;
         }
 
         public Task<TenantIdentityCompatSnapshot?> GetTenantAdminSnapshotAsync(Guid tenantId, CancellationToken ct = default)
@@ -820,7 +875,7 @@ public class TenantAdminServiceGetAdminDetailTests
             => Task.FromResult(true);
 
         public Task<bool> SetTenantProductEntitlementAsync(Guid tenantId, string productCode, bool enabled, CancellationToken ct = default)
-            => Task.FromResult(true);
+            => Task.FromResult(_setTenantProductEntitlementResult);
     }
 
     private sealed class StubIdentityProvisioningAdapter : IIdentityProvisioningAdapter

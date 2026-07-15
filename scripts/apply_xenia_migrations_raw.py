@@ -139,14 +139,8 @@ MIGRATIONS = [
     {
         "id": "20260710000002_AddAdapterCriticality",
         "statements": [
-            # defaultValue: "Optional" in C# is the string label — but column is INT.
-            # The int value for Optional is typically 1 (Disabled=0, Optional=1, Mandatory=2).
-            # However the migration says defaultValue: "Optional" on an INT column which is odd.
-            # EF Migration for AddColumn<int> with defaultValue:"Optional" would fail SQL-side.
-            # Looking at the original intent: default should be a numeric value.
-            # From AdapterCriticality enum: Optional is likely 1 (first non-zero).
-            # Use DEFAULT 1 to match "Optional" semantics safely.
-            "ALTER TABLE `xn_platform_adapters` ADD COLUMN `criticality` INT NOT NULL DEFAULT 1",
+            # AdapterCriticality.Optional is the enum default and maps to 0.
+            "ALTER TABLE `xn_platform_adapters` ADD COLUMN `criticality` INT NOT NULL DEFAULT 0",
         ],
     },
 
@@ -270,7 +264,9 @@ MIGRATIONS = [
   `email_source_id` CHAR(36) NOT NULL,
   `provider_type` INT NOT NULL,
   `provider_message_id` VARCHAR(1024) NOT NULL,
+  `provider_message_id_hash` CHAR(64) GENERATED ALWAYS AS (sha2(`provider_message_id`, 256)) STORED,
   `internet_message_id` VARCHAR(998) NULL,
+  `internet_message_id_hash` CHAR(64) GENERATED ALWAYS AS (case when `internet_message_id` is null then null else sha2(`internet_message_id`, 256) end) STORED,
   `thread_id` VARCHAR(500) NULL,
   `conversation_id` VARCHAR(500) NULL,
   `subject` VARCHAR(998) NULL,
@@ -302,11 +298,8 @@ MIGRATIONS = [
   `updated_at_utc` DATETIME(6) NOT NULL,
   PRIMARY KEY (`id`)
 ) CHARACTER SET utf8mb4""",
-            # provider_message_id VARCHAR(1024)*4bytes = 4096; total would exceed 3072-byte MySQL key limit.
-            # Use a prefix of 600 chars on provider_message_id (600*4=2400, total ~2692 — safely under limit).
-            "CREATE UNIQUE INDEX `ux_email_messages_provider_unique` ON `xn_email_messages` (`tenant_id`, `email_source_id`, `provider_type`, `provider_message_id`(600))",
-            # internet_message_id VARCHAR(998)*4 = 3992 bytes; exceeds 3072-byte limit. Use prefix(700).
-            "CREATE INDEX `ix_email_messages_internet_message_id` ON `xn_email_messages` (`tenant_id`, `internet_message_id`(700))",
+            "CREATE UNIQUE INDEX `ux_email_messages_provider_unique` ON `xn_email_messages` (`tenant_id`, `email_source_id`, `provider_type`, `provider_message_id_hash`)",
+            "CREATE INDEX `ix_email_messages_internet_message_id` ON `xn_email_messages` (`tenant_id`, `internet_message_id_hash`)",
             "CREATE INDEX `ix_email_messages_tenant` ON `xn_email_messages` (`tenant_id`)",
             "CREATE INDEX `ix_email_messages_source` ON `xn_email_messages` (`tenant_id`, `email_source_id`)",
             "CREATE INDEX `ix_email_messages_received_at` ON `xn_email_messages` (`tenant_id`, `received_at`)",
@@ -333,6 +326,7 @@ MIGRATIONS = [
   `tenant_id` CHAR(36) NOT NULL,
   `email_message_id` CHAR(36) NOT NULL,
   `provider_attachment_id` VARCHAR(1024) NULL,
+  `provider_attachment_id_hash` CHAR(64) GENERATED ALWAYS AS (case when `provider_attachment_id` is null then null else sha2(`provider_attachment_id`, 256) end) STORED,
   `document_reference_id` CHAR(36) NULL,
   `file_name` VARCHAR(500) NOT NULL,
   `mime_type` VARCHAR(255) NULL,
@@ -348,8 +342,7 @@ MIGRATIONS = [
   `updated_at_utc` DATETIME(6) NOT NULL,
   PRIMARY KEY (`id`)
 ) CHARACTER SET utf8mb4""",
-            # provider_attachment_id VARCHAR(1024)*4 = 4096 bytes; exceeds 3072-byte limit. Use prefix(600).
-            "CREATE INDEX `ix_email_attachments_provider_id` ON `xn_email_attachment_references` (`tenant_id`, `email_message_id`, `provider_attachment_id`(600))",
+            "CREATE INDEX `ix_email_attachments_provider_id` ON `xn_email_attachment_references` (`tenant_id`, `email_message_id`, `provider_attachment_id_hash`)",
             "CREATE INDEX `ix_email_attachments_message` ON `xn_email_attachment_references` (`email_message_id`)",
             "CREATE INDEX `ix_email_attachments_dispatch_status` ON `xn_email_attachment_references` (`tenant_id`, `dispatch_status`)",
 

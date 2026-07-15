@@ -29,6 +29,7 @@ BFF — local route handlers for auth and a few specific endpoints; all other `/
 | `/notifications` | Notification templates, governance rules, delivery logs |
 | `/reports` | Reports service health, templates, assignments |
 | `/support` | Support case management |
+| `/xenia/settings` | Xenia Assistant Settings — provider, model, reasoning effort, verbosity, output cap, and OpenAI runtime configuration |
 
 ## Key Files
 

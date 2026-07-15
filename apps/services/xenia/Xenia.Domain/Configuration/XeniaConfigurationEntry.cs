@@ -71,9 +71,10 @@ public sealed class XeniaConfigurationEntry : AuditableEntityBase
         Version = 1;
     }
 
-    public void UpdateValue(string? value)
+    public void UpdateValue(string? value, bool? isSecret = null)
     {
         ConfigurationValue = value;
+        if (isSecret.HasValue) IsSecret = isSecret.Value;
         Version++;
     }
 }

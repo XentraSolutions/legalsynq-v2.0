@@ -36,8 +36,11 @@ public static class ReferralEndpoints
             {
                 Status             = p.Status,
                 ProviderId         = p.ProviderId,
+                SearchText         = p.Search,
                 ClientName         = p.ClientName,
                 CaseNumber         = p.CaseNumber,
+                ProviderName       = p.ProviderName,
+                ReferrerName       = p.ReferrerName,
                 Urgency            = p.Urgency,
                 CreatedFrom        = p.CreatedFrom,
                 CreatedTo          = p.CreatedTo,
@@ -855,8 +858,11 @@ internal sealed class ReferralSearchParams
 {
     public string?   Status      { get; init; }
     public Guid?     ProviderId  { get; init; }
+    public string?   Search      { get; init; }
     public string?   ClientName  { get; init; }
     public string?   CaseNumber  { get; init; }
+    public string?   ProviderName { get; init; }
+    public string?   ReferrerName { get; init; }
     public string?   Urgency     { get; init; }
     public DateTime? CreatedFrom { get; init; }
     public DateTime? CreatedTo   { get; init; }

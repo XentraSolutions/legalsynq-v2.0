@@ -130,6 +130,16 @@ public static class TenantAdminEndpoints
                 return Results.BadRequest(new { error = "productCode is required." });
 
             var result = await svc.ToggleEntitlementAsync(id, productCode, body.Enabled, ct);
+            if (!result.IdentitySynced)
+            {
+                return Results.Json(new
+                {
+                    error = "Tenant entitlement update could not be synchronized to Identity. No change was applied.",
+                    tenantId = id,
+                    productCode,
+                    enabled = body.Enabled,
+                }, statusCode: StatusCodes.Status502BadGateway);
+            }
             return Results.Ok(result);
         });
 

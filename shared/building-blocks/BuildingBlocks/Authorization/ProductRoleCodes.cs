@@ -17,4 +17,8 @@ public static class ProductRoleCodes
     public const string SynqFundReferrer        = "SYNQFUND_REFERRER";
     public const string SynqFundFunder          = "SYNQFUND_FUNDER";
     public const string SynqFundApplicantPortal = "SYNQFUND_APPLICANT_PORTAL";
+
+    // Xenia / SynqAI
+    public const string XeniaUser  = "XENIA_USER";
+    public const string XeniaAdmin = "XENIA_ADMIN";
 }

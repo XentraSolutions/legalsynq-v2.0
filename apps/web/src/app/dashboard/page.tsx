@@ -23,7 +23,10 @@ export default async function DashboardPage() {
   if (portalConfig) redirect(portalConfig.landingPath);
 
   // Filter product tiles to only those enabled for this tenant.
-  const enabledKeys    = resolveEnabledNavKeys(session.enabledProducts ?? []);
+  const productList    = session.userProducts?.length
+    ? session.userProducts
+    : (session.enabledProducts ?? []);
+  const enabledKeys    = resolveEnabledNavKeys(productList);
   const productEntries = Object.entries(PRODUCT_META).filter(([id]) => enabledKeys.has(id));
 
   return (
@@ -104,7 +107,7 @@ function ProductCard({
     careconnect: '#eff6ff',
     fund:        '#f0fdf4',
     lien:        '#f5f3ff',
-    ai:          '#fffbeb',
+    xenia:       '#fffbeb',
     insights:    '#ecfeff',
   };
   const bg = bgMap[id] ?? '#f9fafb';

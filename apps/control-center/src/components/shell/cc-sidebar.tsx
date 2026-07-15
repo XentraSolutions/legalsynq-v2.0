@@ -9,6 +9,7 @@ import type { NavItem, NavSection } from '@/types';
 import { clsx } from 'clsx';
 
 const STORAGE_KEY = 'ls_cc_sidebar_collapsed';
+const PERSISTENT_SHORTCUT_HREFS = ['/xenia/settings'];
 
 /**
  * Control Center compact sidebar.
@@ -51,6 +52,9 @@ function CCSidebarInner({ collapsed, mounted, toggle, navSections }: {
 
   // Home is only "active" on pure / with no group selected
   const homeIsActive = isHome && !groupParam;
+  const persistentShortcuts = getPersistentShortcuts(navSections);
+  const showPersistentShortcuts =
+    persistentShortcuts.length > 0 && contextSection?.heading !== 'AUTOMATION';
 
   const width = !mounted ? 220 : collapsed ? 52 : 220;
 
@@ -99,6 +103,35 @@ function CCSidebarInner({ collapsed, mounted, toggle, navSections }: {
             forceActive={homeIsActive}
           />
         </nav>
+
+        {showPersistentShortcuts && (
+          <div className="mt-3">
+            {!collapsed && (
+              <div className="px-3 mx-2 mb-1">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
+                  Quick Access
+                </span>
+              </div>
+            )}
+
+            {collapsed && (
+              <div className="mx-2 mb-2 border-t border-gray-100" />
+            )}
+
+            <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
+              {persistentShortcuts.map(item => (
+                <SidebarItem
+                  key={item.href}
+                  item={item}
+                  pathname={pathname ?? ''}
+                  collapsed={collapsed}
+                  activeColor={nav.activeColor}
+                  activeBg={nav.activeBg}
+                />
+              ))}
+            </nav>
+          </div>
+        )}
 
         {/* Active group section — from ?group param (home) or pathname (deep routes) */}
         {contextSection && (
@@ -180,6 +213,18 @@ function CCSidebarInner({ collapsed, mounted, toggle, navSections }: {
       </div>
     </aside>
   );
+}
+
+function getPersistentShortcuts(navSections?: NavSection[]): NavItem[] {
+  const sections = navSections ?? [];
+  const items = sections.flatMap(section =>
+    section.subGroups && section.subGroups.length > 0
+      ? section.subGroups.flatMap(group => group.items)
+      : section.items);
+
+  return PERSISTENT_SHORTCUT_HREFS
+    .map(href => items.find(item => item.href === href))
+    .filter((item): item is NavItem => item !== undefined);
 }
 
 // ── Outer wrapper (manages collapse state, keyboard shortcut, Suspense) ───────
