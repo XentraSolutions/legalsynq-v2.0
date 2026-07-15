@@ -30,7 +30,7 @@ function staffTabLabel(contact: ContactDetail): string | null {
     return "Medical Facility Staff";
   }
   if (contact.contactType === "LawFirm") {
-    return "Law Firm Contacts";
+    return "Legal Contacts";
   }
   return null;
 }

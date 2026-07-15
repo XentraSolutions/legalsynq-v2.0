@@ -21,12 +21,28 @@ export function useContacts(query: ContactsQuery, options?: { enabled?: boolean 
   });
 }
 
-export function useContactTypes() {
+// TODO: Temporary fix — hardcoded allowlist to only surface known contact
+// types. Remove once the ContactType lookup data/API supports this properly.
+export const KNOWN_CONTACT_TYPE_CODES = [
+  "LawFirm",
+  "MedicalFacility",
+  "Provider",
+  "FundingCompany",
+  "Lead",
+];
+
+export function useContactTypes(options?: { knownOnly?: boolean }) {
+  const knownOnly = options?.knownOnly ?? false;
   return useQuery({
-    queryKey: CONTACT_TYPES_QUERY_KEY,
+    queryKey: [...CONTACT_TYPES_QUERY_KEY, { knownOnly }] as const,
     queryFn: () => lookupService.getContactTypes(),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+    select: (data) => ({
+      items: knownOnly
+        ? data.items.filter((t) => KNOWN_CONTACT_TYPE_CODES.includes(t.code))
+        : data.items,
+    }),
   });
 }
 

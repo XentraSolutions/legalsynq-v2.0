@@ -60,8 +60,8 @@ interface ContactTypeIconConfig {
 
 const DEFAULT_ICON: ContactTypeIconConfig = {
   icon: "ri-contacts-book-line",
-  iconBg: "bg-indigo-500",
-  labelText: "text-indigo-700",
+  iconBg: "bg-[#4184ff]",
+  labelText: "text-[#0e5388]",
   label: "Contact Information",
 };
 
@@ -70,13 +70,13 @@ const SUBTYPE_ICONS: Record<string, ContactTypeIconConfig> = {
   facilitycontactperson: {
     icon: "ri-nurse-line",
     iconBg: "bg-blue-500",
-    labelText: "text-blue-700",
+    labelText: "text-sky-800",
     label: "Contact Person",
   },
   casemanager: {
     icon: "ri-briefcase-line",
     iconBg: "bg-green-500",
-    labelText: "text-green-700",
+    labelText: "text-sky-800",
     label: "Case Manager",
   },
 };
@@ -84,16 +84,45 @@ const SUBTYPE_ICONS: Record<string, ContactTypeIconConfig> = {
 const CONTACT_TYPE_ICONS: Record<string, ContactTypeIconConfig> = {
   MedicalFacility: {
     icon: "ri-stethoscope-line",
-    iconBg: "bg-orange-500",
-    labelText: "text-orange-700",
+    iconBg: "bg-[#f9c851]",
+    labelText: "text-[#0e5388]",
     label: "Medical Facility",
   },
   LawFirm: {
     icon: "ri-scales-line",
-    iconBg: "bg-purple-500",
-    labelText: "text-purple-700",
+    iconBg: "bg-[#6d65e6]",
+    labelText: "text-[#0e5388]",
     label: "Law Firm",
   },
+  Provider: {
+    icon: "ri-first-aid-kit-line",
+    iconBg: "bg-[#4fd1c5]",
+    labelText: "text-[#0e5388]",
+    label: "Medical Provider",
+  },
+  FundingCompany: {
+    icon: "ri-money-dollar-box-line",
+    iconBg: "bg-[#81d07d]",
+    labelText: "text-[#0e5388]",
+    label: "Funding Company",
+  },
+  Lead: {
+    icon: "ri-user-star-line",
+    iconBg: "bg-[#ff8acc]",
+    labelText: "text-[#0e5388]",
+    label: "Lead",
+  },
+};
+// LienHolder and Facility are legacy aliases (see LEGACY_CONTACT_TYPE_CODE_ALIASES
+// in add-contact-form.tsx) for FundingCompany and MedicalFacility respectively.
+CONTACT_TYPE_ICONS.LienHolder = CONTACT_TYPE_ICONS.FundingCompany;
+CONTACT_TYPE_ICONS.Facility = CONTACT_TYPE_ICONS.MedicalFacility;
+
+const LAW_FIRM_SUBCONTACT_ICON: ContactTypeIconConfig = {
+  icon: "ri-briefcase-line",
+  iconBg: "bg-[#81d07d]",
+  labelText: "text-[#0e5388]",
+  label: "Legal Contacts",
 };
 
 function getContactTypeIcon(
@@ -268,23 +297,6 @@ export function AddContactModal({
     if (!validate()) return;
     setSubmitting(true);
     try {
-      // Main contacts collect a single Full Name input; the backend still
-      // requires separate firstName/lastName, so split on the first space
-      // (validation above guarantees at least one space is present).
-      let firstName: string;
-      let lastName: string;
-      if (isMainContact) {
-        const trimmedFull = form.fullName.trim().replace(/\s+/g, " ");
-        const spaceIdx = trimmedFull.indexOf(" ");
-        firstName =
-          spaceIdx === -1 ? trimmedFull : trimmedFull.slice(0, spaceIdx);
-        lastName =
-          spaceIdx === -1 ? trimmedFull : trimmedFull.slice(spaceIdx + 1);
-      } else {
-        firstName = form.firstName.trim();
-        lastName = form.lastName.trim();
-      }
-
       const payload = {
         contactType: form.contactType,
         contactSubtype: form.contactSubtype || undefined,
@@ -360,12 +372,18 @@ export function AddContactModal({
   const inputCls = (field: string) =>
     `w-full border rounded-lg px-3 py-2 text-sm ${errors[field] ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`;
 
-  // When a Role select is shown, the role is user-chosen and shouldn't override
-  // the parent entity's header (e.g. Law Firm contacts keep the "Law Firm" header
-  // regardless of which role is selected).
-  const typeIcon = roleOptions
-    ? (CONTACT_TYPE_ICONS[form.contactType] ?? DEFAULT_ICON)
-    : getContactTypeIcon(form.contactType, form.contactSubtype);
+  // When a Contact Type select is shown, the type is still being chosen, so the
+  // header stays generic rather than jumping between per-type icons.
+  // When a Role select is shown instead, the role is user-chosen and shouldn't
+  // override the parent entity's header (e.g. Law Firm contacts keep the
+  // briefcase header regardless of which role is selected).
+  const typeIcon = contactTypeOptions
+    ? DEFAULT_ICON
+    : roleOptions
+      ? form.contactType === "LawFirm"
+        ? LAW_FIRM_SUBCONTACT_ICON
+        : (CONTACT_TYPE_ICONS[form.contactType] ?? DEFAULT_ICON)
+      : getContactTypeIcon(form.contactType, form.contactSubtype);
 
   return (
     <FormModal
@@ -466,7 +484,7 @@ export function AddContactModal({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
+              Email Address
             </label>
             <input
               type="email"

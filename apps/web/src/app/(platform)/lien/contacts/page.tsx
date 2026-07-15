@@ -86,6 +86,7 @@ export default function ContactsPage() {
     pageSize: PAGE_SIZE,
   });
   const contactTypesQuery = useContactTypes();
+  const knownContactTypesQuery = useContactTypes({ knownOnly: true });
   const deleteContactMutation = useDeleteContact();
 
   const contacts = useMemo(
@@ -101,6 +102,10 @@ export default function ContactsPage() {
   const contactTypes = useMemo(
     () => contactTypesQuery.data?.items ?? [],
     [contactTypesQuery.data],
+  );
+  const knownContactTypes = useMemo(
+    () => knownContactTypesQuery.data?.items ?? [],
+    [knownContactTypesQuery.data],
   );
 
   useEffect(() => {
@@ -274,22 +279,20 @@ export default function ContactsPage() {
     [activeContactTypes],
   );
 
-  const KNOWN_TAB_CODES = [
-    "LawFirm",
-    "MedicalFacility",
-    "Provider",
-    "FundingCompany",
-    "Lead",
-  ];
+  const activeKnownContactTypes = useMemo(
+    () =>
+      knownContactTypes
+        .filter((t) => t.isActive)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+    [knownContactTypes],
+  );
 
   const tabs = useMemo(
     () => [
       { key: "", label: "All" },
-      ...activeContactTypes
-        .filter((t) => KNOWN_TAB_CODES.includes(t.code))
-        .map((t) => ({ key: t.code, label: t.name })),
+      ...activeKnownContactTypes.map((t) => ({ key: t.code, label: t.name })),
     ],
-    [activeContactTypes],
+    [activeKnownContactTypes],
   );
 
   const nameColumnLabel = typeFilter
@@ -496,11 +499,11 @@ export default function ContactsPage() {
       {showCreate.open && (
         <AddContactModal
           open={showCreate.open}
-          title={showCreate.mode === "edit" ? "Edit Contact" : "Add Contact"}
+          title={showCreate.mode === "edit" ? "Edit Contact" : "Add New Contact"}
           contactType={
             showCreate.mode === "create" ? typeFilter || undefined : undefined
           }
-          contactTypeOptions={activeContactTypes}
+          contactTypeOptions={activeKnownContactTypes}
           editTarget={showCreate.mode === "edit" ? contactData : null}
           onClose={() => setShowCreate({ open: false })}
           onSaved={() => {
