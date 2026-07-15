@@ -15,8 +15,8 @@ public sealed class LienService : ILienService
     private readonly IContactRepository        _contactRepo;
     private readonly IFacilityRepository       _facilityRepo;
     private readonly IAuditPublisher           _audit;
-    private readonly ILienTaskGenerationEngine _taskGenEngine;
-    private readonly ILogger<LienService>      _logger;
+    private readonly ILienTaskGenerationDispatcher _taskGenDispatcher;
+    private readonly ILogger<LienService>          _logger;
 
     public LienService(
         ILienRepository lienRepo,
@@ -24,16 +24,16 @@ public sealed class LienService : ILienService
         IContactRepository contactRepo,
         IFacilityRepository facilityRepo,
         IAuditPublisher audit,
-        ILienTaskGenerationEngine taskGenEngine,
+        ILienTaskGenerationDispatcher taskGenDispatcher,
         ILogger<LienService> logger)
     {
-        _lienRepo      = lienRepo;
-        _caseRepo      = caseRepo;
-        _contactRepo   = contactRepo;
-        _facilityRepo  = facilityRepo;
-        _audit         = audit;
-        _taskGenEngine = taskGenEngine;
-        _logger        = logger;
+        _lienRepo          = lienRepo;
+        _caseRepo          = caseRepo;
+        _contactRepo       = contactRepo;
+        _facilityRepo      = facilityRepo;
+        _audit             = audit;
+        _taskGenDispatcher = taskGenDispatcher;
+        _logger            = logger;
     }
 
     public async Task<PaginatedResult<LienResponse>> SearchAsync(
@@ -150,9 +150,9 @@ public sealed class LienService : ILienService
             entityType: "Lien",
             entityId: entity.Id.ToString());
 
-        // Fire-and-observe: task generation failure must not block lien creation
-        var lienId     = entity.Id;
-        var genContext  = new TaskGenerationContext(
+        // Run task generation in an isolated scope so it never reuses the request DbContext.
+        var lienId = entity.Id;
+        var genContext = new TaskGenerationContext(
             TenantId:       tenantId,
             EventType:      Domain.Enums.TaskGenerationEventType.LienCreated,
             EntityType:     "LIEN",
@@ -162,12 +162,7 @@ public sealed class LienService : ILienService
             WorkflowStageId: null,
             ActorUserId:    actingUserId);
 
-        _ = _taskGenEngine.TriggerAsync(genContext, CancellationToken.None)
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                    _logger.LogWarning(t.Exception, "Task generation failed for lien {LienId}.", lienId);
-            }, TaskContinuationOptions.OnlyOnFaulted);
+        _taskGenDispatcher.Dispatch(genContext);
 
         return MapToResponse(entity);
     }

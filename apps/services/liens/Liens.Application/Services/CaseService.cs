@@ -14,21 +14,21 @@ public sealed class CaseService : ICaseService
     private readonly ICaseRepository           _caseRepo;
     private readonly IContactRepository        _contactRepo;
     private readonly IAuditPublisher           _audit;
-    private readonly ILienTaskGenerationEngine _taskGenEngine;
-    private readonly ILogger<CaseService>      _logger;
+    private readonly ILienTaskGenerationDispatcher _taskGenDispatcher;
+    private readonly ILogger<CaseService>          _logger;
 
     public CaseService(
         ICaseRepository caseRepo,
         IContactRepository contactRepo,
         IAuditPublisher audit,
-        ILienTaskGenerationEngine taskGenEngine,
+        ILienTaskGenerationDispatcher taskGenDispatcher,
         ILogger<CaseService> logger)
     {
-        _caseRepo      = caseRepo;
-        _contactRepo   = contactRepo;
-        _audit         = audit;
-        _taskGenEngine = taskGenEngine;
-        _logger        = logger;
+        _caseRepo          = caseRepo;
+        _contactRepo       = contactRepo;
+        _audit             = audit;
+        _taskGenDispatcher = taskGenDispatcher;
+        _logger            = logger;
     }
 
     public async Task<PaginatedResult<CaseResponse>> SearchAsync(
@@ -212,8 +212,8 @@ public sealed class CaseService : ICaseService
             entityType: "Case",
             entityId: entity.Id.ToString());
 
-        // Fire-and-observe: task generation failure must not block case creation
-        var caseId    = entity.Id;
+        // Run task generation in an isolated scope so it never reuses the request DbContext.
+        var caseId = entity.Id;
         var genContext = new TaskGenerationContext(
             TenantId:       tenantId,
             EventType:      Domain.Enums.TaskGenerationEventType.CaseCreated,
@@ -224,12 +224,7 @@ public sealed class CaseService : ICaseService
             WorkflowStageId: null,
             ActorUserId:    actingUserId);
 
-        _ = _taskGenEngine.TriggerAsync(genContext, CancellationToken.None)
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                    _logger.LogWarning(t.Exception, "Task generation failed for case {CaseId}.", caseId);
-            }, TaskContinuationOptions.OnlyOnFaulted);
+        _taskGenDispatcher.Dispatch(genContext);
 
         return await MapToResponseAsync(tenantId, entity, ct);
     }
