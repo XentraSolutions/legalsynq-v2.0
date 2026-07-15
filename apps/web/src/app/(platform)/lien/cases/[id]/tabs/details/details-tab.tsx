@@ -175,11 +175,11 @@ export function DetailsTab({
       notes: form.notes || "",
       demandAmount: d.demandAmount ?? 0.0,
       settlementAmount: d.settlementAmount ?? 0.0,
-      shareCase: d.shareCase == "Yes" ? "true" : "false",
-      minorComp: d.minorComp == "Yes" ? "true" : "false",
-      caseDropped: d.caseDropped == "Yes" ? "true" : "false",
-      childSupportLiens: d.childSupportLiens == "Yes" ? "true" : "false",
-      isUccFiled: d.isUccFiled == "Yes" ? "true" : "false",
+      shareCase: form.shareCase == "Yes" ? "true" : "false",
+      minorComp: form.minorComp == "Yes" ? "true" : "false",
+      caseDropped: form.caseDropped == "Yes" ? "true" : "false",
+      childSupportLiens: form.childSupportLiens == "Yes" ? "true" : "false",
+      isUccFiled: form.isUccFiled == "Yes" ? "true" : "false",
     };
     try {
       await casesService.updateCase(payload);

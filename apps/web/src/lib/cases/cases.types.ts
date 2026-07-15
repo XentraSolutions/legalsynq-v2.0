@@ -40,6 +40,11 @@ export interface CaseResponseDto {
   closedAtUtc?: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
+  shareCase?: string;
+  minorComp?: string;
+  caseDropped?: string;
+  childSupportLiens?: string;
+  isUccFiled?: string;
 }
 
 export interface PaginatedResultDto<T> {

@@ -51,6 +51,7 @@ export function CaseTrackingSection({
     { label: "Child Support", key: "childSupportLiens" },
     { label: "Minor Comp", key: "minorComp" },
   ];
+  console.log(form)
   return (
     <CollapsibleSection
       title="Case Tracking"
@@ -187,32 +188,7 @@ export function CaseTrackingSection({
               placeholder=""
             />
           </div>
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              onClick={onSave}
-              disabled={tSaving}
-              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
-            >
-              {tSaving ? (
-                <>
-                  <i className="ri-loader-4-line text-sm animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <i className="ri-save-line text-sm" />
-                  Save
-                </>
-              )}
-            </button>
-            <button
-              onClick={onCancel}
-              disabled={tSaving}
-              className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
+         
         </div>
       ) : (
         <>
@@ -258,7 +234,7 @@ export function CaseTrackingSection({
         </>
       )}
 
-      {/* Case Flags — not API-backed, read-only placeholders */}
+      {/* Case Flags — API-backed */}
       <div className="mt-4 pt-4 border-t border-gray-100">
         <div className="flex items-center gap-2 mb-3">
           <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">
@@ -286,6 +262,32 @@ export function CaseTrackingSection({
             </label>
           ))}
         </div>
+         <div className="flex items-center gap-2 pt-1 mt-4">
+            <button
+              onClick={onSave}
+              disabled={tSaving}
+              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+            >
+              {tSaving ? (
+                <>
+                  <i className="ri-loader-4-line text-sm animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <i className="ri-save-line text-sm" />
+                  Save
+                </>
+              )}
+            </button>
+            <button
+              onClick={onCancel}
+              disabled={tSaving}
+              className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
       </div>
     </CollapsibleSection>
   );

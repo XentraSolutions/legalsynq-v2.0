@@ -132,6 +132,11 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     caseManager: safeString(dto.caseManager),
     lawFirm: safeString(dto.lawFirm),
     accidentType: safeString(dto.accidentType),
+    shareCase: safeString(dto.shareCase),
+    minorComp: safeString(dto.minorComp),
+    caseDropped: safeString(dto.caseDropped),
+    childSupportLiens: safeString(dto.childSupportLiens),
+    isUccFiled: safeString(dto.isUccFiled)
   };
 }
 
