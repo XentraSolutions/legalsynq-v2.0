@@ -324,7 +324,8 @@ export default function ContactsPage() {
         header: "Type",
         cell: ({ row }) => (
           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-gray-50 text-gray-600 border-gray-200">
-            {contactTypeMap[row.original.contactType] ?? row.original.contactType}
+            {contactTypeMap[row.original.contactType] ??
+              row.original.contactType}
           </span>
         ),
       },
@@ -332,14 +333,18 @@ export default function ContactsPage() {
         id: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.email || "—"}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.email || "—"}
+          </span>
         ),
       },
       {
         id: "activeCases",
         header: "Active Cases",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.activeCases}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.activeCases}
+          </span>
         ),
       },
       {
@@ -352,7 +357,9 @@ export default function ContactsPage() {
             deleteContactMutation.isPending &&
             deleteContactMutation.variables === c.id;
           if (isDeleting) {
-            return <i className="ri-loader-4-line animate-spin text-gray-400" />;
+            return (
+              <i className="ri-loader-4-line animate-spin text-gray-400" />
+            );
           }
           return (
             <div onClick={(e) => e.stopPropagation()}>
@@ -484,125 +491,15 @@ export default function ContactsPage() {
           }}
           className="bg-white border-gray-200 rounded-xl"
         />
-        {loading ? (
-          <div className="p-10 text-center text-sm text-gray-400">
-            Loading contacts...
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{nameColumnLabel}</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Active Cases</TableHead>
-                {/* Status column removed: as far as we know, legacy has no active/inactive vs delete differentiation, so only active contacts ever show up. */}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {contacts.map((c) => {
-                const isDeleting =
-                  deleteContactMutation.isPending &&
-                  deleteContactMutation.variables === c.id;
-                return (
-                  <TableRow
-                    key={c.id}
-                    className={`cursor-pointer transition-opacity duration-200 ${
-                      isDeleting
-                        ? "opacity-40 bg-red-50/60 pointer-events-none"
-                        : ""
-                    }`}
-                    onClick={() => setPreviewId(c.id)}
-                  >
-                    <TableCell>
-                      <Link
-                        href={`/lien/contacts/${c.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className={`text-sm font-medium text-gray-700 hover:text-primary ${
-                          isDeleting ? "line-through" : ""
-                        }`}
-                      >
-                        {c.displayName}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-gray-50 text-gray-600 border-gray-200">
-                        {contactTypeMap[c.contactType] ?? c.contactType}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-500">
-                      {c.email || "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-500">
-                      {c.activeCases}
-                    </TableCell>
-                    <TableCell
-                      className="text-right"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {isDeleting ? (
-                        <i className="ri-loader-4-line animate-spin text-gray-400" />
-                      ) : (
-                        <ActionMenu
-                          items={[
-                            {
-                              label: "View Details",
-                              icon: "ri-eye-line",
-                              onClick: () =>
-                                router.push(`/lien/contacts/${c.id}`),
-                            },
-                            {
-                              label: "Reassign",
-                              icon: "ri-exchange-line",
-                              onClick: () => {
-                                setReassignTarget(c);
-                                setReassignSelectedId("");
-                              },
-                            },
-                            {
-                              label: "Edit Contact",
-                              icon: "ri-pencil-line",
-                              onClick: () => {
-                                setContactData(c);
-                                showCreateForm("edit");
-                              },
-                            },
-                            // Activate/Deactivate disabled: as far as we know, legacy has no active/inactive vs delete differentiation.
-                            // { label: c.isActive ? "Deactivate" : "Activate", icon: c.isActive ? "ri-user-unfollow-line" : "ri-user-follow-line", onClick: () => handleToggleActive(c) },
-                            {
-                              label: "Delete",
-                              icon: "ri-delete-bin-line",
-                              onClick: () =>
-                                setConfirmAction({
-                                  id: c.id,
-                                  action: "delete",
-                                  label: "Delete",
-                                  contact: c,
-                                }),
-                            },
-                          ]}
-                        />
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-        {!loading && contacts?.length === 0 && (
-          <div className="p-10 text-center text-sm text-gray-400">
-            No contacts found.
-          </div>
-        )}
       </div>
 
       {showCreate.open && (
         <AddContactModal
           open={showCreate.open}
           title={showCreate.mode === "edit" ? "Edit Contact" : "Add Contact"}
-          contactType={showCreate.mode === "create" ? typeFilter || undefined : undefined}
+          contactType={
+            showCreate.mode === "create" ? typeFilter || undefined : undefined
+          }
           contactTypeOptions={activeContactTypes}
           editTarget={showCreate.mode === "edit" ? contactData : null}
           onClose={() => setShowCreate({ open: false })}
