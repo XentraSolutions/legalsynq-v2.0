@@ -678,6 +678,7 @@ function Field({
           value={value}
           onChange={onChange}
           className={error ? "border-red-300" : undefined}
+          disableFutureDates
         />
       ) : (
         <Input

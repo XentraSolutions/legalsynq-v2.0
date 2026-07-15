@@ -307,6 +307,7 @@ export function LienSettlementForm({
               <DatePicker
                 value={form.settlementDate}
                 onChange={(v) => setForm({ ...form, settlementDate: v })}
+                disableFutureDates
               />
             </div>
 

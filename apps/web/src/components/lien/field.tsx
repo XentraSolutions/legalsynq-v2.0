@@ -29,6 +29,7 @@ interface TextFieldProps {
 interface DateFieldProps {
   type?: "date";
   maxDate?: Date | null;
+  allowFutureDates?: boolean;
   value?: string;
   onChange: (value: string) => void;
 }
@@ -148,8 +149,10 @@ export default function Field<
       ) : props.type === "date" ? (
         <DatePicker
           maxDate={props?.maxDate}
+          disableFutureDates={!props.allowFutureDates}
           value={props.value}
           onChange={props.onChange}
+          disabled={disabled}
         />
       ) : props.type === "tel" ? (
         <PhoneInput

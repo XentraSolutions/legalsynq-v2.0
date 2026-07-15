@@ -266,6 +266,7 @@ export function NoRecoveryForm({
               <DatePicker
                 value={form.closedDate}
                 onChange={(v) => setForm({ ...form, closedDate: v })}
+                disableFutureDates
               />
             </div>
             <div className="col-span-2">

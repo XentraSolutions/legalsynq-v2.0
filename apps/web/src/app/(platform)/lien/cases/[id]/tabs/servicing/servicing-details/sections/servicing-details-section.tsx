@@ -79,12 +79,12 @@ export function ServicingDetailsSection({
             <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
               Switched Date
             </label>
-            <input
+            <Field
+              label=""
               type="date"
               value={switchedDate}
-              onChange={(e) => onSwitchedDateChange(e.target.value)}
+              onChange={onSwitchedDateChange}
               disabled={!switchedLawFirm}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </div>
