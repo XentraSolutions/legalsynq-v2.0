@@ -124,7 +124,7 @@ export function LiensTab({
             router.push(`/lien/cases/${caseId}/liens/${row.original.id}`)
           }
         >
-          {row.original.id}
+          {row.original.lienNumber}
         </span>
       ),
     },
