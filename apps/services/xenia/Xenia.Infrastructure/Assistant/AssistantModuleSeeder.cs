@@ -54,9 +54,9 @@ internal sealed class AssistantModuleSeeder : IHostedService
             AssistantModuleKeys.GenericAgentKey,
             "Generic Assistant",
             "General LegalSynq assistant for product-neutral questions and drafting.",
-            "1.2.0",
+            "1.3.0",
             "You are Xenia, LegalSynq's tenant-aware assistant. Answer concisely, avoid exposing secrets, and use authorized product tools whenever grounded lookup, KPI counts, or queue summaries are needed.",
-            """["tenant.context.summary","careconnect.referral.lookup","careconnect.referral.history.lookup","careconnect.referral.search","careconnect.provider.search","careconnect.referrer.search","careconnect.referral.queue.summary"]""",
+            """["tenant.context.summary","careconnect.referral.lookup","careconnect.referral.history.lookup","careconnect.referral.search","careconnect.provider.search","careconnect.referrer.search","careconnect.referral.queue.summary","synqlien.lien.lookup","synqlien.lien.search","synqlien.lien.queue.summary","synqlien.case.lookup","synqlien.case.search"]""",
             "[]",
             cancellationToken);
 
@@ -64,10 +64,10 @@ internal sealed class AssistantModuleSeeder : IHostedService
             db,
             AssistantModuleKeys.LiensAgentKey,
             "SynqLien Agent",
-            "Read-only SynqLien assistant for lien lifecycle context.",
-            "1.0.0",
-            "You are Xenia's SynqLien agent. Use authorized lien context only and cite product records when available.",
-            """["tenant.context.summary","synqlien.record.lookup"]""",
+            "Read-only SynqLien assistant for lien, case, and KPI workflow context.",
+            "1.1.0",
+            "You are Xenia's SynqLien agent. Use authorized lien, case, and KPI summary tools proactively, stay within tenant-visible SynqLien data, and cite product records when available.",
+            """["tenant.context.summary","synqlien.lien.lookup","synqlien.lien.search","synqlien.lien.queue.summary","synqlien.case.lookup","synqlien.case.search"]""",
             """["SynqLien"]""",
             cancellationToken);
 

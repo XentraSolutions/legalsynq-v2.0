@@ -20,6 +20,15 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
         "referral", "referrals", "case", "cases", "client", "patient",
         "provider", "law firm", "lawfirm", "referrer", "organization", "firm"
     ];
+    private static readonly string[] SynqLienKeywords =
+    [
+        "synqlien", "lien", "liens", "case", "cases", "client", "subject",
+        "medical", "attorney", "settlement", "advance", "portfolio", "servicing"
+    ];
+    private static readonly string[] SynqLienCaseKeywords =
+    [
+        "case", "cases", "client", "claim", "law firm", "lawfirm", "settlement"
+    ];
     private static readonly string[] SearchIntentKeywords =
     [
         "find", "search", "show", "lookup", "look up", "match", "which", "where"
@@ -111,6 +120,9 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
         var lastUserMessage = request.Messages.LastOrDefault(m => m.Role.Equals("user", StringComparison.OrdinalIgnoreCase))?.Content
             ?? "How can I help?";
         var lowered = lastUserMessage.ToLowerInvariant();
+        if (IsSynqLienAgentOrIntent(request.AgentKey, lowered))
+            return BuildSynqLienToolDecisionPayload(request, lastUserMessage, lowered);
+
         var contextualReferralId = TryExtractContextualReferralId(request.SystemPrompt, request.ContextJson);
         var explicitReferralId = TryExtractGuid(lastUserMessage);
         var referralId = explicitReferralId ?? contextualReferralId;
@@ -212,6 +224,105 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
         }, JsonOptions);
     }
 
+    private static string BuildSynqLienToolDecisionPayload(
+        AssistantProviderRequest request,
+        string lastUserMessage,
+        string lowered)
+    {
+        var contextualId = TryExtractGuid(request.SystemPrompt) ?? TryExtractGuid(request.ContextJson);
+        var explicitId = TryExtractGuid(lastUserMessage);
+        var recordId = explicitId ?? contextualId;
+
+        if (LooksLikeSynqLienSummary(lowered))
+        {
+            var statusGroup = DetectSynqLienStatusGroup(lowered);
+            var status = statusGroup is null ? DetectSynqLienStatus(lowered) : null;
+
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.lien.queue.summary",
+                input = new
+                {
+                    searchText = lastUserMessage.Trim(),
+                    status,
+                    statusGroup,
+                    lienType = DetectSynqLienType(lowered),
+                    days = TryExtractRelativeDays(lowered),
+                    recentTop = 5,
+                },
+            }, JsonOptions);
+        }
+
+        if (recordId.HasValue && LooksLikeSynqLienCaseLookup(lowered, request.SystemPrompt))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.case.lookup",
+                input = new
+                {
+                    caseId = recordId.Value,
+                    liensTop = 8,
+                },
+            }, JsonOptions);
+        }
+
+        if (recordId.HasValue)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.lien.lookup",
+                input = new
+                {
+                    lienId = recordId.Value,
+                },
+            }, JsonOptions);
+        }
+
+        if (LooksLikeSynqLienCaseSearch(lowered))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.case.search",
+                input = new
+                {
+                    searchText = lastUserMessage.Trim(),
+                    status = DetectSynqLienCaseStatus(lowered),
+                    top = 6,
+                },
+            }, JsonOptions);
+        }
+
+        if (LooksLikeSynqLienLienSearch(lowered))
+        {
+            var statusGroup = DetectSynqLienStatusGroup(lowered);
+            var status = statusGroup is null ? DetectSynqLienStatus(lowered) : null;
+
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.lien.search",
+                input = new
+                {
+                    searchText = lastUserMessage.Trim(),
+                    status,
+                    statusGroup,
+                    lienType = DetectSynqLienType(lowered),
+                    top = 6,
+                },
+            }, JsonOptions);
+        }
+
+        return JsonSerializer.Serialize(new
+        {
+            action = "final",
+            message = $"Xenia {request.AgentKey} is running in fake-provider mode. I received: {lastUserMessage.Trim()}",
+        }, JsonOptions);
+    }
+
     private static Guid? TryExtractGuid(string value)
     {
         var match = GuidRegex.Match(value);
@@ -257,6 +368,36 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
            !LooksLikeReferralSearch(lowered) &&
            (lowered.Contains("directory") || lowered.Contains("directories") || lowered.Contains("list referrers") || lowered.Contains("list law firms"));
 
+    private static bool IsSynqLienAgentOrIntent(string agentKey, string lowered)
+        => agentKey.Equals(AssistantModuleKeys.LiensAgentKey, StringComparison.OrdinalIgnoreCase) ||
+           lowered.Contains("synqlien") ||
+           lowered.Contains("lien") ||
+           lowered.Contains("liens");
+
+    private static bool LooksLikeSynqLienLienSearch(string lowered)
+        => SearchIntentKeywords.Any(lowered.Contains) &&
+           SynqLienKeywords.Any(lowered.Contains);
+
+    private static bool LooksLikeSynqLienCaseSearch(string lowered)
+        => SearchIntentKeywords.Any(lowered.Contains) &&
+           SynqLienCaseKeywords.Any(lowered.Contains) &&
+           !lowered.Contains("lien");
+
+    private static bool LooksLikeSynqLienCaseLookup(string lowered, string systemPrompt)
+        => lowered.Contains("case") ||
+           systemPrompt.Contains("synqlien.case.lookup", StringComparison.OrdinalIgnoreCase);
+
+    private static bool LooksLikeSynqLienSummary(string lowered)
+        => (lowered.Contains("lien") || lowered.Contains("synqlien")) &&
+           (lowered.Contains("queue") ||
+            lowered.Contains("summary") ||
+            lowered.Contains("how many") ||
+            lowered.Contains("count") ||
+            lowered.Contains("kpi") ||
+            lowered.Contains("metric") ||
+            lowered.Contains("total") ||
+            lowered.Contains("status mix"));
+
     private static int? TryExtractRelativeDays(string lowered)
     {
         var match = RelativeDaysRegex.Match(lowered);
@@ -294,6 +435,63 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
             var value when value.Contains("completed") => "Completed",
             var value when value.Contains("declined") => "Declined",
             var value when value.Contains("cancelled") || value.Contains("canceled") => "Cancelled",
+            _ => null,
+        };
+
+    private static string? DetectSynqLienStatusGroup(string lowered)
+    {
+        if (lowered.Contains("draft") || lowered.Contains("new lien") || lowered.Contains("new liens"))
+            return "draft";
+
+        if (lowered.Contains("open lien") || lowered.Contains("open liens") || lowered.Contains("active lien") || lowered.Contains("active liens"))
+            return "open";
+
+        if (lowered.Contains("closed lien") || lowered.Contains("closed liens") || lowered.Contains("terminal lien") || lowered.Contains("terminal liens"))
+            return "closed";
+
+        if (lowered.Contains("marketplace") || lowered.Contains("for sale") || lowered.Contains("selling"))
+            return "marketplace";
+
+        if (lowered.Contains("servicing") || lowered.Contains("service"))
+            return "servicing";
+
+        return null;
+    }
+
+    private static string? DetectSynqLienStatus(string lowered)
+        => lowered switch
+        {
+            var value when value.Contains("offered") => "Offered",
+            var value when value.Contains("under review") || value.Contains("underreview") => "UnderReview",
+            var value when value.Contains("sold") => "Sold",
+            var value when value.Contains("active") => "Active",
+            var value when value.Contains("settled") => "Settled",
+            var value when value.Contains("withdrawn") => "Withdrawn",
+            var value when value.Contains("cancelled") || value.Contains("canceled") => "Cancelled",
+            var value when value.Contains("disputed") => "Disputed",
+            var value when value.Contains("draft") => "Draft",
+            _ => null,
+        };
+
+    private static string? DetectSynqLienCaseStatus(string lowered)
+        => lowered switch
+        {
+            var value when value.Contains("pre demand") || value.Contains("predemand") => "PreDemand",
+            var value when value.Contains("demand sent") || value.Contains("demandsent") => "DemandSent",
+            var value when value.Contains("negotiation") => "InNegotiation",
+            var value when value.Contains("settled") => "CaseSettled",
+            var value when value.Contains("closed") => "Closed",
+            _ => null,
+        };
+
+    private static string? DetectSynqLienType(string lowered)
+        => lowered switch
+        {
+            var value when value.Contains("medical") => "MedicalLien",
+            var value when value.Contains("attorney") => "AttorneyLien",
+            var value when value.Contains("settlement advance") || value.Contains("advance") => "SettlementAdvance",
+            var value when value.Contains("workers comp") || value.Contains("workerscomp") => "WorkersCompLien",
+            var value when value.Contains("property") => "PropertyLien",
             _ => null,
         };
 }

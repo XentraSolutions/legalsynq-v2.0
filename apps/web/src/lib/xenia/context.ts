@@ -49,6 +49,19 @@ export function buildXeniaContext(
     entityType = 'referral_queue';
   } else if (product === 'careconnect' && section === 'providers') {
     entityType = 'provider_directory';
+  } else if (product === 'lien' && section === 'cases' && detailId && segments[3] === 'liens' && segments[4]) {
+    entity = { kind: 'lien', id: segments[4] };
+    entityType = 'lien';
+  } else if (product === 'lien' && section === 'cases' && detailId) {
+    entity = { kind: 'case', id: detailId };
+    entityType = 'case';
+  } else if (product === 'lien' && ['liens', 'my-liens', 'marketplace', 'portfolio'].includes(section ?? '') && detailId) {
+    entity = { kind: 'lien', id: detailId };
+    entityType = 'lien';
+  } else if (product === 'lien' && section === 'cases') {
+    entityType = 'case_queue';
+  } else if (product === 'lien' && ['liens', 'my-liens', 'marketplace', 'portfolio'].includes(section ?? '')) {
+    entityType = 'lien_queue';
   }
 
   const filters = Object.fromEntries(
@@ -58,6 +71,11 @@ export function buildXeniaContext(
       key === 'providerId' ||
       key === 'providerName' ||
       key === 'referrerName' ||
+      key === 'subjectName' ||
+      key === 'clientName' ||
+      key === 'caseId' ||
+      key === 'caseNumber' ||
+      key === 'lienType' ||
       key === 'createdFrom' ||
       key === 'createdTo'
     )),
@@ -104,6 +122,45 @@ export function buildStarterPrompts(agentKey: string, context: XeniaContextShape
       'Summarize this provider',
       'Find referrals for this provider',
       'Show similar providers accepting referrals',
+    ];
+  }
+
+  if (context.entity?.kind === 'lien') {
+    return [
+      'Summarize this lien',
+      'Find the case for this lien',
+      'What needs attention next on this lien?',
+    ];
+  }
+
+  if (context.entity?.kind === 'case') {
+    return [
+      'Summarize this case',
+      'Show liens linked to this case',
+      'What needs attention next on this case?',
+    ];
+  }
+
+  if (context.route.product === 'lien' && context.route.entityType === 'lien_queue') {
+    return [
+      'Summarize my lien queue',
+      'Find liens by client, case, or status',
+      'Which liens need attention first?',
+    ];
+  }
+
+  if (context.route.product === 'lien' && context.route.entityType === 'case_queue') {
+    return [
+      'Find cases by client or case number',
+      'Show cases with open liens',
+      'Summarize my lien case queue',
+    ];
+  }
+
+  if (context.route.product === 'lien' || agentKey === 'synqlien') {
+    return [
+      'Search liens by client, case, or status',
+      'Summarize my lien queue',
     ];
   }
 

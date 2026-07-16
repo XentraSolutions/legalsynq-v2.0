@@ -87,6 +87,12 @@ public static class DependencyInjection
             http.BaseAddress = new Uri(options.CareConnect.BaseUrl.TrimEnd('/'));
             http.Timeout = TimeSpan.FromSeconds(Math.Max(5, options.CareConnect.TimeoutSeconds));
         });
+        services.AddHttpClient<ISynqLienAssistantSource, SynqLienAssistantSource>((sp, http) =>
+        {
+            var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<XeniaAssistantOptions>>().Value;
+            http.BaseAddress = new Uri(options.SynqLien.BaseUrl.TrimEnd('/'));
+            http.Timeout = TimeSpan.FromSeconds(Math.Max(5, options.SynqLien.TimeoutSeconds));
+        });
         services.AddScoped<IAssistantRuntimeSettingsService, AssistantRuntimeSettingsService>();
         services.AddScoped<OpenAiAssistantProvider>();
         services.AddSingleton<FakeAssistantProvider>();

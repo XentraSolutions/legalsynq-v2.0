@@ -13,6 +13,7 @@ public sealed class XeniaAssistantOptions
     public int? MonthlyTokenLimit { get; set; }
     public OpenAiOptions OpenAI { get; set; } = new();
     public CareConnectOptions CareConnect { get; set; } = new();
+    public SynqLienOptions SynqLien { get; set; } = new();
 
     public sealed class OpenAiOptions
     {
@@ -29,5 +30,11 @@ public sealed class XeniaAssistantOptions
         public string BaseUrl { get; set; } = "http://127.0.0.1:5003";
         public int TimeoutSeconds { get; set; } = 20;
         public int MaxHistoryItems { get; set; } = 5;
+    }
+
+    public sealed class SynqLienOptions
+    {
+        public string BaseUrl { get; set; } = "http://127.0.0.1:5009";
+        public int TimeoutSeconds { get; set; } = 20;
     }
 }

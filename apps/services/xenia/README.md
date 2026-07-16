@@ -188,6 +188,7 @@ export XeniaAssistant__OpenAI__ReasoningEffort="medium"
 export XeniaAssistant__OpenAI__TextVerbosity="medium"
 export XeniaAssistant__OpenAI__MaxOutputTokens="4096"
 export XeniaAssistant__CareConnect__BaseUrl="http://127.0.0.1:5003"
+export XeniaAssistant__SynqLien__BaseUrl="http://127.0.0.1:5009"
 export Xenia__SkipDatabaseStartup="false"
 
 # Run service
@@ -287,6 +288,7 @@ Current tenant-portal integration also sends structured page context with every 
 
 - Product, section, and route path
 - Current CareConnect entity type and entity id when present
+- Current SynqLien lien or case entity type and entity id when present
 - Current list filters such as `search`, `status`, `providerName`, `referrerName`, `createdFrom`, and `createdTo`
 - Page-scoped starter prompts for the Xenia drawer
 
@@ -310,11 +312,28 @@ CareConnect assistant access is configured from `appsettings` only:
 - `XeniaAssistant:CareConnect:TimeoutSeconds`
 - `XeniaAssistant:CareConnect:MaxHistoryItems`
 
-Xenia forwards the caller's bearer token to CareConnect for these requests so downstream product and participant
-authorization still applies. The assistant registry currently exposes these CareConnect tools to both the generic
-tenant agent and the CareConnect-specific agent, while the authoritative tool implementation lives behind
-CareConnect's `/api/assistant-tools/*` API surface. That queue-summary tool is also the KPI surface used for questions
-such as "How many referrals do I have?" and "How many new referrals were created in the last 7 days?"
+SynqLien follows the same process. When the user opens Xenia from a SynqLien lien, case, marketplace, portfolio, or
+queue route, Xenia can resolve contextual ids and execute read-only lien/case tools before answering. Current tools
+cover:
+
+- Lien detail lookup by id or lien number
+- Lien search across subject, case number, status/status group, lien type, and created date filters
+- Lien queue and KPI summaries with totals, status groups, date windows, and recent liens
+- Case detail lookup by id or case number with linked liens
+- Case search across client, case number, and status
+
+SynqLien assistant access is configured from `appsettings` only:
+
+- `XeniaAssistant:SynqLien:BaseUrl`
+- `XeniaAssistant:SynqLien:TimeoutSeconds`
+
+Xenia forwards the caller's bearer token to CareConnect and SynqLien for these requests so downstream product and
+participant authorization still applies. The assistant registry exposes the CareConnect and SynqLien tools to the
+generic tenant agent and to their product-specific agents, while the authoritative tool implementations live behind
+each product service's `/api/assistant-tools/*` API surface. SynqLien lien tools accept broad or scoped lien read
+permissions, and the Liens service applies seller, buyer, holder, and marketplace visibility before returning records.
+The queue-summary tools are also the KPI surfaces used for questions such as "How many referrals do I have?", "How many
+liens are open?", and "How many new liens were created in the last 7 days?"
 
 ---
 

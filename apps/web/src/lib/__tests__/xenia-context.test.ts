@@ -39,6 +39,50 @@ test('buildStarterPrompts favors current careconnect context', () => {
   ]);
 });
 
+test('buildXeniaContext extracts SynqLien case and lien context', () => {
+  const lien = buildXeniaContext(
+    '/lien/cases/22222222-2222-2222-2222-222222222222/liens/33333333-3333-3333-3333-333333333333',
+    new URLSearchParams('status=Active&caseNumber=CASE-1'),
+    'drawer',
+  );
+
+  assert.deepEqual(lien.entity, {
+    kind: 'lien',
+    id: '33333333-3333-3333-3333-333333333333',
+  });
+  assert.equal(lien.route.product, 'lien');
+  assert.equal(lien.route.entityType, 'lien');
+  assert.deepEqual(lien.filters, {
+    status: 'Active',
+    caseNumber: 'CASE-1',
+  });
+
+  const caseContext = buildXeniaContext(
+    '/lien/cases/22222222-2222-2222-2222-222222222222',
+    new URLSearchParams(),
+    'drawer',
+  );
+
+  assert.deepEqual(caseContext.entity, {
+    kind: 'case',
+    id: '22222222-2222-2222-2222-222222222222',
+  });
+});
+
+test('buildStarterPrompts favors current SynqLien context', () => {
+  const context = buildXeniaContext(
+    '/lien/liens',
+    new URLSearchParams('status=Draft'),
+    'page',
+  );
+
+  assert.deepEqual(buildStarterPrompts('synqlien', context), [
+    'Summarize my lien queue',
+    'Find liens by client, case, or status',
+    'Which liens need attention first?',
+  ]);
+});
+
 test('parseXeniaMessageMetadata normalizes lookup results and prompts', () => {
   const metadata = parseXeniaMessageMetadata(JSON.stringify({
     lookupResults: [

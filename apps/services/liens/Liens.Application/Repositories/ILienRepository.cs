@@ -7,7 +7,23 @@ public interface ILienRepository
     Task<Lien?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<Lien?> GetByIdAnyTenantAsync(Guid id, CancellationToken ct = default);
     Task<Lien?> GetByLienNumberAsync(Guid tenantId, string lienNumber, CancellationToken ct = default);
-    Task<(List<Lien> Items, int TotalCount)> SearchAsync(Guid tenantId, string? search, string? status, string? lienType, Guid? caseId, Guid? facilityId, int page, int pageSize, CancellationToken ct = default);
+    Task<(List<Lien> Items, int TotalCount)> SearchAsync(
+        Guid tenantId,
+        string? search,
+        string? status,
+        string? lienType,
+        Guid? caseId,
+        Guid? facilityId,
+        int page,
+        int pageSize,
+        CancellationToken ct = default,
+        DateTime? createdFromUtc = null,
+        DateTime? createdToUtc = null,
+        Guid? visibleOrgId = null,
+        bool includeSellerOrg = false,
+        bool includeBuyerOrg = false,
+        bool includeHolderOrg = false,
+        bool includeMarketplace = false);
     Task<(List<Lien> PageItems, List<Lien> AllItems, int TotalCount)> SearchReportAsync(
         Guid tenantId,
         string? search,

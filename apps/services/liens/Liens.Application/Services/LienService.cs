@@ -39,14 +39,36 @@ public sealed class LienService : ILienService
     public async Task<PaginatedResult<LienResponse>> SearchAsync(
         Guid tenantId, string? search, string? status, string? lienType,
         Guid? caseId, Guid? facilityId, int page, int pageSize,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        DateTime? createdFromUtc = null,
+        DateTime? createdToUtc = null,
+        Guid? visibleOrgId = null,
+        bool includeSellerOrg = false,
+        bool includeBuyerOrg = false,
+        bool includeHolderOrg = false,
+        bool includeMarketplace = false)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
         var (items, totalCount) = await _lienRepo.SearchAsync(
-            tenantId, search, status, lienType, caseId, facilityId, page, pageSize, ct);
+            tenantId,
+            search,
+            status,
+            lienType,
+            caseId,
+            facilityId,
+            page,
+            pageSize,
+            ct,
+            createdFromUtc,
+            createdToUtc,
+            visibleOrgId,
+            includeSellerOrg,
+            includeBuyerOrg,
+            includeHolderOrg,
+            includeMarketplace);
 
         return new PaginatedResult<LienResponse>
         {

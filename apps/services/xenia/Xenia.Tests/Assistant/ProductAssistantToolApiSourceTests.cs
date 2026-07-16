@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Xenia.Application.Assistant;
 using Xenia.Infrastructure.Assistant;
 using Xunit;
 
@@ -75,6 +76,34 @@ public sealed class ProductAssistantToolApiSourceTests
             NullLogger<CareConnectAssistantSource>.Instance);
 
         await source.LookupReferralAsync(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+
+        Assert.NotNull(handler.LastRequestUri);
+        Assert.StartsWith("/api/assistant-tools/", handler.LastRequestUri!.AbsolutePath, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SynqLienAssistantSource_UsesAssistantToolApiSurface()
+    {
+        var handler = new RecordingHandler();
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://synqlien.local")
+        };
+
+        var contextAccessor = new HttpContextAccessor
+        {
+            HttpContext = new DefaultHttpContext()
+        };
+        contextAccessor.HttpContext.Request.Headers.Authorization = "Bearer test-token";
+
+        var source = new SynqLienAssistantSource(
+            httpClient,
+            contextAccessor,
+            NullLogger<SynqLienAssistantSource>.Instance);
+
+        await source.LookupLienAsync(new SynqLienLienLookupRequest(
+            Guid.Parse("22222222-2222-2222-2222-222222222222"),
+            null));
 
         Assert.NotNull(handler.LastRequestUri);
         Assert.StartsWith("/api/assistant-tools/", handler.LastRequestUri!.AbsolutePath, StringComparison.Ordinal);

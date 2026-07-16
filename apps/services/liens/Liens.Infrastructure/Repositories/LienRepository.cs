@@ -1,5 +1,6 @@
 using Liens.Application.Repositories;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -38,9 +39,27 @@ public class LienRepository : ILienRepository
     public async Task<(List<Lien> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? status, string? lienType,
         Guid? caseId, Guid? facilityId,
-        int page, int pageSize, CancellationToken ct = default)
+        int page, int pageSize,
+        CancellationToken ct = default,
+        DateTime? createdFromUtc = null,
+        DateTime? createdToUtc = null,
+        Guid? visibleOrgId = null,
+        bool includeSellerOrg = false,
+        bool includeBuyerOrg = false,
+        bool includeHolderOrg = false,
+        bool includeMarketplace = false)
     {
         var q = _db.Liens.Where(l => l.TenantId == tenantId);
+
+        if (visibleOrgId.HasValue)
+        {
+            var orgId = visibleOrgId.Value;
+            q = q.Where(l =>
+                (includeSellerOrg && (l.OrgId == orgId || l.SellingOrgId == orgId)) ||
+                (includeBuyerOrg && l.BuyingOrgId == orgId) ||
+                (includeHolderOrg && l.HoldingOrgId == orgId) ||
+                (includeMarketplace && (l.Status == LienStatus.Offered || l.Status == LienStatus.UnderReview)));
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -63,6 +82,12 @@ public class LienRepository : ILienRepository
 
         if (facilityId.HasValue)
             q = q.Where(l => l.FacilityId == facilityId.Value);
+
+        if (createdFromUtc.HasValue)
+            q = q.Where(l => l.CreatedAtUtc >= createdFromUtc.Value);
+
+        if (createdToUtc.HasValue)
+            q = q.Where(l => l.CreatedAtUtc <= createdToUtc.Value);
 
         var totalCount = await q.CountAsync(ct);
 

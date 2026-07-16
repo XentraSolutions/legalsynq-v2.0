@@ -7,7 +7,14 @@ public interface ILienService
     Task<PaginatedResult<LienResponse>> SearchAsync(
         Guid tenantId, string? search, string? status, string? lienType,
         Guid? caseId, Guid? facilityId, int page, int pageSize,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        DateTime? createdFromUtc = null,
+        DateTime? createdToUtc = null,
+        Guid? visibleOrgId = null,
+        bool includeSellerOrg = false,
+        bool includeBuyerOrg = false,
+        bool includeHolderOrg = false,
+        bool includeMarketplace = false);
 
     Task<LienResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 

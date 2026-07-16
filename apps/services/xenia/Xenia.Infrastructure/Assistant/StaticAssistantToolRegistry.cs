@@ -4,6 +4,14 @@ namespace Xenia.Infrastructure.Assistant;
 
 internal sealed class StaticAssistantToolRegistry : IAssistantToolRegistry
 {
+    private static readonly string[] SynqLienReadPermissions =
+    [
+        "SYNQ_LIENS.lien:read",
+        "SYNQ_LIENS.lien:read:own",
+        "SYNQ_LIENS.lien:browse",
+        "SYNQ_LIENS.lien:read:held",
+    ];
+
     private static readonly IReadOnlyList<AssistantToolDefinitionDto> Tools =
     [
         new(
@@ -18,12 +26,57 @@ internal sealed class StaticAssistantToolRegistry : IAssistantToolRegistry
         new(
             ToolKey: "synqlien.record.lookup",
             Name: "SynqLien record lookup",
-            Description: "Placeholder read-only lookup contract for authorized SynqLien records.",
+            Description: "Compatibility alias for read-only authorized SynqLien lien lookup by record id.",
             InputSchemaJson: """{"type":"object","additionalProperties":false,"properties":{"recordId":{"type":"string"}},"required":["recordId"]}""",
-            RequiredPermissions: ["SYNQ_LIENS.lien:read:own"],
+            RequiredPermissions: SynqLienReadPermissions,
             RequiredProductCodes: ["SynqLien"],
             ConfirmationRequired: false,
             MaxOutputCharacters: 4000),
+        new(
+            ToolKey: "synqlien.lien.lookup",
+            Name: "SynqLien lien lookup",
+            Description: "Read-only lookup for an authorized SynqLien lien by lien id or lien number.",
+            InputSchemaJson: """{"type":"object","additionalProperties":false,"properties":{"lienId":{"type":"string"},"lienNumber":{"type":"string"}}}""",
+            RequiredPermissions: SynqLienReadPermissions,
+            RequiredProductCodes: ["SynqLien"],
+            ConfirmationRequired: false,
+            MaxOutputCharacters: 5000),
+        new(
+            ToolKey: "synqlien.lien.search",
+            Name: "SynqLien lien search",
+            Description: "Searches authorized SynqLien liens by lien number, subject/client name, case number, status, status group, lien type, or created date window.",
+            InputSchemaJson: """{"type":"object","additionalProperties":false,"properties":{"searchText":{"type":"string"},"subjectName":{"type":"string"},"clientName":{"type":"string"},"caseNumber":{"type":"string"},"status":{"type":"string"},"statusGroup":{"type":"string","enum":["draft","open","closed","marketplace","servicing"]},"lienType":{"type":"string"},"createdFromUtc":{"type":"string","format":"date-time"},"createdToUtc":{"type":"string","format":"date-time"},"top":{"type":"integer","minimum":1,"maximum":15}}}""",
+            RequiredPermissions: SynqLienReadPermissions,
+            RequiredProductCodes: ["SynqLien"],
+            ConfirmationRequired: false,
+            MaxOutputCharacters: 7000),
+        new(
+            ToolKey: "synqlien.lien.queue.summary",
+            Name: "SynqLien lien queue summary",
+            Description: "Summarizes authorized SynqLien lien counts, lifecycle status mix, time-window totals, and recent visible liens.",
+            InputSchemaJson: """{"type":"object","additionalProperties":false,"properties":{"searchText":{"type":"string"},"subjectName":{"type":"string"},"caseNumber":{"type":"string"},"status":{"type":"string"},"statusGroup":{"type":"string","enum":["draft","open","closed","marketplace","servicing"]},"lienType":{"type":"string"},"days":{"type":"integer","minimum":1,"maximum":365},"createdFromUtc":{"type":"string","format":"date-time"},"createdToUtc":{"type":"string","format":"date-time"},"recentTop":{"type":"integer","minimum":1,"maximum":10}}}""",
+            RequiredPermissions: SynqLienReadPermissions,
+            RequiredProductCodes: ["SynqLien"],
+            ConfirmationRequired: false,
+            MaxOutputCharacters: 6000),
+        new(
+            ToolKey: "synqlien.case.lookup",
+            Name: "SynqLien case lookup",
+            Description: "Read-only lookup for an authorized SynqLien case by case id or case number, including linked liens.",
+            InputSchemaJson: """{"type":"object","additionalProperties":false,"properties":{"caseId":{"type":"string"},"caseNumber":{"type":"string"},"liensTop":{"type":"integer","minimum":1,"maximum":15}}}""",
+            RequiredPermissions: ["SYNQ_LIENS.case:read"],
+            RequiredProductCodes: ["SynqLien"],
+            ConfirmationRequired: false,
+            MaxOutputCharacters: 6000),
+        new(
+            ToolKey: "synqlien.case.search",
+            Name: "SynqLien case search",
+            Description: "Searches authorized SynqLien cases by client name, case number, status, title, or external reference.",
+            InputSchemaJson: """{"type":"object","additionalProperties":false,"properties":{"searchText":{"type":"string"},"clientName":{"type":"string"},"caseNumber":{"type":"string"},"status":{"type":"string"},"top":{"type":"integer","minimum":1,"maximum":15}}}""",
+            RequiredPermissions: ["SYNQ_LIENS.case:read"],
+            RequiredProductCodes: ["SynqLien"],
+            ConfirmationRequired: false,
+            MaxOutputCharacters: 6000),
         new(
             ToolKey: "careconnect.referral.lookup",
             Name: "CareConnect referral lookup",
@@ -90,7 +143,8 @@ internal sealed class StaticAssistantToolRegistry : IAssistantToolRegistry
 
         return Tools.Where(t =>
                 t.ToolKey == "tenant.context.summary" ||
-                t.RequiredProductCodes.Contains("CareConnect"))
+                t.RequiredProductCodes.Contains("CareConnect") ||
+                t.RequiredProductCodes.Contains("SynqLien"))
             .ToList();
     }
 }
