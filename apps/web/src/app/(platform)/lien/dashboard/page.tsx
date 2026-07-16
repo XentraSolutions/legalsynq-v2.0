@@ -28,20 +28,6 @@ import type { CaseReportItem, LienReportItem } from '@/lib/cases/cases.types';
 
 export const dynamic = 'force-dynamic';
 
-function toDateString(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function last30DaysRange(): DateRangeValue {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 30);
-  return { from: toDateString(from), to: toDateString(to) };
-}
-
 function formatPeriodLabel(range: DateRangeValue): string {
   const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
   const from = range.from ? new Date(`${range.from}T00:00:00`).toLocaleDateString('en-US', opts) : '—';
@@ -82,7 +68,7 @@ export default function LienDashboardPage() {
   const [recentActivity, setRecentActivity] = useState<UnifiedActivityItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
-  const [dashboardRange, setDashboardRange] = useState<DateRangeValue>(last30DaysRange);
+  const [dashboardRange, setDashboardRange] = useState<DateRangeValue>({});
   const [activeReport, setActiveReport] = useState<'liens' | 'cases' | 'lawFirm' | 'facility' | null>(null);
 
   const { data: dashboardStats } = useDashboardStats();
