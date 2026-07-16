@@ -10,7 +10,7 @@
       "env": {
         "EXPO_PUBLIC_APP_ENV": "development",
         "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
-        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core.legalsynq.com",
+        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core-qa.legalsynq.com",
         "EXPO_PUBLIC_LEGACY_API_KEY": "V2D6MPPWD7Z5NPCT",
         "SENTRY_ALLOW_FAILURE": "true"
       }
@@ -20,7 +20,7 @@
       "env": {
         "EXPO_PUBLIC_APP_ENV": "qa",
         "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
-        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core.legalsynq.com",
+        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core-qa.legalsynq.com",
         "EXPO_PUBLIC_LEGACY_API_KEY": "V2D6MPPWD7Z5NPCT",
         "SENTRY_ALLOW_FAILURE": "true"
       }
@@ -31,7 +31,7 @@
       "env": {
         "EXPO_PUBLIC_APP_ENV": "qa",
         "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
-        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core.legalsynq.com",
+        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core-qa.legalsynq.com",
         "EXPO_PUBLIC_LEGACY_API_KEY": "V2D6MPPWD7Z5NPCT",
         "SENTRY_ALLOW_FAILURE": "true"
       }
@@ -42,7 +42,7 @@
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
-        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core.legalsynq.com",
+        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core-qa.legalsynq.com",
         "EXPO_PUBLIC_LEGACY_API_KEY": "V2D6MPPWD7Z5NPCT",
         "SENTRY_ALLOW_FAILURE": "true"
       }

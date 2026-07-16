@@ -2,7 +2,7 @@ import { DEFAULT_FEATURE_FLAGS } from '@/shared/constants/featureFlags';
 import type { Environment, FeatureFlags } from '@/shared/types/common';
 
 const DEFAULT_API_URL = 'https://core-qa.legalsynq.net';
-const DEFAULT_LEGACY_API_URL = 'https://synqlien-core.legalsynq.com';
+const DEFAULT_LEGACY_API_URL = 'https://synqlien-core-qa.legalsynq.com';
 const DEFAULT_LEGACY_API_KEY = 'V2D6MPPWD7Z5NPCT';
 
 function readEnv(name: string): string | undefined {
