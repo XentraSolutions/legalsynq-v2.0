@@ -26,11 +26,14 @@ import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
 
 type DetailRoute = RouteProp<MainStackParamList, 'DashboardReportDetail'>;
 
+type StatusTone = 'success' | 'warning' | 'danger' | 'info';
+
 type BreakdownItem = {
   id: string;
   key: string;
   status: string;
   statusColor?: string;
+  statusTone?: StatusTone;
   showStatus?: boolean;
   fields: Array<{
     icon: keyof typeof Ionicons.glyphMap;
@@ -116,14 +119,18 @@ function normalizePagination(
   return { page, pageSize, totalCount, totalPages };
 }
 
-function formatPaginationRange(pagination: ReportPaginationMeta): string {
-  if (pagination.totalCount === 0) {
-    return 'No records';
-  }
+function buildPaginationPageList(current: number, total: number): Array<number | 'ellipsis'> {
+  const pages = Array.from(new Set([1, current, total])).sort((left, right) => left - right);
+  const result: Array<number | 'ellipsis'> = [];
 
-  const start = (pagination.page - 1) * pagination.pageSize + 1;
-  const end = Math.min(pagination.page * pagination.pageSize, pagination.totalCount);
-  return `Showing ${start}-${end} of ${pagination.totalCount}`;
+  pages.forEach((page, index) => {
+    if (index > 0 && page - pages[index - 1] > 1) {
+      result.push('ellipsis');
+    }
+    result.push(page);
+  });
+
+  return result;
 }
 
 function normalizeFilterId(value: string): string {
@@ -192,21 +199,6 @@ function getBreakdownFilterOptions(
       .sort((left, right) => left[1].localeCompare(right[1], undefined, { sensitivity: 'base' }))
       .map(([id, label]) => ({ id, label })),
   ];
-}
-
-function getSelectedFilterLabel(
-  options: BreakdownFilterOption[],
-  selectedFilterIds: string[]
-): string {
-  if (selectedFilterIds.includes(ALL_FILTER_ID)) return 'All';
-
-  const selectedLabels = options
-    .filter((option) => selectedFilterIds.includes(option.id))
-    .map((option) => option.label);
-
-  if (selectedLabels.length === 0) return 'All';
-  if (selectedLabels.length === 1) return selectedLabels[0];
-  return `${selectedLabels.length} selected`;
 }
 
 function getSelectableFilterIds(options: BreakdownFilterOption[]): string[] {
@@ -401,9 +393,6 @@ export function DashboardReportDetailScreen() {
     () => getBreakdownSortOptions(route.params.reportType),
     [route.params.reportType]
   );
-  const selectedFilterLabel = getSelectedFilterLabel(filterOptions, selectedFilterIds);
-  const selectedSortLabel =
-    sortOptions.find((option) => option.field === sortField)?.label ?? 'Name';
   const filteredBreakdownItems = useMemo(
     () =>
       filterAndSortBreakdownItems({
@@ -495,84 +484,40 @@ export function DashboardReportDetailScreen() {
 
         <View className="px-6 py-3">
           <ReportTopControls
-            filterLabel={selectedFilterLabel}
             isDark={isDark}
             searchPlaceholder={getSearchPlaceholder(route.params.reportType)}
             searchQuery={searchQuery}
-            sortDirection={sortDirection}
-            sortLabel={selectedSortLabel}
             onOpenFilter={() => setFilterSheetVisible(true)}
             onOpenSort={() => setSortSheetVisible(true)}
             onSearchChange={setSearchQuery}
           />
         </View>
 
-        <View className="px-6 pt-2">
-          <ReportCard className="px-5 py-5" isDark={isDark}>
-            <View className="mb-2 w-full flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2">
-                <Ionicons color={isDark ? '#a1a1aa' : '#525762'} name="list-outline" size={18} />
-                <Text className={cx(TYPE.cardTitle, 'text-[#18181b] dark:text-white')}>
-                  {report.breakdownTitle}
-                </Text>
-              </View>
-              <Ionicons
-                color={isDark ? '#a1a1aa' : '#71717a'}
-                name="chevron-down-outline"
-                size={18}
-              />
-            </View>
-
-            {pagedBreakdownItems.length > 0 ? (
-              pagedBreakdownItems.map((item, index) => (
-                <BreakdownCard
-                  isLast={index === pagedBreakdownItems.length - 1}
-                  item={item}
-                  key={item.key}
-                />
-              ))
-            ) : (
+        <View className="gap-4 px-6 pt-2">
+          {pagedBreakdownItems.length > 0 ? (
+            pagedBreakdownItems.map((item) => (
+              <BreakdownCard isDark={isDark} item={item} key={item.key} />
+            ))
+          ) : (
+            <ReportCard className="px-5 py-8" isDark={isDark}>
               <Text
-                className={cx(TYPE.rowMuted, 'py-6 text-center text-[#8d9098] dark:text-[#8f929b]')}
+                className={cx(TYPE.rowMuted, 'text-center text-[#8d9098] dark:text-[#8f929b]')}
               >
                 {report.breakdownItems.length > 0
                   ? 'No records match the active filters.'
                   : 'No detailed records available.'}
               </Text>
-            )}
+            </ReportCard>
+          )}
 
-            <View className="mt-4 flex-row items-center justify-between gap-3">
-              <View className="flex-1">
-                <View className="flex-row items-center gap-3">
-                  <View className="h-8 min-w-[32px] items-center justify-center rounded-full bg-[#ebebec] px-3 dark:bg-[#2a2b30]">
-                    <Text className={cx(TYPE.rowValue, 'text-[#18181b] dark:text-white')}>
-                      {normalizedPagination.page}
-                    </Text>
-                  </View>
-                  <Text className={cx(TYPE.rowMuted, 'text-[#71717a] dark:text-[#a1a1aa]')}>
-                    of {normalizedPagination.totalPages}
-                  </Text>
-                </View>
-                <Text className={cx(TYPE.microMeta, 'mt-1 text-[#8b8f99] dark:text-[#8f929b]')}>
-                  {formatPaginationRange(normalizedPagination)}
-                </Text>
-              </View>
-              <View className="flex-row gap-2">
-                <PaginationButton
-                  disabled={!canGoPrevious}
-                  icon="chevron-back-outline"
-                  label="Previous"
-                  onPress={goToPreviousPage}
-                />
-                <PaginationButton
-                  disabled={!canGoNext}
-                  icon="chevron-forward-outline"
-                  label="Next"
-                  onPress={goToNextPage}
-                />
-              </View>
-            </View>
-          </ReportCard>
+          <PaginationRow
+            canGoNext={canGoNext}
+            canGoPrevious={canGoPrevious}
+            pagination={normalizedPagination}
+            onGoToPage={setCurrentPage}
+            onNext={goToNextPage}
+            onPrevious={goToPreviousPage}
+          />
         </View>
       </ScrollView>
       <FilterBySheet
@@ -655,70 +600,61 @@ function ReportCard({
 }
 
 function ReportTopControls({
-  filterLabel,
   isDark,
   searchPlaceholder,
   searchQuery,
-  sortDirection,
-  sortLabel,
   onOpenFilter,
   onOpenSort,
   onSearchChange,
 }: {
-  filterLabel: string;
   isDark: boolean;
   searchPlaceholder: string;
   searchQuery: string;
-  sortDirection: BreakdownSortDirection;
-  sortLabel: string;
   onOpenFilter: () => void;
   onOpenSort: () => void;
   onSearchChange: (query: string) => void;
 }) {
   return (
-    <View className="gap-3">
-      <SearchBar
-        placeholder={searchPlaceholder}
-        value={searchQuery}
-        onChangeText={onSearchChange}
-      />
-      <View className="flex-row gap-3">
-        <ReportActionButton
-          icon="filter-outline"
-          isDark={isDark}
-          label="Filter By"
-          value={filterLabel}
-          onPress={onOpenFilter}
-        />
-        <ReportActionButton
-          icon="swap-vertical-outline"
-          isDark={isDark}
-          label="Sort By"
-          value={`${sortLabel} · ${sortDirection === 'asc' ? 'Asc' : 'Desc'}`}
-          onPress={onOpenSort}
+    <View className="flex-row items-center gap-3">
+      <View className="flex-1">
+        <SearchBar
+          placeholder={searchPlaceholder}
+          value={searchQuery}
+          onChangeText={onSearchChange}
         />
       </View>
+      <CircleIconButton
+        accessibilityLabel="Filter"
+        icon="options-outline"
+        isDark={isDark}
+        onPress={onOpenFilter}
+      />
+      <CircleIconButton
+        accessibilityLabel="Sort"
+        icon="swap-vertical-outline"
+        isDark={isDark}
+        onPress={onOpenSort}
+      />
     </View>
   );
 }
 
-function ReportActionButton({
+function CircleIconButton({
+  accessibilityLabel,
   icon,
   isDark,
-  label,
-  value,
   onPress,
 }: {
+  accessibilityLabel: string;
   icon: keyof typeof Ionicons.glyphMap;
   isDark: boolean;
-  label: string;
-  value: string;
   onPress: () => void;
 }) {
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
-      className="h-12 flex-1 flex-row items-center gap-2 rounded-[14px] bg-white px-3 dark:bg-[#191a1f]"
+      className="h-11 w-11 items-center justify-center rounded-full bg-white dark:bg-[#191a1f]"
       style={{
         shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
         shadowOpacity: isDark ? 0.16 : 0.4,
@@ -728,19 +664,7 @@ function ReportActionButton({
       }}
       onPress={onPress}
     >
-      <View className="h-8 w-8 items-center justify-center rounded-full bg-[#f3f4f6] dark:bg-[#25262b]">
-        <Ionicons color={isDark ? '#e7e7e9' : '#525762'} name={icon} size={16} />
-      </View>
-      <View className="min-w-0 flex-1">
-        <Text className={cx(TYPE.microStrong, 'text-[#18181b] dark:text-white')}>{label}</Text>
-        <Text
-          className={cx(TYPE.formLabel, 'mt-0.5 text-[#71717a] dark:text-[#a1a1aa]')}
-          numberOfLines={1}
-        >
-          {value}
-        </Text>
-      </View>
-      <Ionicons color={isDark ? '#a1a1aa' : '#71717a'} name="chevron-down-outline" size={15} />
+      <Ionicons color={isDark ? '#e7e7e9' : '#525762'} name={icon} size={20} />
     </Pressable>
   );
 }
@@ -917,13 +841,21 @@ function OptionRow({
   );
 }
 
-function BreakdownCard({ isLast, item }: { isLast: boolean; item: BreakdownItem }) {
-  const statusTone =
-    item.status === 'Open' ? 'warning' : item.status === 'Active' ? 'info' : 'success';
+function BreakdownCard({ isDark, item }: { isDark: boolean; item: BreakdownItem }) {
+  const statusTone: StatusTone =
+    item.statusTone ??
+    (item.status === 'Open' ? 'warning' : item.status === 'Active' ? 'info' : 'success');
 
   return (
     <View
-      className={`${isLast ? '' : 'border-b border-[#e4e4e7] dark:border-[#2a2b30]'} w-full py-5`}
+      className="w-full rounded-[20px] bg-white p-6 dark:bg-[#191a1f]"
+      style={{
+        shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
+        shadowOpacity: isDark ? 0.18 : 0.4,
+        shadowRadius: 8,
+        shadowOffset: { height: 3, width: 0 },
+        elevation: 2,
+      }}
     >
       <View className="flex-row items-start justify-between gap-3">
         <Text className={cx(TYPE.cardTitle, 'flex-1 text-[#18181b] dark:text-white')}>
@@ -964,7 +896,7 @@ function StatusChip({
 }: {
   color?: string;
   status: BreakdownItem['status'];
-  tone: 'success' | 'warning' | 'info';
+  tone: StatusTone;
 }) {
   if (color) {
     return (
@@ -996,12 +928,94 @@ function StatusChip({
       container: 'bg-[#fef3c7] dark:bg-[#3f2f14]',
       text: 'text-[#855f2c] dark:text-[#facc15]',
     },
+    danger: {
+      container: 'bg-[#fee2e2] dark:bg-[#3f1d1d]',
+      text: 'text-[#a43532] dark:text-[#fca5a5]',
+    },
   }[tone];
 
   return (
     <View className={cx('rounded-full px-3 py-1', classes.container)}>
       <Text className={cx(TYPE.microStrong, classes.text)}>{status}</Text>
     </View>
+  );
+}
+
+function PaginationRow({
+  canGoNext,
+  canGoPrevious,
+  pagination,
+  onGoToPage,
+  onNext,
+  onPrevious,
+}: {
+  canGoNext: boolean;
+  canGoPrevious: boolean;
+  pagination: ReportPaginationMeta;
+  onGoToPage: (page: number) => void;
+  onNext: () => void;
+  onPrevious: () => void;
+}) {
+  const pageList = buildPaginationPageList(pagination.page, pagination.totalPages);
+
+  return (
+    <View className="flex-row items-center gap-2">
+      <View className="flex-1 flex-row items-center gap-2">
+        {pageList.map((entry, index) =>
+          entry === 'ellipsis' ? (
+            <Text
+              className={cx(TYPE.rowMuted, 'text-[#71717a] dark:text-[#a1a1aa]')}
+              key={`ellipsis-${index}`}
+            >
+              ...
+            </Text>
+          ) : (
+            <PagePill
+              isCurrent={entry === pagination.page}
+              key={entry}
+              page={entry}
+              onPress={() => onGoToPage(entry)}
+            />
+          )
+        )}
+      </View>
+      <PaginationButton
+        disabled={!canGoPrevious}
+        icon="chevron-back-outline"
+        label="Previous"
+        onPress={onPrevious}
+      />
+      <PaginationButton
+        disabled={!canGoNext}
+        icon="chevron-forward-outline"
+        label="Next"
+        onPress={onNext}
+      />
+    </View>
+  );
+}
+
+function PagePill({
+  isCurrent,
+  page,
+  onPress,
+}: {
+  isCurrent: boolean;
+  page: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      className={cx(
+        'h-8 min-w-[32px] items-center justify-center rounded-2xl px-3',
+        isCurrent && 'bg-[#ebebec] dark:bg-[#2a2b30]'
+      )}
+      disabled={isCurrent}
+      onPress={onPress}
+    >
+      <Text className={cx(TYPE.rowValue, 'text-[#18181b] dark:text-white')}>{page}</Text>
+    </Pressable>
   );
 }
 
@@ -1022,7 +1036,7 @@ function PaginationButton({
     <Pressable
       accessibilityRole="button"
       className={cx(
-        'h-8 flex-row items-center gap-1 rounded-full border border-[#dedee0] px-3 dark:border-[#33343a]',
+        'h-8 flex-row items-center gap-1 rounded-2xl border border-[#dedee0] px-3 dark:border-[#33343a]',
         disabled && 'opacity-50'
       )}
       disabled={disabled}
@@ -1106,6 +1120,16 @@ function normalizeLienStatusLabel(label?: string): 'Open' | 'Close' {
     : 'Open';
 }
 
+function getCaseStatusTone(status: string): StatusTone {
+  const normalized = status.trim().toLowerCase();
+  if (normalized.includes('closed')) return 'danger';
+  if (normalized.includes('negotiat') || normalized.includes('pending') || normalized.includes('open')) {
+    return 'warning';
+  }
+  if (normalized.includes('active')) return 'info';
+  return 'success';
+}
+
 function totalCaseRowsToBreakdownItems(rows: DashboardTotalCaseReportRow[]): BreakdownItem[] {
   return rows.map((row, index) => {
     const r = row as Record<string, unknown>;
@@ -1143,6 +1167,7 @@ function totalCaseRowsToBreakdownItems(rows: DashboardTotalCaseReportRow[]): Bre
       id: name,
       key: buildBreakdownKey('total-case', index, caseId, name, rawStatus),
       status: rawStatus,
+      statusTone: getCaseStatusTone(rawStatus),
       fields: [
         { icon: 'briefcase-outline', label: 'Case ID', value: caseId },
         { icon: 'calendar-outline', label: 'Date of Loss', value: dateOfLoss },
