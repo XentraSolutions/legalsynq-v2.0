@@ -208,6 +208,7 @@ export function DateRangePicker({
           </div>
           <DayPicker
             mode="range"
+            resetOnSelect
             selected={selected}
             onSelect={handleSelect}
             month={month}
@@ -220,18 +221,18 @@ export function DateRangePicker({
               month_caption: "hidden",
               month_grid: "w-full border-collapse",
               weekdays: "flex",
-              weekday: "w-9 text-xs font-medium text-gray-400 text-center py-1",
+              weekday: "w-9 text-xs font-medium text-gray-500 text-center py-1",
               weeks: "flex flex-col",
               week: "flex",
               day: "w-9 text-center",
-              day_button: "h-9 w-9 rounded-md text-sm hover:bg-gray-100 transition-colors focus:outline-none",
-              range_start: "[&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
-              range_end: "[&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
-              range_middle: "[&>button]:bg-primary/10 [&>button]:text-primary",
+              day_button: "h-9 w-9 rounded-full text-sm text-gray-900 hover:bg-gray-100 transition-colors focus:outline-none",
+              range_start: "rounded-l-full bg-primary [&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
+              range_end: "rounded-r-full bg-primary [&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
+              range_middle: "bg-gray-100 [&>button]:bg-transparent [&>button]:!text-gray-900 [&>button]:hover:bg-transparent [&>button]:rounded-none",
               selected: "[&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
               today: "[&>button]:font-semibold [&>button]:text-primary",
-              outside: "[&>button]:text-gray-300",
-              disabled: "[&>button]:text-gray-300 [&>button]:cursor-not-allowed",
+              outside: "[&>button]:text-gray-400",
+              disabled: "[&>button]:text-gray-400 [&>button]:cursor-not-allowed",
             }}
           />
         </PopoverPrimitive.Content>
