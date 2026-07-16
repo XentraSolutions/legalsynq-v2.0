@@ -82,18 +82,6 @@ const LIEN_BREAKDOWN: BreakdownItem[] = [
   createLienBreakdownItem('55093', 'Open', '26-49381', 'Thomas Brewer'),
 ];
 
-function formatDateForDisplay(value: string): string {
-  return value.split('/').join(' / ');
-}
-
-function formatDateRangeLabel(dateRange: { endDate: string; startDate: string }): string {
-  if (dateRange.startDate === dateRange.endDate) {
-    return formatDateForDisplay(dateRange.startDate);
-  }
-
-  return `${formatDateForDisplay(dateRange.startDate)} - ${formatDateForDisplay(dateRange.endDate)}`;
-}
-
 function buildDashboardReportFilter(
   dateRange: { endDate: string; startDate: string },
   page: number,
@@ -352,10 +340,6 @@ export function DashboardReportDetailScreen() {
     () => buildDashboardReportFilter(route.params.dateRange, 1, DETAIL_FILTER_LIMIT),
     [route.params.dateRange]
   );
-  const reportPeriodLabel = useMemo(
-    () => formatDateRangeLabel(route.params.dateRange),
-    [route.params.dateRange]
-  );
   const { data: totalLienReport } = useDashboardTotalLienReport(reportFilter, reportsEnabled);
   const { data: totalCaseReport } = useDashboardTotalCaseReport(reportFilter, reportsEnabled);
   const { data: lawFirmReport } = useDashboardLawFirmCaseReport(reportFilter, reportsEnabled);
@@ -371,16 +355,24 @@ export function DashboardReportDetailScreen() {
         totalCaseReport?.items ?? [],
         lawFirmReport?.items ?? [],
         medicalProviderReport?.items ?? [],
-        reportPeriodLabel,
+        {
+          totalLiens: totalLienReport?.totalCount ?? 0,
+          totalCases: totalCaseReport?.totalCount ?? 0,
+          totalLawFirmCases: lawFirmReport?.totalCount ?? 0,
+          totalMedicalFacilityCases: medicalProviderReport?.totalCount ?? 0,
+        },
         useDashboardDummyData
       ),
     [
       lawFirmReport?.items,
+      lawFirmReport?.totalCount,
       medicalProviderReport?.items,
-      reportPeriodLabel,
+      medicalProviderReport?.totalCount,
       route.params.reportType,
       totalCaseReport?.items,
+      totalCaseReport?.totalCount,
       totalLienReport?.items,
+      totalLienReport?.totalCount,
       useDashboardDummyData,
     ]
   );
@@ -1049,20 +1041,30 @@ function PaginationButton({
   );
 }
 
+type ReportTotals = {
+  totalLiens: number;
+  totalCases: number;
+  totalLawFirmCases: number;
+  totalMedicalFacilityCases: number;
+};
+
+function formatCount(count: number): string {
+  return count.toLocaleString();
+}
+
 function buildReport(
   reportType: DashboardReportType,
   totalLienRows: DashboardTotalLienReportRow[],
   totalCaseRows: DashboardTotalCaseReportRow[],
   lawFirmRows: DashboardLawFirmCaseReportRow[],
   medicalProviderRows: DashboardMedicalProviderReportRow[],
-  reportPeriodLabel: string,
+  totals: ReportTotals,
   useDummyData: boolean
 ): ReportModel {
   if (reportType === 'total-cases') {
     return {
       title: 'Total Cases',
-      subtitle:
-        'Track the overall number of cases and view their current status distribution at a glance.',
+      subtitle: `You have a total of ${formatCount(totals.totalCases)} cases. Stay on top of your legal matters`,
       breakdownTitle: 'Detailed Breakdown',
       breakdownItems: useDummyData ? [] : totalCaseRowsToBreakdownItems(totalCaseRows),
     };
@@ -1071,7 +1073,7 @@ function buildReport(
   if (reportType === 'law-firm-allocation') {
     return {
       title: 'Law Firm Case Allocation',
-      subtitle: 'Distribution of total case volume across assigned legal firms.',
+      subtitle: `You have a total of ${formatCount(totals.totalLawFirmCases)} law firm cases. Stay organized and monitor your firm's legal matters.`,
       breakdownTitle: 'Detailed Breakdown',
       breakdownItems: useDummyData ? [] : lawFirmCaseRowsToBreakdownItems(lawFirmRows),
     };
@@ -1080,7 +1082,7 @@ function buildReport(
   if (reportType === 'medical-facility-allocation') {
     return {
       title: 'Medical Facility Case Allocation',
-      subtitle: 'Distribution of total case volume across assigned healthcare facilities.',
+      subtitle: `You have a total of ${formatCount(totals.totalMedicalFacilityCases)} medical facility cases. Review and manage them from one place.`,
       breakdownTitle: 'Detailed Breakdown',
       breakdownItems: useDummyData
         ? []
@@ -1090,7 +1092,7 @@ function buildReport(
 
   return {
     title: 'Total Lien',
-    subtitle: 'Breakdown of open and closed claims with total purchase and billing values.',
+    subtitle: `You have a total of ${formatCount(totals.totalLiens)} liens. Review and manage them with ease.`,
     breakdownTitle: 'Detailed Breakdown',
     breakdownItems: useDummyData ? LIEN_BREAKDOWN : lienRowsToBreakdownItems(totalLienRows),
   };
