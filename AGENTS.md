@@ -122,8 +122,11 @@ Build/type-check/test the tenant portal:
 pnpm --dir apps/web type-check
 pnpm --dir apps/web build
 pnpm --dir apps/web test
-pnpm --dir apps/web test:e2e
+pnpm --dir apps/web test:e2e:mocked   # hermetic — mocked identity API, safe default for agents/CI
+pnpm --dir apps/web test:e2e          # real e2e — hits a live environment (local/qa/production)
 ```
+
+See `apps/web/e2e/README.md` for setup/usage and the "E2E Test Rules" section below before writing a new e2e test.
 
 Build/type-check/test the control center:
 
@@ -204,6 +207,18 @@ If changing startup, ports, service URLs, frontend dev behavior, or gateway rout
 - Keep frontend API types and service mappers aligned with backend DTOs. Avoid hand-waving response shapes.
 - When editing Next.js code, check the installed Next version and local docs if behavior is version-sensitive.
 
+## E2E Test Rules (apps/web)
+
+- `apps/web` e2e tests live under `apps/web/e2e/(platform)/<product>/`, mirroring `src/app/(platform)/<product>`, split into `readonly/` and `mutations/` subdirectories:
+  - `readonly/` specs are built on `createReadOnlyTest()` (`e2e/support/readonly-test.ts`). They run against every environment, including production — the `page` fixture is typed `ReadOnlyPage`, which has no `.fill()`/`.type()`/`.evaluate()`/`page.request` and only allows `.click()` on a `getByRole('link', ...)` result (navigation, not a mutation).
+  - `mutations/` specs are built on `createMutationTest()` (`e2e/support/mutation-test.ts`) and get the real, unrestricted `page`. They are refused for production twice, independently: `playwright.config.ts` scopes `testMatch` to `**/readonly/**` whenever `E2E_ENV=production` (a mutation spec is never discovered), and the fixture itself throws if `getEnv().name === 'production'` regardless of how it was invoked.
+- Never write a new e2e spec against Playwright's raw `test`/`page` from `@playwright/test` directly — always go through one of the two factories above, or the guardrail doesn't apply to it. Default to `readonly/` unless the spec genuinely needs to create/update/delete data.
+- If `tsc` rejects a method call on `page` in a `readonly/` spec (e.g. `.fill()`, `.click()` on something that isn't a link), that is the guardrail working as intended — move the spec to `mutations/` instead of reaching for `as unknown as Page` to work around it.
+- The one place `.fill()`/`.click()` may appear against a real form is `e2e/support/login-flow.ts`. Don't duplicate login steps inline in a spec.
+- e2e credentials live in `apps/web/e2e/data/credentials.json` (gitignored, not committed) — see `credentials.example.json` for the schema (`<platform>.default` / `<platform>.<envName>`). Never hardcode credentials in a spec file.
+- `pnpm --dir apps/web test:e2e:mocked` (`playwright.mocked.config.ts`, specs under `e2e/mocked/`) is a separate, hermetic suite used by CI for component/rendering checks — it is not what "e2e" means in this repo and should not be extended for new product coverage.
+- See the `create-e2e-test` skill (`apps/web/.claude/skills/`) for the full walkthrough when adding coverage for a new product or flow.
+
 ## Product and Auth Model
 
 Canonical product codes are defined in `shared/building-blocks/BuildingBlocks/Authorization/ProductCodes.cs`:
@@ -245,7 +260,7 @@ Always run the narrowest meaningful validation for the files you changed:
 - C# application/service logic: `dotnet test` for the closest test project, plus `dotnet build` for the affected API/project.
 - Shared C# libraries: build the library and run corresponding shared tests.
 - EF/model changes: build the affected API/infrastructure project and verify migrations/snapshot changes are intentional.
-- Tenant portal UI or BFF changes: `pnpm --dir apps/web type-check` and relevant `test`/`build`/`test:e2e` as appropriate.
+- Tenant portal UI or BFF changes: `pnpm --dir apps/web type-check` and relevant `test`/`build` as appropriate. Prefer `test:e2e:mocked` (hermetic) unless the change specifically needs verifying against a live environment — `test:e2e` performs a real login against `E2E_ENV` (default "local") and needs `apps/web/e2e/data/credentials.json`, which isn't present by default.
 - Control center UI or BFF changes: `pnpm --dir apps/control-center type-check` and relevant `test`/`build`.
 - Flow frontend changes: follow `apps/services/flow/frontend/AGENTS.md`, then run its local lint/build commands.
 - Startup/deployment script changes: run the relevant script test under `scripts/tests` when possible.

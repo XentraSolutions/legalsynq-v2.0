@@ -9,7 +9,10 @@
     "type-check": "tsc --noEmit",
     "test": "tsx --test src/lib/__tests__/*.test.ts && vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:update-snapshots": "playwright test --update-snapshots",
+    "test:e2e:qa": "E2E_ENV=qa playwright test",
+    "test:e2e:prod": "E2E_ENV=production playwright test",
+    "test:e2e:mocked": "playwright test --config=playwright.mocked.config.ts",
+    "test:e2e:mocked:update-snapshots": "playwright test --config=playwright.mocked.config.ts --update-snapshots",
     "playwright:install": "playwright install chromium --with-deps",
     "playwright:install:custom-path": "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH playwright install chromium --with-deps"
   },

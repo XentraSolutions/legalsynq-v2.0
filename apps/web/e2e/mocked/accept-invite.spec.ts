@@ -10,7 +10,7 @@ import { test, expect } from '@playwright/test';
  *          → mock returns tenantPortalUrl: "https://acmefirm.portal.example.com"
  *          → form updates "Sign in" link to https://acmefirm.portal.example.com/login
  *
- * The mock identity server (e2e/mock-identity-server.mjs) is started automatically
+ * The mock identity server (e2e/mocked/mock-identity-server.mjs) is started automatically
  * by playwright.config.ts and simulates a seeded invitation: it accepts any token
  * and returns the deterministic tenant portal URL, exercising the real BFF route code
  * and the seam between the Next.js server and the identity service.

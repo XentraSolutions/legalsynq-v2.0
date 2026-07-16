@@ -164,8 +164,11 @@ Build, type-check, and test the tenant portal:
 pnpm --dir apps/web type-check
 pnpm --dir apps/web build
 pnpm --dir apps/web test
-pnpm --dir apps/web test:e2e
+pnpm --dir apps/web test:e2e:mocked   # hermetic — mocked identity API, no live env or credentials needed
+pnpm --dir apps/web test:e2e          # real e2e — hits a live environment (local/qa/production via E2E_ENV)
 ```
+
+See [`apps/web/e2e/README.md`](apps/web/e2e/README.md) for environments, credentials setup, and day-to-day usage (`--ui`, `--debug`).
 
 Build, type-check, and test the control center:
 
