@@ -11,13 +11,10 @@ import type {
 } from "@/lib/cases/cases.types";
 import { dateConverter, dateConvertertoIso } from "@/lib/cases/cases.mapper";
 import { useSessionContext } from "@/providers/session-provider";
-import { EmailSection } from "../../components/email-section";
-import { SmsSection } from "../../components/sms-section";
-import { ContactsSection } from "../../components/contacts-section";
+import { FeedsSection } from "../../components/feeds-section";
 import { CaseTrackingSection } from "./sections/case-tracking-section";
 import { PlaintiffSection } from "./sections/plaintiff-section";
 import { UpdatesSection } from "./sections/updates-section";
-import { TasksSection } from "./sections/tasks-section";
 
 function formatPhoneNumber(rawValue: string | number): string {
   const digits = String(rawValue).replace(/\D/g, "");
@@ -268,22 +265,7 @@ export function DetailsTab({
   );
 
   const rightContent = (
-    <div className="space-y-4">
-      <TasksSection caseId={d.id} />
-      <EmailSection />
-      <SmsSection />
-      <ContactsSection
-        items={[
-          {
-            icon: "ri-building-line",
-            iconBgClass: "bg-blue-50",
-            iconColorClass: "text-blue-500",
-            name: d.insuranceCarrier || "",
-            role: "Law Firm",
-          },
-        ]}
-      />
-    </div>
+    <FeedsSection caseId={d.id} panelMode={panelMode} onPanelModeChange={onPanelModeChange} />
   );
 
   return (
@@ -292,6 +274,7 @@ export function DetailsTab({
       right={rightContent}
       mode={panelMode}
       onModeChange={onPanelModeChange}
+      showControls={false}
     />
   );
 }

@@ -17,9 +17,7 @@ import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types"
 import { SetupReductionForm } from "../../components/setup-reduction-form";
 import { NoRecoveryForm } from "../../components/no-recovery-form";
 import { AddPaymentForm } from "../../components/add-payment-form";
-import { EmailSection } from "../../components/email-section";
-import { SmsSection } from "../../components/sms-section";
-import { ContactsSection } from "../../components/contacts-section";
+import { FeedsSection } from "../../components/feeds-section";
 import {
   formatNoteTimestamp,
   describeSettlementHistoryItem,
@@ -323,28 +321,11 @@ export function ServicingTab({
   );
 
   const rightContent = (
-    <div className="space-y-4">
-      <EmailSection />
-      <SmsSection />
-      <ContactsSection
-        items={[
-          {
-            icon: "ri-user-line",
-            iconBgClass: "bg-primary/10",
-            iconColorClass: "text-primary",
-            name: "Sarah Mitchell",
-            role: "Case Manager",
-          },
-          {
-            icon: "ri-building-line",
-            iconBgClass: "bg-blue-50",
-            iconColorClass: "text-blue-500",
-            name: caseDetail.insuranceCarrier || "",
-            role: "Law Firm",
-          },
-        ]}
-      />
-    </div>
+    <FeedsSection
+      caseId={caseDetail.id}
+      panelMode={panelMode}
+      onPanelModeChange={onPanelModeChange}
+    />
   );
 
   return (
@@ -354,6 +335,7 @@ export function ServicingTab({
         right={rightContent}
         mode={panelMode}
         onModeChange={onPanelModeChange}
+        showControls={false}
       />
       <SetupReductionForm
         open={setupReductionFormShown}

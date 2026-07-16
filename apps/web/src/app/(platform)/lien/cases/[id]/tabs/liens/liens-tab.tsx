@@ -7,9 +7,7 @@ import { casesService, type CaseDetail, type CaseLienItem } from "@/lib/cases";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import type { PaginationMeta } from "@/lib/billofsale";
-import { EmailSection } from "../../components/email-section";
-import { SmsSection } from "../../components/sms-section";
-import { ContactsSection } from "../../components/contacts-section";
+import { FeedsSection } from "../../components/feeds-section";
 import { formatCurrency } from "../../utils/case-detail-utils";
 import { LienListSection } from "./sections/lien-list-section";
 import {
@@ -208,21 +206,11 @@ export function LiensTab({
   );
 
   const rightContent = (
-    <div className="space-y-4">
-      <EmailSection />
-      <SmsSection />
-      <ContactsSection
-        items={[
-          {
-            icon: "ri-building-line",
-            iconBgClass: "bg-blue-50",
-            iconColorClass: "text-blue-500",
-            name: caseDetail.insuranceCarrier || "",
-            role: "Law Firm",
-          },
-        ]}
-      />
-    </div>
+    <FeedsSection
+      caseId={caseDetail.id}
+      panelMode={panelMode}
+      onPanelModeChange={onPanelModeChange}
+    />
   );
 
   return (
@@ -231,6 +219,7 @@ export function LiensTab({
       right={rightContent}
       mode={panelMode}
       onModeChange={onPanelModeChange}
+      showControls={false}
     />
   );
 }

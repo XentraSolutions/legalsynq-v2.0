@@ -8,9 +8,7 @@ import { ApiError } from "@/lib/api-client";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import type { DropdownOption } from "@/lib/lookup/lookup.types";
 import { FileDropzoneRef } from "@/components/lien/upload-document";
-import { EmailSection } from "../../components/email-section";
-import { SmsSection } from "../../components/sms-section";
-import { ContactsSection } from "../../components/contacts-section";
+import { FeedsSection } from "../../components/feeds-section";
 import { UploadDocumentSection } from "./sections/upload-document-section";
 import { CaseDocumentsSection } from "./sections/case-documents-section";
 import { LienDocumentsSection } from "./sections/lien-documents-section";
@@ -183,21 +181,11 @@ export function DocumentsTab({
   );
 
   const rightContent = (
-    <div className="space-y-4">
-      <EmailSection />
-      <SmsSection />
-      <ContactsSection
-        items={[
-          {
-            icon: "ri-building-line",
-            iconBgClass: "bg-blue-50",
-            iconColorClass: "text-blue-500",
-            name: caseDetail.insuranceCarrier || "",
-            role: "Law Firm",
-          },
-        ]}
-      />
-    </div>
+    <FeedsSection
+      caseId={caseDetail.id}
+      panelMode={panelMode}
+      onPanelModeChange={onPanelModeChange}
+    />
   );
 
   return (
@@ -206,6 +194,7 @@ export function DocumentsTab({
       right={rightContent}
       mode={panelMode}
       onModeChange={onPanelModeChange}
+      showControls={false}
     />
   );
 }
