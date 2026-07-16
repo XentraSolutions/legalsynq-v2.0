@@ -11,7 +11,6 @@ import { GripVertical } from "lucide-react";
 import {
   DndContext,
   closestCenter,
-  DragOverlay,
   PointerSensor,
   useSensor,
   useSensors,
@@ -55,8 +54,6 @@ type ColsType = {
   value: string;
 };
 
-
-
 const STEPS = ["Details", "Filters", "Columns"];
 
 export default function CreateUpdateReport({
@@ -64,13 +61,17 @@ export default function CreateUpdateReport({
   onClose,
   onSaved,
   initialData,
-  onValid
+  onValid,
 }: any) {
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedCols, setSelectedCols] = useState<Array<any>>([]);
   const [available, setAvailable] = useState<Array<any>>([]);
   const [cols, setCols] = useState<any[]>([]);
-  const [searchInput, setSearchInput] = useState<string>("")
+  const [filteredSelectedCols, setFilteredSelectedCols] = useState<any[]>([]);
+
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [searchInputSelected, setSearchInputSelected] = useState<string>("");
+
   const [form, setForm] = useState(
     initialData ? { ...initialData } : { ...INITIAL_FORM },
   );
@@ -113,88 +114,91 @@ export default function CreateUpdateReport({
     }),
   );
   const fetchConfig = async () => {
-  const colsResponse = await lienReportsService.getColumns(form.reportType);
+    const colsResponse = await lienReportsService.getColumns(form.reportType);
 
-  const { ...columnGroups } = colsResponse;
+    const { ...columnGroups } = colsResponse;
 
-  const excludedKeys = new Set([
-    "isSuccess",
-    "message",
-    "reportType",
-    "data",
-    "defaultColumn",
-  ]);
+    const excludedKeys = new Set([
+      "isSuccess",
+      "message",
+      "reportType",
+      "data",
+      "defaultColumn",
+    ]);
 
-  const groupedCols = Object.entries(columnGroups)
-    .filter(([key]) => !excludedKeys.has(key))
-    .filter(([_, value]) => Array.isArray(value))
-    .map(([key, value]) => ({
-      key,
-      value,
-    }));
+    const groupedCols = Object.entries(columnGroups)
+      .filter(([key]) => !excludedKeys.has(key))
+      .filter(([_, value]) => Array.isArray(value))
+      .map(([key, value]) => ({
+        key,
+        value,
+      }));
 
-  setCols(groupedCols);
-  setAvailable(groupedCols);
+    setCols(groupedCols);
+    setAvailable(groupedCols);
 
-  const hasSelectedCols =
-    Array.isArray(form?.config?.columns) && form?.config?.columns.length > 0;
+    const hasSelectedCols =
+      Array.isArray(form?.config?.columns) && form?.config?.columns.length > 0;
 
-  let selected;
+    let selected;
 
-  if (hasSelectedCols) {
-    const groupedSelection:any = {};
+    if (hasSelectedCols) {
+      const groupedSelection: any = {};
 
-    form.config.columns.forEach((columnKey:string, index:number) => {
-      const section = groupedCols.find((group) =>
-        group.value.some((item:ColsType) => item.key === columnKey),
-      );
+      form.config.columns.forEach((columnKey: string, index: number) => {
+        const section = groupedCols.find((group) =>
+          group.value.some((item: ColsType) => item.key === columnKey),
+        );
 
-      if (!section) return;
+        if (!section) return;
 
-      const column = section.value.find((item:ColsType) => item.key === columnKey);
+        const column = section.value.find(
+          (item: ColsType) => item.key === columnKey,
+        );
 
-      if (!groupedSelection[section.key]) {
-        groupedSelection[section.key] = [];
-      }
+        if (!groupedSelection[section.key]) {
+          groupedSelection[section.key] = [];
+        }
 
-      groupedSelection[section.key].push({
-        ...column,
-        sectionKey: section.key,
-        sortOrder: index + 1,
+        groupedSelection[section.key].push({
+          ...column,
+          sectionKey: section.key,
+          sortOrder: index + 1,
+        });
       });
-    });
 
-    selected = Object.entries(groupedSelection).map(([key, value]) => ({
-      key,
-      value,
-    }));
-  } else {
-    let sortOrder = 1;
+      selected = Object.entries(groupedSelection).map(([key, value]) => ({
+        key,
+        value,
+      }));
+    } else {
+      let sortOrder = 1;
 
-    selected = groupedCols
-      .map((section) => ({
-        key: section.key,
-        value: section.value
-          .filter((item:any) => item.isDefault)
-          .map((item:any) => ({
-            ...item,
-            sectionKey: section.key,
-            sortOrder: sortOrder++,
-          })),
-      }))
-      .filter((section) => section.value.length > 0);
-  }
+      selected = groupedCols
+        .map((section) => ({
+          key: section.key,
+          value: section.value
+            .filter((item: any) => item.isDefault)
+            .map((item: any) => ({
+              ...item,
+              sectionKey: section.key,
+              sortOrder: sortOrder++,
+            })),
+        }))
+        .filter((section) => section.value.length > 0);
+    }
 
-  setSelectedCols(selected);
+    setSelectedCols(selected);
+    setFilteredSelectedCols(selected);
 
-  setCheckedAvailable(
-    selected.flatMap((section) =>
-      section.value.map((item:ColsType) => ({
-        ...item,
-      })),
-    ),
-  );
-};
+    setCheckedAvailable(
+      selected.flatMap((section) =>
+        section.value.map((item: ColsType) => ({
+          ...item,
+        })),
+      ),
+    );
+  };
   const resetAll = () => {
     setAvailable((prev) => {
       const updated = [...prev];
@@ -211,8 +215,10 @@ export default function CreateUpdateReport({
           updated.push(section);
         }
 
-        selectedSection.value.forEach((item:ColsType) => {
-          const exists = section.value.some((x:ColsType) => x.key === item.key);
+        selectedSection.value.forEach((item: ColsType) => {
+          const exists = section.value.some(
+            (x: ColsType) => x.key === item.key,
+          );
 
           if (!exists) {
             section.value.push({
@@ -222,7 +228,9 @@ export default function CreateUpdateReport({
         });
 
         // Keep available items ordered
-        section.value.sort((a:any, b:any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        section.value.sort(
+          (a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0),
+        );
       });
 
       return updated;
@@ -266,7 +274,6 @@ export default function CreateUpdateReport({
   );
 
   const fetchData = useCallback(async () => {
-    
     const [
       caseStatusRes,
       casesRes,
@@ -279,10 +286,10 @@ export default function CreateUpdateReport({
     ] = await Promise.allSettled([
       lookupService.getCaseStatus(),
       casesService.getCases(),
-      contactsService.getContacts({"ContactType":"LawFirm"}),
-      contactsService.getContacts({"ContactType":"FundingCompany"}),
-      contactsService.getContacts({"ContactType":"MedicalFacility"}),
-      contactsService.getContacts({"ContactType":"Provider"}),
+      contactsService.getContacts({ ContactType: "LawFirm" }),
+      contactsService.getContacts({ ContactType: "FundingCompany" }),
+      contactsService.getContacts({ ContactType: "MedicalFacility" }),
+      contactsService.getContacts({ ContactType: "Provider" }),
       contactsService.getCaseManagers(),
       lookupService.getLiensStatus(),
     ]);
@@ -290,10 +297,13 @@ export default function CreateUpdateReport({
       ...prev,
       statusView:
         caseStatusRes.status === "fulfilled"
-          ? [{ key: "all", value: "", label: "All" },
-            ...caseStatusRes.value.items.map((c) => {
-              return { key: c.id, value: c.code, label: c.name };
-            })]: [{ key: "all", value: "", label: "All" }],
+          ? [
+              { key: "all", value: "", label: "All" },
+              ...caseStatusRes.value.items.map((c) => {
+                return { key: c.id, value: c.code, label: c.name };
+              }),
+            ]
+          : [{ key: "all", value: "", label: "All" }],
       lawfirm:
         lawfirmRes.status === "fulfilled"
           ? lawfirmRes.value.items.map((c) => {
@@ -333,10 +343,12 @@ export default function CreateUpdateReport({
           : [],
       liensStatus:
         liensStatusRes.status === "fulfilled"
-          ? [{ key: "all", value: "all", label: "All" },
-             ...liensStatusRes.value.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.name };
-            })]
+          ? [
+              { key: "all", value: "all", label: "All" },
+              ...liensStatusRes.value.items.map((c) => {
+                return { key: c.id, value: c.id, label: c.name };
+              }),
+            ]
           : [{ key: "all", value: "all", label: "All" }],
     }));
   }, []);
@@ -346,16 +358,16 @@ export default function CreateUpdateReport({
     fetchConfig();
   }, [fetchData, mode]);
 
-  useEffect(()=>{
-     if(currentStep == 0){
-    const valid = !!form.name
-      setIsValid(valid)  
+  useEffect(() => {
+    if (currentStep == 0) {
+      const valid = !!form.name;
+      setIsValid(valid);
     }
-    if(currentStep == 1){
-      const valid = !!form.reportType
-      setIsValid(valid)  
+    if (currentStep == 1) {
+      const valid = !!form.reportType;
+      setIsValid(valid);
     }
-  },[currentStep, form])
+  }, [currentStep, form]);
 
   const isLastStep = currentStep === STEPS.length - 1;
 
@@ -368,11 +380,11 @@ export default function CreateUpdateReport({
         Math.max(
           0,
           ...updated.flatMap((section) =>
-            section.value.map((item:any) => item.sortOrder || 0),
+            section.value.map((item: any) => item.sortOrder || 0),
           ),
         ) + 1;
 
-      checkedAvailable.forEach((item:any) => {
+      checkedAvailable.forEach((item: any) => {
         let section = updated.find((s) => s.key === item.sectionKey);
 
         if (!section) {
@@ -384,7 +396,7 @@ export default function CreateUpdateReport({
           updated.push(section);
         }
 
-        const exists = section.value.some((x:any) => x.key === item.key);
+        const exists = section.value.some((x: any) => x.key === item.key);
 
         if (!exists) {
           section.value.push({
@@ -403,9 +415,9 @@ export default function CreateUpdateReport({
         .map((section) => ({
           ...section,
           value: section.value.filter(
-            (item:any) =>
+            (item: any) =>
               !checkedSelected.some(
-                (checked:any) =>
+                (checked: any) =>
                   checked.key === item.key &&
                   checked.sectionKey === section.key,
               ),
@@ -415,11 +427,11 @@ export default function CreateUpdateReport({
     );
 
     // remove moved items from selected checks
-    setCheckedSelected((prev:any) =>
+    setCheckedSelected((prev: any) =>
       prev.filter(
-        (checked:any) =>
+        (checked: any) =>
           !checkedSelected.some(
-            (moved:any) =>
+            (moved: any) =>
               moved.key === checked.key &&
               moved.sectionKey === checked.sectionKey,
           ),
@@ -427,11 +439,11 @@ export default function CreateUpdateReport({
     );
 
     // uncheck them in available
-    setCheckedAvailable((prev:any) =>
+    setCheckedAvailable((prev: any) =>
       prev.filter(
-        (checked:any) =>
+        (checked: any) =>
           !checkedSelected.some(
-            (moved:any) =>
+            (moved: any) =>
               moved.key === checked.key &&
               moved.sectionKey === checked.sectionKey,
           ),
@@ -441,7 +453,7 @@ export default function CreateUpdateReport({
 
   const selectAll = () => {
     const allAvailableItems = available.flatMap((section) =>
-      section.value.map((item:any) => ({
+      section.value.map((item: any) => ({
         ...item,
         sectionKey: section.key,
       })),
@@ -450,37 +462,35 @@ export default function CreateUpdateReport({
     setCheckedAvailable(allAvailableItems);
   };
 
-const handleDragStart = ({ active }: DragStartEvent) => {
-  const [sectionKey, itemKey] = String(active.id).split("__");
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    const [sectionKey, itemKey] = String(active.id).split("__");
 
-  if (!sectionKey || !itemKey) {
-    return;
-  }
+    if (!sectionKey || !itemKey) {
+      return;
+    }
 
-  const section = selectedCols.find(
-    (section) => section.key === sectionKey
-  );
+    const section = selectedCols.find((section) => section.key === sectionKey);
 
-  const item = section?.value.find((item:any) => item.key === itemKey);
+    const item = section?.value.find((item: any) => item.key === itemKey);
 
-  if (!item) {
-    return;
-  }
+    if (!item) {
+      return;
+    }
 
-  setActiveDragItem({
-    sectionKey,
-    item,
-  });
-};
+    setActiveDragItem({
+      sectionKey,
+      item,
+    });
+  };
 
-  const handleDragEnd = ({ active, over }:DragEndEvent) => {
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
     setActiveDragItem(null);
 
     if (!over || active.id === over.id) return;
 
     setSelectedCols((prev) => {
       const flattened = prev.flatMap((section) =>
-        section.value.map((item:any) => ({
+        section.value.map((item: any) => ({
           ...item,
           sectionKey: section.key,
         })),
@@ -527,12 +537,12 @@ const handleDragStart = ({ active }: DragStartEvent) => {
     }
     const reportData = await createReportTemplate();
     console.log(reportData);
-      onSaved(reportData);
+    onSaved(reportData);
   };
 
   const createReportTemplate = async () => {
     const cols = selectedCols.flatMap((section) =>
-      section.value.map((item:any) => item.key),
+      section.value.map((item: any) => item.key),
     );
     const payload = {
       viewBy: form.viewBy ?? form.reportType,
@@ -573,33 +583,51 @@ const handleDragStart = ({ active }: DragStartEvent) => {
 
   const flattenedItems = selectedCols
     .flatMap((section) =>
-      section.value.map((item:any) => ({
+      section.value.map((item: any) => ({
         ...item,
         sectionKey: section.key,
       })),
     )
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
-    const handleSearch = (value:any) => {
-        setSearchInput(value)
+  const handleSearch = (value: any) => {
+    setSearchInput(value);
 
-  if (!value) {
-    setAvailable(cols);
-    return;
-  }
+    if (!value) {
+      setAvailable(cols);
+      return;
+    }
 
+    const filtered = available
+      .map((group) => ({
+        key: group.key,
+        value: group.value.filter((column: any) =>
+          column.label?.toLowerCase().includes(value.toLowerCase()),
+        ),
+      }))
+      .filter((group) => group.value.length > 0);
 
-  const filtered = available
-    .map((group) => ({
-      key: group.key,
-      value: group.value.filter((column:any) =>
-        column.label?.toLowerCase().includes(value.toLowerCase())
-      ),
-    }))
-    .filter((group) => group.value.length > 0);
+    setAvailable(filtered);
+  };
+  const handleSearchSelected = (value: any) => {
+    setSearchInputSelected(value);
 
-  setAvailable(filtered);
-};
+    if (!value) {
+      setSelectedCols(filteredSelectedCols);
+      return;
+    }
+
+    const filtered = selectedCols
+      .map((group) => ({
+        key: group.key,
+        value: group.value.filter((column: any) =>
+          column.label?.toLowerCase().includes(value.toLowerCase()),
+        ),
+      }))
+      .filter((group) => group.value.length > 0);
+
+    setSelectedCols(filtered);
+  };
   return (
     <Modal
       open={true}
@@ -872,151 +900,165 @@ const handleDragStart = ({ active }: DragStartEvent) => {
 
       {/* STEP 3 */}
       {currentStep === 2 && (
-        <div className="flex justify-evenly items-center gap-4">
+        <div className="flex justify-evenly gap-2">
           {/* LEFT */}
 
-          <div className="space-y-4 flex-1 max-h-64 overflow-auto">
-            <div className="flex justify-between items-center mb-2">
-              <p className="font-medium text-sm">Available Columns</p>
+          <div className="space-y-4 flex-1 border-1 border-gray-400 rounded-lg p-4">
+            <div className="min-h-[100px]">
+              <div className="flex justify-between items-center mb-2">
+                <p className="font-medium text-sm">Available Columns</p>
 
-              <button
-                type="button"
-                onClick={selectAll}
-                className="text-sm px-3 py-1 rounded bg-blue-500 text-white"
-              >
-                Select All
-              </button>
-
-              <Field
-                label="Search"
-                value={searchInput}
-                onChange={handleSearch}
-                type="text"
-              />
-            </div>
-            {available.map((section) => (
-              <div key={section.key}>
-                <div className="mb-2 border-b pb-1">
-                  <p className="font-medium text-sm">
-                    {categoryDescription(section.key)}
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  {section.value.map((item:any) => {
-
-                    return (
-                      <label
-                        key={item.key}
-                        className="flex items-center gap-2 rounded px-2 py-1 hover:bg-gray-100 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checkedAvailable.some(
-                            (x:any) =>
-                              x.key === item.key &&
-                              x.sectionKey === section.key,
-                          )}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setCheckedAvailable((prev:any) => [
-                                ...prev,
-                                {
-                                  ...item,
-                                  sectionKey: section.key,
-                                },
-                              ]);
-                            } else {
-                              setCheckedAvailable((prev:any) =>
-                                prev.filter(
-                                  (x:any) =>
-                                    !(
-                                      x.key === item.key &&
-                                      x.sectionKey === section.key
-                                    ),
-                                ),
-                              );
-                            }
-                          }}
-                        />
-                        <span className="text-sm">{item.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+                <button
+                  type="button"
+                  onClick={selectAll}
+                  className="text-sm px-3 py-1.5 rounded bg-blue-500 text-white
+                 text-sm
+                  px-3 py-1.5
+                  rounded-md
+                  border
+                "
+                >
+                  Select All
+                </button>
               </div>
-            ))}
+              <div>
+                <Field
+                  label="Search"
+                  value={searchInput}
+                  onChange={handleSearch}
+                  type="text"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-auto max-h-64">
+              {available.map((section) => (
+                <div key={section.key}>
+                  <div className="mb-2 border-b pb-1">
+                    <p className="font-medium text-sm">
+                      {categoryDescription(section.key)}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    {section.value.map((item: any) => {
+                      return (
+                        <label
+                          key={item.key}
+                          className="flex items-center gap-2 rounded px-2 py-1 hover:bg-gray-100 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checkedAvailable.some(
+                              (x: any) =>
+                                x.key === item.key &&
+                                x.sectionKey === section.key,
+                            )}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCheckedAvailable((prev: any) => [
+                                  ...prev,
+                                  {
+                                    ...item,
+                                    sectionKey: section.key,
+                                  },
+                                ]);
+                              } else {
+                                setCheckedAvailable((prev: any) =>
+                                  prev.filter(
+                                    (x: any) =>
+                                      !(
+                                        x.key === item.key &&
+                                        x.sectionKey === section.key
+                                      ),
+                                  ),
+                                );
+                              }
+                            }}
+                          />
+                          <span className="text-sm">{item.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* MIDDLE BUTTONS */}
-          <div className="flex  flex-col max-w-[100px]">
+          <div className="flex justify-center flex-col max-w-[100px]">
             <button
               onClick={moveCheckedToSelected}
-              className="px-3 py-2 border rounded"
+              className="px-3 py-2 m-1.5 border rounded bg-primary text-white"
             >
               →
             </button>
             <button
               onClick={moveCheckedToAvailable}
-              className="px-3 py-2 border rounded"
+              className="px-3 py-2 m-1.5 border rounded bg-primary text-white"
             >
               ←
             </button>
           </div>
 
           {/* RIGHT */}
-          <div className="max-h-64  overflow-y-auto flex-1 rounded-lg">
-            <div className="flex items-center justify-between mb-3">
-              <p className="font-medium text-sm">Selected Columns</p>
+          <div className="space-y-4 flex-1 border-1 border-gray-400 rounded-lg p-4">
+            <div className="space-y-4">
+              <div className="min-h-[100px]">
+                <div className="flex justify-between items-center mb-2">
+                  <p className="font-medium text-sm">Available Columns</p>
 
-              <button
-                type="button"
-                onClick={resetAll}
-                className="
-                  text-sm
+                  <button
+                    type="button"
+                    onClick={resetAll}
+                    className="text-sm px-3 py-1.5 rounded bg-white
+                 text-sm
                   px-3 py-1.5
                   rounded-md
                   border
-                  bg-white
-                  hover:bg-gray-50
                 "
-              >
-                Reset All
-              </button>
-            </div>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onDragCancel={() => setActiveDragItem(null)}
-            >
-              <SortableContext
-                items={flattenedItems.map(
-                  (item) => `${item.sectionKey}__${item.key}`,
-                )}
-                strategy={verticalListSortingStrategy}
-              >
-                {flattenedItems.map((item) => (
-                  <SortableSelectedRow
-                    key={`${item.sectionKey}__${item.key}`}
-                    item={item}
-                    sectionKey={item.sectionKey}
-                    checkedSelected={checkedSelected}
-                    setCheckedSelected={setCheckedSelected}
-                    globalIndex={item.sortOrder}
+                  >
+                    Reset All
+                  </button>
+                </div>
+                <div>
+                  <Field
+                    label="Search"
+                    value={searchInputSelected}
+                    onChange={handleSearchSelected}
+                    type="text"
                   />
-                ))}
-              </SortableContext>
-
-              <DragOverlay>
-                {activeDragItem ? (
-                  <div className="rounded-lg border bg-white px-4 py-2 shadow-2xl">
-                    {activeDragItem.item.label}
-                  </div>
-                ) : null}
-              </DragOverlay>
-            </DndContext>
+                </div>
+              </div>
+            </div>
+            <div className="max-h-64 mt-6 overflow-y-auto">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDragCancel={() => setActiveDragItem(null)}
+              >
+                <SortableContext
+                  items={flattenedItems.map(
+                    (item) => `${item.sectionKey}__${item.key}`,
+                  )}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {flattenedItems.map((item) => (
+                    <SortableSelectedRow
+                      key={`${item.sectionKey}__${item.key}`}
+                      item={item}
+                      sectionKey={item.sectionKey}
+                      checkedSelected={checkedSelected}
+                      setCheckedSelected={setCheckedSelected}
+                      globalIndex={item.sortOrder}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
           </div>
         </div>
       )}
@@ -1029,7 +1071,7 @@ const SortableSelectedRow = ({
   checkedSelected,
   setCheckedSelected,
   globalIndex,
-}:any) => {
+}: any) => {
   const dragId = `${sectionKey}__${item.key}`;
 
   const { attributes, listeners, setNodeRef, transform, transition } =
@@ -1043,7 +1085,7 @@ const SortableSelectedRow = ({
   };
 
   const isChecked = checkedSelected.some(
-    (x:any) => x.key === item.key && x.sectionKey === sectionKey,
+    (x: any) => x.key === item.key && x.sectionKey === sectionKey,
   );
 
   return (
@@ -1053,10 +1095,8 @@ const SortableSelectedRow = ({
       className="
         flex items-center gap-3
         rounded-lg
-        border
         bg-white
         px-3 py-2
-        shadow-sm
       "
     >
       {/* Drag handle */}
@@ -1082,7 +1122,7 @@ const SortableSelectedRow = ({
         checked={isChecked}
         onChange={(e) => {
           if (e.target.checked) {
-            setCheckedSelected((prev:any) => [
+            setCheckedSelected((prev: any) => [
               ...prev,
               {
                 ...item,
@@ -1090,9 +1130,10 @@ const SortableSelectedRow = ({
               },
             ]);
           } else {
-            setCheckedSelected((prev:any) =>
+            setCheckedSelected((prev: any) =>
               prev.filter(
-                (x:any) => !(x.key === item.key && x.sectionKey === sectionKey),
+                (x: any) =>
+                  !(x.key === item.key && x.sectionKey === sectionKey),
               ),
             );
           }
