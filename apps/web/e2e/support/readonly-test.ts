@@ -12,7 +12,7 @@ import {
 import type { ReadOnlyPage, ReadOnlyLocator } from './read-only-page';
 import { getCredentials, type PlatformCredentials } from './credentials';
 import { getEnv } from '../config/environments';
-import { login } from './login-flow';
+import { storageStatePath } from './storage-state';
 
 /**
  * Read-only e2e test factory — the one safe to run against every
@@ -29,18 +29,23 @@ import { login } from './login-flow';
  * createMutationTest() from mutation-test.ts, which is structurally and at
  * the fixture level refused for production.
  *
- * Authentication is the one interactive step every spec needs. It runs via
- * `autoLogin`, an autouse fixture using the real, unrestricted `page` —
- * deliberately never exposed under that name in InternalFixtures, so its
- * type stays the genuine Playwright `Page` (see the note on `PublicArgs`
- * below for why redeclaring `page`'s type on the SAME fixture name breaks
- * that). By the time a spec's test body runs, login has already happened;
- * the test only ever receives the read-only view.
+ * Authentication doesn't happen interactively per test: global-setup.ts logs
+ * in once per platform+env before the whole suite runs and saves the
+ * session, which `storageState` below loads into this test's browser
+ * context. `autoLogin` — an autouse fixture using the real, unrestricted
+ * `page`, deliberately never exposed under that name in InternalFixtures so
+ * its type stays the genuine Playwright `Page` (see the note on
+ * `PublicArgs` below for why redeclaring `page`'s type on the SAME fixture
+ * name breaks that) — just navigates to the dashboard the already-
+ * authenticated session lands on. Doing the real login per test used to
+ * trip the backend's own login rate limit during a full-suite run. By the
+ * time a spec's test body runs, that navigation has already happened; the
+ * test only ever receives the read-only view.
  */
 
 interface InternalFixtures {
   credentials: PlatformCredentials;
-  /** Autouse — not exposed to specs; only exists to run login before every test. */
+  /** Autouse — not exposed to specs; only exists to land on /dashboard before every test. */
   autoLogin: void;
 }
 
@@ -50,8 +55,15 @@ export function createReadOnlyTest(platform: string) {
       await use(getCredentials(platform, getEnv().name));
     },
 
+    storageState: async ({}, use) => {
+      const env = getEnv();
+      await use(storageStatePath(platform, env.name));
+    },
+
     autoLogin: [async ({ page, credentials }, use) => {
-      await login(page, credentials);
+      const env = getEnv();
+      await page.goto(`${env.originFor(credentials.tenantCode)}/dashboard`);
+      await page.waitForURL(/\/dashboard$/, { timeout: 20_000 });
       await use();
     }, { auto: true }],
   });

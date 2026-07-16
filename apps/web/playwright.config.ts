@@ -62,6 +62,11 @@ const env = getEnv();
 export default defineConfig({
   testDir: './e2e/(platform)',
   testMatch: env.name === 'production' ? '**/readonly/**' : undefined,
+  // Logs in once per platform up front and saves the session for every test
+  // to reuse (see global-setup.ts) — avoids each test submitting the login
+  // form itself, which was tripping the backend's own login rate limit
+  // during a full-suite run.
+  globalSetup: require.resolve('./e2e/support/global-setup'),
   timeout: 30_000,
   retries: 0,
   fullyParallel: false,

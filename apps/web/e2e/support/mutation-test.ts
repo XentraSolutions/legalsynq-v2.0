@@ -1,7 +1,7 @@
 import { test as base, expect } from '@playwright/test';
 import { getCredentials, type PlatformCredentials } from './credentials';
 import { getEnv } from '../config/environments';
-import { login } from './login-flow';
+import { storageStatePath } from './storage-state';
 
 /**
  * Full-access e2e test factory — the real, unrestricted Playwright `page`.
@@ -24,11 +24,18 @@ import { login } from './login-flow';
  * anything that only needs to navigate and assert, prefer
  * createReadOnlyTest() from readonly-test.ts instead — it's the one that
  * also runs against production.
+ *
+ * Authentication doesn't happen here per-test: global-setup.ts logs in once
+ * per platform+env before the whole suite runs and saves the session, which
+ * `storageState` below loads into this test's browser context. `autoLogin`
+ * just navigates to the dashboard the already-authenticated session lands
+ * on. Doing the real login per test used to trip the backend's own login
+ * rate limit during a full-suite run.
  */
 
 interface MutationFixtures {
   credentials: PlatformCredentials;
-  /** Autouse — not exposed to specs; only exists to run login before every test. */
+  /** Autouse — not exposed to specs; only exists to land on /dashboard before every test. */
   autoLogin: void;
 }
 
@@ -46,8 +53,20 @@ export function createMutationTest(platform: string) {
       await use(getCredentials(platform, env.name));
     },
 
+    storageState: async ({}, use) => {
+      const env = getEnv();
+      if (env.name === 'production') {
+        throw new Error(
+          `Refusing to run a mutation e2e test against production (E2E_ENV=${env.name}).`,
+        );
+      }
+      await use(storageStatePath(platform, env.name));
+    },
+
     autoLogin: [async ({ page, credentials }, use) => {
-      await login(page, credentials);
+      const env = getEnv();
+      await page.goto(`${env.originFor(credentials.tenantCode)}/dashboard`);
+      await page.waitForURL(/\/dashboard$/, { timeout: 20_000 });
       await use();
     }, { auto: true }],
   });

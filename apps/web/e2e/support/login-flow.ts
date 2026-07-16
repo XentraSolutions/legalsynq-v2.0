@@ -3,12 +3,12 @@ import type { PlatformCredentials } from './credentials';
 import { getEnv } from '../config/environments';
 
 /**
- * Shared login steps, used by both readonly-test.ts and mutation-test.ts.
- * This is the one place in the whole e2e suite where `.fill()`/`.click()`
- * appears against a real, unrestricted `Page` — every other file only ever
- * sees the already-logged-in result, either as a `ReadOnlyPage`
- * (readonly-test.ts) or the real `Page` for environments where mutating is
- * allowed (mutation-test.ts).
+ * The interactive login form flow, used by global-setup.ts to log in once
+ * per platform+env before the whole suite runs (see storage-state.ts) — the
+ * resulting session is what readonly-test.ts / mutation-test.ts load into
+ * every individual test instead of submitting this form themselves. This is
+ * the one place in the whole e2e suite where `.fill()`/`.click()` appears
+ * against a real, unrestricted `Page` against the login form.
  */
 export async function login(page: Page, credentials: PlatformCredentials): Promise<void> {
   const env = getEnv();
