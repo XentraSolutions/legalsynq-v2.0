@@ -419,7 +419,7 @@ export function CreateCaseForm({
                 placeholder="Select law firm..."
                 searchPlaceholder="Search law firms..."
                 allowCreate
-                createLabel="Add Law Firm"
+                createLabel="Add New Law Firm"
               />
               {touched.lawfirmId && errors.lawfirmId && (
                 <p className="text-xs text-red-500 mt-1">{errors.lawfirmId}</p>
