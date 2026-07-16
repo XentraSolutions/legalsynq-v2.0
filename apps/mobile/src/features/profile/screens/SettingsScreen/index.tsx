@@ -8,6 +8,7 @@ import { Chip } from '@/shared/components/Chip';
 import { Divider } from '@/shared/components/Divider';
 import { Header } from '@/shared/components/Header';
 import { Switch } from '@/shared/components/Switch';
+import { useApiMode } from '@/shared/hooks/useApiMode';
 import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
 import { featureFlagsAtom } from '@/shared/state/atoms/featureFlagsAtom';
 import { themeAtom } from '@/shared/state/atoms/themeAtom';
@@ -18,6 +19,7 @@ export function SettingsScreen() {
   const [theme, setTheme] = useAtom(themeAtom);
   const [flags, setFlags] = useAtom(featureFlagsAtom);
   const { settings: dashboardSettings, setUseDummyData } = useDashboardSettings();
+  const { mode: apiMode, setMode: setApiMode } = useApiMode();
 
   return (
     <View className="flex-1 bg-[#f7f7f8] dark:bg-[#050506]">
@@ -84,6 +86,27 @@ export function SettingsScreen() {
               </Text>
             </View>
             <Switch value={dashboardSettings.useDummyData} onValueChange={setUseDummyData} />
+          </View>
+        </Card>
+      </View>
+      <View className="mx-5 mt-6">
+        <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
+          Advanced
+        </Text>
+        <Card>
+          <View className="flex-row items-center justify-between gap-4">
+            <View className="flex-1">
+              <Text className="font-jakarta-medium text-[14px] leading-[20px] text-[#202228] dark:text-white">
+                Legacy API Mode
+              </Text>
+              <Text className="mt-1 font-jakarta-regular text-[12px] leading-[17px] text-[#8d9098] dark:text-[#8f929b]">
+                Connect to the legacy backend instead of the current one. Switching signs you out.
+              </Text>
+            </View>
+            <Switch
+              value={apiMode === 'legacy'}
+              onValueChange={(value) => void setApiMode(value ? 'legacy' : 'current')}
+            />
           </View>
         </Card>
       </View>

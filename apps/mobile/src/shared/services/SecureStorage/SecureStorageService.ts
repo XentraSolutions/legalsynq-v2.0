@@ -18,6 +18,7 @@ export const SecureStorageService = {
   async clearAll(): Promise<void> {
     await Promise.all([
       SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_TOKEN),
+      SecureStore.deleteItemAsync(STORAGE_KEYS.LEGACY_ACCESS_TOKEN),
       SecureStore.deleteItemAsync(STORAGE_KEYS.BIOMETRICS_ENABLED),
     ]);
   },

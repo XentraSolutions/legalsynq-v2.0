@@ -81,7 +81,7 @@ function readArray<TItem>(record: Record<string, unknown>, keys: string[]): TIte
   return [];
 }
 
-function normalizePagedResult<TItem>(payload: unknown): PagedResult<TItem> {
+export function normalizePagedResult<TItem>(payload: unknown): PagedResult<TItem> {
   const unwrapped = unwrapEnvelope(payload);
 
   if (Array.isArray(unwrapped)) {

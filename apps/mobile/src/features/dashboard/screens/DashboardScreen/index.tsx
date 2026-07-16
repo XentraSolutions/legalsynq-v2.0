@@ -223,7 +223,7 @@ function createSingleDayRange(date: Date): DashboardDateRange {
 function buildDashboardReportFilter(dateRange: DashboardDateRange): ReportFilterRequest {
   return {
     page: 1,
-    limit: 500,
+    limit: 1000000,
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
   };
@@ -968,6 +968,8 @@ function SectionTitle({
   );
 }
 
+const LEGEND_PAGE_SIZE = 5;
+
 function DonutCard({
   centerCaption,
   centerValue,
@@ -989,16 +991,38 @@ function DonutCard({
   onViewDetails?: () => void;
   title: string;
 }) {
+  const [legendPage, setLegendPage] = useState(1);
+  const totalLegendPages = Math.max(1, Math.ceil(slices.length / LEGEND_PAGE_SIZE));
+  const currentLegendPage = Math.min(legendPage, totalLegendPages);
+  const pagedSlices = slices.slice(
+    (currentLegendPage - 1) * LEGEND_PAGE_SIZE,
+    currentLegendPage * LEGEND_PAGE_SIZE
+  );
+
   return (
     <CardShell isDark={isDark}>
       <SectionTitle icon={icon} subtitle={subtitle} title={title} />
       <DonutChart centerCaption={centerCaption} centerValue={centerValue} slices={slices} />
       {slices.length > 0 ? (
-        <View className="mt-4">
-          {slices.map((slice, index) => (
-            <LegendRow key={slice.label} isLast={index === slices.length - 1} slice={slice} />
-          ))}
-        </View>
+        <>
+          <View className="mt-4">
+            {pagedSlices.map((slice, index) => (
+              <LegendRow
+                key={slice.label}
+                isLast={index === pagedSlices.length - 1}
+                slice={slice}
+              />
+            ))}
+          </View>
+          {slices.length > LEGEND_PAGE_SIZE ? (
+            <LegendPagination
+              page={currentLegendPage}
+              totalPages={totalLegendPages}
+              onNext={() => setLegendPage((page) => Math.min(totalLegendPages, page + 1))}
+              onPrevious={() => setLegendPage((page) => Math.max(1, page - 1))}
+            />
+          ) : null}
+        </>
       ) : (
         <Text className={cx(TYPE.rowMuted, 'mt-5 text-center text-[#8d9098] dark:text-[#8f929b]')}>
           No report data available for the selected date range.
@@ -1120,6 +1144,61 @@ function LegendRow({ isLast, slice }: { isLast: boolean; slice: DonutSlice }) {
           </Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+function LegendPagination({
+  page,
+  totalPages,
+  onNext,
+  onPrevious,
+}: {
+  page: number;
+  totalPages: number;
+  onNext: () => void;
+  onPrevious: () => void;
+}) {
+  const canGoPrevious = page > 1;
+  const canGoNext = page < totalPages;
+
+  return (
+    <View className="mt-3 flex-row items-center justify-between border-t border-[#ececf0] pt-3 dark:border-[#292a2f]">
+      <Pressable
+        accessibilityRole="button"
+        className={cx(
+          'h-8 flex-row items-center gap-1 rounded-full border border-[#dedee0] px-3 dark:border-[#33343a]',
+          !canGoPrevious && 'opacity-50'
+        )}
+        disabled={!canGoPrevious}
+        onPress={onPrevious}
+      >
+        <Ionicons
+          color={canGoPrevious ? '#71717a' : '#a1a1aa'}
+          name="chevron-back-outline"
+          size={14}
+        />
+        <Text className={cx(TYPE.rowValue, 'text-[#22252b] dark:text-white')}>Previous</Text>
+      </Pressable>
+      <Text className={cx(TYPE.rowMuted, 'text-[#8d9098] dark:text-[#8f929b]')}>
+        Page {page} of {totalPages}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        className={cx(
+          'h-8 flex-row items-center gap-1 rounded-full border border-[#dedee0] px-3 dark:border-[#33343a]',
+          !canGoNext && 'opacity-50'
+        )}
+        disabled={!canGoNext}
+        onPress={onNext}
+      >
+        <Text className={cx(TYPE.rowValue, 'text-[#22252b] dark:text-white')}>Next</Text>
+        <Ionicons
+          color={canGoNext ? '#22252b' : '#a1a1aa'}
+          name="chevron-forward-outline"
+          size={14}
+        />
+      </Pressable>
     </View>
   );
 }

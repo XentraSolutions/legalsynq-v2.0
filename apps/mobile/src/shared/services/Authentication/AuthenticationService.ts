@@ -1,8 +1,15 @@
 import { getDefaultStore } from 'jotai';
 
-import { AuthenticationApi, type LoginResponse } from '@/shared/api/endpoints/Authentication';
-import { STORAGE_KEYS } from '@/shared/constants/storageKeys';
+import {
+  AuthenticationApi,
+  LegacyAuthenticationAdapter,
+  LegacyAuthenticationApi,
+  type ForgotPasswordRequest,
+  type LoginResponse,
+} from '@/shared/api/endpoints/Authentication';
+import { STORAGE_KEYS, type StorageKey } from '@/shared/constants/storageKeys';
 import { authAtom } from '@/shared/state/atoms/authAtom';
+import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
 import { SecureStorageService } from '@/shared/services/SecureStorage';
 import { StorageService } from '@/shared/services/Storage';
 import { TenantSelectionService } from '@/shared/services/TenantSelection';
@@ -32,12 +39,15 @@ async function clearSession(): Promise<void> {
   });
 }
 
-async function persistSession(response: LoginResponse): Promise<UserSession> {
-  const user = AuthenticationAdapter.toUserSession(response);
-  const authState = AuthenticationAdapter.toAuthState(response.accessToken, user);
+async function persistSession(
+  accessToken: string,
+  user: UserSession,
+  tokenStorageKey: StorageKey
+): Promise<UserSession> {
+  const authState = AuthenticationAdapter.toAuthState(accessToken, user);
 
   await Promise.all([
-    SecureStorageService.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.accessToken),
+    SecureStorageService.setItem(tokenStorageKey, accessToken),
     StorageService.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(user)),
   ]);
 
@@ -81,29 +91,75 @@ async function persistRememberedTenant(
   });
 }
 
-export const AuthenticationService = {
-  async login({ email, password, tenantCode, activeTenant }: LoginInput): Promise<UserSession> {
-    const effectiveTenantCode = tenantCode?.trim() || activeTenant?.tenantCode;
-    if (!effectiveTenantCode) {
-      throw new Error('Select or enter a tenant code before signing in.');
-    }
+async function loginCurrent({
+  email,
+  password,
+  tenantCode,
+  activeTenant,
+}: LoginInput): Promise<UserSession> {
+  const effectiveTenantCode = tenantCode?.trim() || activeTenant?.tenantCode;
+  if (!effectiveTenantCode) {
+    throw new Error('Select or enter a tenant code before signing in.');
+  }
 
-    const response = await AuthenticationApi.login({
-      email,
-      password,
-      tenantCode: effectiveTenantCode,
-    });
-    const user = await persistSession(response);
-    await persistRememberedTenant(response, effectiveTenantCode, activeTenant);
-    return user;
+  const response = await AuthenticationApi.login({
+    email,
+    password,
+    tenantCode: effectiveTenantCode,
+  });
+  const user = AuthenticationAdapter.toUserSession(response);
+  await persistSession(response.accessToken, user, STORAGE_KEYS.ACCESS_TOKEN);
+  await persistRememberedTenant(response, effectiveTenantCode, activeTenant);
+  return user;
+}
+
+async function loginLegacy({ email, password }: LoginInput): Promise<UserSession> {
+  const response = await LegacyAuthenticationApi.login({ username: email, password });
+  if (!response.isSuccess || !response.sessionId) {
+    // TEMP DIAGNOSTIC: remove once the parsing question is resolved.
+    let raw = '';
+    try {
+      raw = JSON.stringify(response).slice(0, 300);
+    } catch {
+      raw = String(response);
+    }
+    throw new Error(
+      response?.message ||
+        `Unable to sign in. [diag v3: typeof=${typeof response} isSuccess=${String(response?.isSuccess)} sessionId=${String(response?.sessionId)} raw=${raw}]`
+    );
+  }
+
+  const user = LegacyAuthenticationAdapter.toUserSession(response);
+  return persistSession(response.sessionId, user, STORAGE_KEYS.LEGACY_ACCESS_TOKEN);
+}
+
+export const AuthenticationService = {
+  async login(input: LoginInput): Promise<UserSession> {
+    const mode = store.get(apiModeAtom);
+    return mode === 'legacy' ? loginLegacy(input) : loginCurrent(input);
   },
 
   async logout(): Promise<void> {
+    const mode = store.get(apiModeAtom);
     try {
-      await AuthenticationApi.logout();
+      if (mode === 'legacy') {
+        await LegacyAuthenticationApi.logout();
+      } else {
+        await AuthenticationApi.logout();
+      }
     } finally {
       await clearSession();
     }
+  },
+
+  async forgotPassword(body: ForgotPasswordRequest): Promise<void> {
+    const mode = store.get(apiModeAtom);
+    if (mode === 'legacy') {
+      await LegacyAuthenticationApi.forgotPassword();
+      return;
+    }
+
+    await AuthenticationApi.forgotPassword(body);
   },
 
   async getSession(): Promise<UserSession | null> {
