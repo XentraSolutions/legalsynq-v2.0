@@ -1,5 +1,16 @@
 import { CaseListItem } from "../cases";
-import { ReportListItem } from "./lien-reports.mapper";
+
+export type Columns = {
+  key: string;
+  label: string;
+  isDefault?: boolean;
+  categoryKey?: string;
+};
+
+export type ColumnGroup = {
+  key: string; // category name (liensInfo, etc.)
+  value: Columns[]; // list of columns
+};
 
 export interface ReportColumnOption {
   key: string;
@@ -35,7 +46,7 @@ export interface ReportListResponse {
   name?: string;
   description?: string;
   columns?: Array<string>;
-  data?: ReportsResponse[];
+  data?: CaseListItem[];
   items: Array<unknown>;
   page?: number;
   pageSize?: number;
@@ -43,7 +54,7 @@ export interface ReportListResponse {
   totalCount?: number;
   reportName?: string;
   reportDescription?: string;
-  reportType?: string;
+  reportType?: "CASES" | "LIENS";
   config?: ReportConfig;
   limit?: number;
   exportCsv?: false;
@@ -85,7 +96,7 @@ export interface ReportConfigResponse {
 export interface ReportTemplate {
   name?: string;
   description?: string;
-  reportType: string;
+  reportType: "CASES"| "LIENS";
   statusView: string;
   lienStatusIds: Array<string>;
   purchaseDateFrom: string | null;
@@ -125,7 +136,7 @@ export interface ReportsResponse {
   returned_amt: null;
   reportConfig?: ReportConfig;
   summaryTotals?: ReportTotals;
-  reportType: string;
+  reportType: "CASES"|"LIENS";
 }
 
 interface ReportConfig {
@@ -178,4 +189,13 @@ export interface ApiResponse {
   isSuccess: boolean;
   message: string;
   data: Array<Record<string, unknown>>;
+}
+export type ViewType = "CASES" | "LIENS";
+
+export interface FilterQuery {
+  reportType: ViewType;
+  limit: number;
+  keyword?: string;
+  filterField?: string;
+  lawFirmId?: string;
 }

@@ -1,5 +1,8 @@
+import { ApiResponse } from "@/types";
 import { CaseLienItem } from "../cases";
 import {
+  ColumnGroup,
+  Columns,
   ReportConfigResponse,
   ReportListResponse,
   ReportsResponse,
@@ -121,4 +124,24 @@ export function mapReportToListItem(dto: ReportConfigResponse): ReportListItem {
     updatedAt: formatDateField(dto.updatedAtUtc),
     config: dto.config,
   };
+}
+
+// grouped columns
+export function mapAllColumns(viewBy: string, dto: any[]): any[] {
+  const excludedKeys = new Set([
+    "isSuccess",
+    "message",
+    "reportType",
+    "data",
+    "defaultColumn",
+  ]);
+
+  const categories: ColumnGroup[] = Object.entries(dto)
+    .filter(([key]) => !excludedKeys.has(key))
+    .map(([key, value]) => ({
+      key,
+      value: value as Columns[],
+    }));
+
+  return categories;
 }

@@ -15,7 +15,7 @@ import { ReportListItem } from "@/lib/liens/lien-reports.mapper";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { useLienStore } from "@/stores/lien-store";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type SummaryTotals = {
   summaryTotals: ReportTotals;
@@ -37,9 +37,8 @@ export default function ReportDisplay({
   onSaved,
 }: ReportDisplayProps) {
   const [loading, setLoading] = useState(true);
-  const [cases, setCases] = useState<CaseListItem[]>(
-    (report.items as CaseListItem[]) ?? [],
-  );
+  const [cases, setCases] = useState<CaseListItem[]>([]);
+  const [columns, setColumns] = useState<any>();
   const addToast = useLienStore((s) => s.addToast);
   const viewBy = report?.reportType.toLowerCase() ?? "case"; // 'cases' | 'liens'
   report;
@@ -172,19 +171,52 @@ export default function ReportDisplay({
       addToast({ type: "error", title: "Delete Failed", description: message });
     }
   };
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 2000); // 2 seconds
 
-    return () => clearTimeout(timer);
-  }, []);
+  const fetchColumns = useCallback(async () => {
+    const colsResponse = await lienReportsService.getColumns(report.reportType);
+    const { ...columnGroups } = colsResponse;
 
-  useEffect(() => {
-    if (report.items) {
-      setCases(report.items as CaseListItem[]);
+    const excludedKeys = new Set([
+      "isSuccess",
+      "message",
+      "reportType",
+      "data",
+      "defaultColumn",
+    ]);
+
+    const groupedCols = Object.entries(columnGroups)
+      .filter(([key]) => !excludedKeys.has(key))
+      .filter(([_, value]) => Array.isArray(value))
+      .map(([key, value]) => ({
+        value,
+      }));
+    if(!report.config?.columns){
+      const cols = groupedCols
+      .flatMap((config) => config.value)
+      .map((item) => {
+        return { key: item.key, label: item.label };
+      })
+    setColumns(cols);
+    setCases(report.data ?? []);
+      
+    } else {
+    const labels = groupedCols
+      .flatMap((config) => config.value)
+      .filter((item) => report.config?.columns.includes(item.key))
+      .map((item) => {
+        return { key: item.key, label: item.label };
+      });
+
+    setColumns(labels);
+    setCases(report.data ?? []);
     }
-  }, [report.items]);
+
+    setLoading(false)
+  }, [report]);
+
+  useEffect(() => {
+    fetchColumns();
+  }, [report.data]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
@@ -204,16 +236,6 @@ export default function ReportDisplay({
           >
             Edit Template
           </button>
-
-          {/* <button onClick={onBack} className="px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            Back
-          </button>
-          <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            Export CSV
-          </button>
-          <button className="px-3 py-2 bg-primary text-white rounded-lg text-sm">
-            Save Template
-          </button> */}
         </div>
       </div>
 
@@ -243,34 +265,19 @@ export default function ReportDisplay({
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100">
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Case ID
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Plaintiff Name
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Law Firm
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Case Manager
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Accident Type
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Date of Loss
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      DOB
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                      Status
-                    </th>
+                    {columns &&
+                      columns.map((col: any) => (
+                        <th
+                          key={col.key}
+                          className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide"
+                        >
+                          {col.label}
+                        </th>
+                      ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {cases.map((c: CaseListItem, i) => (
+                  {/* {cases.map((c: CaseListItem, i) => (
                     <tr
                       key={c.id + c.caseNumber + i}
                       className={`hover:bg-gray-50/80 transition-colors cursor-pointer`}
@@ -297,6 +304,19 @@ export default function ReportDisplay({
                       <td className="px-3 py-2.5">
                         <StatusBadge status={c.status} />
                       </td>
+                    </tr>
+                  ))} */}
+                  {cases.map((c: any, index) => (
+                    <tr
+                      key={index}
+                      className="hover:bg-gray-50/80 transition-colors cursor-pointer"
+                    >
+                      {columns &&
+                        columns.map((col: any) => (
+                          <td key={col.key} className="px-3 py-2.5">
+                            {c[col.key]}
+                          </td>
+                        ))}
                     </tr>
                   ))}
                 </tbody>

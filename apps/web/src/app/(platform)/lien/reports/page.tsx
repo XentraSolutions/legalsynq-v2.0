@@ -62,6 +62,7 @@ export default function ReportsPage() {
   useEffect(() => {
     fetchReports();
   }, []);
+  useEffect(()=>{},[template])
 
   return (
     <div className="space-y-4">
