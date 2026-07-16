@@ -824,6 +824,10 @@ Rules:
 - Use days for relative windows like ""last 7 days"" and createdFromUtc/createdToUtc for explicit date ranges.
 - Use careconnect.provider.search only when the user wants providers themselves, not when they want referrals involving a provider.
 - Use careconnect.referrer.search only when the user wants referrers or law firms themselves, not when they want referrals involving them.
+- For SynqLien, use synqlien.lien.search when the user is finding liens by lien number, subject/client name, case number, status, lien type, or lifecycle terms.
+- Use synqlien.case.search when the user is finding cases by client name, case number, case status, title, or external reference.
+- Use synqlien.lien.queue.summary when the user asks for lien counts, lifecycle mix, queue totals, status mix, or date-window totals.
+- For current SynqLien detail pages, prefer synqlien.lien.lookup or synqlien.case.lookup from the contextual hint.
 - After tool results are available, either request another tool or return a final grounded answer.
 - Keep the final answer concise and explicit about uncertainty.
 
@@ -1127,6 +1131,24 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
                 "careconnect.referrer.search" => root.TryGetProperty("results", out var referrerResults)
                     ? BuildReferrerCards(referrerResults.EnumerateArray())
                     : [],
+                "synqlien.record.lookup" => root.TryGetProperty("lien", out var aliasLien)
+                    ? BuildLienCards([aliasLien])
+                    : [],
+                "synqlien.lien.lookup" => root.TryGetProperty("lien", out var lien)
+                    ? BuildLienCards([lien])
+                    : [],
+                "synqlien.lien.search" => root.TryGetProperty("results", out var lienResults)
+                    ? BuildLienCards(lienResults.EnumerateArray())
+                    : [],
+                "synqlien.lien.queue.summary" => root.TryGetProperty("recentResults", out var recentLiens)
+                    ? BuildLienCards(recentLiens.EnumerateArray())
+                    : [],
+                "synqlien.case.lookup" => root.TryGetProperty("case", out var caseItem)
+                    ? BuildCaseCards([caseItem])
+                    : [],
+                "synqlien.case.search" => root.TryGetProperty("results", out var caseResults)
+                    ? BuildCaseCards(caseResults.EnumerateArray())
+                    : [],
                 _ => [],
             };
         }
@@ -1178,6 +1200,34 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
             .Where(card => !string.IsNullOrWhiteSpace(card.Id))
             .ToList();
 
+    private static IReadOnlyList<AssistantLookupResultCard> BuildLienCards(IEnumerable<JsonElement> items)
+        => items
+            .Select(item => new AssistantLookupResultCard(
+                "lien",
+                GetString(item, "id") ?? string.Empty,
+                GetString(item, "lienNumber") ?? "Lien",
+                GetString(item, "subjectDisplayName"),
+                BuildLienDescription(item),
+                GetString(item, "status"),
+                GetString(item, "url"),
+                BuildBadges(GetString(item, "lienType"), GetString(item, "caseNumber"))))
+            .Where(card => !string.IsNullOrWhiteSpace(card.Id))
+            .ToList();
+
+    private static IReadOnlyList<AssistantLookupResultCard> BuildCaseCards(IEnumerable<JsonElement> items)
+        => items
+            .Select(item => new AssistantLookupResultCard(
+                "case",
+                GetString(item, "id") ?? string.Empty,
+                GetString(item, "caseNumber") ?? "Case",
+                GetString(item, "clientDisplayName"),
+                BuildCaseDescription(item),
+                GetString(item, "status"),
+                GetString(item, "url"),
+                BuildBadges(GetString(item, "caseType"), GetString(item, "currentMedicalStatus"), GetString(item, "lawFirm"))))
+            .Where(card => !string.IsNullOrWhiteSpace(card.Id))
+            .ToList();
+
     private static List<string> BuildFollowUpPrompts(
         string agentKey,
         string mergedContextJson,
@@ -1207,16 +1257,53 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
             prompts.Add("Show the recent referrals behind this queue summary");
         }
 
+        if (toolRuns.Any(run => run.ToolKey.Equals("synqlien.lien.search", StringComparison.OrdinalIgnoreCase)))
+        {
+            prompts.Add("Show only open liens");
+            prompts.Add("Find the case for the best match");
+            prompts.Add("Narrow these results by status or lien type");
+        }
+
+        if (toolRuns.Any(run => run.ToolKey.Equals("synqlien.case.search", StringComparison.OrdinalIgnoreCase)))
+        {
+            prompts.Add("Show liens linked to the best case match");
+            prompts.Add("Narrow these cases by status");
+        }
+
+        if (toolRuns.Any(run => run.ToolKey.Equals("synqlien.lien.queue.summary", StringComparison.OrdinalIgnoreCase)))
+        {
+            prompts.Add("Which liens need attention first?");
+            prompts.Add("Show the recent liens behind this summary");
+        }
+
         if (toolRuns.Count == 0 && agentKey.Equals(AssistantModuleKeys.CareConnectAgentKey, StringComparison.OrdinalIgnoreCase))
         {
             prompts.Add("Search referrals by client, provider, or referrer");
             prompts.Add("Summarize my referral queue");
         }
 
+        if (toolRuns.Count == 0 && agentKey.Equals(AssistantModuleKeys.LiensAgentKey, StringComparison.OrdinalIgnoreCase))
+        {
+            prompts.Add("Search liens by client, case, or status");
+            prompts.Add("Summarize my lien queue");
+        }
+
         if (toolRuns.Count == 0 && TryBuildContextualToolHint(mergedContextJson) is { ToolKey: "careconnect.referral.lookup" })
         {
             prompts.Add("Summarize this referral");
             prompts.Add("Show this referral's history");
+        }
+
+        if (toolRuns.Count == 0 && TryBuildContextualToolHint(mergedContextJson) is { ToolKey: "synqlien.lien.lookup" })
+        {
+            prompts.Add("Summarize this lien");
+            prompts.Add("Find this lien's case");
+        }
+
+        if (toolRuns.Count == 0 && TryBuildContextualToolHint(mergedContextJson) is { ToolKey: "synqlien.case.lookup" })
+        {
+            prompts.Add("Summarize this case");
+            prompts.Add("Show liens linked to this case");
         }
 
         return prompts
@@ -1244,6 +1331,29 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
 
         if (recentCases.Count == 0) return null;
         return $"Recent cases: {string.Join(", ", recentCases)}";
+    }
+
+    private static string? BuildLienDescription(JsonElement item)
+    {
+        var parts = new[]
+        {
+            GetString(item, "caseNumber") is { } caseNumber ? $"Case {caseNumber}" : null,
+            GetString(item, "lienType"),
+            GetString(item, "originalAmount") is { } originalAmount ? $"Original {originalAmount}" : null,
+        }.Where(value => !string.IsNullOrWhiteSpace(value)).ToList();
+
+        return parts.Count == 0 ? null : string.Join(" • ", parts);
+    }
+
+    private static string? BuildCaseDescription(JsonElement item)
+    {
+        var parts = new[]
+        {
+            GetString(item, "title"),
+            GetString(item, "lawFirm"),
+        }.Where(value => !string.IsNullOrWhiteSpace(value)).ToList();
+
+        return parts.Count == 0 ? null : string.Join(" • ", parts);
     }
 
     private static IReadOnlyList<string> BuildBadges(params string?[] values)
@@ -1284,12 +1394,29 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
 
     private static ContextualToolHint? TryBuildContextualToolHint(string mergedContextJson)
     {
-        var entityId = TryGetContextEntityId(mergedContextJson);
-        if (entityId.HasValue)
+        var entity = TryGetContextEntity(mergedContextJson);
+        if (entity is not null)
         {
-            return new ContextualToolHint(
-                "careconnect.referral.lookup",
-                JsonSerializer.Serialize(new { referralId = entityId.Value }, JsonOptions));
+            if (entity.Kind.Equals("referral", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ContextualToolHint(
+                    "careconnect.referral.lookup",
+                    JsonSerializer.Serialize(new { referralId = entity.Id }, JsonOptions));
+            }
+
+            if (entity.Kind.Equals("lien", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ContextualToolHint(
+                    "synqlien.lien.lookup",
+                    JsonSerializer.Serialize(new { lienId = entity.Id }, JsonOptions));
+            }
+
+            if (entity.Kind.Equals("case", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ContextualToolHint(
+                    "synqlien.case.lookup",
+                    JsonSerializer.Serialize(new { caseId = entity.Id }, JsonOptions));
+            }
         }
 
         var path = TryGetContextPath(mergedContextJson);
@@ -1299,6 +1426,24 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
             return new ContextualToolHint(
                 "careconnect.referral.lookup",
                 JsonSerializer.Serialize(new { referralId }, JsonOptions));
+        }
+
+        if (!string.IsNullOrWhiteSpace(path) &&
+            TryParseSynqLienPath(path, out var lienId, out var caseId))
+        {
+            if (lienId.HasValue)
+            {
+                return new ContextualToolHint(
+                    "synqlien.lien.lookup",
+                    JsonSerializer.Serialize(new { lienId = lienId.Value }, JsonOptions));
+            }
+
+            if (caseId.HasValue)
+            {
+                return new ContextualToolHint(
+                    "synqlien.case.lookup",
+                    JsonSerializer.Serialize(new { caseId = caseId.Value }, JsonOptions));
+            }
         }
 
         return null;
@@ -1326,7 +1471,7 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
         }
     }
 
-    private static Guid? TryGetContextEntityId(string mergedContextJson)
+    private static ContextEntity? TryGetContextEntity(string mergedContextJson)
     {
         if (string.IsNullOrWhiteSpace(mergedContextJson)) return null;
 
@@ -1347,9 +1492,12 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
                 ? idElement.GetString()
                 : null;
 
-            return kind?.Equals("referral", StringComparison.OrdinalIgnoreCase) == true &&
-                   Guid.TryParse(id, out var parsed)
-                ? parsed
+            return Guid.TryParse(id, out var parsed) &&
+                   !string.IsNullOrWhiteSpace(kind) &&
+                   (kind.Equals("referral", StringComparison.OrdinalIgnoreCase) ||
+                    kind.Equals("lien", StringComparison.OrdinalIgnoreCase) ||
+                    kind.Equals("case", StringComparison.OrdinalIgnoreCase))
+                ? new ContextEntity(kind, parsed)
                 : null;
         }
         catch (JsonException)
@@ -1369,6 +1517,45 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
                referralId != Guid.Empty;
     }
 
+    private static bool TryParseSynqLienPath(string path, out Guid? lienId, out Guid? caseId)
+    {
+        lienId = null;
+        caseId = null;
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length < 3 ||
+            !segments[0].Equals("lien", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (segments[1].Equals("liens", StringComparison.OrdinalIgnoreCase) &&
+            Guid.TryParse(segments[2], out var parsedLienId) &&
+            parsedLienId != Guid.Empty)
+        {
+            lienId = parsedLienId;
+            return true;
+        }
+
+        if (segments[1].Equals("cases", StringComparison.OrdinalIgnoreCase) &&
+            Guid.TryParse(segments[2], out var parsedCaseId) &&
+            parsedCaseId != Guid.Empty)
+        {
+            caseId = parsedCaseId;
+
+            if (segments.Length >= 5 &&
+                segments[3].Equals("liens", StringComparison.OrdinalIgnoreCase) &&
+                Guid.TryParse(segments[4], out parsedLienId) &&
+                parsedLienId != Guid.Empty)
+            {
+                lienId = parsedLienId;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
     private sealed record ProviderTextResult(
         string Text,
         string? ProviderResponseId,
@@ -1386,6 +1573,10 @@ You are replying directly to the user in Xenia's read-only assistant runtime.
     private sealed record ContextualToolHint(
         string ToolKey,
         string InputJson);
+
+    private sealed record ContextEntity(
+        string Kind,
+        Guid Id);
 
     private sealed record AssistantToolRun(
         string ToolKey,

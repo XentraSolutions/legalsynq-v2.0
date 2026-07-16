@@ -2,7 +2,7 @@
 
 Medical lien lifecycle management — creation, marketplace listing, offer/purchase workflow, and servicing.
 
-**Port:** 5002 (API) + Flow service at 5015 (workflow engine)
+**Port:** 5009 (API) + Flow service at 5015 (workflow engine)
 
 ## Responsibilities
 
@@ -19,7 +19,7 @@ Medical lien lifecycle management — creation, marketplace listing, offer/purch
 ## Layer Structure
 
 ```
-Liens.Api/            Endpoints, middleware, Program.cs (port 5002)
+Liens.Api/            Endpoints, middleware, Program.cs (port 5009)
 Liens.Application/    Interfaces, DTOs, services
 Liens.Domain/         Lien, LienOffer, Case, ServicingItem, BillOfSale
 Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
@@ -38,6 +38,23 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `GET` | `/api/liens/portfolio` | Buyer/holder portfolio |
 | `GET` | `/api/liens/cases` | Case list |
 | `GET` | `/api/liens/cases/{id}` | Case detail |
+
+## Assistant Tool Endpoints
+
+SynqLien exposes read-only assistant tool endpoints for Xenia under `/api/assistant-tools`. These endpoints require a
+bearer token, SynqLien product access, and the matching read permission; Xenia forwards the caller's token so Liens
+remains the authorization boundary. Lien lookups/searches accept broad lien read or scoped seller/buyer/holder read
+permissions and apply visibility filters before returning results.
+
+| Method | Path | Permission | Description |
+|---|---|---|---|
+| `GET` | `/api/assistant-tools/liens/search` | Lien read, read-own, browse, or read-held | Search visible liens by subject, case number, status/status group, type, and created date window |
+| `GET` | `/api/assistant-tools/liens/queue-summary` | Lien read, read-own, browse, or read-held | Return visible lien queue totals, status counts, KPI windows, and recent liens |
+| `GET` | `/api/assistant-tools/liens/{id}` | Lien read, read-own, browse, or read-held | Lookup one visible lien by id |
+| `GET` | `/api/assistant-tools/liens/by-number/{lienNumber}` | Lien read, read-own, browse, or read-held | Lookup one visible lien by lien number |
+| `GET` | `/api/assistant-tools/cases/search` | `SYNQ_LIENS.case:read` | Search cases by client, case number, and status |
+| `GET` | `/api/assistant-tools/cases/{id}` | `SYNQ_LIENS.case:read` | Lookup one case by id with linked liens |
+| `GET` | `/api/assistant-tools/cases/by-number/{caseNumber}` | `SYNQ_LIENS.case:read` | Lookup one case by case number with linked liens |
 
 ## Product Roles
 

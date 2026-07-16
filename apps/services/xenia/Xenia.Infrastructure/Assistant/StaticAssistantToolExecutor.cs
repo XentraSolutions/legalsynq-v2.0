@@ -13,7 +13,7 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
     {
         "a", "an", "and", "at", "by", "case", "cases", "client", "clients",
         "count", "counts", "find", "for", "from", "how", "kpi", "kpis",
-        "last", "latest", "law", "look", "lookup", "many", "me", "metric",
+        "last", "latest", "law", "lien", "liens", "look", "lookup", "many", "me", "metric",
         "metrics", "number", "numbers", "of", "patient", "patients",
         "provider", "providers", "queue", "recent", "recently", "record",
         "records", "referral", "referrals", "referrer", "referrers", "search",
@@ -23,15 +23,18 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
 
     private readonly IAssistantToolRegistry _registry;
     private readonly ICareConnectAssistantSource _careConnect;
+    private readonly ISynqLienAssistantSource _synqLien;
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     public StaticAssistantToolExecutor(
         IAssistantToolRegistry registry,
         ICareConnectAssistantSource careConnect,
+        ISynqLienAssistantSource synqLien,
         IHttpContextAccessor httpContextAccessor)
     {
         _registry = registry;
         _careConnect = careConnect;
+        _synqLien = synqLien;
         _httpContextAccessor = httpContextAccessor;
     }
 
@@ -98,6 +101,22 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
 
         if (request.ToolKey.Equals("careconnect.referral.queue.summary", StringComparison.OrdinalIgnoreCase))
             return await ExecuteCareConnectQueueSummaryAsync(tool, request, ct);
+
+        if (request.ToolKey.Equals("synqlien.record.lookup", StringComparison.OrdinalIgnoreCase) ||
+            request.ToolKey.Equals("synqlien.lien.lookup", StringComparison.OrdinalIgnoreCase))
+            return await ExecuteSynqLienLienLookupAsync(tool, request, ct);
+
+        if (request.ToolKey.Equals("synqlien.lien.search", StringComparison.OrdinalIgnoreCase))
+            return await ExecuteSynqLienLienSearchAsync(tool, request, ct);
+
+        if (request.ToolKey.Equals("synqlien.lien.queue.summary", StringComparison.OrdinalIgnoreCase))
+            return await ExecuteSynqLienQueueSummaryAsync(tool, request, ct);
+
+        if (request.ToolKey.Equals("synqlien.case.lookup", StringComparison.OrdinalIgnoreCase))
+            return await ExecuteSynqLienCaseLookupAsync(tool, request, ct);
+
+        if (request.ToolKey.Equals("synqlien.case.search", StringComparison.OrdinalIgnoreCase))
+            return await ExecuteSynqLienCaseSearchAsync(tool, request, ct);
 
         return new AssistantToolExecutionResultDto(
             false,
@@ -566,6 +585,448 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 .ToList()));
     }
 
+    private async Task<AssistantToolExecutionResultDto> ExecuteSynqLienLienLookupAsync(
+        AssistantToolDefinitionDto tool,
+        AssistantToolExecutionRequestDto request,
+        CancellationToken ct)
+    {
+        var recordId = TryGetString(request.InputJson, "recordId");
+        var lienId = TryGetGuid(request.InputJson, "lienId") ??
+                     (Guid.TryParse(recordId, out var parsedRecordId) ? parsedRecordId : null);
+        var lienNumber = TryGetString(request.InputJson, "lienNumber") ??
+                         (lienId.HasValue ? null : recordId);
+
+        if ((lienId is null || lienId == Guid.Empty) && string.IsNullOrWhiteSpace(lienNumber))
+        {
+            return new AssistantToolExecutionResultDto(
+                false,
+                "invalid_input",
+                "{}",
+                "The SynqLien lien id or lien number is missing or invalid.",
+                2,
+                []);
+        }
+
+        var lookup = await _synqLien.LookupLienAsync(new SynqLienLienLookupRequest(lienId, lienNumber), ct);
+        if (!lookup.Succeeded || lookup.Lien is null)
+        {
+            return new AssistantToolExecutionResultDto(
+                false,
+                lookup.Status,
+                "{}",
+                lookup.SafeError ?? "The SynqLien lien lookup failed.",
+                2,
+                []);
+        }
+
+        var lien = lookup.Lien;
+        var outputJson = JsonSerializer.Serialize(new
+        {
+            tool = tool.ToolKey,
+            status = "available",
+            lien = new
+            {
+                type = "lien",
+                id = lien.LienId,
+                lienNumber = lien.LienNumber,
+                status = lien.Status,
+                lienType = lien.LienType,
+                subjectDisplayName = lien.SubjectDisplayName,
+                caseId = lien.CaseId,
+                caseNumber = lien.CaseNumber,
+                caseTitle = lien.CaseTitle,
+                originalAmount = lien.OriginalAmount,
+                currentBalance = lien.CurrentBalance,
+                offerPrice = lien.OfferPrice,
+                purchasePrice = lien.PurchasePrice,
+                payoffAmount = lien.PayoffAmount,
+                jurisdiction = lien.Jurisdiction,
+                isConfidential = lien.IsConfidential,
+                createdAtUtc = lien.CreatedAtUtc,
+                updatedAtUtc = lien.UpdatedAtUtc,
+                url = BuildLienUrl(lien.LienId),
+            },
+            note = lookup.SafeError,
+        }, JsonOptions);
+
+        return Trim(tool, new AssistantToolExecutionResultDto(
+            true,
+            lookup.Status,
+            outputJson,
+            lookup.SafeError,
+            outputJson.Length,
+            [
+                new AssistantToolCitationDto(
+                    "synqlien.lien",
+                    lien.LienId.ToString(),
+                    $"SynqLien lien {lien.LienNumber}",
+                    BuildLienUrl(lien.LienId))
+            ]));
+    }
+
+    private async Task<AssistantToolExecutionResultDto> ExecuteSynqLienLienSearchAsync(
+        AssistantToolDefinitionDto tool,
+        AssistantToolExecutionRequestDto request,
+        CancellationToken ct)
+    {
+        var subjectName = TryGetString(request.InputJson, "subjectName")
+            ?? TryGetString(request.InputJson, "clientName")
+            ?? TryGetString(request.InputJson, "patientName");
+        var caseNumber = TryGetString(request.InputJson, "caseNumber");
+        var statusGroup = NormalizeSynqLienStatusGroup(TryGetString(request.InputJson, "statusGroup"));
+        var status = statusGroup is null
+            ? NormalizeSynqLienStatus(TryGetString(request.InputJson, "status"))
+            : null;
+        var lienType = NormalizeSynqLienType(TryGetString(request.InputJson, "lienType"));
+        var searchText = NormalizeSearchText(
+            TryGetString(request.InputJson, "searchText"),
+            subjectName,
+            caseNumber,
+            status,
+            statusGroup,
+            lienType);
+        var top = Math.Clamp(TryGetInt(request.InputJson, "top") ?? 8, 1, 15);
+
+        var outcome = await _synqLien.SearchLiensAsync(new SynqLienLienSearchRequest(
+            searchText,
+            subjectName,
+            caseNumber,
+            status,
+            statusGroup,
+            lienType,
+            TryGetDateTime(request.InputJson, "createdFromUtc"),
+            TryGetDateTime(request.InputJson, "createdToUtc"),
+            top), ct);
+
+        if (!outcome.Succeeded)
+        {
+            return new AssistantToolExecutionResultDto(
+                false,
+                outcome.Status,
+                "{}",
+                outcome.SafeError ?? "The SynqLien lien search failed.",
+                2,
+                []);
+        }
+
+        var outputJson = JsonSerializer.Serialize(new
+        {
+            tool = tool.ToolKey,
+            status = outcome.Liens.Count == 0 ? "empty" : "available",
+            totalCount = outcome.TotalCount,
+            filters = new
+            {
+                searchText,
+                subjectName,
+                caseNumber,
+                status,
+                statusGroup,
+                lienType,
+            },
+            results = outcome.Liens.Select(lien => new
+            {
+                type = "lien",
+                id = lien.LienId,
+                lienNumber = lien.LienNumber,
+                status = lien.Status,
+                lienType = lien.LienType,
+                subjectDisplayName = lien.SubjectDisplayName,
+                caseId = lien.CaseId,
+                caseNumber = lien.CaseNumber,
+                originalAmount = lien.OriginalAmount,
+                currentBalance = lien.CurrentBalance,
+                createdAtUtc = lien.CreatedAtUtc,
+                updatedAtUtc = lien.UpdatedAtUtc,
+                url = BuildLienUrl(lien.LienId),
+            }),
+        }, JsonOptions);
+
+        return Trim(tool, new AssistantToolExecutionResultDto(
+            true,
+            outcome.Status,
+            outputJson,
+            outcome.SafeError,
+            outputJson.Length,
+            outcome.Liens.Select(lien => new AssistantToolCitationDto(
+                "synqlien.lien",
+                lien.LienId.ToString(),
+                $"SynqLien lien {lien.LienNumber}",
+                BuildLienUrl(lien.LienId)))
+                .ToList()));
+    }
+
+    private async Task<AssistantToolExecutionResultDto> ExecuteSynqLienQueueSummaryAsync(
+        AssistantToolDefinitionDto tool,
+        AssistantToolExecutionRequestDto request,
+        CancellationToken ct)
+    {
+        var subjectName = TryGetString(request.InputJson, "subjectName")
+            ?? TryGetString(request.InputJson, "clientName")
+            ?? TryGetString(request.InputJson, "patientName");
+        var caseNumber = TryGetString(request.InputJson, "caseNumber");
+        var statusGroup = NormalizeSynqLienStatusGroup(TryGetString(request.InputJson, "statusGroup"));
+        var status = statusGroup is null
+            ? NormalizeSynqLienStatus(TryGetString(request.InputJson, "status"))
+            : null;
+        var lienType = NormalizeSynqLienType(TryGetString(request.InputJson, "lienType"));
+        var days = TryGetInt(request.InputJson, "days");
+        var createdFromUtc = TryGetDateTime(request.InputJson, "createdFromUtc");
+        var createdToUtc = TryGetDateTime(request.InputJson, "createdToUtc");
+        var searchText = NormalizeSearchText(
+            TryGetString(request.InputJson, "searchText"),
+            subjectName,
+            caseNumber,
+            status,
+            statusGroup,
+            lienType);
+        var recentTop = Math.Clamp(TryGetInt(request.InputJson, "recentTop") ?? 5, 1, 10);
+
+        var outcome = await _synqLien.GetLienQueueSummaryAsync(new SynqLienQueueSummaryRequest(
+            searchText,
+            subjectName,
+            caseNumber,
+            status,
+            statusGroup,
+            lienType,
+            days,
+            createdFromUtc,
+            createdToUtc,
+            recentTop), ct);
+
+        if (!outcome.Succeeded)
+        {
+            return new AssistantToolExecutionResultDto(
+                false,
+                outcome.Status,
+                "{}",
+                outcome.SafeError ?? "The SynqLien lien queue summary failed.",
+                2,
+                []);
+        }
+
+        var outputJson = JsonSerializer.Serialize(new
+        {
+            tool = tool.ToolKey,
+            status = "available",
+            filters = new
+            {
+                searchText,
+                subjectName,
+                caseNumber,
+                status = outcome.AppliedStatus ?? status,
+                statusGroup = outcome.AppliedStatusGroup ?? statusGroup,
+                lienType,
+                days,
+                createdFromUtc = outcome.WindowFromUtc ?? createdFromUtc,
+                createdToUtc = outcome.WindowToUtc ?? createdToUtc,
+            },
+            summary = new
+            {
+                totalVisibleLiens = outcome.TotalVisibleLiens,
+                windowLienCount = outcome.WindowLienCount,
+                matchingLienCount = outcome.MatchingLienCount,
+                draftLienCount = outcome.DraftLienCount,
+                openLienCount = outcome.OpenLienCount,
+                closedLienCount = outcome.ClosedLienCount,
+                windowFromUtc = outcome.WindowFromUtc,
+                windowToUtc = outcome.WindowToUtc,
+            },
+            statusCounts = outcome.StatusCounts.Select(item => new
+            {
+                status = item.Status,
+                count = item.Count,
+            }),
+            recentResults = outcome.RecentLiens.Select(lien => new
+            {
+                type = "lien",
+                id = lien.LienId,
+                lienNumber = lien.LienNumber,
+                status = lien.Status,
+                lienType = lien.LienType,
+                subjectDisplayName = lien.SubjectDisplayName,
+                caseNumber = lien.CaseNumber,
+                updatedAtUtc = lien.UpdatedAtUtc,
+                url = BuildLienUrl(lien.LienId),
+            }),
+        }, JsonOptions);
+
+        return Trim(tool, new AssistantToolExecutionResultDto(
+            true,
+            outcome.Status,
+            outputJson,
+            outcome.SafeError,
+            outputJson.Length,
+            outcome.RecentLiens.Select(lien => new AssistantToolCitationDto(
+                "synqlien.lien",
+                lien.LienId.ToString(),
+                $"SynqLien lien {lien.LienNumber}",
+                BuildLienUrl(lien.LienId)))
+                .ToList()));
+    }
+
+    private async Task<AssistantToolExecutionResultDto> ExecuteSynqLienCaseLookupAsync(
+        AssistantToolDefinitionDto tool,
+        AssistantToolExecutionRequestDto request,
+        CancellationToken ct)
+    {
+        var caseId = TryGetGuid(request.InputJson, "caseId");
+        var caseNumber = TryGetString(request.InputJson, "caseNumber");
+        if ((caseId is null || caseId == Guid.Empty) && string.IsNullOrWhiteSpace(caseNumber))
+        {
+            return new AssistantToolExecutionResultDto(
+                false,
+                "invalid_input",
+                "{}",
+                "The SynqLien case id or case number is missing or invalid.",
+                2,
+                []);
+        }
+
+        var lookup = await _synqLien.LookupCaseAsync(new SynqLienCaseLookupRequest(
+            caseId,
+            caseNumber,
+            Math.Clamp(TryGetInt(request.InputJson, "liensTop") ?? 8, 1, 15)), ct);
+
+        if (!lookup.Succeeded || lookup.Case is null)
+        {
+            return new AssistantToolExecutionResultDto(
+                false,
+                lookup.Status,
+                "{}",
+                lookup.SafeError ?? "The SynqLien case lookup failed.",
+                2,
+                []);
+        }
+
+        var item = lookup.Case;
+        var outputJson = JsonSerializer.Serialize(new
+        {
+            tool = tool.ToolKey,
+            status = "available",
+            @case = new
+            {
+                type = "case",
+                id = item.CaseId,
+                caseNumber = item.CaseNumber,
+                clientDisplayName = item.ClientDisplayName,
+                status = item.Status,
+                title = item.Title,
+                caseType = item.CaseType,
+                currentMedicalStatus = item.CurrentMedicalStatus,
+                lawFirm = item.LawFirm,
+                caseManager = item.CaseManager,
+                demandAmount = item.DemandAmount,
+                settlementAmount = item.SettlementAmount,
+                createdAtUtc = item.CreatedAtUtc,
+                updatedAtUtc = item.UpdatedAtUtc,
+                url = BuildCaseUrl(item.CaseId),
+            },
+            liens = item.Liens.Select(lien => new
+            {
+                type = "lien",
+                id = lien.LienId,
+                lienNumber = lien.LienNumber,
+                status = lien.Status,
+                lienType = lien.LienType,
+                subjectDisplayName = lien.SubjectDisplayName,
+                originalAmount = lien.OriginalAmount,
+                currentBalance = lien.CurrentBalance,
+                url = BuildLienUrl(lien.LienId),
+            }),
+        }, JsonOptions);
+
+        return Trim(tool, new AssistantToolExecutionResultDto(
+            true,
+            lookup.Status,
+            outputJson,
+            lookup.SafeError,
+            outputJson.Length,
+            [
+                new AssistantToolCitationDto(
+                    "synqlien.case",
+                    item.CaseId.ToString(),
+                    $"SynqLien case {item.CaseNumber}",
+                    BuildCaseUrl(item.CaseId))
+            ]));
+    }
+
+    private async Task<AssistantToolExecutionResultDto> ExecuteSynqLienCaseSearchAsync(
+        AssistantToolDefinitionDto tool,
+        AssistantToolExecutionRequestDto request,
+        CancellationToken ct)
+    {
+        var clientName = TryGetString(request.InputJson, "clientName")
+            ?? TryGetString(request.InputJson, "patientName");
+        var caseNumber = TryGetString(request.InputJson, "caseNumber");
+        var status = NormalizeSynqLienCaseStatus(TryGetString(request.InputJson, "status"));
+        var searchText = NormalizeSearchText(
+            TryGetString(request.InputJson, "searchText"),
+            clientName,
+            caseNumber,
+            status);
+        var top = Math.Clamp(TryGetInt(request.InputJson, "top") ?? 8, 1, 15);
+
+        var outcome = await _synqLien.SearchCasesAsync(new SynqLienCaseSearchRequest(
+            searchText,
+            clientName,
+            caseNumber,
+            status,
+            top), ct);
+
+        if (!outcome.Succeeded)
+        {
+            return new AssistantToolExecutionResultDto(
+                false,
+                outcome.Status,
+                "{}",
+                outcome.SafeError ?? "The SynqLien case search failed.",
+                2,
+                []);
+        }
+
+        var outputJson = JsonSerializer.Serialize(new
+        {
+            tool = tool.ToolKey,
+            status = outcome.Cases.Count == 0 ? "empty" : "available",
+            totalCount = outcome.TotalCount,
+            filters = new
+            {
+                searchText,
+                clientName,
+                caseNumber,
+                status,
+            },
+            results = outcome.Cases.Select(item => new
+            {
+                type = "case",
+                id = item.CaseId,
+                caseNumber = item.CaseNumber,
+                clientDisplayName = item.ClientDisplayName,
+                status = item.Status,
+                title = item.Title,
+                caseType = item.CaseType,
+                currentMedicalStatus = item.CurrentMedicalStatus,
+                lawFirm = item.LawFirm,
+                createdAtUtc = item.CreatedAtUtc,
+                updatedAtUtc = item.UpdatedAtUtc,
+                url = BuildCaseUrl(item.CaseId),
+            }),
+        }, JsonOptions);
+
+        return Trim(tool, new AssistantToolExecutionResultDto(
+            true,
+            outcome.Status,
+            outputJson,
+            outcome.SafeError,
+            outputJson.Length,
+            outcome.Cases.Select(item => new AssistantToolCitationDto(
+                "synqlien.case",
+                item.CaseId.ToString(),
+                $"SynqLien case {item.CaseNumber}",
+                BuildCaseUrl(item.CaseId)))
+                .ToList()));
+    }
+
     private static bool HasAnyRequiredPermission(ClaimsPrincipal principal, IReadOnlyList<string> permissions)
     {
         if (permissions.Count == 0) return true;
@@ -793,6 +1254,87 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
         };
     }
 
+    private static string? NormalizeSynqLienStatus(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = Regex.Replace(value.Trim(), "[\\s_-]+", string.Empty)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "DRAFT" => "Draft",
+            "OFFERED" => "Offered",
+            "UNDERREVIEW" => "UnderReview",
+            "SOLD" => "Sold",
+            "ACTIVE" => "Active",
+            "SETTLED" => "Settled",
+            "WITHDRAWN" => "Withdrawn",
+            "CANCELLED" or "CANCELED" => "Cancelled",
+            "DISPUTED" => "Disputed",
+            _ => value.Trim(),
+        };
+    }
+
+    private static string? NormalizeSynqLienCaseStatus(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = Regex.Replace(value.Trim(), "[\\s_-]+", string.Empty)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "PREDEMAND" => "PreDemand",
+            "DEMANDSENT" => "DemandSent",
+            "INNEGOTIATION" => "InNegotiation",
+            "CASESETTLED" or "SETTLED" => "CaseSettled",
+            "CLOSED" => "Closed",
+            _ => value.Trim(),
+        };
+    }
+
+    private static string? NormalizeSynqLienStatusGroup(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = Regex.Replace(value.Trim(), "[\\s_-]+", string.Empty)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "DRAFT" or "NEW" or "INTAKE" => "draft",
+            "OPEN" or "ACTIVE" => "open",
+            "CLOSED" or "TERMINAL" or "RESOLVED" => "closed",
+            "MARKETPLACE" or "SALE" or "SELLING" => "marketplace",
+            "SERVICING" or "SERVICE" => "servicing",
+            _ => null,
+        };
+    }
+
+    private static string? NormalizeSynqLienType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = Regex.Replace(value.Trim(), "[\\s_-]+", string.Empty)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "MEDICAL" or "MEDICALLIEN" => "MedicalLien",
+            "ATTORNEY" or "ATTORNEYLIEN" => "AttorneyLien",
+            "SETTLEMENTADVANCE" or "ADVANCE" => "SettlementAdvance",
+            "WORKERSCOMP" or "WORKERSCOMPLIEN" => "WorkersCompLien",
+            "PROPERTY" or "PROPERTYLIEN" => "PropertyLien",
+            "OTHER" => "Other",
+            _ => value.Trim(),
+        };
+    }
+
     private static AssistantToolExecutionResultDto Trim(
         AssistantToolDefinitionDto tool,
         AssistantToolExecutionResultDto result)
@@ -816,4 +1358,10 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
 
     private static string BuildReferrerSearchUrl(string referrerName)
         => $"/careconnect/referrals?search={Uri.EscapeDataString(referrerName)}";
+
+    private static string BuildLienUrl(Guid lienId)
+        => $"/lien/liens/{lienId}";
+
+    private static string BuildCaseUrl(Guid caseId)
+        => $"/lien/cases/{caseId}";
 }

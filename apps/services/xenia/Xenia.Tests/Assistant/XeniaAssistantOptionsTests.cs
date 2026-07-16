@@ -23,4 +23,13 @@ public sealed class XeniaAssistantOptionsTests
         Assert.Equal(20, options.CareConnect.TimeoutSeconds);
         Assert.Equal(5, options.CareConnect.MaxHistoryItems);
     }
+
+    [Fact]
+    public void SynqLienOptions_DefaultToLocalServiceBaseUrl()
+    {
+        var options = new XeniaAssistantOptions();
+
+        Assert.Equal("http://127.0.0.1:5009", options.SynqLien.BaseUrl);
+        Assert.Equal(20, options.SynqLien.TimeoutSeconds);
+    }
 }
