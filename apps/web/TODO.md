@@ -1,4 +1,4 @@
-[] - case and lien staus default preselect, first option, or maybe whitelist known initial values, case = predemand, lien = open
+[x] - case and lien staus default preselect, first option, or maybe whitelist known initial values, case = predemand, lien = open
 [] - servicing - payment history table - defered need reference image,
 [x] - case's liens delete
 [x] - case's liens incomplete/missing columns values

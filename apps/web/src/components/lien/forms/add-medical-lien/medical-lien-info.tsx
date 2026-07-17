@@ -38,7 +38,19 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
     lookup?.LienStatus.map((c) => {
       return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
-  useEffect(() => {}, []);
+
+  // Default new liens to "Open" status once the status list is available
+  useEffect(() => {
+    if (statusList.length > 0 && !form.status && !data) {
+      const openStatus = statusList.find(
+        (o) =>
+          o.label.toLowerCase() === "open" || o.value.toLowerCase() === "open"
+      );
+      if (openStatus) {
+        setForm((prev: typeof form) => ({ ...prev, status: openStatus.value }));
+      }
+    }
+  }, [statusList, data]);
 
   useEffect(() => {
     validateForm();
