@@ -8,4 +8,4 @@
 [] - revisit liens filter and sorting - defered , still waiting for API
 [] - revisit liens table on case after filter and sorting update , maybe improve , unify the API used, we wont need preloading if we have a better API
 [] - case management , filter sorting , liens already mimic the legacy exactly assuming the API is in place, now case should also need to sync.
-[] - dates have inconsistent formatting when displayed, lets use the same format, create a datedisplay component so we can change it in one place, and use it everywhere, also make sure to use the same timezone, UTC or local, and be consistent.
+[] - dates have inconsistent formatting when displayed, lets use the same format, create a datedisplay component so we can change it in one place, and use it everywhere, also make sure to use the same timezone, UTC or local, and be consistent. needs investigation if the tenant timezone is something we can apply since its available.
