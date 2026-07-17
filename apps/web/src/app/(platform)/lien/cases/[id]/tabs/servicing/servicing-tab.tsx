@@ -47,7 +47,7 @@ export function ServicingTab({
   liensLoadedAt: Date | null;
   onRefreshLiens: () => void;
   isLiensFetching: boolean;
-  payments: import("@/lib/settlement/settlement.types").CasePayment[];
+  payments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
   paymentsLoadedAt: Date | null;
   onRefreshPayments: () => void;
   isPaymentsFetching: boolean;

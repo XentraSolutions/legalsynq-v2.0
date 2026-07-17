@@ -20,7 +20,7 @@ import {
   type CaseLienItemMetadata,
 } from "@/lib/cases";
 import { settlementService } from "@/lib/settlement";
-import type { CasePayment } from "@/lib/settlement/settlement.types";
+import type { CasePayment, LegacyCasePayment } from "@/lib/settlement/settlement.types";
 import { contactsService } from "@/lib/contacts";
 import { lookupService } from "@/lib/lookup";
 
@@ -36,6 +36,21 @@ export function useLienPaymentsByCase(caseId: string) {
       settlementService
         .getLienPaymentsByCase(caseId)
         .catch(() => [] as CasePayment[]),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export const SETTLEMENT_PAYMENT_DETAILS_QUERY_KEY = (caseId: string) =>
+  ["settlement-payment-details", caseId] as const;
+
+export function useSettlementPaymentDetails(caseId: string) {
+  return useQuery({
+    queryKey: SETTLEMENT_PAYMENT_DETAILS_QUERY_KEY(caseId),
+    queryFn: () =>
+      settlementService
+        .getSettlementPaymentDetails(caseId)
+        .catch(() => [] as LegacyCasePayment[]),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });

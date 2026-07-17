@@ -15,7 +15,7 @@ export function PaymentHistoryWidget({
   onRefreshPayments,
   isPaymentsFetching,
 }: {
-  payments: import("@/lib/settlement/settlement.types").CasePayment[];
+  payments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
   liens: (CaseLienItem & CaseLienItemMetadata)[];
   paymentsLoadedAt: Date | null;
   onRefreshPayments: () => void;
@@ -48,12 +48,12 @@ export function PaymentHistoryWidget({
   };
 
   const paymentColumns: ColumnDef<
-    import("@/lib/settlement/settlement.types").CasePayment,
+    import("@/lib/settlement/settlement.types").LegacyCasePayment,
     any
   >[] = [
     {
       id: "paymentNumber",
-      header: "Payment #",
+      header: "Payment ID",
       cell: ({ row }) => (
         <span className="text-xs font-mono text-gray-500 whitespace-nowrap">
           {row.original.paymentNumber != null
@@ -65,23 +65,29 @@ export function PaymentHistoryWidget({
     {
       id: "lienId",
       header: "Lien ID",
-      cell: ({ row }) => {
-        const lien = liens.find((l) => l.id === row.original.lienId);
-        return (
-          <span className="text-xs font-mono text-primary whitespace-nowrap">
-            {lien?.lienNumber ?? row.original.lienId ?? "—"}
-          </span>
-        );
-      },
+      cell: ({ row }) => (
+        <span className="text-xs font-mono text-primary whitespace-nowrap">
+          {row.original.lienCode ?? row.original.lienId ?? "—"}
+        </span>
+      ),
     },
     {
-      id: "amount",
-      header: "Amount",
+      id: "lienStatus",
+      header: "Lien Status",
+      cell: ({ row }) => (
+        <span className="text-xs text-gray-600 whitespace-nowrap">
+          {row.original.lienStatus ?? "—"}
+        </span>
+      ),
+    },
+    {
+      id: "amountToSettle",
+      header: "Amount to Settle",
       meta: { align: "right" },
       cell: ({ row }) => {
         const amount =
-          row.original.amount != null
-            ? parseFloat(String(row.original.amount))
+          row.original.amountToSettle != null
+            ? parseFloat(String(row.original.amountToSettle))
             : null;
         return (
           <span className="text-sm text-gray-700 font-medium tabular-nums whitespace-nowrap">
@@ -91,26 +97,15 @@ export function PaymentHistoryWidget({
       },
     },
     {
-      id: "paymentDate",
-      header: "Payment Date",
-      cell: ({ row }) => (
-        <span className="text-xs text-gray-500 whitespace-nowrap">
-          {row.original.paymentDate ?? "—"}
-        </span>
-      ),
-    },
-    {
-      id: "payee",
-      header: "Payee",
-      cell: ({ row }) => (
-        <span className="text-xs text-gray-600 whitespace-nowrap">
-          {row.original.payee ?? "—"}
-        </span>
+      id: "checkReceived",
+      header: "Check Received",
+      cell: () => (
+        <span className="text-xs text-gray-400 whitespace-nowrap">—</span>
       ),
     },
     {
       id: "checkNumber",
-      header: "Check #",
+      header: "Check Number",
       cell: ({ row }) => (
         <span className="text-xs font-mono text-gray-500 whitespace-nowrap">
           {row.original.checkNumber ?? "—"}
@@ -118,11 +113,29 @@ export function PaymentHistoryWidget({
       ),
     },
     {
-      id: "note",
-      header: "Note",
+      id: "type",
+      header: "Settlement Type",
       cell: ({ row }) => (
         <span className="text-xs text-gray-600 whitespace-nowrap">
-          {row.original.note ?? "—"}
+          {row.original.type ?? "—"}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Settlement Status",
+      cell: ({ row }) => (
+        <span className="text-xs text-gray-600 whitespace-nowrap">
+          {row.original.status ?? "—"}
+        </span>
+      ),
+    },
+    {
+      id: "date",
+      header: "Date",
+      cell: ({ row }) => (
+        <span className="text-xs text-gray-500 whitespace-nowrap">
+          {row.original.date ?? "—"}
         </span>
       ),
     },
