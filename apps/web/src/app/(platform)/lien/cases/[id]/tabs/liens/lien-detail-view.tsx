@@ -175,13 +175,13 @@ export function LienDetailView({
       if (err instanceof ApiError) {
         addToast({
           type: "error",
-          title: "Update Failed",
+          title: "Facility Failed",
           description: err.message,
         });
       } else {
         addToast({
           type: "error",
-          title: "Update Failed",
+          title: "Facility Failed",
           description: "An unexpected error occurred",
         });
       }
@@ -190,6 +190,7 @@ export function LienDetailView({
 
   const saveMedicalPayee = async (payload: CreateMedicalPaymentDto) => {
     try {
+      if (!lienId) return;
       const request: CreateMedicalPaymentDto = {
         id: null,
         liensId: lienId,
@@ -197,29 +198,24 @@ export function LienDetailView({
         outboundCheckNumber: payload.outboundCheckNumber,
       };
       await casesService.createMedicalPaymentLiens(request);
-      addToast({
-        type: "success",
-        title: "Payee Updated",
-        description: `Payee has been updated.`,
-      });
+
       setErrors({});
     } catch (err) {
       if (err instanceof ApiError) {
         addToast({
           type: "error",
-          title: "Update Failed",
+          title: "Payee Failed",
           description: err.message,
         });
       } else {
         addToast({
           type: "error",
-          title: "Update Failed",
+          title: "Update Payee Failed",
           description: "An unexpected error occurred",
         });
       }
     }
   };
-
   const updateMedicalCodeLiens = async (payload: CreateMedicalCodeLiensDto) => {
     try {
       const request: CreateMedicalCodeLiensDto = {

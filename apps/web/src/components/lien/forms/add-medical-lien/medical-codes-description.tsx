@@ -58,7 +58,6 @@ export default function MedicalCodesDescription(
 ) {
   const { data = {}, onFormValid } = props;
   const addToast = useLienStore((s) => s.addToast);
-
   const [form, setForm] = useState({ ...INITIAL_FORM, ...data });
   const [procedureOptions, setProcedureOptions] = useState(
     [] as Array<{ key: string; value: string; label: string }>,
@@ -73,18 +72,20 @@ export default function MedicalCodesDescription(
     label: string;
   } | null>(null);
 
+  console.log("how many");
   useEffect(() => {
+    console.log("how many oh no");
+
     loadProcedureCodes();
   }, []);
 
   useEffect(() => {
     validateForm();
-  }, [form, rows, data?.codeRows]);
+  }, [rows, data?.codeRows]);
 
-  async function loadProcedureCodes() {
+  const loadProcedureCodes = useCallback(async () => {
     try {
       const codes = await lookupService.getMedicalProcedureCodes();
-
       const uniqueCodes = Array.from(
         new Map(
           codes.data.map((item) => [`${item.code}-${item.description}`, item]),
@@ -92,14 +93,14 @@ export default function MedicalCodesDescription(
       );
       const list = uniqueCodes.map((item, index) => ({
         key: item.code,
-        value: item.description,
+        value: item.code,
         label: item.description,
       }));
       setProcedureOptions(list ?? []);
     } catch (e) {
       setProcedureOptions([]);
     }
-  }
+  }, []);
 
   const getMedicalProcedureCosts = useCallback(
     async (id: string) => {
@@ -233,8 +234,8 @@ export default function MedicalCodesDescription(
 
   function handleEditRow(row: typeof INITIAL_ROW) {
     setEditingId(row.id);
-    setForm({
-      ...form,
+    setForm((prev: any) => ({
+      ...prev,
       procedureCode: row.code,
       medicareCost: String(row.medicareCost),
       billingAmount: String(row.billingAmount),
@@ -246,7 +247,7 @@ export default function MedicalCodesDescription(
                 ? (row.purchaseAmount / row.billingAmount) * 100
                 : 0,
             ),
-    });
+    }));
   }
 
   function handleDeleteRow(id: string) {
