@@ -133,6 +133,9 @@ export const casesApi = {
       request,
     );
   },
+  deleteLien(liensId: string) {
+    return apiClient.delete<ApiResponse>(`${BASE}/liens/delete/${liensId}`);
+  },
   listLiensUpdatesByCase(request: CasePaginatedParams) {
     return apiClient.post<PaginatedResultDto<unknown>>(
       `${BASE}/liens-updates/`,

@@ -228,15 +228,15 @@ export function LienDetailClient({ id }: { id: string }) {
                 </HeaderMeta>
                 <HeaderMeta
                   label="Incident Date"
-                  value={d.incidentDate || "---"}
+                  value={d.incidentDate || ""}
                 />
                 <HeaderMeta
                   label="Jurisdiction"
-                  value={d.jurisdiction || "---"}
+                  value={d.jurisdiction || ""}
                 />
                 <HeaderMeta
                   label="Case"
-                  value={linkedCase ? linkedCase.caseNumber : d.caseId || "---"}
+                  value={linkedCase ? linkedCase.caseNumber : d.caseId || ""}
                 />
                 {/* TEMP: UI mock data for visual review only */}
                 <HeaderMeta
@@ -393,7 +393,7 @@ function HeaderMeta({
         <div className="mt-1">{children}</div>
       ) : (
         <p className="text-sm text-gray-700 font-medium mt-1 truncate">
-          {value || "---"}
+          {value || ""}
         </p>
       )}
     </div>
@@ -465,7 +465,7 @@ function FieldItem({
       <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">
         {label}
       </dt>
-      <dd className="text-sm text-gray-700 mt-1">{value || "---"}</dd>
+      <dd className="text-sm text-gray-700 mt-1">{value || ""}</dd>
     </div>
   );
 }
@@ -754,7 +754,7 @@ function DateRow({ label, value }: { label: string; value?: string | null }) {
       <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">
         {label}
       </span>
-      <span className="text-sm text-gray-700">{value || "---"}</span>
+      <span className="text-sm text-gray-700">{value || ""}</span>
     </div>
   );
 }

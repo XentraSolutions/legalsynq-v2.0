@@ -274,11 +274,11 @@ export function CaseDetailShell({
                 </HeaderMeta>
                 <HeaderMeta
                   label="Date of Loss"
-                  value={d.dateOfIncident || "---"}
+                  value={d.dateOfIncident || ""}
                 />
                 <HeaderMeta
                   label="Date of Birth"
-                  value={d.clientDob || "---"}
+                  value={d.clientDob || ""}
                 />
                 {/* TEMP: UI mock data for visual review only */}
                 <HeaderMeta

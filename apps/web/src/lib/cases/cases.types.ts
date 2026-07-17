@@ -196,6 +196,7 @@ export interface LienResponseDto {
   purchasePrice?: number | null;
   totalPurchase?: number | null;
   totalBilling?: number | null;
+  isServicing?: string | boolean | null;
   jurisdiction?: string | null;
   isConfidential: boolean;
   subjectDisplayName?: string | null;
@@ -290,6 +291,7 @@ export interface CaseLienItem {
   serviceDate: string;
   purchaseDate: string;
   purchaseAmount: number;
+  isServicing: boolean;
 }
 
 export interface CaseLienItemMetadata {
@@ -396,11 +398,6 @@ export interface ContactCaseLookupParams {
 export interface CaseListResult {
   items: CaseListItem[];
   pagination: PaginationMeta;
-}
-
-export interface CaseLiensResult {
-  items: CaseLienItem[];
-  pagination?: PaginationMeta;
 }
 
 export interface PaginatedWithLimitResultDto<T> {

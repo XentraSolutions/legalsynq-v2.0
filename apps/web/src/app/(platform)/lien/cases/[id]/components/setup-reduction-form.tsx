@@ -15,7 +15,7 @@ import type {
 } from "@/components/lien/lien-table";
 
 function formatCurrency(amount: number | null): string {
-  if (amount === null || amount === undefined) return "---";
+  if (amount === null || amount === undefined) return "";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",

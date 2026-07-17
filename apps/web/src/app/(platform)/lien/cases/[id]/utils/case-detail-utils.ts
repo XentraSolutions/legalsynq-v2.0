@@ -1,7 +1,7 @@
 import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types";
 
 export function formatCurrency(amount: number | null): string {
-  if (amount === null || amount === undefined) return "---";
+  if (amount === null || amount === undefined) return "";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",

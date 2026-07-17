@@ -292,7 +292,7 @@ function HeaderStat({
           {label}
         </p>
         <p className="text-sm text-gray-700 font-medium mt-1 truncate">
-          {value || "---"}
+          {value || ""}
         </p>
       </div>
     </div>

@@ -222,7 +222,7 @@ export function CaseTrackingSection({
             {/* TEMP: Tracking Follow Up not supported by API */}
             <FieldItem
               label="Tracking Follow Up"
-              value={d.trackingFollowUpDate || "---"}
+              value={d.trackingFollowUpDate || ""}
             />
             <div>
               <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">
@@ -235,18 +235,18 @@ export function CaseTrackingSection({
             {/* TEMP: Current Medical Status not supported by API */}
             <FieldItem
               label="Current Medical Status"
-              value={d.currentMedicalStatus || "---"}
+              value={d.currentMedicalStatus || ""}
             />
-            <FieldItem label="Case Type" value={d.caseType || "---"} />
+            <FieldItem label="Case Type" value={d.caseType || ""} />
             <FieldItem
               label="Date of Incident"
-              value={d.dateOfIncident || "---"}
+              value={d.dateOfIncident || ""}
             />
             <FieldItem
               label="State of Incident"
-              value={d.stateOfIncident || "---"}
+              value={d.stateOfIncident || ""}
             />
-            <FieldItem label="Lead" value="---" />
+            <FieldItem label="Lead" value="" />
           </FieldGrid>
 
           <div className="mt-4 pt-4 border-t border-gray-100">
@@ -254,7 +254,7 @@ export function CaseTrackingSection({
               Case Tracking Note
             </dt>
             <dd className="text-sm text-gray-600 mt-1.5 leading-relaxed">
-              {d.description || d.notes || "---"}
+              {d.description || d.notes || ""}
             </dd>
           </div>
         </>

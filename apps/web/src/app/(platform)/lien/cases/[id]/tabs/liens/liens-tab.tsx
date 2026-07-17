@@ -4,12 +4,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { casesService, type CaseDetail, type CaseLienItem } from "@/lib/cases";
+import type { LiensQuery } from "@/lib/liens";
+import { useCaseLiens, useDeleteLien } from "@/hooks/use-case-liens";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
+import { ConfirmDialog } from "@/components/lien/modal";
+import { useLienStore } from "@/stores/lien-store";
 import type { PaginationMeta } from "@/lib/billofsale";
 import { FeedsSection } from "../../components/feeds-section";
 import { formatCurrency } from "../../utils/case-detail-utils";
 import { LienListSection } from "./sections/lien-list-section";
+import {
+  CaseLiensFilter,
+  EMPTY_CASE_LIENS_FILTERS,
+  countActiveCaseLiensFilters,
+  type CaseLiensFilterValues,
+} from "./sections/case-liens-filter";
 import {
   LienUpdatesSection,
   type CaseLienUpdateRow,
@@ -17,7 +27,7 @@ import {
 
 export function LiensTab({
   caseId,
-  liens,
+  liens: liensProp,
   liensPagination,
   caseDetail,
   panelMode,
@@ -33,10 +43,36 @@ export function LiensTab({
   onAddMedicalLien: (m: boolean) => void;
 }) {
   const router = useRouter();
+  const addToast = useLienStore((s) => s.addToast);
   const [search, setSearch] = useState("");
+  const [showFilter, setShowFilter] = useState(false);
+  const [filters, setFilters] = useState<CaseLiensFilterValues>(
+    EMPTY_CASE_LIENS_FILTERS,
+  );
+  const activeFilterCount = countActiveCaseLiensFilters(filters);
+  const [lienToDelete, setLienToDelete] = useState<{
+    id: string;
+    lienNumber: string;
+  } | null>(null);
+  const deleteLien = useDeleteLien(caseId);
 
   const [liensUpdates, setLiensUpdates] = useState<CaseLienUpdateRow[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>(liensPagination);
+
+  const serverQuery = useMemo<LiensQuery>(
+    () => ({
+      pageSize: liensPagination.pageSize,
+      medicalFacilityIds: filters.medicalFacilityIds,
+      lienStatusIds: filters.lienStatusIds,
+      purchaseDateFrom: filters.purchaseDateFrom || undefined,
+      purchaseDateTo: filters.purchaseDateTo || undefined,
+      initialServiceDateFrom: filters.initialServiceDateFrom || undefined,
+      initialServiceDateTo: filters.initialServiceDateTo || undefined,
+    }),
+    [liensPagination.pageSize, filters],
+  );
+  const { data: filteredLiens } = useCaseLiens(caseId, serverQuery, "liens");
+  const liensData: CaseLienItem[] = filteredLiens?.items ?? liensProp;
 
   const fetchData = useCallback(async () => {
     const updates = await casesService.getCaseLiensUpdates(caseId);
@@ -55,13 +91,13 @@ export function LiensTab({
   }, [fetchData]);
 
   /* TEMP: visual fallback data for UI review only */
-  const displayLiens = liens.map((l) => {
+  const displayLiens = liensData.map((l) => {
     return {
       ...l,
-      facility: l.facility || "---",
-      facilityName: l.facilityName || "---",
-      serviceDate: l.serviceDate || "---",
-      purchaseDate: l.purchaseDate || "---",
+      facility: l.facility || "",
+      facilityName: l.facilityName || "",
+      serviceDate: l.serviceDate || "",
+      purchaseDate: l.purchaseDate || "",
       purchaseAmount: l.purchaseAmount || 0,
     };
   });
@@ -86,7 +122,7 @@ export function LiensTab({
   }, [filtered, pagination.page, pagination.pageSize]);
 
   useEffect(() => {
-    const totalCount = liensPagination.totalCount;
+    const totalCount = filteredLiens?.pagination.totalCount ?? liensPagination.totalCount;
     const totalPages = Math.max(1, Math.ceil(totalCount / pagination.pageSize));
     const safePage = Math.min(pagination.page, totalPages);
     setPagination((prev) => {
@@ -100,7 +136,31 @@ export function LiensTab({
 
       return { ...prev, totalCount, totalPages, page: safePage };
     });
-  }, [filtered.length, pagination.page, pagination.pageSize]);
+  }, [filtered.length, pagination.page, pagination.pageSize, filteredLiens]);
+
+  const handleApplyFilter = (next: CaseLiensFilterValues) => {
+    setFilters(next);
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!lienToDelete) return;
+    try {
+      await deleteLien.mutateAsync(lienToDelete.id);
+      addToast({
+        type: "success",
+        title: "Lien Deleted",
+        description: `Lien ${lienToDelete.lienNumber} was deleted.`,
+      });
+      setLienToDelete(null);
+    } catch {
+      addToast({
+        type: "error",
+        title: "Delete Failed",
+        description: "Could not delete this lien. Please try again.",
+      });
+    }
+  };
 
   const totalBilling = filtered.reduce(
     (sum, l) => sum + (l.originalAmount ?? 0),
@@ -137,7 +197,7 @@ export function LiensTab({
     },
     {
       id: "serviceDate",
-      header: "Service Date",
+      header: "Initial Service Date",
       cell: ({ row }) => (
         <span className="text-xs text-gray-500 whitespace-nowrap">
           {row.original.serviceDate}
@@ -155,7 +215,7 @@ export function LiensTab({
     },
     {
       id: "purchaseAmount",
-      header: "Purchase Amt",
+      header: "Purchase Amount",
       meta: { align: "right" },
       cell: ({ row }) => (
         <span className="text-sm text-gray-700 tabular-nums">
@@ -165,7 +225,7 @@ export function LiensTab({
     },
     {
       id: "originalAmount",
-      header: "Billing Amt",
+      header: "Billing Amount",
       meta: { align: "right" },
       cell: ({ row }) => (
         <span className="text-sm text-gray-700 font-medium tabular-nums">
@@ -174,9 +234,39 @@ export function LiensTab({
       ),
     },
     {
+      id: "isServicing",
+      header: "Servicing",
+      cell: ({ row }) => (
+        <span
+          className={`text-xs font-medium ${row.original.isServicing ? "text-primary" : "text-gray-400"}`}
+        >
+          {row.original.isServicing ? "Yes" : "No"}
+        </span>
+      ),
+    },
+    {
       id: "status",
-      header: "Status",
+      header: "Lien Status",
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    },
+    {
+      id: "actions",
+      header: "",
+      cell: ({ row }) => (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setLienToDelete({
+              id: row.original.id,
+              lienNumber: row.original.lienNumber,
+            });
+          }}
+          className="w-7 h-7 flex items-center justify-center rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+          title="Delete lien"
+        >
+          <i className="ri-delete-bin-line text-sm" />
+        </button>
+      ),
     },
   ];
 
@@ -196,11 +286,13 @@ export function LiensTab({
         totalPurchase={totalPurchase}
         totalBilling={totalBilling}
         onAddMedicalLien={() => onAddMedicalLien(true)}
+        onFilterClick={() => setShowFilter(true)}
+        activeFilterCount={activeFilterCount}
       />
 
       <LienUpdatesSection
         liensUpdates={liensUpdates}
-        entriesCount={liens.length}
+        entriesCount={liensData.length}
       />
     </div>
   );
@@ -214,12 +306,30 @@ export function LiensTab({
   );
 
   return (
-    <LayoutSplit
-      left={leftContent}
-      right={rightContent}
-      mode={panelMode}
-      onModeChange={onPanelModeChange}
-      showControls={false}
-    />
+    <>
+      <LayoutSplit
+        left={leftContent}
+        right={rightContent}
+        mode={panelMode}
+        onModeChange={onPanelModeChange}
+        showControls={false}
+      />
+      <CaseLiensFilter
+        open={showFilter}
+        onClose={() => setShowFilter(false)}
+        value={filters}
+        onApplyFilter={handleApplyFilter}
+      />
+      <ConfirmDialog
+        open={!!lienToDelete}
+        onClose={() => setLienToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Lien"
+        description={`Are you sure you want to delete lien ${lienToDelete?.lienNumber}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        loading={deleteLien.isPending}
+      />
+    </>
   );
 }

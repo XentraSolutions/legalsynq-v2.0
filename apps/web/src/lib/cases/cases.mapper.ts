@@ -3,8 +3,6 @@ import type {
   CaseResponseDto,
   CaseListItem,
   CaseDetail,
-  CaseLienItem,
-  LienResponseDto,
   PaginatedResultDto,
   PaginationMeta,
   UpdateCaseRequestDto,
@@ -137,21 +135,6 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     caseDropped: safeString(dto.caseDropped),
     childSupportLiens: safeString(dto.childSupportLiens),
     isUccFiled: safeString(dto.isUccFiled)
-  };
-}
-
-export function mapLienToListItem(dto: LienResponseDto): CaseLienItem {
-  return {
-    id: dto.id,
-    lienNumber: dto.lienNumber,
-    lienType: dto.lienType,
-    status: dto.status,
-    originalAmount: dto.originalAmount,
-    facility: dto.facility ?? "",
-    facilityName: dto.facilityName ?? dto.facility ?? "",
-    serviceDate: dto.serviceDate ?? "",
-    purchaseDate: dto.purchaseDate ?? "",
-    purchaseAmount: dto.purchaseAmount ?? dto.purchasePrice ?? 0,
   };
 }
 

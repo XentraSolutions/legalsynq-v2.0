@@ -113,13 +113,33 @@ export function ServicingTab({
     (s, l) => s + l.originalAmount,
     0,
   );
+  const openLiensTotalPurchase = openLiens.reduce(
+    (s, l) => s + (l.purchaseAmount ?? 0),
+    0,
+  );
   const openLiensTotalBalance = openLiens.reduce((s, l) => s + l.balance, 0);
+  const openLiensTotalReduction = openLiens.reduce(
+    (s, l) => s + (l.reductionAmount ?? 0),
+    0,
+  );
+  const openLiensTotalPayment = openLiens.reduce(
+    (s, l) => s + (l.paymentAmount ?? 0),
+    0,
+  );
   const closedLiensTotalBilling = closedLiens.reduce(
     (s, l) => s + l.originalAmount,
     0,
   );
+  const closedLiensTotalPurchase = closedLiens.reduce(
+    (s, l) => s + (l.purchaseAmount ?? 0),
+    0,
+  );
   const closedLiensTotalReduction = closedLiens.reduce(
     (s, l) => s + (l.reductionAmount ?? 0),
+    0,
+  );
+  const closedLiensTotalBalance = closedLiens.reduce(
+    (s, l) => s + l.balance,
     0,
   );
   const closedLiensTotalPayment = closedLiens.reduce(
@@ -274,7 +294,10 @@ export function ServicingTab({
             onRefreshLiens={onRefreshLiens}
             isLiensFetching={isLiensFetching}
             openLiensTotalBilling={openLiensTotalBilling}
+            openLiensTotalPurchase={openLiensTotalPurchase}
+            openLiensTotalReduction={openLiensTotalReduction}
             openLiensTotalBalance={openLiensTotalBalance}
+            openLiensTotalPayment={openLiensTotalPayment}
             onSetupReduction={() => showSetupReductionForm(true)}
             onNoRecovery={() => setIsNoRecoveryOpen(true)}
             onAddPayment={() => setIsAddPaymentOpen(true)}
@@ -286,7 +309,9 @@ export function ServicingTab({
             onRefreshLiens={onRefreshLiens}
             isLiensFetching={isLiensFetching}
             closedLiensTotalBilling={closedLiensTotalBilling}
+            closedLiensTotalPurchase={closedLiensTotalPurchase}
             closedLiensTotalReduction={closedLiensTotalReduction}
+            closedLiensTotalBalance={closedLiensTotalBalance}
             closedLiensTotalPayment={closedLiensTotalPayment}
           />
 

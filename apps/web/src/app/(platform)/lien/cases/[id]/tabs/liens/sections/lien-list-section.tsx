@@ -16,6 +16,8 @@ export function LienListSection<TLien>({
   totalPurchase,
   totalBilling,
   onAddMedicalLien,
+  onFilterClick,
+  activeFilterCount = 0,
 }: {
   search: string;
   onSearchChange: (v: string) => void;
@@ -27,6 +29,8 @@ export function LienListSection<TLien>({
   totalPurchase: number;
   totalBilling: number;
   onAddMedicalLien: () => void;
+  onFilterClick?: () => void;
+  activeFilterCount?: number;
 }) {
   return (
     <CollapsibleSection title="Liens" icon="ri-stack-line">
@@ -48,6 +52,19 @@ export function LienListSection<TLien>({
           <i className="ri-link text-sm" />
           Add Medical Lien
         </button>
+        {onFilterClick && (
+          <button
+            onClick={onFilterClick}
+            className="relative flex items-center justify-center h-9 w-9 text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <i className="ri-filter-3-line text-base" />
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -83,7 +100,7 @@ export function LienListSection<TLien>({
                 align: "right",
                 className: "text-sm font-semibold text-gray-700 tabular-nums",
               },
-              { content: null, colSpan: 2 },
+              { content: null, colSpan: 3 },
             ]}
           />
           {pagination.totalPages > 0 && (

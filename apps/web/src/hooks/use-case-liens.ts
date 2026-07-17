@@ -155,16 +155,17 @@ async function enrichLiens(
       paymentsByLien.get(lien.id) ?? ext.paymentAmount ?? null;
     const reductionAmount =
       latestReductionByLien.get(lien.id) ?? ext.reductionAmount ?? null;
-    const originalAmount = ext.originalAmount ?? 0;
+    const originalAmount = ext.totalBilling ?? ext.originalAmount ?? 0;
     return {
       ...lien,
-      facility: ext.facility ?? "---",
-      facilityName: facilityName(ext.facilityId ?? "") ?? "---",
+      facility: ext.facility ?? "",
+      facilityName: ext.facilityName || facilityName(ext.facilityId ?? "") || "",
       serviceDate: ext.initialServiceDate,
       purchaseDateDate: ext.purchaseDate,
       originalAmount,
       reductionAmount,
       purchaseAmount: ext.purchaseAmount ?? 0,
+      isServicing: ext.isServicing ?? false,
       paymentAmount,
       balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
       closedAtUtc: ext.closedAtUtc ?? null,
@@ -257,6 +258,18 @@ export function useDeleteCase() {
       queryClient.invalidateQueries({
         queryKey: ["cases"],
       });
+    },
+  });
+}
+
+export function useDeleteLien(caseId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (liensId: string) => casesService.deleteLien(liensId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["case-liens", caseId] });
+      queryClient.invalidateQueries({ queryKey: ["case-liens-all", caseId] });
     },
   });
 }

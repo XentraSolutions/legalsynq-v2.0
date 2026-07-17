@@ -175,10 +175,6 @@ export default function LiensPage() {
         ),
       },
       {
-        // TODO: base ListLiens endpoint doesn't return plaintiff/case data —
-        // switch this to a real field once the backend joins it in (see
-        // ReportsResponse.plaintiff_first_name/plaintiff_last_name for the
-        // shape the DIY Reports endpoint already exposes).
         id: "plaintiffName",
         header: "Plaintiff Name",
         meta: frozenColumn("left-[110px]", "w-[160px] min-w-[160px]"),
@@ -186,16 +182,19 @@ export default function LiensPage() {
           row.original.isConfidential ? (
             <span className="italic text-gray-400 text-sm">Confidential</span>
           ) : (
-            <span className="text-sm text-gray-700">{row.original.subjectName || "—"}</span>
+            <span className="text-sm text-gray-700">
+              {row.original.plaintiff || row.original.subjectName || "—"}
+            </span>
           ),
       },
       {
-        // TODO: base ListLiens endpoint has no law firm field — see
-        // ReportsResponse.lawfirm for the shape once the backend supports it.
         id: "lawFirm",
+        accessorKey: "lawFirm",
         header: "Law Firm",
         meta: frozenColumn("left-[270px]", "w-[150px] min-w-[150px]", true),
-        cell: () => <span className="text-sm text-gray-400">—</span>,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">{row.original.lawFirm || "—"}</span>
+        ),
       },
       {
         id: "facilityName",
@@ -252,11 +251,12 @@ export default function LiensPage() {
         ),
       },
       {
-        // TODO: base ListLiens endpoint has no case manager field — see
-        // ReportsResponse.case_manager for the shape once the backend supports it.
         id: "caseManager",
+        accessorKey: "caseManager",
         header: "Case Manager",
-        cell: () => <span className="text-sm text-gray-400">—</span>,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">{row.original.caseManager || "—"}</span>
+        ),
       },
     ],
     [],

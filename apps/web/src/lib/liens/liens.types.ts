@@ -8,6 +8,10 @@ export interface LienResponseDto {
   facilityId?: string | null;
   facility: string | null;
   facilityName?: string | null;
+  medicalFacility?: string | null;
+  plaintiff?: string | null;
+  lawFirm?: string | null;
+  caseManager?: string | null;
   serviceDate?: string | null;
   purchaseDate?: string | null;
   purchaseAmount?: number | null;
@@ -29,6 +33,7 @@ export interface LienResponseDto {
   incidentDate?: string | null;
   totalPurchase?: number | null;
   totalBilling?: number | null;
+  isServicing?: string | boolean | null;
   description?: string | null;
   openedAtUtc?: string | null;
   closedAtUtc?: string | null;
@@ -156,6 +161,8 @@ export interface LiensQuery {
   purchaseDateTo?: string;
   closedDateFrom?: string;
   closedDateTo?: string;
+  initialServiceDateFrom?: string;
+  initialServiceDateTo?: string;
 }
 
 export interface LienListItem {
@@ -167,6 +174,9 @@ export interface LienListItem {
   facility: string | null;
   facilityId: string | null;
   facilityName: string | null;
+  plaintiff: string | null;
+  lawFirm: string | null;
+  caseManager: string | null;
   caseId: string;
   initialServiceDate: string;
   purchaseDate: string;
@@ -176,6 +186,7 @@ export interface LienListItem {
   offerPrice: number | null;
   purchasePrice: number | null;
   totalBilling: number | null;
+  isServicing: boolean;
   jurisdiction: string;
   isConfidential: boolean;
   subjectName: string;

@@ -5,7 +5,6 @@ import { casesApi } from "./cases.api";
 import {
   mapCaseToListItem,
   mapCaseToDetail,
-  mapLienToListItem,
   mapPagination,
   mapDtoToUpdateRequest,
   mapMedicalInfo,
@@ -16,13 +15,11 @@ import type {
   CasesQuery,
   CaseListItem,
   CaseDetail,
-  CaseLienItem,
   PaginationMeta,
   CreateCaseRequestDto,
   UpdateCaseRequestDto,
   DashboardStats,
   CaseListResult,
-  CaseLiensResult,
   CasePaginatedParams,
   CasesFilters,
   ExportResponse,
@@ -101,19 +98,6 @@ export const casesService = {
     const request = mapDtoToUpdateRequest(freshDto);
     request.status = newStatus;
     return this.updateCase(request);
-  },
-
-  async getCaseLiens(caseId: string): Promise<CaseLiensResult> {
-    const { data } = await casesApi.listLiensByCase({
-      CaseId: caseId,
-      page: 1,
-      limit: 10,
-    });
-
-    return {
-      items: data.items.map(mapLienToListItem),
-      pagination: mapPagination({ ...data, pageSize: data.limit }),
-    };
   },
 
   async getCaseUpdates(caseId: string): Promise<any> {
@@ -256,6 +240,11 @@ export const casesService = {
 
   async deleteMedicalCodeLiens(id: string): Promise<ApiResponse> {
     const { data } = await casesApi.deleteMedicalCodeLiens(id);
+    return data;
+  },
+
+  async deleteLien(liensId: string): Promise<ApiResponse> {
+    const { data } = await casesApi.deleteLien(liensId);
     return data;
   },
 

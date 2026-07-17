@@ -18,7 +18,7 @@ export function HeaderMeta({
         <div className="mt-1">{children}</div>
       ) : (
         <p className="text-sm text-gray-700 font-medium mt-1 truncate">
-          {value || "---"}
+          {value || ""}
         </p>
       )}
     </div>
