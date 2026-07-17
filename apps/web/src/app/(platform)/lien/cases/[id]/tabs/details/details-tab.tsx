@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLienStore } from "@/stores/lien-store";
 import { casesService, type CaseDetail } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
@@ -15,6 +15,8 @@ import { FeedsSection } from "../../components/feeds-section";
 import { CaseTrackingSection } from "./sections/case-tracking-section";
 import { PlaintiffSection } from "./sections/plaintiff-section";
 import { UpdatesSection } from "./sections/updates-section";
+import { LitigationStatusForm } from "@/components/lien/forms/litigation-form";
+import { DropdownOption } from "@/lib/lookup/lookup.types";
 
 function formatPhoneNumber(rawValue: string | number): string {
   const digits = String(rawValue).replace(/\D/g, "");
@@ -63,6 +65,7 @@ export function DetailsTab({
   const [tErrors, setTErrors] = useState<Record<string, string>>({});
 
   const [form, setForm] = useState({ ...d });
+  const [showLitigationForm, setShowLitigationForm] = useState(false);
 
   const { lookup } = useSessionContext();
 
@@ -83,10 +86,11 @@ export function DetailsTab({
       return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
 
-  const caseStatusList =
+  const [caseStatusList, setCaseStatusList] = useState(
     lookup?.CaseStatus.map((s) => {
       return { key: s.id, value: s.code, label: s.name };
-    }) ?? [];
+    }) ?? [],
+  );
 
   const resetPlaintiffForm = useCallback(() => {
     setForm({ ...d });
@@ -251,6 +255,24 @@ export function DetailsTab({
     [form],
   );
 
+  const checkStatus = (caseStatus: string) => {
+    if (caseStatus.toLowerCase().includes("litigation")) {
+      setShowLitigationForm(true);
+    }
+  };
+
+  const setLitigationStatus = (status: DropdownOption) => {
+    setCaseStatusList((prev) =>
+      prev.map((s) =>
+        s.value.includes("Litigation")
+          ? { ...s, value: status.value, label: `Litigation (${status.label})` }
+          : s,
+      ),
+    );
+    updateField("status", status.value);
+    setShowLitigationForm(false);
+  };
+
   const leftContent = (
     <div className="space-y-4">
       <CaseTrackingSection
@@ -279,6 +301,7 @@ export function DetailsTab({
           setTErrors({});
         }}
         onUpdateCaseFlag={updateCaseFlag}
+        checkStatus={checkStatus}
       />
 
       <PlaintiffSection
@@ -306,6 +329,15 @@ export function DetailsTab({
       />
 
       <UpdatesSection u={u} />
+      {showLitigationForm && (
+        <LitigationStatusForm
+          open={showLitigationForm}
+          onClose={() => setShowLitigationForm(false)}
+          onSubmitted={(v: DropdownOption) => {
+            setLitigationStatus(v);
+          }}
+        />
+      )}
     </div>
   );
 
@@ -316,6 +348,8 @@ export function DetailsTab({
       onPanelModeChange={onPanelModeChange}
     />
   );
+
+  useEffect(() => {}, [lookup]);
 
   return (
     <LayoutSplit

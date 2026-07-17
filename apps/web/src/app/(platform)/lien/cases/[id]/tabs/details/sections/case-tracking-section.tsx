@@ -26,6 +26,7 @@ export function CaseTrackingSection({
   onSave,
   onCancel,
   onUpdateCaseFlag,
+  checkStatus,
 }: {
   d: CaseDetail;
   canEdit: boolean;
@@ -45,6 +46,7 @@ export function CaseTrackingSection({
   onSave: () => void;
   onCancel: () => void;
   onUpdateCaseFlag: (field: keyof CaseDetail, value: string) => void;
+  checkStatus: (value: string) => void;
 }) {
   const flags: { label: string; key: keyof CaseDetail }[] = [
     { label: "Share this case with Associated Law Firm", key: "shareCase" },
@@ -93,7 +95,10 @@ export function CaseTrackingSection({
                 label=""
                 value={form.status}
                 options={caseStatusList}
-                onChange={(v: string) => updateField("status", v.toString())}
+                onChange={(v: string) => {
+                  updateField("status", v.toString());
+                  checkStatus(v.toString());
+                }}
                 placeholder="Medical Status"
                 type="select"
               />
