@@ -210,14 +210,23 @@ export function DetailsTab({
 
   const updateCaseFlag = useCallback(
     async (key: keyof CaseDetail, value: string) => {
-      console.log({ [key]: value });
-      await casesService.updateCase({
-        caseId: d.id,
-        [key]: value,
-      });
-      setTimeout(() => {
-        onCaseUpdated({ ...d });
-      }, 100);
+      try {
+        await casesService.updateCase({
+          caseId: d.id,
+          [key]: value,
+        });
+        addToast({
+          type: "success",
+          title: "Case Flag Updated",
+        });
+      } catch (err) {
+        if (err instanceof ApiError) {
+          addToast({
+            type: "error",
+            title: "Case Flag Update Failed",
+          });
+        }
+      }
     },
     [form],
   );
