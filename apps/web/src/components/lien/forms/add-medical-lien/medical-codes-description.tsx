@@ -72,10 +72,7 @@ export default function MedicalCodesDescription(
     label: string;
   } | null>(null);
 
-  console.log("how many");
   useEffect(() => {
-    console.log("how many oh no");
-
     loadProcedureCodes();
   }, []);
 
