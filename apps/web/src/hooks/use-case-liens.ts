@@ -22,7 +22,7 @@ import {
 import { settlementService } from "@/lib/settlement";
 import type { CasePayment } from "@/lib/settlement/settlement.types";
 import { contactsService } from "@/lib/contacts";
-import { PaginatedResult } from "@/lib/reports/reports.types";
+import { lookupService } from "@/lib/lookup";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -232,6 +232,43 @@ export function useCases(query: CasesQuery) {
     queryKey: ["cases", query],
     queryFn: () => casesService.getCases(query),
     staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+async function fetchProcedureCodes() {
+  const codes = await lookupService.getMedicalProcedureCodes();
+  const uniqueCodes = Array.from(
+    new Map(
+      codes.data.map((item) => [`${item.code}-${item.description}`, item]),
+    ).values(),
+  );
+  const list = uniqueCodes.map((item, index) => ({
+    key: item.code,
+    value: item.code,
+    label: item.description,
+  }));
+  return list ?? [];
+}
+
+export function useMedicareProcedureCodes() {
+  return useQuery({
+    queryKey: ["procedureCodes"],
+    queryFn: () => fetchProcedureCodes(),
+    refetchOnWindowFocus: false,
+  });
+}
+
+async function findMedicareCost(id: string): Promise<string> {
+  if (!id) return "";
+  const costs = await lookupService.getMedicalProcedureCosts(id);
+  const cost = costs.data.find((c) => c.facilityType == "asc");
+  return cost?.total?.toString() ?? "";
+}
+export function useMedicareCosts(id: string) {
+  return useQuery({
+    queryKey: ["medicareCosts", id],
+    queryFn: () => findMedicareCost(id),
     refetchOnWindowFocus: false,
   });
 }

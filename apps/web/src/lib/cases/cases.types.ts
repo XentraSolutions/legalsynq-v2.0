@@ -99,6 +99,7 @@ export interface CreateCaseRequestDto {
   dateOfIncident?: string;
   caseType?: string;
   stateOfIncident?: string;
+  minorComp: string;
 }
 
 export interface UpdateCaseRequestDto {

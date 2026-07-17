@@ -42,7 +42,7 @@ export const lookupApi = {
   },
   getMedicalProcedureCosts(code: MedicalProcedureCodesResponse["code"]) {
     return apiClient.get<MedicalProcedureCostsResponse>(
-      `${BASE}/procedure/costs/${code}`,
+      `${BASE}/medical/procedure/costs/${code}`,
     );
   },
   getLookupAll() {
