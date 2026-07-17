@@ -54,6 +54,15 @@ interface BaseSelectCommonProps<
 
   createAction?: BaseSelectCreateAction;
 
+  /** Render each row with a leading checkbox instead of the trailing check icon. */
+  showCheckboxes?: boolean;
+  /**
+   * Render the search input + option list directly in the page flow
+   * (always visible, no trigger/popover) — for filter panels where the
+   * list should stay open, e.g. inside a filter modal.
+   */
+  inline?: boolean;
+
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
@@ -120,6 +129,9 @@ function highlightLabel(label: string, query: string): React.ReactNode {
  * - An optional "+ Add …" row (`createAction`) that hands off to the
  *   caller's own create form/modal — BaseSelect never renders the modal
  *   itself, it only closes the popover and calls `onSelect`.
+ * - Checkbox-style rows via `showCheckboxes`, and an always-visible
+ *   `inline` mode (search + list in the page flow, no popover) for
+ *   filter panels.
  * - Arrow-key/Enter/Escape navigation and `role="listbox"`/`"option"` for
  *   basic accessibility.
  *
@@ -180,6 +192,8 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     highlightMatch = true,
     renderOption,
     createAction,
+    showCheckboxes = false,
+    inline = false,
     placeholder = "Select…",
     searchPlaceholder = "Search...",
     emptyText = "No options found.",
@@ -282,8 +296,10 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     handleOpenChange(false);
   };
 
+  const listVisible = inline || open;
+
   React.useEffect(() => {
-    if (loadingMode !== "infinite" || !open || !hasNextPage || !onLoadMore)
+    if (loadingMode !== "infinite" || !listVisible || !hasNextPage || !onLoadMore)
       return;
     const target = sentinelRef.current;
     const root = listRef.current;
@@ -297,7 +313,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [loadingMode, open, hasNextPage, onLoadMore, isFetchingMore]);
+  }, [loadingMode, listVisible, hasNextPage, onLoadMore, isFetchingMore]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -316,6 +332,132 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
   };
 
   const showLoading = isLoading && filteredOptions.length === 0;
+
+  const searchInput = (
+    <input
+      autoFocus={!inline}
+      value={search}
+      onChange={(e) => handleSearchChange(e.target.value)}
+      onKeyDown={handleKeyDown}
+      placeholder={searchPlaceholder}
+      role="combobox"
+      aria-expanded={listVisible}
+      className="w-full border border-gray-300 rounded px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+    />
+  );
+
+  const optionList = (
+    <div
+      ref={listRef}
+      role="listbox"
+      className={cn("overflow-auto p-1", inline ? "max-h-44" : "max-h-64")}
+    >
+      {showLoading ? (
+        <div className="flex items-center gap-2 p-3 text-sm text-gray-500">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {loadingText}
+        </div>
+      ) : filteredOptions.length > 0 ? (
+        <>
+          {filteredOptions.map((option, index) => (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={isSelected(option)}
+              disabled={option.disabled}
+              onClick={() => selectOption(option)}
+              onMouseEnter={() => setActiveIndex(index)}
+              className={cn(
+                "relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-2 text-sm text-left outline-none",
+                showCheckboxes ? "pr-2" : "pr-8",
+                index === activeIndex && "bg-gray-50",
+                option.disabled && "cursor-not-allowed opacity-50",
+              )}
+            >
+              {showCheckboxes && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "mr-2 flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                    isSelected(option)
+                      ? "bg-primary border-primary text-white"
+                      : "bg-white border-gray-300",
+                  )}
+                >
+                  {isSelected(option) && <Check className="h-3 w-3" />}
+                </span>
+              )}
+
+              {renderOption ? (
+                renderOption(option, {
+                  selected: isSelected(option),
+                  active: index === activeIndex,
+                  search,
+                })
+              ) : (
+                <span className="truncate whitespace-pre-line">
+                  {highlightMatch
+                    ? highlightLabel(option.label, search)
+                    : option.label}
+                </span>
+              )}
+
+              {!showCheckboxes && isSelected(option) && (
+                <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+                  <Check className="h-4 w-4 text-primary" />
+                </span>
+              )}
+            </button>
+          ))}
+          {loadingMode === "infinite" && hasNextPage && (
+            <div
+              ref={sentinelRef}
+              className="flex items-center justify-center py-2"
+            >
+              {isFetchingMore && (
+                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="p-3 text-sm text-gray-500">{emptyText}</div>
+      )}
+    </div>
+  );
+
+  const createButton = createAction && (
+    <button
+      type="button"
+      onClick={() => {
+        handleOpenChange(false);
+        createAction.onSelect();
+      }}
+      className="flex w-full items-center gap-1.5 text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
+    >
+      {createAction.icon ?? <Plus className="h-3.5 w-3.5" />}
+      {createAction.label}
+    </button>
+  );
+
+  if (inline) {
+    return (
+      <div className={className}>
+        <div className="mb-1.5">{searchInput}</div>
+        <div
+          className={cn(
+            "rounded-lg border border-gray-200 bg-white",
+            error && "border-red-300",
+            contentClassName,
+          )}
+        >
+          {optionList}
+          {createButton}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={handleOpenChange}>
@@ -344,96 +486,9 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
             contentClassName,
           )}
         >
-          <div className="p-2">
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={searchPlaceholder}
-              role="combobox"
-              aria-expanded={open}
-              className="w-full border border-gray-300 rounded px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-
-          <div
-            ref={listRef}
-            role="listbox"
-            className="max-h-64 overflow-auto p-1"
-          >
-            {showLoading ? (
-              <div className="flex items-center gap-2 p-3 text-sm text-gray-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {loadingText}
-              </div>
-            ) : filteredOptions.length > 0 ? (
-              <>
-                {filteredOptions.map((option, index) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected(option)}
-                    disabled={option.disabled}
-                    onClick={() => selectOption(option)}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    className={cn(
-                      "relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-2 pr-8 text-sm text-left outline-none",
-                      index === activeIndex && "bg-gray-50",
-                      option.disabled && "cursor-not-allowed opacity-50",
-                    )}
-                  >
-                    {renderOption ? (
-                      renderOption(option, {
-                        selected: isSelected(option),
-                        active: index === activeIndex,
-                        search,
-                      })
-                    ) : (
-                      <span className="truncate whitespace-pre-line">
-                        {highlightMatch
-                          ? highlightLabel(option.label, search)
-                          : option.label}
-                      </span>
-                    )}
-
-                    {isSelected(option) && (
-                      <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
-                        <Check className="h-4 w-4 text-primary" />
-                      </span>
-                    )}
-                  </button>
-                ))}
-                {loadingMode === "infinite" && hasNextPage && (
-                  <div
-                    ref={sentinelRef}
-                    className="flex items-center justify-center py-2"
-                  >
-                    {isFetchingMore && (
-                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="p-3 text-sm text-gray-500">{emptyText}</div>
-            )}
-          </div>
-
-          {createAction && (
-            <button
-              type="button"
-              onClick={() => {
-                handleOpenChange(false);
-                createAction.onSelect();
-              }}
-              className="flex w-full items-center gap-1.5 text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
-            >
-              {createAction.icon ?? <Plus className="h-3.5 w-3.5" />}
-              {createAction.label}
-            </button>
-          )}
+          <div className="p-2">{searchInput}</div>
+          {optionList}
+          {createButton}
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>

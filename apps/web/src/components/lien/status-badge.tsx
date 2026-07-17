@@ -27,6 +27,8 @@ const STATUS_STYLES: Record<string, string> = {
   Inactive:      'bg-gray-100   text-gray-500    border-gray-200',
   Invited:       'bg-blue-50    text-blue-700    border-blue-200',
   Locked:        'bg-red-50     text-red-600     border-red-200',
+  Open:          'bg-green-50   text-green-700   border-green-200',
+  Rejected:      'bg-red-50     text-red-600     border-red-200',
 };
 
 export const STATUS_LABELS: Record<string, string> = {

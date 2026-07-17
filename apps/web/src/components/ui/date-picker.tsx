@@ -15,6 +15,7 @@ interface DatePickerProps {
   className?: string;
   disabled?: boolean;
   maxDate?: Date | null;
+  minDate?: Date | null;
   disableFutureDates?: boolean;
 }
 
@@ -68,6 +69,7 @@ export function DatePicker({
   className,
   disabled,
   maxDate,
+  minDate,
   disableFutureDates,
 }: DatePickerProps) {
   const effectiveMaxDate =
@@ -76,6 +78,7 @@ export function DatePicker({
       : disableFutureDates
         ? new Date()
         : undefined;
+  const effectiveMinDate = minDate ?? undefined;
   const [open, setOpen] = React.useState(false);
   const selected = parseDate(value);
   const [month, setMonth] = React.useState<Date>(selected ?? new Date());
@@ -128,9 +131,12 @@ export function DatePicker({
     [selected, effectiveMaxDate],
   );
 
-  const disabledDays: Matcher | Matcher[] | undefined = effectiveMaxDate
-    ? { after: effectiveMaxDate }
-    : undefined;
+  const disabledDays: Matcher[] | undefined = React.useMemo(() => {
+    const matchers: Matcher[] = [];
+    if (effectiveMaxDate) matchers.push({ after: effectiveMaxDate });
+    if (effectiveMinDate) matchers.push({ before: effectiveMinDate });
+    return matchers.length ? matchers : undefined;
+  }, [effectiveMaxDate, effectiveMinDate]);
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
       <PopoverPrimitive.Trigger asChild>

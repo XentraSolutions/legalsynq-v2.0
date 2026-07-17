@@ -199,13 +199,21 @@ export const contactsService = {
   },
 
   async getCaseManagers(
-    params: { lawFirmId?: string } = {},
+    params: {
+      lawFirmId?: string;
+      search?: string;
+      page?: number;
+      pageSize?: number;
+    } = {},
   ): Promise<ContactListResult> {
     const contactSubtype = await resolveCaseManagerRoleCode();
     const { data } = await contactsApi.list({
       ContactType: "LawFirm",
       ContactSubtype: contactSubtype,
       LawFirmId: params.lawFirmId,
+      search: params.search,
+      page: params.page,
+      pageSize: params.pageSize,
     });
     return {
       items: data.items.map(mapContactToListItem),

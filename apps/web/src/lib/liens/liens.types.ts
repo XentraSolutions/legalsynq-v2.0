@@ -139,8 +139,23 @@ export interface LiensQuery {
   status?: string;
   lienType?: string;
   caseId?: string;
+  facilityId?: string;
   page?: number;
   pageSize?: number;
+  // TODO: ListLiens (Liens.Api/Endpoints/LienEndpoints.cs) currently only
+  // accepts search/status/lienType/caseId/facilityId/page/pageSize — the
+  // fields below match the filter shape ReportTemplate already uses for
+  // DIY Reports (lien-report.types.ts) and are sent assuming the backend
+  // will be extended to accept them on this endpoint too. Until then they
+  // are silently ignored server-side. Revisit once that lands.
+  lawFirmIds?: string[];
+  medicalFacilityIds?: string[];
+  caseManagerIds?: string[];
+  lienStatusIds?: string[];
+  purchaseDateFrom?: string;
+  purchaseDateTo?: string;
+  closedDateFrom?: string;
+  closedDateTo?: string;
 }
 
 export interface LienListItem {
@@ -151,13 +166,16 @@ export interface LienListItem {
   status: string;
   facility: string | null;
   facilityId: string | null;
+  facilityName: string | null;
   caseId: string;
   initialServiceDate: string;
   purchaseDate: string;
+  purchaseAmount: number | null;
   originalAmount: number;
   currentBalance: number | null;
   offerPrice: number | null;
   purchasePrice: number | null;
+  totalBilling: number | null;
   jurisdiction: string;
   isConfidential: boolean;
   subjectName: string;
