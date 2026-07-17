@@ -1,3 +1,4 @@
+import { formatLegacyDateOnly } from "../format-date";
 import { DocumentTypeResponse } from "../lookup/lookup.types";
 import type {
   CaseResponseDto,
@@ -27,14 +28,7 @@ function safeString(val: string | null | undefined): string {
 export function formatDateField(val: string | null | undefined): string {
   if (!val) return "";
   try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: "UTC",
-    });
+    return formatLegacyDateOnly(val);
   } catch {
     return val;
   }

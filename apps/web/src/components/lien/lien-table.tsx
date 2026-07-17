@@ -4,6 +4,7 @@ import * as React from "react";
 import type { ColumnDef, OnChangeFn, RowSelectionState } from "@tanstack/react-table";
 import { BaseTable, type BaseTableFooterCell } from "@/components/ui/base-table";
 import { Badge } from "@/components/ui/badge";
+import { DateDisplay } from "@/components/ui/date-display";
 import { cn } from "@/lib/utils";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 
@@ -81,14 +82,7 @@ export function LienTableToolbar({
       <span className="text-[11px] text-gray-400">
         Last loaded:{" "}
         {loadedAt
-          ? loadedAt.toLocaleString(undefined, {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            })
+          ? <DateDisplay value={loadedAt.toISOString()} format="datetime" />
           : "—"}
       </span>
       <button

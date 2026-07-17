@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/lien/page-header';
+import { DateDisplay } from '@/components/ui/date-display';
 import { lienSalesService } from '@/lib/liens/lien-sales.service';
 import type {
   SellingPortfolioActivityDto,
@@ -13,10 +14,6 @@ import type {
 
 function money(value?: number | null): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value ?? 0);
-}
-
-function date(value?: string | null): string {
-  return value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-';
 }
 
 export function LienSaleDetailClient({ id }: { id: string }) {
@@ -213,7 +210,7 @@ export function LienSaleDetailClient({ id }: { id: string }) {
               {statusHistory.map(item => (
                 <li key={item.id} className="border-l-2 border-gray-200 pl-3">
                   <p className="text-sm font-medium text-gray-800">{item.toStatus.replaceAll('_', ' ')}</p>
-                  <p className="text-xs text-gray-400">{date(item.changedAtUtc)}</p>
+                  <p className="text-xs text-gray-400"><DateDisplay value={item.changedAtUtc} format="date" fallback="-" /></p>
                   {item.notes && <p className="mt-1 text-xs text-gray-500">{item.notes}</p>}
                 </li>
               ))}
@@ -225,7 +222,7 @@ export function LienSaleDetailClient({ id }: { id: string }) {
               {activity.map(item => (
                 <li key={item.id}>
                   <p className="text-sm text-gray-800">{item.summary}</p>
-                  <p className="text-xs text-gray-400">{date(item.occurredAtUtc)}</p>
+                  <p className="text-xs text-gray-400"><DateDisplay value={item.occurredAtUtc} format="date" fallback="-" /></p>
                 </li>
               ))}
             </ol>

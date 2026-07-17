@@ -15,12 +15,12 @@ import {
 } from '@/lib/liens/lien-tasks.types';
 import type { TenantUser } from '@/types/tenant';
 import { useLienStore } from '@/stores/lien-store';
-import { useTimezone } from '@/lib/use-timezone';
 import { CreateEditTaskForm } from '@/components/lien/forms/create-edit-task-form';
 import { TaskDetailDrawer } from '@/components/lien/task-detail-drawer';
 import { TaskManagerHeader } from '@/components/lien/task-manager-header';
 import { TaskManagerToolbar } from '@/components/lien/task-manager-toolbar';
 import { TaskBoard } from '@/components/lien/task-board';
+import { DateDisplay } from '@/components/ui/date-display';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,14 +47,6 @@ function getInitials(first: string, last: string): string {
   return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
 }
 
-function formatDate(val: string | null | undefined, timezone: string): string {
-  if (!val) return '\u2014';
-  try {
-    const d = new Date(val);
-    return isNaN(d.getTime()) ? val : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone });
-  } catch { return val ?? '\u2014'; }
-}
-
 function isOverdue(dueDate?: string | null, status?: string): boolean {
   if (!dueDate || status === 'COMPLETED' || status === 'CANCELLED') return false;
   return new Date(dueDate) < new Date();
@@ -66,7 +58,6 @@ function shortCaseId(caseId: string): string {
 
 export default function TaskManagerPage() {
   const addToast = useLienStore((s) => s.addToast);
-  const timezone = useTimezone();
 
   const [tasks, setTasks]           = useState<TaskDto[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -228,7 +219,7 @@ export default function TaskManagerPage() {
           const overdue = isOverdue(task.dueDate, task.status);
           return (
             <span className={`text-[10px] ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-              {formatDate(task.dueDate, timezone)}
+              <DateDisplay value={task.dueDate} format="date" />
               {overdue && <i className="ri-error-warning-line ml-1" />}
             </span>
           );
@@ -238,11 +229,11 @@ export default function TaskManagerPage() {
         id: 'updated',
         header: 'Updated',
         cell: ({ row }) => (
-          <span className="text-[10px] text-gray-400">{formatDate(row.original.updatedAtUtc, timezone)}</span>
+          <span className="text-[10px] text-gray-400"><DateDisplay value={row.original.updatedAtUtc} format="date" /></span>
         ),
       },
     ],
-    [usersById, timezone],
+    [usersById],
   );
 
   const activeFilterCount = [search, statusFilter, priorityFilter, assignmentScope !== 'all' ? assignmentScope : ''].filter(Boolean).length;

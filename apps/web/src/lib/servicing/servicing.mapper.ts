@@ -1,3 +1,4 @@
+import { formatLegacyDateOnly } from "../format-date";
 import { GenericPaginatedResult } from "../lookup/lookup.types";
 import { ServicingListResult } from "./servicing.service";
 import type {
@@ -33,14 +34,7 @@ function safeString(val: string | null | undefined): string {
 function formatDateField(val: string | null | undefined): string {
   if (!val) return "";
   try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: "UTC",
-    });
+    return formatLegacyDateOnly(val);
   } catch {
     return val;
   }

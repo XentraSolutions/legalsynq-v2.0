@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/lien/page-header';
 import { useLienStore } from '@/stores/lien-store';
 import type { EmailSource, ValidationHistoryEntry } from '@/lib/xenia-email-api';
+import { DateDisplay } from '@/components/ui/date-display';
 
 export const dynamic = 'force-dynamic';
 
@@ -380,7 +381,7 @@ export default function EmailSourceDetailPage({
                         {h.durationMs != null ? `${h.durationMs} ms` : '—'}
                       </td>
                       <td className="px-4 py-2 text-gray-500">
-                        {new Date(h.startedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        <DateDisplay value={h.startedAt} format="datetime" />
                       </td>
                       <td className="px-4 py-2 text-red-500 font-mono">{h.errorSummary ?? '—'}</td>
                     </tr>
@@ -399,8 +400,8 @@ export default function EmailSourceDetailPage({
             <dl className="divide-y divide-gray-100 px-4 py-2">
               {[
                 ['Validation', <span key="v" className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${VALIDATION_COLORS[source.validationStatus] ?? 'bg-gray-100 text-gray-500'}`}>{source.validationStatus}</span>],
-                ['Last validated', source.lastValidatedAt ? new Date(source.lastValidatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'],
-                ['Last connected', source.lastConnectionAt ? new Date(source.lastConnectionAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'],
+                ['Last validated', source.lastValidatedAt ? <DateDisplay key="lv" value={source.lastValidatedAt} format="datetime" /> : '—'],
+                ['Last connected', source.lastConnectionAt ? <DateDisplay key="lc" value={source.lastConnectionAt} format="datetime" /> : '—'],
                 ['Latency', source.lastValidationLatencyMs != null ? `${source.lastValidationLatencyMs} ms` : '—'],
                 ['Enabled', source.enabled ? 'Yes' : 'No'],
               ].map(([label, value]) => (
@@ -426,11 +427,11 @@ export default function EmailSourceDetailPage({
             </div>
             <dl className="divide-y divide-gray-100 px-4 py-2">
               {[
-                ['Created', new Date(source.createdAtUtc).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
-                ['Updated', new Date(source.updatedAtUtc).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
+                ['Created', <DateDisplay key="c" value={source.createdAtUtc} format="date" />],
+                ['Updated', <DateDisplay key="u" value={source.updatedAtUtc} format="date" />],
                 ['Version', String(source.rowVersion)],
               ].map(([label, value]) => (
-                <div key={label} className="flex py-2.5 gap-3">
+                <div key={String(label)} className="flex py-2.5 gap-3">
                   <dt className="w-20 flex-shrink-0 text-xs font-medium text-gray-500">{label}</dt>
                   <dd className="text-xs text-gray-700">{value}</dd>
                 </div>

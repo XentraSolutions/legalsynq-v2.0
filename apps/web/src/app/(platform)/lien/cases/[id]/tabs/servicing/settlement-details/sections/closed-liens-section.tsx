@@ -1,6 +1,7 @@
 import { LienTable, LienTableToolbar } from "@/components/lien/lien-table";
 import type { LienColumnDef } from "@/components/lien/lien-table";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
+import { DateDisplay } from "@/components/ui/date-display";
 import { CollapsibleSection } from "../../../../components/collapsible-section";
 import { formatCurrency } from "../../../../utils/case-detail-utils";
 
@@ -76,14 +77,7 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     header: "Date Closed",
     cell: (l) => (
       <span className="text-xs text-gray-500 whitespace-nowrap">
-        {l.closedAtUtc
-          ? new Date(l.closedAtUtc).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              timeZone: "UTC",
-            })
-          : ""}
+        <DateDisplay value={l.closedAtUtc} format="date" fallback="" />
       </span>
     ),
   },

@@ -10,6 +10,7 @@ import { lienTaskHistoryService } from '@/lib/liens/lien-task-history.service';
 import type { TaskHistoryEvent } from '@/lib/liens/lien-task-history.types';
 import { formatDateTime } from '@/lib/lien-utils';
 import { getNoteInitials } from '@/lib/liens/note-utils';
+import { DateDisplay } from '@/components/ui/date-display';
 
 interface TaskDetailDrawerProps {
   task: TaskDto | null;
@@ -19,14 +20,6 @@ interface TaskDetailDrawerProps {
 }
 
 const MAX_CHARS = 5000;
-
-function formatDate(val?: string | null): string {
-  if (!val) return '\u2014';
-  try {
-    const d = new Date(val);
-    return isNaN(d.getTime()) ? val : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch { return val ?? '\u2014'; }
-}
 
 export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: TaskDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<'notes' | 'details' | 'history'>('notes');
@@ -290,7 +283,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: Task
             {displayTask.dueDate && (
               <div className="flex items-center gap-1.5">
                 <i className="ri-calendar-line text-gray-400" />
-                <span>Due {formatDate(displayTask.dueDate)}</span>
+                <span>Due <DateDisplay value={displayTask.dueDate} format="date" /></span>
               </div>
             )}
             {displayTask.linkedLiens.length > 0 && (
@@ -673,15 +666,6 @@ function friendlyLabel(eventType: string): string {
   return map[eventType] ?? eventType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function formatHistoryTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true,
-    });
-  } catch { return iso; }
-}
 
 function parseStatusFromDescription(description: string): { from?: string; to?: string } | null {
   const m = description.match(/from ['"]?(\w+)['"]? to ['"]?(\w+)['"]?/i);
@@ -757,7 +741,7 @@ function TaskHistoryPanel({
                       {friendlyLabel(event.eventType)}
                     </span>
                     <span className="text-xs text-gray-400 ml-auto whitespace-nowrap">
-                      {formatHistoryTime(event.occurredAtUtc)}
+                      <DateDisplay value={event.occurredAtUtc} format="datetime" />
                     </span>
                   </div>
 

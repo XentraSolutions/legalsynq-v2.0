@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useTimezone } from '@/lib/use-timezone';
+import { DateDisplay } from '@/components/ui/date-display';
 import { lienTaskTemplatesService } from '@/lib/liens/lien-task-templates.service';
 import type {
   TaskTemplateDto,
@@ -259,7 +259,6 @@ function TemplateRow({
   onEdit: () => void;
   onToggleActive: () => void;
 }) {
-  const timezone = useTimezone();
   const ctxColor: Record<string, string> = {
     GENERAL: 'bg-gray-100 text-gray-600',
     CASE:    'bg-blue-50 text-blue-600',
@@ -292,7 +291,7 @@ function TemplateRow({
             </div>
           </div>
           <div className="text-xs text-gray-300 mt-2">
-            v{template.version} · Updated {new Date(template.lastUpdatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone })}
+            v{template.version} · Updated <DateDisplay value={template.lastUpdatedAt} format="date" />
             {template.lastUpdatedByName && ` by ${template.lastUpdatedByName}`}
             {' '}· {template.lastUpdatedSource}
           </div>

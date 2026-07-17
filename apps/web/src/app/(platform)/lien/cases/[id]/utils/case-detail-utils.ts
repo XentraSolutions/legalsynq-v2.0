@@ -1,4 +1,5 @@
 import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types";
+import { formatLegacyDateOnly, formatLegacyShortTimestamp } from "@/lib/format-date";
 
 export function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "";
@@ -41,26 +42,13 @@ export function formatNoteDate(iso: string, timezone: string): string {
   if (diffHrs < 24) return `${diffHrs}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
 
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: timezone,
-  });
+  return formatLegacyDateOnly(iso, timezone);
 }
 
 export function formatNoteTimestamp(iso: string, timezone: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: timezone,
-  });
+  return formatLegacyShortTimestamp(iso, timezone);
 }
 
 export function getInitials(name: string): string {

@@ -28,22 +28,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function formatDate(val: string, timezone: string): string {
-  if (!val) return "\u2014";
-  try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: timezone,
-    });
-  } catch {
-    return val;
-  }
-}
-
 const BULK_ACTIONS: BulkActionConfig[] = [
   {
     key: "complete",

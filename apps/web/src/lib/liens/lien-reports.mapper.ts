@@ -1,3 +1,4 @@
+import { formatLegacyDateOnly } from "../format-date";
 import { ApiResponse } from "@/types";
 import { CaseLienItem } from "../cases";
 import {
@@ -11,13 +12,7 @@ import {
 function formatDateField(val: string | null | undefined): string {
   if (!val) return "";
   try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return formatLegacyDateOnly(val);
   } catch {
     return val;
   }

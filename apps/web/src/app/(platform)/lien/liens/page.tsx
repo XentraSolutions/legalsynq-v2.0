@@ -8,6 +8,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 import { PageHeader } from "@/components/lien/page-header";
 import { StatusBadge } from "@/components/lien/status-badge";
+import { DateDisplay } from "@/components/ui/date-display";
 import { CreateLienModal } from "@/components/lien/forms/create-lien-modal";
 import { useLienStore } from "@/stores/lien-store";
 import { usePrimaryLoad, useBackgroundReady } from "@/hooks/use-background-queue";
@@ -26,18 +27,6 @@ function formatCurrency(amount: number | null): string {
     style: "currency",
     currency: "USD",
   }).format(amount);
-}
-
-function formatShortDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return value;
-  return d.toLocaleDateString("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-    timeZone: "UTC",
-  });
 }
 
 function countActiveFilters(f: LiensFilterValues): number {
@@ -246,7 +235,7 @@ export default function LiensPage() {
         header: "Initial Service Date",
         cell: ({ row }) => (
           <span className="text-sm text-gray-700 whitespace-nowrap">
-            {formatShortDate(row.original.initialServiceDate)}
+            <DateDisplay value={row.original.initialServiceDate} format="date" fallback="—" />
           </span>
         ),
       },

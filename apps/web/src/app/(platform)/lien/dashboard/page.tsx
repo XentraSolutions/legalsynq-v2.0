@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { formatDateOnly } from '@/lib/format-date';
 import { KpiCard } from '@/components/lien/kpi-card';
 import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
 import { useLienStore } from '@/stores/lien-store';
@@ -29,9 +30,8 @@ import type { CaseReportItem, LienReportItem } from '@/lib/cases/cases.types';
 export const dynamic = 'force-dynamic';
 
 function formatPeriodLabel(range: DateRangeValue): string {
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
-  const from = range.from ? new Date(`${range.from}T00:00:00`).toLocaleDateString('en-US', opts) : '—';
-  const to = range.to ? new Date(`${range.to}T00:00:00`).toLocaleDateString('en-US', opts) : '—';
+  const from = range.from ? formatDateOnly(`${range.from}T00:00:00`) : '—';
+  const to = range.to ? formatDateOnly(`${range.to}T00:00:00`) : '—';
   return `${from} – ${to}`;
 }
 

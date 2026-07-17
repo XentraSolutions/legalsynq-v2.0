@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useTimezone } from '@/lib/use-timezone';
+import { DateDisplay } from '@/components/ui/date-display';
 import { lienTaskGenerationRulesService } from '@/lib/liens/lien-task-generation-rules.service';
 import { lienTaskTemplatesService } from '@/lib/liens/lien-task-templates.service';
 import type {
@@ -308,7 +308,6 @@ function RuleRow({
   onEdit: () => void;
   onToggleActive: () => void;
 }) {
-  const timezone = useTimezone();
   return (
     <div className={`bg-white rounded-xl border p-4 ${rule.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
       <div className="flex items-start justify-between gap-4">
@@ -344,7 +343,7 @@ function RuleRow({
             </div>
           </div>
           <div className="text-xs text-gray-300 mt-2">
-            v{rule.version} · Updated {new Date(rule.lastUpdatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone })}
+            v{rule.version} · Updated <DateDisplay value={rule.lastUpdatedAt} format="date" />
             {rule.lastUpdatedByName && ` by ${rule.lastUpdatedByName}`}
             {' '}· {rule.lastUpdatedSource}
           </div>

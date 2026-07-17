@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { DateDisplay } from '@/components/ui/date-display';
 import { lienTasksService } from '@/lib/liens/lien-tasks.service';
 import { apiClient } from '@/lib/api-client';
 import type { TaskDto, TaskStatus, TaskPriority, TasksQuery } from '@/lib/liens/lien-tasks.types';
@@ -37,14 +38,6 @@ function avatarColor(id: string): string {
 
 function getInitials(first: string, last: string): string {
   return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
-}
-
-function formatDate(val?: string | null): string {
-  if (!val) return '—';
-  try {
-    const d = new Date(val);
-    return isNaN(d.getTime()) ? val : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch { return val ?? '—'; }
 }
 
 function isOverdue(dueDate?: string | null, status?: string): boolean {
@@ -271,11 +264,11 @@ export function CaseTaskManager({ caseId, workflowStageId }: CaseTaskManagerProp
                       </td>
                       <td className="px-4 py-2">
                         <span className={`text-[10px] ${isOverdue(task.dueDate, task.status) ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-                          {formatDate(task.dueDate)}
+                          <DateDisplay value={task.dueDate} format="date" fallback="—" />
                           {isOverdue(task.dueDate, task.status) && <i className="ri-error-warning-line ml-1" />}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-[10px] text-gray-400">{formatDate(task.updatedAtUtc)}</td>
+                      <td className="px-4 py-2 text-[10px] text-gray-400"><DateDisplay value={task.updatedAtUtc} format="date" fallback="—" /></td>
                     </tr>
                   );
                 })}

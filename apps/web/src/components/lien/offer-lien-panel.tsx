@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { lienApi } from '@/lib/lien-api';
-import { useTimezone } from '@/lib/use-timezone';
+import { DateDisplay } from '@/components/ui/date-display';
 import { ApiError } from '@/lib/api-client';
 import type { LienDetail } from '@/types/lien';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -23,7 +23,6 @@ type Mode = 'offer' | 'withdraw';
  */
 export function OfferLienPanel({ lien, onUpdated }: OfferLienPanelProps) {
   const router = useRouter();
-  const timezone = useTimezone();
   const [mode,       setMode]       = useState<Mode>('offer');
   const [offerPrice, setOfferPrice] = useState(
     lien.offerPrice != null ? String(lien.offerPrice) : ''
@@ -151,7 +150,7 @@ export function OfferLienPanel({ lien, onUpdated }: OfferLienPanelProps) {
             </span>
             {lien.offerExpiresAtUtc && (
               <span className="ml-1">
-                — expires {new Date(lien.offerExpiresAtUtc).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone })}
+                — expires <DateDisplay value={lien.offerExpiresAtUtc} format="date" />
               </span>
             )}
           </div>
