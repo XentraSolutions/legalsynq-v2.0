@@ -96,3 +96,13 @@ Two additional env vars are required when hosting the CareConnect common portal 
 | `NotificationsService__CareConnectPortalBaseUrl` | `https://careconnect.legalsynq.com` | Identity service config. The base URL used to build password-reset links for CC users. Set in `Identity.Api/appsettings.json` or as an environment override. |
 
 If `CC_COMMON_PORTAL_HOSTNAME` is unset, the CC forgot-password path is silently disabled (a startup warning is logged). See `apps/gateway/README.md` for the required proxy header-stripping rules.
+
+### SynqLien common portal login
+
+The SynqLien common portal currently has a login-page-only shell with no auth/API integration. It is selected by the product portal subdomain config:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORTAL_SYNQLIEN_SUBDOMAIN` | `synqlien-demo` | Subdomain that renders the SynqLien-branded `/login` layout and points future portal redirects at `/lien/dashboard`. |
+
+Until auth integration is added, submitting the SynqLien portal login form only shows an in-page "not connected yet" notice and does not call `/api/auth/login`. In full local dev, use `http://synqlien-demo.localhost:5000/login`; when running `next dev` directly, use the Next.js port instead.
