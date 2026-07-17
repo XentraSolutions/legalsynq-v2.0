@@ -232,28 +232,6 @@ export function DetailsTab({
     result = age < 18;
     return result;
   };
-  const updateCaseFlag = useCallback(
-    async (key: keyof CaseDetail, value: string) => {
-      try {
-        await casesService.updateCase({
-          caseId: d.id,
-          [key]: value,
-        });
-        addToast({
-          type: "success",
-          title: "Case Flag Updated",
-        });
-      } catch (err) {
-        if (err instanceof ApiError) {
-          addToast({
-            type: "error",
-            title: "Case Flag Update Failed",
-          });
-        }
-      }
-    },
-    [form],
-  );
 
   const checkStatus = (caseStatus: string) => {
     if (caseStatus.toLowerCase().includes("litigation")) {
@@ -272,6 +250,20 @@ export function DetailsTab({
     updateField("status", status.value);
     setShowLitigationForm(false);
   };
+
+  const updateCaseFlag = useCallback(
+    async (key: keyof CaseDetail, value: string) => {
+      console.log({ [key]: value });
+      await casesService.updateCase({
+        caseId: d.id,
+        [key]: value,
+      });
+      setTimeout(() => {
+        onCaseUpdated({ ...d });
+      }, 100);
+    },
+    [form],
+  );
 
   const leftContent = (
     <div className="space-y-4">
