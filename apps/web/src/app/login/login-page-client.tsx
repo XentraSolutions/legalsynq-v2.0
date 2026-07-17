@@ -1,7 +1,8 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useMemo, useState, useEffect, type FormEvent } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { LoginForm } from "./login-form";
 import { useTenantBranding } from "@/providers/tenant-branding-provider";
 import Link from "next/link";
@@ -116,16 +117,60 @@ const CC_HIGHLIGHTS = [
   },
 ];
 
+// ── SynqLien left-panel highlights ───────────────────────────────────────────
+
+const SYNQLIEN_HIGHLIGHTS = [
+  {
+    icon: "ri-folder-chart-line",
+    text: "Track cases, liens, settlements, and servicing work in one focused portal",
+  },
+  {
+    icon: "ri-exchange-dollar-line",
+    text: "Manage lien sales, marketplace activity, and buyer portfolios",
+  },
+  {
+    icon: "ri-file-shield-2-line",
+    text: "Keep documents, payment history, and compliance context organized",
+  },
+  {
+    icon: "ri-team-line",
+    text: "One workspace for law firms, lien owners, buyers, and servicing teams",
+  },
+];
+
+const SYNQLIEN_REASON_MESSAGES: Record<string, { icon: string; text: string }> = {
+  idle: {
+    icon: "ri-time-line",
+    text: "Your session expired due to inactivity. Please sign in again.",
+  },
+  unauthenticated: {
+    icon: "ri-shield-keyhole-line",
+    text: "Your session has ended. Please sign in to continue.",
+  },
+  access_updated: {
+    icon: "ri-lock-unlock-line",
+    text: "Your access permissions have changed. Please sign in again to continue.",
+  },
+};
+
 // ── Main export ────────────────────────────────────────────────────────────────
 
-export function LoginPageClient({ isPortal }: { isPortal: boolean }) {
+export function LoginPageClient({
+  portalProductId,
+}: {
+  portalProductId?: "careconnect" | "synqlien" | null;
+}) {
   const [year, setYear] = useState<number | null>(null);
   useEffect(() => {
     setYear(new Date().getFullYear());
   }, []);
 
-  if (isPortal) {
+  if (portalProductId === "careconnect") {
     return <CareConnectLoginLayout year={year} />;
+  }
+
+  if (portalProductId === "synqlien") {
+    return <SynqLienLoginLayout year={year} />;
   }
 
   return <LegalSynqLoginLayout year={year} />;
@@ -274,6 +319,298 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── SynqLien layout ───────────────────────────────────────────────────────────
+
+function SynqLienLoginLayout({ year }: { year: number | null }) {
+  const bg = "#111827";
+  const accent = "#f97316";
+  const accentA = "rgba(249,115,22,0.14)";
+
+  return (
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      {/* ── Left panel — SynqLien branded ────────────────────────────────── */}
+      <div
+        className="hidden lg:flex lg:w-[45%] xl:w-[42%] flex-col p-10 xl:p-14 relative overflow-hidden"
+        style={{ backgroundColor: bg }}
+      >
+        {/* Subtle background texture rings */}
+        <div
+          className="absolute -bottom-40 -left-40 w-[520px] h-[520px] rounded-full opacity-[0.05]"
+          style={{ border: `80px solid ${accent}` }}
+          aria-hidden
+        />
+        <div
+          className="absolute -top-24 -right-24 w-[320px] h-[320px] rounded-full opacity-[0.04]"
+          style={{ border: `60px solid ${accent}` }}
+          aria-hidden
+        />
+
+        {/* Logo */}
+        <div className="relative z-10 mb-auto">
+          <SynqLienLogo testId="sl-desktop-logo" />
+        </div>
+
+        {/* Hero copy */}
+        <div className="relative z-10 py-12">
+          <div
+            className="w-10 h-0.5 mb-6 rounded-full"
+            style={{ backgroundColor: accent }}
+          />
+
+          <h2 className="text-3xl xl:text-4xl font-bold text-white leading-tight tracking-tight mb-4">
+            Your lien operations,
+            <br />
+            all in one place
+          </h2>
+
+          <p
+            className="text-[15px] leading-relaxed mb-10 max-w-sm"
+            style={{ color: "rgba(226,232,240,0.78)" }}
+          >
+            For law firms, lien owners, buyers, and servicing teams managing the
+            lien lifecycle
+          </p>
+
+          <ul className="space-y-5">
+            {SYNQLIEN_HIGHLIGHTS.map(({ icon, text }) => (
+              <li key={text} className="flex items-start gap-3">
+                <span
+                  className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                  style={{ backgroundColor: accentA }}
+                >
+                  <i
+                    className={`${icon} text-[14px]`}
+                    style={{ color: accent }}
+                  />
+                </span>
+                <span
+                  className="text-[13px] leading-snug"
+                  style={{ color: "rgba(226,232,240,0.82)" }}
+                >
+                  {text}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Footer */}
+        <div
+          className="relative z-10 pt-6 border-t"
+          style={{ borderColor: "rgba(255,255,255,0.08)" }}
+        >
+          <div className="flex items-center gap-3">
+            <p
+              className="text-[11px]"
+              style={{ color: "rgba(226,232,240,0.42)" }}
+              suppressHydrationWarning
+            >
+              &copy; {year ?? ""} LegalSynq SynqLien
+            </p>
+            <span
+              className="text-[10px]"
+              style={{ color: "rgba(226,232,240,0.2)" }}
+            >
+              &bull;
+            </span>
+            <Link
+              href="/coming-soon"
+              className="text-[11px] transition-colors"
+              style={{ color: "rgba(226,232,240,0.42)" }}
+            >
+              Privacy Policy
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Right panel — static login form ──────────────────────────────── */}
+      <div className="flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 px-6 py-12 bg-gray-50">
+        <div className="lg:hidden mb-10">
+          <SynqLienLogo compact dark testId="sl-mobile-logo" />
+        </div>
+
+        <div className="w-full max-w-sm">
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+              Welcome back
+            </h1>
+            <p className="mt-1.5 text-sm text-gray-500">
+              Sign in to your SynqLien portal
+            </p>
+          </div>
+
+          <Suspense fallback={null}>
+            <SynqLienStaticLoginForm />
+          </Suspense>
+
+          <p className="mt-6 text-center text-xs text-gray-400">
+            Need access?{" "}
+            <Link
+              href="/coming-soon"
+              className="text-gray-600 hover:text-gray-900 underline underline-offset-2 transition-colors"
+            >
+              Contact support
+            </Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SynqLienLogo({
+  compact = false,
+  dark = false,
+  testId,
+}: {
+  compact?: boolean;
+  dark?: boolean;
+  testId: string;
+}) {
+  return (
+    <div className="flex items-center gap-3" data-testid={testId}>
+      <Image
+        src="/product-icons/synqlien.png"
+        alt=""
+        width={64}
+        height={64}
+        priority
+        unoptimized
+        className={compact ? "h-9 w-9 rounded-lg" : "h-14 w-14 rounded-xl"}
+      />
+      <span
+        className={
+          compact
+            ? "text-2xl font-semibold tracking-tight"
+            : "text-[34px] font-semibold tracking-tight"
+        }
+        style={{ color: dark ? "#111827" : "#ffffff" }}
+      >
+        Synq<span style={{ color: "#f97316" }}>Lien</span>
+      </span>
+    </div>
+  );
+}
+
+function SynqLienStaticLoginForm() {
+  const searchParams = useSearchParams();
+  const reasonBanner = useMemo(() => {
+    const r = searchParams?.get("reason") ?? "";
+    return SYNQLIEN_REASON_MESSAGES[r] ?? null;
+  }, [searchParams]);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setNotice("SynqLien portal sign-in is not connected yet.");
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+      {reasonBanner && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-3">
+          <i className={`${reasonBanner.icon} text-[15px] text-blue-500 shrink-0 mt-0.5`} />
+          <p className="text-[13px] text-blue-700 leading-snug">
+            {reasonBanner.text}
+          </p>
+        </div>
+      )}
+
+      <PortalField label="Email address">
+        <input
+          type="text"
+          inputMode="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          required
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          autoComplete="email"
+          placeholder="you@example.com"
+          className={portalInputCls}
+        />
+      </PortalField>
+
+      <PortalField label="Password">
+        <div className="relative">
+          <input
+            type={showPw ? "text" : "password"}
+            required
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            autoComplete="current-password"
+            placeholder="••••••••"
+            className={`${portalInputCls} pr-10`}
+          />
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setShowPw(v => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label={showPw ? "Hide password" : "Show password"}
+          >
+            <i className={`${showPw ? "ri-eye-off-line" : "ri-eye-line"} text-[16px]`} />
+          </button>
+        </div>
+      </PortalField>
+
+      <div className="flex justify-end -mt-1">
+        <Link
+          href="/coming-soon"
+          className="text-[13px] text-gray-500 hover:text-gray-700 underline underline-offset-2 transition-colors"
+        >
+          Forgot password?
+        </Link>
+      </div>
+
+      {notice && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-orange-200 bg-orange-50 px-3.5 py-3">
+          <i className="ri-information-line text-[15px] text-orange-500 shrink-0 mt-0.5" />
+          <p className="text-[13px] text-orange-700 leading-snug">{notice}</p>
+        </div>
+      )}
+
+      <button
+        type="submit"
+        className="w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-95"
+        style={{ backgroundColor: "#f97316" }}
+      >
+        Sign in
+      </button>
+    </form>
+  );
+}
+
+const portalInputCls = [
+  "w-full rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900",
+  "placeholder:text-gray-400",
+  "focus:outline-none focus:ring-2 focus:border-transparent",
+  "transition-shadow",
+].join(" ") + " focus:ring-[#f97316]/40 focus:border-[#f97316]";
+
+function PortalField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-1.5 text-[13px] font-medium text-gray-700">
+        {label}
+      </label>
+      {children}
     </div>
   );
 }

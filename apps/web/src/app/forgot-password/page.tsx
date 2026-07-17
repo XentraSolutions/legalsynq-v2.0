@@ -10,7 +10,7 @@ export default async function ForgotPasswordPage() {
   // (CareConnect vs LegalSynq branding). The reverse proxy must strip or overwrite
   // this header from external traffic before forwarding — same requirement as route.ts.
   const rawHost = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '';
-  const isPortal = getServerPortalConfig(rawHost) !== null;
+  const isPortal = getServerPortalConfig(rawHost)?.productId === 'careconnect';
 
   return <ForgotPasswordPageClient isPortal={isPortal} />;
 }

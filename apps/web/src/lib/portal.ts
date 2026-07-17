@@ -16,7 +16,7 @@
  */
 
 export interface PortalConfig {
-  productId:       string;
+  productId:       'careconnect' | 'synqlien';
   landingPath:     string;
   showAppSwitcher: boolean;
   showBottomNav:   boolean;
@@ -35,6 +35,16 @@ function buildPortalConfigs(): Record<string, PortalConfig> {
     showBottomNav:   false,
     logoSrc:         '/careconnect-logo.png',
     logoLabel:       'CareConnect',
+  };
+
+  const synqLienSub = (process.env.PORTAL_SYNQLIEN_SUBDOMAIN ?? 'synqlien-demo').trim();
+  if (synqLienSub) configs[synqLienSub] = {
+    productId:       'synqlien',
+    landingPath:     '/lien/dashboard',
+    showAppSwitcher: false,
+    showBottomNav:   false,
+    logoSrc:         '/product-icons/synqlien.png',
+    logoLabel:       'SynqLien',
   };
 
   return configs;
