@@ -12,6 +12,8 @@ import { useSessionContext } from "@/providers/session-provider";
 import { dateConverter } from "@/lib/cases/cases.mapper";
 import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
 import { useCreateCase } from "@/hooks/use-case-liens";
+import { LitigationStatusForm } from "./litigation-form";
+import { DropdownOption } from "@/lib/lookup/lookup.types";
 
 interface CreateCaseFormProps {
   caseNumber?: string;
@@ -39,7 +41,7 @@ const INITIAL_FORM = {
   claimNumber: "",
   description: "",
   notes: "",
-  caseStatusId: "",
+  caseStatusId: "PreDemand",
   caseManagerId: "",
   lawfirmId: "",
   accidentTypeId: "",
@@ -78,6 +80,8 @@ export function CreateCaseForm({
   const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string>();
 
   const [isValid, setIsValid] = useState(false);
+  const [showLitigationForm, setShowLitigationForm] = useState(false);
+
   const [touched, setTouched] = useState<
     Record<keyof typeof INITIAL_FORM, boolean>
   >(
@@ -88,6 +92,7 @@ export function CreateCaseForm({
   );
 
   const updateField = (field: keyof typeof INITIAL_FORM, value: string) => {
+    console.log(field, value);
     setForm((prev) => ({ ...prev, [field]: value }));
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
@@ -201,9 +206,9 @@ export function CreateCaseForm({
 
       setTimeout(() => {
         onCreated?.(res.id);
+        setForm({ ...INITIAL_FORM });
+        setErrors({});
       }, 500);
-      setForm({ ...INITIAL_FORM });
-      setErrors({});
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isConflict) {
@@ -242,6 +247,25 @@ export function CreateCaseForm({
       ),
     );
     onClose();
+  };
+
+  const checkStatus = (caseStatus: string) => {
+    if (caseStatus.toLowerCase().includes("litigation")) {
+      setShowLitigationForm(true);
+    }
+  };
+
+  const setLitigationStatus = (status: DropdownOption) => {
+    setData((prev) => ({
+      ...prev,
+      status: prev.status.map((s) =>
+        s.value.includes("Litigation")
+          ? { ...s, value: status.value, label: `Litigation (${status.label})` }
+          : s,
+      ),
+    }));
+    updateField("caseStatusId", status.value);
+    setShowLitigationForm(false);
   };
 
   return (
@@ -354,6 +378,7 @@ export function CreateCaseForm({
               options={data?.status}
               placeholder=""
               onChange={(v: string) => {
+                checkStatus(v);
                 setForm({
                   ...form,
                   caseStatusId: v.toString(),
@@ -458,6 +483,16 @@ export function CreateCaseForm({
           </div>
         </div>
       </FormModal>
+
+      {showLitigationForm && (
+        <LitigationStatusForm
+          open={showLitigationForm}
+          onClose={() => setShowLitigationForm(false)}
+          onSubmitted={(v: DropdownOption) => {
+            setLitigationStatus(v);
+          }}
+        />
+      )}
     </>
   );
 }
