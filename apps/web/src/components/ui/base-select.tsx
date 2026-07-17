@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { Check, ChevronDown, Loader2, Plus } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,6 +38,8 @@ interface BaseSelectCommonProps<
 
   loadingMode?: "eager" | "infinite";
   isLoading?: boolean;
+  /** A new server-side search request is in flight — shows the same skeleton as `isLoading`, even while stale results from the previous search are still in `options` (e.g. via `keepPreviousData`). */
+  isSearching?: boolean;
   isFetchingMore?: boolean;
   hasNextPage?: boolean;
   onLoadMore?: () => void;
@@ -66,7 +68,6 @@ interface BaseSelectCommonProps<
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
-  loadingText?: string;
 
   disabled?: boolean;
   error?: boolean;
@@ -90,6 +91,22 @@ export type BaseSelectProps<
   TOption extends BaseSelectOption = BaseSelectOption,
 > = BaseSelectCommonProps<TOption> &
   (SingleSelectProps<TOption> | MultiSelectProps<TOption>);
+
+/** Placeholder rows shown in place of real options while loading or searching. */
+function OptionSkeletonRows({ count }: { count: number }) {
+  return (
+    <div aria-hidden="true">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="flex items-center py-1.5 pl-2 pr-8">
+          <div
+            className="h-4 rounded bg-gray-100 animate-pulse"
+            style={{ width: `${60 + ((i * 17) % 30)}%` }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Wraps the first case-insensitive match of `query` in `label` with a `<mark>`. */
 function highlightLabel(label: string, query: string): React.ReactNode {
@@ -183,6 +200,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     options,
     loadingMode = "eager",
     isLoading = false,
+    isSearching = false,
     isFetchingMore = false,
     hasNextPage = false,
     onLoadMore,
@@ -197,7 +215,6 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     placeholder = "Select…",
     searchPlaceholder = "Search...",
     emptyText = "No options found.",
-    loadingText = "Loading...",
     disabled,
     error,
     className,
@@ -209,7 +226,13 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
 
   const search = controlledSearch ?? internalSearch;
   const listRef = React.useRef<HTMLDivElement>(null);
-  const sentinelRef = React.useRef<HTMLDivElement>(null);
+  // A plain ref here wouldn't work: Radix's Popover.Content mounts its
+  // children (including this sentinel) one render after `open` flips true,
+  // and ref writes don't trigger re-renders — so the infinite-scroll effect
+  // below would see `sentinelEl` as null forever and never attach its
+  // IntersectionObserver. Using state for the ref makes that mount a
+  // dependency the effect can react to.
+  const [sentinelEl, setSentinelEl] = React.useState<HTMLDivElement | null>(null);
 
   const selectedValues = React.useMemo(
     () =>
@@ -301,9 +324,8 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
   React.useEffect(() => {
     if (loadingMode !== "infinite" || !listVisible || !hasNextPage || !onLoadMore)
       return;
-    const target = sentinelRef.current;
     const root = listRef.current;
-    if (!target || !root) return;
+    if (!sentinelEl || !root) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -311,9 +333,9 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
       },
       { root, threshold: 0.1 },
     );
-    observer.observe(target);
+    observer.observe(sentinelEl);
     return () => observer.disconnect();
-  }, [loadingMode, listVisible, hasNextPage, onLoadMore, isFetchingMore]);
+  }, [loadingMode, listVisible, hasNextPage, onLoadMore, isFetchingMore, sentinelEl]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -331,7 +353,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     }
   };
 
-  const showLoading = isLoading && filteredOptions.length === 0;
+  const showSkeleton = isSearching || (isLoading && filteredOptions.length === 0);
 
   const searchInput = (
     <input
@@ -352,11 +374,8 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
       role="listbox"
       className={cn("overflow-auto p-1", inline ? "max-h-44" : "max-h-64")}
     >
-      {showLoading ? (
-        <div className="flex items-center gap-2 p-3 text-sm text-gray-500">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {loadingText}
-        </div>
+      {showSkeleton ? (
+        <OptionSkeletonRows count={3} />
       ) : filteredOptions.length > 0 ? (
         <>
           {filteredOptions.map((option, index) => (
@@ -411,13 +430,12 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
             </button>
           ))}
           {loadingMode === "infinite" && hasNextPage && (
-            <div
-              ref={sentinelRef}
-              className="flex items-center justify-center py-2"
-            >
-              {isFetchingMore && (
-                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-              )}
+            // Needs a non-zero height at all times, even while idle — an
+            // empty (0-height) element always has an IntersectionObserver
+            // ratio of 0, so with threshold: 0.1 it would never be reported
+            // as intersecting and onLoadMore would never fire.
+            <div ref={setSentinelEl} className="min-h-[1px]">
+              {isFetchingMore && <OptionSkeletonRows count={1} />}
             </div>
           )}
         </>

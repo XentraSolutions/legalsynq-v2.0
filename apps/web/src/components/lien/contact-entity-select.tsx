@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
-import { useContacts, CONTACTS_QUERY_KEY } from "@/hooks/use-contacts";
+import { useInfiniteContacts, INFINITE_CONTACTS_QUERY_KEY } from "@/hooks/use-contacts";
 import { AddContactModal } from "@/components/lien/add-contact-modal";
 import type { ContactDetail } from "@/lib/contacts";
 
@@ -56,6 +56,14 @@ export function ContactEntitySelect({
 }: ContactEntitySelectProps) {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedOption, setSelectedOption] = useState<BaseSelectOption | null>(null);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timeout);
+  }, [search]);
 
   const parentId = lawFirmId ?? facilityId;
   const parentMissing = Boolean(requireParent) && !parentId;
@@ -67,23 +75,59 @@ export function ContactEntitySelect({
     FacilityId: facilityId,
   };
 
-  const { data, isLoading } = useContacts(query, { enabled: !parentMissing });
-
-  const options: BaseSelectOption[] = useMemo(
-    () => (data?.items ?? []).map((c) => ({ value: c.id, label: c.displayName })),
-    [data],
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteContacts(
+    { ...query, search: debouncedSearch || undefined },
+    { enabled: !parentMissing },
   );
+
+  // A debounced-search refetch in flight — distinct from the very first
+  // load (isLoading) and from paginating (isFetchingNextPage), both of
+  // which have their own skeleton treatment already.
+  const isSearching = isFetching && !isLoading && !isFetchingNextPage;
+
+  const options: BaseSelectOption[] = useMemo(() => {
+    const fetched = (data?.pages ?? []).flatMap((page) =>
+      page.items.map((c) => ({ value: c.id, label: c.displayName })),
+    );
+    // The selected item may not be in the pages loaded so far — keep it
+    // around so the trigger can still show its label instead of reverting
+    // to the placeholder.
+    if (value && selectedOption?.value === value && !fetched.some((o) => o.value === value)) {
+      return [selectedOption, ...fetched];
+    }
+    return fetched;
+  }, [data, value, selectedOption]);
+
+  const handleChange = (nextValue: string, option: BaseSelectOption) => {
+    setSelectedOption(option);
+    onChange(nextValue, option);
+  };
 
   return (
     <>
       <BaseSelect
         value={value}
-        onChange={onChange}
+        onChange={handleChange}
         options={options}
+        loadingMode="infinite"
         isLoading={isLoading}
+        isSearching={isSearching}
+        isFetchingMore={isFetchingNextPage}
+        hasNextPage={hasNextPage}
+        onLoadMore={fetchNextPage}
         disabled={parentMissing}
         placeholder={parentMissing ? parentHint : placeholder}
         searchPlaceholder={searchPlaceholder}
+        search={search}
+        onSearchChange={setSearch}
+        filterLocally={false}
         error={error}
         className={className}
         createAction={
@@ -103,8 +147,8 @@ export function ContactEntitySelect({
           lawFirmId={lawFirmId}
           facilityId={facilityId}
           onSaved={(created: ContactDetail) => {
-            queryClient.invalidateQueries({ queryKey: CONTACTS_QUERY_KEY(query) });
-            onChange(created.id, { value: created.id, label: created.displayName });
+            queryClient.invalidateQueries({ queryKey: INFINITE_CONTACTS_QUERY_KEY(query) });
+            handleChange(created.id, { value: created.id, label: created.displayName });
             setShowCreate(false);
           }}
         />
