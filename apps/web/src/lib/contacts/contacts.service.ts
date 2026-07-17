@@ -122,6 +122,30 @@ async function resolveCaseManagerRoleCode(): Promise<string | undefined> {
   return caseManagerRoleCodePromise;
 }
 
+// Attorneys are Law Firm contacts distinguished by their contactSubtype
+// role, modeled the same way as Case Managers.
+// The role code is tenant-configurable, resolved from the lawfirm/role
+// lookup, and cached for the session.
+let attorneyRoleCodePromise: Promise<string | undefined> | null = null;
+
+async function resolveAttorneyRoleCode(): Promise<string | undefined> {
+  if (!attorneyRoleCodePromise) {
+    attorneyRoleCodePromise = lookupApi
+      .getLawFirmContactRoles()
+      .then(({ data }) => {
+        const match = data.find(
+          (r) =>
+            r.code.toLowerCase() === "attorney" ||
+            r.name.toLowerCase() === "attorney" ||
+            r.name.toLowerCase() === "attorneys",
+        );
+        return match?.code;
+      })
+      .catch(() => undefined);
+  }
+  return attorneyRoleCodePromise;
+}
+
 export interface CaseReassignSecondaryConfig {
   label: string;
   contactType: string;
@@ -196,6 +220,10 @@ export const contactsService = {
 
   async getCaseManagerRoleCode(): Promise<string | undefined> {
     return resolveCaseManagerRoleCode();
+  },
+
+  async getAttorneyRoleCode(): Promise<string | undefined> {
+    return resolveAttorneyRoleCode();
   },
 
   async getCaseManagers(

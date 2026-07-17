@@ -1,5 +1,6 @@
 import Field from "@/components/lien/field";
 import type { DropdownOption } from "@/lib/lookup/lookup.types";
+import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
 import { CollapsibleSection } from "../../../../components/collapsible-section";
 
 export function ServicingDetailsSection({
@@ -12,16 +13,12 @@ export function ServicingDetailsSection({
   onSwitchedDateChange,
   currentLawFirm,
   onCurrentLawFirmChange,
-  lawFirmList,
-  onLoadLawFirms,
   currentLawyer,
   onCurrentLawyerChange,
-  lawyerList,
-  onLoadLawyers,
   currentCaseManager,
   onCurrentCaseManagerChange,
-  caseManagerList,
-  onLoadCaseManagers,
+  attorneyRoleCode,
+  caseManagerRoleCode,
   onSave,
 }: {
   caseStatus: string;
@@ -33,16 +30,12 @@ export function ServicingDetailsSection({
   onSwitchedDateChange: (v: string) => void;
   currentLawFirm: string;
   onCurrentLawFirmChange: (v: string) => void;
-  lawFirmList: DropdownOption[];
-  onLoadLawFirms: () => void;
   currentLawyer: string;
   onCurrentLawyerChange: (v: string) => void;
-  lawyerList: DropdownOption[];
-  onLoadLawyers: () => void;
   currentCaseManager: string;
   onCurrentCaseManagerChange: (v: string) => void;
-  caseManagerList: DropdownOption[];
-  onLoadCaseManagers: () => void;
+  attorneyRoleCode?: string;
+  caseManagerRoleCode?: string;
   onSave: () => void;
 }) {
   return (
@@ -93,14 +86,12 @@ export function ServicingDetailsSection({
           <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
             Current Law Firm
           </label>
-          <Field
-            label=""
-            disabled={!switchedLawFirm}
-            value={currentLawFirm}
-            type="select"
-            options={lawFirmList}
-            onChange={(e: string) => onCurrentLawFirmChange(e.toString())}
-            onClick={onLoadLawFirms}
+          <ContactEntitySelect
+            contactType="LawFirm"
+            value={switchedLawFirm ? currentLawFirm : ""}
+            onChange={(v) => onCurrentLawFirmChange(v)}
+            placeholder="Select law firm..."
+            searchPlaceholder="Search law firms..."
           />
         </div>
 
@@ -109,28 +100,32 @@ export function ServicingDetailsSection({
             <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
               Current Lawyer
             </label>
-            <Field
-              label=""
-              disabled={!switchedLawFirm}
-              value={currentLawyer}
-              type="select"
-              options={lawyerList}
-              onChange={(e: string) => onCurrentLawyerChange(e.toString())}
-              onClick={onLoadLawyers}
+            <ContactEntitySelect
+              contactType="LawFirm"
+              contactSubtype={attorneyRoleCode}
+              lawFirmId={switchedLawFirm ? currentLawFirm : undefined}
+              requireParent
+              parentHint="Select a law firm first"
+              value={switchedLawFirm ? currentLawyer : ""}
+              onChange={(v) => onCurrentLawyerChange(v)}
+              placeholder="Select lawyer..."
+              searchPlaceholder="Search lawyers..."
             />
           </div>
           <div>
             <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
               Current Case Manager
             </label>
-            <Field
-              label=""
-              disabled={!switchedLawFirm}
-              value={currentCaseManager}
-              type="select"
-              options={caseManagerList}
-              onChange={(e: string) => onCurrentCaseManagerChange(e.toString())}
-              onClick={onLoadCaseManagers}
+            <ContactEntitySelect
+              contactType="LawFirm"
+              contactSubtype={caseManagerRoleCode}
+              lawFirmId={switchedLawFirm ? currentLawFirm : undefined}
+              requireParent
+              parentHint="Select a law firm first"
+              value={switchedLawFirm ? currentCaseManager : ""}
+              onChange={(v) => onCurrentCaseManagerChange(v)}
+              placeholder="Select case manager..."
+              searchPlaceholder="Search case managers..."
             />
           </div>
         </div>

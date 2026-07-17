@@ -4,7 +4,7 @@
 [x] - case's liens incomplete/missing columns values
 [x] - servicing liens unnecessary link style 
 [x] - servicing liens table - missing values
-[] - servicing details - lawfirm dropdown, lawyer and case manager, should use the new contact dropdown, with lazy loading, same with case creation
+[x] - servicing details - lawfirm dropdown, lawyer and case manager, should use the new contact dropdown, with lazy loading, same with case creation
 [] - revisit liens filter and sorting - defered , still waiting for API
 [] - revisit liens table on case after filter and sorting update , maybe improve , unify the API used, we wont need preloading if we have a better API
 [] - case management , filter sorting , liens already mimic the legacy exactly assuming the API is in place, now case should also need to sync.
