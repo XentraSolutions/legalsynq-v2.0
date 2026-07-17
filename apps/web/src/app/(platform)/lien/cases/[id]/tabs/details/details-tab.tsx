@@ -212,6 +212,20 @@ export function DetailsTab({
     addToast,
   ]);
 
+  const updateCaseFlag = useCallback(
+    async (key: keyof CaseDetail, value: string) => {
+      console.log({ [key]: value });
+      await casesService.updateCase({
+        caseId: d.id,
+        [key]: value,
+      });
+      setTimeout(() => {
+        onCaseUpdated({ ...d });
+      }, 100);
+    },
+    [form],
+  );
+
   const isMinor = () => {
     let result = false;
     let age = 0;
