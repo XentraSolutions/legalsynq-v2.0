@@ -314,7 +314,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     formData.append("DocFileTypeId", payload.documentType);
 
     try {
-      await casesService.uploadCaseDocuments(formData);
+      await casesService.uploadLiensDocuments(formData);
       // addToast({
       //   type: "success",
       //   title: "Document Uploaded",

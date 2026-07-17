@@ -32,7 +32,7 @@ export function DocumentsTab({
   const dropzoneRef = useRef<FileDropzoneRef>(null);
 
   const [selectedDocType, setSelectedDocType] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState<File[] | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[] | null>([]);
 
   const [caseDocuments, setCaseDocuments] = useState<DocumentType[]>([]);
   const [liensDocuments, setLiensDocuments] = useState<DocumentType[]>([]);
@@ -41,9 +41,11 @@ export function DocumentsTab({
     isOpen: boolean;
     type: string;
   }>({ id: "", isOpen: false, type: "" });
+  const [submitting, setIsSubmitting] = useState<boolean>(false);
 
   const uploadCaseDocuments = async (payload: any) => {
     if (!payload || payload.length == 0) return;
+    setIsSubmitting(true);
     try {
       payload.forEach(async (element: File) => {
         const formData = new FormData();
@@ -60,6 +62,7 @@ export function DocumentsTab({
           description: `Document has been updated.`,
         });
         setTimeout(() => {
+          setIsSubmitting(false);
           dropzoneRef?.current?.reset();
           setSelectedDocType("");
           fetchDocuments();
@@ -127,7 +130,9 @@ export function DocumentsTab({
         type: "error",
         title: "Download Failed",
         description:
-          err instanceof ApiError ? err.message : "An unexpected error occurred",
+          err instanceof ApiError
+            ? err.message
+            : "An unexpected error occurred",
       });
     }
   }
@@ -140,6 +145,7 @@ export function DocumentsTab({
   const leftContent = (
     <div className="space-y-4">
       <UploadDocumentSection
+        submitting={submitting}
         docTypes={docTypes}
         selectedDocType={selectedDocType}
         onSelectedDocTypeChange={setSelectedDocType}

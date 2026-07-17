@@ -126,7 +126,9 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         type: "error",
         title: "Download Failed",
         description:
-          err instanceof ApiError ? err.message : "An unexpected error occurred",
+          err instanceof ApiError
+            ? err.message
+            : "An unexpected error occurred",
       });
     }
   }
