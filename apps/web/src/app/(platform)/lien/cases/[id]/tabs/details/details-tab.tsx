@@ -173,7 +173,7 @@ export function DetailsTab({
       demandAmount: d.demandAmount ?? 0.0,
       settlementAmount: d.settlementAmount ?? 0.0,
       shareCase: form.shareCase == "Yes" ? "true" : "false",
-      minorComp: form.minorComp == "Yes" ? "true" : "false",
+      minorComp: isMinor() ? "true" : "false",
       caseDropped: form.caseDropped == "Yes" ? "true" : "false",
       childSupportLiens: form.childSupportLiens == "Yes" ? "true" : "false",
       isUccFiled: form.isUccFiled == "Yes" ? "true" : "false",
@@ -208,6 +208,26 @@ export function DetailsTab({
     addToast,
   ]);
 
+  const isMinor = () => {
+    let result = false;
+    let age = 0;
+    // Convert strings to Date objects
+    const dob = new Date(form.clientDob);
+    const dol = new Date(form.dateOfIncident);
+    if (isNaN(dob.getTime()) || isNaN(dol.getTime())) {
+      age = 0; // invalid date
+      return;
+    }
+    age = dol.getFullYear() - dob.getFullYear();
+    // Adjust if the birthday hasn't occurred yet this year
+    const m = dol.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && dol.getDate() < dob.getDate())) {
+      age--;
+    }
+    age = age;
+    result = age < 18;
+    return result;
+  };
   const updateCaseFlag = useCallback(
     async (key: keyof CaseDetail, value: string) => {
       try {

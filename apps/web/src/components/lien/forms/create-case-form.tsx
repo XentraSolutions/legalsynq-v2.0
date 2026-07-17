@@ -195,6 +195,7 @@ export function CreateCaseForm({
         caseType: form.accidentTypeId || undefined,
         dateOfIncident: dateConverter(form.dateOfIncident) || undefined,
         stateOfIncident: form.accidentStateId || undefined,
+        minorComp: isMinor() ? "true" : "false",
       };
 
       const res = await createCase(request);
@@ -253,6 +254,27 @@ export function CreateCaseForm({
     if (caseStatus.toLowerCase().includes("litigation")) {
       setShowLitigationForm(true);
     }
+  };
+
+  const isMinor = () => {
+    let result = false;
+    let age = 0;
+    // Convert strings to Date objects
+    const dob = new Date(form.clientDob);
+    const dol = new Date(form.dateOfIncident);
+    if (isNaN(dob.getTime()) || isNaN(dol.getTime())) {
+      age = 0; // invalid date
+      return;
+    }
+    age = dol.getFullYear() - dob.getFullYear();
+    // Adjust if the birthday hasn't occurred yet this year
+    const m = dol.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && dol.getDate() < dob.getDate())) {
+      age--;
+    }
+    age = age;
+    result = age < 18;
+    return result;
   };
 
   const setLitigationStatus = (status: DropdownOption) => {
