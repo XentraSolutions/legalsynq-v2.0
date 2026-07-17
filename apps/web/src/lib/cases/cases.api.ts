@@ -30,6 +30,7 @@ import type {
   ReassignLeadRequestDto,
   ReassignLawFirmRequestDto,
   ReassignCaseManagerRequestDto,
+  CaseDetail,
 } from "./cases.types";
 import { ApiResponse } from "../liens/lien-report.types";
 
@@ -87,7 +88,7 @@ export const casesApi = {
   updatePersonal(request: UpdateCasePersonalRequestDto) {
     return apiClient.patch<CaseResponseDto>(`${BASE}/personal-update`, request);
   },
-  updateCase(request: UpdateCaseRequestDto) {
+  updateCase(request: UpdateCaseRequestDto | any) {
     return apiClient.patch<CaseResponseDto>(`${BASE}/details-update`, request);
   },
 

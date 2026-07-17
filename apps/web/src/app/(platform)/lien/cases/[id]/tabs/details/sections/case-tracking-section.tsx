@@ -25,6 +25,7 @@ export function CaseTrackingSection({
   tSaving,
   onSave,
   onCancel,
+  onUpdateCaseFlag,
 }: {
   d: CaseDetail;
   canEdit: boolean;
@@ -43,9 +44,10 @@ export function CaseTrackingSection({
   tSaving: boolean;
   onSave: () => void;
   onCancel: () => void;
+  onUpdateCaseFlag: (field: keyof CaseDetail, value: string) => void;
 }) {
   const flags: { label: string; key: keyof CaseDetail }[] = [
-    { label: "Share with Law Firm", key: "shareCase" },
+    { label: "Share this case with Associated Law Firm", key: "shareCase" },
     { label: "UCC Filed", key: "isUccFiled" },
     { label: "Case Dropped", key: "caseDropped" },
     { label: "Child Support", key: "childSupportLiens" },
@@ -187,7 +189,32 @@ export function CaseTrackingSection({
               placeholder=""
             />
           </div>
-         
+          <div className="flex items-center gap-2 pt-1 mt-4">
+            <button
+              onClick={onSave}
+              disabled={tSaving}
+              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+            >
+              {tSaving ? (
+                <>
+                  <i className="ri-loader-4-line text-sm animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <i className="ri-save-line text-sm" />
+                  Save
+                </>
+              )}
+            </button>
+            <button
+              onClick={onCancel}
+              disabled={tSaving}
+              className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       ) : (
         <>
@@ -245,15 +272,19 @@ export function CaseTrackingSection({
             <label key={flag.key} className="flex items-center gap-2.5">
               <input
                 type="checkbox"
-                disabled={!editing || flag.key == "minorComp"}
+                disabled={flag.key == "minorComp"}
                 checked={form[flag.key as keyof CaseDetail] === "Yes"}
                 className="w-4 h-4 rounded border-gray-300"
-                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
                   updateField(
                     flag.key as keyof CaseDetail,
                     e.target.checked ? "Yes" : "No",
-                  )
-                }
+                  );
+                  onUpdateCaseFlag(
+                    flag.key,
+                    e.target.checked ? "true" : "false",
+                  );
+                }}
               />
               <span className="text-sm text-gray-400 select-none">
                 {flag.label}
@@ -261,34 +292,6 @@ export function CaseTrackingSection({
             </label>
           ))}
         </div>
-        {editing && (
-         <div className="flex items-center gap-2 pt-1 mt-4">
-            <button
-              onClick={onSave}
-              disabled={tSaving}
-              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
-            >
-              {tSaving ? (
-                <>
-                  <i className="ri-loader-4-line text-sm animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <i className="ri-save-line text-sm" />
-                  Save
-                </>
-              )}
-            </button>
-            <button
-              onClick={onCancel}
-              disabled={tSaving}
-              className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
       </div>
     </CollapsibleSection>
   );

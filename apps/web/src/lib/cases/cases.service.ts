@@ -88,7 +88,7 @@ export const casesService = {
     return mapCaseToDetail(data);
   },
 
-  async updateCase(request: UpdateCaseRequestDto): Promise<CaseDetail> {
+  async updateCase(request: UpdateCaseRequestDto | any): Promise<CaseDetail> {
     const { data } = await casesApi.updateCase(request);
     return mapCaseToDetail(data);
   },
@@ -123,9 +123,7 @@ export const casesService = {
       limit: 10,
     });
     const payload = data as unknown as { data?: unknown };
-    return Array.isArray(payload.data)
-      ? payload.data
-      : [];
+    return Array.isArray(payload.data) ? payload.data : [];
   },
 
   async getCaseLiensUpdates(caseId: string): Promise<any> {

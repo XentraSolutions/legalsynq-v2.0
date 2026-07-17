@@ -200,12 +200,27 @@ export function DetailsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     d,
+    tSaving,
     tDateOfIncident,
     tTrackingFollowUpDate,
     form,
     onCaseUpdated,
     addToast,
   ]);
+
+  const updateCaseFlag = useCallback(
+    async (key: keyof CaseDetail, value: string) => {
+      console.log({ [key]: value });
+      await casesService.updateCase({
+        caseId: d.id,
+        [key]: value,
+      });
+      setTimeout(() => {
+        onCaseUpdated({ ...d });
+      }, 100);
+    },
+    [form],
+  );
 
   const leftContent = (
     <div className="space-y-4">
@@ -234,6 +249,7 @@ export function DetailsTab({
           setEditingTracking(false);
           setTErrors({});
         }}
+        onUpdateCaseFlag={updateCaseFlag}
       />
 
       <PlaintiffSection
@@ -265,7 +281,11 @@ export function DetailsTab({
   );
 
   const rightContent = (
-    <FeedsSection caseId={d.id} panelMode={panelMode} onPanelModeChange={onPanelModeChange} />
+    <FeedsSection
+      caseId={d.id}
+      panelMode={panelMode}
+      onPanelModeChange={onPanelModeChange}
+    />
   );
 
   return (
