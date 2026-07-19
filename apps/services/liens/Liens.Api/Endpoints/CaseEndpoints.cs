@@ -2177,7 +2177,7 @@ public static class CaseEndpoints
 
     private static async Task<IResult> UpsertCaseOtherLegacy(
         LegacyCaseOtherRequest request,
-        ICaseService caseService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -2193,7 +2193,7 @@ public static class CaseEndpoints
             });
         }
 
-        var item = await caseService.GetByIdAsync(tenantId, caseId, ct);
+        var item = await db.Cases.FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == caseId, ct);
         if (item is null)
         {
             return Results.NotFound(new
@@ -2204,6 +2204,7 @@ public static class CaseEndpoints
         }
 
         var metadata = ParseLegacyNoteFields(item.Notes);
+        var noteBody = ExtractLegacyNoteText(item.Notes);
         SetLegacyOtherField(metadata, "reductionsRate", request.reductionsRate);
         SetLegacyOtherField(metadata, "payment", request.payment);
         SetLegacyOtherField(metadata, "adjustments", request.adjustments);
@@ -2214,31 +2215,24 @@ public static class CaseEndpoints
         SetLegacyOtherField(metadata, "bulkPurchase", request.bulkPurchase);
         SetLegacyOtherField(metadata, "bank", request.bank);
 
-        await caseService.UpdateAsync(
-            tenantId,
-            caseId,
+        item.Update(
+            item.ClientFirstName,
+            item.ClientLastName,
             userId,
-            new UpdateCaseRequest
-            {
-                ClientFirstName = item.ClientFirstName,
-                ClientLastName = item.ClientLastName,
-                ExternalReference = item.ExternalReference,
-                Title = item.Title,
-                ClientDob = item.ClientDob,
-                ClientPhone = item.ClientPhone,
-                ClientEmail = item.ClientEmail,
-                ClientAddress = item.ClientAddress,
-                DateOfIncident = item.DateOfIncident,
-                InsuranceCarrier = item.InsuranceCarrier,
-                PolicyNumber = item.PolicyNumber,
-                ClaimNumber = item.ClaimNumber,
-                Description = item.Description,
-                Notes = SerializeLegacyNoteFields(metadata),
-                Status = item.Status,
-                DemandAmount = item.DemandAmount,
-                SettlementAmount = item.SettlementAmount,
-            },
-            ct);
+            title: item.Title,
+            externalReference: item.ExternalReference,
+            clientDob: item.ClientDob,
+            clientPhone: item.ClientPhone,
+            clientEmail: item.ClientEmail,
+            clientAddress: item.ClientAddress,
+            dateOfIncident: item.DateOfIncident,
+            insuranceCarrier: item.InsuranceCarrier,
+            policyNumber: item.PolicyNumber,
+            claimNumber: item.ClaimNumber,
+            description: item.Description,
+            notes: SerializeLegacyNoteFields(noteBody, metadata));
+
+        await db.SaveChangesAsync(ct);
 
         return Results.Ok(new
         {
@@ -2249,7 +2243,7 @@ public static class CaseEndpoints
 
     private static async Task<IResult> GetCaseOtherLegacy(
         string caseId,
-        ICaseService caseService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -2264,7 +2258,8 @@ public static class CaseEndpoints
             });
         }
 
-        var item = await caseService.GetByIdAsync(tenantId, parsedCaseId, ct);
+        var item = await db.Cases.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == parsedCaseId, ct);
         if (item is null)
         {
             return Results.BadRequest(new
@@ -2612,6 +2607,18 @@ public static class CaseEndpoints
             return string.Empty;
 
         return string.Join("; ", fields.Select(pair => $"{pair.Key}={pair.Value}"));
+    }
+
+    private static string SerializeLegacyNoteFields(string? noteBody, Dictionary<string, string> fields)
+    {
+        var cleanBody = string.IsNullOrWhiteSpace(noteBody) ? null : noteBody.Trim();
+        var serialized = SerializeLegacyNoteFields(fields);
+        if (string.IsNullOrWhiteSpace(serialized))
+            return cleanBody ?? string.Empty;
+
+        return cleanBody is null
+            ? $"{LegacyMetadataMarker}{Environment.NewLine}{serialized}"
+            : $"{cleanBody}{Environment.NewLine}{Environment.NewLine}{LegacyMetadataMarker}{Environment.NewLine}{serialized}";
     }
 
     private static async Task<IResult> UpdateMedicalPayeeOutboundLegacy(

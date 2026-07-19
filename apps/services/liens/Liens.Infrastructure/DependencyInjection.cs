@@ -11,6 +11,7 @@ using Liens.Infrastructure.Documents;
 using Liens.Infrastructure.Notifications;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Repositories;
+using Liens.Infrastructure.Services;
 using Liens.Infrastructure.TaskService;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -62,6 +63,7 @@ public static class DependencyInjection
         services.AddScoped<ILienOfferService, LienOfferService>();
         services.AddScoped<ILienEligibilityValidator, LienEligibilityValidator>();
         services.AddScoped<ISellingPortfolioService, SellingPortfolioService>();
+        services.AddScoped<ISellingAnalyticsService, SellingAnalyticsService>();
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();
         services.AddScoped<IBillOfSaleDocumentQueryService, BillOfSaleDocumentQueryService>();
         services.AddScoped<ICaseService, CaseService>();
