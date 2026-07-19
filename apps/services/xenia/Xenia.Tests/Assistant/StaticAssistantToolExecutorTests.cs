@@ -546,22 +546,65 @@ public sealed class StaticAssistantToolExecutorTests
         private readonly SynqLienQueueSummaryOutcome _queueSummary;
         private readonly SynqLienCaseLookupOutcome _caseLookup;
         private readonly SynqLienCaseSearchOutcome _caseSearch;
+        private readonly SynqLienCaseInsightsOutcome _caseInsights;
+        private readonly SynqLienTaskSearchOutcome _taskSearch;
+        private readonly SynqLienServicingSearchOutcome _servicingSearch;
+        private readonly SynqLienReportSummaryOutcome _reportSummary;
 
         public SynqLienLienSearchRequest? LastLienSearchRequest { get; private set; }
         public SynqLienQueueSummaryRequest? LastQueueSummaryRequest { get; private set; }
+        public SynqLienCaseInsightsRequest? LastCaseInsightsRequest { get; private set; }
+        public SynqLienTaskSearchRequest? LastTaskSearchRequest { get; private set; }
+        public SynqLienServicingSearchRequest? LastServicingSearchRequest { get; private set; }
+        public SynqLienReportSummaryRequest? LastReportSummaryRequest { get; private set; }
 
         public FakeSynqLienAssistantSource(
             SynqLienLienLookupOutcome? lienLookup = null,
             SynqLienLienSearchOutcome? lienSearch = null,
             SynqLienQueueSummaryOutcome? queueSummary = null,
             SynqLienCaseLookupOutcome? caseLookup = null,
-            SynqLienCaseSearchOutcome? caseSearch = null)
+            SynqLienCaseSearchOutcome? caseSearch = null,
+            SynqLienCaseInsightsOutcome? caseInsights = null,
+            SynqLienTaskSearchOutcome? taskSearch = null,
+            SynqLienServicingSearchOutcome? servicingSearch = null,
+            SynqLienReportSummaryOutcome? reportSummary = null)
         {
             _lienLookup = lienLookup ?? new SynqLienLienLookupOutcome(false, "not_found", "unused", null);
             _lienSearch = lienSearch ?? new SynqLienLienSearchOutcome(true, "completed", null, 0, []);
             _queueSummary = queueSummary ?? new SynqLienQueueSummaryOutcome(true, "completed", null, 0, 0, 0, 0, 0, 0, null, null, null, null, [], []);
             _caseLookup = caseLookup ?? new SynqLienCaseLookupOutcome(false, "not_found", "unused", null);
             _caseSearch = caseSearch ?? new SynqLienCaseSearchOutcome(true, "completed", null, 0, []);
+            _caseInsights = caseInsights ?? new SynqLienCaseInsightsOutcome(false, "not_found", "unused", null);
+            _taskSearch = taskSearch ?? new SynqLienTaskSearchOutcome(
+                true,
+                "completed",
+                null,
+                0,
+                new SynqLienDateWindow(null, null, null),
+                new SynqLienTaskMetrics(0, 0, 0, 0, 0, 0, []),
+                []);
+            _servicingSearch = servicingSearch ?? new SynqLienServicingSearchOutcome(
+                true,
+                "completed",
+                null,
+                0,
+                new SynqLienDateWindow(null, null, null),
+                new SynqLienServicingMetrics(0, 0, 0, []),
+                []);
+            _reportSummary = reportSummary ?? new SynqLienReportSummaryOutcome(
+                true,
+                "completed",
+                null,
+                new SynqLienDateWindow(null, null, null),
+                0,
+                0,
+                0,
+                0,
+                0,
+                [],
+                [],
+                [],
+                []);
         }
 
         public Task<SynqLienLienLookupOutcome> LookupLienAsync(SynqLienLienLookupRequest request, CancellationToken ct = default)
@@ -584,5 +627,29 @@ public sealed class StaticAssistantToolExecutorTests
 
         public Task<SynqLienCaseSearchOutcome> SearchCasesAsync(SynqLienCaseSearchRequest request, CancellationToken ct = default)
             => Task.FromResult(_caseSearch);
+
+        public Task<SynqLienCaseInsightsOutcome> GetCaseInsightsAsync(SynqLienCaseInsightsRequest request, CancellationToken ct = default)
+        {
+            LastCaseInsightsRequest = request;
+            return Task.FromResult(_caseInsights);
+        }
+
+        public Task<SynqLienTaskSearchOutcome> SearchTasksAsync(SynqLienTaskSearchRequest request, CancellationToken ct = default)
+        {
+            LastTaskSearchRequest = request;
+            return Task.FromResult(_taskSearch);
+        }
+
+        public Task<SynqLienServicingSearchOutcome> SearchServicingAsync(SynqLienServicingSearchRequest request, CancellationToken ct = default)
+        {
+            LastServicingSearchRequest = request;
+            return Task.FromResult(_servicingSearch);
+        }
+
+        public Task<SynqLienReportSummaryOutcome> GetReportSummaryAsync(SynqLienReportSummaryRequest request, CancellationToken ct = default)
+        {
+            LastReportSummaryRequest = request;
+            return Task.FromResult(_reportSummary);
+        }
     }
 }

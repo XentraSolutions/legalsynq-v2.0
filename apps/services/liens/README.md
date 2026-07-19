@@ -52,9 +52,21 @@ permissions and apply visibility filters before returning results.
 | `GET` | `/api/assistant-tools/liens/queue-summary` | Lien read, read-own, browse, or read-held | Return visible lien queue totals, status counts, KPI windows, and recent liens |
 | `GET` | `/api/assistant-tools/liens/{id}` | Lien read, read-own, browse, or read-held | Lookup one visible lien by id |
 | `GET` | `/api/assistant-tools/liens/by-number/{lienNumber}` | Lien read, read-own, browse, or read-held | Lookup one visible lien by lien number |
-| `GET` | `/api/assistant-tools/cases/search` | `SYNQ_LIENS.case:read` | Search cases by client, case number, and status |
-| `GET` | `/api/assistant-tools/cases/{id}` | `SYNQ_LIENS.case:read` | Lookup one case by id with linked liens |
-| `GET` | `/api/assistant-tools/cases/by-number/{caseNumber}` | `SYNQ_LIENS.case:read` | Lookup one case by case number with linked liens |
+| `GET` | `/api/assistant-tools/cases/search` | `SYNQ_LIENS.case:read` | Search cases by client, case number, law firm, case manager, type, accident type, state, status, and opened date window |
+| `GET` | `/api/assistant-tools/cases/{id}` | `SYNQ_LIENS.case:read` | Lookup one case by id with linked liens and client/case metadata |
+| `GET` | `/api/assistant-tools/cases/by-number/{caseNumber}` | `SYNQ_LIENS.case:read` | Lookup one case by case number with linked liens and client/case metadata |
+| `GET` | `/api/assistant-tools/cases/{id}/insights` | `SYNQ_LIENS.case:read` | Return a case snapshot with linked liens, financial totals, documents, notes, servicing, tasks, activity, capability flags, and optional Excel-ready sheets |
+| `GET` | `/api/assistant-tools/cases/by-number/{caseNumber}/insights` | `SYNQ_LIENS.case:read` | Return the same case snapshot by case number |
+| `GET` | `/api/assistant-tools/tasks/search` | `SYNQ_LIENS.task:read` | Search post-cutover SynqLien tasks by assignment, case, lien, status/status group, priority, due date window, overdue, and due today |
+| `GET` | `/api/assistant-tools/servicing/search` | `SYNQ_LIENS.lien:service` | Search servicing items by case, lien, assignee, status/status group, priority, due date window, and overdue |
+| `GET` | `/api/assistant-tools/reports/summary` | `SYNQ_LIENS.case:read` plus lien visibility | Return read-only case/lien report summaries including opened cases, active cases by manager/law firm, closed liens, and recent records |
+
+Assistant search, summary, insight, task, servicing, and report endpoints support `datePreset` values:
+`today`, `yesterday`, `this_week`, `last_week`, `this_month`, `last_month`, `last_30_days`, `last_60_days`,
+`last_90_days`, and `life_to_date`. Explicit `*From`/`*To` query parameters override presets. Document endpoints
+currently expose uploaded document metadata from servicing items; they do not expose file bytes or OCR text for
+document-content summarization. Case insights can include workbook-style sheet data with `includeExport=true`, but the
+endpoint does not write an `.xlsx` file itself.
 
 ## Product Roles
 

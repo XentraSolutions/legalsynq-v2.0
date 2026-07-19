@@ -319,8 +319,12 @@ cover:
 - Lien detail lookup by id or lien number
 - Lien search across subject, case number, status/status group, lien type, and created date filters
 - Lien queue and KPI summaries with totals, status groups, date windows, and recent liens
-- Case detail lookup by id or case number with linked liens
-- Case search across client, case number, and status
+- Case detail lookup by id or case number with linked liens and client/case metadata
+- Case insights by id or case number for summaries, current status, case manager, law firm, date of loss, minor status, client contact information, linked lien counts, open/rejected/missing-data liens, financial totals/reductions, notes, servicing, tasks, activity, required documents, and optional Excel-ready sheets
+- Case search across client, case number, status, law firm, case manager, case type, accident type, state, and opened date filters
+- Task search across assignment, current user, case, lien, status/status group, priority, due date windows, overdue, due today, and high priority
+- Servicing search across case, lien, assignee, status/status group, priority, due date windows, and overdue
+- Report summaries for opened cases, active cases by case manager or law firm, closed liens, recent cases, and recent liens
 
 SynqLien assistant access is configured from `appsettings` only:
 
@@ -334,6 +338,13 @@ each product service's `/api/assistant-tools/*` API surface. SynqLien lien tools
 permissions, and the Liens service applies seller, buyer, holder, and marketplace visibility before returning records.
 The queue-summary tools are also the KPI surfaces used for questions such as "How many referrals do I have?", "How many
 liens are open?", and "How many new liens were created in the last 7 days?"
+
+SynqLien assistant tools accept date presets for natural filters such as `this_week`, `last_month`, `this_month`, and
+`life_to_date`, plus `today`, `yesterday`, `last_week`, `last_30_days`, `last_60_days`, and `last_90_days`. The
+provider/fake-provider normalizes matching natural-language phrases before tool execution. Uploaded document tools are
+metadata-only until a product-owned document/OCR assistant surface is added, so Xenia can list and flag documents but
+cannot summarize file contents. Excel export requests return Excel-ready sheet payloads from the case-insights tool;
+file generation must be performed by the caller/UI.
 
 ---
 
