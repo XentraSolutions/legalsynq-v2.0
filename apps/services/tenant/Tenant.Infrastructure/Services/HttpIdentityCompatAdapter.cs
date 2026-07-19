@@ -68,13 +68,10 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
             }
 
             return new TenantIdentityCompatSnapshot(
-                Type: root.TryGetProperty("type", out var typeProp) && typeProp.ValueKind == JsonValueKind.String
-                    ? typeProp.GetString()
-                    : null,
+                Type: GetString(root, "type"),
                 SessionTimeoutMinutes: sessionTimeoutMinutes,
-                Hostname: root.TryGetProperty("hostname", out var hostnameProp) && hostnameProp.ValueKind == JsonValueKind.String
-                    ? hostnameProp.GetString()
-                    : null);
+                Hostname: GetString(root, "hostname"),
+                PrimaryContactName: GetString(root, "primaryContactName", "primary_contact_name"));
         }
         catch (OperationCanceledException)
         {
@@ -205,5 +202,19 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
             client.DefaultRequestHeaders.Remove("Authorization");
             client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader);
         }
+    }
+
+    private static string? GetString(JsonElement root, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (root.TryGetProperty(propertyName, out var prop) &&
+                prop.ValueKind == JsonValueKind.String)
+            {
+                return prop.GetString();
+            }
+        }
+
+        return null;
     }
 }

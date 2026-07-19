@@ -77,7 +77,8 @@ public class TenantAdminServiceGetAdminDetailTests
                 snapshot: new TenantIdentityCompatSnapshot(
                     Type: "LIEN_OWNER",
                     SessionTimeoutMinutes: null,
-                    Hostname: "acme.legalsynq.net")));
+                    Hostname: "acme.legalsynq.net",
+                    PrimaryContactName: "Avery Admin")));
         var result = await svc.GetAdminDetailAsync(tenant.Id);
 
         Assert.NotNull(result);
@@ -87,6 +88,7 @@ public class TenantAdminServiceGetAdminDetailTests
         Assert.Equal("Active",           result.Status);
         Assert.True(result.IsActive);
         Assert.Equal("LIEN_OWNER",       result.Type);
+        Assert.Equal("Avery Admin",      result.PrimaryContactName);
         Assert.Equal("acme",             result.Subdomain);
         Assert.Equal("https://acme.legalsynq.net", result.Url);
         Assert.Equal("support@acme.com", result.Email);
@@ -109,13 +111,15 @@ public class TenantAdminServiceGetAdminDetailTests
                 snapshot: new TenantIdentityCompatSnapshot(
                     Type: "PROVIDER",
                     SessionTimeoutMinutes: null,
-                    Hostname: "portal.acme.example")));
+                    Hostname: "portal.acme.example",
+                    PrimaryContactName: "Morgan Manager")));
 
         var (items, total) = await svc.ListAdminAsync(1, 20);
 
         var item = Assert.Single(items);
         Assert.Equal(1, total);
         Assert.Equal("PROVIDER", item.Type);
+        Assert.Equal("Morgan Manager", item.PrimaryContactName);
         Assert.Equal("https://portal.acme.example", item.Url);
     }
 

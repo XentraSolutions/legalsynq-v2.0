@@ -367,7 +367,7 @@ export const controlCenterServerApi = {
 
   tenants: {
     /**
-     * GET /identity/api/admin/tenants
+     * GET /tenant/api/v1/admin/tenants
      *
      * Returns a paged list of tenants, optionally filtered by search text
      * and/or scoped to a single tenant (tenantId param).
@@ -377,7 +377,7 @@ export const controlCenterServerApi = {
      *   Tenant roster changes rarely; 60 s balances freshness vs load.
      *   On-demand invalidated by tenants.updateEntitlement mutation.
      *
-     * TODO: enforce tenant scoping server-side
+     * TODO: send and enforce search/tenant scoping server-side
      * TODO: validate tenant context against session
      * TODO: add Redis or edge caching
      */

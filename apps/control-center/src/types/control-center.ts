@@ -26,7 +26,7 @@ export interface TenantSummary {
 }
 
 /**
- * Full tenant record returned by GET /identity/api/admin/tenants/{id}.
+ * Full tenant record returned by GET /tenant/api/v1/admin/tenants/{id}.
  * Extends TenantSummary with enriched fields not present in the list view.
  */
 export interface TenantDetail extends TenantSummary {

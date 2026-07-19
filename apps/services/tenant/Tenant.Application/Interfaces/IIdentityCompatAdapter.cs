@@ -54,4 +54,5 @@ public interface IIdentityCompatAdapter
 public sealed record TenantIdentityCompatSnapshot(
     string? Type,
     int? SessionTimeoutMinutes,
-    string? Hostname);
+    string? Hostname,
+    string? PrimaryContactName = null);
