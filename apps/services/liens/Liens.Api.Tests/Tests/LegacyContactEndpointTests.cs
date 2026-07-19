@@ -276,6 +276,33 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task GetModernContactsList_returns_only_parent_law_firms_for_unscoped_law_firm_query()
+    {
+        var caseManagerResp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "LawFirm",
+            contactSubtype = "CaseManager",
+            lawFirmId = SeedHelper.LawFirmId,
+            firstName = "Scoped",
+            lastName = "Manager",
+        });
+        caseManagerResp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var resp = await _client.GetAsync("/api/liens/contacts?ContactType=LawFirm&pageSize=100");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await resp.Content.ReadFromJsonAsync<PaginatedContactResponseDto>();
+        body.Should().NotBeNull();
+        body!.Items.Should().Contain(x =>
+            x.Id == SeedHelper.LawFirmId &&
+            x.ContactSubtype == null);
+        body.Items.Should().NotContain(x =>
+            x.ContactSubtype == "CaseManager" &&
+            x.FirstName == "Scoped" &&
+            x.LastName == "Manager");
+    }
+
+    [Fact]
     public async Task GetModernContactsList_filters_facility_subcontacts_by_query()
     {
         var facilityResp = await _client.PostAsJsonAsync("/api/liens/contacts", new
@@ -397,6 +424,97 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
             x.ContactSubtype == "FacilityContactPerson" &&
             x.FirstName == "Nested" &&
             x.LastName == "Staff");
+    }
+
+    [Fact]
+    public async Task GetModernContactsList_honors_blank_contact_subtype_for_parent_law_firms()
+    {
+        var caseManagerResp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "LawFirm",
+            contactSubtype = "CaseManager",
+            lawFirmId = SeedHelper.LawFirmId,
+            firstName = "Nested",
+            lastName = "Manager",
+        });
+        caseManagerResp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var resp = await _client.GetAsync("/api/liens/contacts?contactType=LawFirm&contactSubtype=&pageSize=100");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await resp.Content.ReadFromJsonAsync<PaginatedContactResponseDto>();
+        body.Should().NotBeNull();
+        body!.Items.Should().Contain(x =>
+            x.Id == SeedHelper.LawFirmId &&
+            x.ContactSubtype == null);
+        body.Items.Should().NotContain(x =>
+            x.ContactSubtype == "CaseManager" &&
+            x.FirstName == "Nested" &&
+            x.LastName == "Manager");
+    }
+
+    [Fact]
+    public async Task GetModernContactsList_honors_blank_contact_subtype_without_contact_type_filter()
+    {
+        var caseManagerResp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "LawFirm",
+            contactSubtype = "CaseManager",
+            lawFirmId = SeedHelper.LawFirmId,
+            firstName = "Another",
+            lastName = "Manager",
+        });
+        caseManagerResp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var facilityStaffResp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "Facility",
+            contactSubtype = "FacilityContactPerson",
+            facilityId = SeedHelper.FacilityId,
+            firstName = "Another",
+            lastName = "Staff",
+        });
+        facilityStaffResp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var resp = await _client.GetAsync("/api/liens/contacts?contactSubtype=&pageSize=100");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await resp.Content.ReadFromJsonAsync<PaginatedContactResponseDto>();
+        body.Should().NotBeNull();
+        body!.Items.Should().OnlyContain(x => x.ContactSubtype == null || x.ContactSubtype == string.Empty);
+        body.Items.Should().NotContain(x =>
+            x.ContactSubtype == "CaseManager" &&
+            x.FirstName == "Another" &&
+            x.LastName == "Manager");
+        body.Items.Should().NotContain(x =>
+            x.ContactSubtype == "FacilityContactPerson" &&
+            x.FirstName == "Another" &&
+            x.LastName == "Staff");
+    }
+
+    [Fact]
+    public async Task GetModernContactsList_honors_blank_contact_subtype_with_pascal_case_query_key()
+    {
+        var caseManagerResp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "LawFirm",
+            contactSubtype = "CaseManager",
+            lawFirmId = SeedHelper.LawFirmId,
+            firstName = "Pascal",
+            lastName = "Manager",
+        });
+        caseManagerResp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var resp = await _client.GetAsync("/api/liens/contacts?page=1&pageSize=100&ContactSubtype=");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await resp.Content.ReadFromJsonAsync<PaginatedContactResponseDto>();
+        body.Should().NotBeNull();
+        body!.Items.Should().OnlyContain(x => x.ContactSubtype == null || x.ContactSubtype == string.Empty);
+        body.Items.Should().NotContain(x =>
+            x.ContactSubtype == "CaseManager" &&
+            x.FirstName == "Pascal" &&
+            x.LastName == "Manager");
     }
 
     [Fact]
@@ -578,6 +696,26 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task CreateStandaloneLawFirm_with_single_name_returns201()
+    {
+        var resp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "LawFirm",
+            fullName = "Evergreen",
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var body = await resp.Content.ReadFromJsonAsync<ContactResponseDto>();
+        body.Should().NotBeNull();
+        body!.ContactType.Should().Be("LawFirm");
+        body.FirstName.Should().Be("Evergreen");
+        body.LastName.Should().BeEmpty();
+        body.DisplayName.Should().Be("Evergreen");
+    }
+
+    [Fact]
     public async Task CreateMedicalFacilityContact_returns201()
     {
         var resp = await _client.PostAsJsonAsync("/api/liens/contacts", new
@@ -657,6 +795,33 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
             organization = "Smith & Associates Updated LLP",
         });
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task UpdateStandaloneLawFirm_with_single_name_returns200()
+    {
+        var createResp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "LawFirm",
+            fullName = "Monarch",
+        });
+        createResp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var created = await createResp.Content.ReadFromJsonAsync<ContactResponseDto>();
+        created.Should().NotBeNull();
+
+        var updateResp = await _client.PutAsJsonAsync($"/api/liens/contacts/{created!.Id}", new
+        {
+            contactType = "LawFirm",
+            fullName = "Monarch Legal",
+        });
+        updateResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var updated = await updateResp.Content.ReadFromJsonAsync<ContactResponseDto>();
+        updated.Should().NotBeNull();
+        updated!.FirstName.Should().Be("Monarch");
+        updated.LastName.Should().Be("Legal");
+        updated.DisplayName.Should().Be("Monarch Legal");
     }
 
     [Fact]
@@ -791,6 +956,6 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
 
     // Helper DTO for parsing created entity ID.
     private sealed record IdResponse(Guid Id);
-    private sealed record ContactResponseDto(Guid Id, Guid? LawFirmId, Guid? FacilityId, string ContactType, string? ContactSubtype, string? Organization, string? Title, string? FirstName, string? LastName, int ActiveCases);
+    private sealed record ContactResponseDto(Guid Id, Guid? LawFirmId, Guid? FacilityId, string ContactType, string? ContactSubtype, string? Organization, string? Title, string? FirstName, string? LastName, string? DisplayName, int ActiveCases);
     private sealed record PaginatedContactResponseDto(List<ContactResponseDto> Items, int TotalCount);
 }

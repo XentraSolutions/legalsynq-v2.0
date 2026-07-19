@@ -102,6 +102,38 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task UpdateMedical_accepts_legacy_open_status()
+    {
+        var payload = new
+        {
+            id = SeedHelper.LienId.ToString(),
+            caseId = SeedHelper.CaseId.ToString(),
+            status = "Open",
+            purchaseDate = "07/06/2026",
+            initialServiceDate = "07/07/2026",
+            endServiceDate = "",
+            note = "",
+            isBulk = "N",
+            isServicing = "N",
+            fundingCompanyId = string.Empty,
+        };
+
+        var updateResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            payload);
+
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var getResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medical/{SeedHelper.LienId}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = JsonNode.Parse(await getResponse.Content.ReadAsStringAsync())!;
+        body["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+        body["data"]!["status"]!.GetValue<string>().Should().Be("Active");
+    }
+
+    [Fact]
     public async Task MedicalCode_create_can_be_retrieved_by_lien_id()
     {
         var code = $"MC-{Guid.NewGuid():N}"[..10];

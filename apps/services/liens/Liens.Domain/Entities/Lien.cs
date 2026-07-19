@@ -178,6 +178,8 @@ public class Lien : AuditableEntity
 
     public void SetLegacyMedicalStatus(string newStatus, Guid updatedByUserId)
     {
+        newStatus = NormalizeLegacyMedicalStatus(newStatus);
+
         if (!LienStatus.All.Contains(newStatus))
             throw new ArgumentException($"Invalid lien status: '{newStatus}'.");
 
@@ -187,6 +189,19 @@ public class Lien : AuditableEntity
 
         if (LienStatus.Terminal.Contains(newStatus))
             ClosedAtUtc = DateTime.UtcNow;
+    }
+
+    private static string NormalizeLegacyMedicalStatus(string newStatus)
+    {
+        var normalized = newStatus.Trim();
+
+        return normalized.ToUpperInvariant() switch
+        {
+            "OPEN" => LienStatus.Active,
+            "CLOSED" => LienStatus.Settled,
+            "REJECTED" => LienStatus.Cancelled,
+            _ => normalized,
+        };
     }
 
     public void ListForSale(decimal offerPrice, Guid updatedByUserId, string? offerNotes = null)

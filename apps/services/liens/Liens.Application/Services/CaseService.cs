@@ -107,7 +107,7 @@ public sealed class CaseService : ICaseService
         {
             caseManagerById = (await _contactRepo.GetAllByTypeAsync(
                     tenantId,
-                    ContactType.CaseManager,
+                    contactType: null,
                     isActive: null,
                     ct))
                 .ToDictionary(c => c.Id);
@@ -193,9 +193,15 @@ public sealed class CaseService : ICaseService
                     stateOfIncident: request.StateOfIncident,
                     trackingFollowUpDate: request.TrackingFollowUpDate,
                     leadId: request.LeadId,
+                    shareCase: request.ShareCase,
+                    minorComp: request.MinorComp,
+                    caseDropped: request.CaseDropped,
+                    childSupportLiens: request.ChildSupportLiens,
+                    isUccFiled: request.IsUccFiled,
                     lawFirmId: request.LawFirmId,
                     accidentTypeId: request.AccidentTypeId,
-                    caseManagerId: request.CaseManagerId)));
+                    caseManagerId: request.CaseManagerId,
+                    statusLabel: request.StatusLabel)));
 
         await _caseRepo.AddAsync(entity, ct);
 
@@ -276,6 +282,24 @@ public sealed class CaseService : ICaseService
         if (errors.Count > 0)
             throw new ValidationException("One or more fields are invalid.", errors);
 
+        var mergedMetadata = MergeMetadata(
+            metadata,
+            request.Sex,
+            request.CaseType,
+            request.CurrentMedicalStatus,
+            request.StateOfIncident,
+            request.TrackingFollowUpDate,
+            request.LeadId,
+            request.ShareCase,
+            request.MinorComp,
+            request.CaseDropped,
+            request.ChildSupportLiens,
+            request.IsUccFiled,
+            request.LawFirmId,
+            request.AccidentTypeId,
+            request.CaseManagerId);
+        ApplyStatusLabelMetadata(mergedMetadata, request.Status, request.StatusLabel);
+
         entity.Update(
             clientFirstName: request.ClientFirstName,
             clientLastName: request.ClientLastName,
@@ -291,19 +315,7 @@ public sealed class CaseService : ICaseService
             policyNumber: request.PolicyNumber,
             claimNumber: request.ClaimNumber,
             description: request.Description,
-            notes: SerializeCaseNotes(
-                request.Notes ?? noteBody,
-                MergeMetadata(
-                    metadata,
-                    request.Sex,
-                    request.CaseType,
-                    request.CurrentMedicalStatus,
-                    request.StateOfIncident,
-                    request.TrackingFollowUpDate,
-                    request.LeadId,
-                    request.LawFirmId,
-                    request.AccidentTypeId,
-                    request.CaseManagerId)));
+            notes: SerializeCaseNotes(request.Notes ?? noteBody, mergedMetadata));
 
         if (request.Status is not null && request.Status != entity.Status)
             entity.TransitionStatus(request.Status, actingUserId);
@@ -453,7 +465,8 @@ public sealed class CaseService : ICaseService
             ClientFirstName = entity.ClientFirstName,
             ClientLastName = entity.ClientLastName,
             ClientDisplayName = $"{entity.ClientFirstName} {entity.ClientLastName}".Trim(),
-            Status = entity.Status,
+            Status = ResolveCaseStatusValue(entity.Status, GetMetadataValue(metadata, "statusLabel")),
+            StatusLabel = ResolveCaseStatusLabel(entity.Status, GetMetadataValue(metadata, "statusLabel")),
             DateOfIncident = entity.DateOfIncident,
             ClientDob = entity.ClientDob,
             ClientPhone = entity.ClientPhone,
@@ -476,6 +489,14 @@ public sealed class CaseService : ICaseService
             StateOfIncident = GetMetadataValue(metadata, "accidentState"),
             TrackingFollowUpDate = ParseMetadataDate(GetMetadataValue(metadata, "trackingFollowUpDate")),
             LeadId = GetMetadataValue(metadata, "leadId"),
+            ShareCase = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "shareCase")),
+            MinorComp = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "minorComp")),
+            CaseDropped = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "caseDropped")),
+            ChildSupportLiens = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "childSupportLiens")),
+            IsUccFiled = NormalizeCaseFlagForResponseOrDefaultFalse(
+                FirstNonEmpty(
+                    GetMetadataValue(metadata, "isUccFiled"),
+                    GetMetadataValue(metadata, "isUCCFiled"))),
             LawFirmId = lawFirmId,
             LawFirm = lawFirmName,
             CaseManagerId = caseManagerId,
@@ -496,9 +517,15 @@ public sealed class CaseService : ICaseService
         string? stateOfIncident,
         DateOnly? trackingFollowUpDate,
         string? leadId,
+        string? shareCase,
+        string? minorComp,
+        string? caseDropped,
+        string? childSupportLiens,
+        string? isUccFiled,
         string? lawFirmId,
         string? accidentTypeId,
-        string? caseManagerId)
+        string? caseManagerId,
+        string? statusLabel)
     {
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
         SetMetadataValue(metadata, "gender", sex);
@@ -511,8 +538,14 @@ public sealed class CaseService : ICaseService
             "trackingFollowUpDate",
             trackingFollowUpDate?.ToString("MM/dd/yyyy"));
         SetMetadataValue(metadata, "leadId", leadId);
+        SetMetadataValue(metadata, "shareCase", NormalizeCaseFlagForStorage(shareCase));
+        SetMetadataValue(metadata, "minorComp", NormalizeCaseFlagForStorage(minorComp));
+        SetMetadataValue(metadata, "caseDropped", NormalizeCaseFlagForStorage(caseDropped));
+        SetMetadataValue(metadata, "childSupportLiens", NormalizeCaseFlagForStorage(childSupportLiens));
+        SetMetadataValue(metadata, "isUccFiled", NormalizeCaseFlagForStorage(isUccFiled));
         SetMetadataValue(metadata, "lawFirmId", lawFirmId);
         SetMetadataValue(metadata, "caseManagerId", caseManagerId);
+        SetMetadataValue(metadata, "statusLabel", statusLabel);
         return metadata;
     }
 
@@ -524,6 +557,11 @@ public sealed class CaseService : ICaseService
         string? stateOfIncident,
         DateOnly? trackingFollowUpDate,
         string? leadId,
+        string? shareCase,
+        string? minorComp,
+        string? caseDropped,
+        string? childSupportLiens,
+        string? isUccFiled,
         string? lawFirmId,
         string? accidentTypeId,
         string? caseManagerId)
@@ -543,11 +581,39 @@ public sealed class CaseService : ICaseService
             SetMetadataValue(metadata, "trackingFollowUpDate", trackingFollowUpDate.Value.ToString("MM/dd/yyyy"));
         if (leadId is not null)
             SetMetadataValue(metadata, "leadId", leadId);
+        if (shareCase is not null)
+            SetMetadataValue(metadata, "shareCase", NormalizeCaseFlagForStorage(shareCase));
+        if (minorComp is not null)
+            SetMetadataValue(metadata, "minorComp", NormalizeCaseFlagForStorage(minorComp));
+        if (caseDropped is not null)
+            SetMetadataValue(metadata, "caseDropped", NormalizeCaseFlagForStorage(caseDropped));
+        if (childSupportLiens is not null)
+            SetMetadataValue(metadata, "childSupportLiens", NormalizeCaseFlagForStorage(childSupportLiens));
+        if (isUccFiled is not null)
+        {
+            metadata.Remove("isUCCFiled");
+            SetMetadataValue(metadata, "isUccFiled", NormalizeCaseFlagForStorage(isUccFiled));
+        }
         if (lawFirmId is not null)
             SetMetadataValue(metadata, "lawFirmId", lawFirmId);
         if (caseManagerId is not null)
             SetMetadataValue(metadata, "caseManagerId", caseManagerId);
         return metadata;
+    }
+
+    private static void ApplyStatusLabelMetadata(
+        Dictionary<string, string> metadata,
+        string? status,
+        string? statusLabel)
+    {
+        if (statusLabel is not null)
+        {
+            SetMetadataValue(metadata, "statusLabel", statusLabel);
+            return;
+        }
+
+        if (status is not null && !string.Equals(status, CaseStatus.InNegotiation, StringComparison.Ordinal))
+            metadata.Remove("statusLabel");
     }
 
     private static void SetMetadataValue(Dictionary<string, string> metadata, string key, string? value)
@@ -656,6 +722,67 @@ public sealed class CaseService : ICaseService
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
+    private static string ResolveCaseStatusLabel(string status, string? customStatusLabel)
+    {
+        if (string.Equals(status, CaseStatus.InNegotiation, StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(customStatusLabel))
+        {
+            return customStatusLabel.Trim();
+        }
+
+        return status switch
+        {
+            CaseStatus.PreDemand => "Pre-Demand",
+            CaseStatus.DemandSent => "Demand Sent",
+            CaseStatus.InNegotiation => "In Negotiation",
+            CaseStatus.CaseSettled => "Case Settled",
+            CaseStatus.Closed => "Closed",
+            _ => status,
+        };
+    }
+
+    private static string ResolveCaseStatusValue(string status, string? customStatusLabel)
+    {
+        if (string.Equals(status, CaseStatus.InNegotiation, StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(customStatusLabel))
+        {
+            return customStatusLabel.Trim();
+        }
+
+        return status;
+    }
+
+    private static string? NormalizeCaseFlagForStorage(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return value;
+
+        return value.Trim().ToUpperInvariant() switch
+        {
+            "TRUE" or "YES" or "Y" => "Yes",
+            "FALSE" or "NO" or "N" => "No",
+            _ => value.Trim(),
+        };
+    }
+
+    private static string? NormalizeCaseFlagForResponse(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return value;
+
+        return value.Trim().ToUpperInvariant() switch
+        {
+            "TRUE" or "YES" or "Y" => "Yes",
+            "FALSE" or "NO" or "N" => "No",
+            _ => value.Trim(),
+        };
+    }
+
+    private static string NormalizeCaseFlagForResponseOrDefaultFalse(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? "false"
+            : NormalizeCaseFlagForResponse(value) ?? "false";
+
     private static bool LooksLikeLegacyMetadata(string notes)
     {
         var segments = notes.Split("; ", StringSplitOptions.RemoveEmptyEntries);
@@ -663,7 +790,18 @@ public sealed class CaseService : ICaseService
     }
 
     private static string? GetMetadataValue(Dictionary<string, string> metadata, string key)
-        => metadata.TryGetValue(key, out var value) ? value : null;
+    {
+        if (metadata.TryGetValue(key, out var value))
+            return value;
+
+        foreach (var pair in metadata)
+        {
+            if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase))
+                return pair.Value;
+        }
+
+        return null;
+    }
 
     private static DateOnly? ParseMetadataDate(string? value)
     {

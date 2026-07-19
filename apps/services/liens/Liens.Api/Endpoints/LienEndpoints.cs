@@ -4,7 +4,10 @@ using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
+using Liens.Domain.Entities;
 using Liens.Domain.Enums;
+using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 
 namespace Liens.Api.Endpoints;
@@ -101,6 +104,33 @@ public static class LienEndpoints
         public string? fundingCompany { get; init; }
     }
 
+    private sealed class SearchLiensRequest
+    {
+        public string? Search { get; init; }
+        public string? Status { get; init; }
+        public string? LienType { get; init; }
+        public Guid? CaseId { get; init; }
+        public Guid? FacilityId { get; init; }
+        public int Page { get; init; } = 1;
+        public int PageSize { get; init; } = 20;
+        public string[]? LawFirmIds { get; init; }
+        public string[]? MedicalFacilityIds { get; init; }
+        public string[]? CaseManagerIds { get; init; }
+        public string[]? LienStatusIds { get; init; }
+        public string? PurchaseDateFrom { get; init; }
+        public string? PurchaseDateTo { get; init; }
+        public string? ClosedDateFrom { get; init; }
+        public string? ClosedDateTo { get; init; }
+        public string? SortBy { get; init; }
+        public string? SortDirection { get; init; }
+    }
+
+    private sealed record AdvancedLienFilterRow(
+        Lien Lien,
+        string LawFirmId,
+        string CaseManagerId,
+        string FacilityFilterId);
+
     public static void MapLienEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/liens/liens")
@@ -108,6 +138,9 @@ public static class LienEndpoints
             .RequireProductAccess(LiensPermissions.ProductCode);
 
         group.MapGet("/", ListLiens)
+            .RequirePermission(LiensPermissions.LienRead);
+
+        group.MapPost("/search", SearchLiens)
             .RequirePermission(LiensPermissions.LienRead);
 
         group.MapGet("/{id:guid}", GetLienById)
@@ -192,17 +225,65 @@ public static class LienEndpoints
     private static async Task<IResult> ListLiens(
         ILienService lienService,
         IServicingItemService servicingItemService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         string? search = null,
         string? status = null,
         string? lienType = null,
         Guid? caseId = null,
         Guid? facilityId = null,
+        string? lawFirmIds = null,
+        string? medicalFacilityIds = null,
+        string? caseManagerIds = null,
+        string? lienStatusIds = null,
+        string? purchaseDateFrom = null,
+        string? purchaseDateTo = null,
+        string? closedDateFrom = null,
+        string? closedDateTo = null,
+        string? sortBy = null,
+        string? sortDirection = null,
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
+
+        if (HasAdvancedLienFilters(
+            lawFirmIds,
+            medicalFacilityIds,
+            caseManagerIds,
+            lienStatusIds,
+            purchaseDateFrom,
+            purchaseDateTo,
+            closedDateFrom,
+            closedDateTo) ||
+            !string.IsNullOrWhiteSpace(sortBy))
+        {
+            return await SearchLiensCore(
+                db,
+                lienService,
+                servicingItemService,
+                tenantId,
+                search,
+                status,
+                lienType,
+                caseId,
+                facilityId,
+                page,
+                pageSize,
+                SplitCsvValues(lawFirmIds),
+                SplitCsvValues(medicalFacilityIds),
+                SplitCsvValues(caseManagerIds),
+                SplitCsvValues(lienStatusIds),
+                purchaseDateFrom,
+                purchaseDateTo,
+                closedDateFrom,
+                closedDateTo,
+                sortBy,
+                sortDirection,
+                ct);
+        }
+
         var result = await lienService.SearchAsync(
             tenantId, search, status, lienType, caseId, facilityId, page, pageSize, ct);
         var enriched = await EnrichLienResponsesAsync(result.Items, tenantId, servicingItemService, ct);
@@ -213,6 +294,41 @@ public static class LienEndpoints
             PageSize = result.PageSize,
             TotalCount = result.TotalCount,
         });
+    }
+
+    private static async Task<IResult> SearchLiens(
+        SearchLiensRequest request,
+        ILienService lienService,
+        IServicingItemService servicingItemService,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+
+        return await SearchLiensCore(
+            db,
+            lienService,
+            servicingItemService,
+            tenantId,
+            request.Search,
+            request.Status,
+            request.LienType,
+            request.CaseId,
+            request.FacilityId,
+            request.Page,
+            request.PageSize,
+            request.LawFirmIds ?? [],
+            request.MedicalFacilityIds ?? [],
+            request.CaseManagerIds ?? [],
+            request.LienStatusIds ?? [],
+            request.PurchaseDateFrom,
+            request.PurchaseDateTo,
+            request.ClosedDateFrom,
+            request.ClosedDateTo,
+            request.SortBy,
+            request.SortDirection,
+            ct);
     }
 
     private static async Task<IResult> GetLienById(
@@ -278,6 +394,12 @@ public static class LienEndpoints
                     totalBilling += billing;
             }
 
+            var facilityInfoFields = codeResults.Items
+                .Where(i => string.Equals(i.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal))
+                .OrderByDescending(i => i.CreatedAtUtc)
+                .Select(i => ParseLegacyNoteFields(i.Notes))
+                .FirstOrDefault() ?? new Dictionary<string, string>(StringComparer.Ordinal);
+
             enriched.Add(new LienResponse
             {
                 Id = lien.Id,
@@ -297,6 +419,12 @@ public static class LienEndpoints
                 SubjectFirstName = lien.SubjectFirstName,
                 SubjectLastName = lien.SubjectLastName,
                 SubjectDisplayName = lien.SubjectDisplayName,
+                Plaintiff = lien.Plaintiff,
+                LawFirm = lien.LawFirm,
+                MedicalFacility = FirstNonEmpty(
+                    lien.MedicalFacility,
+                    facilityInfoFields.GetValueOrDefault("facilityName", string.Empty)),
+                CaseManager = lien.CaseManager,
                 OrgId = lien.OrgId,
                 SellingOrgId = lien.SellingOrgId,
                 BuyingOrgId = lien.BuyingOrgId,
@@ -319,6 +447,388 @@ public static class LienEndpoints
 
         return enriched;
     }
+
+    private static async Task<IResult> SearchLiensCore(
+        LiensDbContext db,
+        ILienService lienService,
+        IServicingItemService servicingItemService,
+        Guid tenantId,
+        string? search,
+        string? status,
+        string? lienType,
+        Guid? caseId,
+        Guid? facilityId,
+        int page,
+        int pageSize,
+        IReadOnlyCollection<string> lawFirmIds,
+        IReadOnlyCollection<string> medicalFacilityIds,
+        IReadOnlyCollection<string> caseManagerIds,
+        IReadOnlyCollection<string> lienStatusIds,
+        string? purchaseDateFrom,
+        string? purchaseDateTo,
+        string? closedDateFrom,
+        string? closedDateTo,
+        string? sortBy,
+        string? sortDirection,
+        CancellationToken ct)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 100) pageSize = 100;
+
+        var resolvedStatusCodes = await ResolveLienStatusCodesAsync(db, tenantId, lienStatusIds, ct);
+        var purchaseFrom = ParseDateOnlyFilter(purchaseDateFrom);
+        var purchaseTo = ParseDateOnlyFilter(purchaseDateTo);
+        var closedFrom = ParseDateTimeFilter(closedDateFrom, endOfDay: false);
+        var closedTo = ParseDateTimeFilter(closedDateTo, endOfDay: true);
+
+        var query = db.Liens
+            .AsNoTracking()
+            .Where(l => l.TenantId == tenantId);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(l =>
+                l.LienNumber.Contains(term) ||
+                (l.SubjectFirstName != null && l.SubjectFirstName.Contains(term)) ||
+                (l.SubjectLastName != null && l.SubjectLastName.Contains(term)) ||
+                (l.Description != null && l.Description.Contains(term)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(l => l.Status == status);
+
+        if (resolvedStatusCodes.Count > 0)
+            query = query.Where(l => resolvedStatusCodes.Contains(l.Status));
+
+        if (!string.IsNullOrWhiteSpace(lienType))
+            query = query.Where(l => l.LienType == lienType);
+
+        if (caseId.HasValue)
+            query = query.Where(l => l.CaseId == caseId.Value);
+
+        if (facilityId.HasValue)
+            query = query.Where(l => l.FacilityId == facilityId.Value);
+
+        if (purchaseFrom.HasValue)
+            query = query.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value >= purchaseFrom.Value);
+
+        if (purchaseTo.HasValue)
+            query = query.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value <= purchaseTo.Value);
+
+        if (closedFrom.HasValue)
+            query = query.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value >= closedFrom.Value);
+
+        if (closedTo.HasValue)
+            query = query.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value <= closedTo.Value);
+
+        var liens = await query
+            .OrderByDescending(l => l.CreatedAtUtc)
+            .ToListAsync(ct);
+
+        var advancedRows = await BuildAdvancedLienFilterRowsAsync(db, tenantId, liens, ct);
+        var normalizedLawFirmIds = NormalizeFilterValues(lawFirmIds);
+        var normalizedMedicalFacilityIds = NormalizeFilterValues(medicalFacilityIds);
+        var normalizedCaseManagerIds = NormalizeFilterValues(caseManagerIds);
+
+        var filteredLiens = advancedRows
+            .Where(row => MatchesAdvancedFilter(normalizedLawFirmIds, row.LawFirmId))
+            .Where(row => MatchesAdvancedFilter(normalizedCaseManagerIds, row.CaseManagerId))
+            .Where(row => MatchesAdvancedFilter(normalizedMedicalFacilityIds, row.FacilityFilterId))
+            .Select(row => row.Lien)
+            .ToList();
+
+        var enriched = await GetDetailedLienResponsesAsync(
+            filteredLiens,
+            lienService,
+            tenantId,
+            servicingItemService,
+            ct);
+        var sorted = ApplyLienSorting(enriched, sortBy, sortDirection);
+        var pagedLiens = sorted
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+        return Results.Ok(new PaginatedResult<LienResponse>
+        {
+            Items = pagedLiens,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = filteredLiens.Count,
+        });
+    }
+
+    private static async Task<List<LienResponse>> GetDetailedLienResponsesAsync(
+        IReadOnlyCollection<Lien> liens,
+        ILienService lienService,
+        Guid tenantId,
+        IServicingItemService servicingItemService,
+        CancellationToken ct)
+    {
+        var responses = new List<LienResponse>(liens.Count);
+        foreach (var lien in liens)
+        {
+            var response = await lienService.GetByIdAsync(tenantId, lien.Id, ct);
+            if (response is not null)
+                responses.Add(response);
+        }
+
+        return await EnrichLienResponsesAsync(responses, tenantId, servicingItemService, ct);
+    }
+
+    private static List<LienResponse> ApplyLienSorting(
+        List<LienResponse> liens,
+        string? sortBy,
+        string? sortDirection)
+    {
+        if (liens.Count <= 1 || string.IsNullOrWhiteSpace(sortBy))
+            return liens;
+
+        var normalizedSortBy = sortBy.Trim()
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+        var descending = string.Equals(sortDirection?.Trim(), "desc", StringComparison.OrdinalIgnoreCase);
+
+        IOrderedEnumerable<LienResponse> ordered = normalizedSortBy switch
+        {
+            "lienid" or "liennumber" => descending
+                ? liens.OrderByDescending(l => l.LienNumber, StringComparer.OrdinalIgnoreCase)
+                : liens.OrderBy(l => l.LienNumber, StringComparer.OrdinalIgnoreCase),
+            "plaintiff" or "plaintiffname" or "clientname" => descending
+                ? liens.OrderByDescending(l => l.Plaintiff ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                : liens.OrderBy(l => l.Plaintiff ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            "lawfirm" => descending
+                ? liens.OrderByDescending(l => l.LawFirm ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                : liens.OrderBy(l => l.LawFirm ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            "medicalfacility" or "facility" or "facilityname" => descending
+                ? liens.OrderByDescending(l => l.MedicalFacility ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                : liens.OrderBy(l => l.MedicalFacility ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            "purchasedate" => descending
+                ? liens.OrderByDescending(l => l.IncidentDate ?? DateOnly.MinValue)
+                : liens.OrderBy(l => l.IncidentDate ?? DateOnly.MinValue),
+            "purchaseamount" or "totalpurchase" => descending
+                ? liens.OrderByDescending(l => l.TotalPurchase ?? decimal.MinValue)
+                : liens.OrderBy(l => l.TotalPurchase ?? decimal.MinValue),
+            "billingamount" or "totalbilling" => descending
+                ? liens.OrderByDescending(l => l.TotalBilling ?? decimal.MinValue)
+                : liens.OrderBy(l => l.TotalBilling ?? decimal.MinValue),
+            "lienstatus" or "status" => descending
+                ? liens.OrderByDescending(l => l.Status, StringComparer.OrdinalIgnoreCase)
+                : liens.OrderBy(l => l.Status, StringComparer.OrdinalIgnoreCase),
+            "initialservicedate" => descending
+                ? liens.OrderByDescending(l => l.InitialServiceDate ?? DateOnly.MinValue)
+                : liens.OrderBy(l => l.InitialServiceDate ?? DateOnly.MinValue),
+            "casemanager" => descending
+                ? liens.OrderByDescending(l => l.CaseManager ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                : liens.OrderBy(l => l.CaseManager ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            _ => descending
+                ? liens.OrderByDescending(l => l.CreatedAtUtc)
+                : liens.OrderBy(l => l.CreatedAtUtc),
+        };
+
+        return ordered
+            .ThenBy(l => l.LienNumber, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static async Task<List<AdvancedLienFilterRow>> BuildAdvancedLienFilterRowsAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        IReadOnlyCollection<Lien> liens,
+        CancellationToken ct)
+    {
+        if (liens.Count == 0)
+            return [];
+
+        var caseIds = liens
+            .Where(l => l.CaseId.HasValue)
+            .Select(l => l.CaseId!.Value)
+            .Distinct()
+            .ToList();
+        var lienIds = liens.Select(l => l.Id).ToList();
+
+        var casesById = await db.Cases
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && caseIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, ct);
+
+        var lawFirmContacts = await db.Contacts
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.ContactType == ContactType.LawFirm)
+            .OrderBy(c => c.DisplayName)
+            .ToListAsync(ct);
+
+        var contactsById = await db.Contacts
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId)
+            .ToDictionaryAsync(c => c.Id, ct);
+
+        var facilityContacts = contactsById.Values
+            .Where(contact => IsStandaloneFacilityContact(contact))
+            .ToList();
+        var facilityContactsById = facilityContacts.ToDictionary(c => c.Id, EqualityComparer<Guid>.Default);
+        var facilityContactsByLinkedFacilityId = facilityContacts
+            .Where(c => c.FacilityId.HasValue)
+            .GroupBy(c => c.FacilityId!.Value)
+            .ToDictionary(g => g.Key, g => g.First(), EqualityComparer<Guid>.Default);
+        var facilityContactsByName = facilityContacts
+            .SelectMany(c => GetFacilityContactLookupNames(c).Select(name => new { Name = name, Contact = c }))
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Contact, StringComparer.OrdinalIgnoreCase);
+
+        var servicingItems = await db.ServicingItems
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId &&
+                        s.LienId.HasValue &&
+                        lienIds.Contains(s.LienId.Value) &&
+                        s.TaskType == "LegacyMedicalFacilityInfo")
+            .ToListAsync(ct);
+
+        var lawFirmByOrgId = lawFirmContacts
+            .GroupBy(c => c.OrgId)
+            .ToDictionary(g => g.Key, g => g.First(), EqualityComparer<Guid>.Default);
+
+        var facilityInfoByLienId = servicingItems
+            .Where(s => s.LienId.HasValue)
+            .GroupBy(s => s.LienId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAtUtc).First());
+
+        return liens.Select(l =>
+        {
+            casesById.TryGetValue(l.CaseId ?? Guid.Empty, out var caseInfo);
+            var caseFields = caseInfo is null
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : ParseLegacyNoteFields(caseInfo.Notes);
+
+            var lawFirmContact = caseInfo is not null
+                ? lawFirmByOrgId.GetValueOrDefault(caseInfo.OrgId)
+                : null;
+
+            var lawFirmId = caseFields.GetValueOrDefault("lawFirmId", string.Empty);
+            if (string.IsNullOrWhiteSpace(lawFirmId) && caseInfo is not null)
+                lawFirmId = lawFirmContact?.Id.ToString() ?? caseInfo.OrgId.ToString();
+
+            var caseManagerId = caseFields.GetValueOrDefault("caseManagerId", string.Empty);
+            var facilityFilterId = ResolveFacilityFilterId(
+                l,
+                facilityInfoByLienId.GetValueOrDefault(l.Id),
+                facilityContactsById,
+                facilityContactsByLinkedFacilityId,
+                facilityContactsByName);
+
+            return new AdvancedLienFilterRow(l, lawFirmId, caseManagerId, facilityFilterId);
+        }).ToList();
+    }
+
+    private static string ResolveFacilityFilterId(
+        Lien lien,
+        ServicingItem? facilityInfo,
+        IReadOnlyDictionary<Guid, Contact> facilityContactsById,
+        IReadOnlyDictionary<Guid, Contact> facilityContactsByLinkedFacilityId,
+        IReadOnlyDictionary<string, Contact> facilityContactsByName)
+    {
+        var facilityId = lien.FacilityId?.ToString() ?? string.Empty;
+        var facilityName = string.Empty;
+
+        if (facilityInfo is not null)
+        {
+            var fields = ParseLegacyNoteFields(facilityInfo.Notes);
+            facilityId = fields.GetValueOrDefault("facilityId", facilityId);
+            facilityName = fields.GetValueOrDefault("facilityName", string.Empty);
+        }
+
+        if (Guid.TryParse(facilityId, out var parsedFacilityId))
+        {
+            if (facilityContactsById.TryGetValue(parsedFacilityId, out var facilityContact) ||
+                facilityContactsByLinkedFacilityId.TryGetValue(parsedFacilityId, out facilityContact))
+            {
+                return facilityContact.Id.ToString();
+            }
+
+            return parsedFacilityId.ToString();
+        }
+
+        if (!string.IsNullOrWhiteSpace(facilityName) &&
+            facilityContactsByName.TryGetValue(facilityName.Trim(), out var facilityContactByName))
+        {
+            return facilityContactByName.Id.ToString();
+        }
+
+        return string.Empty;
+    }
+
+    private static async Task<HashSet<string>> ResolveLienStatusCodesAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        IReadOnlyCollection<string> filterValues,
+        CancellationToken ct)
+    {
+        var normalized = NormalizeFilterValues(filterValues);
+        if (normalized.Count == 0)
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var guidIds = normalized
+            .Where(value => Guid.TryParse(value, out _))
+            .Select(Guid.Parse)
+            .ToList();
+
+        var lookupCodes = guidIds.Count == 0
+            ? []
+            : await db.LookupValues
+                .AsNoTracking()
+                .Where(l => (l.TenantId == tenantId || l.TenantId == null) &&
+                            l.Category == LookupCategory.LienStatus &&
+                            guidIds.Contains(l.Id))
+                .Select(l => l.Code)
+                .ToListAsync(ct);
+
+        return normalized
+            .Concat(lookupCodes)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool HasAdvancedLienFilters(params string?[] values)
+        => values.Any(value => !string.IsNullOrWhiteSpace(value));
+
+    private static IReadOnlyCollection<string> SplitCsvValues(string? raw)
+        => string.IsNullOrWhiteSpace(raw)
+            ? []
+            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static HashSet<string> NormalizeFilterValues(IReadOnlyCollection<string> values)
+        => values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static bool MatchesAdvancedFilter(HashSet<string> selectedValues, string candidate)
+        => selectedValues.Count == 0 ||
+           (!string.IsNullOrWhiteSpace(candidate) && selectedValues.Contains(candidate.Trim()));
+
+    private static DateOnly? ParseDateOnlyFilter(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        return DateOnly.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var value)
+            ? value
+            : null;
+    }
+
+    private static DateTime? ParseDateTimeFilter(string? raw, bool endOfDay)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        if (!DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var value))
+            return null;
+
+        return endOfDay ? value.Date.AddDays(1).AddTicks(-1) : value.Date;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
     private static async Task<IResult> CreateLien(
         CreateLienRequest request,
@@ -1134,10 +1644,24 @@ public static class LienEndpoints
          string.Equals(contact.ContactType, ContactType.MedicalFacility, StringComparison.Ordinal)) &&
         string.IsNullOrWhiteSpace(contact.ContactSubtype);
 
+    private static bool IsStandaloneFacilityContact(Contact contact) =>
+        (string.Equals(contact.ContactType, ContactType.Facility, StringComparison.Ordinal) ||
+         string.Equals(contact.ContactType, ContactType.MedicalFacility, StringComparison.Ordinal)) &&
+        string.IsNullOrWhiteSpace(contact.ContactSubtype);
+
     private static string ResolveFacilityDisplayName(ContactResponse contact)
         => string.IsNullOrWhiteSpace(contact.Organization)
             ? contact.DisplayName
             : contact.Organization.Trim();
+
+    private static IEnumerable<string> GetFacilityContactLookupNames(Contact contact)
+    {
+        if (!string.IsNullOrWhiteSpace(contact.Organization))
+            yield return contact.Organization.Trim();
+
+        if (!string.IsNullOrWhiteSpace(contact.DisplayName))
+            yield return contact.DisplayName.Trim();
+    }
 
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {
@@ -1145,7 +1669,13 @@ public static class LienEndpoints
         if (string.IsNullOrWhiteSpace(notes))
             return result;
 
-        foreach (var segment in notes.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+        const string legacyMetadataMarker = "[legacy-meta]";
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(legacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+            rawMetadata = notes[(markerIndex + legacyMetadataMarker.Length)..].Trim();
+
+        foreach (var segment in rawMetadata.Split("; ", StringSplitOptions.RemoveEmptyEntries))
         {
             var eq = segment.IndexOf('=');
             if (eq > 0)

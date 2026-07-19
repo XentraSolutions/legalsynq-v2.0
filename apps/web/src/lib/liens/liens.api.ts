@@ -30,8 +30,28 @@ function toQs(params: Record<string, unknown>): string {
   return pairs.length ? `?${pairs.join('&')}` : '';
 }
 
+function hasAdvancedLienFilters(query: LiensQuery): boolean {
+  return Boolean(
+    query.lawFirmIds?.length ||
+      query.medicalFacilityIds?.length ||
+      query.caseManagerIds?.length ||
+      query.lienStatusIds?.length ||
+      query.purchaseDateFrom ||
+      query.purchaseDateTo ||
+      query.closedDateFrom ||
+      query.closedDateTo,
+  );
+}
+
 export const liensApi = {
   list(query: LiensQuery = {}) {
+    if (hasAdvancedLienFilters(query)) {
+      return apiClient.post<PaginatedResultDto<LienResponseDto>>(
+        '/lien/api/liens/liens/search',
+        query,
+      );
+    }
+
     return apiClient.get<PaginatedResultDto<LienResponseDto>>(
       `/lien/api/liens/liens${toQs(query as Record<string, unknown>)}`,
     );

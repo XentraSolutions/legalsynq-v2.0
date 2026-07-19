@@ -8,6 +8,7 @@ export interface CaseResponseDto {
   clientDisplayName: string;
   trackingFollowUp?: string | null;
   status: string;
+  statusLabel?: string | null;
   dateOfIncident?: string | null;
   clientDob?: string | null;
   clientPhone?: string | null;
@@ -23,6 +24,10 @@ export interface CaseResponseDto {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
+  shareCase: string;
+  minorComp: string;
+  caseDropped: string;
+  childSupportLiens: string;
   lawFirmId?: string | null;
   lawFirm?: string | null;
   caseManagerId?: string | null;
@@ -111,6 +116,10 @@ export interface UpdateCaseRequestDto {
   trackingFollowUp: string;
   dateOfLoss: string;
   leadId: string;
+  shareCase: string;
+  minorComp: string;
+  caseDropped: string;
+  childSupportLiens: string;
   description?: string | null;
   notes: string | null;
   demandAmount: number | string | null;
@@ -251,6 +260,10 @@ export interface CaseDetail {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
+  shareCase: string;
+  minorComp: string;
+  caseDropped: string;
+  childSupportLiens: string;
   insuranceCarrier: string;
   policyNumber: string;
   claimNumber: string;

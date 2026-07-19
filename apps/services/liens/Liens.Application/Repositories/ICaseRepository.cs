@@ -5,6 +5,7 @@ namespace Liens.Application.Repositories;
 public interface ICaseRepository
 {
     Task<Case?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+    Task<List<Case>> GetByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
     Task<Case?> GetByCaseNumberAsync(Guid tenantId, string caseNumber, CancellationToken ct = default);
     Task<List<Case>> GetByCaseNumberPrefixAsync(Guid tenantId, string caseNumberPrefix, CancellationToken ct = default);
     Task<(List<Case> Items, int TotalCount)> SearchAsync(

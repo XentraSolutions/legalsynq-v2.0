@@ -19,6 +19,10 @@ public sealed class LienResponse
     public string? SubjectFirstName { get; init; }
     public string? SubjectLastName { get; init; }
     public string? SubjectDisplayName { get; init; }
+    public string? Plaintiff { get; init; }
+    public string? LawFirm { get; init; }
+    public string? MedicalFacility { get; init; }
+    public string? CaseManager { get; init; }
     public Guid OrgId { get; init; }
     public Guid? SellingOrgId { get; init; }
     public Guid? BuyingOrgId { get; init; }

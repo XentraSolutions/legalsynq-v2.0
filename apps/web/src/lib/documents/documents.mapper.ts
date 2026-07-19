@@ -12,17 +12,6 @@ function safeString(val: string | null | undefined): string {
   return val ?? '';
 }
 
-function formatDateField(val: string | null | undefined): string {
-  if (!val) return '';
-  try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-  } catch {
-    return val;
-  }
-}
-
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -43,8 +32,8 @@ export function mapDocumentToListItem(dto: DocumentResponseDto): DocumentListIte
     fileSize: formatFileSize(dto.fileSizeBytes),
     versionCount: dto.versionCount,
     scanStatus: dto.scanStatus,
-    createdAt: formatDateField(dto.createdAt),
-    updatedAt: formatDateField(dto.updatedAt),
+    createdAt: safeString(dto.createdAt),
+    updatedAt: safeString(dto.updatedAt),
   };
 }
 
@@ -55,7 +44,7 @@ export function mapDocumentToDetail(dto: DocumentResponseDto): DocumentDetail {
     productId: dto.productId,
     documentTypeId: dto.documentTypeId,
     currentVersionId: safeString(dto.currentVersionId),
-    scanCompletedAt: formatDateField(dto.scanCompletedAt),
+    scanCompletedAt: safeString(dto.scanCompletedAt),
     scanThreats: dto.scanThreats ?? [],
     isDeleted: dto.isDeleted,
     createdBy: dto.createdBy,
@@ -71,7 +60,7 @@ export function mapDocumentVersion(dto: DocumentVersionResponseDto): DocumentVer
     fileSize: formatFileSize(dto.fileSizeBytes),
     scanStatus: dto.scanStatus,
     label: safeString(dto.label),
-    uploadedAt: formatDateField(dto.uploadedAt),
+    uploadedAt: safeString(dto.uploadedAt),
     uploadedBy: dto.uploadedBy,
   };
 }

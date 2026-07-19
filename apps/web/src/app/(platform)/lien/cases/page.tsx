@@ -327,7 +327,7 @@ export default function CasesPage() {
         id: "status",
         header: "Status",
         accessorFn: (row) => row.status,
-        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+        cell: ({ row }) => <StatusBadge status={row.original.status} label={row.original.statusLabel} />,
       },
     ],
     [router],

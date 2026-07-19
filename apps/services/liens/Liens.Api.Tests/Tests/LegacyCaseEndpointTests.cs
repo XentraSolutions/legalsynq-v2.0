@@ -166,6 +166,61 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     }
 
     [Fact]
+    public async Task GetCasesV3_returns_law_firm_subcontact_case_manager_display_value()
+    {
+        var caseManagerId = Guid.CreateVersion7();
+        var caseNumber = $"CASE-V3-LF-CM-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            var caseManager = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.LawFirm,
+                "Jamie",
+                "Manager",
+                SeedHelper.UserId,
+                lawFirmId: SeedHelper.LawFirmId,
+                contactSubtype: ContactSubtype.LawFirmCaseManager,
+                organization: "Smith & Associates LLP");
+            typeof(Contact).GetProperty(nameof(Contact.Id))!.SetValue(caseManager, caseManagerId);
+
+            db.Contacts.Add(caseManager);
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "Display",
+                "Subcontact",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={SeedHelper.LawFirmId}; accidentTypeId=MVA; accidentType=Motor Vehicle Accident; caseManagerId={caseManagerId}"));
+
+            await db.SaveChangesAsync();
+        }
+
+        var resp = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword = caseNumber,
+            page = 1,
+            limit = 20,
+            sortBy = "",
+            sortDirection = "",
+            statusId = "PreDemand,DemandSent",
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        var item = doc!.RootElement.GetProperty("data").EnumerateArray().Single();
+
+        item.GetProperty("caseManagerId").GetString().Should().Be(caseManagerId.ToString());
+        item.GetProperty("caseManager").GetString().Should().Be("Jamie Manager");
+    }
+
+    [Fact]
     public async Task GetLawFirmV3_returns_cases_when_filtered_by_law_firm_contact_id()
     {
         var resp = await _client.PostAsJsonAsync("/api/liens/cases/law/v3", new
@@ -340,6 +395,140 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             .Select(item => item.GetProperty("id").GetGuid())
             .Should()
             .Contain(leadCaseId);
+    }
+
+    [Fact]
+    public async Task DetailsUpdate_persists_extended_tracking_flags_and_get_case_by_id_returns_them()
+    {
+        var patchResp = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId = SeedHelper.CaseId,
+            currentStatus = "PreDemand",
+            currentMedicalStatus = "Treating",
+            caseType = "Motor Vehicle Accident",
+            stateOfIncident = "CA",
+            trackingFollowUp = "07/16/2026",
+            dateOfLoss = "06/15/2024",
+            leadId = SeedHelper.LeadContactId.ToString(),
+            shareCase = "true",
+            minorComp = "false",
+            caseDropped = "false",
+            childSupportLiens = "true",
+            isUccFiled = "false",
+        });
+
+        patchResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await patchResp.Content.ReadAsStringAsync()}");
+
+        var getResp = await _client.GetAsync($"/api/liens/cases/{SeedHelper.CaseId}");
+        getResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await getResp.Content.ReadAsStringAsync()}");
+
+        var body = await getResp.Content.ReadFromJsonAsync<JsonDocument>();
+        body.Should().NotBeNull();
+
+        var root = body!.RootElement;
+        root.GetProperty("shareCase").GetString().Should().Be("Yes");
+        root.GetProperty("minorComp").GetString().Should().Be("No");
+        root.GetProperty("caseDropped").GetString().Should().Be("No");
+        root.GetProperty("childSupportLiens").GetString().Should().Be("Yes");
+        root.GetProperty("isUccFiled").GetString().Should().Be("No");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var caseEntity = await db.Cases.FindAsync(SeedHelper.CaseId);
+        caseEntity.Should().NotBeNull();
+        caseEntity!.Notes.Should().Contain("shareCase=Yes");
+        caseEntity.Notes.Should().Contain("minorComp=No");
+        caseEntity.Notes.Should().Contain("caseDropped=No");
+        caseEntity.Notes.Should().Contain("childSupportLiens=Yes");
+        caseEntity.Notes.Should().Contain("isUccFiled=No");
+    }
+
+    [Theory]
+    [InlineData("Litigation(Pending)")]
+    [InlineData("Litigation(Open)")]
+    [InlineData("Litigation(Closed)")]
+    public async Task DetailsUpdate_accepts_legacy_litigation_status_variants(string currentStatus)
+    {
+        Guid caseId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-LIT-{Guid.CreateVersion7():N}",
+                "Legacy",
+                "Litigation",
+                SeedHelper.UserId);
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var patchResp = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            currentStatus,
+            currentMedicalStatus = "Treating",
+            caseType = "Motor Vehicle Accident",
+            stateOfIncident = "CA",
+        });
+
+        patchResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await patchResp.Content.ReadAsStringAsync()}");
+
+        var getResp = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        getResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await getResp.Content.ReadAsStringAsync()}");
+
+        var body = await getResp.Content.ReadFromJsonAsync<JsonDocument>();
+        body.Should().NotBeNull();
+        body!.RootElement.GetProperty("status").GetString()
+            .Should().Be(CaseStatus.InNegotiation);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var updatedCase = await verifyDb.Cases.FindAsync(caseId);
+        updatedCase.Should().NotBeNull();
+        updatedCase!.Status.Should().Be(CaseStatus.InNegotiation);
+    }
+
+    [Fact]
+    public async Task GetCaseById_returns_default_false_flags_when_metadata_is_missing()
+    {
+        Guid caseId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-FLAGS-{Guid.CreateVersion7():N}",
+                "Default",
+                "Flags",
+                SeedHelper.UserId);
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var resp = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        body.Should().NotBeNull();
+
+        var root = body!.RootElement;
+        root.GetProperty("shareCase").GetString().Should().Be("false");
+        root.GetProperty("minorComp").GetString().Should().Be("false");
+        root.GetProperty("caseDropped").GetString().Should().Be("false");
+        root.GetProperty("childSupportLiens").GetString().Should().Be("false");
+        root.GetProperty("isUccFiled").GetString().Should().Be("false");
     }
 
     [Fact]

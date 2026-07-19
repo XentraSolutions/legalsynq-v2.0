@@ -1,12 +1,15 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.DTOs;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
+using NPOI.HSSF.UserModel;
 
 namespace Liens.Api.Tests.Tests;
 
@@ -90,6 +93,84 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task ImportPatientDetailsReport_saves_all_rows_into_batch_upload_storage()
+    {
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent("June patient details"), "label");
+
+        var fileContent = new ByteArrayContent(CreatePatientDetailsWorkbookBytes());
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.ms-excel");
+        form.Add(fileContent, "file", "Patient_Details_Report.xls");
+
+        var response = await _client.PostAsync("/api/liens/selling/imports/patient-details", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body.Should().NotBeNull();
+
+        var root = body!.RootElement;
+        var importId = root.GetProperty("id").GetGuid();
+        root.GetProperty("label").GetString().Should().Be("June patient details");
+        root.GetProperty("template").GetString().Should().Be("SELLING_PATIENT_DETAILS_REPORT");
+        root.GetProperty("fileName").GetString().Should().Be("Patient_Details_Report.xls");
+        root.GetProperty("rowCount").GetInt32().Should().Be(2);
+        root.GetProperty("columnCount").GetInt32().Should().BeGreaterThan(10);
+
+        var previewRows = root.GetProperty("previewRows").EnumerateArray().ToList();
+        previewRows.Should().HaveCount(2);
+        previewRows[0].GetProperty("Last Name").GetString().Should().Be("ABAD");
+        previewRows[0].GetProperty("First Name").GetString().Should().Be("JACQUELINE");
+        previewRows[0].GetProperty("MR#").GetString().Should().Be("2207");
+        previewRows[1].GetProperty("Legal Entity").GetString().Should().Be("Las Vegas Imaging");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+        var batch = await db.BatchUploads.FindAsync(importId);
+        batch.Should().NotBeNull();
+        batch!.TenantId.Should().Be(SeedHelper.TenantId);
+        batch.Label.Should().Be("June patient details");
+        batch.Template.Should().Be("SELLING_PATIENT_DETAILS_REPORT");
+        batch.Rows.Should().Be(2);
+
+        var detailRows = db.BatchUploadDetails
+            .Where(x => x.BatchUploadId == importId)
+            .OrderBy(x => x.RowNumber)
+            .ToList();
+
+        detailRows.Should().HaveCount(2);
+        detailRows[0].DataJson.Should().Contain("\"Last Name\":\"ABAD\"");
+        detailRows[0].DataJson.Should().Contain("\"Cell Phone\":\"(702)237-1807\"");
+        detailRows[1].DataJson.Should().Contain("\"State\":\"NV\"");
+    }
+
+    [Fact]
+    public async Task ImportPatientDetailsReport_accepts_html_export_with_xls_extension()
+    {
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent("HTML patient details"), "label");
+
+        var fileContent = new ByteArrayContent(Encoding.UTF8.GetBytes(CreatePatientDetailsHtmlExport()));
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.ms-excel");
+        form.Add(fileContent, "file", "Patient_Details_Report.xls");
+
+        var response = await _client.PostAsync("/api/liens/selling/imports/patient-details", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body.Should().NotBeNull();
+
+        var root = body!.RootElement;
+        root.GetProperty("rowCount").GetInt32().Should().Be(2);
+        root.GetProperty("previewRows")[0].GetProperty("Last Name").GetString().Should().Be("ABAD");
+        root.GetProperty("previewRows")[1].GetProperty("State").GetString().Should().Be("NV");
+    }
+
+    [Fact]
     public async Task Analytics_returns_financial_aging_and_activity_metrics()
     {
         var portfolio = await CreatePortfolioAsync();
@@ -107,6 +188,168 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body.Operational.LienCount.Should().Be(1);
         body.Operational.ActivityCount.Should().BeGreaterThan(0);
         body.AgingBuckets.Sum(b => b.LienCount).Should().Be(1);
+    }
+
+    private static byte[] CreatePatientDetailsWorkbookBytes()
+    {
+        var workbook = new HSSFWorkbook();
+        var sheet = workbook.CreateSheet("Patient_Details_Report");
+
+        sheet.CreateRow(0).CreateCell(0).SetCellValue("Patient Details Report");
+        var header = sheet.CreateRow(11);
+        var columns = new[]
+        {
+            "#", "Last Name", "First Name", "Middle Name", "MR#", "PC Ref#", "Gender", "DOB", "Race",
+            "Ethnicity", "Language", "Sexual Orientation", "Gender Identity", "Home Phone", "Work Phone",
+            "Cell Phone", "E-Mail", "Address", "City", "State", "Zip", "Country", "Legal Entity",
+            "Provider", "Referring Provider"
+        };
+
+        for (var i = 0; i < columns.Length; i++)
+            header.CreateCell(i).SetCellValue(columns[i]);
+
+        var first = sheet.CreateRow(12);
+        first.CreateCell(0).SetCellValue("1");
+        first.CreateCell(1).SetCellValue("ABAD");
+        first.CreateCell(2).SetCellValue("JACQUELINE");
+        first.CreateCell(4).SetCellValue("2207");
+        first.CreateCell(5).SetCellValue("5/7/2026");
+        first.CreateCell(6).SetCellValue("Female");
+        first.CreateCell(7).SetCellValue("01/17/2002");
+        first.CreateCell(10).SetCellValue("English");
+        first.CreateCell(15).SetCellValue("(702)237-1807");
+        first.CreateCell(17).SetCellValue("2737 MAGNET STREET,");
+        first.CreateCell(18).SetCellValue("NORTH LAS VEGAS");
+        first.CreateCell(19).SetCellValue("NV");
+        first.CreateCell(20).SetCellValue("89030");
+        first.CreateCell(21).SetCellValue("USA");
+        first.CreateCell(22).SetCellValue("Las Vegas Imaging");
+        first.CreateCell(23).SetCellValue("IMAGING, LAS VEGAS");
+
+        var second = sheet.CreateRow(13);
+        second.CreateCell(0).SetCellValue("2");
+        second.CreateCell(1).SetCellValue("ABEBE");
+        second.CreateCell(2).SetCellValue("AMARECH");
+        second.CreateCell(4).SetCellValue("1405");
+        second.CreateCell(5).SetCellValue("10/26/2025");
+        second.CreateCell(6).SetCellValue("Female");
+        second.CreateCell(7).SetCellValue("12/07/1973");
+        second.CreateCell(10).SetCellValue("English");
+        second.CreateCell(13).SetCellValue("(702)465-0925");
+        second.CreateCell(17).SetCellValue("5063 W DODGE RIDGE AVE ,");
+        second.CreateCell(18).SetCellValue("LAS VEGAS");
+        second.CreateCell(19).SetCellValue("NV");
+        second.CreateCell(20).SetCellValue("89139");
+        second.CreateCell(21).SetCellValue("USA");
+        second.CreateCell(22).SetCellValue("Las Vegas Imaging");
+        second.CreateCell(23).SetCellValue("IMAGING, LAS VEGAS");
+        second.CreateCell(24).SetCellValue("LAS VEGAS SPORTS AND SPINE CEN, ALYSSA KIAT-ONG");
+
+        using var stream = new MemoryStream();
+        workbook.Write(stream, leaveOpen: true);
+        return stream.ToArray();
+    }
+
+    private static string CreatePatientDetailsHtmlExport()
+    {
+        return """
+
+
+
+        <html>
+            <head>
+                <title>Patient Details</title>
+            </head>
+            <body>
+                <table border="1" class="f_table2">
+                    <tr>
+                        <td align="center" colspan="25"><b>Patient Details Report</b></td>
+                    </tr>
+                    <tr>
+                        <td>#</td>
+                        <td>Last Name</td>
+                        <td>First Name</td>
+                        <td>Middle Name</td>
+                        <td>MR#</td>
+                        <td>PC Ref#</td>
+                        <td>Gender</td>
+                        <td>DOB</td>
+                        <td>Race</td>
+                        <td>Ethnicity</td>
+                        <td>Language</td>
+                        <td>Sexual Orientation</td>
+                        <td>Gender Identity</td>
+                        <td>Home Phone</td>
+                        <td>Work Phone</td>
+                        <td>Cell Phone</td>
+                        <td>E-Mail</td>
+                        <td>Address</td>
+                        <td>City</td>
+                        <td>State</td>
+                        <td>Zip</td>
+                        <td>Country</td>
+                        <td>Legal Entity</td>
+                        <td>Provider</td>
+                        <td>Referring Provider</td>
+                    </tr>
+                    <tr>
+                        <td>1</td>
+                        <td>ABAD</td>
+                        <td>JACQUELINE</td>
+                        <td></td>
+                        <td>2207</td>
+                        <td>5/7/2026</td>
+                        <td>Female</td>
+                        <td>01/17/2002</td>
+                        <td></td>
+                        <td></td>
+                        <td>English</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td>(702)237-1807</td>
+                        <td></td>
+                        <td>2737 MAGNET STREET,</td>
+                        <td>NORTH LAS VEGAS</td>
+                        <td>NV</td>
+                        <td>89030</td>
+                        <td>USA</td>
+                        <td>Las Vegas Imaging</td>
+                        <td>IMAGING, LAS VEGAS</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>ABEBE</td>
+                        <td>AMARECH</td>
+                        <td></td>
+                        <td>1405</td>
+                        <td>10/26/2025</td>
+                        <td>Female</td>
+                        <td>12/07/1973</td>
+                        <td></td>
+                        <td></td>
+                        <td>English</td>
+                        <td></td>
+                        <td></td>
+                        <td>(702)465-0925</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td>5063 W DODGE RIDGE AVE ,</td>
+                        <td>LAS VEGAS</td>
+                        <td>NV</td>
+                        <td>89139</td>
+                        <td>USA</td>
+                        <td>Las Vegas Imaging</td>
+                        <td>IMAGING, LAS VEGAS</td>
+                        <td></td>
+                    </tr>
+                </table>
+            </body>
+        </html>
+        """;
     }
 
     [Fact]

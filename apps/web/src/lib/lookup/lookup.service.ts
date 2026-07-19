@@ -35,7 +35,16 @@ export const lookupService = {
     code: MedicalProcedureCodesResponse["code"],
   ): Promise<MedicalProcedureCostsResponse> {
     const { data } = await lookupApi.getMedicalProcedureCosts(code);
-    return data;
+    const costs = Array.isArray(data.data) ? data.data : [];
+    const ascCost =
+      costs.find((item) => item.facilityType?.toLowerCase() === "asc") ??
+      costs[0];
+
+    if (!ascCost) {
+      throw new Error(data.message || "Procedure cost not found.");
+    }
+
+    return ascCost;
   },
   async getLookupAll(): Promise<LookupResponse> {
     const { data } = await lookupApi.getLookupAll();

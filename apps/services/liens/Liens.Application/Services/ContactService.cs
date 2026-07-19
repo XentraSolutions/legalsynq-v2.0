@@ -107,7 +107,8 @@ public sealed class ContactService : IContactService
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(firstName))
             errors["firstName"] = new[] { "First name is required." };
-        if (string.IsNullOrWhiteSpace(lastName))
+        if (RequiresLastName(request.ContactType, request.ContactSubtype, request.LawFirmId) &&
+            string.IsNullOrWhiteSpace(lastName))
             errors["lastName"] = new[] { "Last name is required." };
         if (!ContactType.All.Contains(request.ContactType))
             errors["contactType"] = new[] { $"Invalid contact type: '{request.ContactType}'. Valid types: {string.Join(", ", ContactType.All)}" };
@@ -207,7 +208,8 @@ public sealed class ContactService : IContactService
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(firstName))
             errors["firstName"] = new[] { "First name is required." };
-        if (string.IsNullOrWhiteSpace(lastName))
+        if (RequiresLastName(request.ContactType, request.ContactSubtype, request.LawFirmId) &&
+            string.IsNullOrWhiteSpace(lastName))
             errors["lastName"] = new[] { "Last name is required." };
         if (!ContactType.All.Contains(request.ContactType))
             errors["contactType"] = new[] { $"Invalid contact type: '{request.ContactType}'." };
@@ -410,6 +412,14 @@ public sealed class ContactService : IContactService
 
         return (string.Join(" ", parts[..^1]), parts[^1]);
     }
+
+    private static bool RequiresLastName(string contactType, string? contactSubtype, Guid? lawFirmId)
+        => !IsStandaloneLawFirm(contactType, contactSubtype, lawFirmId);
+
+    private static bool IsStandaloneLawFirm(string contactType, string? contactSubtype, Guid? lawFirmId)
+        => string.Equals(contactType, ContactType.LawFirm, StringComparison.Ordinal)
+           && string.IsNullOrWhiteSpace(contactSubtype)
+           && !lawFirmId.HasValue;
 
     private async Task<Guid?> ResolveFacilityIdAsync(
         Guid tenantId,

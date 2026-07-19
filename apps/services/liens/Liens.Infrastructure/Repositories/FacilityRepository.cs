@@ -21,6 +21,16 @@ public class FacilityRepository : IFacilityRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<List<Facility>> GetByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return [];
+
+        return await _db.Facilities
+            .Where(f => f.TenantId == tenantId && ids.Contains(f.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<(List<Facility> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, bool? isActive,
         int page, int pageSize, CancellationToken ct = default)

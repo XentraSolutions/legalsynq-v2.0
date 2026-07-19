@@ -45,18 +45,273 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     [Fact] public Task ContactType_returns200()       => GetOk("/lookup/contact/type");
 
     [Fact]
-    public async Task ContactType_includes_funding_company_and_lead()
+    public async Task DocumentType_matches_curated_legacy_options_only()
+    {
+        var resp = await _client.GetAsync("/lookup/document/type");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("HicfaOrBill", "HICFA or Bill"),
+            ("MedicalRecord", "Medical Record"),
+            ("HIPPA", "HIPPA"),
+            ("PoliceReport", "Police Report"),
+            ("Other", "Other"),
+            ("LienAgreement", "Lien Agreement"),
+            ("Check", "Check"),
+            ("AddTestQA", "Add Test QA"),
+            ("BillsAndRecords", "Bills & Records"),
+            ("BillsAndRecs", "Bills & Recs"));
+    }
+
+    [Fact]
+    public async Task AccidentType_matches_legacy_baseline_options_only()
+    {
+        var resp = await _client.GetAsync("/lookup/accident/type");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("DogBite", "Dog Bite"),
+            ("MotorVehicleAccident", "Motor Vehicle Accident"),
+            ("Other", "Other"),
+            ("SlipAndFall", "Slip and Fall"),
+            ("WorkersCompensation", "Workers Compensation"),
+            ("MedicalMalpractice", "Medical Malpractice"));
+    }
+
+    [Fact]
+    public async Task LiensStatus_matches_legacy_baseline_options_only()
+    {
+        var resp = await _client.GetAsync("/lookup/liens/status");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("Open", "Open"),
+            ("Closed", "Closed"),
+            ("Rejected", "Rejected"));
+    }
+
+    [Fact]
+    public async Task LookupAll_includes_curated_legacy_accident_types()
+    {
+        var resp = await _client.GetAsync("/lookup/all");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload["AccidentType"]!.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("DogBite", "Dog Bite"),
+            ("MotorVehicleAccident", "Motor Vehicle Accident"),
+            ("Other", "Other"),
+            ("SlipAndFall", "Slip and Fall"),
+            ("WorkersCompensation", "Workers Compensation"),
+            ("MedicalMalpractice", "Medical Malpractice"));
+    }
+
+    [Fact]
+    public async Task LookupAll_includes_curated_legacy_lien_statuses()
+    {
+        var resp = await _client.GetAsync("/lookup/all");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload["LienStatus"]!.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("Open", "Open"),
+            ("Closed", "Closed"),
+            ("Rejected", "Rejected"));
+    }
+
+    [Fact]
+    public async Task LookupAll_includes_curated_legacy_document_types()
+    {
+        var resp = await _client.GetAsync("/lookup/all");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload["DocumentCategory"]!.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("HicfaOrBill", "HICFA or Bill"),
+            ("MedicalRecord", "Medical Record"),
+            ("HIPPA", "HIPPA"),
+            ("PoliceReport", "Police Report"),
+            ("Other", "Other"),
+            ("LienAgreement", "Lien Agreement"),
+            ("Check", "Check"),
+            ("AddTestQA", "Add Test QA"),
+            ("BillsAndRecords", "Bills & Records"),
+            ("BillsAndRecs", "Bills & Recs"));
+    }
+
+    [Fact]
+    public async Task ModernAccidentType_category_returns_curated_legacy_options_only()
+    {
+        var resp = await _client.GetAsync("/api/liens/lookups/AccidentType");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("DogBite", "Dog Bite"),
+            ("MotorVehicleAccident", "Motor Vehicle Accident"),
+            ("Other", "Other"),
+            ("SlipAndFall", "Slip and Fall"),
+            ("WorkersCompensation", "Workers Compensation"),
+            ("MedicalMalpractice", "Medical Malpractice"));
+    }
+
+    [Fact]
+    public async Task ModernLienStatus_category_returns_curated_legacy_options_only()
+    {
+        var resp = await _client.GetAsync("/api/liens/lookups/LienStatus");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("Open", "Open"),
+            ("Closed", "Closed"),
+            ("Rejected", "Rejected"));
+    }
+
+    [Fact]
+    public async Task ModernDocumentCategory_returns_curated_legacy_options_only()
+    {
+        var resp = await _client.GetAsync("/api/liens/lookups/DocumentCategory");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("HicfaOrBill", "HICFA or Bill"),
+            ("MedicalRecord", "Medical Record"),
+            ("HIPPA", "HIPPA"),
+            ("PoliceReport", "Police Report"),
+            ("Other", "Other"),
+            ("LienAgreement", "Lien Agreement"),
+            ("Check", "Check"),
+            ("AddTestQA", "Add Test QA"),
+            ("BillsAndRecords", "Bills & Records"),
+            ("BillsAndRecs", "Bills & Recs"));
+    }
+
+    [Fact]
+    public async Task CaseStatus_matches_v3_legacy_status_options_only()
+    {
+        var resp = await _client.GetAsync("/lookup/case/status");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("New", "New"),
+            ("Processing", "Processing"),
+            (CaseStatus.Closed, "Closed"),
+            (CaseStatus.PreDemand, "Pre-demand"),
+            (CaseStatus.DemandSent, "Demand Sent"),
+            ("Negotiations", "Negotiations"),
+            ("Litigation", "Litigation"),
+            (CaseStatus.CaseSettled, "Case Settled"));
+    }
+
+    [Fact]
+    public async Task ModernCaseStatus_category_returns_legacy_status_options_only()
+    {
+        var resp = await _client.GetAsync("/api/liens/lookups/CaseStatus");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
+
+        items.Should().Equal(
+            ("New", "New"),
+            ("Processing", "Processing"),
+            (CaseStatus.Closed, "Closed"),
+            (CaseStatus.PreDemand, "Pre-demand"),
+            (CaseStatus.DemandSent, "Demand Sent"),
+            ("Negotiations", "Negotiations"),
+            ("Litigation", "Litigation"),
+            (CaseStatus.CaseSettled, "Case Settled"));
+    }
+
+    [Fact]
+    public async Task ContactType_matches_legacy_baseline_options_only()
     {
         var resp = await _client.GetAsync("/lookup/contact/type");
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
-        var codes = payload.AsArray()
-            .Select(item => item?["code"]?.GetValue<string>())
-            .ToHashSet(StringComparer.Ordinal);
+        var items = payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .ToList();
 
-        codes.Should().Contain("FundingCompany");
-        codes.Should().Contain("Lead");
+        items.Should().Equal(
+            (ContactType.LawFirm, "Law Firms"),
+            (ContactType.Provider, "Medical Providers"),
+            (ContactType.FundingCompany, "Funding Companies"),
+            (ContactType.MedicalFacility, "Medical Facilities"),
+            (ContactType.Lead, "Leads"));
     }
 
     [Fact]
@@ -76,7 +331,23 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
-    public async Task ProcedureCost_returns404_when_external_cost_source_is_not_configured()
+    public async Task ProcedureCodes_includes_medicare_procedure_codes()
+    {
+        var resp = await _client.GetAsync("/lookup/medical/procedure/codes");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        payload["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+        payload["data"]!.AsArray()
+            .Any(item =>
+                item?["code"]?.GetValue<string>() == "45385" &&
+                item?["description"]?.GetValue<string>() == "Colonoscopy, flexible; with removal by snare technique (45385)")
+            .Should()
+            .BeTrue();
+    }
+
+    [Fact]
+    public async Task ProcedureCost_returns404_when_medicare_cost_is_not_found()
     {
         var resp = await _client.GetAsync("/lookup/medical/procedure/costs/99213");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -84,6 +355,29 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
         payload["isSuccess"]!.GetValue<bool>().Should().BeFalse();
         payload["message"]!.GetValue<string>().Should().Be("Unable to get procedure cost.");
+    }
+
+    [Fact]
+    public async Task ProcedureCost_returns_medicare_cost_when_manual_code_is_not_found()
+    {
+        var resp = await _client.GetAsync("/lookup/medical/procedure/costs/45385");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        payload["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+        payload["message"]!.GetValue<string>().Should().Be("Retrieved from Medicare procedure price lookup.");
+
+        var items = payload["data"]!.AsArray();
+        items.Should().HaveCount(2);
+        items.Any(item =>
+            item?["facilityType"]?.GetValue<string>() == "asc" &&
+            item?["cost"]?.GetValue<string>() == "703" &&
+            item?["copay"]?.GetValue<string>() == "175" &&
+            item?["facilityTotal"]?.GetValue<string>() == "656" &&
+            item?["physicianTotal"]?.GetValue<string>() == "223" &&
+            item?["total"]?.GetValue<string>() == "879")
+            .Should()
+            .BeTrue();
     }
 
     [Fact]
