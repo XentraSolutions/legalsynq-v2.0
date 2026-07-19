@@ -12,6 +12,18 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
     private static readonly Regex GuidRegex = new(
         "[0-9a-fA-F]{8}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{12}",
         RegexOptions.Compiled);
+    private static readonly Regex CaseNumberRegex = new(
+        "\\b\\d{2}-\\d{3,8}\\b",
+        RegexOptions.Compiled);
+    private static readonly Regex CasesForRegex = new(
+        "\\bcases?\\s+(?:for|matching|named)\\s+(?<value>[^?.]+)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex CasesHandledByRegex = new(
+        "\\bcases?\\s+(?:handled by|from)\\s+(?<value>[^?.]+)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex LiensFromRegex = new(
+        "\\bliens?\\s+(?:from|for)\\s+(?<value>[^?.]+)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex RelativeDaysRegex = new(
         "(?:last|past)\\s+(\\d{1,3})\\s+days?",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -232,6 +244,111 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
         var contextualId = TryExtractGuid(request.SystemPrompt) ?? TryExtractGuid(request.ContextJson);
         var explicitId = TryExtractGuid(lastUserMessage);
         var recordId = explicitId ?? contextualId;
+        var caseNumber = TryExtractCaseNumber(lastUserMessage) ?? TryExtractCaseNumber(request.ContextJson);
+        var datePreset = DetectDatePreset(lowered);
+        var caseClientName = TryExtractCaseClientName(lastUserMessage);
+        var caseLawFirm = TryExtractCaseLawFirm(lastUserMessage);
+        var caseState = lowered.Contains("alabama") ? "AL" : null;
+        var caseAccidentType = lowered.Contains("dog bite") ? "dog bite" : null;
+
+        if (LooksLikeSynqLienTaskQuery(lowered))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.task.search",
+                input = new
+                {
+                    searchText = lastUserMessage.Trim(),
+                    assignmentScope = lowered.Contains("assigned to me") || lowered.Contains("my task") || lowered.Contains("tasks assigned to me") ? "me" : null,
+                    statusGroup = lowered.Contains("overdue") ? "open" : null,
+                    priority = lowered.Contains("high-priority") || lowered.Contains("high priority") ? "HIGH" : null,
+                    overdue = lowered.Contains("overdue"),
+                    dueToday = lowered.Contains("today"),
+                    datePreset,
+                    top = 8,
+                },
+            }, JsonOptions);
+        }
+
+        if (LooksLikeSynqLienServicingQuery(lowered))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.servicing.search",
+                input = new
+                {
+                    searchText = lastUserMessage.Trim(),
+                    statusGroup = lowered.Contains("current") || lowered.Contains("open") ? "open" : null,
+                    overdue = lowered.Contains("overdue"),
+                    datePreset,
+                    top = 8,
+                },
+            }, JsonOptions);
+        }
+
+        if (LooksLikeSynqLienCaseSearch(lowered) &&
+            (caseClientName is not null ||
+             caseLawFirm is not null ||
+             caseState is not null ||
+             caseAccidentType is not null ||
+             lowered.Contains("show all cases") ||
+             lowered.Contains("find all cases")))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.case.search",
+                input = new
+                {
+                    searchText = caseClientName,
+                    clientName = caseClientName,
+                    lawFirm = caseLawFirm,
+                    accidentType = caseAccidentType,
+                    state = caseState,
+                    status = DetectSynqLienCaseStatus(lowered),
+                    datePreset,
+                    top = 8,
+                },
+            }, JsonOptions);
+        }
+
+        if (LooksLikeSynqLienReportQuery(lowered))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.report.summary",
+                input = new
+                {
+                    searchText = lastUserMessage.Trim(),
+                    caseStatusGroup = lowered.Contains("active case") || lowered.Contains("active cases") ? "open" : null,
+                    lienStatusGroup = lowered.Contains("closed lien") || lowered.Contains("closed liens") ? "closed" : null,
+                    state = lowered.Contains("alabama") ? "AL" : null,
+                    accidentType = lowered.Contains("dog bite") ? "dog bite" : null,
+                    datePreset,
+                    top = 8,
+                },
+            }, JsonOptions);
+        }
+
+        if ((recordId.HasValue || !string.IsNullOrWhiteSpace(caseNumber)) && LooksLikeSynqLienCaseInsights(lowered))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.case.insights",
+                input = new
+                {
+                    caseId = recordId,
+                    caseNumber,
+                    datePreset,
+                    top = 10,
+                    includeExport = lowered.Contains("excel") || lowered.Contains("export"),
+                },
+            }, JsonOptions);
+        }
 
         if (LooksLikeSynqLienSummary(lowered))
         {
@@ -249,12 +366,54 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
                     statusGroup,
                     lienType = DetectSynqLienType(lowered),
                     days = TryExtractRelativeDays(lowered),
+                    datePreset,
                     recentTop = 5,
                 },
             }, JsonOptions);
         }
 
-        if (recordId.HasValue && LooksLikeSynqLienCaseLookup(lowered, request.SystemPrompt))
+        if (LooksLikeSynqLienCaseSearch(lowered))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.case.search",
+                input = new
+                {
+                    searchText = lastUserMessage.Trim(),
+                    clientName = caseClientName,
+                    lawFirm = caseLawFirm,
+                    accidentType = caseAccidentType,
+                    state = caseState,
+                    status = DetectSynqLienCaseStatus(lowered),
+                    datePreset,
+                    top = 6,
+                },
+            }, JsonOptions);
+        }
+
+        if (LooksLikeSynqLienLienSearch(lowered))
+        {
+            var statusGroup = DetectSynqLienStatusGroup(lowered);
+            var status = statusGroup is null ? DetectSynqLienStatus(lowered) : null;
+
+            return JsonSerializer.Serialize(new
+            {
+                action = "tool",
+                toolKey = "synqlien.lien.search",
+                input = new
+                {
+                    searchText = TryExtractLienSearchText(lastUserMessage) ?? lastUserMessage.Trim(),
+                    status,
+                    statusGroup,
+                    lienType = DetectSynqLienType(lowered),
+                    datePreset,
+                    top = 6,
+                },
+            }, JsonOptions);
+        }
+
+        if ((recordId.HasValue || !string.IsNullOrWhiteSpace(caseNumber)) && LooksLikeSynqLienCaseLookup(lowered, request.SystemPrompt))
         {
             return JsonSerializer.Serialize(new
             {
@@ -262,7 +421,8 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
                 toolKey = "synqlien.case.lookup",
                 input = new
                 {
-                    caseId = recordId.Value,
+                    caseId = recordId,
+                    caseNumber,
                     liensTop = 8,
                 },
             }, JsonOptions);
@@ -281,41 +441,6 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
             }, JsonOptions);
         }
 
-        if (LooksLikeSynqLienCaseSearch(lowered))
-        {
-            return JsonSerializer.Serialize(new
-            {
-                action = "tool",
-                toolKey = "synqlien.case.search",
-                input = new
-                {
-                    searchText = lastUserMessage.Trim(),
-                    status = DetectSynqLienCaseStatus(lowered),
-                    top = 6,
-                },
-            }, JsonOptions);
-        }
-
-        if (LooksLikeSynqLienLienSearch(lowered))
-        {
-            var statusGroup = DetectSynqLienStatusGroup(lowered);
-            var status = statusGroup is null ? DetectSynqLienStatus(lowered) : null;
-
-            return JsonSerializer.Serialize(new
-            {
-                action = "tool",
-                toolKey = "synqlien.lien.search",
-                input = new
-                {
-                    searchText = lastUserMessage.Trim(),
-                    status,
-                    statusGroup,
-                    lienType = DetectSynqLienType(lowered),
-                    top = 6,
-                },
-            }, JsonOptions);
-        }
-
         return JsonSerializer.Serialize(new
         {
             action = "final",
@@ -329,6 +454,37 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
         return match.Success && Guid.TryParse(match.Value, out var parsed)
             ? parsed
             : null;
+    }
+
+    private static string? TryExtractCaseNumber(string value)
+    {
+        var match = CaseNumberRegex.Match(value);
+        return match.Success ? match.Value : null;
+    }
+
+    private static string? TryExtractCaseClientName(string value)
+    {
+        var match = CasesForRegex.Match(value);
+        return match.Success ? CleanSearchEntity(match.Groups["value"].Value) : null;
+    }
+
+    private static string? TryExtractCaseLawFirm(string value)
+    {
+        var match = CasesHandledByRegex.Match(value);
+        return match.Success ? CleanSearchEntity(match.Groups["value"].Value) : null;
+    }
+
+    private static string? TryExtractLienSearchText(string value)
+    {
+        var match = LiensFromRegex.Match(value);
+        return match.Success ? CleanSearchEntity(match.Groups["value"].Value) : null;
+    }
+
+    private static string? CleanSearchEntity(string value)
+    {
+        var cleaned = value.Trim().Trim('.', '?', '!', '"', '\'');
+        cleaned = Regex.Replace(cleaned, "\\b(?:cases?|liens?)$", string.Empty, RegexOptions.IgnoreCase).Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
     }
 
     private static Guid? TryExtractContextualReferralId(string systemPrompt, string contextJson)
@@ -387,6 +543,66 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
         => lowered.Contains("case") ||
            systemPrompt.Contains("synqlien.case.lookup", StringComparison.OrdinalIgnoreCase);
 
+    private static bool LooksLikeSynqLienCaseInsights(string lowered)
+        => lowered.Contains("summary") ||
+           lowered.Contains("current status") ||
+           lowered.Contains("case manager") ||
+           lowered.Contains("law firm") ||
+           lowered.Contains("date of loss") ||
+           lowered.Contains("minor") ||
+           lowered.Contains("contact information") ||
+           lowered.Contains("how many liens") ||
+           lowered.Contains("open lien") ||
+           lowered.Contains("still open") ||
+           lowered.Contains("highest balance") ||
+           lowered.Contains("rejected lien") ||
+           lowered.Contains("missing purchase") ||
+           lowered.Contains("medical lien") ||
+           lowered.Contains("financial") ||
+           lowered.Contains("settlement amount") ||
+           lowered.Contains("purchase amount") ||
+           lowered.Contains("billing amount") ||
+           lowered.Contains("outstanding balance") ||
+           lowered.Contains("expected payout") ||
+           lowered.Contains("no reduction") ||
+           lowered.Contains("reduced") ||
+           lowered.Contains("reduction") ||
+            lowered.Contains("document") ||
+           lowered.Contains("medical record") ||
+            lowered.Contains("medical bill") ||
+            lowered.Contains("note") ||
+           lowered.Contains("update") ||
+           lowered.Contains("email") ||
+            lowered.Contains("activity") ||
+            lowered.Contains("servicing") ||
+            lowered.Contains("export");
+
+    private static bool LooksLikeSynqLienTaskQuery(string lowered)
+        => !lowered.Contains("servicing") &&
+           (lowered.Contains("task") ||
+            lowered.Contains("tasks") ||
+            lowered.Contains("attention today") ||
+            lowered.Contains("needs my attention") ||
+            lowered.Contains("deadline") ||
+            lowered.Contains("deadlines"));
+
+    private static bool LooksLikeSynqLienServicingQuery(string lowered)
+        => lowered.Contains("servicing") ||
+           lowered.Contains("serviced") ||
+           lowered.Contains("being serviced") ||
+           lowered.Contains("service history") ||
+           lowered.Contains("servicing history");
+
+    private static bool LooksLikeSynqLienReportQuery(string lowered)
+        => lowered.Contains("report") ||
+           lowered.Contains("opened this month") ||
+           lowered.Contains("opened last month") ||
+           lowered.Contains("active cases") ||
+           lowered.Contains("closed liens") ||
+           lowered.Contains("most active cases") ||
+           lowered.Contains("dog bite") ||
+           lowered.Contains("alabama cases");
+
     private static bool LooksLikeSynqLienSummary(string lowered)
         => (lowered.Contains("lien") || lowered.Contains("synqlien")) &&
            (lowered.Contains("queue") ||
@@ -412,6 +628,20 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
             _ => null,
         };
     }
+
+    private static string? DetectDatePreset(string lowered)
+        => lowered switch
+        {
+            var value when value.Contains("life to date") || value.Contains("lifetime") || value.Contains("all time") => "life_to_date",
+            var value when value.Contains("this week") => "this_week",
+            var value when value.Contains("last week") || value.Contains("past week") => "last_week",
+            var value when value.Contains("this month") => "this_month",
+            var value when value.Contains("last month") || value.Contains("past month") => "last_month",
+            var value when value.Contains("last 30 days") || value.Contains("past 30 days") => "last_30_days",
+            var value when value.Contains("today") => "today",
+            var value when value.Contains("yesterday") => "yesterday",
+            _ => null,
+        };
 
     private static string? DetectStatusGroup(string lowered)
     {

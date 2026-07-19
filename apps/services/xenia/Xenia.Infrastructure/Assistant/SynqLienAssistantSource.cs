@@ -61,6 +61,7 @@ internal sealed class SynqLienAssistantSource : ProductAssistantToolApiSource, I
                 ["lienType"] = request.LienType,
                 ["createdFrom"] = request.CreatedFromUtc,
                 ["createdTo"] = request.CreatedToUtc,
+                ["datePreset"] = request.DatePreset,
                 ["top"] = Math.Clamp(request.Top, 1, 25),
             })}",
             "SynqLien lien search",
@@ -87,6 +88,7 @@ internal sealed class SynqLienAssistantSource : ProductAssistantToolApiSource, I
                 ["days"] = request.Days,
                 ["createdFrom"] = request.CreatedFromUtc,
                 ["createdTo"] = request.CreatedToUtc,
+                ["datePreset"] = request.DatePreset,
                 ["recentTop"] = Math.Clamp(request.RecentTop, 1, 10),
             })}",
             "SynqLien lien queue summary",
@@ -136,6 +138,14 @@ internal sealed class SynqLienAssistantSource : ProductAssistantToolApiSource, I
                 ["clientName"] = request.ClientName,
                 ["caseNumber"] = request.CaseNumber,
                 ["status"] = request.Status,
+                ["lawFirm"] = request.LawFirm,
+                ["caseManager"] = request.CaseManager,
+                ["caseType"] = request.CaseType,
+                ["accidentType"] = request.AccidentType,
+                ["state"] = request.State,
+                ["openedFrom"] = request.OpenedFromUtc,
+                ["openedTo"] = request.OpenedToUtc,
+                ["datePreset"] = request.DatePreset,
                 ["top"] = Math.Clamp(request.Top, 1, 25),
             })}",
             "SynqLien case search",
@@ -144,6 +154,151 @@ internal sealed class SynqLienAssistantSource : ProductAssistantToolApiSource, I
         return response.Succeeded && response.Value is not null
             ? response.Value
             : new SynqLienCaseSearchOutcome(false, response.Status, response.SafeError, 0, []);
+    }
+
+    public async Task<SynqLienCaseInsightsOutcome> GetCaseInsightsAsync(
+        SynqLienCaseInsightsRequest request,
+        CancellationToken ct = default)
+    {
+        var path = request.CaseId.HasValue
+            ? BuildAssistantToolPath($"cases/{request.CaseId.Value}/insights")
+            : !string.IsNullOrWhiteSpace(request.CaseNumber)
+                ? BuildAssistantToolPath($"cases/by-number/{Uri.EscapeDataString(request.CaseNumber.Trim())}/insights")
+                : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(path))
+            return new SynqLienCaseInsightsOutcome(false, "invalid_input", "The SynqLien case id or case number is required.", null);
+
+        var response = await SendAsync<SynqLienCaseInsightsOutcome>(
+            $"{path}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["datePreset"] = request.DatePreset,
+                ["dateFrom"] = request.DateFromUtc,
+                ["dateTo"] = request.DateToUtc,
+                ["top"] = Math.Clamp(request.Top, 1, 25),
+                ["includeExport"] = request.IncludeExport,
+            })}",
+            "SynqLien case insights",
+            ct);
+
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new SynqLienCaseInsightsOutcome(false, response.Status, response.SafeError, null);
+    }
+
+    public async Task<SynqLienTaskSearchOutcome> SearchTasksAsync(
+        SynqLienTaskSearchRequest request,
+        CancellationToken ct = default)
+    {
+        var response = await SendAsync<SynqLienTaskSearchOutcome>(
+            $"{BuildAssistantToolPath("tasks/search")}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["search"] = request.SearchText,
+                ["status"] = request.Status,
+                ["statusGroup"] = request.StatusGroup,
+                ["priority"] = request.Priority,
+                ["assignedUserId"] = request.AssignedUserId,
+                ["assignmentScope"] = request.AssignmentScope,
+                ["caseId"] = request.CaseId,
+                ["lienId"] = request.LienId,
+                ["dueFrom"] = request.DueFromUtc,
+                ["dueTo"] = request.DueToUtc,
+                ["datePreset"] = request.DatePreset,
+                ["overdue"] = request.Overdue,
+                ["dueToday"] = request.DueToday,
+                ["top"] = Math.Clamp(request.Top, 1, 25),
+            })}",
+            "SynqLien task search",
+            ct);
+
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new SynqLienTaskSearchOutcome(
+                false,
+                response.Status,
+                response.SafeError,
+                0,
+                new SynqLienDateWindow(null, null, null),
+                new SynqLienTaskMetrics(0, 0, 0, 0, 0, 0, []),
+                []);
+    }
+
+    public async Task<SynqLienServicingSearchOutcome> SearchServicingAsync(
+        SynqLienServicingSearchRequest request,
+        CancellationToken ct = default)
+    {
+        var response = await SendAsync<SynqLienServicingSearchOutcome>(
+            $"{BuildAssistantToolPath("servicing/search")}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["search"] = request.SearchText,
+                ["status"] = request.Status,
+                ["statusGroup"] = request.StatusGroup,
+                ["priority"] = request.Priority,
+                ["assignedTo"] = request.AssignedTo,
+                ["caseId"] = request.CaseId,
+                ["lienId"] = request.LienId,
+                ["dueFrom"] = request.DueFromUtc,
+                ["dueTo"] = request.DueToUtc,
+                ["datePreset"] = request.DatePreset,
+                ["overdue"] = request.Overdue,
+                ["top"] = Math.Clamp(request.Top, 1, 25),
+            })}",
+            "SynqLien servicing search",
+            ct);
+
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new SynqLienServicingSearchOutcome(
+                false,
+                response.Status,
+                response.SafeError,
+                0,
+                new SynqLienDateWindow(null, null, null),
+                new SynqLienServicingMetrics(0, 0, 0, []),
+                []);
+    }
+
+    public async Task<SynqLienReportSummaryOutcome> GetReportSummaryAsync(
+        SynqLienReportSummaryRequest request,
+        CancellationToken ct = default)
+    {
+        var response = await SendAsync<SynqLienReportSummaryOutcome>(
+            $"{BuildAssistantToolPath("reports/summary")}{BuildQueryString(new Dictionary<string, object?>
+            {
+                ["search"] = request.SearchText,
+                ["caseStatus"] = request.CaseStatus,
+                ["caseStatusGroup"] = request.CaseStatusGroup,
+                ["lienStatus"] = request.LienStatus,
+                ["lienStatusGroup"] = request.LienStatusGroup,
+                ["lawFirm"] = request.LawFirm,
+                ["caseManager"] = request.CaseManager,
+                ["caseType"] = request.CaseType,
+                ["accidentType"] = request.AccidentType,
+                ["state"] = request.State,
+                ["dateFrom"] = request.DateFromUtc,
+                ["dateTo"] = request.DateToUtc,
+                ["datePreset"] = request.DatePreset,
+                ["top"] = Math.Clamp(request.Top, 1, 25),
+            })}",
+            "SynqLien report summary",
+            ct);
+
+        return response.Succeeded && response.Value is not null
+            ? response.Value
+            : new SynqLienReportSummaryOutcome(
+                false,
+                response.Status,
+                response.SafeError,
+                new SynqLienDateWindow(null, null, null),
+                0,
+                0,
+                0,
+                0,
+                0,
+                [],
+                [],
+                [],
+                []);
     }
 
     private async Task<HttpLookupResult<T>> SendAsync<T>(
