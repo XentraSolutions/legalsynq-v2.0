@@ -97,12 +97,12 @@ Two additional env vars are required when hosting the CareConnect common portal 
 
 If `CC_COMMON_PORTAL_HOSTNAME` is unset, the CC forgot-password path is silently disabled (a startup warning is logged). See `apps/gateway/README.md` for the required proxy header-stripping rules.
 
-### SynqLien common portal login
+### SynqLien common portal
 
-The SynqLien common portal currently has a login-page-only shell with no auth/API integration. It is selected by the product portal subdomain config:
+The SynqLien common portal currently has a static login shell and static funding-company landing dashboard with no auth/API integration. It is selected by the product portal subdomain config:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORTAL_SYNQLIEN_SUBDOMAIN` | `synqlien-demo` | Subdomain that renders the SynqLien-branded `/login` layout and points future portal redirects at `/lien/dashboard`. |
 
-Until auth integration is added, submitting the SynqLien portal login form only shows an in-page "not connected yet" notice and does not call `/api/auth/login`. In full local dev, use `http://synqlien-demo.localhost:5000/login`; when running `next dev` directly, use the Next.js port instead.
+Until auth integration is added, submitting the SynqLien portal login form only shows an in-page "not connected yet" notice and does not call `/api/auth/login`. The post-login `/lien/dashboard` page renders the Figma-aligned funding-company dashboard with sample values, and `/lien/liens` renders the static Offered Liens table with local search/status filters. Neither page calls dashboard or liens APIs. In full local dev, use `http://synqlien-demo.localhost:5000/login`; when running `next dev` directly, use the Next.js port instead.
