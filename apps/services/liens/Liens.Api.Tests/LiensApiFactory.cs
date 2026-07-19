@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Net;
 
 namespace Liens.Api.Tests;
 
@@ -80,8 +81,50 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ILegacyDocumentUploadClient>();
             services.AddSingleton<CapturingLegacyDocumentUploadClient>();
             services.AddSingleton<ILegacyDocumentUploadClient>(sp => sp.GetRequiredService<CapturingLegacyDocumentUploadClient>());
+
+            services.AddHttpClient("MedicareProcedureLookup")
+                .ConfigurePrimaryHttpMessageHandler(() => new StubMedicareProcedureLookupHandler());
         });
     }
+}
+
+internal sealed class StubMedicareProcedureLookupHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        request.Headers.TryGetValues("apiKey", out var apiKeyValues).Should().BeTrue();
+        apiKeyValues!.Should().Contain("1iuNYl3IYBHTSjmn34m0XOLLqfm1nrmz");
+
+        request.Headers.TryGetValues("amaLicense", out var licenseValues).Should().BeTrue();
+        licenseValues!.Should().Contain("b733fd32-ee85-4174-9ab1-e09ec14048bb");
+
+        var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+        var response = true switch
+        {
+            _ when path.EndsWith("/codes", StringComparison.OrdinalIgnoreCase) => JsonResponse("""
+                [
+                  { "code": "45385", "description": "Colonoscopy, flexible; with removal by snare technique (45385)", "frequency": 1075901 }
+                ]
+                """),
+            _ when path.EndsWith("/costs/45385", StringComparison.OrdinalIgnoreCase) => JsonResponse("""
+                [
+                  { "code": "45385", "facilityType": "hospital", "cost": 1156, "copay": 288, "facilityTotal": 1222, "physicianTotal": 223, "total": 1445 },
+                  { "code": "45385", "facilityType": "asc", "cost": 703, "copay": 175, "facilityTotal": 656, "physicianTotal": 223, "total": 879 }
+                ]
+                """),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+        };
+
+        return Task.FromResult(response);
+    }
+
+    private static HttpResponseMessage JsonResponse(string json)
+        => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+        };
 }
 
 /// <summary>No-op stub — returns (null, null) for every case lookup.</summary>

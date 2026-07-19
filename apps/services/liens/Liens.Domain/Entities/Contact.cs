@@ -61,7 +61,8 @@ public class Contact : AuditableEntity
         if (orgId == Guid.Empty) throw new ArgumentException("OrgId is required.", nameof(orgId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
         ArgumentException.ThrowIfNullOrWhiteSpace(firstName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
+        if (RequiresLastName(contactType, contactSubtype, lawFirmId))
+            ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
 
         if (!Enums.ContactType.All.Contains(contactType))
             throw new ArgumentException($"Invalid contact type: '{contactType}'.");
@@ -84,7 +85,7 @@ public class Contact : AuditableEntity
             ContactSubtype = string.IsNullOrWhiteSpace(contactSubtype) ? null : contactSubtype.Trim(),
             FirstName    = firstName.Trim(),
             LastName     = lastName.Trim(),
-            DisplayName  = $"{firstName.Trim()} {lastName.Trim()}",
+            DisplayName  = BuildDisplayName(firstName, lastName),
             Title        = title?.Trim(),
             Organization = organization?.Trim(),
             Email        = email?.Trim(),
@@ -125,7 +126,8 @@ public class Contact : AuditableEntity
         string? notes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(firstName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
+        if (RequiresLastName(contactType, contactSubtype, lawFirmId))
+            ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
 
         if (!Enums.ContactType.All.Contains(contactType))
             throw new ArgumentException($"Invalid contact type: '{contactType}'.");
@@ -138,7 +140,7 @@ public class Contact : AuditableEntity
 
         FirstName    = firstName.Trim();
         LastName     = lastName.Trim();
-        DisplayName  = $"{firstName.Trim()} {lastName.Trim()}";
+        DisplayName  = BuildDisplayName(firstName, lastName);
         FacilityId   = facilityId;
         LawFirmId    = lawFirmId;
         ContactType  = contactType;
@@ -171,4 +173,17 @@ public class Contact : AuditableEntity
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
     }
+
+    private static bool RequiresLastName(string contactType, string? contactSubtype, Guid? lawFirmId)
+        => !IsStandaloneLawFirm(contactType, contactSubtype, lawFirmId);
+
+    private static bool IsStandaloneLawFirm(string contactType, string? contactSubtype, Guid? lawFirmId)
+        => string.Equals(contactType, Enums.ContactType.LawFirm, StringComparison.Ordinal)
+           && string.IsNullOrWhiteSpace(contactSubtype)
+           && !lawFirmId.HasValue;
+
+    private static string BuildDisplayName(string firstName, string lastName)
+        => string.Join(" ",
+            new[] { firstName.Trim(), lastName.Trim() }
+                .Where(part => !string.IsNullOrWhiteSpace(part)));
 }

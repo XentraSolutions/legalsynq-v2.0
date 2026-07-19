@@ -8,14 +8,15 @@ import {
   LookupGenericResponse,
   LookupResponse,
   MedicalProcedureCodesResponse,
+  MedicalProcedureCodesLookupResponse,
   MedicalProcedureCostsResponse,
+  MedicalProcedureCostsLookupResponse,
   MedicalProvidersResponse,
   TaskStatusResponse,
   UserListResponse,
   type LookupData,
 } from "./lookup.types";
 import { CaseStatusResponse } from "../cases/cases.types";
-import { ApiResponse } from "@/types";
 
 const BASE = "/lien/lookup";
 
@@ -36,12 +37,12 @@ export const lookupApi = {
     return apiClient.get<TaskStatusResponse>(`${BASE}/task/status`);
   },
   getMedicalProcedureCodes() {
-    return apiClient.get<ApiResponse<MedicalProcedureCodesResponse[]>>(
+    return apiClient.get<MedicalProcedureCodesLookupResponse>(
       `${BASE}/medical/procedure/codes`,
     );
   },
   getMedicalProcedureCosts(code: MedicalProcedureCodesResponse["code"]) {
-    return apiClient.get<MedicalProcedureCostsResponse>(
+    return apiClient.get<MedicalProcedureCostsLookupResponse>(
       `${BASE}/medical/procedure/costs/${code}`,
     );
   },

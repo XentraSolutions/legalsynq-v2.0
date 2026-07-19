@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -53,6 +55,58 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
         postBody["isSuccess"]!.GetValue<bool>().Should().BeTrue();
         postBody["data"]!.AsArray().Should().Contain(item =>
             item!["caseId"]!.GetValue<string>() == SeedHelper.CaseId.ToString());
+    }
+
+    [Fact]
+    public async Task ServiceCase_v3_returns_case_manager_fields_when_available()
+    {
+        var caseManagerId = Guid.CreateVersion7();
+        var caseNumber = $"CASE-SVC-V3-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            var caseManager = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.CaseManager,
+                "John",
+                "Doe",
+                SeedHelper.UserId);
+            typeof(Contact).GetProperty(nameof(Contact.Id))!.SetValue(caseManager, caseManagerId);
+
+            db.Contacts.Add(caseManager);
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "Legacy",
+                "Service",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={SeedHelper.LawFirmId}; caseManagerId={caseManagerId}"));
+
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            keyword = caseNumber,
+            page = 1,
+            limit = 10,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var item = body["data"]!.AsArray().Single(node =>
+            node!["caseCode"]!.GetValue<string>() == caseNumber)!;
+
+        item["caseManagerId"]!.GetValue<string>().Should().Be(caseManagerId.ToString());
+        item["caseManager"]!.GetValue<string>().Should().Be("John Doe");
+        item["lawFirmId"]!.GetValue<string>().Should().Be(SeedHelper.LawFirmId.ToString());
+        item["lawfirm"]!.GetValue<string>().Should().Be("Smith & Associates LLP");
     }
 
     [Fact]

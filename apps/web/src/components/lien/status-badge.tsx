@@ -1,5 +1,6 @@
 interface StatusBadgeProps {
   status: string;
+  label?: string;
   size?: 'sm' | 'md';
 }
 
@@ -40,14 +41,14 @@ export const STATUS_LABELS: Record<string, string> = {
   OnHold:        'On Hold',
 };
 
-export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
+export function StatusBadge({ status, label, size = 'sm' }: StatusBadgeProps) {
   const style = STATUS_STYLES[status] ?? 'bg-gray-50 text-gray-600 border-gray-200';
   const sizeClass = size === 'md' ? 'px-2.5 py-1 text-sm' : 'px-2 py-0.5 text-xs';
-  const label = STATUS_LABELS[status] ?? status;
+  const resolvedLabel = label ?? STATUS_LABELS[status] ?? status;
 
   return (
     <span className={`inline-flex items-center rounded-full border font-medium ${sizeClass} ${style}`}>
-      {label}
+      {resolvedLabel}
     </span>
   );
 }

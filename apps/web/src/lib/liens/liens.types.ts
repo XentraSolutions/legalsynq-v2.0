@@ -145,6 +145,14 @@ export interface LiensQuery {
   lienType?: string;
   caseId?: string;
   facilityId?: string;
+  lawFirmIds?: string[];
+  medicalFacilityIds?: string[];
+  caseManagerIds?: string[];
+  lienStatusIds?: string[];
+  purchaseDateFrom?: string;
+  purchaseDateTo?: string;
+  closedDateFrom?: string;
+  closedDateTo?: string;
   page?: number;
   pageSize?: number;
   // TODO: ListLiens (Liens.Api/Endpoints/LienEndpoints.cs) currently only

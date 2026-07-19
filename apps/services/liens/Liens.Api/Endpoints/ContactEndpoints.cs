@@ -146,6 +146,7 @@ public static class ContactEndpoints
     private static async Task<IResult> ListContacts(
         IContactService contactService,
         ICurrentRequestContext ctx,
+        HttpRequest request,
         string? search = null,
         string? contactType = null,
         Guid? lawFirmId = null,
@@ -165,11 +166,16 @@ public static class ContactEndpoints
         var typeIsSubtypeAlias = isSubcontactQuery &&
             !string.IsNullOrWhiteSpace(type) &&
             ContactSubtype.All.Contains(type.Trim());
+        var hasExplicitContactSubtypeQuery = request.Query.Keys.Any(key =>
+            string.Equals(key, "contactSubtype", StringComparison.OrdinalIgnoreCase));
+        var explicitContactSubtype = hasExplicitContactSubtypeQuery && contactSubtype is null
+            ? string.Empty
+            : contactSubtype;
         var resolvedContactType = !string.IsNullOrWhiteSpace(contactType) && !contactTypeIsSubtypeAlias
             ? contactType
             : (!string.IsNullOrWhiteSpace(type) && !typeIsSubtypeAlias ? type : null);
-        var resolvedContactSubtype = !string.IsNullOrWhiteSpace(contactSubtype)
-            ? contactSubtype
+        var resolvedContactSubtype = explicitContactSubtype is not null
+            ? explicitContactSubtype
             : (contactTypeIsSubtypeAlias ? contactType : (typeIsSubtypeAlias ? type : null));
         var result = await contactService.SearchAsync(
             tenantId, search, resolvedContactType, isActive, page, pageSize, lawFirmId, facilityId, resolvedContactSubtype, ct);

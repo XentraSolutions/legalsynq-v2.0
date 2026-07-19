@@ -16,6 +16,7 @@ import { BulkResultBanner } from '@/components/lien/bulk-result-banner';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { useSelectionState } from '@/hooks/use-selection-state';
+import { useTimezone } from '@/lib/use-timezone';
 import { documentsService, type DocumentListItem } from '@/lib/documents';
 import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
 
@@ -48,10 +49,28 @@ const BULK_ACTIONS: BulkActionConfig[] = [
   },
 ];
 
+function formatDocumentTimestamp(value: string, timezone: string): string {
+  if (!value) return '—';
+
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) return value;
+
+  return timestamp.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: timezone,
+  });
+}
+
 export default function DocumentHandlingPage() {
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
   const selection = useSelectionState();
+  const timezone = useTimezone();
 
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -213,7 +232,9 @@ export default function DocumentHandlingPage() {
         id: 'createdAt',
         header: 'Date',
         cell: ({ row }) => (
-          <span className="text-xs text-gray-400 whitespace-nowrap">{row.original.createdAt}</span>
+          <span className="text-xs text-gray-400 whitespace-nowrap">
+            {formatDocumentTimestamp(row.original.createdAt, timezone)}
+          </span>
         ),
       },
       {
@@ -234,7 +255,7 @@ export default function DocumentHandlingPage() {
         },
       },
     ],
-    [canEdit],
+    [canEdit, timezone],
   );
 
   return (

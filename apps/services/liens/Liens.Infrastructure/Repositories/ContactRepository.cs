@@ -23,6 +23,16 @@ public class ContactRepository : IContactRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<List<Contact>> GetByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return [];
+
+        return await _db.Contacts
+            .Where(c => c.TenantId == tenantId && ids.Contains(c.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<(List<Contact> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? contactType, bool? isActive,
         int page, int pageSize, Guid? lawFirmId = null, Guid? facilityId = null, string? contactSubtype = null, CancellationToken ct = default)
@@ -43,14 +53,30 @@ public class ContactRepository : IContactRepository
         if (!string.IsNullOrWhiteSpace(contactType))
             q = q.Where(c => c.ContactType == contactType);
 
+        if (string.Equals(contactType, ContactType.LawFirm, StringComparison.Ordinal) &&
+            !lawFirmId.HasValue &&
+            contactSubtype is null)
+        {
+            q = q.Where(c => c.ContactSubtype == null || c.ContactSubtype == string.Empty);
+        }
+
         if (lawFirmId.HasValue)
             q = q.Where(c => c.LawFirmId == lawFirmId.Value);
 
         if (facilityId.HasValue)
             q = q.Where(c => c.FacilityId == facilityId.Value);
 
-        if (!string.IsNullOrWhiteSpace(contactSubtype))
-            q = q.Where(c => c.ContactSubtype == contactSubtype);
+        if (contactSubtype is not null)
+        {
+            if (string.IsNullOrWhiteSpace(contactSubtype))
+            {
+                q = q.Where(c => c.ContactSubtype == null || c.ContactSubtype == string.Empty);
+            }
+            else
+            {
+                q = q.Where(c => c.ContactSubtype == contactSubtype);
+            }
+        }
 
         if (isActive.HasValue)
             q = q.Where(c => c.IsActive == isActive.Value);

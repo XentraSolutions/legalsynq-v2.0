@@ -205,7 +205,15 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     [InlineData("Pre-demand", CaseStatus.PreDemand)]
     [InlineData("Demand Sent", CaseStatus.DemandSent)]
     [InlineData("Negotiations", CaseStatus.InNegotiation)]
-    [InlineData("Litigation", CaseStatus.InNegotiation)]
+    [InlineData("Litigation", "Litigation")]
+    [InlineData("Litigation(Pending)", "Litigation(Pending)")]
+    [InlineData("Litigation (Pending)", "Litigation (Pending)")]
+    [InlineData("Litigation(Open)", "Litigation(Open)")]
+    [InlineData("Litigation (Open)", "Litigation (Open)")]
+    [InlineData("Litigation(Close)", "Litigation(Close)")]
+    [InlineData("Litigation (Close)", "Litigation (Close)")]
+    [InlineData("Litigation(Closed)", "Litigation(Closed)")]
+    [InlineData("Litigation (Closed)", "Litigation (Closed)")]
     [InlineData("Case Settled", CaseStatus.CaseSettled)]
     [InlineData("Closed", CaseStatus.Closed)]
     public async Task LegacyCreateCase_accepts_legacy_status_labels(
@@ -233,6 +241,62 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
 
         var detailBody = await detail.Content.ReadFromJsonAsync<JsonDocument>();
         detailBody!.RootElement.GetProperty("status").GetString().Should().Be(expectedStatus);
+    }
+
+    [Theory]
+    [InlineData("Litigation(Pending)")]
+    [InlineData("Litigation(Open)")]
+    [InlineData("Litigation(Closed)")]
+    public async Task LegacyCreateCase_preserves_litigation_variant_as_status_label(string legacyStatus)
+    {
+        var create = await _client.PostAsJsonAsync("/api/liens/cases/create", new
+        {
+            code = $"LEGACY-{Guid.CreateVersion7():N}"[..20],
+            firstname = "Legacy",
+            lastname = "Litigation",
+            caseStatusId = legacyStatus,
+        });
+
+        create.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await create.Content.ReadAsStringAsync()}");
+
+        var createBody = await create.Content.ReadFromJsonAsync<LegacyCreateCaseResponseBody>();
+        createBody!.Data.Should().ContainKey("id");
+
+        var caseId = createBody.Data["id"];
+        var detail = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        detail.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detail.Content.ReadAsStringAsync()}");
+
+        var detailBody = await detail.Content.ReadFromJsonAsync<JsonDocument>();
+        detailBody!.RootElement.GetProperty("status").GetString().Should().Be(legacyStatus);
+        detailBody.RootElement.GetProperty("statusLabel").GetString().Should().Be(legacyStatus);
+    }
+
+    [Fact]
+    public async Task LegacyCreateCase_persists_minor_comp_flag_and_returns_it_from_case_by_id()
+    {
+        var create = await _client.PostAsJsonAsync("/api/liens/cases/create", new
+        {
+            code = $"LEGACY-{Guid.CreateVersion7():N}"[..20],
+            firstname = "Legacy",
+            lastname = "MinorComp",
+            minorComp = "true",
+        });
+
+        create.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await create.Content.ReadAsStringAsync()}");
+
+        var createBody = await create.Content.ReadFromJsonAsync<LegacyCreateCaseResponseBody>();
+        createBody!.Data.Should().ContainKey("id");
+
+        var caseId = createBody.Data["id"];
+        var detail = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        detail.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detail.Content.ReadAsStringAsync()}");
+
+        var detailBody = await detail.Content.ReadFromJsonAsync<JsonDocument>();
+        detailBody!.RootElement.GetProperty("minorComp").GetString().Should().Be("Yes");
     }
 
     [Fact]

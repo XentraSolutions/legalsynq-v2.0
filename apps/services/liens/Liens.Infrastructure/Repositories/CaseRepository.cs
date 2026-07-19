@@ -21,6 +21,16 @@ public class CaseRepository : ICaseRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<List<Case>> GetByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return [];
+
+        return await _db.Cases
+            .Where(c => c.TenantId == tenantId && ids.Contains(c.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<Case?> GetByCaseNumberAsync(Guid tenantId, string caseNumber, CancellationToken ct = default)
     {
         return await _db.Cases

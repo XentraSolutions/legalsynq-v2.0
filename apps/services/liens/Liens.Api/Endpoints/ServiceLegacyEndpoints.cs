@@ -633,6 +633,10 @@ public static class ServiceLegacyEndpoints
         plaintiffName = item.ClientDisplayName,
         firstName = item.ClientFirstName,
         lastName = item.ClientLastName,
+        lawfirm = item.LawFirm ?? string.Empty,
+        lawFirmId = item.LawFirmId ?? string.Empty,
+        caseManager = item.CaseManager ?? string.Empty,
+        caseManagerId = item.CaseManagerId ?? string.Empty,
         status = item.Status,
         dateOfLoss = item.DateOfIncident?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
     };

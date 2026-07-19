@@ -60,6 +60,7 @@ public static class CaseEndpoints
         public string? accidentStateId { get; init; }
         public string? caseType { get; init; }
         public string? stateOfIncident { get; init; }
+        public string? minorComp { get; init; }
     }
 
     private sealed class LegacyUpdateCaseRequest
@@ -2572,18 +2573,37 @@ public static class CaseEndpoints
         var normalized = value.Trim();
         var compact = normalized
             .Replace("-", string.Empty, StringComparison.Ordinal)
-            .Replace(" ", string.Empty, StringComparison.Ordinal);
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace("(", string.Empty, StringComparison.Ordinal)
+            .Replace(")", string.Empty, StringComparison.Ordinal);
 
         return compact.ToUpperInvariant() switch
         {
             "NEW" or "PROCESSING" or "OPEN" or "PREDEMAND" => CaseStatus.PreDemand,
             "DEMANDSENT" => CaseStatus.DemandSent,
-            "NEGOTIATIONS" or "INNEGOTIATION" or "LITIGATION" => CaseStatus.InNegotiation,
+            "NEGOTIATIONS" or "INNEGOTIATION" or "LITIGATION" or "LITIGATIONPENDING" or "LITIGATIONOPEN" or "LITIGATIONCLOSE" or "LITIGATIONCLOSED" => CaseStatus.InNegotiation,
             "CASESETTLED" => CaseStatus.CaseSettled,
             "CLOSED" => CaseStatus.Closed,
             _ when CaseStatus.All.Contains(normalized) => normalized,
             _ => throw new InvalidOperationException($"Invalid case status '{value}'."),
         };
+    }
+
+    private static string? ResolveLegacyCaseStatusLabel(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Trim();
+        var compact = normalized
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace("(", string.Empty, StringComparison.Ordinal)
+            .Replace(")", string.Empty, StringComparison.Ordinal);
+
+        return compact.StartsWith("LITIGATION", StringComparison.OrdinalIgnoreCase)
+            ? normalized
+            : null;
     }
 
     private static string SerializeLegacyNoteFields(Dictionary<string, string> fields)
@@ -4367,16 +4387,16 @@ public static class CaseEndpoints
             lawFirmId = string.Empty,
             caseManagerId = caseMetadata.GetValueOrDefault("caseManagerId", string.Empty),
             trackingFollowUpDate = caseMetadata.GetValueOrDefault("trackingFollowUpDate", string.Empty),
-            childSupportLiens = string.Empty,
-            minorComp = string.Empty,
+            childSupportLiens = caseMetadata.GetValueOrDefault("childSupportLiens", string.Empty),
+            minorComp = caseMetadata.GetValueOrDefault("minorComp", string.Empty),
             leadId = caseMetadata.GetValueOrDefault("leadId", string.Empty),
             caseManagerDesc = string.Empty,
-            shareCase = string.Empty,
+            shareCase = caseMetadata.GetValueOrDefault("shareCase", string.Empty),
             confirmedWriting = string.Empty,
             caseAttorney = string.Empty,
             caseAttorneyId = string.Empty,
             leadDescription = string.Empty,
-            caseDropped = string.Empty,
+            caseDropped = caseMetadata.GetValueOrDefault("caseDropped", string.Empty),
             externalCaseId = item.ExternalReference ?? string.Empty,
             totalLiens = totalLiens,
             lienStatus = showClosedOnlyStatus ? latestTerminalLien?.Status ?? string.Empty : string.Empty,
@@ -4923,6 +4943,8 @@ public static class CaseEndpoints
             CaseType = accidentType,
             StateOfIncident = FirstNonEmpty(request.stateOfIncident, request.accidentStateId),
             CaseManagerId = request.caseManagerId,
+            MinorComp = request.minorComp,
+            StatusLabel = ResolveLegacyCaseStatusLabel(request.caseStatusId),
         };
 
         var result = await caseService.CreateAsync(tenantId, orgId, userId, mappedRequest, ct);
@@ -4962,6 +4984,7 @@ public static class CaseEndpoints
                 LawFirmId = result.LawFirmId,
                 AccidentTypeId = result.AccidentTypeId,
                 CaseManagerId = result.CaseManagerId,
+                StatusLabel = ResolveLegacyCaseStatusLabel(request.caseStatusId),
             };
 
             result = await caseService.UpdateAsync(tenantId, result.Id, userId, updateRequest, ct);
@@ -5159,6 +5182,11 @@ public static class CaseEndpoints
         public string?  TrackingFollowUp { get; init; }
         public string?  DateOfLoss       { get; init; }
         public string?  LeadId           { get; init; }
+        public string?  ShareCase        { get; init; }
+        public string?  MinorComp        { get; init; }
+        public string?  CaseDropped      { get; init; }
+        public string?  ChildSupportLiens { get; init; }
+        public string?  IsUccFiled       { get; init; }
         public string?  Description      { get; init; }
         public string?  Notes            { get; init; }
         public decimal? DemandAmount     { get; init; }
@@ -5263,6 +5291,9 @@ public static class CaseEndpoints
 
         DateOnly? dateOfLoss = DateOnly.TryParse(req.DateOfLoss, out var dl) ? dl : existing.DateOfIncident;
         DateOnly? trackingFollowUp = DateOnly.TryParse(req.TrackingFollowUp, out var tfu) ? tfu : existing.TrackingFollowUpDate;
+        var normalizedStatus = !string.IsNullOrWhiteSpace(req.CurrentStatus)
+            ? NormalizeLegacyCaseStatus(req.CurrentStatus)
+            : existing.Status;
 
         var request = new UpdateCaseRequest
         {
@@ -5275,7 +5306,7 @@ public static class CaseEndpoints
             ExternalReference= existing.ExternalReference,
             Title            = existing.Title,
             DateOfIncident   = dateOfLoss,
-            Status           = req.CurrentStatus ?? existing.Status,
+            Status           = normalizedStatus,
             InsuranceCarrier = existing.InsuranceCarrier,
             PolicyNumber     = existing.PolicyNumber,
             ClaimNumber      = existing.ClaimNumber,
@@ -5289,6 +5320,11 @@ public static class CaseEndpoints
             StateOfIncident  = req.StateOfIncident ?? existing.StateOfIncident,
             TrackingFollowUpDate = trackingFollowUp,
             LeadId           = req.LeadId ?? existing.LeadId,
+            ShareCase        = req.ShareCase,
+            MinorComp        = req.MinorComp,
+            CaseDropped      = req.CaseDropped,
+            ChildSupportLiens = req.ChildSupportLiens,
+            IsUccFiled       = req.IsUccFiled,
         };
         await caseService.UpdateAsync(tenantId, req.CaseId, userId, request, ct);
         return Results.Ok(new { isSuccess = true, message = "Successfully Updated." });
@@ -5865,9 +5901,9 @@ public static class CaseEndpoints
             .OrderBy(c => c.DisplayName)
             .ToListAsync(ct);
 
-        var caseManagerContactsById = await db.Contacts
+        var contactsById = await db.Contacts
             .AsNoTracking()
-            .Where(c => c.TenantId == tenantId && c.ContactType == ContactType.CaseManager)
+            .Where(c => c.TenantId == tenantId)
             .ToDictionaryAsync(c => c.Id, ct);
 
         var lawFirmByOrgId = lawFirmContacts
@@ -5893,7 +5929,7 @@ public static class CaseEndpoints
                 var caseManagerId = fields.GetValueOrDefault("caseManagerId", string.Empty);
                 var caseManager = fields.GetValueOrDefault("caseManager", string.Empty);
                 if (Guid.TryParse(caseManagerId, out var parsedCaseManagerId) &&
-                    caseManagerContactsById.TryGetValue(parsedCaseManagerId, out var caseManagerContact))
+                    contactsById.TryGetValue(parsedCaseManagerId, out var caseManagerContact))
                 {
                     if (string.IsNullOrWhiteSpace(caseManager))
                         caseManager = caseManagerContact.DisplayName;

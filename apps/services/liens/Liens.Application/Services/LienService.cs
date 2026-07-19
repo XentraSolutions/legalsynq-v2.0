@@ -70,9 +70,29 @@ public sealed class LienService : ILienService
             includeHolderOrg,
             includeMarketplace);
 
+        var casesById = await LoadCasesByIdAsync(tenantId, items, ct);
+        var facilitiesById = await LoadFacilitiesByIdAsync(tenantId, items, ct);
+        var caseManagerById = await LoadCaseManagersByIdAsync(tenantId, casesById.Values, ct);
+        var lawFirms = await _contactRepo.GetAllByTypeAsync(tenantId, ContactType.LawFirm, isActive: null, ct);
+        var lawFirmById = lawFirms.ToDictionary(contact => contact.Id);
+        var lawFirmByOrgId = lawFirms
+            .GroupBy(contact => contact.OrgId)
+            .ToDictionary(group => group.Key, group => group.First());
+
         return new PaginatedResult<LienResponse>
         {
-            Items = items.Select(MapToResponse).ToList(),
+            Items = items.Select(item => MapToResponse(
+                item,
+                caseEntity: casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty),
+                facility: facilitiesById.GetValueOrDefault(item.FacilityId ?? Guid.Empty),
+                lawFirm: ResolveLawFirmName(
+                    item,
+                    casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty),
+                    lawFirmById,
+                    lawFirmByOrgId),
+                caseManager: ResolveCaseManagerName(
+                    casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty),
+                    caseManagerById))).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount,
@@ -82,13 +102,19 @@ public sealed class LienService : ILienService
     public async Task<LienResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct);
-        return entity is null ? null : MapToResponse(entity);
+        if (entity is null)
+            return null;
+
+        return await MapToResponseAsync(tenantId, entity, ct);
     }
 
     public async Task<LienResponse?> GetByLienNumberAsync(Guid tenantId, string lienNumber, CancellationToken ct = default)
     {
         var entity = await _lienRepo.GetByLienNumberAsync(tenantId, lienNumber, ct);
-        return entity is null ? null : MapToResponse(entity);
+        if (entity is null)
+            return null;
+
+        return await MapToResponseAsync(tenantId, entity, ct);
     }
 
     public async Task<LienResponse> CreateAsync(
@@ -186,7 +212,7 @@ public sealed class LienService : ILienService
 
         _taskGenDispatcher.Dispatch(genContext);
 
-        return MapToResponse(entity);
+        return await MapToResponseAsync(tenantId, entity, ct);
     }
 
     private async Task<string> GenerateLienNumberAsync(Guid tenantId, Case caseEntity, CancellationToken ct)
@@ -284,7 +310,7 @@ public sealed class LienService : ILienService
             entityType: "Lien",
             entityId: entity.Id.ToString());
 
-        return MapToResponse(entity);
+        return await MapToResponseAsync(tenantId, entity, ct);
     }
 
     public async Task<LienResponse> SetLegacyMedicalStatusAsync(
@@ -311,10 +337,42 @@ public sealed class LienService : ILienService
             entityType: "Lien",
             entityId: entity.Id.ToString());
 
-        return MapToResponse(entity);
+        return await MapToResponseAsync(tenantId, entity, ct);
     }
 
-    private static LienResponse MapToResponse(Lien entity)
+    private async Task<LienResponse> MapToResponseAsync(Guid tenantId, Lien entity, CancellationToken ct)
+    {
+        var caseEntity = entity.CaseId.HasValue
+            ? await _caseRepo.GetByIdAsync(tenantId, entity.CaseId.Value, ct)
+            : null;
+        var facility = entity.FacilityId.HasValue
+            ? await _facilityRepo.GetByIdAsync(tenantId, entity.FacilityId.Value, ct)
+            : null;
+
+        var caseManagerById = await LoadCaseManagersByIdAsync(
+            tenantId,
+            caseEntity is null ? [] : [caseEntity],
+            ct);
+        var lawFirms = await _contactRepo.GetAllByTypeAsync(tenantId, ContactType.LawFirm, isActive: null, ct);
+        var lawFirmById = lawFirms.ToDictionary(contact => contact.Id);
+        var lawFirmByOrgId = lawFirms
+            .GroupBy(contact => contact.OrgId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        return MapToResponse(
+            entity,
+            caseEntity,
+            facility,
+            ResolveLawFirmName(entity, caseEntity, lawFirmById, lawFirmByOrgId),
+            ResolveCaseManagerName(caseEntity, caseManagerById));
+    }
+
+    private static LienResponse MapToResponse(
+        Lien entity,
+        Case? caseEntity = null,
+        Facility? facility = null,
+        string? lawFirm = null,
+        string? caseManager = null)
     {
         return new LienResponse
         {
@@ -335,6 +393,10 @@ public sealed class LienService : ILienService
             SubjectFirstName = entity.SubjectFirstName,
             SubjectLastName = entity.SubjectLastName,
             SubjectDisplayName = BuildDisplayName(entity.SubjectFirstName, entity.SubjectLastName),
+            Plaintiff = caseEntity is null ? null : BuildDisplayName(caseEntity.ClientFirstName, caseEntity.ClientLastName),
+            LawFirm = lawFirm,
+            MedicalFacility = facility?.Name,
+            CaseManager = caseManager,
             OrgId = entity.OrgId,
             SellingOrgId = entity.SellingOrgId,
             BuyingOrgId = entity.BuyingOrgId,
@@ -354,6 +416,141 @@ public sealed class LienService : ILienService
             UpdatedAtUtc = entity.UpdatedAtUtc,
         };
     }
+
+    private async Task<Dictionary<Guid, Case>> LoadCasesByIdAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Lien> items,
+        CancellationToken ct)
+    {
+        var caseIds = items
+            .Where(item => item.CaseId.HasValue)
+            .Select(item => item.CaseId!.Value)
+            .Distinct()
+            .ToArray();
+
+        return (await _caseRepo.GetByIdsAsync(tenantId, caseIds, ct))
+            .ToDictionary(item => item.Id);
+    }
+
+    private async Task<Dictionary<Guid, Facility>> LoadFacilitiesByIdAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Lien> items,
+        CancellationToken ct)
+    {
+        var facilityIds = items
+            .Where(item => item.FacilityId.HasValue)
+            .Select(item => item.FacilityId!.Value)
+            .Distinct()
+            .ToArray();
+
+        return (await _facilityRepo.GetByIdsAsync(tenantId, facilityIds, ct))
+            .ToDictionary(item => item.Id);
+    }
+
+    private async Task<Dictionary<Guid, Contact>> LoadCaseManagersByIdAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Case> cases,
+        CancellationToken ct)
+    {
+        var caseManagerIds = cases
+            .Select(caseEntity => GetMetadataValue(ParseCaseMetadata(caseEntity.Notes), "caseManagerId"))
+            .Where(value => Guid.TryParse(value, out _))
+            .Select(value => Guid.Parse(value!))
+            .Distinct()
+            .ToArray();
+
+        return (await _contactRepo.GetByIdsAsync(tenantId, caseManagerIds, ct))
+            .ToDictionary(contact => contact.Id);
+    }
+
+    private static string? ResolveLawFirmName(
+        Lien lien,
+        Case? caseEntity,
+        IReadOnlyDictionary<Guid, Contact> lawFirmById,
+        IReadOnlyDictionary<Guid, Contact> lawFirmByOrgId)
+    {
+        if (caseEntity is null)
+            return null;
+
+        var metadata = ParseCaseMetadata(caseEntity.Notes);
+        var lawFirmId = GetMetadataValue(metadata, "lawFirmId");
+        if (Guid.TryParse(lawFirmId, out var parsedLawFirmId) &&
+            lawFirmById.TryGetValue(parsedLawFirmId, out var lawFirmContact))
+        {
+            return FirstNonEmpty(lawFirmContact.Organization, lawFirmContact.DisplayName);
+        }
+
+        if (lawFirmByOrgId.TryGetValue(caseEntity.OrgId, out var orgLawFirmContact))
+            return FirstNonEmpty(orgLawFirmContact.Organization, orgLawFirmContact.DisplayName);
+
+        if (lawFirmByOrgId.TryGetValue(lien.OrgId, out var lienOrgLawFirmContact))
+            return FirstNonEmpty(lienOrgLawFirmContact.Organization, lienOrgLawFirmContact.DisplayName);
+
+        return FirstNonEmpty(GetMetadataValue(metadata, "lawFirm"));
+    }
+
+    private static string? ResolveCaseManagerName(
+        Case? caseEntity,
+        IReadOnlyDictionary<Guid, Contact> caseManagerById)
+    {
+        if (caseEntity is null)
+            return null;
+
+        var metadata = ParseCaseMetadata(caseEntity.Notes);
+        var caseManagerId = GetMetadataValue(metadata, "caseManagerId");
+        if (Guid.TryParse(caseManagerId, out var parsedCaseManagerId) &&
+            caseManagerById.TryGetValue(parsedCaseManagerId, out var caseManagerContact))
+        {
+            return caseManagerContact.DisplayName;
+        }
+
+        return FirstNonEmpty(GetMetadataValue(metadata, "caseManager"));
+    }
+
+    private static Dictionary<string, string> ParseCaseMetadata(string? notes)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(notes))
+            return result;
+
+        const string legacyMetadataMarker = "[legacy-meta]";
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(legacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+        {
+            rawMetadata = notes[(markerIndex + legacyMetadataMarker.Length)..].Trim();
+        }
+        else if (!LooksLikeLegacyMetadata(notes))
+        {
+            return result;
+        }
+
+        foreach (var segment in rawMetadata.Split("; ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separatorIndex = segment.IndexOf('=');
+            if (separatorIndex <= 0)
+                continue;
+
+            var key = segment[..separatorIndex].Trim();
+            var value = segment[(separatorIndex + 1)..].Trim();
+            if (key.Length > 0)
+                result[key] = value;
+        }
+
+        return result;
+    }
+
+    private static bool LooksLikeLegacyMetadata(string notes)
+    {
+        var segments = notes.Split("; ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return segments.Length > 0 && segments.All(segment => segment.Contains('='));
+    }
+
+    private static string? GetMetadataValue(Dictionary<string, string> metadata, string key)
+        => metadata.GetValueOrDefault(key);
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
     private static string? BuildDisplayName(string? firstName, string? lastName)
     {

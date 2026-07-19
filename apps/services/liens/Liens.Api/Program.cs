@@ -59,6 +59,11 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddLiensServices(builder.Configuration);
+builder.Services.AddHttpClient("MedicareProcedureLookup", client =>
+{
+    client.BaseAddress = new Uri("https://www.medicare.gov/api/procedure-price-lookup/api/v1/core/");
+    client.Timeout     = TimeSpan.FromSeconds(20);
+});
 // LS-FLOW-MERGE-P4 — shared Flow HTTP adapter (bearer pass-through, retry, 503 mapping).
 builder.Services.AddFlowClient(builder.Configuration, serviceName: "synqlien");
 

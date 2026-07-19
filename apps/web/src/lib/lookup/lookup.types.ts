@@ -67,8 +67,27 @@ export interface MedicalProcedureCodesResponse extends LookupGenericResponse {
   data?: Array<Record<string, unknown>>;
 }
 
+export interface MedicalProcedureCodesLookupResponse {
+  isSuccess: boolean;
+  message: string;
+  data: MedicalProcedureCodesResponse[];
+}
+
 export interface MedicalProcedureCostsResponse {
-  data: Array<Record<string, unknown>>;
+  code?: string;
+  description?: string;
+  facilityType: "asc" | "hospital" | string;
+  cost?: string;
+  copay?: string;
+  facilityTotal?: string;
+  physicianTotal?: string;
+  total: string;
+}
+
+export interface MedicalProcedureCostsLookupResponse {
+  isSuccess: boolean;
+  message: string;
+  data: MedicalProcedureCostsResponse[];
 }
 
 export interface MedicalProvidersResponse

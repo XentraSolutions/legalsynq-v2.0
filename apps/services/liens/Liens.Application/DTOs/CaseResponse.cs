@@ -10,6 +10,7 @@ public sealed class CaseResponse
     public string ClientLastName { get; init; } = string.Empty;
     public string ClientDisplayName { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
+    public string StatusLabel { get; init; } = string.Empty;
     public DateOnly? DateOfIncident { get; init; }
     public DateOnly? ClientDob { get; init; }
     public string? ClientPhone { get; init; }
@@ -32,6 +33,11 @@ public sealed class CaseResponse
     public string? StateOfIncident { get; init; }
     public DateOnly? TrackingFollowUpDate { get; init; }
     public string? LeadId { get; init; }
+    public string? ShareCase { get; init; }
+    public string? MinorComp { get; init; }
+    public string? CaseDropped { get; init; }
+    public string? ChildSupportLiens { get; init; }
+    public string? IsUccFiled { get; init; }
     public string? LawFirmId { get; init; }
     public string? LawFirm { get; init; }
     public string? CaseManagerId { get; init; }
