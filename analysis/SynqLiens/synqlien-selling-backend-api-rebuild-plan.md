@@ -52,6 +52,16 @@ Important planning decision:
 - It should not mean deleting stable lien, case, contact, document, lookup, or batch infrastructure before the replacement is implemented and tested.
 - The existing `portfolios` selling API can be deprecated after the new lien-first API is adopted.
 
+## Planner Findings
+
+These decisions are now locked for backend implementation:
+
+- Buyer access must support both authenticated buyer APIs and public token APIs.
+- Figma-specific selling workflow fields must be added as columns on `Lien` in `liens_Liens`, not as a separate selling metadata table.
+- `POST /api/liens/selling/liens/{lienId}/confirm-sale` moves `PreparedForSale` to `SubmittedForSale`; it must not mark the lien as `Sold`.
+- `Sold` happens only after buyer acceptance or bill-of-sale completion.
+- New endpoints must reuse the existing selling route authorization pattern: authenticated user, `LiensPermissions.ProductCode` (`SYNQ_LIENS`) product access, sell mode, and selling permissions.
+
 ## Figma-Derived Backend Requirements
 
 Portfolio dashboard needs:
@@ -103,10 +113,11 @@ Create a new backend module inside the Liens service:
 - API: `SellingV2Endpoints` or replacement `SellingEndpoints` after migration.
 - Application service: `ISellingLienService`.
 - Application service: `ISellingDashboardService`.
+- Application service: `ISellingAnalyticsService`.
 - Application service: `ISellingBulkImportService`.
-- Application service: `ISellingBuyerPortalService`, only if public buyer access is required.
+- Application service: `ISellingBuyerPortalService` for both authenticated buyer access and public token access.
 - DTO namespace or file group: `Liens.Application/DTOs/Selling`.
-- Domain entities or owned models for selling metadata, medical pricing rows, access links, and activity.
+- Domain changes should add Figma selling workflow fields directly to `Lien`, with separate support entities only for buyer access links, activity, bulk imports, and idempotency.
 
 Recommended public base path:
 
@@ -172,6 +183,25 @@ Rules:
 - Do not hard-delete seller liens through the new selling API.
 - Use archive/cancel/withdraw actions instead of `DELETE /liens/{lienId}`.
 - Do not overload the existing `LienStatus` enum if it represents a different lifecycle.
+- `SellerStatus` controls the Figma selling workflow; core `Lien.Status` must still be updated where existing offer and sale services require it.
+
+## Core Lien Status Mapping
+
+The implementation must maintain both `SellerStatus` and the existing core `Lien.Status`.
+
+Required mapping:
+
+| Selling action | SellerStatus result | Core `Lien.Status` result | Financial mapping |
+| --- | --- | --- | --- |
+| Create draft | `Draft` | `Draft` | no sale price required |
+| Submit intake | `Pending` or `Internal` | `Draft` | `billingAmount` maps to `Lien.OriginalAmount` |
+| Prepare sale | `PreparedForSale` | `Draft` | `AskAmount` is staged on `Lien.AskAmount` |
+| Confirm sale | `SubmittedForSale` | `Offered` | copy `AskAmount` to `Lien.OfferPrice` |
+| Buyer offer submitted | unchanged | `Offered` or `UnderReview` | offer amount stored on `LienOffer` |
+| Buyer accepted / bill of sale completed | `Sold` | `Sold` | `SoldAtUtc` set and `PurchasePrice` set |
+| Withdraw sale | `Withdrawn` | `Withdrawn` | preserve previous sale pricing for audit |
+
+This mapping is required because existing buyer offer creation only accepts core liens in `Offered` or `UnderReview`, and existing sale finalization marks the core lien as `Sold` after offer acceptance.
 
 ## Final API Surface
 
@@ -179,9 +209,21 @@ All authenticated seller APIs require:
 
 - Valid JWT.
 - Tenant context.
-- `SYNQLIEN` product access.
+- `LiensPermissions.ProductCode` (`SYNQ_LIENS`) product access.
 - Seller role or permission.
 - Tenant/org-level ownership check for every lien, contact, document, and buyer operation.
+
+Permission mapping:
+
+| API group | Permission |
+| --- | --- |
+| Dashboard, list, detail, activity | `LiensPermissions.LienSaleRead` |
+| Create draft, submit intake, bulk import upload/confirm | `LiensPermissions.LienSaleCreate` |
+| Save wizard steps, prepare sale, archive | `LiensPermissions.LienSaleUpdate` |
+| Confirm sale, buyer access link generation | `LiensPermissions.LienSalePublish` |
+| Withdraw sale | `LiensPermissions.LienSaleWithdraw` |
+| Authenticated buyer view | `LiensPermissions.LienBrowse` or `LiensPermissions.LienReadHeld` |
+| Authenticated buyer offer/decline | `LiensPermissions.LienOffer` |
 
 ### Dashboard
 
@@ -369,6 +411,7 @@ Request:
 Validation:
 
 - `askAmount` must be non-negative.
+- Top-level `billingAmount` maps to `Lien.OriginalAmount`; do not add a separate `BillingAmount` column.
 - Row amounts must be non-negative.
 - Medical code rows are replaced atomically unless patch semantics are explicitly added later.
 
@@ -477,7 +520,11 @@ Purpose:
 
 - Called by the "Yes, Sell" confirmation modal.
 - Moves `PreparedForSale` to `SubmittedForSale`.
-- Sends buyer notification or generates buyer access depending on the configured buyer access model.
+- Sets core `Lien.Status` to `Offered` so existing buyer offer APIs can accept offers.
+- Copies `AskAmount` to core `Lien.OfferPrice`.
+- Must not move the lien to `Sold`.
+- Must leave `SoldAtUtc` null.
+- Sends buyer notification and enables buyer access through authenticated buyer APIs and, when requested by the seller flow, public token access.
 
 Response:
 
@@ -485,8 +532,10 @@ Response:
 {
   "lienId": "guid",
   "sellerStatus": "SubmittedForSale",
+  "lienStatus": "Offered",
   "buyerFundingCompanyId": "guid",
-  "submittedForSaleAtUtc": "2026-07-19T00:00:00Z"
+  "submittedForSaleAtUtc": "2026-07-19T00:00:00Z",
+  "soldAtUtc": null
 }
 ```
 
@@ -656,7 +705,61 @@ Purpose:
 
 ## Buyer Portal API
 
-Only implement this if the product confirms that funding companies can view offers through an email-token temporary portal.
+Buyer access must support both authenticated buyer users and public email-token access.
+
+Authenticated buyer APIs require JWT, `LiensPermissions.ProductCode` (`SYNQ_LIENS`) product access, buyer permissions, tenant isolation, and buyer organization access to the submitted lien.
+
+### Authenticated Buyer View
+
+```http
+GET /api/liens/selling/buyer/liens/{lienId}
+```
+
+Purpose:
+
+- Returns buyer-safe lien offer data for a logged-in funding company user.
+- Must not expose seller internal notes, unrelated tenant data, or private document categories.
+
+### Authenticated Buyer Offer
+
+```http
+POST /api/liens/selling/buyer/liens/{lienId}/offers
+```
+
+Headers:
+
+```http
+Idempotency-Key: required-guid-or-client-generated-key
+```
+
+Request:
+
+```json
+{
+  "offerAmount": 10000,
+  "message": "string"
+}
+```
+
+### Authenticated Buyer Decline
+
+```http
+POST /api/liens/selling/buyer/liens/{lienId}/decline
+```
+
+Headers:
+
+```http
+Idempotency-Key: required-guid-or-client-generated-key
+```
+
+Request:
+
+```json
+{
+  "reason": "string"
+}
+```
 
 ### Generate Buyer Access Link
 
@@ -687,7 +790,7 @@ Security:
 - Bind token to tenant, lien, buyer organization, and buyer contact.
 - Audit generation and access.
 
-### Public Buyer View
+### Public Token Buyer View
 
 ```http
 GET /api/liens/selling/public/{token}
@@ -698,7 +801,7 @@ Purpose:
 - Returns limited buyer-safe lien offer data.
 - Must not expose seller internal notes, unrelated tenant data, or private document categories.
 
-### Submit Buyer Offer
+### Public Token Buyer Offer
 
 ```http
 POST /api/liens/selling/public/{token}/offers
@@ -719,7 +822,7 @@ Request:
 }
 ```
 
-### Decline Offer
+### Public Token Buyer Decline
 
 ```http
 POST /api/liens/selling/public/{token}/decline
@@ -784,9 +887,162 @@ Rules:
 - Reassignment should return per-case success/failure results.
 - Export should support current filters and selected IDs.
 
+## Selling Analytics Backend Readiness Procedure
+
+Add this procedure before any selling analytics backend implementation. It turns the analytics API from a route list into a build-ready contract with clear gates, ownership, and acceptance criteria.
+
+### Contract Freeze Gate
+
+Finalize these items before code begins:
+
+- API routes.
+- Query parameters.
+- Enum values.
+- Response DTOs for every endpoint.
+- Export CSV columns and row grain.
+- Error behavior.
+- Metric formulas.
+
+No backend engineer should invent response fields, null behavior, sort order, or metric semantics during implementation.
+
+### Backend Contract Completion Procedure
+
+Before implementation starts, create a contract matrix for every selling analytics endpoint. The matrix must contain:
+
+- Route and HTTP method.
+- Required permission.
+- Query parameters and request body.
+- Validation rules and `400` cases.
+- Response DTO name and exact JSON fields.
+- Numeric types and rounding rules.
+- Default ordering, tie-breakers, pagination, and limits.
+- Null/default behavior for missing analytics fields.
+- Date anchor used by `dateFrom` and `dateTo`.
+- Error status codes for auth, tenant, seller ownership, not found, and validation failures.
+
+Freeze these enum values before code begins:
+
+```text
+sellerStatus=Draft|Pending|Internal|PreparedForSale|SubmittedForSale|Sold|Withdrawn|Archived
+listingVisibility=Public|Private
+dateDimension=submitted|sold|offer|service
+grain=day|week|month
+concentrationDimension=fundingCompany|facility|sellerStatus|listingVisibility
+exportReport=overview|statusBreakdown|funnel|timeseries|offers|buyerPerformance|aging|concentration
+```
+
+If a frontend screen needs a value outside these enums, update the plan first; do not silently accept extra values in backend code.
+
+### Backend Ownership Procedure
+
+Use this ownership sequence for implementation:
+
+1. Database engineer owns schema, EF configuration, migrations, snapshots, and index design.
+2. Backend engineer owns DTOs, service interfaces, service implementation, endpoint registration, and export generation.
+3. QA engineer owns analytics test matrix coverage and fixture data.
+4. Reviewer validates auth, tenant isolation, metric correctness, and legacy portfolio compatibility before completion.
+
+Do not implement analytics endpoint handlers before the database gate and contract matrix are complete. Do not implement export before the JSON read endpoints and shared query service are stable.
+
+### Schema Readiness Gate
+
+Analytics implementation is blocked until these fields exist on `Lien` and are mapped in EF:
+
+```text
+SellerStatus
+ListingVisibility
+FundingCompanyId
+AskAmount
+HighestBidAmount
+SubmittedForSaleAtUtc
+SoldAtUtc
+WithdrawnAtUtc
+ArchivedAtUtc
+```
+
+Schema, indexes, migrations, and snapshot updates require database-engineer coordination. Analytics v1 must use first-class stored fields only. Exclude `lawFirmId` and `caseManagerId` from v1 analytics filters unless they are denormalized into stored analytics-safe fields.
+
+### Date And Filter Procedure
+
+Use `dateFrom` and `dateTo` as ISO `YYYY-MM-DD` query parameters. Apply an inclusive lower bound and exclusive upper bound by converting `dateTo` to the next UTC day.
+
+Treat these shared filters as multi-value filters:
+
+```text
+sellerStatus
+listingVisibility
+fundingCompanyId
+facilityId
+```
+
+Validation must return `400` for invalid enum values, invalid dates, `dateFrom > dateTo`, and missing `dateDimension` on timeseries requests.
+
+### Auth Procedure
+
+Every analytics endpoint must require:
+
+- Authenticated user JWT, not public-token flow.
+- `LiensPermissions.ProductCode` (`SYNQ_LIENS`) product access.
+- Sell mode.
+- `LiensPermissions.LienSaleViewAnalytics`.
+- Service-level `TenantId` and current seller organization ownership predicates in every query.
+
+Buyer-only denial must be enforced by permission assignment and by seller organization ownership checks. Public-token endpoints must never route to analytics handlers.
+
+### Endpoint Implementation Procedure
+
+Create `SellingAnalyticsEndpoints.cs` instead of expanding the current portfolio-heavy `SellingEndpoints.cs`. Register it from `Program.cs` with `app.MapSellingAnalyticsEndpoints();` adjacent to `app.MapSellingEndpoints();`, using the same selling route authorization pattern.
+
+### Service Implementation Procedure
+
+Create:
+
+```text
+ISellingAnalyticsService
+SellingAnalyticsService
+SellingAnalyticsFilter
+SellingAnalyticsDtos.cs
+```
+
+Use one shared filtered query builder for all analytics endpoints so dashboard cards, chart data, export, and filter options cannot drift.
+
+### Metric Procedure
+
+Rules:
+
+- Read sold analytics from `SellerStatus = Sold` and `SoldAtUtc != null`.
+- Use `Lien.PurchasePrice` as the live `soldAmount`.
+- Use `LienOffer.OfferedAtUtc` for offer analytics.
+- Use `InitialServiceDate` for service-date analytics.
+- Use `SellingLienActivityEvents.CreatedAtUtc` for activity analytics once that support table exists.
+- `POST /api/liens/selling/liens/{lienId}/confirm-sale` must remain `SubmittedForSale`; it must never count as `Sold`.
+- Offer or bill-of-sale amount fallback is allowed only in controlled backfill or repair procedures, not live analytics.
+
+### Export Procedure
+
+Implement `POST /api/liens/selling/analytics/export` as synchronous CSV only for v1.
+
+Rules:
+
+- Maximum 10,000 rows.
+- Return `400` if the filtered export would exceed 10,000 rows.
+- Use the same filters and auth rules as JSON analytics endpoints.
+- Return filename format `selling-analytics-{report}-{yyyyMMddHHmmss}.csv`.
+- Freeze the report-specific column list during contract freeze.
+
+### Required Backend Acceptance Gate
+
+Implementation is not complete until:
+
+- All endpoint DTOs are explicit and tested.
+- Invalid enums, invalid dates, `dateFrom > dateTo`, and missing `dateDimension` on timeseries return `400`.
+- Public-token and buyer-only access are denied.
+- Legacy `/api/liens/selling/portfolios/{id}/analytics` still works.
+- Query plans are checked for analytics-heavy endpoints on MySQL.
+
 ## Data Model Plan
 
-Add or verify fields on the core lien/selling model:
+Implementation must add these fields directly to `liens_Liens` through the `Lien` entity and EF configuration:
 
 ```text
 SellerStatus
@@ -794,7 +1050,6 @@ ListingVisibility
 FundingCompanyId
 FundingCompanyContactId
 AskAmount
-BillingAmount
 HighestBidAmount
 SubmittedForSaleAtUtc
 SoldAtUtc
@@ -803,11 +1058,11 @@ ArchivedAtUtc
 ArchivedReason
 ```
 
-Add tables if not already represented cleanly:
+Do not create a separate selling metadata table for these Figma workflow fields.
+
+Keep separate tables only for supporting workflow data:
 
 ```text
-SellingLienMedicalPricingRows
-SellingLienDocuments
 SellingBuyerAccessLinks
 SellingLienActivityEvents
 SellingBulkImports
@@ -818,11 +1073,17 @@ IdempotencyRecords
 Indexing plan:
 
 ```text
-TenantId + SellerOrganizationId + SellerStatus
-TenantId + SellerOrganizationId + InitialServiceDate
+TenantId + SellingOrgId + SellerStatus
+TenantId + SellingOrgId + InitialServiceDate
 TenantId + FundingCompanyId
 TenantId + SellerStatus + ListingVisibility
 TenantId + LienNumber
+TenantId + SellingOrgId + SellerStatus + SubmittedForSaleAtUtc
+TenantId + SellingOrgId + SellerStatus + SoldAtUtc
+TenantId + SellingOrgId + InitialServiceDate
+TenantId + SellingOrgId + FundingCompanyId + SellerStatus
+TenantId + SellerOrgId + OfferedAtUtc for lien offers
+TenantId + LienId + Status for lien offers
 TokenHash for buyer access links
 ImportId + RowNumber for bulk import rows
 ```
@@ -844,6 +1105,8 @@ POST /api/liens/selling/liens/{lienId}/confirm-sale
 POST /api/liens/selling/liens/{lienId}/withdraw-sale
 POST /api/liens/selling/liens/{lienId}/archive
 POST /api/liens/selling/bulk-imports/{importId}/confirm
+POST /api/liens/selling/buyer/liens/{lienId}/offers
+POST /api/liens/selling/buyer/liens/{lienId}/decline
 POST /api/liens/selling/liens/{lienId}/buyer-access-links
 POST /api/liens/selling/public/{token}/offers
 POST /api/liens/selling/public/{token}/decline
@@ -900,11 +1163,20 @@ TimestampUtc
 Authenticated seller APIs:
 
 - Require JWT.
-- Require `SYNQLIEN` product access.
+- Require `LiensPermissions.ProductCode` (`SYNQ_LIENS`) product access.
 - Require seller role or permission.
 - Enforce tenant isolation in every query.
 - Enforce seller organization ownership.
 - Never trust IDs from the client without tenant ownership validation.
+
+Authenticated buyer APIs:
+
+- Require JWT.
+- Require `LiensPermissions.ProductCode` (`SYNQ_LIENS`) product access.
+- Require buyer role or permission.
+- Enforce tenant isolation.
+- Enforce buyer organization access to the submitted lien.
+- Return only buyer-safe fields.
 
 Public buyer-token APIs:
 
@@ -975,16 +1247,16 @@ Phase 1: Contract freeze
 - Finalize status values.
 - Finalize required Figma fields.
 - Finalize bulk import columns.
-- Finalize buyer access model.
 - Write DTOs and endpoint request/response contracts.
 
 Phase 2: Data model
 
-- Add selling-specific fields.
-- Add medical pricing rows if existing models are not sufficient.
-- Add document link table if existing relationships are not sufficient.
-- Add bulk import tables or extend current batch upload model.
-- Add buyer access link table only if public buyer portal is required.
+- Add selling-specific fields directly to `liens_Liens`.
+- Map top-level API `billingAmount` to existing `Lien.OriginalAmount`.
+- Persist medical pricing through the agreed `Lien` fields and existing medical-code lookup/service patterns.
+- Attach documents through the existing document infrastructure; do not add a selling-specific document table in this rebuild.
+- Add `SellingBulkImports` and `SellingBulkImportRows` support tables.
+- Add buyer access link table.
 - Add idempotency storage if not already available.
 
 Phase 3: Read APIs
@@ -993,6 +1265,14 @@ Phase 3: Read APIs
 - `GET /liens`
 - `GET /liens/{lienId}`
 - `GET /liens/{lienId}/activity`
+
+Phase 3A: Selling analytics contract and read APIs
+
+- Freeze analytics response DTOs and export CSV columns.
+- Add `SellingAnalyticsFilter`, `ISellingAnalyticsService`, and `SellingAnalyticsService`.
+- Add `SellingAnalyticsEndpoints.cs`.
+- Register `app.MapSellingAnalyticsEndpoints();` adjacent to `app.MapSellingEndpoints();`.
+- Implement JSON analytics endpoints before CSV export.
 
 Phase 4: Single-lien wizard
 
@@ -1021,10 +1301,13 @@ Phase 6: Bulk import
 
 Phase 7: Buyer access
 
+- Authenticated buyer view.
+- Authenticated buyer offer.
+- Authenticated buyer decline.
 - Generate access link.
 - Public view.
-- Submit offer.
-- Decline.
+- Public offer.
+- Public decline.
 - Token revocation and expiry handling.
 
 Phase 8: Deprecation
@@ -1057,13 +1340,38 @@ Add integration tests for:
 - Reject submit when required sections are missing.
 - Prepare sale.
 - Confirm sale with idempotency retry.
+- Confirm sale sets `SellerStatus = SubmittedForSale`, not `Sold`.
+- Confirm sale sets core `Lien.Status = Offered`.
+- Confirm sale copies `AskAmount` to `Lien.OfferPrice`.
+- Confirm sale leaves `SoldAtUtc` null.
 - Withdraw sale.
 - Archive lien.
 - Bulk upload validation.
 - Bulk confirm partial success.
+- Authenticated buyer can view lien through `/api/liens/selling/buyer/liens/{lienId}`.
+- Authenticated buyer can submit offer through `/api/liens/selling/buyer/liens/{lienId}/offers`.
 - Buyer access link generation.
+- Public-token buyer can view lien through `/api/liens/selling/public/{token}`.
+- Public-token buyer can submit offer through `/api/liens/selling/public/{token}/offers`.
 - Public buyer view data minimization.
+- Public token response excludes seller internal notes and unrelated tenant data.
 - Public buyer offer idempotency.
+- Selling fields persist on `Lien`.
+- Selling analytics unauthenticated request is denied.
+- Selling analytics missing product access is denied.
+- Selling analytics manage-mode request is denied.
+- Selling analytics missing `LiensPermissions.LienSaleViewAnalytics` is denied.
+- Buyer-only user cannot access selling analytics.
+- Public-token flow cannot access selling analytics.
+- Wrong seller organization cannot view lien analytics.
+- Cross-tenant selling analytics access is denied.
+- Selling analytics excludes confirm-sale liens from sold metrics.
+- Selling analytics excludes `SoldAtUtc = null` liens from sold metrics.
+- Selling analytics highest bid excludes rejected, withdrawn, and expired offers.
+- Selling analytics date boundaries use inclusive `dateFrom` and exclusive next-day `dateTo`.
+- Selling analytics filter options are seller-scoped.
+- Selling analytics export returns `400` over 10,000 rows.
+- Selling analytics export output matches the filtered read result.
 - Contact detail.
 - Contact reassignment.
 - Contact export.
@@ -1085,13 +1393,11 @@ Manual verification:
 
 ## Open Questions
 
-1. Should buyer access be public-token based, login-based, or both?
-2. What exact fields are required for medical code and marketplace pricing?
-3. What exact columns are required in the bulk import template?
-4. Does `Sold` happen immediately after seller confirmation, or only after buyer acceptance and bill-of-sale completion?
-5. Should `Internal` liens ever be visible to buyers?
-6. Are funding companies tenant contacts, marketplace organizations, or both?
-7. Which document types are required before a lien can be submitted or sold?
+1. What exact fields are required for medical code and marketplace pricing?
+2. What exact columns are required in the bulk import template?
+3. Should `Internal` liens ever be visible to buyers?
+4. Are funding companies tenant contacts, marketplace organizations, or both?
+5. Which document types are required before a lien can be submitted or sold?
 
 ## Recommendation
 

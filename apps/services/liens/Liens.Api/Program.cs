@@ -163,6 +163,7 @@ app.MapLienEndpoints();
 app.MapAssistantToolEndpoints();
 app.MapLienOfferEndpoints();
 app.MapSellingEndpoints();
+app.MapSellingAnalyticsEndpoints();
 app.MapBillOfSaleEndpoints();
 app.MapBatchUploadEndpoints();
 app.MapCaseEndpoints();

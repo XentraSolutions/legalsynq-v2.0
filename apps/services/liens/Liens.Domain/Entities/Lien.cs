@@ -45,6 +45,18 @@ public class Lien : AuditableEntity
     public Guid? BuyingOrgId   { get; private set; }
     public Guid? HoldingOrgId  { get; private set; }
 
+    public string? SellerStatus { get; private set; }
+    public string? ListingVisibility { get; private set; }
+    public Guid? FundingCompanyId { get; private set; }
+    public Guid? FundingCompanyContactId { get; private set; }
+    public decimal? AskAmount { get; private set; }
+    public decimal? HighestBidAmount { get; private set; }
+    public DateTime? SubmittedForSaleAtUtc { get; private set; }
+    public DateTime? SoldAtUtc { get; private set; }
+    public DateTime? WithdrawnAtUtc { get; private set; }
+    public DateTime? ArchivedAtUtc { get; private set; }
+    public string? ArchivedReason { get; private set; }
+
     private Lien() { }
 
     public static Lien Create(
@@ -109,6 +121,8 @@ public class Lien : AuditableEntity
             Notes             = notes?.Trim(),
             OpenedAtUtc       = now,
             SellingOrgId      = orgId,
+            SellerStatus      = SellingLienStatus.Draft,
+            ListingVisibility = SellingListingVisibility.Private,
             CreatedByUserId   = createdByUserId,
             UpdatedByUserId   = createdByUserId,
             CreatedAtUtc      = now,
@@ -213,7 +227,10 @@ public class Lien : AuditableEntity
             throw new ArgumentOutOfRangeException(nameof(offerPrice), "Offer price must be positive.");
 
         OfferPrice      = offerPrice;
+        AskAmount       = offerPrice;
         Status          = LienStatus.Offered;
+        SellerStatus    = SellingLienStatus.SubmittedForSale;
+        SubmittedForSaleAtUtc ??= DateTime.UtcNow;
         Notes           = offerNotes?.Trim() ?? Notes;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
@@ -226,6 +243,8 @@ public class Lien : AuditableEntity
 
         Status          = LienStatus.Withdrawn;
         ClosedAtUtc     = DateTime.UtcNow;
+        SellerStatus    = SellingLienStatus.Withdrawn;
+        WithdrawnAtUtc  = DateTime.UtcNow;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
     }
@@ -245,6 +264,8 @@ public class Lien : AuditableEntity
         BuyingOrgId     = buyingOrgId;
         HoldingOrgId    = buyingOrgId;
         Status          = LienStatus.Sold;
+        SellerStatus    = SellingLienStatus.Sold;
+        SoldAtUtc       = DateTime.UtcNow;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
     }
@@ -273,6 +294,50 @@ public class Lien : AuditableEntity
         ClosedAtUtc     = DateTime.UtcNow;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
+    public void UpdateSellingAnalyticsFields(
+        Guid updatedByUserId,
+        string? sellerStatus = null,
+        string? listingVisibility = null,
+        Guid? fundingCompanyId = null,
+        Guid? fundingCompanyContactId = null,
+        decimal? askAmount = null,
+        decimal? highestBidAmount = null,
+        DateTime? submittedForSaleAtUtc = null,
+        DateTime? soldAtUtc = null,
+        DateTime? withdrawnAtUtc = null,
+        DateTime? archivedAtUtc = null,
+        string? archivedReason = null)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        if (!string.IsNullOrWhiteSpace(sellerStatus) && !SellingLienStatus.All.Contains(sellerStatus))
+            throw new ArgumentException($"Invalid seller status: '{sellerStatus}'.", nameof(sellerStatus));
+
+        if (!string.IsNullOrWhiteSpace(listingVisibility) && !SellingListingVisibility.All.Contains(listingVisibility))
+            throw new ArgumentException($"Invalid listing visibility: '{listingVisibility}'.", nameof(listingVisibility));
+
+        if (askAmount.HasValue && askAmount.Value < 0)
+            throw new ArgumentOutOfRangeException(nameof(askAmount), "Ask amount cannot be negative.");
+
+        if (highestBidAmount.HasValue && highestBidAmount.Value < 0)
+            throw new ArgumentOutOfRangeException(nameof(highestBidAmount), "Highest bid amount cannot be negative.");
+
+        SellerStatus = string.IsNullOrWhiteSpace(sellerStatus) ? SellerStatus : sellerStatus;
+        ListingVisibility = string.IsNullOrWhiteSpace(listingVisibility) ? ListingVisibility : listingVisibility;
+        FundingCompanyId = fundingCompanyId ?? FundingCompanyId;
+        FundingCompanyContactId = fundingCompanyContactId ?? FundingCompanyContactId;
+        AskAmount = askAmount ?? AskAmount;
+        HighestBidAmount = highestBidAmount ?? HighestBidAmount;
+        SubmittedForSaleAtUtc = submittedForSaleAtUtc ?? SubmittedForSaleAtUtc;
+        SoldAtUtc = soldAtUtc ?? SoldAtUtc;
+        WithdrawnAtUtc = withdrawnAtUtc ?? WithdrawnAtUtc;
+        ArchivedAtUtc = archivedAtUtc ?? ArchivedAtUtc;
+        ArchivedReason = archivedReason?.Trim() ?? ArchivedReason;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
     }
 
     public void SetFinancials(
