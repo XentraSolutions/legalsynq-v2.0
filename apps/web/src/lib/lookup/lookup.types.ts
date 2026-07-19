@@ -68,8 +68,7 @@ export interface MedicalProcedureCodesResponse extends LookupGenericResponse {
 }
 
 export interface MedicalProcedureCostsResponse {
-  facilityType: "asc" | "desc";
-  total: string;
+  data: Array<Record<string, unknown>>;
 }
 
 export interface MedicalProvidersResponse

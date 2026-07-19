@@ -1,5 +1,5 @@
 import { settlementApi } from './settlement.api';
-import type { CasePayment, CaseReduction, CreateLienReductionRequest, CreateLienReductionResponse, CreateLienSettlementRequest, CreateLienSettlementResponse, CreateLienSettlementV2Request, CreateLienSettlementV2Response, CreateSettlementPaymentRequest, CreateSettlementPaymentResponse, DeletePaymentRequest, GetSettlementHistoryResponse, LegacySaveReductionRequest, SettlementGenericResponse, SettlementHistoryItemV3, SettlementHistoryV3Query, UpdateLiensStatusRequest, UpdateLiensStatusResponse, UpdateSettlementRequest, UpdateSettlementResponse } from './settlement.types';
+import type { CasePayment, CaseReduction, CreateLienReductionRequest, CreateLienReductionResponse, CreateLienSettlementRequest, CreateLienSettlementResponse, CreateLienSettlementV2Request, CreateLienSettlementV2Response, CreateSettlementPaymentRequest, CreateSettlementPaymentResponse, DeletePaymentRequest, GetSettlementHistoryResponse, LegacyCasePayment, LegacySaveReductionRequest, SettlementGenericResponse, SettlementHistoryItemV3, SettlementHistoryV3Query, UpdateLiensStatusRequest, UpdateLiensStatusResponse, UpdateSettlementRequest, UpdateSettlementResponse } from './settlement.types';
 
 export interface SettlementHistoryV3Result {
   items: SettlementHistoryItemV3[];
@@ -75,5 +75,9 @@ export const settlementService = {
   async getLienReductionsByCase(caseId: string): Promise<CaseReduction[]> {
     const { data } = await settlementApi.getLienReductionsByCase(caseId)
     return data
+  },
+  async getSettlementPaymentDetails(caseId: string): Promise<LegacyCasePayment[]> {
+    const { data } = await settlementApi.getSettlementPaymentDetails(caseId)
+    return Array.isArray(data) ? data : []
   },
 }

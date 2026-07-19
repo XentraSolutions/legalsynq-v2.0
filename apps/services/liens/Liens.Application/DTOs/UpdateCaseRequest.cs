@@ -19,4 +19,13 @@ public sealed class UpdateCaseRequest
     public string? Status { get; init; }
     public decimal? DemandAmount { get; init; }
     public decimal? SettlementAmount { get; init; }
+    public string? Sex { get; init; }
+    public string? CaseType { get; init; }
+    public string? CurrentMedicalStatus { get; init; }
+    public string? StateOfIncident { get; init; }
+    public DateOnly? TrackingFollowUpDate { get; init; }
+    public string? LeadId { get; init; }
+    public string? LawFirmId { get; init; }
+    public string? AccidentTypeId { get; init; }
+    public string? CaseManagerId { get; init; }
 }

@@ -5,7 +5,6 @@ import { casesApi } from "./cases.api";
 import {
   mapCaseToListItem,
   mapCaseToDetail,
-  mapLienToListItem,
   mapPagination,
   mapDtoToUpdateRequest,
   mapMedicalInfo,
@@ -16,13 +15,11 @@ import type {
   CasesQuery,
   CaseListItem,
   CaseDetail,
-  CaseLienItem,
   PaginationMeta,
   CreateCaseRequestDto,
   UpdateCaseRequestDto,
   DashboardStats,
   CaseListResult,
-  CaseLiensResult,
   CasePaginatedParams,
   CasesFilters,
   ExportResponse,
@@ -88,7 +85,7 @@ export const casesService = {
     return mapCaseToDetail(data);
   },
 
-  async updateCase(request: UpdateCaseRequestDto): Promise<CaseDetail> {
+  async updateCase(request: UpdateCaseRequestDto | any): Promise<CaseDetail> {
     const { data } = await casesApi.updateCase(request);
     return mapCaseToDetail(data);
   },
@@ -103,26 +100,14 @@ export const casesService = {
     return this.updateCase(request);
   },
 
-  async getCaseLiens(caseId: string): Promise<CaseLiensResult> {
-    const { data } = await casesApi.listLiensByCase({
-      CaseId: caseId,
-      page: 1,
-      limit: 10,
-    });
-
-    return {
-      items: data.items.map(mapLienToListItem),
-      pagination: mapPagination({ ...data, pageSize: data.limit }),
-    };
-  },
-
   async getCaseUpdates(caseId: string): Promise<any> {
     const { data } = await casesApi.getCaseUpdates({
       CaseId: caseId,
       page: 1,
       limit: 10,
     });
-    return data;
+    const payload = data as unknown as { data?: unknown };
+    return Array.isArray(payload.data) ? payload.data : [];
   },
 
   async getCaseLiensUpdates(caseId: string): Promise<any> {
@@ -156,7 +141,10 @@ export const casesService = {
   ): Promise<{ segments: AllocationSegment[]; rows: CaseReportItem[] }> {
     const { data } = await casesApi.getMedicalProviderCaseReport(request);
     const rows = data.items ?? [];
-    return { segments: groupAndCount(rows, (item) => item.medicalFacility), rows };
+    return {
+      segments: groupAndCount(rows, (item) => item.medicalFacility),
+      rows,
+    };
   },
 
   async getTotalLienReportRows(
@@ -255,6 +243,11 @@ export const casesService = {
     return data;
   },
 
+  async deleteLien(liensId: string): Promise<ApiResponse> {
+    const { data } = await casesApi.deleteLien(liensId);
+    return data;
+  },
+
   async createMedicalCode(request: CreateMedicalCodeDto): Promise<any> {
     const { data } = await casesApi.createMedicalCode(request);
     return data;
@@ -307,6 +300,16 @@ export const casesService = {
 
   async loadLiensDocuments(liensId: string): Promise<any> {
     const { data } = await casesApi.listDocumentsByLiens(liensId);
+    return data;
+  },
+
+  async deleteLiensDocument(documentId: string): Promise<any> {
+    const { data } = await casesApi.deleteDocumentsByLiens(documentId);
+    return data;
+  },
+
+  async deleteCaseDocument(documentId: string): Promise<any> {
+    const { data } = await casesApi.deleteDocumentsByCase(documentId);
     return data;
   },
 

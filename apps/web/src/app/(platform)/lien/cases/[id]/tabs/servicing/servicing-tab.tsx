@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLienStore } from "@/stores/lien-store";
@@ -10,16 +10,13 @@ import { useCaseLiens } from "@/hooks/use-case-liens";
 import { useSettlementHistory } from "@/hooks/use-settlement-history";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import type { CaseDetail, CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
-import { lookupService } from "@/lib/lookup";
 import { contactsService } from "@/lib/contacts";
 import { servicingService } from "@/lib/servicing";
 import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types";
 import { SetupReductionForm } from "../../components/setup-reduction-form";
 import { NoRecoveryForm } from "../../components/no-recovery-form";
 import { AddPaymentForm } from "../../components/add-payment-form";
-import { EmailSection } from "../../components/email-section";
-import { SmsSection } from "../../components/sms-section";
-import { ContactsSection } from "../../components/contacts-section";
+import { FeedsSection } from "../../components/feeds-section";
 import {
   formatNoteTimestamp,
   describeSettlementHistoryItem,
@@ -49,7 +46,7 @@ export function ServicingTab({
   liensLoadedAt: Date | null;
   onRefreshLiens: () => void;
   isLiensFetching: boolean;
-  payments: import("@/lib/settlement/settlement.types").CasePayment[];
+  payments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
   paymentsLoadedAt: Date | null;
   onRefreshPayments: () => void;
   isPaymentsFetching: boolean;
@@ -97,16 +94,8 @@ export function ServicingTab({
   const [currentLawFirm, setCurrentLawFirm] = useState("");
   const [currentLawyer, setCurrentLawyer] = useState("");
   const [currentCaseManager, setCurrentCaseManager] = useState("");
-
-  const [lawyerList, setLawyerList] = useState<
-    { key: string; value: string; label: string }[]
-  >([]);
-  const [caseManagerList, setCaseManagerList] = useState<
-    { key: string; value: string; label: string }[]
-  >([]);
-  const [lawFirmList, setLawFirmList] = useState<
-    { key: string; value: string; label: string }[]
-  >([]);
+  const [attorneyRoleCode, setAttorneyRoleCode] = useState<string | undefined>();
+  const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string | undefined>();
 
   let openLiens = liens.filter((i) => i.closedAtUtc === null);
   let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
@@ -115,13 +104,33 @@ export function ServicingTab({
     (s, l) => s + l.originalAmount,
     0,
   );
+  const openLiensTotalPurchase = openLiens.reduce(
+    (s, l) => s + (l.purchaseAmount ?? 0),
+    0,
+  );
   const openLiensTotalBalance = openLiens.reduce((s, l) => s + l.balance, 0);
+  const openLiensTotalReduction = openLiens.reduce(
+    (s, l) => s + (l.reductionAmount ?? 0),
+    0,
+  );
+  const openLiensTotalPayment = openLiens.reduce(
+    (s, l) => s + (l.paymentAmount ?? 0),
+    0,
+  );
   const closedLiensTotalBilling = closedLiens.reduce(
     (s, l) => s + l.originalAmount,
     0,
   );
+  const closedLiensTotalPurchase = closedLiens.reduce(
+    (s, l) => s + (l.purchaseAmount ?? 0),
+    0,
+  );
   const closedLiensTotalReduction = closedLiens.reduce(
     (s, l) => s + (l.reductionAmount ?? 0),
+    0,
+  );
+  const closedLiensTotalBalance = closedLiens.reduce(
+    (s, l) => s + l.balance,
     0,
   );
   const closedLiensTotalPayment = closedLiens.reduce(
@@ -135,38 +144,17 @@ export function ServicingTab({
     lookup?.CaseStatus.map((s) => {
       return { key: s.id, value: s.code, label: s.name };
     }) ?? [];
-  const fetchDataLawfirms = useCallback(async () => {
-    const lawfirms = await lookupService.getLawfirm();
-    setLawFirmList(
-      lawfirms.items.map((lf) => ({
-        key: lf.id,
-        value: lf.id,
-        label: lf.displayName,
-      })) ?? [],
-    );
-  }, []);
-  const fetchDataLawyers = useCallback(async () => {
-    const lawyers = await contactsService.getContacts({
-      ContactType: "Lawyer",
-    });
-    setLawyerList(
-      lawyers.items.map((lf) => ({
-        key: lf.id,
-        value: lf.id,
-        label: lf.displayName,
-      })) ?? [],
-    );
-  }, []);
-
-  const fetchDataCaseManagers = useCallback(async () => {
-    const caseManagers = await contactsService.getCaseManagers();
-    setCaseManagerList(
-      caseManagers.items.map((lf) => ({
-        key: lf.id,
-        value: lf.id,
-        label: lf.displayName,
-      })) ?? [],
-    );
+  // Fetch role codes for attorney and case manager on component mount
+  useEffect(() => {
+    const fetchRoleCodes = async () => {
+      const [attorney, caseManager] = await Promise.all([
+        contactsService.getAttorneyRoleCode(),
+        contactsService.getCaseManagerRoleCode(),
+      ]);
+      setAttorneyRoleCode(attorney);
+      setCaseManagerRoleCode(caseManager);
+    };
+    fetchRoleCodes();
   }, []);
 
   const handleSaveServicingDetails = async () => {
@@ -254,16 +242,12 @@ export function ServicingTab({
           onSwitchedDateChange={setSwitchedDate}
           currentLawFirm={currentLawFirm}
           onCurrentLawFirmChange={setCurrentLawFirm}
-          lawFirmList={lawFirmList}
-          onLoadLawFirms={fetchDataLawfirms}
           currentLawyer={currentLawyer}
           onCurrentLawyerChange={setCurrentLawyer}
-          lawyerList={lawyerList}
-          onLoadLawyers={fetchDataLawyers}
           currentCaseManager={currentCaseManager}
           onCurrentCaseManagerChange={setCurrentCaseManager}
-          caseManagerList={caseManagerList}
-          onLoadCaseManagers={fetchDataCaseManagers}
+          attorneyRoleCode={attorneyRoleCode}
+          caseManagerRoleCode={caseManagerRoleCode}
           onSave={handleSaveServicingDetails}
         />
       )}
@@ -276,7 +260,10 @@ export function ServicingTab({
             onRefreshLiens={onRefreshLiens}
             isLiensFetching={isLiensFetching}
             openLiensTotalBilling={openLiensTotalBilling}
+            openLiensTotalPurchase={openLiensTotalPurchase}
+            openLiensTotalReduction={openLiensTotalReduction}
             openLiensTotalBalance={openLiensTotalBalance}
+            openLiensTotalPayment={openLiensTotalPayment}
             onSetupReduction={() => showSetupReductionForm(true)}
             onNoRecovery={() => setIsNoRecoveryOpen(true)}
             onAddPayment={() => setIsAddPaymentOpen(true)}
@@ -288,7 +275,9 @@ export function ServicingTab({
             onRefreshLiens={onRefreshLiens}
             isLiensFetching={isLiensFetching}
             closedLiensTotalBilling={closedLiensTotalBilling}
+            closedLiensTotalPurchase={closedLiensTotalPurchase}
             closedLiensTotalReduction={closedLiensTotalReduction}
+            closedLiensTotalBalance={closedLiensTotalBalance}
             closedLiensTotalPayment={closedLiensTotalPayment}
           />
 
@@ -323,28 +312,11 @@ export function ServicingTab({
   );
 
   const rightContent = (
-    <div className="space-y-4">
-      <EmailSection />
-      <SmsSection />
-      <ContactsSection
-        items={[
-          {
-            icon: "ri-user-line",
-            iconBgClass: "bg-primary/10",
-            iconColorClass: "text-primary",
-            name: "Sarah Mitchell",
-            role: "Case Manager",
-          },
-          {
-            icon: "ri-building-line",
-            iconBgClass: "bg-blue-50",
-            iconColorClass: "text-blue-500",
-            name: caseDetail.insuranceCarrier || "",
-            role: "Law Firm",
-          },
-        ]}
-      />
-    </div>
+    <FeedsSection
+      caseId={caseDetail.id}
+      panelMode={panelMode}
+      onPanelModeChange={onPanelModeChange}
+    />
   );
 
   return (
@@ -354,6 +326,7 @@ export function ServicingTab({
         right={rightContent}
         mode={panelMode}
         onModeChange={onPanelModeChange}
+        showControls={false}
       />
       <SetupReductionForm
         open={setupReductionFormShown}

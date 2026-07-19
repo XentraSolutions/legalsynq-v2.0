@@ -9,12 +9,21 @@ const lienDisplayColumns: LienColumnDef[] = [
     id: "lienId",
     header: "Lien ID",
     cell: (l) => (
-      <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
+      <span className="text-xs font-mono text-gray-500">{l.lienNumber}</span>
+    ),
+  },
+  {
+    id: "facilityName",
+    header: "Medical Facility",
+    cell: (l) => (
+      <span className="text-sm text-gray-600 truncate max-w-40 block">
+        {l.facilityName || ""}
+      </span>
     ),
   },
   {
     id: "billing",
-    header: "Billing Amt",
+    header: "Billing Amount",
     align: "right",
     cell: (l) => (
       <span className="text-sm text-gray-700 tabular-nums">
@@ -23,32 +32,42 @@ const lienDisplayColumns: LienColumnDef[] = [
     ),
   },
   {
-    id: "reduction",
-    header: "Reduction",
+    id: "purchaseAmount",
+    header: "Purchase Amount",
     align: "right",
     cell: (l) => (
-      <span className="text-sm text-gray-500 tabular-nums">
-        {l.reductionAmount !== null ? formatCurrency(l.reductionAmount) : "---"}
+      <span className="text-sm text-gray-700 tabular-nums">
+        {formatCurrency(l.purchaseAmount)}
       </span>
     ),
   },
   {
-    id: "payment",
-    header: "Payment",
+    id: "reduction",
+    header: "Reduction Amount",
     align: "right",
     cell: (l) => (
       <span className="text-sm text-gray-500 tabular-nums">
-        {l.paymentAmount !== null ? formatCurrency(l.paymentAmount) : "---"}
+        {formatCurrency(l.reductionAmount)}
       </span>
     ),
   },
   {
     id: "balance",
-    header: "Balance",
+    header: "Amount to Settle",
     align: "right",
     cell: (l) => (
       <span className="text-sm text-gray-700 font-medium tabular-nums">
         {formatCurrency(l.balance)}
+      </span>
+    ),
+  },
+  {
+    id: "payment",
+    header: "Amount Received",
+    align: "right",
+    cell: (l) => (
+      <span className="text-sm text-gray-500 tabular-nums">
+        {formatCurrency(l.paymentAmount)}
       </span>
     ),
   },
@@ -60,7 +79,10 @@ export function OpenLiensSection({
   onRefreshLiens,
   isLiensFetching,
   openLiensTotalBilling,
+  openLiensTotalPurchase,
+  openLiensTotalReduction,
   openLiensTotalBalance,
+  openLiensTotalPayment,
   onSetupReduction,
   onNoRecovery,
   onAddPayment,
@@ -70,7 +92,10 @@ export function OpenLiensSection({
   onRefreshLiens: () => void;
   isLiensFetching: boolean;
   openLiensTotalBilling: number;
+  openLiensTotalPurchase: number;
+  openLiensTotalReduction: number;
   openLiensTotalBalance: number;
+  openLiensTotalPayment: number;
   onSetupReduction: () => void;
   onNoRecovery: () => void;
   onAddPayment: () => void;
@@ -94,6 +119,7 @@ export function OpenLiensSection({
           <LienTable
             liens={openLiens}
             columns={lienDisplayColumns}
+            expandable={false}
             footer={[
               {
                 colSpan: 2,
@@ -114,17 +140,33 @@ export function OpenLiensSection({
               },
               {
                 align: "right",
-                content: <span className="text-sm text-gray-400">---</span>,
+                content: (
+                  <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                    {formatCurrency(openLiensTotalPurchase)}
+                  </span>
+                ),
               },
               {
                 align: "right",
-                content: <span className="text-sm text-gray-400">---</span>,
+                content: (
+                  <span className="text-sm font-semibold text-green-600 tabular-nums">
+                    {formatCurrency(openLiensTotalReduction)}
+                  </span>
+                ),
               },
               {
                 align: "right",
                 content: (
                   <span className="text-sm font-semibold text-gray-700 tabular-nums">
                     {formatCurrency(openLiensTotalBalance)}
+                  </span>
+                ),
+              },
+              {
+                align: "right",
+                content: (
+                  <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                    {formatCurrency(openLiensTotalPayment)}
                   </span>
                 ),
               },

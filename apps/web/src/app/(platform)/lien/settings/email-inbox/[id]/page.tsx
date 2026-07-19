@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/lien/page-header';
 import type { EmailMessageDetail } from '@/lib/xenia-email-api';
+import { DateDisplay } from '@/components/ui/date-display';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,7 @@ function formatBytes(b: number) {
   return `${(b / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function Row({ label, value, mono = false }: { label: string; value?: string | null; mono?: boolean }) {
+function Row({ label, value, mono = false }: { label: string; value?: ReactNode; mono?: boolean }) {
   if (!value) return null;
   return (
     <div className="flex items-baseline gap-4 px-4 py-2.5 border-b border-gray-100 last:border-0">
@@ -104,8 +105,8 @@ export default function EmailMessageDetailPage({
                 <Row label="Cc" value={ccRecipients.map((r) => r.emailAddress).join(', ')} />
               )}
               {message.replyToAddresses && <Row label="Reply-To" value={message.replyToAddresses} />}
-              {message.sentAt     && <Row label="Sent"     value={new Date(message.sentAt).toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })} />}
-              {message.receivedAt && <Row label="Received" value={new Date(message.receivedAt).toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })} />}
+              {message.sentAt     && <Row label="Sent"     value={<DateDisplay value={message.sentAt} format="datetime" />} />}
+              {message.receivedAt && <Row label="Received" value={<DateDisplay value={message.receivedAt} format="datetime" />} />}
               <Row label="Importance" value={message.importance} />
             </dl>
           </div>
@@ -188,7 +189,7 @@ export default function EmailMessageDetailPage({
                 <div>
                   <p className="text-xs text-gray-500">Imported at</p>
                   <p className="text-xs font-medium text-gray-800 mt-0.5">
-                    {new Date(message.importedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                    <DateDisplay value={message.importedAt} format="datetime" />
                   </p>
                 </div>
               )}

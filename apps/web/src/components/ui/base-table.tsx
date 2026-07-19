@@ -200,8 +200,10 @@ export function BaseTable<TData>({
                 </TableHead>
               )}
               {headerGroup.headers.map((header) => {
-                const align = (header.column.columnDef.meta as { align?: "left" | "right" } | undefined)
-                  ?.align;
+                const meta = header.column.columnDef.meta as
+                  | { align?: "left" | "right"; headerClassName?: string }
+                  | undefined;
+                const align = meta?.align;
                 const sortable = header.column.getCanSort();
                 return (
                   <TableHead
@@ -210,6 +212,7 @@ export function BaseTable<TData>({
                       "text-[11px] whitespace-nowrap",
                       align === "right" ? "text-right" : "text-left",
                       sortable && "cursor-pointer select-none",
+                      meta?.headerClassName,
                     )}
                     onClick={sortable ? header.column.getToggleSortingHandler() : undefined}
                   >
@@ -282,10 +285,14 @@ export function BaseTable<TData>({
                     </TableCell>
                   )}
                   {row.getVisibleCells().map((cell) => {
-                    const align = (cell.column.columnDef.meta as { align?: "left" | "right" } | undefined)
-                      ?.align;
+                    const meta = cell.column.columnDef.meta as
+                      | { align?: "left" | "right"; cellClassName?: string }
+                      | undefined;
                     return (
-                      <TableCell key={cell.id} className={cn(align === "right" && "text-right")}>
+                      <TableCell
+                        key={cell.id}
+                        className={cn(meta?.align === "right" && "text-right", meta?.cellClassName)}
+                      >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </TableCell>
                     );

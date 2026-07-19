@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { formatDateOnly } from '@/lib/format-date';
 import { KpiCard } from '@/components/lien/kpi-card';
 import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
 import { useLienStore } from '@/stores/lien-store';
@@ -28,24 +29,9 @@ import type { CaseReportItem, LienReportItem } from '@/lib/cases/cases.types';
 
 export const dynamic = 'force-dynamic';
 
-function toDateString(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function last30DaysRange(): DateRangeValue {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 30);
-  return { from: toDateString(from), to: toDateString(to) };
-}
-
 function formatPeriodLabel(range: DateRangeValue): string {
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
-  const from = range.from ? new Date(`${range.from}T00:00:00`).toLocaleDateString('en-US', opts) : '—';
-  const to = range.to ? new Date(`${range.to}T00:00:00`).toLocaleDateString('en-US', opts) : '—';
+  const from = range.from ? formatDateOnly(`${range.from}T00:00:00`) : '—';
+  const to = range.to ? formatDateOnly(`${range.to}T00:00:00`) : '—';
   return `${from} – ${to}`;
 }
 
@@ -77,12 +63,12 @@ const CASE_STATUS_ORDER = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSett
 export default function LienDashboardPage() {
   const servicing = useLienStore((s) => s.servicing);
   const [showCreateCase, setShowCreateCase] = useState(false);
-  const { mode, isSellMode } = useProviderMode();
+  const { isSellMode } = useProviderMode();
   const ra = useRoleAccess();
   const [recentActivity, setRecentActivity] = useState<UnifiedActivityItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
-  const [dashboardRange, setDashboardRange] = useState<DateRangeValue>(last30DaysRange);
+  const [dashboardRange, setDashboardRange] = useState<DateRangeValue>({});
   const [activeReport, setActiveReport] = useState<'liens' | 'cases' | 'lawFirm' | 'facility' | null>(null);
 
   const { data: dashboardStats } = useDashboardStats();
@@ -253,12 +239,6 @@ export default function LienDashboardPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
-            <span className={[
-              'text-[10px] font-semibold px-2 py-0.5 rounded-full leading-none',
-              mode === 'sell' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200',
-            ].join(' ')}>
-              {mode === 'sell' ? 'Sell Mode' : 'Internal Mode'}
-            </span>
           </div>
         </div>
         {/* not part of phase 1 migration */}

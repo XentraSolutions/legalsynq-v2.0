@@ -17,7 +17,7 @@ import type { DropdownOption } from "@/lib/lookup/lookup.types";
 import {
   useCaseLiens,
   useDeleteCase,
-  useLienPaymentsByCase,
+  useSettlementPaymentDetails,
 } from "@/hooks/use-case-liens";
 import { MergeCaseForm } from "@/components/lien/forms/merge-case-form";
 import { HeaderMeta } from "./components/header-meta";
@@ -70,7 +70,7 @@ export function CaseDetailShell({
     dataUpdatedAt: paymentsUpdatedAt,
     refetch: refetchPayments,
     isFetching: isPaymentsFetching,
-  } = useLienPaymentsByCase(id);
+  } = useSettlementPaymentDetails(id);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>("split");
@@ -274,11 +274,11 @@ export function CaseDetailShell({
                 </HeaderMeta>
                 <HeaderMeta
                   label="Date of Loss"
-                  value={d.dateOfIncident || "---"}
+                  value={d.dateOfIncident || ""}
                 />
                 <HeaderMeta
                   label="Date of Birth"
-                  value={d.clientDob || "---"}
+                  value={d.clientDob || ""}
                 />
                 {/* TEMP: UI mock data for visual review only */}
                 <HeaderMeta

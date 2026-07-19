@@ -127,6 +127,12 @@ export interface NavItem {
    * nav definition so it's easy to re-enable later. Absent/false = visible.
    */
   notInPhase1?: boolean;
+  /**
+   * When set, clicking this item shows this message as a toast instead of
+   * navigating to its href. Use for features that are temporarily disabled
+   * but should stay visible in the nav (e.g. "Coming soon").
+   */
+  disabledMessage?: string;
 }
 
 export interface NavSection {

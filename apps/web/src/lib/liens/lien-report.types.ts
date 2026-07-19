@@ -1,11 +1,29 @@
 import { CaseListItem } from "../cases";
-import { ReportListItem } from "./lien-reports.mapper";
+
+export type Columns = {
+  key: string;
+  label: string;
+  isDefault?: boolean;
+  categoryKey?: string;
+};
+
+export type ColumnGroup = {
+  key: string; // category name (liensInfo, etc.)
+  value: Columns[]; // list of columns
+};
+
+export interface ReportColumnOption {
+  key: string;
+  label: string;
+}
+
+export type ReportColumnValue = string | ReportColumnOption;
 
 export interface CreateReports {
   name: string;
   description: string;
   config: {
-    columns: Array<string>;
+    columns: Array<ReportColumnValue>;
   };
   attorneyIds: Array<string>;
   caseManagerIds: Array<string>;
@@ -28,7 +46,7 @@ export interface ReportListResponse {
   name?: string;
   description?: string;
   columns?: Array<string>;
-  data?: ReportsResponse[];
+  data?: CaseListItem[];
   items: Array<unknown>;
   page?: number;
   pageSize?: number;
@@ -36,7 +54,7 @@ export interface ReportListResponse {
   totalCount?: number;
   reportName?: string;
   reportDescription?: string;
-  reportType?: string;
+  reportType?: "CASES" | "LIENS";
   config?: ReportConfig;
   limit?: number;
   exportCsv?: false;
@@ -53,7 +71,7 @@ export interface ReportListResponse {
 
 export interface ReportConfigResponse {
   config: {
-    columns: Array<string>;
+    columns: Array<ReportColumnValue>;
   };
 
   createdAt: string;
@@ -64,7 +82,7 @@ export interface ReportConfigResponse {
   reportDescription: string | undefined | null;
   description?: string | null;
   reportConfig: {
-    columns: Array<string>;
+    columns: Array<ReportColumnValue>;
   };
   reportId: string;
   reportName: string;
@@ -78,7 +96,7 @@ export interface ReportConfigResponse {
 export interface ReportTemplate {
   name?: string;
   description?: string;
-  reportType: string;
+  reportType: "CASES"| "LIENS";
   statusView: string;
   lienStatusIds: Array<string>;
   purchaseDateFrom: string | null;
@@ -118,7 +136,7 @@ export interface ReportsResponse {
   returned_amt: null;
   reportConfig?: ReportConfig;
   summaryTotals?: ReportTotals;
-  reportType: string;
+  reportType: "CASES"|"LIENS";
 }
 
 interface ReportConfig {
@@ -137,7 +155,7 @@ interface ReportConfig {
   medicalFacilityIds: Array<string>;
   caseManagerIds: Array<string>;
   medicalProviderIds: Array<string>;
-  columns: Array<string>;
+  columns: Array<ReportColumnValue>;
   page: number | string;
   limit: number | string;
 }
@@ -171,4 +189,13 @@ export interface ApiResponse {
   isSuccess: boolean;
   message: string;
   data: Array<Record<string, unknown>>;
+}
+export type ViewType = "CASES" | "LIENS";
+
+export interface FilterQuery {
+  reportType: ViewType;
+  limit: number;
+  keyword?: string;
+  filterField?: string;
+  lawFirmId?: string;
 }

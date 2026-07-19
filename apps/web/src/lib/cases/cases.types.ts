@@ -23,6 +23,12 @@ export interface CaseResponseDto {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
+  lawFirmId?: string | null;
+  lawFirm?: string | null;
+  caseManagerId?: string | null;
+  caseManager?: string | null;
+  accidentTypeId?: string | null;
+  accidentType?: string | null;
   insuranceCarrier?: string | null;
   policyNumber?: string | null;
   claimNumber?: string | null;
@@ -34,10 +40,11 @@ export interface CaseResponseDto {
   closedAtUtc?: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
-  lawFirm: string;
-  lawFirmId: string;
-  caseManager: string;
-  accidentType: string;
+  shareCase?: string;
+  minorComp?: string;
+  caseDropped?: string;
+  childSupportLiens?: string;
+  isUccFiled?: string;
 }
 
 export interface PaginatedResultDto<T> {
@@ -92,6 +99,7 @@ export interface CreateCaseRequestDto {
   dateOfIncident?: string;
   caseType?: string;
   stateOfIncident?: string;
+  minorComp: string;
 }
 
 export interface UpdateCaseRequestDto {
@@ -120,6 +128,11 @@ export interface UpdateCaseRequestDto {
   policyNumber?: string;
   claimNumber?: string;
   status?: string;
+  shareCase?: string;
+  minorComp?: string;
+  caseDropped?: string;
+  childSupportLiens?: string;
+  isUccFiled?: string;
 }
 
 export interface UpdateCaseDetailsRequestDto {
@@ -182,6 +195,9 @@ export interface LienResponseDto {
   currentBalance?: number | null;
   offerPrice?: number | null;
   purchasePrice?: number | null;
+  totalPurchase?: number | null;
+  totalBilling?: number | null;
+  isServicing?: string | boolean | null;
   jurisdiction?: string | null;
   isConfidential: boolean;
   subjectDisplayName?: string | null;
@@ -250,6 +266,19 @@ export interface CaseDetail {
   lawFirm: string;
   caseManager: string;
   accidentType: string;
+  shareCase: string;
+  minorComp: string;
+  caseDropped: string;
+  childSupportLiens: string;
+  isUccFiled: string;
+}
+
+export interface CaseFlagTypes {
+  shareCase: string;
+  minorComp: string;
+  caseDropped: string;
+  childSupportLiens: string;
+  isUccFiled: string;
 }
 
 export interface CaseLienItem {
@@ -263,6 +292,7 @@ export interface CaseLienItem {
   serviceDate: string;
   purchaseDate: string;
   purchaseAmount: number;
+  isServicing: boolean;
 }
 
 export interface CaseLienItemMetadata {
@@ -369,11 +399,6 @@ export interface ContactCaseLookupParams {
 export interface CaseListResult {
   items: CaseListItem[];
   pagination: PaginationMeta;
-}
-
-export interface CaseLiensResult {
-  items: CaseLienItem[];
-  pagination?: PaginationMeta;
 }
 
 export interface PaginatedWithLimitResultDto<T> {

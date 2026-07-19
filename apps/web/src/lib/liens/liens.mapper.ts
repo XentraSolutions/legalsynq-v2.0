@@ -1,3 +1,4 @@
+import { formatLegacyDateOnly } from "../format-date";
 import type {
   LienResponseDto,
   LienOfferResponseDto,
@@ -25,14 +26,7 @@ function safeString(val: string | null | undefined): string {
 function formatDateField(val: string | null | undefined): string {
   if (!val) return "";
   try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: "UTC",
-    });
+    return formatLegacyDateOnly(val);
   } catch {
     return val;
   }
@@ -53,14 +47,23 @@ export function mapLienToListItem(dto: LienResponseDto): LienListItem {
     lienTypeLabel: LIEN_TYPE_LABELS[dto.lienType] ?? dto.lienType,
     facility: dto.facilityId ?? null,
     facilityId: dto.facilityId ?? null,
+    facilityName: dto.medicalFacility ?? dto.facilityName ?? dto.facility ?? null,
+    plaintiff: dto.plaintiff ?? null,
+    lawFirm: dto.lawFirm ?? null,
+    caseManager: dto.caseManager ?? null,
     initialServiceDate: dto.initialServiceDate,
     purchaseDate: formatDateField(dto.purchaseDate),
+    // ListLiens enriches totalPurchase/totalBilling from legacy medical
+    // codes; the DTO's own purchaseAmount is never set by that endpoint.
+    purchaseAmount: dto.totalPurchase ?? null,
     status: dto.status,
     caseId: safeString(dto.caseId),
     originalAmount: dto.originalAmount,
     currentBalance: dto.currentBalance ?? null,
     offerPrice: dto.offerPrice ?? null,
     purchasePrice: dto.purchasePrice ?? null,
+    totalBilling: dto.totalBilling ?? null,
+    isServicing: dto.isServicing === true || dto.isServicing === "Y",
     jurisdiction: safeString(dto.jurisdiction),
     isConfidential: dto.isConfidential,
     subjectName: buildSubjectName(dto),

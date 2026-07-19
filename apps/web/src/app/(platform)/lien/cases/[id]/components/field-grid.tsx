@@ -16,7 +16,7 @@ export function FieldItem({
       <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">
         {label}
       </dt>
-      <dd className="text-sm text-gray-700 mt-1">{value || "---"}</dd>
+      <dd className="text-sm text-gray-700 mt-1">{value || ""}</dd>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { lienApi } from "@/lib/lien-api";
 import { ApiError } from "@/lib/api-client";
 import type { CreateLienRequest } from "@/types/lien";
 import { LIEN_TYPE_LABELS } from "@/types/lien";
+import { DatePicker } from "@/components/ui/date-picker";
 
 const US_STATES = [
   "AL",
@@ -226,12 +227,7 @@ export function CreateLienForm() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Incident date
             </label>
-            <input
-              type="date"
-              value={incidentDate}
-              onChange={(e) => setIncidentDate(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+            <DatePicker value={incidentDate} onChange={setIncidentDate} disableFutureDates />
           </div>
 
           <div className="sm:col-span-2">

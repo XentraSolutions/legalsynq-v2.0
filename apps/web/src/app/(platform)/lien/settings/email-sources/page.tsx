@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/lien/page-header';
+import { DateDisplay } from '@/components/ui/date-display';
 import { useLienStore } from '@/stores/lien-store';
 import type { EmailSource } from '@/lib/xenia-email-api';
 
@@ -174,9 +175,7 @@ export default function EmailSourcesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400">
-                    {s.lastConnectionAt
-                      ? new Date(s.lastConnectionAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                      : '—'}
+                    <DateDisplay value={s.lastConnectionAt} format="datetime" />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">

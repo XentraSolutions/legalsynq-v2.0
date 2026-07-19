@@ -1,10 +1,9 @@
+import { formatLegacyDateOnly } from "../format-date";
 import { DocumentTypeResponse } from "../lookup/lookup.types";
 import type {
   CaseResponseDto,
   CaseListItem,
   CaseDetail,
-  CaseLienItem,
-  LienResponseDto,
   PaginatedResultDto,
   PaginationMeta,
   UpdateCaseRequestDto,
@@ -29,14 +28,7 @@ function safeString(val: string | null | undefined): string {
 export function formatDateField(val: string | null | undefined): string {
   if (!val) return "";
   try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: "UTC",
-    });
+    return formatLegacyDateOnly(val);
   } catch {
     return val;
   }
@@ -129,24 +121,14 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     closedAt: formatDateField(dto.closedAtUtc),
     createdAt: formatDateField(dto.createdAtUtc),
     updatedAt: formatDateField(dto.updatedAtUtc),
-    caseManager: dto.caseManager,
-    lawFirm: dto.lawFirm,
-    accidentType: dto.accidentType,
-  };
-}
-
-export function mapLienToListItem(dto: LienResponseDto): CaseLienItem {
-  return {
-    id: dto.id,
-    lienNumber: dto.lienNumber,
-    lienType: dto.lienType,
-    status: dto.status,
-    originalAmount: dto.originalAmount,
-    facility: dto.facility ?? "",
-    facilityName: dto.facilityName ?? dto.facility ?? "",
-    serviceDate: dto.serviceDate ?? "",
-    purchaseDate: dto.purchaseDate ?? "",
-    purchaseAmount: dto.purchaseAmount ?? dto.purchasePrice ?? 0,
+    caseManager: safeString(dto.caseManager),
+    lawFirm: safeString(dto.lawFirm),
+    accidentType: safeString(dto.accidentType),
+    shareCase: safeString(dto.shareCase),
+    minorComp: safeString(dto.minorComp),
+    caseDropped: safeString(dto.caseDropped),
+    childSupportLiens: safeString(dto.childSupportLiens),
+    isUccFiled: safeString(dto.isUccFiled)
   };
 }
 

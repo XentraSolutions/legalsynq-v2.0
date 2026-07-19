@@ -1,5 +1,11 @@
-import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
-import { useDropzone, type Accept } from "react-dropzone";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
+import { FileRejection, useDropzone, type Accept } from "react-dropzone";
 
 export interface UploadDocumentComponentProps {
   onUploaded: (files: File[]) => void;
@@ -32,6 +38,7 @@ const UploadDocumentComponent = forwardRef<
   UploadDocumentComponentProps
 >(({ onUploaded, isMultiple, config }, ref) => {
   const [files, setFiles] = useState<File[]>([]);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -39,6 +46,7 @@ const UploadDocumentComponent = forwardRef<
 
       setFiles(updatedFiles);
       onUploaded(updatedFiles);
+      setErrorMessage("");
     },
     [files, onUploaded],
   );
@@ -58,11 +66,28 @@ const UploadDocumentComponent = forwardRef<
       : ".pdf,.jpg,.jpeg,.png,.csv,.xlsx,.xls,.docx";
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    onDropRejected: (rejectedFiles) => {
+      // Fallback hook callback if you prefer handling errors on-drop
+      handleErrors(rejectedFiles);
+    },
     multiple,
     accept: acceptedFiles as Accept,
-    maxSize: 10 * 1024 * 1024,
+    maxSize: 50 * 1024 * 1024,
   });
 
+  const handleErrors = (rejections: FileRejection[]) => {
+    rejections.forEach((rejection) => {
+      rejection.errors.forEach((err) => {
+        if (err.code === "file-too-large") {
+          setErrorMessage("This file is too large. Max size allowed is 5MB.");
+        } else {
+          setErrorMessage(err.message);
+        }
+      });
+    });
+  };
+
+  useEffect(() => {}, [errorMessage]);
   const removeFile = (index: number) => {
     const updatedFiles = files.filter((_, i) => i !== index);
 
@@ -82,7 +107,11 @@ const UploadDocumentComponent = forwardRef<
         <p className="text-sm text-gray-500">Click or drag file to upload</p>
         <p className="text-xs text-gray-400 mt-1">{acceptedLabel} (max 10MB)</p>
       </div>
-
+      {errorMessage && (
+        <p className="text-red-500 bg-red-100/80 rounded-md p-4 my-3 text-sm whitespace-pre-line break-all">
+          <i className="ri-error-warning-line"></i> {errorMessage}
+        </p>
+      )}
       {files.length > 0 ? (
         <div className="w-full my-4">
           {files.map((file, index) => (

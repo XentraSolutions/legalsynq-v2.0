@@ -101,7 +101,7 @@ export function LawFirmContactSection({ lawFirmId }: Props) {
         <div className="flex items-center gap-2">
           <i className="ri-scales-3-line text-gray-500" />
           <h3 className="text-sm font-semibold text-gray-800">
-            Law Firm Contacts
+            Legal Contacts
           </h3>
           {!loading && (
             <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
@@ -186,8 +186,7 @@ export function LawFirmContactSection({ lawFirmId }: Props) {
         <AddSubContactModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
-          title={editTarget ? "Edit Law Firm Contact" : "Add Law Firm Contact"}
-          subtitle="Law Firm Contact"
+          title={editTarget ? "Edit Legal Contact" : "Add Legal Contact"}
           contactType={CONTACT_TYPE}
           lawFirmId={lawFirmId}
           roleOptions={roles}

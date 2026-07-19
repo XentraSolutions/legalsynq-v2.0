@@ -4,30 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/lien/page-header";
+import { DateDisplay } from "@/components/ui/date-display";
 import { StatusBadge, PriorityBadge } from "@/components/lien/status-badge";
 import { ConfirmDialog } from "@/components/lien/modal";
 import { EntityTimeline } from "@/components/lien/entity-timeline";
 import { useLienStore } from "@/stores/lien-store";
 import { useRoleAccess } from "@/hooks/use-role-access";
-import { useTimezone } from "@/lib/use-timezone";
 import { servicingService } from "@/lib/servicing";
 import type { ServicingDetail } from "@/lib/servicing";
-
-function formatDate(val: string, timezone: string): string {
-  if (!val) return "\u2014";
-  try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: timezone,
-    });
-  } catch {
-    return val;
-  }
-}
 
 export default function ServicingDetailPage() {
   const _params = useParams<{ id: string }>();
@@ -35,7 +19,6 @@ export default function ServicingDetailPage() {
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
-  const timezone = useTimezone();
 
   const [item, setItem] = useState<ServicingDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -196,7 +179,7 @@ export default function ServicingDetailPage() {
               <div>
                 <span className="text-xs text-gray-400 block">Due Date</span>
                 <span className="text-sm text-gray-700">
-                  {formatDate(item.dueDate ?? "", timezone)}
+                  <DateDisplay value={item.dueDate} format="date" fallback="—" />
                 </span>
               </div>
               <div className="col-span-2">

@@ -22,7 +22,7 @@ import { LienTable } from "@/components/lien/lien-table";
 import type { LienColumnDef, LienFooterCell } from "@/components/lien/lien-table";
 
 function formatCurrency(amount: number | null): string {
-  if (amount === null || amount === undefined) return "---";
+  if (amount === null || amount === undefined) return "";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -678,6 +678,7 @@ function Field({
           value={value}
           onChange={onChange}
           className={error ? "border-red-300" : undefined}
+          disableFutureDates
         />
       ) : (
         <Input

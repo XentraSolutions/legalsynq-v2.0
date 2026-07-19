@@ -50,7 +50,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: '/lien/task-manager',  label: 'Task Manager',  icon: 'ri-todo-line' },
         { href: '/lien/cases',         label: 'Cases',         icon: 'ri-survey-line' },
         { href: '/lien/liens',         label: 'Liens',         icon: 'ri-file-transfer-line' },
-        { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-file-list-3-line', sellModeOnly: true },
+        { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-file-list-3-line', sellModeOnly: true, disabledMessage: 'Bill of Sales is coming soon' },
         { href: '/lien/servicing',     label: 'Servicing',     icon: 'ri-file-settings-line' },
         { href: '/lien/contacts',      label: 'Contacts',      icon: 'ri-contacts-book-line' },
       ],
@@ -73,7 +73,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
       items: [
         { href: '/lien/reports', label: 'Reports', icon: 'ri-file-list-2-line' },
         { href: '/lien/batch-entry',       label: 'Batch Upload',      icon: 'ri-upload-line', requiredRoles: [ProductRole.SynqLienSeller] },
-        { href: '/lien/document-handling', label: 'Document Handling', icon: 'ri-file-list-line' },
+        { href: '/lien/document-handling', label: 'Document Handling', icon: 'ri-file-list-line', disabledMessage: 'Document Handling is coming soon' },
       ],
     },
     {

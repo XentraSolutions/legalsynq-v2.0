@@ -15,6 +15,8 @@ interface DatePickerProps {
   className?: string;
   disabled?: boolean;
   maxDate?: Date | null;
+  minDate?: Date | null;
+  disableFutureDates?: boolean;
 }
 
 function parseDate(value?: string): Date | undefined {
@@ -31,11 +33,33 @@ function formatDate(date: Date): string {
 }
 
 function displayDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const y = date.getFullYear();
+  return `${m}/${d}/${y}`;
+}
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function yearRange(centerYear: number, maxYear?: number, span = 100): number[] {
+  const end = maxYear ?? centerYear + 10;
+  const start = Math.min(centerYear, end) - span;
+  const years: number[] = [];
+  for (let y = end; y >= start; y--) years.push(y);
+  return years;
 }
 
 export function DatePicker({
@@ -45,7 +69,16 @@ export function DatePicker({
   className,
   disabled,
   maxDate,
+  minDate,
+  disableFutureDates,
 }: DatePickerProps) {
+  const effectiveMaxDate =
+    maxDate !== undefined
+      ? maxDate
+      : disableFutureDates
+        ? new Date()
+        : undefined;
+  const effectiveMinDate = minDate ?? undefined;
   const [open, setOpen] = React.useState(false);
   const selected = parseDate(value);
   const [month, setMonth] = React.useState<Date>(selected ?? new Date());
@@ -62,17 +95,48 @@ export function DatePicker({
   }
 
   function nextMonth() {
-    setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
+    setMonth((m) => {
+      const next = new Date(m.getFullYear(), m.getMonth() + 1, 1);
+      if (effectiveMaxDate && next > effectiveMaxDate) return m;
+      return next;
+    });
   }
 
-  const monthLabel = month.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+  function handleMonthSelect(monthIndex: number) {
+    setMonth((m) => {
+      const maxMonth =
+        effectiveMaxDate && m.getFullYear() === effectiveMaxDate.getFullYear()
+          ? effectiveMaxDate.getMonth()
+          : 11;
+      return new Date(m.getFullYear(), Math.min(monthIndex, maxMonth), 1);
+    });
+  }
 
-  const disabledDays: Matcher | Matcher[] | undefined = maxDate
-    ? { after: maxDate }
-    : undefined;
+  function handleYearSelect(year: number) {
+    setMonth((m) => {
+      const maxMonth =
+        effectiveMaxDate && year === effectiveMaxDate.getFullYear()
+          ? effectiveMaxDate.getMonth()
+          : 11;
+      return new Date(year, Math.min(m.getMonth(), maxMonth), 1);
+    });
+  }
+
+  const years = React.useMemo(
+    () =>
+      yearRange(
+        (selected ?? new Date()).getFullYear(),
+        effectiveMaxDate?.getFullYear(),
+      ),
+    [selected, effectiveMaxDate],
+  );
+
+  const disabledDays: Matcher[] | undefined = React.useMemo(() => {
+    const matchers: Matcher[] = [];
+    if (effectiveMaxDate) matchers.push({ after: effectiveMaxDate });
+    if (effectiveMinDate) matchers.push({ before: effectiveMinDate });
+    return matchers.length ? matchers : undefined;
+  }, [effectiveMaxDate, effectiveMinDate]);
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
       <PopoverPrimitive.Trigger asChild>
@@ -98,21 +162,47 @@ export function DatePicker({
           sideOffset={4}
           className="z-50 rounded-xl border border-gray-200 bg-white p-3 shadow-lg"
         >
-          <div className="flex items-center justify-between px-1 mb-2">
+          <div className="flex items-center justify-between gap-1 px-1 mb-2">
             <button
               type="button"
               onClick={prevMonth}
-              className="h-7 w-7 rounded-md hover:bg-gray-100 flex items-center justify-center text-gray-600"
+              className="h-7 w-7 shrink-0 rounded-md hover:bg-gray-100 flex items-center justify-center text-gray-600"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-sm font-medium text-gray-800">
-              {monthLabel}
-            </span>
+            <div className="flex items-center gap-1">
+              <select
+                value={month.getMonth()}
+                onChange={(e) => handleMonthSelect(Number(e.target.value))}
+                className="text-sm font-medium text-gray-800 bg-transparent rounded-md px-1 py-0.5 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                {MONTH_NAMES.map((name, idx) => (
+                  <option key={name} value={idx}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={month.getFullYear()}
+                onChange={(e) => handleYearSelect(Number(e.target.value))}
+                className="text-sm font-medium text-gray-800 bg-transparent rounded-md px-1 py-0.5 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               type="button"
               onClick={nextMonth}
-              className="h-7 w-7 rounded-md hover:bg-gray-100 flex items-center justify-center text-gray-600"
+              disabled={
+                !!effectiveMaxDate &&
+                month.getFullYear() === effectiveMaxDate.getFullYear() &&
+                month.getMonth() === effectiveMaxDate.getMonth()
+              }
+              className="h-7 w-7 shrink-0 rounded-md hover:bg-gray-100 flex items-center justify-center text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

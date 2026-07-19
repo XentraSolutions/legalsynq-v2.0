@@ -169,8 +169,11 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
         <AddSubContactModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
-          title={editTarget ? "Edit Staff Member" : "Add Staff Member"}
-          subtitle="Medical Facility Staff"
+          title={
+            editTarget
+              ? "Edit Medical Facility Staff"
+              : "Add New Medical Facility Staff"
+          }
           contactType={CONTACT_TYPE}
           contactSubtype={CONTACT_SUBTYPE}
           facilityId={facilityId}

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import Field from "@/components/lien/field";
 import UploadDocumentComponent, {
   FileDropzoneRef,
@@ -7,6 +7,7 @@ import type { DropdownOption } from "@/lib/lookup/lookup.types";
 import { CollapsibleSection } from "../../../components/collapsible-section";
 
 export function UploadDocumentSection({
+  submitting,
   docTypes,
   selectedDocType,
   onSelectedDocTypeChange,
@@ -15,6 +16,7 @@ export function UploadDocumentSection({
   dropzoneRef,
   onAddDocument,
 }: {
+  submitting: boolean;
   docTypes: DropdownOption[];
   selectedDocType: string;
   onSelectedDocTypeChange: (v: string) => void;
@@ -23,6 +25,7 @@ export function UploadDocumentSection({
   dropzoneRef: RefObject<FileDropzoneRef>;
   onAddDocument: () => void;
 }) {
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(submitting);
   return (
     <CollapsibleSection title="Upload Document" icon="ri-upload-cloud-2-line">
       <div className="space-y-4">
@@ -48,14 +51,12 @@ export function UploadDocumentSection({
         />
 
         <button
-          disabled={selectedFiles != null && !selectedDocType}
-          className={[
-            "w-full px-4 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2",
-            selectedFiles && selectedDocType
-              ? "bg-primary text-white hover:bg-primary/90"
-              : "bg-gray-100 text-gray-400 cursor-not-allowed",
-          ].join(" ")}
-          onClick={onAddDocument}
+          disabled={isSubmitting || !selectedFiles?.length || !selectedDocType}
+          className="w-full px-4 py-2.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+          onClick={() => {
+            setIsSubmitting(true);
+            onAddDocument();
+          }}
         >
           <i className="ri-add-line text-sm" />
           Add Document

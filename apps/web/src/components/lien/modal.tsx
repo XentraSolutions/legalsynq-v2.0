@@ -9,6 +9,8 @@ interface ModalProps {
   title: string;
   titleClassName?: string;
   subtitle?: string;
+  /** Extra controls rendered in the header, left of the close button (e.g. a "Clear Filter" action). */
+  headerActions?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -16,7 +18,7 @@ interface ModalProps {
 
 const SIZE_MAP = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
 
-export function Modal({ open, onClose, title, titleClassName, subtitle, children, footer, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, titleClassName, subtitle, headerActions, children, footer, size = 'md' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   // Portaled to <body> below, so it always lands after (and therefore
   // paints above) any Radix-portaled popover/dropdown content, regardless
@@ -45,9 +47,12 @@ export function Modal({ open, onClose, title, titleClassName, subtitle, children
             <h2 id="modal-title" className={`text-base font-semibold ${titleClassName ?? 'text-gray-900'}`}>{title}</h2>
             {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
           </div>
-          <button onClick={onClose} aria-label="Close dialog" className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
-            <i className="ri-close-line text-xl" />
-          </button>
+          <div className="flex items-center gap-3 shrink-0">
+            {headerActions}
+            <button onClick={onClose} aria-label="Close dialog" className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+              <i className="ri-close-line text-xl" />
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
         {footer && <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">{footer}</div>}
@@ -107,6 +112,7 @@ interface FormModalProps {
   onSubmit: () => void;
   title: string;
   subtitle?: string;
+  headerActions?: ReactNode;
   children: ReactNode;
   submitLabel?: string;
   submitDisabled?: boolean;
@@ -114,9 +120,9 @@ interface FormModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
-export function FormModal({ open, onClose, onSubmit, title, subtitle, children, submitLabel = 'Save', submitDisabled, loading, size = 'md' }: FormModalProps) {
+export function FormModal({ open, onClose, onSubmit, title, subtitle, headerActions, children, submitLabel = 'Save', submitDisabled, loading, size = 'md' }: FormModalProps) {
   return (
-    <Modal open={open} onClose={onClose} title={title} subtitle={subtitle} size={size} footer={
+    <Modal open={open} onClose={onClose} title={title} subtitle={subtitle} headerActions={headerActions} size={size} footer={
       <>
         <button onClick={onClose} className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">Cancel</button>
         <button onClick={onSubmit} disabled={submitDisabled || loading} className="text-sm px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-50">

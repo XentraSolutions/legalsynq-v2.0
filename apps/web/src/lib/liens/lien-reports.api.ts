@@ -8,9 +8,11 @@ import {
   ApiResponse,
   CreateReports,
   ExportReportRequest,
+  FilterQuery,
   ReportsResponse,
   ReportTemplate,
   UpdateReportConfigRequest,
+  ViewType,
 } from "./lien-report.types";
 
 const BASE_PATH = "/lien/report/diy";
@@ -23,6 +25,19 @@ export const lienReportsApi = {
   getById(id: string) {
     return apiClient.get<ReportsResponse>(
       `/lien/api/liens/reports/diy/saved/${id}`,
+    );
+  },
+  getColumns(viewType: ViewType) {
+    return apiClient.get<any>(`${BASE_PATH}/columns?reportType=${viewType}`);
+  },
+
+  getFilterOptions(query: FilterQuery) {
+    return apiClient.post<any>(`${BASE_PATH}/filter-options`, query);
+  },
+
+  getAllFilterOptions(viewType: ViewType) {
+    return apiClient.get<any>(
+      `${BASE_PATH}/all-filters?reportType=${viewType}&limit=20`,
     );
   },
 

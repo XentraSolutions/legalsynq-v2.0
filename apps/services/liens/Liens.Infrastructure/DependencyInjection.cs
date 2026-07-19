@@ -75,6 +75,7 @@ public static class DependencyInjection
         services.AddScoped<ILienTaskTemplateService, LienTaskTemplateService>();
         services.AddScoped<ILienTaskGenerationRuleService, LienTaskGenerationRuleService>();
         services.AddScoped<ILienTaskGenerationEngine, LienTaskGenerationEngine>();
+        services.AddSingleton<ILienTaskGenerationDispatcher, LienTaskGenerationDispatcher>();
         services.AddScoped<ILienTaskNoteService, LienTaskNoteService>();
         services.AddScoped<ILienCaseNoteService, LienCaseNoteService>();
         // Settlement, Reduction & Payment

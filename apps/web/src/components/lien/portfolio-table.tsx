@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { DateDisplay } from '@/components/ui/date-display';
 import type { LienSummary } from '@/types/lien';
 import { LIEN_TYPE_LABELS } from '@/types/lien';
 import { LienStatusBadge } from './lien-status-badge';
@@ -10,10 +11,6 @@ interface PortfolioTableProps {
 function formatCurrency(amount?: number): string {
   if (amount == null) return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function PortfolioTable({ liens }: PortfolioTableProps) {
@@ -68,7 +65,7 @@ export function PortfolioTable({ liens }: PortfolioTableProps) {
                     <LienStatusBadge status={lien.status} />
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                    {formatDate(lien.updatedAtUtc)}
+                    <DateDisplay value={lien.updatedAtUtc} format="date" />
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link

@@ -1,16 +1,21 @@
+import { CaseListItem } from "../cases";
 import {
   ApiResponse,
+  ColumnGroup,
   CreateReports,
   ExportReportRequest,
+  FilterQuery,
   ReportConfigResponse,
   ReportListResponse,
   ReportsResponse,
   ReportTemplate,
   ReportTotals,
   UpdateReportConfigRequest,
+  ViewType,
 } from "./lien-report.types";
 import { lienReportsApi } from "./lien-reports.api";
 import {
+  mapAllColumns,
   mapReportToListItem,
   mapReportToTemplate,
 } from "./lien-reports.mapper";
@@ -31,17 +36,24 @@ export const lienReportsService = {
     return (data as ReportsResponse) ?? ({} as ReportsResponse);
   },
 
-  async generateTemplate(request: ReportTemplate | ReportsResponse): Promise<ReportListResponse> {
-    const { data } = await lienReportsApi.createTemplate(request as ReportTemplate);
+  async generateTemplate(
+    request: ReportTemplate | ReportsResponse,
+  ): Promise<ReportListResponse> {
+    const { data } = await lienReportsApi.createTemplate(
+      request as ReportTemplate,
+    );
     if (!data) throw new Error("Failed to create report");
-    const payload = (data as unknown as { data?: unknown; summaryTotals?: ReportTotals })?.data ?? data;
+    const payload =
+      (data as unknown as { data?: unknown; summaryTotals?: ReportTotals })
+        ?.data ?? data;
     const items = Array.isArray(payload) ? payload : [];
     return {
       ...(data as unknown as Record<string, unknown>),
       items: items.map(mapReportToTemplate),
-      data: items as ReportsResponse[],
-      summaryTotals: (data as unknown as { summaryTotals?: ReportTotals }).summaryTotals,
-    } as ReportListResponse;
+      data: items as CaseListItem[],
+      summaryTotals: (data as unknown as { summaryTotals?: ReportTotals })
+        .summaryTotals,
+    };
   },
   async createReports(request: CreateReports): Promise<ApiResponse> {
     const { data } = await lienReportsApi.createReport(request);
@@ -71,5 +83,20 @@ export const lienReportsService = {
     const { data } = await lienReportsApi.delete(id);
     if (!data) throw new Error("Failed to delete report");
     return data ?? [];
+  },
+
+  async getColumns(viewBy: ViewType): Promise<any[]> {
+    const { data } = await lienReportsApi.getColumns(viewBy);
+    return data;
+    mapAllColumns(viewBy, data);
+  },
+
+  async getFilterOptions(query: FilterQuery): Promise<ApiResponse[]> {
+    const { data } = await lienReportsApi.getFilterOptions(query);
+    return data;
+  },
+  async getAllFilterOptions(viewBy: ViewType): Promise<ApiResponse[]> {
+    const { data } = await lienReportsApi.getAllFilterOptions(viewBy);
+    return data.data;
   },
 };

@@ -24,6 +24,11 @@ All API calls from the browser go through Next.js API routes that:
 
 Client code uses relative `/api/` paths — rewrite in `next.config` maps to the gateway.
 
+## E2E Tests
+
+See [`e2e/README.md`](e2e/README.md) for how to run them day to day (`--ui`, `--debug`,
+environments, credentials setup). To add a new test, use the `create-e2e-test` skill.
+
 ## Dev Proxy (`scripts/dev-proxy.js`)
 
 Sits in front of Next.js at port 5000. Gates browser requests until Next.js returns HTTP 200 on `/login` (warm-up guard). Serves an auto-refreshing loading page during the 30-second cold-compile window. WebSocket passthrough for HMR.

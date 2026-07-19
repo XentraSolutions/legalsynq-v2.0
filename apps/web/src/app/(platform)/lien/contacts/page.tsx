@@ -31,6 +31,12 @@ import { BaseTable } from "@/components/ui/base-table";
 
 const PAGE_SIZE = 10;
 
+function pluralize(name: string): string {
+  if (/s$/i.test(name)) return name;
+  if (/[^aeiou]y$/i.test(name)) return `${name.slice(0, -1)}ies`;
+  return `${name}s`;
+}
+
 export const dynamic = "force-dynamic";
 
 export default function ContactsPage() {
@@ -86,6 +92,7 @@ export default function ContactsPage() {
     pageSize: PAGE_SIZE,
   });
   const contactTypesQuery = useContactTypes();
+  const knownContactTypesQuery = useContactTypes({ knownOnly: true });
   const deleteContactMutation = useDeleteContact();
 
   const contacts = useMemo(
@@ -101,6 +108,10 @@ export default function ContactsPage() {
   const contactTypes = useMemo(
     () => contactTypesQuery.data?.items ?? [],
     [contactTypesQuery.data],
+  );
+  const knownContactTypes = useMemo(
+    () => knownContactTypesQuery.data?.items ?? [],
+    [knownContactTypesQuery.data],
   );
 
   useEffect(() => {
@@ -274,22 +285,23 @@ export default function ContactsPage() {
     [activeContactTypes],
   );
 
-  const KNOWN_TAB_CODES = [
-    "LawFirm",
-    "MedicalFacility",
-    "Provider",
-    "FundingCompany",
-    "Lead",
-  ];
+  const activeKnownContactTypes = useMemo(
+    () =>
+      knownContactTypes
+        .filter((t) => t.isActive)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+    [knownContactTypes],
+  );
 
   const tabs = useMemo(
     () => [
       { key: "", label: "All" },
-      ...activeContactTypes
-        .filter((t) => KNOWN_TAB_CODES.includes(t.code))
-        .map((t) => ({ key: t.code, label: t.name })),
+      ...activeKnownContactTypes.map((t) => ({
+        key: t.code,
+        label: pluralize(t.name),
+      })),
     ],
-    [activeContactTypes],
+    [activeKnownContactTypes],
   );
 
   const nameColumnLabel = typeFilter
@@ -324,7 +336,8 @@ export default function ContactsPage() {
         header: "Type",
         cell: ({ row }) => (
           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-gray-50 text-gray-600 border-gray-200">
-            {contactTypeMap[row.original.contactType] ?? row.original.contactType}
+            {contactTypeMap[row.original.contactType] ??
+              row.original.contactType}
           </span>
         ),
       },
@@ -332,14 +345,18 @@ export default function ContactsPage() {
         id: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.email || "—"}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.email || "—"}
+          </span>
         ),
       },
       {
         id: "activeCases",
         header: "Active Cases",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.activeCases}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.activeCases}
+          </span>
         ),
       },
       {
@@ -352,7 +369,9 @@ export default function ContactsPage() {
             deleteContactMutation.isPending &&
             deleteContactMutation.variables === c.id;
           if (isDeleting) {
-            return <i className="ri-loader-4-line animate-spin text-gray-400" />;
+            return (
+              <i className="ri-loader-4-line animate-spin text-gray-400" />
+            );
           }
           return (
             <div onClick={(e) => e.stopPropagation()}>
@@ -489,9 +508,11 @@ export default function ContactsPage() {
       {showCreate.open && (
         <AddContactModal
           open={showCreate.open}
-          title={showCreate.mode === "edit" ? "Edit Contact" : "Add Contact"}
-          contactType={showCreate.mode === "create" ? typeFilter || undefined : undefined}
-          contactTypeOptions={activeContactTypes}
+          title={showCreate.mode === "edit" ? "Edit Contact" : "Add New Contact"}
+          contactType={
+            showCreate.mode === "create" ? typeFilter || undefined : undefined
+          }
+          contactTypeOptions={activeKnownContactTypes}
           editTarget={showCreate.mode === "edit" ? contactData : null}
           onClose={() => setShowCreate({ open: false })}
           onSaved={() => {

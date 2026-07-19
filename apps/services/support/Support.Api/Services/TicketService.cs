@@ -329,6 +329,9 @@ public class TicketService : ITicketService
         return _tenant.TenantId!;
     }
 
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     public async Task<TicketResponse> CreateAsync(CreateTicketRequest req, CancellationToken ct = default)
     {
         var tenantId = ResolveTenantId(req.TenantId);
@@ -387,6 +390,9 @@ public class TicketService : ITicketService
             RequesterType = requesterType,
             ExternalCustomerId = externalCustomerId,
             VisibilityScope = visibilityScope,
+            CaseManagerUserId = NormalizeOptional(req.CaseManagerUserId),
+            CaseManagerName = NormalizeOptional(req.CaseManagerName),
+            CaseManagerEmail = NormalizeOptional(req.CaseManagerEmail),
             CreatedAt = now,
             UpdatedAt = now,
             CreatedByUserId = _tenant.UserId,
@@ -416,6 +422,9 @@ public class TicketService : ITicketService
             ["product_code"] = ticket.ProductCode,
             ["requester_type"] = ticket.RequesterType.ToString(),
             ["external_customer_id"] = ticket.ExternalCustomerId,
+            ["case_manager_user_id"] = ticket.CaseManagerUserId,
+            ["case_manager_name"] = ticket.CaseManagerName,
+            ["case_manager_email"] = ticket.CaseManagerEmail,
         };
         await TryPublishAsync(new SupportNotification(
             SupportNotificationEventTypes.TicketCreated,
@@ -437,6 +446,9 @@ public class TicketService : ITicketService
                 ["requester_type"] = ticket.RequesterType.ToString(),
                 ["external_customer_id"] = ticket.ExternalCustomerId,
                 ["visibility_scope"] = ticket.VisibilityScope.ToString(),
+                ["case_manager_user_id"] = ticket.CaseManagerUserId,
+                ["case_manager_name"] = ticket.CaseManagerName,
+                ["case_manager_email"] = ticket.CaseManagerEmail,
             }), ct);
 
         return TicketResponse.From(ticket);
@@ -580,6 +592,9 @@ public class TicketService : ITicketService
         if (req.DueAt.HasValue) t.DueAt = req.DueAt;
         if (req.RequesterName is not null) t.RequesterName = req.RequesterName;
         if (req.RequesterEmail is not null) t.RequesterEmail = req.RequesterEmail;
+        if (req.CaseManagerUserId is not null) t.CaseManagerUserId = NormalizeOptional(req.CaseManagerUserId);
+        if (req.CaseManagerName is not null) t.CaseManagerName = NormalizeOptional(req.CaseManagerName);
+        if (req.CaseManagerEmail is not null) t.CaseManagerEmail = NormalizeOptional(req.CaseManagerEmail);
 
         t.UpdatedAt = DateTime.UtcNow;
         t.UpdatedByUserId = _tenant.UserId;
@@ -626,6 +641,9 @@ public class TicketService : ITicketService
             ["status"] = t.Status.ToString(),
             ["priority"] = t.Priority.ToString(),
             ["tenant_id"] = t.TenantId,
+            ["case_manager_user_id"] = t.CaseManagerUserId,
+            ["case_manager_name"] = t.CaseManagerName,
+            ["case_manager_email"] = t.CaseManagerEmail,
         };
         await TryPublishAsync(new SupportNotification(
             SupportNotificationEventTypes.TicketUpdated,
@@ -655,10 +673,16 @@ public class TicketService : ITicketService
                 ["priority"] = t.Priority.ToString(),
                 ["assigned_user_id"] = t.AssignedUserId,
                 ["assigned_queue_id"] = t.AssignedQueueId,
+                ["case_manager_user_id"] = t.CaseManagerUserId,
+                ["case_manager_name"] = t.CaseManagerName,
+                ["case_manager_email"] = t.CaseManagerEmail,
                 ["title_changed"] = req.Title is not null,
                 ["description_changed"] = req.Description is not null,
                 ["category_changed"] = req.Category is not null,
                 ["due_at_changed"] = req.DueAt.HasValue,
+                ["case_manager_changed"] = req.CaseManagerUserId is not null
+                    || req.CaseManagerName is not null
+                    || req.CaseManagerEmail is not null,
             }), ct);
 
         return TicketResponse.From(t);

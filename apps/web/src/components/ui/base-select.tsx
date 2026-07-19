@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { Check, ChevronDown, Loader2, Plus } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,6 +38,8 @@ interface BaseSelectCommonProps<
 
   loadingMode?: "eager" | "infinite";
   isLoading?: boolean;
+  /** A new server-side search request is in flight — shows the same skeleton as `isLoading`, even while stale results from the previous search are still in `options` (e.g. via `keepPreviousData`). */
+  isSearching?: boolean;
   isFetchingMore?: boolean;
   hasNextPage?: boolean;
   onLoadMore?: () => void;
@@ -54,10 +56,18 @@ interface BaseSelectCommonProps<
 
   createAction?: BaseSelectCreateAction;
 
+  /** Render each row with a leading checkbox instead of the trailing check icon. */
+  showCheckboxes?: boolean;
+  /**
+   * Render the search input + option list directly in the page flow
+   * (always visible, no trigger/popover) — for filter panels where the
+   * list should stay open, e.g. inside a filter modal.
+   */
+  inline?: boolean;
+
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
-  loadingText?: string;
 
   disabled?: boolean;
   error?: boolean;
@@ -81,6 +91,22 @@ export type BaseSelectProps<
   TOption extends BaseSelectOption = BaseSelectOption,
 > = BaseSelectCommonProps<TOption> &
   (SingleSelectProps<TOption> | MultiSelectProps<TOption>);
+
+/** Placeholder rows shown in place of real options while loading or searching. */
+function OptionSkeletonRows({ count }: { count: number }) {
+  return (
+    <div aria-hidden="true">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="flex items-center py-1.5 pl-2 pr-8">
+          <div
+            className="h-4 rounded bg-gray-100 animate-pulse"
+            style={{ width: `${60 + ((i * 17) % 30)}%` }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Wraps the first case-insensitive match of `query` in `label` with a `<mark>`. */
 function highlightLabel(label: string, query: string): React.ReactNode {
@@ -120,6 +146,9 @@ function highlightLabel(label: string, query: string): React.ReactNode {
  * - An optional "+ Add …" row (`createAction`) that hands off to the
  *   caller's own create form/modal — BaseSelect never renders the modal
  *   itself, it only closes the popover and calls `onSelect`.
+ * - Checkbox-style rows via `showCheckboxes`, and an always-visible
+ *   `inline` mode (search + list in the page flow, no popover) for
+ *   filter panels.
  * - Arrow-key/Enter/Escape navigation and `role="listbox"`/`"option"` for
  *   basic accessibility.
  *
@@ -171,6 +200,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     options,
     loadingMode = "eager",
     isLoading = false,
+    isSearching = false,
     isFetchingMore = false,
     hasNextPage = false,
     onLoadMore,
@@ -180,10 +210,11 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     highlightMatch = true,
     renderOption,
     createAction,
+    showCheckboxes = false,
+    inline = false,
     placeholder = "Select…",
     searchPlaceholder = "Search...",
     emptyText = "No options found.",
-    loadingText = "Loading...",
     disabled,
     error,
     className,
@@ -195,7 +226,13 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
 
   const search = controlledSearch ?? internalSearch;
   const listRef = React.useRef<HTMLDivElement>(null);
-  const sentinelRef = React.useRef<HTMLDivElement>(null);
+  // A plain ref here wouldn't work: Radix's Popover.Content mounts its
+  // children (including this sentinel) one render after `open` flips true,
+  // and ref writes don't trigger re-renders — so the infinite-scroll effect
+  // below would see `sentinelEl` as null forever and never attach its
+  // IntersectionObserver. Using state for the ref makes that mount a
+  // dependency the effect can react to.
+  const [sentinelEl, setSentinelEl] = React.useState<HTMLDivElement | null>(null);
 
   const selectedValues = React.useMemo(
     () =>
@@ -282,12 +319,13 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     handleOpenChange(false);
   };
 
+  const listVisible = inline || open;
+
   React.useEffect(() => {
-    if (loadingMode !== "infinite" || !open || !hasNextPage || !onLoadMore)
+    if (loadingMode !== "infinite" || !listVisible || !hasNextPage || !onLoadMore)
       return;
-    const target = sentinelRef.current;
     const root = listRef.current;
-    if (!target || !root) return;
+    if (!sentinelEl || !root) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -295,9 +333,9 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
       },
       { root, threshold: 0.1 },
     );
-    observer.observe(target);
+    observer.observe(sentinelEl);
     return () => observer.disconnect();
-  }, [loadingMode, open, hasNextPage, onLoadMore, isFetchingMore]);
+  }, [loadingMode, listVisible, hasNextPage, onLoadMore, isFetchingMore, sentinelEl]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -315,7 +353,129 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     }
   };
 
-  const showLoading = isLoading && filteredOptions.length === 0;
+  const showSkeleton = isSearching || (isLoading && filteredOptions.length === 0);
+
+  const searchInput = (
+    <input
+      autoFocus={!inline}
+      value={search}
+      onChange={(e) => handleSearchChange(e.target.value)}
+      onKeyDown={handleKeyDown}
+      placeholder={searchPlaceholder}
+      role="combobox"
+      aria-expanded={listVisible}
+      className="w-full border border-gray-300 rounded px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+    />
+  );
+
+  const optionList = (
+    <div
+      ref={listRef}
+      role="listbox"
+      className={cn("overflow-auto p-1", inline ? "max-h-44" : "max-h-64")}
+    >
+      {showSkeleton ? (
+        <OptionSkeletonRows count={3} />
+      ) : filteredOptions.length > 0 ? (
+        <>
+          {filteredOptions.map((option, index) => (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={isSelected(option)}
+              disabled={option.disabled}
+              onClick={() => selectOption(option)}
+              onMouseEnter={() => setActiveIndex(index)}
+              className={cn(
+                "relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-2 text-sm text-left outline-none",
+                showCheckboxes ? "pr-2" : "pr-8",
+                index === activeIndex && "bg-gray-50",
+                option.disabled && "cursor-not-allowed opacity-50",
+              )}
+            >
+              {showCheckboxes && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "mr-2 flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                    isSelected(option)
+                      ? "bg-primary border-primary text-white"
+                      : "bg-white border-gray-300",
+                  )}
+                >
+                  {isSelected(option) && <Check className="h-3 w-3" />}
+                </span>
+              )}
+
+              {renderOption ? (
+                renderOption(option, {
+                  selected: isSelected(option),
+                  active: index === activeIndex,
+                  search,
+                })
+              ) : (
+                <span className="truncate whitespace-pre-line">
+                  {highlightMatch
+                    ? highlightLabel(option.label, search)
+                    : option.label}
+                </span>
+              )}
+
+              {!showCheckboxes && isSelected(option) && (
+                <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+                  <Check className="h-4 w-4 text-primary" />
+                </span>
+              )}
+            </button>
+          ))}
+          {loadingMode === "infinite" && hasNextPage && (
+            // Needs a non-zero height at all times, even while idle — an
+            // empty (0-height) element always has an IntersectionObserver
+            // ratio of 0, so with threshold: 0.1 it would never be reported
+            // as intersecting and onLoadMore would never fire.
+            <div ref={setSentinelEl} className="min-h-[1px]">
+              {isFetchingMore && <OptionSkeletonRows count={1} />}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="p-3 text-sm text-gray-500">{emptyText}</div>
+      )}
+    </div>
+  );
+
+  const createButton = createAction && (
+    <button
+      type="button"
+      onClick={() => {
+        handleOpenChange(false);
+        createAction.onSelect();
+      }}
+      className="flex w-full items-center gap-1.5 text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
+    >
+      {createAction.icon ?? <Plus className="h-3.5 w-3.5" />}
+      {createAction.label}
+    </button>
+  );
+
+  if (inline) {
+    return (
+      <div className={className}>
+        <div className="mb-1.5">{searchInput}</div>
+        <div
+          className={cn(
+            "rounded-lg border border-gray-200 bg-white",
+            error && "border-red-300",
+            contentClassName,
+          )}
+        >
+          {optionList}
+          {createButton}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={handleOpenChange}>
@@ -344,96 +504,9 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
             contentClassName,
           )}
         >
-          <div className="p-2">
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={searchPlaceholder}
-              role="combobox"
-              aria-expanded={open}
-              className="w-full border border-gray-300 rounded px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-
-          <div
-            ref={listRef}
-            role="listbox"
-            className="max-h-64 overflow-auto p-1"
-          >
-            {showLoading ? (
-              <div className="flex items-center gap-2 p-3 text-sm text-gray-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {loadingText}
-              </div>
-            ) : filteredOptions.length > 0 ? (
-              <>
-                {filteredOptions.map((option, index) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected(option)}
-                    disabled={option.disabled}
-                    onClick={() => selectOption(option)}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    className={cn(
-                      "relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-2 pr-8 text-sm text-left outline-none",
-                      index === activeIndex && "bg-gray-50",
-                      option.disabled && "cursor-not-allowed opacity-50",
-                    )}
-                  >
-                    {renderOption ? (
-                      renderOption(option, {
-                        selected: isSelected(option),
-                        active: index === activeIndex,
-                        search,
-                      })
-                    ) : (
-                      <span className="truncate whitespace-pre-line">
-                        {highlightMatch
-                          ? highlightLabel(option.label, search)
-                          : option.label}
-                      </span>
-                    )}
-
-                    {isSelected(option) && (
-                      <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
-                        <Check className="h-4 w-4 text-primary" />
-                      </span>
-                    )}
-                  </button>
-                ))}
-                {loadingMode === "infinite" && hasNextPage && (
-                  <div
-                    ref={sentinelRef}
-                    className="flex items-center justify-center py-2"
-                  >
-                    {isFetchingMore && (
-                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="p-3 text-sm text-gray-500">{emptyText}</div>
-            )}
-          </div>
-
-          {createAction && (
-            <button
-              type="button"
-              onClick={() => {
-                handleOpenChange(false);
-                createAction.onSelect();
-              }}
-              className="flex w-full items-center gap-1.5 text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
-            >
-              {createAction.icon ?? <Plus className="h-3.5 w-3.5" />}
-              {createAction.label}
-            </button>
-          )}
+          <div className="p-2">{searchInput}</div>
+          {optionList}
+          {createButton}
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>

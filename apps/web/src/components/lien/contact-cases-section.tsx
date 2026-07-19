@@ -56,7 +56,7 @@ export function ContactCasesSection({ contactId, contactType }: Props) {
   const [secondaryContactSubtype, setSecondaryContactSubtype] = useState<string | undefined>();
   const [resolvingSecondarySubtype, setResolvingSecondarySubtype] = useState(false);
 
-  const { data, isLoading } = useContactCases(
+const { data, isLoading } = useContactCases(
     contactId,
     contactType,
     { keyword: debouncedKeyword, page, limit: PAGE_SIZE },

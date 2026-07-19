@@ -12,6 +12,8 @@ import { useSessionContext } from "@/providers/session-provider";
 import { dateConverter } from "@/lib/cases/cases.mapper";
 import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
 import { useCreateCase } from "@/hooks/use-case-liens";
+import { LitigationStatusForm } from "./litigation-form";
+import { DropdownOption } from "@/lib/lookup/lookup.types";
 
 interface CreateCaseFormProps {
   caseNumber?: string;
@@ -39,7 +41,7 @@ const INITIAL_FORM = {
   claimNumber: "",
   description: "",
   notes: "",
-  caseStatusId: "",
+  caseStatusId: "PreDemand",
   caseManagerId: "",
   lawfirmId: "",
   accidentTypeId: "",
@@ -78,6 +80,8 @@ export function CreateCaseForm({
   const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string>();
 
   const [isValid, setIsValid] = useState(false);
+  const [showLitigationForm, setShowLitigationForm] = useState(false);
+
   const [touched, setTouched] = useState<
     Record<keyof typeof INITIAL_FORM, boolean>
   >(
@@ -88,6 +92,7 @@ export function CreateCaseForm({
   );
 
   const updateField = (field: keyof typeof INITIAL_FORM, value: string) => {
+    console.log(field, value);
     setForm((prev) => ({ ...prev, [field]: value }));
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
@@ -190,6 +195,7 @@ export function CreateCaseForm({
         caseType: form.accidentTypeId || undefined,
         dateOfIncident: dateConverter(form.dateOfIncident) || undefined,
         stateOfIncident: form.accidentStateId || undefined,
+        minorComp: isMinor() ? "true" : "false",
       };
 
       const res = await createCase(request);
@@ -201,9 +207,9 @@ export function CreateCaseForm({
 
       setTimeout(() => {
         onCreated?.(res.id);
+        setForm({ ...INITIAL_FORM });
+        setErrors({});
       }, 500);
-      setForm({ ...INITIAL_FORM });
-      setErrors({});
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isConflict) {
@@ -242,6 +248,46 @@ export function CreateCaseForm({
       ),
     );
     onClose();
+  };
+
+  const checkStatus = (caseStatus: string) => {
+    if (caseStatus.toLowerCase().includes("litigation")) {
+      setShowLitigationForm(true);
+    }
+  };
+
+  const isMinor = () => {
+    let result = false;
+    let age = 0;
+    // Convert strings to Date objects
+    const dob = new Date(form.clientDob);
+    const dol = new Date(form.dateOfIncident);
+    if (isNaN(dob.getTime()) || isNaN(dol.getTime())) {
+      age = 0; // invalid date
+      return;
+    }
+    age = dol.getFullYear() - dob.getFullYear();
+    // Adjust if the birthday hasn't occurred yet this year
+    const m = dol.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && dol.getDate() < dob.getDate())) {
+      age--;
+    }
+    age = age;
+    result = age < 18;
+    return result;
+  };
+
+  const setLitigationStatus = (status: DropdownOption) => {
+    setData((prev) => ({
+      ...prev,
+      status: prev.status.map((s) =>
+        s.value.includes("Litigation")
+          ? { ...s, value: status.value, label: `Litigation (${status.label})` }
+          : s,
+      ),
+    }));
+    updateField("caseStatusId", status.value);
+    setShowLitigationForm(false);
   };
 
   return (
@@ -354,6 +400,7 @@ export function CreateCaseForm({
               options={data?.status}
               placeholder=""
               onChange={(v: string) => {
+                checkStatus(v);
                 setForm({
                   ...form,
                   caseStatusId: v.toString(),
@@ -419,7 +466,7 @@ export function CreateCaseForm({
                 placeholder="Select law firm..."
                 searchPlaceholder="Search law firms..."
                 allowCreate
-                createLabel="Add Law Firm"
+                createLabel="Add New Law Firm"
               />
               {touched.lawfirmId && errors.lawfirmId && (
                 <p className="text-xs text-red-500 mt-1">{errors.lawfirmId}</p>
@@ -458,6 +505,16 @@ export function CreateCaseForm({
           </div>
         </div>
       </FormModal>
+
+      {showLitigationForm && (
+        <LitigationStatusForm
+          open={showLitigationForm}
+          onClose={() => setShowLitigationForm(false)}
+          onSubmitted={(v: DropdownOption) => {
+            setLitigationStatus(v);
+          }}
+        />
+      )}
     </>
   );
 }

@@ -9,6 +9,20 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     include: ['src/**/*.test.tsx'],
+    server: {
+      deps: {
+        // By default Vitest loads node_modules packages via Node's native
+        // resolver, bypassing the react/react-dom aliases below entirely —
+        // so @radix-ui/* (used by BaseSelect, Dialog, etc.) and its
+        // @floating-ui/react-dom dependency (used by Popper-based
+        // primitives like Popover) would each resolve their own nested
+        // react copy from apps/web's local pnpm store instead of the
+        // deduped one, producing a second dispatcher and "Cannot read
+        // properties of null" once rendered. Inlining routes them through
+        // Vite instead, where the alias/dedupe below actually apply.
+        inline: [/@radix-ui\//, /@floating-ui\//],
+      },
+    },
   },
   resolve: {
     alias: {
@@ -18,5 +32,13 @@ export default defineConfig({
       'react/jsx-runtime': path.resolve(__dirname, '../../node_modules/react/jsx-runtime.js'),
       'react/jsx-dev-runtime': path.resolve(__dirname, '../../node_modules/react/jsx-dev-runtime.js'),
     },
+    // pnpm keeps a separate physical copy of react/react-dom under
+    // apps/web's own store in addition to the workspace root's — without
+    // deduping, a package that nests its own react (e.g. @radix-ui/*, whose
+    // dist resolves react via its own node_modules chain rather than the
+    // alias above) ends up rendering against a second React instance with
+    // its own hook dispatcher, so hooks inside it fail with "Cannot read
+    // properties of null (reading 'useMemo')".
+    dedupe: ['react', 'react-dom'],
   },
 });

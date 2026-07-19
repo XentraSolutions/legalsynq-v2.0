@@ -141,6 +141,11 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     }
   };
 
+  const fetchDocument = async () => {
+    const docs = await casesService.loadLiensDocuments(liensId ?? "");
+    setForms((prev) => ({ ...prev, 3: docs.data }));
+  };
+
   const createMedicalLien = async (payload: CreateMedicalLiensDto) => {
     try {
       const request: CreateMedicalLiensDto = {
@@ -152,7 +157,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
         endServiceDate: dateConverter(payload.endServiceDate),
         note: payload.note,
         isBulk: payload.isBulk == "true" ? "Y" : "N",
-        isServicing: payload.isBulk == "true" ? "Y" : "N",
+        isServicing: payload.isServicing == "true" ? "Y" : "N",
         fundingCompanyId: payload.fundingCompanyId,
       };
       const response = await casesService.createMedicalLiens(request);
@@ -273,11 +278,11 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
         outboundCheckNumber: payload.outboundCheckNumber,
       };
       await casesService.createMedicalPaymentLiens(request);
-      addToast({
-        type: "success",
-        title: "Payee Updated",
-        description: `Payee has been updated.`,
-      });
+      // addToast({
+      //   type: "success",
+      //   title: "Payee Updated",
+      //   description: `Payee has been updated.`,
+      // });
       setErrors({});
     } catch (err) {
       if (err instanceof ApiError) {
@@ -289,7 +294,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
       } else {
         addToast({
           type: "error",
-          title: "Update Failed",
+          title: "Update Payee Failed",
           description: "An unexpected error occurred",
         });
       }
@@ -309,18 +314,18 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     formData.append("DocFileTypeId", payload.documentType);
 
     try {
-      await casesService.uploadCaseDocuments(formData);
-      addToast({
-        type: "success",
-        title: "Document Uploaded",
-        description: `Document has been updated.`,
-      });
+      await casesService.uploadLiensDocuments(formData);
+      // addToast({
+      //   type: "success",
+      //   title: "Document Uploaded",
+      //   description: `Document has been updated.`,
+      // });
       setErrors({});
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         addToast({
           type: "error",
-          title: "Update Failed",
+          title: "Update Document Failed",
           description: err.message,
         });
       } else {
@@ -352,8 +357,13 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
       Promise.allSettled([
         await saveMedicalPayee(forms[2]),
         await uploadDocuments(forms[3]),
+        fetchDocument(),
       ]);
-
+      addToast({
+        type: "success",
+        title: "Liens Added",
+        description: `Liens has been added to case.`,
+      });
       closeModal();
     } finally {
       stopLoading();
@@ -441,7 +451,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
                 data={forms[3]}
                 caseId={caseId}
                 lienId={liensId}
-                onFormValid={onFormValid}
+                onUploaded={onFormValid}
               />
             )}
           </div>

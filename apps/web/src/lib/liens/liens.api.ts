@@ -15,9 +15,18 @@ import type {
 } from './liens.types';
 
 function toQs(params: Record<string, unknown>): string {
-  const pairs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+  const pairs: string[] = [];
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;
+      for (const item of v) {
+        pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(item))}`);
+      }
+    } else {
+      pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+    }
+  }
   return pairs.length ? `?${pairs.join('&')}` : '';
 }
 

@@ -20,9 +20,9 @@ import {
   type CaseLienItemMetadata,
 } from "@/lib/cases";
 import { settlementService } from "@/lib/settlement";
-import type { CasePayment } from "@/lib/settlement/settlement.types";
+import type { CasePayment, LegacyCasePayment } from "@/lib/settlement/settlement.types";
 import { contactsService } from "@/lib/contacts";
-import { PaginatedResult } from "@/lib/reports/reports.types";
+import { lookupService } from "@/lib/lookup";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -36,6 +36,21 @@ export function useLienPaymentsByCase(caseId: string) {
       settlementService
         .getLienPaymentsByCase(caseId)
         .catch(() => [] as CasePayment[]),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export const SETTLEMENT_PAYMENT_DETAILS_QUERY_KEY = (caseId: string) =>
+  ["settlement-payment-details", caseId] as const;
+
+export function useSettlementPaymentDetails(caseId: string) {
+  return useQuery({
+    queryKey: SETTLEMENT_PAYMENT_DETAILS_QUERY_KEY(caseId),
+    queryFn: () =>
+      settlementService
+        .getSettlementPaymentDetails(caseId)
+        .catch(() => [] as LegacyCasePayment[]),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
@@ -155,16 +170,17 @@ async function enrichLiens(
       paymentsByLien.get(lien.id) ?? ext.paymentAmount ?? null;
     const reductionAmount =
       latestReductionByLien.get(lien.id) ?? ext.reductionAmount ?? null;
-    const originalAmount = ext.originalAmount ?? 0;
+    const originalAmount = ext.totalBilling ?? ext.originalAmount ?? 0;
     return {
       ...lien,
-      facility: ext.facility ?? "---",
-      facilityName: facilityName(ext.facilityId ?? "") ?? "---",
+      facility: ext.facility ?? "",
+      facilityName: ext.facilityName || facilityName(ext.facilityId ?? "") || "",
       serviceDate: ext.initialServiceDate,
       purchaseDateDate: ext.purchaseDate,
       originalAmount,
       reductionAmount,
       purchaseAmount: ext.purchaseAmount ?? 0,
+      isServicing: ext.isServicing ?? false,
       paymentAmount,
       balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
       closedAtUtc: ext.closedAtUtc ?? null,
@@ -235,6 +251,43 @@ export function useCases(query: CasesQuery) {
   });
 }
 
+async function fetchProcedureCodes() {
+  const codes = await lookupService.getMedicalProcedureCodes();
+  const uniqueCodes = Array.from(
+    new Map(
+      codes.data.map((item) => [`${item.code}-${item.description}`, item]),
+    ).values(),
+  );
+  const list = uniqueCodes.map((item, index) => ({
+    key: item.code,
+    value: item.code,
+    label: item.description,
+  }));
+  return list ?? [];
+}
+
+export function useMedicareProcedureCodes() {
+  return useQuery({
+    queryKey: ["procedureCodes"],
+    queryFn: () => fetchProcedureCodes(),
+    refetchOnWindowFocus: false,
+  });
+}
+
+async function findMedicareCost(id: string): Promise<string> {
+  if (!id) return "";
+  const costs = await lookupService.getMedicalProcedureCosts(id);
+  const cost = costs.data.find((c) => c.facilityType == "asc");
+  return cost?.total?.toString() ?? "";
+}
+export function useMedicareCosts(id: string) {
+  return useQuery({
+    queryKey: ["medicareCosts", id],
+    queryFn: () => findMedicareCost(id),
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useCreateCase() {
   const queryClient = useQueryClient();
 
@@ -257,6 +310,18 @@ export function useDeleteCase() {
       queryClient.invalidateQueries({
         queryKey: ["cases"],
       });
+    },
+  });
+}
+
+export function useDeleteLien(caseId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (liensId: string) => casesService.deleteLien(liensId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["case-liens", caseId] });
+      queryClient.invalidateQueries({ queryKey: ["case-liens-all", caseId] });
     },
   });
 }

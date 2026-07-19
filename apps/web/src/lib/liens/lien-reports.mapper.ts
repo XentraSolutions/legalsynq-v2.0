@@ -1,5 +1,9 @@
+import { formatLegacyDateOnly } from "../format-date";
+import { ApiResponse } from "@/types";
 import { CaseLienItem } from "../cases";
 import {
+  ColumnGroup,
+  Columns,
   ReportConfigResponse,
   ReportListResponse,
   ReportsResponse,
@@ -8,13 +12,7 @@ import {
 function formatDateField(val: string | null | undefined): string {
   if (!val) return "";
   try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return formatLegacyDateOnly(val);
   } catch {
     return val;
   }
@@ -121,4 +119,24 @@ export function mapReportToListItem(dto: ReportConfigResponse): ReportListItem {
     updatedAt: formatDateField(dto.updatedAtUtc),
     config: dto.config,
   };
+}
+
+// grouped columns
+export function mapAllColumns(viewBy: string, dto: any[]): any[] {
+  const excludedKeys = new Set([
+    "isSuccess",
+    "message",
+    "reportType",
+    "data",
+    "defaultColumn",
+  ]);
+
+  const categories: ColumnGroup[] = Object.entries(dto)
+    .filter(([key]) => !excludedKeys.has(key))
+    .map(([key, value]) => ({
+      key,
+      value: value as Columns[],
+    }));
+
+  return categories;
 }

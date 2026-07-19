@@ -39,7 +39,7 @@ export function mapContactToListItem(dto: ContactResponseDto): ContactListItem {
     city: safeString(dto.city),
     state: safeString(dto.state),
     isActive: dto.isActive,
-    activeCases: dto.activeCases,
+    activeCases: dto.activeCases ?? 0,
     createdAt: formatDateField(dto.createdAtUtc),
     lawFirmId: dto.lawFirmId ?? null,
     facilityId: dto.facilityId ?? null,

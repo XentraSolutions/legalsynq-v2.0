@@ -18,42 +18,42 @@ interface MergeCaseFormProps {
 
 const INITIAL_FORM = {
   id: "",
-  caseType: "---",
-  caseNumber: "---",
-  externalReference: "---",
-  title: "---",
-  clientName: "---",
-  clientFirstName: "---",
-  clientLastName: "---",
-  clientDisplayName: "---",
-  status: "---",
-  statusLabel: "---",
-  dateOfIncident: "---",
-  clientDob: "---",
-  clientPhone: "---",
-  clientEmail: "---",
-  clientAddress: "---",
-  clientStreetAddress: "---",
-  clientCity: "---",
-  clientState: "---",
-  clientZipcode: "---",
-  sex: "---",
-  currentMedicalStatus: "---",
-  stateOfIncident: "---",
-  trackingFollowUpDate: "---",
-  leadId: "---",
-  insuranceCarrier: "---",
-  policyNumber: "---",
-  claimNumber: "---",
-  demandAmount: "---",
-  settlementAmount: "---",
-  description: "---",
-  notes: "---",
-  trackingFollowUp: "---",
-  openedAt: "---",
-  closedAt: "---",
-  createdAt: "---",
-  updatedAt: "---",
+  caseType: "",
+  caseNumber: "",
+  externalReference: "",
+  title: "",
+  clientName: "",
+  clientFirstName: "",
+  clientLastName: "",
+  clientDisplayName: "",
+  status: "",
+  statusLabel: "",
+  dateOfIncident: "",
+  clientDob: "",
+  clientPhone: "",
+  clientEmail: "",
+  clientAddress: "",
+  clientStreetAddress: "",
+  clientCity: "",
+  clientState: "",
+  clientZipcode: "",
+  sex: "",
+  currentMedicalStatus: "",
+  stateOfIncident: "",
+  trackingFollowUpDate: "",
+  leadId: "",
+  insuranceCarrier: "",
+  policyNumber: "",
+  claimNumber: "",
+  demandAmount: "",
+  settlementAmount: "",
+  description: "",
+  notes: "",
+  trackingFollowUp: "",
+  openedAt: "",
+  closedAt: "",
+  createdAt: "",
+  updatedAt: "",
 };
 
 export function MergeCaseForm({
@@ -99,7 +99,7 @@ export function MergeCaseForm({
               return {
                 key: c.id,
                 value: c.id,
-                label: `${c.clientName}\nDate of loss:${c.dateOfIncident || "---"}, Date of Birth: ${c.clientDob}, ${c.lawFirm}, Case Number: ${c.caseNumber}`,
+                label: `${c.clientName}\nDate of loss:${c.dateOfIncident || ""}, Date of Birth: ${c.clientDob}, ${c.lawFirm}, Case Number: ${c.caseNumber}`,
               };
             })
           : [],
@@ -199,28 +199,28 @@ export function MergeCaseForm({
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
                 Plaintiff Name
               </label>
-              {clientData?.clientName ?? "---"}
+              {clientData?.clientName ?? ""}
             </div>
 
             <div>
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
                 Case Id
               </label>
-              {clientData?.caseNumber ?? "---"}
+              {clientData?.caseNumber ?? ""}
             </div>
 
             <div>
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
                 Case Status
               </label>
-              {clientData?.status ?? "---"}
+              {clientData?.status ?? ""}
             </div>
 
             <div>
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
                 Case Type
               </label>
-              {clientData?.caseType != "" ? clientData?.caseType : "---"}
+              {clientData?.caseType != "" ? clientData?.caseType : ""}
             </div>
 
             <div>
@@ -229,28 +229,28 @@ export function MergeCaseForm({
               </label>
               {clientData?.dateOfIncident != ""
                 ? clientData?.dateOfIncident
-                : "---"}
+                : ""}
             </div>
 
             <div>
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
                 Date Of Birth
               </label>
-              {clientData?.clientDob ?? "---"}
+              {clientData?.clientDob ?? ""}
             </div>
 
             <div>
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
                 Law firm
               </label>
-              {clientData?.lawFirm ?? "---"}
+              {clientData?.lawFirm ?? ""}
             </div>
 
             <div>
               <label className="block text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-1">
                 Case Manager
               </label>
-              {clientData?.caseManager ?? "---"}
+              {clientData?.caseManager ?? ""}
             </div>
           </div>
         </div>

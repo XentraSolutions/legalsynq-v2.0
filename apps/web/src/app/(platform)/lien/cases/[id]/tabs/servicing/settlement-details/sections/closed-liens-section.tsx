@@ -1,6 +1,7 @@
 import { LienTable, LienTableToolbar } from "@/components/lien/lien-table";
 import type { LienColumnDef } from "@/components/lien/lien-table";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
+import { DateDisplay } from "@/components/ui/date-display";
 import { CollapsibleSection } from "../../../../components/collapsible-section";
 import { formatCurrency } from "../../../../utils/case-detail-utils";
 
@@ -13,8 +14,17 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     ),
   },
   {
+    id: "facilityName",
+    header: "Medical Facility",
+    cell: (l) => (
+      <span className="text-sm text-gray-600 truncate max-w-40 block">
+        {l.facilityName || ""}
+      </span>
+    ),
+  },
+  {
     id: "billing",
-    header: "Billing Amt",
+    header: "Billing Amount",
     align: "right",
     cell: (l) => (
       <span className="text-sm text-gray-700 tabular-nums">
@@ -23,8 +33,18 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     ),
   },
   {
+    id: "purchaseAmount",
+    header: "Purchase Amount",
+    align: "right",
+    cell: (l) => (
+      <span className="text-sm text-gray-700 tabular-nums">
+        {formatCurrency(l.purchaseAmount)}
+      </span>
+    ),
+  },
+  {
     id: "reduction",
-    header: "Reduction",
+    header: "Reduction Amount",
     align: "right",
     cell: (l) => (
       <span className="text-sm text-green-600 tabular-nums">
@@ -33,8 +53,18 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     ),
   },
   {
+    id: "balance",
+    header: "Amount to Settle",
+    align: "right",
+    cell: (l) => (
+      <span className="text-sm text-gray-700 font-medium tabular-nums">
+        {formatCurrency(l.balance)}
+      </span>
+    ),
+  },
+  {
     id: "payment",
-    header: "Payment",
+    header: "Amount Received",
     align: "right",
     cell: (l) => (
       <span className="text-sm text-gray-700 tabular-nums">
@@ -43,12 +73,11 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     ),
   },
   {
-    id: "balance",
-    header: "Balance",
-    align: "right",
+    id: "dateClosed",
+    header: "Date Closed",
     cell: (l) => (
-      <span className="text-sm text-gray-700 font-medium tabular-nums">
-        {formatCurrency(l.balance)}
+      <span className="text-xs text-gray-500 whitespace-nowrap">
+        <DateDisplay value={l.closedAtUtc} format="date" fallback="" />
       </span>
     ),
   },
@@ -60,7 +89,9 @@ export function ClosedLiensSection({
   onRefreshLiens,
   isLiensFetching,
   closedLiensTotalBilling,
+  closedLiensTotalPurchase,
   closedLiensTotalReduction,
+  closedLiensTotalBalance,
   closedLiensTotalPayment,
 }: {
   closedLiens: (CaseLienItem & CaseLienItemMetadata)[];
@@ -68,7 +99,9 @@ export function ClosedLiensSection({
   onRefreshLiens: () => void;
   isLiensFetching: boolean;
   closedLiensTotalBilling: number;
+  closedLiensTotalPurchase: number;
   closedLiensTotalReduction: number;
+  closedLiensTotalBalance: number;
   closedLiensTotalPayment: number;
 }) {
   return (
@@ -89,6 +122,7 @@ export function ClosedLiensSection({
         <LienTable
           liens={closedLiens}
           columns={closedLienDisplayColumns}
+          expandable={false}
           footer={[
             {
               colSpan: 2,
@@ -110,8 +144,24 @@ export function ClosedLiensSection({
             {
               align: "right",
               content: (
+                <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                  {formatCurrency(closedLiensTotalPurchase)}
+                </span>
+              ),
+            },
+            {
+              align: "right",
+              content: (
                 <span className="text-sm font-semibold text-green-600 tabular-nums">
                   {formatCurrency(closedLiensTotalReduction)}
+                </span>
+              ),
+            },
+            {
+              align: "right",
+              content: (
+                <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                  {formatCurrency(closedLiensTotalBalance)}
                 </span>
               ),
             },
@@ -125,11 +175,7 @@ export function ClosedLiensSection({
             },
             {
               align: "right",
-              content: (
-                <span className="text-sm font-semibold text-gray-700 tabular-nums">
-                  {formatCurrency(0)}
-                </span>
-              ),
+              content: <span className="text-sm text-gray-400">---</span>,
             },
           ]}
           loadedAt={liensLoadedAt}

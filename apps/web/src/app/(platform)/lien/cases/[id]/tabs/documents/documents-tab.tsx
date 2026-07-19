@@ -3,17 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLienStore } from "@/stores/lien-store";
 import { casesService, type CaseDetail } from "@/lib/cases";
+import { documentsService } from "@/lib/documents";
 import { ApiError } from "@/lib/api-client";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import type { DropdownOption } from "@/lib/lookup/lookup.types";
 import { FileDropzoneRef } from "@/components/lien/upload-document";
-import { EmailSection } from "../../components/email-section";
-import { SmsSection } from "../../components/sms-section";
-import { ContactsSection } from "../../components/contacts-section";
+import { FeedsSection } from "../../components/feeds-section";
 import { UploadDocumentSection } from "./sections/upload-document-section";
 import { CaseDocumentsSection } from "./sections/case-documents-section";
 import { LienDocumentsSection } from "./sections/lien-documents-section";
 import type { DocumentType } from "./types";
+import { ConfirmDialog } from "@/components/lien/modal";
 
 export function DocumentsTab({
   docTypes,
@@ -32,13 +32,20 @@ export function DocumentsTab({
   const dropzoneRef = useRef<FileDropzoneRef>(null);
 
   const [selectedDocType, setSelectedDocType] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState<File[] | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[] | null>([]);
 
   const [caseDocuments, setCaseDocuments] = useState<DocumentType[]>([]);
   const [liensDocuments, setLiensDocuments] = useState<DocumentType[]>([]);
+  const [confirmAction, showConfirmAction] = useState<{
+    id: string;
+    isOpen: boolean;
+    type: string;
+  }>({ id: "", isOpen: false, type: "" });
+  const [submitting, setIsSubmitting] = useState<boolean>(false);
 
   const uploadCaseDocuments = async (payload: any) => {
     if (!payload || payload.length == 0) return;
+    setIsSubmitting(true);
     try {
       payload.forEach(async (element: File) => {
         const formData = new FormData();
@@ -55,6 +62,7 @@ export function DocumentsTab({
           description: `Document has been updated.`,
         });
         setTimeout(() => {
+          setIsSubmitting(false);
           dropzoneRef?.current?.reset();
           setSelectedDocType("");
           fetchDocuments();
@@ -83,8 +91,50 @@ export function DocumentsTab({
     setLiensDocuments(docs.liensDocuments);
   };
 
-  function download(file: any) {
-    window.open(file.url || URL.createObjectURL(file as any), "_blank");
+  async function deleteFileConfimation(fileId: string, type: string) {
+    showConfirmAction({ isOpen: true, id: fileId, type: type });
+  }
+  const deleteFile = useCallback(async () => {
+    try {
+      if (confirmAction.type == "case")
+        await casesService.deleteCaseDocument(confirmAction.id);
+      if (confirmAction.type == "liens")
+        await casesService.deleteLiensDocument(confirmAction.id);
+      addToast({
+        type: "success",
+        title: "Delete Document",
+        description: "Delete Document Successfully",
+      });
+      showConfirmAction({ id: "", isOpen: false, type: "" });
+      fetchDocuments();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Delete Failed",
+          description: err.message,
+        });
+      }
+    }
+  }, [confirmAction]);
+
+  async function download(url: string) {
+    if (!url) return;
+    const documentId = url.split("/").filter(Boolean).pop();
+    if (!documentId) return;
+    try {
+      const viewUrl = await documentsService.getViewUrl(documentId);
+      window.open(viewUrl, "_blank");
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Download Failed",
+        description:
+          err instanceof ApiError
+            ? err.message
+            : "An unexpected error occurred",
+      });
+    }
   }
 
   useEffect(() => {
@@ -95,6 +145,7 @@ export function DocumentsTab({
   const leftContent = (
     <div className="space-y-4">
       <UploadDocumentSection
+        submitting={submitting}
         docTypes={docTypes}
         selectedDocType={selectedDocType}
         onSelectedDocTypeChange={setSelectedDocType}
@@ -107,28 +158,40 @@ export function DocumentsTab({
       <CaseDocumentsSection
         caseDocuments={caseDocuments}
         onDownload={download}
+        onDelete={(d) => deleteFileConfimation(d, "case")}
       />
 
-      <LienDocumentsSection liensDocuments={liensDocuments} />
+      <LienDocumentsSection
+        onDownload={download}
+        onDelete={(d) => deleteFileConfimation(d, "liens")}
+        liensDocuments={liensDocuments}
+      />
+
+      {confirmAction.isOpen && (
+        <ConfirmDialog
+          open
+          onClose={() => showConfirmAction({ id: "", isOpen: false, type: "" })}
+          onConfirm={deleteFile}
+          title="Delete Document"
+          description={
+            <>
+              Are you sure you want to delete document? This action cannot be
+              undone and will permanently remove the document.
+            </>
+          }
+          confirmLabel="Delete"
+          confirmVariant="danger"
+        />
+      )}
     </div>
   );
 
   const rightContent = (
-    <div className="space-y-4">
-      <EmailSection />
-      <SmsSection />
-      <ContactsSection
-        items={[
-          {
-            icon: "ri-building-line",
-            iconBgClass: "bg-blue-50",
-            iconColorClass: "text-blue-500",
-            name: caseDetail.insuranceCarrier || "",
-            role: "Law Firm",
-          },
-        ]}
-      />
-    </div>
+    <FeedsSection
+      caseId={caseDetail.id}
+      panelMode={panelMode}
+      onPanelModeChange={onPanelModeChange}
+    />
   );
 
   return (
@@ -137,6 +200,7 @@ export function DocumentsTab({
       right={rightContent}
       mode={panelMode}
       onModeChange={onPanelModeChange}
+      showControls={false}
     />
   );
 }

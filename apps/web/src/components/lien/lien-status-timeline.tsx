@@ -1,3 +1,4 @@
+import { DateDisplay } from '@/components/ui/date-display';
 import type { LienStatusHistoryItem } from '@/types/lien';
 
 interface LienStatusTimelineProps {
@@ -10,13 +11,6 @@ const STATUS_DOT: Record<string, string> = {
   Sold:      'bg-green-500',
   Withdrawn: 'bg-red-400',
 };
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  });
-}
 
 export function LienStatusTimeline({ history }: LienStatusTimelineProps) {
   if (history.length === 0) {
@@ -36,7 +30,7 @@ export function LienStatusTimeline({ history }: LienStatusTimelineProps) {
           {item.actorOrgName && (
             <p className="text-xs text-gray-500 mt-0.5">by {item.actorOrgName}</p>
           )}
-          <p className="text-xs text-gray-400 mt-0.5">{formatDateTime(item.occurredAtUtc)}</p>
+          <p className="text-xs text-gray-400 mt-0.5"><DateDisplay value={item.occurredAtUtc} format="datetime" /></p>
         </li>
       ))}
     </ol>

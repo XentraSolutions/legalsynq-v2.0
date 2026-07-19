@@ -9,6 +9,10 @@ import { ConfirmDialog } from "../../modal";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { CreateMedicalCodeLiensDto } from "@/lib/cases/cases.types";
+import {
+  useMedicareCosts,
+  useMedicareProcedureCodes,
+} from "@/hooks/use-case-liens";
 
 export interface MedicalCodesDescriptionProps {
   caseId?: string;
@@ -58,11 +62,14 @@ export default function MedicalCodesDescription(
 ) {
   const { data = {}, onFormValid } = props;
   const addToast = useLienStore((s) => s.addToast);
+  const { data: medicalCodes } = useMedicareProcedureCodes();
 
-  const [form, setForm] = useState({ ...INITIAL_FORM, ...data });
+  const [form, setForm] = useState<any>({ ...INITIAL_FORM, ...data });
   const [procedureOptions, setProcedureOptions] = useState(
     [] as Array<{ key: string; value: string; label: string }>,
   );
+  const { data: medicareCosts } = useMedicareCosts(form.procedureCode);
+
   const [rows, setRows] = useState<Array<typeof INITIAL_ROW>>(
     data?.codeRows ?? [],
   );
@@ -74,38 +81,12 @@ export default function MedicalCodesDescription(
   } | null>(null);
 
   useEffect(() => {
-    loadProcedureCodes();
-  }, []);
+    validateForm();
+  }, [rows, data?.codeRows]);
 
   useEffect(() => {
-    validateForm();
-  }, [form, rows, data?.codeRows]);
-
-  async function loadProcedureCodes() {
-    try {
-      const codes = await lookupService.getMedicalProcedureCodes();
-      const list = codes.data.map((item, index) => ({
-        key: item.code,
-        value: item.code,
-        label: item.description,
-      }));
-      setProcedureOptions(list ?? []);
-    } catch (e) {
-      setProcedureOptions([]);
-    }
-  }
-
-  const getMedicalProcedureCosts = useCallback(
-    async (id: string) => {
-      try {
-        const cost = await lookupService.getMedicalProcedureCosts(id);
-        if (cost.facilityType == "asc") {
-          setForm({ ...form, medicareCost: cost?.total?.toString() });
-        }
-      } catch (e) {}
-    },
-    [form.procedureCode],
-  );
+    setForm((prev: any) => ({ ...prev, medicareCost: medicareCosts }));
+  }, [medicareCosts]);
 
   function validateForm() {
     const previousRows = Array.isArray(data?.codeRows) ? data.codeRows : [];
@@ -171,6 +152,7 @@ export default function MedicalCodesDescription(
       }
       return [...current, nextRow];
     });
+
     setTimeout(() => {
       createMedicalCodeLiens(
         { ...form, id: editingId ?? form.id },
@@ -180,6 +162,10 @@ export default function MedicalCodesDescription(
     resetLine();
   }
 
+  const findCodeByDescription = (description: string) => {
+    return procedureOptions.find((c) => c.value == description)?.key ?? "";
+  };
+
   const createMedicalCodeLiens = async (
     payload: CreateMedicalCodeLiensDto,
     isEditing: boolean,
@@ -188,7 +174,7 @@ export default function MedicalCodesDescription(
       const request: CreateMedicalCodeLiensDto = {
         id: payload.id,
         liensId: props.lienId ?? "",
-        code: form.procedureCode,
+        code: findCodeByDescription(form.procedureCode),
         medicareCost: parseFloat(payload.medicareCost).toFixed(2),
         billingAmount: parseFloat(payload.billingAmount).toFixed(2),
         purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
@@ -223,8 +209,8 @@ export default function MedicalCodesDescription(
 
   function handleEditRow(row: typeof INITIAL_ROW) {
     setEditingId(row.id);
-    setForm({
-      ...form,
+    setForm((prev: any) => ({
+      ...prev,
       procedureCode: row.code,
       medicareCost: String(row.medicareCost),
       billingAmount: String(row.billingAmount),
@@ -236,7 +222,7 @@ export default function MedicalCodesDescription(
                 ? (row.purchaseAmount / row.billingAmount) * 100
                 : 0,
             ),
-    });
+    }));
   }
 
   function handleDeleteRow(id: string) {
@@ -295,9 +281,9 @@ export default function MedicalCodesDescription(
               value={form.procedureCode}
               onChange={(v) => {
                 setForm({ ...form, procedureCode: v });
-                getMedicalProcedureCosts(v);
+                // getMedicalProcedureCosts(v);
               }}
-              options={procedureOptions}
+              options={medicalCodes ?? []}
               placeholder="Select a code"
               searchPlaceholder="Search codes..."
               createAction={{
@@ -509,7 +495,6 @@ export default function MedicalCodesDescription(
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
-            loadProcedureCodes();
           }}
         />
       )}

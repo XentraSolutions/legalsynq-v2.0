@@ -3,20 +3,15 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
-import type { ColumnDef, OnChangeFn, RowSelectionState } from "@tanstack/react-table";
+import { useRouter } from "next/navigation";
+import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 import { PageHeader } from "@/components/lien/page-header";
-import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { StatusBadge } from "@/components/lien/status-badge";
-import { SideDrawer } from "@/components/lien/side-drawer";
+import { DateDisplay } from "@/components/ui/date-display";
 import { CreateLienModal } from "@/components/lien/forms/create-lien-modal";
-import { BulkActionBar } from "@/components/lien/bulk-action-bar";
-import { BulkConfirmModal } from "@/components/lien/bulk-confirm-modal";
-import { BulkResultBanner } from "@/components/lien/bulk-result-banner";
 import { useLienStore } from "@/stores/lien-store";
-import { useRoleAccess } from "@/hooks/use-role-access";
-import { useSelectionState } from "@/hooks/use-selection-state";
+import { usePrimaryLoad, useBackgroundReady } from "@/hooks/use-background-queue";
 import { ApiError } from "@/lib/api-client";
 import {
   liensService,
@@ -24,39 +19,50 @@ import {
   type LiensQuery,
   type PaginationMeta,
 } from "@/lib/liens";
-import { useProviderMode } from "@/hooks/use-provider-mode";
-import {
-  executeBulk,
-  type BulkActionConfig,
-  type BulkOperationResult,
-} from "@/lib/bulk-operations";
-import { LiensFilter } from "./components/liens-filter";
+import { LiensFilter, EMPTY_LIENS_FILTERS, type LiensFilterValues } from "./components/liens-filter";
 
 function formatCurrency(amount: number | null): string {
-  if (amount === null || amount === undefined) return "\u2014";
+  if (amount === null || amount === undefined) return "—";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
   }).format(amount);
 }
 
-const BULK_ACTIONS: BulkActionConfig[] = [
-  {
-    key: "withdraw",
-    label: "Withdraw",
-    icon: "ri-close-circle-line",
-    variant: "danger",
-    confirmTitle: "Withdraw Liens",
-    confirmDescription: (count) =>
-      `This will withdraw ${count} lien${count !== 1 ? "s" : ""} from the marketplace. Only liens in "Active" or "Offered" status will be affected.`,
-  },
-];
+function countActiveFilters(f: LiensFilterValues): number {
+  return (
+    // Each dropdown counts as 1 filter regardless of how many items are
+    // checked within it, same as each date range counting as 1 below.
+    (f.lawFirmIds.length ? 1 : 0) +
+    (f.medicalFacilityIds.length ? 1 : 0) +
+    (f.caseManagerIds.length ? 1 : 0) +
+    (f.lienStatusIds.length ? 1 : 0) +
+    (f.purchaseDateFrom || f.purchaseDateTo ? 1 : 0) +
+    (f.closedDateFrom || f.closedDateTo ? 1 : 0)
+  );
+}
+
+// Sticky classes for the frozen leading columns (Lien ID / Plaintiff Name /
+// Law Firm). `left` offsets are cumulative fixed widths: 110px + 160px = 270px.
+function frozenColumn(left: string, width: string, last = false) {
+  const edge = last
+    ? "border-r border-gray-200 shadow-[4px_0_6px_-4px_rgba(0,0,0,0.10)]"
+    : "";
+  return {
+    headerClassName: `sticky ${left} z-10 bg-gray-50 ${width} ${edge}`,
+    cellClassName: `sticky ${left} z-10 bg-white group-hover:bg-gray-50 transition-colors ${edge}`,
+  };
+}
+
+function lienDetailHref(lien: LienListItem): string {
+  return lien.caseId
+    ? `/lien/cases/${lien.caseId}/liens/${lien.id}`
+    : `/lien/liens/${lien.id}`;
+}
 
 export default function LiensPage() {
-  const { isSellMode } = useProviderMode();
-  const ra = useRoleAccess();
+  const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
-  const selection = useSelectionState();
 
   const [liens, setLiens] = useState<LienListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
@@ -67,31 +73,37 @@ export default function LiensPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Registers the table's own load with the app-wide background queue so
+  // the filter modal's option prefetch (below) waits for it instead of
+  // competing with the primary table fetch for network/render time.
+  // Combined with `!loading` directly (rather than trusting the queue
+  // alone) so the very first render is correct with no propagation delay —
+  // see useBackgroundReady's doc.
+  usePrimaryLoad(loading);
+  const bgReady = useBackgroundReady() && !loading;
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
+  const [filters, setFilters] = useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
   const [showCreate, setShowCreate] = useState(false);
-  const [previewId, setPreviewId] = useState<string | null>(null);
-
-  const [actionOpen, setActionOpen] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
 
-  const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(
-    null,
-  );
+  const activeFilterCount = countActiveFilters(filters);
 
   const currentQuery = useCallback(
     (): LiensQuery => ({
       search: search || undefined,
-      status: statusFilter || undefined,
-      lienType: typeFilter || undefined,
       page: 1,
       pageSize: 10,
+      lawFirmIds: filters.lawFirmIds,
+      medicalFacilityIds: filters.medicalFacilityIds,
+      caseManagerIds: filters.caseManagerIds,
+      lienStatusIds: filters.lienStatusIds,
+      purchaseDateFrom: filters.purchaseDateFrom || undefined,
+      purchaseDateTo: filters.purchaseDateTo || undefined,
+      closedDateFrom: filters.closedDateFrom || undefined,
+      closedDateTo: filters.closedDateTo || undefined,
     }),
-    [search, statusFilter, typeFilter],
+    [search, filters],
   );
 
   const fetchLiens = useCallback(async (query: LiensQuery = {}) => {
@@ -114,7 +126,7 @@ export default function LiensPage() {
 
   useEffect(() => {
     fetchLiens(currentQuery());
-  }, [search, statusFilter, typeFilter, fetchLiens, currentQuery]);
+  }, [search, filters, fetchLiens, currentQuery]);
 
   const handlePageChange = (newPage: number) => {
     fetchLiens({
@@ -123,8 +135,6 @@ export default function LiensPage() {
       pageSize: pagination.pageSize,
     });
   };
-
-  const previewLien = previewId ? liens.find((l) => l.id === previewId) : null;
 
   const handleCreated = () => {
     setShowCreate(false);
@@ -136,233 +146,142 @@ export default function LiensPage() {
     });
   };
 
-  const handleCasesFilter = () => {
-    setShowFilter(false);
-    fetchLiens(currentQuery());
-  };
-
-  const canEdit = ra.can("lien:edit");
-
-  const handleBulkAction = (actionKey: string) => {
-    const action = BULK_ACTIONS.find((a) => a.key === actionKey);
-    if (action) setBulkAction(action);
-  };
-
-  const executeBulkAction = async () => {
-    if (!bulkAction) return;
-    setBulkLoading(true);
-    const result = await executeBulk(selection.ids, async (id) => {
-      const lien = liens.find((l) => l.id === id);
-      if (!lien) throw new Error("Lien not found in current list");
-      if (lien.status !== "Active" && lien.status !== "Offered") {
-        throw new Error(
-          `Lien is "${lien.status}" — only Active or Offered liens can be withdrawn`,
-        );
-      }
-      await liensService.withdraw(id);
-    });
-    setBulkLoading(false);
-    setBulkAction(null);
-    setBulkResult(result);
-    selection.clear();
-    fetchLiens(currentQuery());
-  };
-
-  const allIds = liens.map((l) => l.id);
-
-  const rowSelection = useMemo<RowSelectionState>(() => {
-    const obj: RowSelectionState = {};
-    selection.selectedIds.forEach((id) => {
-      obj[id] = true;
-    });
-    return obj;
-  }, [selection.selectedIds]);
-
-  const handleRowSelectionChange: OnChangeFn<RowSelectionState> = (updater) => {
-    const next = typeof updater === "function" ? updater(rowSelection) : updater;
-    const nextIds = new Set(Object.keys(next).filter((id) => next[id]));
-    const prevIds = selection.selectedIds;
-
-    if (nextIds.size === prevIds.size) return;
-
-    const allNowSelected = nextIds.size === liens.length && prevIds.size !== liens.length;
-    const allNowDeselected = nextIds.size === 0 && prevIds.size === liens.length;
-    if (allNowSelected || allNowDeselected) {
-      selection.toggleAll(allIds);
-      return;
-    }
-
-    const toggled = liens.find((l) => prevIds.has(l.id) !== nextIds.has(l.id));
-    if (toggled) selection.toggle(toggled.id);
+  const handleApplyFilter = (next: LiensFilterValues) => {
+    setFilters(next);
   };
 
   const columns = useMemo<ColumnDef<LienListItem, any>[]>(
     () => [
       {
         id: "lienNumber",
-        header: "Lien #",
+        accessorKey: "lienNumber",
+        header: "Lien ID",
+        meta: frozenColumn("left-0", "w-[110px] min-w-[110px]"),
         cell: ({ row }) => (
-          <Link
-            href={`/lien/liens/${row.original.id}`}
-            onClick={(e) => e.stopPropagation()}
-            className="text-xs font-mono text-primary hover:underline"
-          >
+          <span className="text-xs font-mono text-gray-700">
             {row.original.lienNumber}
-          </Link>
+          </span>
         ),
       },
       {
-        id: "lienTypeLabel",
-        header: "Type",
-        cell: ({ row }) => (
-          <span className="text-sm text-gray-700">{row.original.lienTypeLabel}</span>
-        ),
-      },
-      {
-        id: "subjectName",
-        header: "Subject",
+        id: "plaintiffName",
+        header: "Plaintiff Name",
+        meta: frozenColumn("left-[110px]", "w-[160px] min-w-[160px]"),
         cell: ({ row }) =>
           row.original.isConfidential ? (
             <span className="italic text-gray-400 text-sm">Confidential</span>
           ) : (
-            <span className="text-sm text-gray-700">{row.original.subjectName || "—"}</span>
+            <span className="text-sm text-gray-700">
+              {row.original.plaintiff || row.original.subjectName || "—"}
+            </span>
           ),
       },
       {
-        id: "originalAmount",
-        header: "Original",
+        id: "lawFirm",
+        accessorKey: "lawFirm",
+        header: "Law Firm",
+        meta: frozenColumn("left-[270px]", "w-[150px] min-w-[150px]", true),
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700 tabular-nums">
-            {formatCurrency(row.original.originalAmount)}
+          <span className="text-sm text-gray-700">{row.original.lawFirm || "—"}</span>
+        ),
+      },
+      {
+        id: "facilityName",
+        accessorKey: "facilityName",
+        header: "Medical Facility",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">{row.original.facilityName || "—"}</span>
+        ),
+      },
+      {
+        id: "purchaseDate",
+        accessorKey: "purchaseDate",
+        header: "Purchase Date",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700 whitespace-nowrap">
+            {row.original.purchaseDate || "—"}
           </span>
         ),
       },
-      ...(isSellMode
-        ? [
-            {
-              id: "offerPrice",
-              header: "Offer",
-              cell: ({ row }: { row: { original: LienListItem } }) => (
-                <span className="text-sm text-gray-700 tabular-nums">
-                  {formatCurrency(row.original.offerPrice)}
-                </span>
-              ),
-            } as ColumnDef<LienListItem, any>,
-          ]
-        : []),
+      {
+        id: "purchaseAmount",
+        accessorKey: "purchaseAmount",
+        header: "Purchase Amount",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700 tabular-nums">
+            {formatCurrency(row.original.purchaseAmount)}
+          </span>
+        ),
+      },
+      {
+        id: "totalBilling",
+        accessorKey: "totalBilling",
+        header: "Billing Amount",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700 tabular-nums">
+            {formatCurrency(row.original.totalBilling)}
+          </span>
+        ),
+      },
       {
         id: "status",
-        header: "Status",
+        accessorKey: "status",
+        header: "Lien Status",
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
       },
       {
-        id: "createdAt",
-        header: "Created",
+        id: "initialServiceDate",
+        accessorKey: "initialServiceDate",
+        header: "Initial Service Date",
         cell: ({ row }) => (
-          <span className="text-xs text-gray-400 whitespace-nowrap">{row.original.createdAt}</span>
+          <span className="text-sm text-gray-700 whitespace-nowrap">
+            <DateDisplay value={row.original.initialServiceDate} format="date" fallback="—" />
+          </span>
+        ),
+      },
+      {
+        id: "caseManager",
+        accessorKey: "caseManager",
+        header: "Case Manager",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">{row.original.caseManager || "—"}</span>
         ),
       },
     ],
-    [isSellMode],
+    [],
   );
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Liens"
-        subtitle={loading ? "Loading..." : `${pagination.totalCount} liens`}
-        actions={
-          <div className="relative">
-            {/* Dropdown Button */}
-            <button
-              onClick={() => setActionOpen(!actionOpen)}
-              className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
-            >
-              Actions
-              <i className="ri-arrow-down-s-line text-base" />
-            </button>
-            {/* Dropdown Menu */}
-            {actionOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                {/* Create Lien */}
-                {ra.can("lien:create") && (
-                  <button
-                    onClick={() => {
-                      setShowCreate(true);
-                      setActionOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                  >
-                    New Lien
-                  </button>
-                )}
-                {/* Filter */}
-                <button
-                  onClick={() => {
-                    setShowFilter(true);
-                    setActionOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                >
-                  Filter
-                </button>
+      <PageHeader title="Liens" subtitle={loading ? "Loading..." : `${pagination.totalCount} liens`} />
 
-                {/* Export CSV */}
-                <button
-                  onClick={() => {
-                    setActionOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                >
-                  Export
-                </button>
-              </div>
-            )}
-          </div>
-        }
-      />
-
-      <FilterToolbar
-        searchPlaceholder="Search liens by number or subject..."
-        onSearch={setSearch}
-        filters={[
-          {
-            label: "All Statuses",
-            value: statusFilter,
-            onChange: setStatusFilter,
-            options: [
-              { value: "Draft", label: "Draft" },
-              { value: "Active", label: "Active" },
-              ...(isSellMode
-                ? [
-                    { value: "Offered", label: "Offered" },
-                    { value: "Sold", label: "Sold" },
-                  ]
-                : []),
-              { value: "Withdrawn", label: "Withdrawn" },
-            ],
-          },
-          {
-            label: "All Types",
-            value: typeFilter,
-            onChange: setTypeFilter,
-            options: [
-              { value: "MedicalLien", label: "Medical Lien" },
-              { value: "AttorneyLien", label: "Attorney Lien" },
-              { value: "SettlementAdvance", label: "Settlement Advance" },
-              { value: "WorkersCompLien", label: "Workers' Comp Lien" },
-              { value: "PropertyLien", label: "Property Lien" },
-              { value: "Other", label: "Other" },
-            ],
-          },
-        ]}
-      />
-
-      <BulkResultBanner
-        result={bulkResult}
-        onDismiss={() => setBulkResult(null)}
-        entityLabel="liens"
-      />
+      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+          <input
+            type="text"
+            placeholder="Search liens by number or subject..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+        </div>
+        <button
+          onClick={() => setShowFilter(true)}
+          className="relative flex items-center gap-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50 transition-colors"
+        >
+          <i className="ri-filter-3-line text-base" />
+          Filter
+          {activeFilterCount > 0 && (
+            <span className="ml-0.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+        <button className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
+          Export
+        </button>
+      </div>
 
       {error && (
         <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -387,11 +306,24 @@ export default function LiensPage() {
           data={liens}
           columns={columns}
           getRowId={(l) => l.id}
+          toolbar={
+            activeFilterCount > 0 ? (
+              <div className="flex items-center justify-between gap-3 px-4 py-3 bg-blue-50/70 border-b border-blue-100">
+                <span className="flex items-center gap-2 text-sm text-gray-700">
+                  <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                  {activeFilterCount} Filter(s) Applied
+                </span>
+                <button
+                  onClick={() => setFilters(EMPTY_LIENS_FILTERS)}
+                  className="text-sm font-medium text-primary bg-white rounded-lg px-4 py-1.5 shadow-sm hover:bg-gray-50 transition-colors"
+                >
+                  Clear Filter
+                </button>
+              </div>
+            ) : undefined
+          }
           emptyMessage="No liens match your filters."
-          onRowClick={(l) => setPreviewId(l.id)}
-          rowSelection={canEdit ? rowSelection : undefined}
-          onRowSelectionChange={handleRowSelectionChange}
-          getRowClassName={(l) => (selection.isSelected(l.id) ? "bg-primary/5" : undefined)}
+          onRowClick={(l) => router.push(lienDetailHref(l))}
           manualPagination
           pageCount={pagination.totalPages}
           totalCount={pagination.totalCount}
@@ -407,28 +339,6 @@ export default function LiensPage() {
         />
       )}
 
-      {canEdit && (
-        <BulkActionBar
-          count={selection.count}
-          actions={BULK_ACTIONS}
-          onAction={handleBulkAction}
-          onClear={selection.clear}
-        />
-      )}
-
-      {bulkAction && (
-        <BulkConfirmModal
-          open
-          onClose={() => setBulkAction(null)}
-          onConfirm={executeBulkAction}
-          title={bulkAction.confirmTitle}
-          description={bulkAction.confirmDescription(selection.count)}
-          count={selection.count}
-          variant={bulkAction.variant}
-          loading={bulkLoading}
-        />
-      )}
-
       <CreateLienModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
@@ -437,64 +347,10 @@ export default function LiensPage() {
       <LiensFilter
         open={showFilter}
         onClose={() => setShowFilter(false)}
-        onApplyFilter={handleCasesFilter}
+        value={filters}
+        onApplyFilter={handleApplyFilter}
+        primaryReady={bgReady}
       />
-
-      <SideDrawer
-        open={!!previewLien}
-        onClose={() => setPreviewId(null)}
-        title={previewLien?.lienNumber || ""}
-        subtitle={previewLien?.lienTypeLabel}
-      >
-        {previewLien && (
-          <div className="space-y-4">
-            <StatusBadge status={previewLien.status} size="md" />
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-xs text-gray-400">Original</p>
-                <p className="font-medium text-gray-700">
-                  {formatCurrency(previewLien.originalAmount)}
-                </p>
-              </div>
-              {isSellMode && (
-                <div>
-                  <p className="text-xs text-gray-400">Offer Price</p>
-                  <p className="font-medium text-blue-600">
-                    {formatCurrency(previewLien.offerPrice)}
-                  </p>
-                </div>
-              )}
-              <div>
-                <p className="text-xs text-gray-400">Jurisdiction</p>
-                <p className="text-gray-700">
-                  {previewLien.jurisdiction || "\u2014"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Case</p>
-                <p className="text-gray-700">
-                  {previewLien.caseId ? (
-                    <Link
-                      href={`/lien/cases/${previewLien.caseId}`}
-                      className="text-primary hover:underline"
-                    >
-                      View Case
-                    </Link>
-                  ) : (
-                    "\u2014"
-                  )}
-                </p>
-              </div>
-            </div>
-            <Link
-              href={`/lien/liens/${previewLien.id}`}
-              className="block text-center text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
-            >
-              View Full Details
-            </Link>
-          </div>
-        )}
-      </SideDrawer>
     </div>
   );
 }

@@ -3,15 +3,12 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/lien/page-header';
+import { DateDisplay } from '@/components/ui/date-display';
 import { lienSalesService } from '@/lib/liens/lien-sales.service';
 import type { SellingPortfolioDto } from '@/lib/liens/lien-sales.types';
 
 function money(value?: number | null): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value ?? 0);
-}
-
-function date(value?: string | null): string {
-  return value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-';
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -117,7 +114,7 @@ export function LienSalesClient() {
                   <td className="px-4 py-3 text-sm text-gray-700">{item.lienCount}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{money(item.originalAmountTotal)}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{money(item.currentBalanceTotal)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{date(item.publishedAtUtc)}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500"><DateDisplay value={item.publishedAtUtc} format="date" fallback="-" /></td>
                   <td className="px-4 py-3 text-right">
                     <Link href={`/lien/sales/${item.id}`} className="text-sm font-medium text-primary hover:underline">Open</Link>
                   </td>

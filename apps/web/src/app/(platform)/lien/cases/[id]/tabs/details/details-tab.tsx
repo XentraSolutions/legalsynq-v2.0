@@ -1,20 +1,22 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLienStore } from "@/stores/lien-store";
 import { casesService, type CaseDetail } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
-import type { CaseUpdatesItem, UpdateCaseRequestDto } from "@/lib/cases/cases.types";
+import type {
+  CaseUpdatesItem,
+  UpdateCaseRequestDto,
+} from "@/lib/cases/cases.types";
 import { dateConverter, dateConvertertoIso } from "@/lib/cases/cases.mapper";
 import { useSessionContext } from "@/providers/session-provider";
-import { EmailSection } from "../../components/email-section";
-import { SmsSection } from "../../components/sms-section";
-import { ContactsSection } from "../../components/contacts-section";
+import { FeedsSection } from "../../components/feeds-section";
 import { CaseTrackingSection } from "./sections/case-tracking-section";
 import { PlaintiffSection } from "./sections/plaintiff-section";
 import { UpdatesSection } from "./sections/updates-section";
-import { TasksSection } from "./sections/tasks-section";
+import { LitigationStatusForm } from "@/components/lien/forms/litigation-form";
+import { DropdownOption } from "@/lib/lookup/lookup.types";
 
 function formatPhoneNumber(rawValue: string | number): string {
   const digits = String(rawValue).replace(/\D/g, "");
@@ -63,6 +65,7 @@ export function DetailsTab({
   const [tErrors, setTErrors] = useState<Record<string, string>>({});
 
   const [form, setForm] = useState({ ...d });
+  const [showLitigationForm, setShowLitigationForm] = useState(false);
 
   const { lookup } = useSessionContext();
 
@@ -83,10 +86,11 @@ export function DetailsTab({
       return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
 
-  const caseStatusList =
+  const [caseStatusList, setCaseStatusList] = useState(
     lookup?.CaseStatus.map((s) => {
       return { key: s.id, value: s.code, label: s.name };
-    }) ?? [];
+    }) ?? [],
+  );
 
   const resetPlaintiffForm = useCallback(() => {
     setForm({ ...d });
@@ -172,6 +176,11 @@ export function DetailsTab({
       notes: form.notes || "",
       demandAmount: d.demandAmount ?? 0.0,
       settlementAmount: d.settlementAmount ?? 0.0,
+      shareCase: form.shareCase == "Yes" ? "true" : "false",
+      minorComp: isMinor() ? "true" : "false",
+      caseDropped: form.caseDropped == "Yes" ? "true" : "false",
+      childSupportLiens: form.childSupportLiens == "Yes" ? "true" : "false",
+      isUccFiled: form.isUccFiled == "Yes" ? "true" : "false",
     };
     try {
       await casesService.updateCase(payload);
@@ -193,7 +202,76 @@ export function DetailsTab({
       setTSaving(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d, tDateOfIncident, tTrackingFollowUpDate, form, onCaseUpdated, addToast]);
+  }, [
+    d,
+    tSaving,
+    tDateOfIncident,
+    tTrackingFollowUpDate,
+    form,
+    onCaseUpdated,
+    addToast,
+  ]);
+
+  const isMinor = () => {
+    let result = false;
+    let age = 0;
+    // Convert strings to Date objects
+    const dob = new Date(form.clientDob);
+    const dol = new Date(form.dateOfIncident);
+    if (isNaN(dob.getTime()) || isNaN(dol.getTime())) {
+      age = 0; // invalid date
+      return;
+    }
+    age = dol.getFullYear() - dob.getFullYear();
+    // Adjust if the birthday hasn't occurred yet this year
+    const m = dol.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && dol.getDate() < dob.getDate())) {
+      age--;
+    }
+    age = age;
+    result = age < 18;
+    return result;
+  };
+  const updateCaseFlag = useCallback(
+    async (key: keyof CaseDetail, value: string) => {
+      try {
+        await casesService.updateCase({
+          caseId: d.id,
+          [key]: value,
+        });
+        addToast({
+          type: "success",
+          title: "Case Flag Updated",
+        });
+      } catch (err) {
+        if (err instanceof ApiError) {
+          addToast({
+            type: "error",
+            title: "Case Flag Update Failed",
+          });
+        }
+      }
+    },
+    [form],
+  );
+
+  const checkStatus = (caseStatus: string) => {
+    if (caseStatus.toLowerCase().includes("litigation")) {
+      setShowLitigationForm(true);
+    }
+  };
+
+  const setLitigationStatus = (status: DropdownOption) => {
+    setCaseStatusList((prev) =>
+      prev.map((s) =>
+        s.value.includes("Litigation")
+          ? { ...s, value: status.value, label: `Litigation (${status.label})` }
+          : s,
+      ),
+    );
+    updateField("status", status.value);
+    setShowLitigationForm(false);
+  };
 
   const leftContent = (
     <div className="space-y-4">
@@ -218,9 +296,12 @@ export function DetailsTab({
         tSaving={tSaving}
         onSave={handleTrackingSave}
         onCancel={() => {
+          resetTrackingForm();
           setEditingTracking(false);
           setTErrors({});
         }}
+        onUpdateCaseFlag={updateCaseFlag}
+        checkStatus={checkStatus}
       />
 
       <PlaintiffSection
@@ -241,33 +322,34 @@ export function DetailsTab({
         pSaving={pSaving}
         onSave={handlePlaintiffSave}
         onCancel={() => {
+          resetPlaintiffForm();
           setEditingPlaintiff(false);
           setPErrors({});
         }}
       />
 
       <UpdatesSection u={u} />
+      {showLitigationForm && (
+        <LitigationStatusForm
+          open={showLitigationForm}
+          onClose={() => setShowLitigationForm(false)}
+          onSubmitted={(v: DropdownOption) => {
+            setLitigationStatus(v);
+          }}
+        />
+      )}
     </div>
   );
 
   const rightContent = (
-    <div className="space-y-4">
-      <TasksSection caseId={d.id} />
-      <EmailSection />
-      <SmsSection />
-      <ContactsSection
-        items={[
-          {
-            icon: "ri-building-line",
-            iconBgClass: "bg-blue-50",
-            iconColorClass: "text-blue-500",
-            name: d.insuranceCarrier || "",
-            role: "Law Firm",
-          },
-        ]}
-      />
-    </div>
+    <FeedsSection
+      caseId={d.id}
+      panelMode={panelMode}
+      onPanelModeChange={onPanelModeChange}
+    />
   );
+
+  useEffect(() => {}, [lookup]);
 
   return (
     <LayoutSplit
@@ -275,6 +357,7 @@ export function DetailsTab({
       right={rightContent}
       mode={panelMode}
       onModeChange={onPanelModeChange}
+      showControls={false}
     />
   );
 }
