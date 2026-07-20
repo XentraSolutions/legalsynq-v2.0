@@ -355,6 +355,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     try {
       // Implement save logic here (API call)
       Promise.allSettled([
+        await createMedicalFacilityLiens(forms[1]),
         await saveMedicalPayee(forms[2]),
         await uploadDocuments(forms[3]),
         fetchDocument(),
