@@ -15,14 +15,15 @@ export default defineConfig({
         // resolver, bypassing the react/react-dom aliases below entirely —
         // so @radix-ui/* (used by BaseSelect, Dialog, etc.), its
         // @floating-ui/react-dom dependency (used by Popper-based
-        // primitives like Popover), and @tanstack/react-query (used by any
-        // component under test that fetches via a query hook) would each
-        // resolve their own nested react copy from apps/web's local pnpm
-        // store instead of the deduped one, producing a second dispatcher
+        // primitives like Popover), @tanstack/react-query (used by any
+        // component under test that fetches via a query hook), and
+        // @tanstack/react-table (used by BaseTable) would each resolve
+        // their own nested react copy from apps/web's local pnpm store
+        // instead of the deduped one, producing a second dispatcher
         // and "Cannot read properties of null" once rendered. Inlining
         // routes them through Vite instead, where the alias/dedupe below
         // actually apply.
-        inline: [/@radix-ui\//, /@floating-ui\//, /@tanstack\/react-query/],
+        inline: [/@radix-ui\//, /@floating-ui\//, /@tanstack\/react-query/, /@tanstack\/react-table/],
       },
     },
   },
