@@ -50,6 +50,7 @@ export const lienReportsService = {
       ...(data as unknown as Record<string, unknown>),
       items: items.map(mapReportToTemplate),
       data: items as CaseListItem[],
+      reportConfig: data?.reportConfig,
       summaryTotals: (data as unknown as { summaryTotals?: ReportTotals })
         .summaryTotals,
     };
