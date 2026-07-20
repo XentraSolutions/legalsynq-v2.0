@@ -17,6 +17,8 @@ public class AuthCareConnectCommonPortalPolicyTests
 {
     private const string PortalRestrictionMessage =
         "This account is not eligible to access the CareConnect portal.";
+    private const string SynqLienPortalRestrictionMessage =
+        "This account is not eligible to access the SynqLien funding portal.";
 
     private static WebApplicationFactory<Program> BuildFactory() =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -173,6 +175,128 @@ public class AuthCareConnectCommonPortalPolicyTests
                 ResolveByEmail: true)));
     }
 
+    [Fact]
+    public async Task Login_ResolveByEmail_SynqLien_AllowsBuyerOnly()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedSynqLienPortalUserAsync(factory, ["SYNQLIEN_BUYER"], systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var response = await authService.LoginAsync(new LoginRequest(
+            Email: seeded.Email,
+            Password: seeded.Password,
+            ResolveByEmail: true,
+            PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens));
+
+        Assert.Equal(seeded.TenantId, response.User.TenantId);
+        Assert.Contains("SYNQ_LIENS:SYNQLIEN_BUYER", response.User.ProductRoles ?? []);
+    }
+
+    [Fact]
+    public async Task Login_ResolveByEmail_SynqLien_AllowsBuyerAndHolder()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedSynqLienPortalUserAsync(
+            factory,
+            ["SYNQLIEN_BUYER", "SYNQLIEN_HOLDER"],
+            systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var response = await authService.LoginAsync(new LoginRequest(
+            Email: seeded.Email,
+            Password: seeded.Password,
+            ResolveByEmail: true,
+            PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens));
+
+        Assert.Equal(seeded.TenantId, response.User.TenantId);
+        Assert.Contains("SYNQ_LIENS:SYNQLIEN_BUYER", response.User.ProductRoles ?? []);
+        Assert.Contains("SYNQ_LIENS:SYNQLIEN_HOLDER", response.User.ProductRoles ?? []);
+    }
+
+    [Fact]
+    public async Task Login_ResolveByEmail_SynqLien_DeniesSeller()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedSynqLienPortalUserAsync(
+            factory,
+            ["SYNQLIEN_BUYER", "SYNQLIEN_SELLER"],
+            systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var ex = await Assert.ThrowsAsync<SynqLienPortalRoleRestrictedException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: seeded.Email,
+                Password: seeded.Password,
+                ResolveByEmail: true,
+                PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens)));
+
+        Assert.Equal(SynqLienPortalRestrictionMessage, ex.Message);
+    }
+
+    [Fact]
+    public async Task Login_ResolveByEmail_SynqLien_DeniesTenantAdmin()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedSynqLienPortalUserAsync(
+            factory,
+            ["SYNQLIEN_BUYER"],
+            systemRoles: ["TenantAdmin"]);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var ex = await Assert.ThrowsAsync<SynqLienPortalRoleRestrictedException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: seeded.Email,
+                Password: seeded.Password,
+                ResolveByEmail: true,
+                PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens)));
+
+        Assert.Equal(SynqLienPortalRestrictionMessage, ex.Message);
+    }
+
+    [Fact]
+    public async Task Login_ResolveByEmail_SynqLien_DeniesWhenNoBuyerRole()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedSynqLienPortalUserAsync(factory, productRoles: ["SYNQLIEN_HOLDER"], systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var ex = await Assert.ThrowsAsync<SynqLienPortalRoleRestrictedException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: seeded.Email,
+                Password: seeded.Password,
+                ResolveByEmail: true,
+                PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens)));
+
+        Assert.Equal(SynqLienPortalRestrictionMessage, ex.Message);
+    }
+
+    [Fact]
+    public async Task Login_ResolveByEmail_SynqLien_DeniesWhenNoSynqLienRole()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedSynqLienPortalUserAsync(factory, productRoles: [], systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: seeded.Email,
+                Password: seeded.Password,
+                ResolveByEmail: true,
+                PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens)));
+    }
+
     private static async Task<(Guid TenantId, string Email, string Password)> SeedCommonPortalUserAsync(
         WebApplicationFactory<Program> factory,
         IReadOnlyCollection<string> productRoles,
@@ -232,6 +356,86 @@ public class AuthCareConnectCommonPortalPolicyTests
                 user.Id,
                 roleCode,
                 BuildingBlocks.Authorization.ProductCodes.SynqCareConnect));
+        }
+
+        foreach (var systemRole in systemRoles.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var role = Role.Create(
+                tenant.Id,
+                systemRole,
+                description: $"{systemRole} test role",
+                isSystemRole: true,
+                scope: systemRole.Equals("PlatformAdmin", StringComparison.OrdinalIgnoreCase)
+                    ? RoleScopes.Platform
+                    : RoleScopes.Tenant);
+            db.Roles.Add(role);
+            db.ScopedRoleAssignments.Add(ScopedRoleAssignment.Create(
+                user.Id,
+                role.Id,
+                ScopedRoleAssignment.ScopeTypes.Global,
+                tenantId: tenant.Id));
+        }
+
+        await db.SaveChangesAsync();
+        return (tenant.Id, email, password);
+    }
+
+    private static async Task<(Guid TenantId, string Email, string Password)> SeedSynqLienPortalUserAsync(
+        WebApplicationFactory<Program> factory,
+        IReadOnlyCollection<string> productRoles,
+        IReadOnlyCollection<string> systemRoles)
+    {
+        const string password = "Password123!";
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+
+        var tenant = Tenant.Create("SynqLien Tenant", $"sl-{Guid.CreateVersion7():N}");
+        db.Tenants.Add(tenant);
+
+        var org = Organization.Create(tenant.Id, "Funding Buyer Org", OrgType.LienOwner, displayName: "Funding Buyer Org");
+        db.Organizations.Add(org);
+
+        var synqLienProduct = Product.Create("SynqLien", BuildingBlocks.Authorization.ProductCodes.SynqLiens);
+        db.Products.Add(synqLienProduct);
+        db.OrganizationProducts.Add(OrganizationProduct.Create(org.Id, synqLienProduct.Id));
+        db.Set<TenantProduct>().Add(TenantProduct.Create(tenant.Id, synqLienProduct.Id));
+
+        var distinctProductRoles = productRoles
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var roleCode in distinctProductRoles)
+        {
+            db.ProductRoles.Add(ProductRole.Create(synqLienProduct.Id, roleCode, roleCode.Replace('_', ' ')));
+        }
+
+        var email = $"synqlien-portal-{Guid.CreateVersion7():N}@example.com";
+        var user = User.Create(
+            tenant.Id,
+            email,
+            passwordHasher.Hash(password),
+            "SynqLien",
+            "Buyer");
+        db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, tenant.Id));
+
+        var membership = UserOrganizationMembership.Create(user.Id, org.Id, MemberRole.Member);
+        membership.SetPrimary();
+        db.UserOrganizationMemberships.Add(membership);
+
+        db.UserProductAccessRecords.Add(UserProductAccess.Create(
+            tenant.Id,
+            user.Id,
+            BuildingBlocks.Authorization.ProductCodes.SynqLiens));
+
+        foreach (var roleCode in distinctProductRoles)
+        {
+            db.UserRoleAssignments.Add(UserRoleAssignment.Create(
+                tenant.Id,
+                user.Id,
+                roleCode,
+                BuildingBlocks.Authorization.ProductCodes.SynqLiens));
         }
 
         foreach (var systemRole in systemRoles.Distinct(StringComparer.OrdinalIgnoreCase))

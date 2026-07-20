@@ -17,5 +17,10 @@ export default async function LoginPage() {
   const rawHost      = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '';
   const portalConfig = getServerPortalConfig(rawHost);
 
-  return <LoginPageClient portalProductId={portalConfig?.productId ?? null} />;
+  return (
+    <LoginPageClient
+      portalProductId={portalConfig?.productId ?? null}
+      portalLandingPath={portalConfig?.landingPath ?? null}
+    />
+  );
 }

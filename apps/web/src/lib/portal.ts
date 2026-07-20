@@ -40,7 +40,7 @@ function buildPortalConfigs(): Record<string, PortalConfig> {
   const synqLienSub = (process.env.PORTAL_SYNQLIEN_SUBDOMAIN ?? 'synqlien-demo').trim();
   if (synqLienSub) configs[synqLienSub] = {
     productId:       'synqlien',
-    landingPath:     '/lien/dashboard',
+    landingPath:     '/funding/dashboard',
     showAppSwitcher: false,
     showBottomNav:   false,
     logoSrc:         '/product-icons/synqlien.png',

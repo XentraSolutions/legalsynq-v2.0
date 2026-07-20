@@ -97,12 +97,29 @@ Two additional env vars are required when hosting the CareConnect common portal 
 
 If `CC_COMMON_PORTAL_HOSTNAME` is unset, the CC forgot-password path is silently disabled (a startup warning is logged). See `apps/gateway/README.md` for the required proxy header-stripping rules.
 
-### SynqLien common portal login
+### SynqLien funding common portal
 
-The SynqLien common portal currently has a login-page-only shell with no auth/API integration. It is selected by the product portal subdomain config:
+The SynqLien funding-company common portal uses the same Identity-backed `platform_session` cookie as CareConnect common portal login, but it serves buyer-side SynqLien users from `/funding/*`.
 
-| Variable | Default | Purpose |
+| Variable | Example / Default | Purpose |
 |---|---|---|
-| `PORTAL_SYNQLIEN_SUBDOMAIN` | `synqlien-demo` | Subdomain that renders the SynqLien-branded `/login` layout and points future portal redirects at `/lien/dashboard`. |
+| `SYNQLIEN_COMMON_PORTAL_HOSTNAME` | `funding.legalsynq.com` | Hostname the BFF uses to detect SynqLien common-portal login and send `resolveByEmail=true` with `portalProductCode=SYNQ_LIENS`. Root `/` redirects to `/funding/dashboard`. |
+| `PORTAL_SYNQLIEN_SUBDOMAIN` | `synqlien-demo` | Subdomain that renders the SynqLien-branded `/login` layout and defaults successful login to `/funding/dashboard`. |
 
-Until auth integration is added, submitting the SynqLien portal login form only shows an in-page "not connected yet" notice and does not call `/api/auth/login`. In full local dev, use `http://synqlien-demo.localhost:5000/login`; when running `next dev` directly, use the Next.js port instead.
+Eligibility is enforced in Identity and again in the web route layout: users must have SynqLien product access and `SYNQ_LIENS:SYNQLIEN_BUYER`, may also have `SYNQ_LIENS:SYNQLIEN_HOLDER`, and must not have platform/tenant system roles or `SYNQ_LIENS:SYNQLIEN_SELLER`.
+
+Implemented routes:
+
+| Route | Purpose |
+|---|---|
+| `/funding/dashboard` | Funding dashboard with KPI summary, pending offers, acquisition pipeline, provider performance, and Offer Inbox. |
+| `/funding/offered-liens` | Server-rendered offered-liens list with search, status filters, pagination, and API-authorized row actions. |
+
+The frontend is API-ready but does not include mock rows. Server components target the future Liens endpoints through the gateway:
+
+| Frontend server request | Liens service endpoint after gateway prefix removal |
+|---|---|
+| `/liens/api/liens/selling/buyer/dashboard?range=last7Days\|last30Days\|custom&from=&to=` | `/api/liens/selling/buyer/dashboard` |
+| `/liens/api/liens/selling/buyer/liens?status=&search=&page=&pageSize=` | `/api/liens/selling/buyer/liens` |
+
+Until those backend endpoints exist, the funding portal converts only `404`, `501`, and `204` responses into semantic empty states. `401`, `403`, and `5xx` remain auth/error states.
