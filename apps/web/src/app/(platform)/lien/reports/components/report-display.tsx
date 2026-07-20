@@ -136,9 +136,8 @@ export default function ReportDisplay({
   };
   const onExport = async () => {
     const response = await lienReportsService.exportReports({
+      ...report.reportConfig,
       reportId: report.reportId,
-      filters: report.filters,
-      columns: report.columns,
       format: "csv",
     });
 

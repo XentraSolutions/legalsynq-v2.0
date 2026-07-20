@@ -610,6 +610,7 @@ export default function CreateUpdateReport({
       data: reportDataRes.data,
       summaryTotals: reportDataRes.summaryTotals,
       ...payload,
+      reportConfig: { ...payload },
       config: { columns: cols },
       name: form.name,
       description: form.description,
@@ -755,185 +756,195 @@ export default function CreateUpdateReport({
       )}
 
       {/* STEP 2 */}
-      {currentStep === 1 && !isLoading ? (
-        <div className="bg-white border border-gray-200 rounded-lg px-5 py-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field
-              label="View By"
-              required
-              value={form.reportType}
-              options={data.reportType}
-              onChange={(v: string) => {
-                setForm({ ...form, reportType: v });
-              }}
-              type="select"
-            />
+      {currentStep === 1 &&
+        (!isLoading ? (
+          <div className="bg-white border border-gray-200 rounded-lg px-5 py-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field
+                label="View By"
+                required
+                value={form.reportType}
+                options={data.reportType}
+                onChange={(v: string) => {
+                  setForm({
+                    ...form,
+                    reportType: v,
+                    lienStatusIds: [],
+                    statusView: [],
+                  });
+                }}
+                type="select"
+              />
 
-            <Field
-              label="Status"
-              required
-              value={""}
-              options={data.statusView}
-              placeholder=""
-              onChange={(v: string) => {
-                setForm({ ...form, statusView: v });
-              }}
-              type="select"
-            />
-
-            <Field
-              type="date"
-              label="Closed Date"
-              value={form.closedDateFrom}
-              onChange={(v) => setForm({ ...form, closedDateFrom: v })}
-            />
-            <Field
-              type="date"
-              label="Purchase Date"
-              value={form.purchaseDateFrom}
-              onChange={(v) => setForm({ ...form, purchaseDateFrom: v })}
-            />
-
-            <Field
-              label="Law Firm"
-              value={form.lawFirmIds}
-              options={data.lawfirm ? data.lawfirm : []}
-              placeholder="Select one or more law firms"
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  lawFirmIds: Array.isArray(v) ? v : v ? [v] : [],
-                })
-              }
-              type="select"
-              multiple
-            />
-
-            <Field
-              label="Plaintiff Name"
-              value={form.plaintiffCaseIds}
-              options={data.plaintiff ? data.plaintiff : []}
-              placeholder="Select one or more plaintiffs"
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  plaintiffCaseIds: Array.isArray(v) ? v : v ? [v] : [],
-                })
-              }
-              type="select"
-              multiple
-            />
-
-            <Field
-              label="Attorney"
-              value={form.attorneyIds}
-              options={data.attorney ? data.attorney : []}
-              placeholder="Select one or more attorneys"
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  attorneyIds: Array.isArray(v) ? v : v ? [v] : [],
-                })
-              }
-              type="select"
-              multiple
-            />
-
-            <Field
-              label="Funding Company"
-              value={form.fundingCompanyIds}
-              options={data.funding ? data.funding : []}
-              placeholder="Select one or more funding companies"
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  fundingCompanyIds: Array.isArray(v) ? v : v ? [v] : [],
-                })
-              }
-              type="select"
-              multiple
-            />
-
-            <Field
-              label="Medical Facility"
-              value={form.medicalFacilityIds}
-              options={data.medicalFacility ? data.medicalFacility : []}
-              placeholder="Select one or more facilities"
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  medicalFacilityIds: Array.isArray(v) ? v : v ? [v] : [],
-                })
-              }
-              type="select"
-              multiple
-            />
-
-            <Field
-              label="Case Manager"
-              value={form.caseManagerIds}
-              options={data.caseManagers ? data.caseManagers : []}
-              placeholder="Select one or more case managers"
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  caseManagerIds: Array.isArray(v) ? v : v ? [v] : [],
-                })
-              }
-              type="select"
-              multiple
-            />
-
-            <Field
-              label="Medical Provider"
-              value={form.medicalProviderIds}
-              options={data.medicalProviders ? data.medicalProviders : []}
-              placeholder="Select one or more providers"
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  medicalProviderIds: Array.isArray(v) ? v : v ? [v] : [],
-                })
-              }
-              type="select"
-              multiple
-            />
-            <Field
-              label="Lien Status"
-              value={form.lienStatusIds}
-              options={data.liensStatus ? data.liensStatus : []}
-              placeholder="Select one or more lien statuses"
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  lienStatusIds: Array.isArray(v) ? v : v ? [v] : [],
-                })
-              }
-              type="select"
-              multiple
-            />
-
-            <div className="sm:col-span-2">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-                  onChange={(v) =>
-                    setForm({ ...form, isBulk: v.target.checked ? "Y" : "N" })
-                  }
-                  value={form.isBulk}
+              {form.reportType == "CASE" ? (
+                <Field
+                  label="Status"
+                  required
+                  value={form.statusView}
+                  options={data.statusView}
+                  placeholder=""
+                  onChange={(v: string) => {
+                    console.log;
+                    setForm({ ...form, statusView: v });
+                  }}
+                  type="select"
                 />
-                <div>
-                  <p className="text-sm font-medium text-gray-700">BULK</p>
-                  <p className="text-xs text-gray-400">Mark as Bulk.</p>
-                </div>
-              </label>
+              ) : (
+                <Field
+                  label="Lien Status"
+                  value={form.lienStatusIds}
+                  options={data.liensStatus ? data.liensStatus : []}
+                  placeholder="Select one or more lien statuses"
+                  onChange={(v) =>
+                    setForm({
+                      ...form,
+                      lienStatusIds: Array.isArray(v) ? v : v ? [v] : [],
+                    })
+                  }
+                  type="select"
+                  multiple
+                />
+              )}
+
+              <Field
+                type="date"
+                label="Closed Date"
+                value={form.closedDateFrom}
+                onChange={(v) => setForm({ ...form, closedDateFrom: v })}
+              />
+              <Field
+                type="date"
+                label="Purchase Date"
+                value={form.purchaseDateFrom}
+                onChange={(v) => setForm({ ...form, purchaseDateFrom: v })}
+              />
+
+              <Field
+                label="Law Firm"
+                value={form.lawFirmIds}
+                options={data.lawfirm ? data.lawfirm : []}
+                placeholder="Select one or more law firms"
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    lawFirmIds: Array.isArray(v) ? v : v ? [v] : [],
+                  })
+                }
+                type="select"
+                multiple
+              />
+
+              <Field
+                label="Plaintiff Name"
+                value={form.plaintiffCaseIds}
+                options={data.plaintiff ? data.plaintiff : []}
+                placeholder="Select one or more plaintiffs"
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    plaintiffCaseIds: Array.isArray(v) ? v : v ? [v] : [],
+                  })
+                }
+                type="select"
+                multiple
+              />
+
+              <Field
+                label="Attorney"
+                value={form.attorneyIds}
+                options={data.attorney ? data.attorney : []}
+                placeholder="Select one or more attorneys"
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    attorneyIds: Array.isArray(v) ? v : v ? [v] : [],
+                  })
+                }
+                type="select"
+                multiple
+              />
+
+              <Field
+                label="Funding Company"
+                value={form.fundingCompanyIds}
+                options={data.funding ? data.funding : []}
+                placeholder="Select one or more funding companies"
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    fundingCompanyIds: Array.isArray(v) ? v : v ? [v] : [],
+                  })
+                }
+                type="select"
+                multiple
+              />
+
+              <Field
+                label="Medical Facility"
+                value={form.medicalFacilityIds}
+                options={data.medicalFacility ? data.medicalFacility : []}
+                placeholder="Select one or more facilities"
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    medicalFacilityIds: Array.isArray(v) ? v : v ? [v] : [],
+                  })
+                }
+                type="select"
+                multiple
+              />
+
+              <Field
+                label="Case Manager"
+                value={form.caseManagerIds}
+                options={data.caseManagers ? data.caseManagers : []}
+                placeholder="Select one or more case managers"
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    caseManagerIds: Array.isArray(v) ? v : v ? [v] : [],
+                  })
+                }
+                type="select"
+                multiple
+              />
+
+              <Field
+                label="Medical Provider"
+                value={form.medicalProviderIds}
+                options={data.medicalProviders ? data.medicalProviders : []}
+                placeholder="Select one or more providers"
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    medicalProviderIds: Array.isArray(v) ? v : v ? [v] : [],
+                  })
+                }
+                type="select"
+                multiple
+              />
+
+              <div className="sm:col-span-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    onChange={(v) =>
+                      setForm({ ...form, isBulk: v.target.checked ? "Y" : "N" })
+                    }
+                    value={form.isBulk}
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">BULK</p>
+                    <p className="text-xs text-gray-400">Mark as Bulk.</p>
+                  </div>
+                </label>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <>Loading filters...</>
-      )}
+        ) : (
+          <>Loading filters...</>
+        ))}
 
       {/* STEP 3 */}
       {currentStep === 2 && (
