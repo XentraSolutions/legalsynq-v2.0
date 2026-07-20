@@ -9,6 +9,7 @@ import {
   type CaseFeedNote,
 } from "@/lib/liens/lien-case-notes-legacy.service";
 import { ConfirmDialog } from "@/components/lien/modal";
+import { DateDisplay } from "@/components/ui/date-display";
 import type { PanelMode } from "@/components/lien/layout-split";
 
 type FeedTab = "notes" | "email";
@@ -185,7 +186,9 @@ function NotesFeed({ caseId }: { caseId: string }) {
                         <p className="text-sm font-semibold text-gray-800 truncate">
                           {emailToDisplayName(note.createdBy)}
                         </p>
-                        <p className="text-xs text-gray-400">{note.created}</p>
+                        <p className="text-xs text-gray-400">
+                          <DateDisplay value={note.created} format="datetime" />
+                        </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {note.isDeleted === "Y" && (
