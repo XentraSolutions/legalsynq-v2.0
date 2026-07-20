@@ -58,6 +58,15 @@ public static class AuthEndpoints
                     status = 403,
                 }, statusCode: 403);
             }
+            catch (SynqLienPortalRoleRestrictedException ex)
+            {
+                return Results.Json(new
+                {
+                    title = "SynqLienPortalRoleRestricted",
+                    detail = ex.Message,
+                    status = 403,
+                }, statusCode: 403);
+            }
             catch (InvalidOperationException ex)
             {
                 return Results.Problem(ex.Message, statusCode: 400);

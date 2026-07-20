@@ -1,8 +1,7 @@
 "use client";
 
-import { Suspense, useMemo, useState, useEffect, type FormEvent } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
 import { LoginForm } from "./login-form";
 import { useTenantBranding } from "@/providers/tenant-branding-provider";
 import Link from "next/link";
@@ -138,27 +137,14 @@ const SYNQLIEN_HIGHLIGHTS = [
   },
 ];
 
-const SYNQLIEN_REASON_MESSAGES: Record<string, { icon: string; text: string }> = {
-  idle: {
-    icon: "ri-time-line",
-    text: "Your session expired due to inactivity. Please sign in again.",
-  },
-  unauthenticated: {
-    icon: "ri-shield-keyhole-line",
-    text: "Your session has ended. Please sign in to continue.",
-  },
-  access_updated: {
-    icon: "ri-lock-unlock-line",
-    text: "Your access permissions have changed. Please sign in again to continue.",
-  },
-};
-
 // ── Main export ────────────────────────────────────────────────────────────────
 
 export function LoginPageClient({
   portalProductId,
+  portalLandingPath,
 }: {
   portalProductId?: "careconnect" | "synqlien" | null;
+  portalLandingPath?: string | null;
 }) {
   const [year, setYear] = useState<number | null>(null);
   useEffect(() => {
@@ -166,11 +152,11 @@ export function LoginPageClient({
   }, []);
 
   if (portalProductId === "careconnect") {
-    return <CareConnectLoginLayout year={year} />;
+    return <CareConnectLoginLayout year={year} defaultReturnTo={portalLandingPath ?? "/careconnect/dashboard"} />;
   }
 
   if (portalProductId === "synqlien") {
-    return <SynqLienLoginLayout year={year} />;
+    return <SynqLienLoginLayout year={year} defaultReturnTo={portalLandingPath ?? "/funding/dashboard"} />;
   }
 
   return <LegalSynqLoginLayout year={year} />;
@@ -178,7 +164,13 @@ export function LoginPageClient({
 
 // ── CareConnect layout ─────────────────────────────────────────────────────────
 
-function CareConnectLoginLayout({ year }: { year: number | null }) {
+function CareConnectLoginLayout({
+  year,
+  defaultReturnTo,
+}: {
+  year: number | null;
+  defaultReturnTo: string;
+}) {
   // Deep teal-blue palette — healthcare / CareConnect brand
   const bg = "#0c4a6e";
   const accent = "#38bdf8";
@@ -305,7 +297,7 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
           </div>
 
           <Suspense fallback={null}>
-            <LoginForm />
+            <LoginForm defaultReturnTo={defaultReturnTo} />
           </Suspense>
 
           <p className="mt-6 text-center text-xs text-gray-400">
@@ -325,7 +317,13 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
 
 // ── SynqLien layout ───────────────────────────────────────────────────────────
 
-function SynqLienLoginLayout({ year }: { year: number | null }) {
+function SynqLienLoginLayout({
+  year,
+  defaultReturnTo,
+}: {
+  year: number | null;
+  defaultReturnTo: string;
+}) {
   const bg = "#111827";
   const accent = "#f97316";
   const accentA = "rgba(249,115,22,0.14)";
@@ -428,7 +426,7 @@ function SynqLienLoginLayout({ year }: { year: number | null }) {
         </div>
       </div>
 
-      {/* ── Right panel — static login form ──────────────────────────────── */}
+      {/* ── Right panel — login form ─────────────────────────────────────── */}
       <div className="flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 px-6 py-12 bg-gray-50">
         <div className="lg:hidden mb-10">
           <SynqLienLogo compact dark testId="sl-mobile-logo" />
@@ -445,7 +443,7 @@ function SynqLienLoginLayout({ year }: { year: number | null }) {
           </div>
 
           <Suspense fallback={null}>
-            <SynqLienStaticLoginForm />
+            <LoginForm defaultReturnTo={defaultReturnTo} />
           </Suspense>
 
           <p className="mt-6 text-center text-xs text-gray-400">
@@ -493,124 +491,6 @@ function SynqLienLogo({
       >
         Synq<span style={{ color: "#f97316" }}>Lien</span>
       </span>
-    </div>
-  );
-}
-
-function SynqLienStaticLoginForm() {
-  const searchParams = useSearchParams();
-  const reasonBanner = useMemo(() => {
-    const r = searchParams?.get("reason") ?? "";
-    return SYNQLIEN_REASON_MESSAGES[r] ?? null;
-  }, [searchParams]);
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setNotice("SynqLien portal sign-in is not connected yet.");
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-      {reasonBanner && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-3">
-          <i className={`${reasonBanner.icon} text-[15px] text-blue-500 shrink-0 mt-0.5`} />
-          <p className="text-[13px] text-blue-700 leading-snug">
-            {reasonBanner.text}
-          </p>
-        </div>
-      )}
-
-      <PortalField label="Email address">
-        <input
-          type="text"
-          inputMode="email"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          required
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          autoComplete="email"
-          placeholder="you@example.com"
-          className={portalInputCls}
-        />
-      </PortalField>
-
-      <PortalField label="Password">
-        <div className="relative">
-          <input
-            type={showPw ? "text" : "password"}
-            required
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            autoComplete="current-password"
-            placeholder="••••••••"
-            className={`${portalInputCls} pr-10`}
-          />
-          <button
-            type="button"
-            tabIndex={-1}
-            onClick={() => setShowPw(v => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-            aria-label={showPw ? "Hide password" : "Show password"}
-          >
-            <i className={`${showPw ? "ri-eye-off-line" : "ri-eye-line"} text-[16px]`} />
-          </button>
-        </div>
-      </PortalField>
-
-      <div className="flex justify-end -mt-1">
-        <Link
-          href="/coming-soon"
-          className="text-[13px] text-gray-500 hover:text-gray-700 underline underline-offset-2 transition-colors"
-        >
-          Forgot password?
-        </Link>
-      </div>
-
-      {notice && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-orange-200 bg-orange-50 px-3.5 py-3">
-          <i className="ri-information-line text-[15px] text-orange-500 shrink-0 mt-0.5" />
-          <p className="text-[13px] text-orange-700 leading-snug">{notice}</p>
-        </div>
-      )}
-
-      <button
-        type="submit"
-        className="w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-95"
-        style={{ backgroundColor: "#f97316" }}
-      >
-        Sign in
-      </button>
-    </form>
-  );
-}
-
-const portalInputCls = [
-  "w-full rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900",
-  "placeholder:text-gray-400",
-  "focus:outline-none focus:ring-2 focus:border-transparent",
-  "transition-shadow",
-].join(" ") + " focus:ring-[#f97316]/40 focus:border-[#f97316]";
-
-function PortalField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="flex items-center gap-1.5 text-[13px] font-medium text-gray-700">
-        {label}
-      </label>
-      {children}
     </div>
   );
 }

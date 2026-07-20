@@ -19,6 +19,8 @@ public class AuthService : IAuthService
 {
     private const string CareConnectPortalRestrictionMessage =
         "This account is not eligible to access the CareConnect portal.";
+    private const string SynqLienPortalRestrictionMessage =
+        "This account is not eligible to access the SynqLien funding portal.";
 
     private readonly IUserRepository _userRepository;
     private readonly ITenantRepository _tenantRepository;
@@ -65,14 +67,25 @@ public class AuthService : IAuthService
         var emailNorm       = request.Email.ToLowerInvariant();
 
         // AUTH-CC01: Common-portal email-based tenant resolution.
-        // When the portal cannot resolve a tenant from the subdomain (e.g. the common portal
-        // careconnect-demo.legalsynq.com serves multiple tenants), the BFF sets ResolveByEmail=true.
-        // We look up the user globally by email, find their tenant, then proceed with the normal
-        // password-verification path.  Always throw UnauthorizedAccessException on any failure so
-        // the caller cannot distinguish "email not found" from "wrong password".
+        // When a common portal cannot resolve a tenant from the subdomain, the BFF sets
+        // ResolveByEmail=true and may provide PortalProductCode. We look up the user globally
+        // by email, find an eligible tenant for that portal product, then proceed with the
+        // normal password-verification path. Null PortalProductCode keeps historical
+        // CareConnect behavior for older callers.
         if (request.ResolveByEmail)
         {
-            _logger.LogInformation("AUTH-CC01: email-based tenant resolution for email={EmailMasked}", PiiGuard.MaskEmail(emailNorm));
+            var portalProductCode = NormalizePortalProductCode(request.PortalProductCode);
+            if (portalProductCode is null)
+            {
+                EmitLoginFailed(emailNorm, tenantCode: "common-portal", userId: null, reason: "UnsupportedPortalProduct", ipAddress: ipAddress);
+                throw new UnauthorizedAccessException();
+            }
+
+            var portalProductName = PortalProductAuditName(portalProductCode);
+            _logger.LogInformation(
+                "AUTH-CC01: email-based tenant resolution for product={ProductCode} email={EmailMasked}",
+                portalProductCode, PiiGuard.MaskEmail(emailNorm));
+
             var globalUser = await _userRepository.GetByEmailAsync(emailNorm, ct);
             if (globalUser is null || !globalUser.IsActive)
             {
@@ -118,20 +131,20 @@ public class AuthService : IAuthService
 
             if (globalTenant is null)
             {
-                const string CcProductPrefix = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":";
+                var portalProductPrefix = portalProductCode + ":";
                 foreach (var membership in activeMemberships)
                 {
                     var membershipTenant = membership.Tenant!;
                     var access = await _effectiveAccessService.GetEffectiveAccessAsync(
                         membershipTenant.Id, globalUser.Id, ct);
 
-                    var hasCareConnectProduct = access.Products.Contains(
-                        BuildingBlocks.Authorization.ProductCodes.SynqCareConnect,
+                    var hasPortalProduct = access.Products.Contains(
+                        portalProductCode,
                         StringComparer.OrdinalIgnoreCase);
-                    var hasCareConnectRole = access.ProductRolesFlat.Any(r =>
-                        r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase));
+                    var hasPortalRole = access.ProductRolesFlat.Any(r =>
+                        r.StartsWith(portalProductPrefix, StringComparison.OrdinalIgnoreCase));
 
-                    if (hasCareConnectProduct && hasCareConnectRole)
+                    if (hasPortalProduct && hasPortalRole)
                     {
                         globalTenant = membershipTenant;
                         break;
@@ -142,9 +155,14 @@ public class AuthService : IAuthService
             if (globalTenant is null)
             {
                 _logger.LogWarning(
-                    "AUTH-CC01: LoginAsync failed: NoCareConnectTenant userId={UserId} emailMasked={EmailMasked} ip={Ip}",
-                    globalUser.Id, PiiGuard.MaskEmail(emailNorm), ipAddress);
-                EmitLoginFailed(emailNorm, tenantCode: "common-portal", userId: globalUser.Id.ToString(), reason: "NoCareConnectTenant", ipAddress: ipAddress);
+                    "AUTH-CC01: LoginAsync failed: No{ProductName}Tenant userId={UserId} emailMasked={EmailMasked} ip={Ip}",
+                    portalProductName, globalUser.Id, PiiGuard.MaskEmail(emailNorm), ipAddress);
+                EmitLoginFailed(
+                    emailNorm,
+                    tenantCode: "common-portal",
+                    userId: globalUser.Id.ToString(),
+                    reason: $"No{portalProductName}Tenant",
+                    ipAddress: ipAddress);
                 throw new UnauthorizedAccessException();
             }
 
@@ -158,7 +176,6 @@ public class AuthService : IAuthService
                 globalTenant.Code, globalTenant.Id, PiiGuard.MaskEmail(emailNorm));
 
             // Skip all tenant-lookup branches; go straight to user+lock+password checks.
-            var ccUser = globalUser.IsLocked ? null : globalUser; // honour lock state below
             if (globalUser.IsLocked)
             {
                 _logger.LogWarning(
@@ -169,8 +186,8 @@ public class AuthService : IAuthService
                 throw new UnauthorizedAccessException();
             }
 
-            var ccValid = _passwordHasher.Verify(request.Password, globalUser.PasswordHash);
-            if (!ccValid)
+            var portalPasswordValid = _passwordHasher.Verify(request.Password, globalUser.PasswordHash);
+            if (!portalPasswordValid)
             {
                 _logger.LogWarning(
                     "AUTH-CC01: LoginAsync failed: InvalidCredentials userId={UserId} tenantCode={TenantCode} emailMasked={EmailMasked} ip={Ip}",
@@ -179,15 +196,22 @@ public class AuthService : IAuthService
                 throw new UnauthorizedAccessException();
             }
 
-            var ccUserWithRoles = await _userRepository.GetByIdWithRolesAsync(globalUser.Id, ct);
-            if (ccUserWithRoles is null)
+            var portalUserWithRoles = await _userRepository.GetByIdWithRolesAsync(globalUser.Id, ct);
+            if (portalUserWithRoles is null)
             {
                 EmitLoginFailed(emailNorm, tenantCode: globalTenant.Code, userId: globalUser.Id.ToString(), reason: "RoleLookupFailed", ipAddress: ipAddress);
                 throw new UnauthorizedAccessException();
             }
 
             // Delegate the rest (role extraction, membership, JWT) to the shared tail.
-            return await BuildLoginResponseAsync(ccUserWithRoles, globalTenant, request, sw, ipAddress, ct, requireCareConnectAccess: true);
+            return await BuildLoginResponseAsync(
+                portalUserWithRoles,
+                globalTenant,
+                request,
+                sw,
+                ipAddress,
+                ct,
+                requiredPortalProductCode: portalProductCode);
         }
 
         var tenant = await _tenantRepository.GetByCodeAsync(tenantCodeNorm, ct);
@@ -323,16 +347,14 @@ public class AuthService : IAuthService
         Stopwatch sw,
         string? ipAddress,
         CancellationToken ct,
-        bool requireCareConnectAccess = false,
+        string? requiredPortalProductCode = null,
         bool requireTenantAccess = false)
     {
-        // requireCareConnectAccess and requireTenantAccess are mutually exclusive guard paths:
-        // the CC portal path checks for a CC product role; the tenant portal path checks for
-        // a system role.  Passing both true would apply the tenant-portal block first, which
-        // is coincidentally correct but semantically wrong.  Assert here so any future caller
-        // error is caught immediately in Debug/test builds.
-        Debug.Assert(!(requireCareConnectAccess && requireTenantAccess),
-            "requireCareConnectAccess and requireTenantAccess are mutually exclusive guard paths.");
+        // Common-portal and tenant-portal guards are mutually exclusive. Passing both
+        // would make the system-role tenant guard run before product eligibility, which is
+        // semantically wrong and would hide portal-policy failures.
+        Debug.Assert(!(requiredPortalProductCode is not null && requireTenantAccess),
+            "requiredPortalProductCode and requireTenantAccess are mutually exclusive guard paths.");
 
         // Phase G: ScopedRoleAssignments (GLOBAL) is the sole authoritative role source.
         // UserRoles table has been dropped (migration 20260330200004).
@@ -377,39 +399,37 @@ public class AuthService : IAuthService
             : null;
 
         var productRolesFlat = effectiveAccess.ProductRolesFlat;
-        const string CcProductPrefix   = BuildingBlocks.Authorization.ProductCodes.SynqCareConnect + ":";
-        var hasCareConnectProduct = effectiveAccess.Products.Contains(
-            BuildingBlocks.Authorization.ProductCodes.SynqCareConnect,
-            StringComparer.OrdinalIgnoreCase);
 
         // Load all active tenant memberships to populate tenant_ids JWT claim and LoginResponse.Tenants.
         var tenantMemberships = await _userRepository.GetActiveTenantMembershipsAsync(userWithRoles.Id, ct);
 
-        // CareConnect portal logins require both explicit product access and a CareConnect role.
-        if (requireCareConnectAccess && !hasCareConnectProduct)
+        // Common portal logins require explicit product access and a role from that product.
+        if (requiredPortalProductCode is not null
+            && !effectiveAccess.Products.Contains(requiredPortalProductCode, StringComparer.OrdinalIgnoreCase))
         {
             EmitLoginFailed(
                 userWithRoles.Email,
                 tenantCode: tenant.Code,
                 userId:     userWithRoles.Id.ToString(),
-                reason:     "NoCareConnectProduct",
+                reason:     $"No{PortalProductAuditName(requiredPortalProductCode)}Product",
                 ipAddress:  ipAddress);
             throw new UnauthorizedAccessException();
         }
 
-        if (requireCareConnectAccess
-            && !productRolesFlat.Any(r => r.StartsWith(CcProductPrefix, StringComparison.OrdinalIgnoreCase)))
+        if (requiredPortalProductCode is not null
+            && !productRolesFlat.Any(r => r.StartsWith(requiredPortalProductCode + ":", StringComparison.OrdinalIgnoreCase)))
         {
             EmitLoginFailed(
                 userWithRoles.Email,
                 tenantCode: tenant.Code,
                 userId:     userWithRoles.Id.ToString(),
-                reason:     "NoCareConnectRole",
+                reason:     $"No{PortalProductAuditName(requiredPortalProductCode)}Role",
                 ipAddress:  ipAddress);
             throw new UnauthorizedAccessException();
         }
 
-        if (requireCareConnectAccess && !IsEligibleForCareConnectPortal(productRolesFlat, roleNames))
+        if (requiredPortalProductCode == BuildingBlocks.Authorization.ProductCodes.SynqCareConnect
+            && !IsEligibleForCareConnectPortal(productRolesFlat, roleNames))
         {
             EmitLoginFailed(
                 userWithRoles.Email,
@@ -418,6 +438,18 @@ public class AuthService : IAuthService
                 reason:     "CareConnectPortalRoleRestricted",
                 ipAddress:  ipAddress);
             throw new CareConnectPortalRoleRestrictedException(CareConnectPortalRestrictionMessage);
+        }
+
+        if (requiredPortalProductCode == BuildingBlocks.Authorization.ProductCodes.SynqLiens
+            && !IsEligibleForSynqLienFundingPortal(productRolesFlat, roleNames))
+        {
+            EmitLoginFailed(
+                userWithRoles.Email,
+                tenantCode: tenant.Code,
+                userId:     userWithRoles.Id.ToString(),
+                reason:     "SynqLienPortalRoleRestricted",
+                ipAddress:  ipAddress);
+            throw new SynqLienPortalRoleRestrictedException(SynqLienPortalRestrictionMessage);
         }
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
@@ -672,6 +704,52 @@ public class AuthService : IAuthService
         return careConnectRoles.All(role =>
             string.Equals(role, ProductRoleCodes.CareConnectReceiver, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(role, ProductRoleCodes.CareConnectReferrer, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsEligibleForSynqLienFundingPortal(
+        IReadOnlyCollection<string> productRolesFlat,
+        IReadOnlyCollection<string> roleNames)
+    {
+        if (roleNames.Count > 0)
+            return false;
+
+        var synqLienRoles = productRolesFlat
+            .Where(r => r.StartsWith(BuildingBlocks.Authorization.ProductCodes.SynqLiens + ":", StringComparison.OrdinalIgnoreCase))
+            .Select(r => r[(BuildingBlocks.Authorization.ProductCodes.SynqLiens.Length + 1)..])
+            .ToList();
+
+        if (!synqLienRoles.Any(role =>
+                string.Equals(role, ProductRoleCodes.SynqLienBuyer, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        if (synqLienRoles.Any(role =>
+                string.Equals(role, ProductRoleCodes.SynqLienSeller, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        return synqLienRoles.All(role =>
+            string.Equals(role, ProductRoleCodes.SynqLienBuyer, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, ProductRoleCodes.SynqLienHolder, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? NormalizePortalProductCode(string? productCode)
+    {
+        var normalized = string.IsNullOrWhiteSpace(productCode)
+            ? BuildingBlocks.Authorization.ProductCodes.SynqCareConnect
+            : productCode.Trim().ToUpperInvariant();
+
+        return normalized switch
+        {
+            BuildingBlocks.Authorization.ProductCodes.SynqCareConnect => BuildingBlocks.Authorization.ProductCodes.SynqCareConnect,
+            BuildingBlocks.Authorization.ProductCodes.SynqLiens => BuildingBlocks.Authorization.ProductCodes.SynqLiens,
+            _ => null,
+        };
+    }
+
+    private static string PortalProductAuditName(string productCode)
+    {
+        return productCode.Equals(BuildingBlocks.Authorization.ProductCodes.SynqLiens, StringComparison.OrdinalIgnoreCase)
+            ? "SynqLien"
+            : "CareConnect";
     }
 
     // Maps the DB product Code column → the frontend ProductCode (TypeScript).

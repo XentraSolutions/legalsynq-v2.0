@@ -8,6 +8,8 @@ const IS_PROD                 = process.env.NODE_ENV === 'production';
 // Matches CC_COMMON_PORTAL_HOSTNAME in middleware.ts.
 const CC_COMMON_PORTAL_HOSTNAME =
   normalizeCareConnectPortalHost(process.env.CC_COMMON_PORTAL_HOSTNAME);
+const SYNQLIEN_COMMON_PORTAL_HOSTNAME =
+  normalizeCareConnectPortalHost(process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME);
 
 interface RateLimitEntry {
   count: number;
@@ -18,6 +20,7 @@ const loginRateLimit  = new Map<string, RateLimitEntry>();
 const LOGIN_LIMIT     = 20;
 const LOGIN_WINDOW    = 5 * 60 * 1000;
 const CARECONNECT_PORTAL_RESTRICTED_TITLE = 'CareConnectPortalRoleRestricted';
+const SYNQLIEN_PORTAL_RESTRICTED_TITLE = 'SynqLienPortalRoleRestricted';
 
 function checkLoginRateLimit(ip: string): boolean {
   const now   = Date.now();
@@ -92,7 +95,14 @@ export async function POST(request: NextRequest) {
   // email.  This covers the case where CC_COMMON_PORTAL_HOSTNAME has no subdomain
   // (e.g. bare "localhost") so extractRawSubdomain returns null.
   const isCommonPortalHost =
-    !!CC_COMMON_PORTAL_HOSTNAME && incomingHost === CC_COMMON_PORTAL_HOSTNAME;
+    (!!CC_COMMON_PORTAL_HOSTNAME && incomingHost === CC_COMMON_PORTAL_HOSTNAME) ||
+    (!!SYNQLIEN_COMMON_PORTAL_HOSTNAME && incomingHost === SYNQLIEN_COMMON_PORTAL_HOSTNAME);
+  const portalProductCode =
+    !!SYNQLIEN_COMMON_PORTAL_HOSTNAME && incomingHost === SYNQLIEN_COMMON_PORTAL_HOSTNAME
+      ? 'SYNQ_LIENS'
+      : isCommonPortalHost
+        ? 'SYNQ_CARECONNECT'
+        : null;
 
   const tenantCode = isCommonPortalHost
     ? 'common-portal'                          // placeholder — not sent to Identity
@@ -118,7 +128,7 @@ export async function POST(request: NextRequest) {
   let resolveByEmail = isCommonPortalHost;
 
   if (isCommonPortalHost) {
-    console.log(`[login] AUTH-CC01 common portal host detected (${incomingHost}) — resolving by email`);
+    console.log(`[login] AUTH-CC01 common portal host detected (${incomingHost}) product=${portalProductCode} — resolving by email`);
   } else if (rawSubdomain) {
     try {
       const tenantRes = await fetch(
@@ -136,6 +146,9 @@ export async function POST(request: NextRequest) {
         // Common portal — subdomain is not a tenant identifier.
         // Identity will resolve the tenant from the user's email.
         resolveByEmail = true;
+        // Historical CareConnect fallback: unknown tenant subdomains under the
+        // portal namespace resolve by email unless a hostname explicitly selected
+        // another common-portal product above.
         console.log(`[login] AUTH-CC01 subdomain=${rawSubdomain} not found in Tenant service — resolving by email`);
       } else {
         console.log(`[login] AUTH-B01 tenant resolve by-subdomain returned ${tenantRes.status}, proceeding without tenantId fallback`);
@@ -153,6 +166,7 @@ export async function POST(request: NextRequest) {
     subdomain: rawSubdomain,
     tenantId: resolvedTenantId,
     resolveByEmail,
+    portalProductCode,
   });
   const outgoingBytes = new TextEncoder().encode(outgoingBody);
 
@@ -183,6 +197,13 @@ export async function POST(request: NextRequest) {
     if (isCommonPortalHost && upstreamTitle === CARECONNECT_PORTAL_RESTRICTED_TITLE) {
       return NextResponse.json(
         { message: upstreamMessage ?? 'This account cannot sign in to the CareConnect portal.' },
+        { status: 403 },
+      );
+    }
+
+    if (isCommonPortalHost && upstreamTitle === SYNQLIEN_PORTAL_RESTRICTED_TITLE) {
+      return NextResponse.json(
+        { message: upstreamMessage ?? 'This account cannot sign in to the SynqLien funding portal.' },
         { status: 403 },
       );
     }
