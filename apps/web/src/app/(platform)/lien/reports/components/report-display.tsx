@@ -5,7 +5,9 @@ import { KpiCard } from "@/components/lien/kpi-card";
 import { ApiError } from "@/lib/api-client";
 import { CaseListItem } from "@/lib/cases";
 import {
+  ColumnGroup,
   CreateReports,
+  DynamicColumns,
   ExportReportRequest,
   ReportListResponse,
   ReportsResponse,
@@ -190,28 +192,27 @@ export default function ReportDisplay({
       .map(([key, value]) => ({
         value,
       }));
-    if(!report.config?.columns){
+    if (!report.config?.columns) {
       const cols = groupedCols
-      .flatMap((config) => config.value)
-      .map((item) => {
-        return { key: item.key, label: item.label };
-      })
-    setColumns(cols);
-    setCases(report.data ?? []);
-      
+        .flatMap((config: any) => config.value)
+        .map((item) => {
+          return { key: item.key, label: item.label };
+        });
+      setColumns(cols);
+      setCases(report.data ?? []);
     } else {
-    const labels = groupedCols
-      .flatMap((config) => config.value)
-      .filter((item) => report.config?.columns.includes(item.key))
-      .map((item) => {
-        return { key: item.key, label: item.label };
-      });
+      const labels = groupedCols
+        .flatMap((config: any) => config.value)
+        .filter((item) => report.config?.columns.includes(item.key))
+        .map((item) => {
+          return { key: item.key, label: item.label };
+        });
 
-    setColumns(labels);
-    setCases(report.data ?? []);
+      setColumns(labels);
+      setCases(report.data ?? []);
     }
 
-    setLoading(false)
+    setLoading(false);
   }, [report]);
 
   useEffect(() => {
