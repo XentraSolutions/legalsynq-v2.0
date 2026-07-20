@@ -9,12 +9,15 @@ export type Columns = {
 
 export type ColumnGroup = {
   key: string; // category name (liensInfo, etc.)
-  value: Columns[]; // list of columns
+  value: ReportColumnOption[]; // list of columns
 };
 
 export interface ReportColumnOption {
   key: string;
   label: string;
+  isDefault: boolean;
+  sectionKey?: string;
+  sortOrder?: number;
 }
 
 export type ReportColumnValue = string | ReportColumnOption;
@@ -96,7 +99,7 @@ export interface ReportConfigResponse {
 export interface ReportTemplate {
   name?: string;
   description?: string;
-  reportType: "CASES"| "LIENS";
+  reportType: "CASES" | "LIENS";
   statusView: string;
   lienStatusIds: Array<string>;
   purchaseDateFrom: string | null;
@@ -136,7 +139,7 @@ export interface ReportsResponse {
   returned_amt: null;
   reportConfig?: ReportConfig;
   summaryTotals?: ReportTotals;
-  reportType: "CASES"|"LIENS";
+  reportType: "CASES" | "LIENS";
 }
 
 interface ReportConfig {
@@ -171,6 +174,14 @@ export interface ReportTotals {
   totalClosedCases: number;
   totalOpenLiens: number;
   totalClosedLiens: number;
+}
+
+export interface ReportColumnReponse extends DynamicColumns {
+  reportType: string;
+  message: string;
+}
+export interface DynamicColumns {
+  [sectionName: string]: string | ColumnGroup[];
 }
 
 export interface UpdateReportConfigRequest {

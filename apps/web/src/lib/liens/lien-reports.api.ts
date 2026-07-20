@@ -9,11 +9,13 @@ import {
   CreateReports,
   ExportReportRequest,
   FilterQuery,
+  ReportColumnReponse,
   ReportsResponse,
   ReportTemplate,
   UpdateReportConfigRequest,
   ViewType,
 } from "./lien-report.types";
+import { ReportColumnDto } from "../reports/reports.types";
 
 const BASE_PATH = "/lien/report/diy";
 
@@ -28,7 +30,9 @@ export const lienReportsApi = {
     );
   },
   getColumns(viewType: ViewType) {
-    return apiClient.get<any>(`${BASE_PATH}/columns?reportType=${viewType}`);
+    return apiClient.get<ReportColumnReponse>(
+      `${BASE_PATH}/columns?reportType=${viewType}`,
+    );
   },
 
   getFilterOptions(query: FilterQuery) {

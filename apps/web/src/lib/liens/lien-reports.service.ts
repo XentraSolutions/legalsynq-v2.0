@@ -5,7 +5,7 @@ import {
   CreateReports,
   ExportReportRequest,
   FilterQuery,
-  ReportConfigResponse,
+  ReportColumnReponse,
   ReportListResponse,
   ReportsResponse,
   ReportTemplate,
@@ -85,10 +85,9 @@ export const lienReportsService = {
     return data ?? [];
   },
 
-  async getColumns(viewBy: ViewType): Promise<any[]> {
+  async getColumns(viewBy: ViewType): Promise<ReportColumnReponse> {
     const { data } = await lienReportsApi.getColumns(viewBy);
     return data;
-    mapAllColumns(viewBy, data);
   },
 
   async getFilterOptions(query: FilterQuery): Promise<ApiResponse[]> {

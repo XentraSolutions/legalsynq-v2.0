@@ -26,7 +26,7 @@ import {
 } from "@dnd-kit/sortable";
 
 import { CSS } from "@dnd-kit/utilities";
-import { useContacts } from "@/hooks/use-contacts";
+import { ColumnGroup, ReportColumnOption } from "@/lib/liens/lien-report.types";
 
 const INITIAL_FORM = {
   name: "",
@@ -73,12 +73,14 @@ export default function CreateUpdateReport({
   const [searchInputSelected, setSearchInputSelected] = useState<string>("");
 
   const [form, setForm] = useState(
-    initialData ? { ...initialData } : { ...INITIAL_FORM },
+    initialData
+      ? { ...initialData, ...initialData.config }
+      : { ...INITIAL_FORM },
   );
-
   const [checkedAvailable, setCheckedAvailable] = useState<any>([]);
   const [checkedSelected, setCheckedSelected] = useState<any>([]);
   const [isValid, setIsValid] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   function categoryDescription(category: string) {
     let res = category;
@@ -115,7 +117,6 @@ export default function CreateUpdateReport({
   );
   const fetchConfig = async () => {
     const colsResponse = await lienReportsService.getColumns(form.reportType);
-
     const { ...columnGroups } = colsResponse;
 
     const excludedKeys = new Set([
@@ -126,12 +127,14 @@ export default function CreateUpdateReport({
       "defaultColumn",
     ]);
 
-    const groupedCols = Object.entries(columnGroups)
+    const groupedCols: ColumnGroup[] = Object.entries(
+      columnGroups as Record<string, unknown>,
+    )
       .filter(([key]) => !excludedKeys.has(key))
       .filter(([_, value]) => Array.isArray(value))
       .map(([key, value]) => ({
         key,
-        value,
+        value: value as ReportColumnOption[],
       }));
 
     setCols(groupedCols);
@@ -143,17 +146,18 @@ export default function CreateUpdateReport({
     let selected;
 
     if (hasSelectedCols) {
-      const groupedSelection: any = {};
-
+      const groupedSelection: Record<string, ReportColumnOption[]> = {};
       form.config.columns.forEach((columnKey: string, index: number) => {
-        const section = groupedCols.find((group) =>
-          group.value.some((item: ColsType) => item.key === columnKey),
+        const section = groupedCols.find((group: ColumnGroup) =>
+          group.value.some(
+            (item: ReportColumnOption) => item.key === columnKey,
+          ),
         );
 
         if (!section) return;
 
         const column = section.value.find(
-          (item: ColsType) => item.key === columnKey,
+          (item: ReportColumnOption) => item.key === columnKey,
         );
 
         if (!groupedSelection[section.key]) {
@@ -164,7 +168,7 @@ export default function CreateUpdateReport({
           ...column,
           sectionKey: section.key,
           sortOrder: index + 1,
-        });
+        } as ReportColumnOption);
       });
 
       selected = Object.entries(groupedSelection).map(([key, value]) => ({
@@ -174,26 +178,55 @@ export default function CreateUpdateReport({
     } else {
       let sortOrder = 1;
 
+      const globallyOrderedItems = groupedCols
+        .flatMap((section) =>
+          (section.value || []).map((item) => ({
+            ...item,
+            sectionKey: section.key,
+          })),
+        )
+        .filter((item) => item?.isDefault)
+        .sort((a, b) => {
+          const rawResponse = colsResponse as Record<string, unknown>;
+
+          const defaultColsArray = Array.isArray(rawResponse.defaultColumn)
+            ? (rawResponse.defaultColumn as string[])
+            : [];
+
+          const indexA = defaultColsArray.indexOf(a.key);
+          const indexB = defaultColsArray.indexOf(b.key);
+
+          return (
+            (indexA === -1 ? Infinity : indexA) -
+            (indexB === -1 ? Infinity : indexB)
+          );
+        })
+        .map((item) => ({
+          ...item,
+          sortOrder: sortOrder++,
+        }));
+
+      // Step 2: Re-group them back into the original format based on the original groupedCols order
       selected = groupedCols
-        .map((section) => ({
-          key: section.key,
-          value: section.value
-            .filter((item: any) => item.isDefault)
-            .map((item: any) => ({
-              ...item,
-              sectionKey: section.key,
-              sortOrder: sortOrder++,
-            })),
-        }))
+        .map((section) => {
+          // Pull out only the items that belong to this specific section
+          const sectionItems = globallyOrderedItems.filter(
+            (item) => item.sectionKey === section.key,
+          );
+
+          return {
+            key: section.key,
+            value: sectionItems,
+          };
+        })
+        // Filter out any sections that ended up with 0 items
         .filter((section) => section.value.length > 0);
     }
-
     setSelectedCols(selected);
     setFilteredSelectedCols(selected);
-
     setCheckedAvailable(
       selected.flatMap((section) =>
-        section.value.map((item: ColsType) => ({
+        section.value.map((item: ReportColumnOption) => ({
           ...item,
         })),
       ),
@@ -246,7 +279,7 @@ export default function CreateUpdateReport({
             { key: "LIENS", value: "LIENS", label: "LIENS" },
             { key: "CASE", value: "CASE", label: "CASE" },
           ],
-          statusView: [],
+          statusView: "",
           lawfirm: [],
           plaintiff: [],
           attorney: [],
@@ -261,7 +294,7 @@ export default function CreateUpdateReport({
             { key: "LIENS", value: "LIENS", label: "LIENS" },
             { key: "CASE", value: "CASE", label: "CASE" },
           ],
-          statusView: [],
+          statusView: "",
           lawfirm: [],
           plaintiff: [],
           attorney: [],
@@ -344,13 +377,14 @@ export default function CreateUpdateReport({
       liensStatus:
         liensStatusRes.status === "fulfilled"
           ? [
-              { key: "all", value: "all", label: "All" },
+              { key: "all", value: "", label: "All" },
               ...liensStatusRes.value.items.map((c) => {
                 return { key: c.id, value: c.id, label: c.name };
               }),
             ]
-          : [{ key: "all", value: "all", label: "All" }],
+          : [{ key: "all", value: "", label: "All" }],
     }));
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -545,9 +579,9 @@ export default function CreateUpdateReport({
       section.value.map((item: any) => item.key),
     );
     const payload = {
-      viewBy: form.viewBy ?? form.reportType,
+      viewBy: form.reportType,
       reportType: form.reportType,
-      statusView: form.statusView ?? [],
+      statusView: form.statusView ?? "",
       lienStatusIds: form.lienStatusIds ?? [],
       purchaseDateFrom: form.purchaseDateFrom ?? [],
       purchaseDateTo: form.purchaseDateTo ?? null,
@@ -571,6 +605,7 @@ export default function CreateUpdateReport({
     const reportRows = Array.isArray(reportDataRes.data)
       ? reportDataRes.data
       : [];
+    console.log(cols);
     return {
       data: reportDataRes.data,
       summaryTotals: reportDataRes.summaryTotals,
@@ -720,7 +755,7 @@ export default function CreateUpdateReport({
       )}
 
       {/* STEP 2 */}
-      {currentStep === 1 && (
+      {currentStep === 1 && !isLoading ? (
         <div className="bg-white border border-gray-200 rounded-lg px-5 py-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field
@@ -737,8 +772,8 @@ export default function CreateUpdateReport({
             <Field
               label="Status"
               required
-              value={form.statusView}
-              options={data.statusView ? data.statusView : []}
+              value={""}
+              options={data.statusView}
               placeholder=""
               onChange={(v: string) => {
                 setForm({ ...form, statusView: v });
@@ -896,6 +931,8 @@ export default function CreateUpdateReport({
             </div>
           </div>
         </div>
+      ) : (
+        <>Loading filters...</>
       )}
 
       {/* STEP 3 */}
