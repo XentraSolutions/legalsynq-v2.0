@@ -224,9 +224,6 @@ export const casesApi = {
   createMedicalLiens(request: CreateMedicalLiensDto) {
     return apiClient.post<ApiResponse>(`${BASE}/liens/medical`, request);
   },
-  createMedicalFacilityLiens(request: CreateMedicalFacilityDto) {
-    return apiClient.post<ApiResponse>(`${BASE}/liens/facility`, request);
-  },
   createMedicalPaymentLiens(request: CreateMedicalPaymentDto) {
     return apiClient.post<ApiResponse>(`${BASE}/liens/payment`, request);
   },

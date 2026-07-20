@@ -191,7 +191,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     }
   };
 
-  const createMedicalFacilityLiens = async (
+  const saveMedicalFacilityLiens = async (
     payload: CreateMedicalFacilityDto,
   ) => {
     try {
@@ -205,7 +205,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
         medicalProviderId: payload.medicalProviderId,
         medicalProvider: payload.medicalProvider,
       };
-      await casesService.createMedicalFacilityLiens(request);
+      await casesService.updateMedicalFacilityLiens(request);
       addToast({
         type: "success",
         title: "Facility Created",
@@ -355,7 +355,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     try {
       // Implement save logic here (API call)
       Promise.allSettled([
-        await createMedicalFacilityLiens(forms[1]),
+        await saveMedicalFacilityLiens(forms[1]),
         await saveMedicalPayee(forms[2]),
         await uploadDocuments(forms[3]),
         fetchDocument(),

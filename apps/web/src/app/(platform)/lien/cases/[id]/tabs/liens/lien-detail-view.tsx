@@ -162,9 +162,7 @@ export function LienDetailView({
         medicalProviderId: payload.medicalProviderId,
         medicalProvider: payload.medicalProvider,
       };
-      !forms[1].hasInitialValue
-        ? await casesService.createMedicalFacilityLiens(request)
-        : await casesService.updateMedicalFacilityLiens(request);
+      await casesService.updateMedicalFacilityLiens(request);
       // addToast({
       //   type: "success",
       //   title: "Facility Updated",

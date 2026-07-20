@@ -198,13 +198,6 @@ export const casesService = {
     return data;
   },
 
-  async createMedicalFacilityLiens(
-    request: CreateMedicalFacilityDto,
-  ): Promise<any> {
-    const { data } = await casesApi.createMedicalFacilityLiens(request);
-    return data;
-  },
-
   async updateMedicalLiens(request: CreateMedicalLiensDto): Promise<any> {
     const { data } = await casesApi.updateMedicalLiens(request);
     return data;
