@@ -92,10 +92,13 @@ test.describe(`SynqLien lien detail — Medical Facility and Provider Informatio
     await expect(baseSelectTrigger(page, 'Provider Name')).toHaveText(providerName);
 
     // Page-level Save persists the lien's whole Medical Liens form (not just
-    // this section) and navigates back to the case's Liens tab afterward —
-    // the toast is rendered from a global store, so it's still visible there.
+    // this section, hence the generic toast title) and navigates back to the
+    // case's Liens tab afterward — the toast is rendered from a global
+    // store, so it's still visible there. lien-detail-view.tsx's save()
+    // used to also fire a per-section "Facility Updated" toast; that's been
+    // removed (commented out), leaving this one as the only success signal.
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByText('Facility Updated')).toBeVisible();
+    await expect(page.getByText('Liens Updated')).toBeVisible();
   });
 
   test('Facility Name persists after reloading the lien (Contact Person/Provider do not — known backend gap)', async ({
