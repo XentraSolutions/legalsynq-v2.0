@@ -99,7 +99,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
 
   const { caseId, caseInfo, purchase, onClose } = props;
   const totalSteps = steps.length;
-  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [currentStep, setCurrentStep] = useState<number>(4);
   const [loading, setLoading] = useState(false);
   const [forms, setForms] = useState<any[]>(Array(totalSteps).fill(null));
   const [valid, setValid] = useState<Record<number, boolean>>({});

@@ -101,8 +101,9 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     }) ?? [];
   const [documents, setDocuments] = useState<any[]>(data);
   const [files, setFiles] = useState<File[] | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  useEffect(() => {}, [data]);
+  useEffect(() => {}, [data, isSubmitting]);
 
   function getFileIcon(filename: string): string {
     const ext = filename.split(".").pop()?.toLowerCase() ?? "";
@@ -150,44 +151,51 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     }
   }, [confirmAction]);
 
-  const uploadLiensDocuments = async () => {
-    if (!files || files.length == 0) return;
-    try {
-      files.forEach(async (element: File) => {
-        const formData = new FormData();
-        formData.append("File", element ?? "");
-        formData.append("liensId", lienId ?? "");
-        formData.append("DocName", element.name);
-        formData.append("DocDescription", "Legacy Lien Document upload");
-        formData.append("DocFileTypeId", form.documentType);
+  const uploadLiensDocuments = useCallback(async () => {
+    setIsSubmitting(true);
 
-        await casesService.uploadLiensDocuments(formData);
-        addToast({
-          type: "success",
-          title: "Document Uploaded",
-          description: `Document has been Uploaded.`,
+    if (!files) return;
+    setTimeout(() => {
+      try {
+        files.forEach(async (element: File) => {
+          const formData = new FormData();
+          formData.append("File", element ?? "");
+          formData.append("liensId", lienId ?? "");
+          formData.append("DocName", element.name);
+          formData.append("DocDescription", "Legacy Lien Document upload");
+          formData.append("DocFileTypeId", form.documentType);
+
+          await casesService.uploadLiensDocuments(formData);
+          addToast({
+            type: "success",
+            title: "Document Uploaded",
+            description: `Document has been Uploaded.`,
+          });
+          dropzoneRef?.current?.reset();
+          setForm(initialForm);
+          props?.onUploaded?.(true, "");
+          props.onFormValid?.(true, "");
+          setIsSubmitting(false);
         });
-        dropzoneRef?.current?.reset();
-        setForm(initialForm);
-        props?.onUploaded?.(true, "");
-        props.onFormValid?.(true, "");
-      });
-    } catch (err) {
-      if (err instanceof ApiError) {
-        addToast({
-          type: "error",
-          title: "Upload Failed",
-          description: err.message,
-        });
-      } else {
-        addToast({
-          type: "error",
-          title: "Upload Failed",
-          description: "An unexpected error occurred",
-        });
+      } catch (err) {
+        setIsSubmitting(false);
+
+        if (err instanceof ApiError) {
+          addToast({
+            type: "error",
+            title: "Upload Failed",
+            description: err.message,
+          });
+        } else {
+          addToast({
+            type: "error",
+            title: "Upload Failed",
+            description: "An unexpected error occurred",
+          });
+        }
       }
-    }
-  };
+    }, 0);
+  }, [isSubmitting, files]);
 
   const fetchDocument = async () => {
     const docs = await casesService.loadLiensDocuments(lienId ?? "");
@@ -246,19 +254,20 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         <div className="mt-4">
           <UploadDocumentComponent
             ref={dropzoneRef}
-            onUploaded={(e: File[] | null) => {
-              setFiles(e);
+            onUploaded={(e: File[]) => {
+              const finalizedFiles =
+                Array.isArray(e) &&
+                e.length > 0 &&
+                e.every((item) => item instanceof File);
+
+              setFiles(finalizedFiles ? e : null);
             }}
           />
           <button
-            disabled={files != null && !form.documentType}
-            className={[
-              "w-full mt-3 mb-5 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2",
-              files && form.documentType
-                ? "bg-primary text-white hover:bg-primary/90"
-                : "bg-gray-100 text-gray-400 cursor-not-allowed",
-            ].join(" ")}
-            onClick={() => {
+            disabled={!files?.length || !form.documentType || isSubmitting}
+            className="w-full mt-3 mb-5 px-4 py-2.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+            onClick={(e) => {
+              e.stopPropagation();
               uploadLiensDocuments();
             }}
           >
