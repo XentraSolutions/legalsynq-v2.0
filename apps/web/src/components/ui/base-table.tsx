@@ -174,6 +174,31 @@ export function BaseTable<TData>({
   const totalCols =
     (selectable ? 1 : 0) + (expandable ? 1 : 0) + table.getVisibleLeafColumns().length;
 
+  const handleHeaderClick = React.useCallback(
+    (columnId: string) => {
+      const nextSorting = (prevSorting: SortingState) => {
+        const currentSort = prevSorting.find((item) => item.id === columnId);
+
+        if (!currentSort) {
+          return [{ id: columnId, desc: false }];
+        }
+
+        if (currentSort.desc === false) {
+          return [{ id: columnId, desc: true }];
+        }
+
+        return [];
+      };
+
+      if (onSortingChange) {
+        onSortingChange(nextSorting);
+      } else {
+        table.setSorting(nextSorting);
+      }
+    },
+    [onSortingChange, table],
+  );
+
   const { pageIndex } = table.getState().pagination;
   const pageCountResolved = table.getPageCount();
   const showPagination = enablePagination && pageCountResolved > 1;
@@ -214,7 +239,7 @@ export function BaseTable<TData>({
                       sortable && "cursor-pointer select-none",
                       meta?.headerClassName,
                     )}
-                    onClick={sortable ? header.column.getToggleSortingHandler() : undefined}
+                    onClick={sortable ? () => handleHeaderClick(header.column.id) : undefined}
                   >
                     <span className={cn("inline-flex items-center gap-1", align === "right" && "flex-row-reverse")}>
                       {header.isPlaceholder
