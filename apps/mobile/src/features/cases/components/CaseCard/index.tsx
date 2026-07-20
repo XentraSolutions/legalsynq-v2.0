@@ -52,7 +52,7 @@ function DetailRow({
       </Text>
       <Text
         className={cx(FIGMA_TEXT.bodyStrong, 'max-w-[52%] text-right text-[#292b31] dark:text-white')}
-        numberOfLines={1}
+        numberOfLines={2}
       >
         {value || '—'}
       </Text>
