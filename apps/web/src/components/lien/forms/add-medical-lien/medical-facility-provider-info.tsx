@@ -41,17 +41,28 @@ export default function MedicalFacilityProviderInfo(
   const [form, setForm] = useState<MedicalFacilityFormState>(
     data ? { ...data, lienId: lienId } : { ...INITIAL_FORM, lienId: lienId },
   );
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    validateForm();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form]);
 
   function validateForm() {
-    const isValid = !!form.facility;
+    const isValid = !!form.facilityId;
     onFormValid?.(isValid, form);
   }
+
+  const [isDirty, setIsDirty] = useState(false);
+
+  const updateForm = (updates: Partial<MedicalFacilityFormState>) => {
+    setIsDirty(true);
+
+    setForm((prev) => ({
+      ...prev,
+      ...updates,
+    }));
+  };
+
+  useEffect(() => {
+    if (!isDirty) return;
+
+    validateForm();
+  }, [form, isDirty]);
 
   return (
     <div className="container-fluid">
@@ -77,7 +88,7 @@ export default function MedicalFacilityProviderInfo(
               contactType="MedicalFacility"
               value={form.facilityId}
               onChange={(v, option) =>
-                setForm({
+                updateForm({
                   ...form,
                   facilityId: v,
                   facility: option.label,
@@ -104,7 +115,7 @@ export default function MedicalFacilityProviderInfo(
               parentHint="Select a facility first"
               value={form.facilityContactId}
               onChange={(v, option) =>
-                setForm({
+                updateForm({
                   ...form,
                   facilityContactId: v,
                   facilityContact: option.label,
@@ -122,7 +133,7 @@ export default function MedicalFacilityProviderInfo(
             type="email"
             label="Email Address"
             value={form.email}
-            onChange={(v) => setForm({ ...form, email: v.toString() })}
+            onChange={(v) => updateForm({ ...form, email: v.toString() })}
           />
         </div>
 
@@ -139,7 +150,7 @@ export default function MedicalFacilityProviderInfo(
               contactType="Provider"
               value={form.medicalProviderId}
               onChange={(v, option) =>
-                setForm({
+                updateForm({
                   ...form,
                   medicalProviderId: v,
                   medicalProvider: option.label,

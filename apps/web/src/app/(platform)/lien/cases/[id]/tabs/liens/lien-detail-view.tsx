@@ -150,7 +150,7 @@ export function LienDetailView({
   const saveMedicalFacilityLiens = async (
     payload: CreateMedicalFacilityDto,
   ) => {
-    if (!payload.facilityId) return;
+    if (!payload) return;
     try {
       const request: CreateMedicalFacilityDto = {
         liensId: lienId,
@@ -165,11 +165,11 @@ export function LienDetailView({
       !forms[1].hasInitialValue
         ? await casesService.createMedicalFacilityLiens(request)
         : await casesService.updateMedicalFacilityLiens(request);
-      addToast({
-        type: "success",
-        title: "Facility Updated",
-        description: `Facility has been updated.`,
-      });
+      // addToast({
+      //   type: "success",
+      //   title: "Facility Updated",
+      //   description: `Facility has been updated.`,
+      // });
       setErrors({});
     } catch (err) {
       if (err instanceof ApiError) {
@@ -190,7 +190,7 @@ export function LienDetailView({
 
   const saveMedicalPayee = async (payload: CreateMedicalPaymentDto) => {
     try {
-      if (!lienId) return;
+      if (!lienId || !payload) return;
       const request: CreateMedicalPaymentDto = {
         id: null,
         liensId: lienId,

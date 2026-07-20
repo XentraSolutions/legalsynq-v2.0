@@ -269,7 +269,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
   };
   const saveMedicalPayee = async (payload: CreateMedicalPaymentDto) => {
     try {
-      if (!liensId) return;
+      if (!liensId || !payload) return;
 
       const request: CreateMedicalPaymentDto = {
         id: null,
