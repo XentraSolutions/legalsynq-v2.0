@@ -25,7 +25,7 @@ import {
 import { useSessionContext } from "@/providers/session-provider";
 import { ConfirmDialog, Modal } from "@/components/lien/modal";
 import { ContactPicker } from "@/components/lien/contact-picker";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 
@@ -42,6 +42,7 @@ export const dynamic = "force-dynamic";
 export default function ContactsPage() {
   const addToast = useLienStore((s) => s.addToast);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const ra = useRoleAccess();
   const queryClient = useQueryClient();
 
@@ -51,7 +52,9 @@ export default function ContactsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
+  // Driven by the ?type= query param (see the tabs below) so tab links are
+  // real navigable links rather than plain state-setting buttons.
+  const typeFilter = searchParams.get("type") ?? "";
   const [showCreate, setShowCreate] = useState<{
     open: boolean;
     mode?: "create" | "edit" | undefined;
@@ -290,9 +293,9 @@ export default function ContactsPage() {
   // Preselect the first tab once contact types load, since there's no more "All" tab.
   useEffect(() => {
     if (!typeFilter && tabs.length > 0) {
-      setTypeFilter(tabs[0].key);
+      router.replace(`/lien/contacts?type=${tabs[0].key}`);
     }
-  }, [tabs, typeFilter]);
+  }, [tabs, typeFilter, router]);
 
   const nameColumnLabel = typeFilter
     ? (contactTypeMap[typeFilter] ?? "Contact Name")
@@ -433,9 +436,9 @@ export default function ContactsPage() {
       {/* Contact type tabs */}
       <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200 pb-0">
         {tabs.map((tab) => (
-          <button
+          <Link
             key={tab.key}
-            onClick={() => setTypeFilter(tab.key)}
+            href={`/lien/contacts?type=${tab.key}`}
             className={`shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               typeFilter === tab.key
                 ? "border-primary text-primary"
@@ -443,7 +446,7 @@ export default function ContactsPage() {
             }`}
           >
             {tab.label}
-          </button>
+          </Link>
         ))}
       </div>
 

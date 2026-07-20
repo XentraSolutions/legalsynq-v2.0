@@ -14,6 +14,10 @@ import { expect, type Locator, type Page } from '@playwright/test';
  * — it defaults to preselecting the first tab — so searching for a contact
  * of a different type without switching tabs would filter it out of the
  * results entirely.
+ *
+ * Tabs are real links (`?type=<code>` navigation, see contacts/page.tsx) so
+ * a readonly spec can also click through them — hence `getByRole('link')`
+ * here rather than 'button'.
  */
 export async function findContactRow(
   page: Page,
@@ -21,7 +25,7 @@ export async function findContactRow(
   tabLabel?: string,
 ): Promise<Locator> {
   if (tabLabel) {
-    await page.getByRole('button', { name: tabLabel, exact: true }).click();
+    await page.getByRole('link', { name: tabLabel, exact: true }).click();
   }
   await page
     .getByPlaceholder('Search contacts by name, org, or email...')
