@@ -307,6 +307,8 @@ export default function CreateUpdateReport({
   );
 
   const fetchData = useCallback(async () => {
+    setIsLoading(true);
+
     const [
       caseStatusRes,
       casesRes,
