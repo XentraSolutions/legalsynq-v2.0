@@ -67,7 +67,7 @@ export interface ReportListResponse {
   createdAt?: string;
   createdBy?: string;
   updatedAt?: string;
-  reportConfig?: ReportConfig;
+  reportConfig: ReportConfig;
   columnCount?: number;
   summaryTotals?: ReportTotals;
 }

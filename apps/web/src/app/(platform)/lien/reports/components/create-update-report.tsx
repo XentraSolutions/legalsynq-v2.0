@@ -572,7 +572,6 @@ export default function CreateUpdateReport({
       return;
     }
     const reportData = await createReportTemplate();
-    console.log(reportData);
     onSaved(reportData);
   };
 
@@ -607,7 +606,6 @@ export default function CreateUpdateReport({
     const reportRows = Array.isArray(reportDataRes.data)
       ? reportDataRes.data
       : [];
-    console.log(cols);
     return {
       data: reportDataRes.data,
       summaryTotals: reportDataRes.summaryTotals,
@@ -786,7 +784,6 @@ export default function CreateUpdateReport({
                   options={data.statusView}
                   placeholder=""
                   onChange={(v: string) => {
-                    console.log;
                     setForm({ ...form, statusView: v });
                   }}
                   type="select"
@@ -794,6 +791,7 @@ export default function CreateUpdateReport({
               ) : (
                 <Field
                   label="Lien Status"
+                  required
                   value={form.lienStatusIds}
                   options={data.liensStatus ? data.liensStatus : []}
                   placeholder="Select one or more lien statuses"
