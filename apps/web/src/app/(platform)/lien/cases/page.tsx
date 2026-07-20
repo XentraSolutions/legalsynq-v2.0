@@ -64,6 +64,15 @@ const SORT_BY_MAP: Record<string, string> = {
   accidentType: "accidentType",
 };
 
+function countActiveFilters(f: CasesFilterValues): number {
+  return (
+    (f.lawFirmId.length ? 1 : 0) +
+    (f.accidentTypeId.length ? 1 : 0) +
+    (f.caseManagerId.length ? 1 : 0) +
+    (f.statusId.length ? 1 : 0)
+  );
+}
+
 const BULK_ACTIONS: BulkActionConfig[] = [
   {
     key: "advance-status",
@@ -94,6 +103,7 @@ export default function CasesPage() {
 
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const [filters, setFilters] = useState<CasesFilterValues>(EMPTY_CASES_FILTERS);
   const [showCreate, setShowCreate] = useState(false);
@@ -101,7 +111,6 @@ export default function CasesPage() {
   const [showMedicalLien, setShowMedicalLien] = useState(false);
 
   const [confirmAction, setConfirmAction] = useState<boolean>(false);
-  const [actionOpen, setActionOpen] = useState(false);
 
   const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -226,6 +235,60 @@ export default function CasesPage() {
   };
 
   const allIds = cases?.items.map((c) => c.id) ?? [];
+  const activeFilterCount = countActiveFilters(filters);
+
+  const searchDropdown = searchFocused ? (
+    <div
+      onMouseDown={(e) => e.preventDefault()}
+      className="absolute left-0 right-0 top-full mt-1 max-h-96 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50"
+    >
+      {isLoading ? (
+        <div className="px-4 py-3 text-sm text-gray-400">Searching...</div>
+      ) : (cases?.items.length ?? 0) === 0 ? (
+        <div className="px-4 py-3 text-sm text-gray-400">No cases found.</div>
+      ) : (
+        cases!.items.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => {
+              setSearchFocused(false);
+              router.push(`/lien/cases/${c.id}`);
+            }}
+            className="w-full text-left px-4 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+          >
+            <div className="text-sm font-semibold text-gray-800">
+              {c.clientName}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              <span className="text-primary">Date of Loss: </span>
+              <span className="text-gray-700">{c.dateOfIncident}</span>
+              {", "}
+              <span className="text-primary">Date of Birth: </span>
+              <span className="text-gray-700">{c.clientDob}</span>
+              {c.lawFirm ? `, ${c.lawFirm}` : ""}
+              {" "}
+              <span className="text-primary">Case ID: </span>
+              <span className="text-gray-700">{c.caseNumber}</span>
+            </div>
+          </button>
+        ))
+      )}
+      {ra.can("case:create") && (
+        <button
+          type="button"
+          onClick={() => {
+            setSearchFocused(false);
+            setShowCreate(true);
+          }}
+          className="w-full text-left px-4 py-2.5 text-sm font-medium text-primary hover:bg-gray-50 flex items-center gap-1.5 border-t border-gray-100"
+        >
+          <i className="ri-add-line text-base" />
+          Add New Case
+        </button>
+      )}
+    </div>
+  ) : null;
 
   const columns = useMemo<ColumnDef<CaseListItem, any>[]>(
     () => [
@@ -315,54 +378,15 @@ export default function CasesPage() {
         title="Cases"
         subtitle={isLoading ? "Loading..." : `${pagination.totalCount} cases`}
         actions={
-          <div className="relative">
-            {/* Dropdown Button */}
+          ra.can("case:create") ? (
             <button
-              onClick={() => setActionOpen(!actionOpen)}
+              onClick={() => setShowCreate(true)}
               className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
             >
-              Actions
-              <i className="ri-arrow-down-s-line text-base" />
+              <i className="ri-add-line text-base" />
+              Add New Case
             </button>
-            {/* Dropdown Menu */}
-            {actionOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                {/* Create Case */}
-                {ra.can("case:create") && (
-                  <button
-                    onClick={() => {
-                      setShowCreate(true);
-                      setActionOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                  >
-                    Create Case
-                  </button>
-                )}
-                {/* Filter */}
-                <button
-                  onClick={() => {
-                    setShowFilter(true);
-                    setActionOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                >
-                  Filter
-                </button>
-
-                {/* Export CSV */}
-                <button
-                  onClick={() => {
-                    setActionOpen(false);
-                    exportCases();
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                >
-                  Export
-                </button>
-              </div>
-            )}
-          </div>
+          ) : undefined
         }
       />
 
@@ -371,7 +395,29 @@ export default function CasesPage() {
         onSearch={(e) => {
           setSearchInput(e);
         }}
-      />
+        onSearchFocus={() => setSearchFocused(true)}
+        onSearchBlur={() => setSearchFocused(false)}
+        dropdown={searchDropdown}
+      >
+        <button
+          onClick={() => setShowFilter(true)}
+          className="relative flex items-center gap-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50 transition-colors"
+        >
+          <i className="ri-filter-3-line text-base" />
+          Filter
+          {activeFilterCount > 0 && (
+            <span className="ml-0.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={exportCases}
+          className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
+        >
+          Export
+        </button>
+      </FilterToolbar>
 
       <BulkResultBanner
         result={bulkResult}
