@@ -2,6 +2,7 @@
 
 import { StatusBadge } from "@/components/careconnect/status-badge";
 import { KpiCard } from "@/components/lien/kpi-card";
+import { ConfirmDialog } from "@/components/lien/modal";
 import { ApiError } from "@/lib/api-client";
 import { CaseListItem } from "@/lib/cases";
 import {
@@ -42,6 +43,7 @@ export default function ReportDisplay({
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [columns, setColumns] = useState<any>();
   const addToast = useLienStore((s) => s.addToast);
+  const [confirmAction, setConfirmAction] = useState<boolean>(false);
   const viewBy = report?.reportType.toLowerCase() ?? "case"; // 'cases' | 'liens'
   report;
   const metrics =
@@ -154,6 +156,11 @@ export default function ReportDisplay({
     link.href = URL.createObjectURL(blob);
     link.download = filename;
     link.click();
+  };
+
+  const handleConfirmAction = () => {
+    setConfirmAction(false);
+    onDelete();
   };
   const onDelete = async () => {
     try {
@@ -277,35 +284,6 @@ export default function ReportDisplay({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {/* {cases.map((c: CaseListItem, i) => (
-                    <tr
-                      key={c.id + c.caseNumber + i}
-                      className={`hover:bg-gray-50/80 transition-colors cursor-pointer`}
-                    >
-                      <td className="px-3 py-2.5">{c.caseNumber}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 font-medium">
-                        {c.clientName}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">
-                        {c.lawFirm || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">
-                        {c.caseManager || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">
-                        {c.accidentType || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">
-                        {c.dateOfIncident || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">
-                        {c.clientDob || "—"}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <StatusBadge status={c.status} />
-                      </td>
-                    </tr>
-                  ))} */}
                   {cases.map((c: any, index) => (
                     <tr
                       key={index}
@@ -344,7 +322,7 @@ export default function ReportDisplay({
           {/* RIGHT */}
           <div className="flex flex-wrap gap-2 sm:gap-2 sm:flex-row sm:items-center sm:justify-end">
             <button
-              onClick={onDelete}
+              onClick={() => setConfirmAction(true)}
               className="px-3 py-2 border border-gray-200 text-red-500 rounded-lg text-sm hover:shadow-sm"
             >
               Delete Template
@@ -366,6 +344,16 @@ export default function ReportDisplay({
           </div>
         </div>
       </div>
+      {confirmAction && (
+        <ConfirmDialog
+          open
+          onClose={() => setConfirmAction(false)}
+          onConfirm={handleConfirmAction}
+          title={"Delete Report"}
+          description={`Are you sure you want to delete? This action cannot be undone.`}
+          confirmLabel={"Delete"}
+        />
+      )}
     </div>
   );
 }
