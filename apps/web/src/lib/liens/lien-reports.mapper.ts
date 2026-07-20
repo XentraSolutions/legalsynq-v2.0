@@ -120,23 +120,3 @@ export function mapReportToListItem(dto: ReportConfigResponse): ReportListItem {
     config: dto.config,
   };
 }
-
-// grouped columns
-export function mapAllColumns(viewBy: string, dto: any[]): any[] {
-  const excludedKeys = new Set([
-    "isSuccess",
-    "message",
-    "reportType",
-    "data",
-    "defaultColumn",
-  ]);
-
-  const categories: ColumnGroup[] = Object.entries(dto)
-    .filter(([key]) => !excludedKeys.has(key))
-    .map(([key, value]) => ({
-      key,
-      value: value as Columns[],
-    }));
-
-  return categories;
-}

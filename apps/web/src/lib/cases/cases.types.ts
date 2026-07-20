@@ -24,10 +24,6 @@ export interface CaseResponseDto {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
-  shareCase: string;
-  minorComp: string;
-  caseDropped: string;
-  childSupportLiens: string;
   lawFirmId?: string | null;
   lawFirm?: string | null;
   caseManagerId?: string | null;
@@ -137,10 +133,6 @@ export interface UpdateCaseRequestDto {
   policyNumber?: string;
   claimNumber?: string;
   status?: string;
-  shareCase?: string;
-  minorComp?: string;
-  caseDropped?: string;
-  childSupportLiens?: string;
   isUccFiled?: string;
 }
 
@@ -260,10 +252,6 @@ export interface CaseDetail {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
-  shareCase: string;
-  minorComp: string;
-  caseDropped: string;
-  childSupportLiens: string;
   insuranceCarrier: string;
   policyNumber: string;
   claimNumber: string;

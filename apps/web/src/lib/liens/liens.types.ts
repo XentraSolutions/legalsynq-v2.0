@@ -161,14 +161,6 @@ export interface LiensQuery {
   // DIY Reports (lien-report.types.ts) and are sent assuming the backend
   // will be extended to accept them on this endpoint too. Until then they
   // are silently ignored server-side. Revisit once that lands.
-  lawFirmIds?: string[];
-  medicalFacilityIds?: string[];
-  caseManagerIds?: string[];
-  lienStatusIds?: string[];
-  purchaseDateFrom?: string;
-  purchaseDateTo?: string;
-  closedDateFrom?: string;
-  closedDateTo?: string;
   initialServiceDateFrom?: string;
   initialServiceDateTo?: string;
 }

@@ -65,7 +65,10 @@ export function mapCaseToListItem(dto: CaseResponseDto): CaseListItem {
       `${dto.clientFirstName} ${dto.clientLastName}`.trim(),
     title: safeString(dto.title || dto.externalReference),
     status: dto.status,
-    statusLabel: safeString(dto.statusLabel) || CASE_STATUS_LABELS[dto.status] || dto.status,
+    statusLabel:
+      safeString(dto.statusLabel) ||
+      CASE_STATUS_LABELS[dto.status] ||
+      dto.status,
     lawFirm: safeString((dto as any).lawFirm),
     caseManager: safeString((dto as any).caseManager),
     accidentType: safeString((dto as any).accidentType),
@@ -91,7 +94,10 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     clientFirstName: dto.clientFirstName,
     clientLastName: dto.clientLastName,
     status: dto.status,
-    statusLabel: safeString(dto.statusLabel) || CASE_STATUS_LABELS[dto.status] || dto.status,
+    statusLabel:
+      safeString(dto.statusLabel) ||
+      CASE_STATUS_LABELS[dto.status] ||
+      dto.status,
     dateOfIncident: formatDateField(dto.dateOfIncident),
     clientDob: formatDateField(dto.clientDob),
     clientPhone: safeString(dto.clientPhone),
@@ -114,6 +120,7 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     minorComp: safeString(dto.minorComp),
     caseDropped: safeString(dto.caseDropped),
     childSupportLiens: safeString(dto.childSupportLiens),
+    isUccFiled: safeString(dto.isUccFiled),
     insuranceCarrier: safeString(dto.insuranceCarrier),
     policyNumber: safeString(dto.policyNumber),
     claimNumber: safeString(dto.claimNumber),
@@ -128,11 +135,6 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     caseManager: safeString(dto.caseManager),
     lawFirm: safeString(dto.lawFirm),
     accidentType: safeString(dto.accidentType),
-    shareCase: safeString(dto.shareCase),
-    minorComp: safeString(dto.minorComp),
-    caseDropped: safeString(dto.caseDropped),
-    childSupportLiens: safeString(dto.childSupportLiens),
-    isUccFiled: safeString(dto.isUccFiled)
   };
 }
 

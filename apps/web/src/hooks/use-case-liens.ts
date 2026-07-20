@@ -20,7 +20,10 @@ import {
   type CaseLienItemMetadata,
 } from "@/lib/cases";
 import { settlementService } from "@/lib/settlement";
-import type { CasePayment, LegacyCasePayment } from "@/lib/settlement/settlement.types";
+import type {
+  CasePayment,
+  LegacyCasePayment,
+} from "@/lib/settlement/settlement.types";
 import { contactsService } from "@/lib/contacts";
 import { lookupService } from "@/lib/lookup";
 
@@ -174,7 +177,8 @@ async function enrichLiens(
     return {
       ...lien,
       facility: ext.facility ?? "",
-      facilityName: ext.facilityName || facilityName(ext.facilityId ?? "") || "",
+      facilityName:
+        ext.facilityName || facilityName(ext.facilityId ?? "") || "",
       serviceDate: ext.initialServiceDate,
       purchaseDateDate: ext.purchaseDate,
       originalAmount,
@@ -277,8 +281,7 @@ export function useMedicareProcedureCodes() {
 async function findMedicareCost(id: string): Promise<string> {
   if (!id) return "";
   const costs = await lookupService.getMedicalProcedureCosts(id);
-  const cost = costs.data.find((c) => c.facilityType == "asc");
-  return cost?.total?.toString() ?? "";
+  return costs?.total?.toString() ?? "";
 }
 export function useMedicareCosts(id: string) {
   return useQuery({

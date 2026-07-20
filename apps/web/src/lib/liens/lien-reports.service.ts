@@ -15,7 +15,6 @@ import {
 } from "./lien-report.types";
 import { lienReportsApi } from "./lien-reports.api";
 import {
-  mapAllColumns,
   mapReportToListItem,
   mapReportToTemplate,
 } from "./lien-reports.mapper";
