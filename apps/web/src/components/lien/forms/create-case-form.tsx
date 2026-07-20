@@ -14,6 +14,7 @@ import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
 import { useCreateCase } from "@/hooks/use-case-liens";
 import { LitigationStatusForm } from "./litigation-form";
 import { DropdownOption } from "@/lib/lookup/lookup.types";
+import { lookupService } from "@/lib/lookup";
 
 interface CreateCaseFormProps {
   caseNumber?: string;
@@ -190,17 +191,16 @@ export function CreateCaseForm({
           caseManagersRes.value.items.map((c) => {
             return { key: c.id, value: c.id, label: c.displayName };
           }) ?? [],
-        accidentType:
-          LEGACY_ACCIDENT_TYPE_NAMES.flatMap((name) => {
-            const match = lookup?.AccidentType?.find((c) => c.name === name);
+        accidentType: LEGACY_ACCIDENT_TYPE_NAMES.flatMap((name) => {
+          const match = lookup?.AccidentType?.find((c) => c.name === name);
 
-            if (match && match.id !== EMPTY_GUID) {
-              return [{ key: match.id, value: match.id, label: match.name }];
-            }
+          if (match && match.id !== EMPTY_GUID) {
+            return [{ key: match.id, value: match.id, label: match.name }];
+          }
 
-            const fallback = LEGACY_ACCIDENT_TYPE_FALLBACKS[name];
-            return fallback ? [fallback] : [];
-          }),
+          const fallback = LEGACY_ACCIDENT_TYPE_FALLBACKS[name];
+          return fallback ? [fallback] : [];
+        }),
       }));
     }
   }, []);
