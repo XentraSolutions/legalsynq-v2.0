@@ -10,6 +10,7 @@ import type { AuthStackParamList } from '@/navigation/types/navigation';
 import { Button } from '@/shared/components/Button';
 import { Header } from '@/shared/components/Header';
 import { Input } from '@/shared/components/Input';
+import { Modal } from '@/shared/components/Modal';
 import { useToast } from '@/shared/hooks';
 import { AuthenticationService } from '@/shared/services/Authentication';
 import { TenantSelectionService } from '@/shared/services/TenantSelection';
@@ -24,6 +25,7 @@ export function TenantSelectionScreen() {
   const [activeTenant, setActiveTenant] = useState<RememberedTenant | null>(null);
   const [loadingTenantId, setLoadingTenantId] = useState<string | null>(null);
   const [addingTenant, setAddingTenant] = useState(false);
+  const [tenantPendingRemoval, setTenantPendingRemoval] = useState<RememberedTenant | null>(null);
   const {
     control,
     handleSubmit,
@@ -79,7 +81,7 @@ export function TenantSelectionScreen() {
     }
   }
 
-  async function removeTenant(tenant: RememberedTenant) {
+  function requestTenantRemoval(tenant: RememberedTenant) {
     if (tenants.length <= 1) {
       toast.showWarning('At least one tenant code must remain.');
       return;
@@ -90,6 +92,10 @@ export function TenantSelectionScreen() {
       return;
     }
 
+    setTenantPendingRemoval(tenant);
+  }
+
+  async function removeTenant(tenant: RememberedTenant) {
     setLoadingTenantId(tenant.id);
     try {
       const removed = await TenantSelectionService.removeRememberedTenant(tenant.id);
@@ -104,6 +110,7 @@ export function TenantSelectionScreen() {
       toast.showError(error instanceof Error ? error.message : 'Unable to remove tenant');
     } finally {
       setLoadingTenantId(null);
+      setTenantPendingRemoval(null);
     }
   }
 
@@ -162,7 +169,7 @@ export function TenantSelectionScreen() {
                         accessibilityRole="button"
                         className="h-9 w-9 items-center justify-center rounded-full bg-[#f4f4f5] active:opacity-80 dark:bg-[#2a2b30]"
                         disabled={loadingTenantId === tenant.id}
-                        onPress={() => removeTenant(tenant)}
+                        onPress={() => requestTenantRemoval(tenant)}
                       >
                         <Ionicons color="#ef4444" name="trash-outline" size={18} />
                       </Pressable>
@@ -210,6 +217,41 @@ export function TenantSelectionScreen() {
           />
         </View>
       </ScrollView>
+      <Modal
+        title="Remove tenant code?"
+        visible={Boolean(tenantPendingRemoval)}
+        onClose={() => {
+          if (!loadingTenantId) setTenantPendingRemoval(null);
+        }}
+        footer={
+          <View className="flex-row gap-3">
+            <Button
+              className="flex-1"
+              disabled={Boolean(loadingTenantId)}
+              label="Cancel"
+              variant="secondary"
+              onPress={() => setTenantPendingRemoval(null)}
+            />
+            <Button
+              className="flex-1"
+              label="Remove"
+              loading={loadingTenantId === tenantPendingRemoval?.id}
+              variant="danger"
+              onPress={() => {
+                if (tenantPendingRemoval) void removeTenant(tenantPendingRemoval);
+              }}
+            />
+          </View>
+        }
+      >
+        <Text className={cx(FIGMA_TEXT.body, 'text-[#6f737d] dark:text-[#a1a1aa]')}>
+          Remove tenant code{' '}
+          <Text className="font-jakarta-bold text-[#202228] dark:text-white">
+            {tenantPendingRemoval?.tenantCode}
+          </Text>
+          ? You will need to enter this code again to sign in to this tenant.
+        </Text>
+      </Modal>
     </View>
   );
 }
