@@ -26,7 +26,7 @@ import {
 import { useSessionContext } from "@/providers/session-provider";
 import { ConfirmDialog, Modal } from "@/components/lien/modal";
 import { ContactPicker } from "@/components/lien/contact-picker";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 
@@ -540,7 +540,9 @@ export default function ContactsPage() {
       {showCreate.open && (
         <AddContactModal
           open={showCreate.open}
-          title={showCreate.mode === "edit" ? "Edit Contact" : "Add New Contact"}
+          title={
+            showCreate.mode === "edit" ? "Edit Contact" : "Add New Contact"
+          }
           contactType={
             showCreate.mode === "create" ? typeFilter || undefined : undefined
           }
