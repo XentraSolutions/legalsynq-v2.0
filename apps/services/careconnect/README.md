@@ -72,6 +72,26 @@ CareConnect owns its grounded assistant contract for referral and provider workf
 - Return tool-shaped JSON for referral lookup/history, referral search, provider search, referrer search, and queue/KPI summaries
 - Keep product-specific lookup composition inside CareConnect instead of in Xenia
 
+### Referral message attachments
+
+Referral comment endpoints accept both the existing JSON body for text-only comments and `multipart/form-data` when
+message-scoped attachments are included:
+
+- Public token flow: `POST /api/public/referrals/thread/comments?token=...` with `senderType`, `message`, and repeated `files`
+- Authenticated flow: `POST /api/referrals/{referralId}/comments` with `message` and repeated `files`
+
+A comment must include message text, at least one attachment, or both. Message text is limited to 4000 characters.
+Each message can include up to 10 files. File size and MIME validation reuse the service's existing attachment upload
+settings, currently 50 MB per file with the configured PDF, image, Office document, text, and CSV allowlist.
+
+Files are uploaded to the Documents service with `referenceType = "referral-comment"`. CareConnect stores only
+attachment metadata in `cc_ReferralAttachments`, linked to the creating comment by `ReferralCommentId`. Thread reads
+return these attachments on each comment, but the general referral documents list excludes message-scoped attachments.
+Clients should open files only through signed URL endpoints:
+
+- Authenticated: `/api/referrals/{referralId}/attachments/{attachmentId}/url`
+- Public token: `/api/referrals/{referralId}/public-attachments/{attachmentId}/url?token=...`
+
 ## Product Roles
 
 | Role | Access |

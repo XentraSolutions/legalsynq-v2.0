@@ -2,6 +2,7 @@
 // version embedding, expiry, tampering, and round-trip correctness.
 using System.Security.Cryptography;
 using System.Text;
+using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
@@ -488,6 +489,83 @@ public class ReferralEmailServiceTests
 
         Assert.NotNull(providerNotification);
         Assert.Contains("/referrals/thread?token=", providerNotification!.Message);
+    }
+
+    [Fact]
+    public async Task SendCommentNotificationAsync_MentionsAttachmentsWithoutDirectFileUrls()
+    {
+        var notifications = new Mock<INotificationRepository>();
+        notifications
+            .Setup(n => n.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        notifications
+            .Setup(n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        string? htmlBody = null;
+        var producer = new Mock<INotificationsProducer>();
+        producer
+            .Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Guid, string, string, string, string, string?, string?, CancellationToken>(
+                (_, _, _, _, body, _, _, _) => htmlBody = body)
+            .Returns(Task.CompletedTask);
+
+        var service = new ReferralEmailService(
+            notifications.Object,
+            producer.Object,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ReferralToken:Secret"] = TestSecret,
+                    ["AppBaseUrl"] = TestBaseUrl,
+                })
+                .Build(),
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
+            NullLogger<ReferralEmailService>.Instance);
+
+        var referral = BuildReferral(referrerEmail: "referrer@example.com");
+        var comment = new ReferralComment
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = referral.TenantId,
+            ReferralId = referral.Id,
+            SenderType = "provider",
+            SenderName = "Test Clinic",
+            Message = "Please review the attached scan.",
+            CreatedAt = DateTime.UtcNow,
+            Attachments =
+            [
+                ReferralAttachment.Create(
+                    referral.TenantId,
+                    referral.Id,
+                    "scan.png",
+                    "image/png",
+                    2048,
+                    externalDocumentId: "doc-message-1",
+                    externalStorageProvider: AttachmentScope.Shared,
+                    status: "Uploaded",
+                    notes: null,
+                    createdByUserId: null,
+                    referralCommentId: Guid.CreateVersion7())
+            ],
+        };
+
+        await service.SendCommentNotificationAsync(referral, comment, CancellationToken.None);
+
+        Assert.NotNull(htmlBody);
+        Assert.Contains("1 attachment included", htmlBody);
+        Assert.Contains("scan.png", htmlBody);
+        Assert.DoesNotContain("doc-message-1", htmlBody);
+        Assert.DoesNotContain("/attachments/", htmlBody);
     }
 
     private static Referral BuildReferral(string? referrerEmail = null)

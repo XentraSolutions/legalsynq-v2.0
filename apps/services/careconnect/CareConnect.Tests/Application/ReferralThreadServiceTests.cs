@@ -1,3 +1,4 @@
+using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
@@ -239,6 +240,70 @@ public class ReferralThreadServiceTests
     }
 
     [Fact]
+    public async Task GetAuthenticatedCommentsAsync_IncludesMessageAttachments()
+    {
+        var referral = BuildReferral();
+        var commentId = Guid.CreateVersion7();
+        var attachmentId = Guid.CreateVersion7();
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new ReferralComment
+                {
+                    Id = commentId,
+                    TenantId = referral.TenantId,
+                    ReferralId = referral.Id,
+                    SenderType = "provider",
+                    SenderName = "Dr. Gray",
+                    Message = "Please review the attached image.",
+                    CreatedAt = new DateTime(2026, 6, 1, 10, 0, 0, DateTimeKind.Utc),
+                },
+            ]);
+
+        var attachmentsRepo = new Mock<IReferralAttachmentRepository>();
+        attachmentsRepo.Setup(r => r.GetByReferralCommentIdsAsync(
+                referral.TenantId,
+                referral.Id,
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(commentId)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                CreateMessageAttachment(
+                    attachmentId,
+                    referral.TenantId,
+                    referral.Id,
+                    commentId,
+                    "scan.png",
+                    "image/png",
+                    2048,
+                    "doc-scan")
+            ]);
+
+        var sut = BuildService(repo, commentsRepo, attachments: attachmentsRepo);
+
+        var result = await sut.GetAuthenticatedCommentsAsync(
+            TenantId,
+            referral.Id,
+            ReceivingOrgId,
+            callerEmail: null,
+            useGlobalLookup: true,
+            bypassParticipantCheck: false);
+
+        Assert.NotNull(result);
+        var attachment = Assert.Single(result![0].Attachments);
+        Assert.Equal(attachmentId, attachment.Id);
+        Assert.Equal("scan.png", attachment.FileName);
+        Assert.Equal("image/png", attachment.ContentType);
+        Assert.Equal(2048, attachment.FileSizeBytes);
+    }
+
+    [Fact]
     public async Task PostAuthenticatedCommentAsync_PersistsProviderComment_ForReceivingParticipant()
     {
         var referral = BuildReferral();
@@ -321,6 +386,61 @@ public class ReferralThreadServiceTests
             useGlobalLookup: true);
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task PostAuthenticatedCommentWithAttachmentsAsync_PersistsAttachments_ForReceivingParticipant()
+    {
+        var referral = BuildReferral();
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        IReadOnlyCollection<ReferralAttachment>? savedAttachments = null;
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.AddWithAttachmentsAsync(
+                It.IsAny<ReferralComment>(),
+                It.IsAny<IReadOnlyCollection<ReferralAttachment>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<ReferralComment, IReadOnlyCollection<ReferralAttachment>, CancellationToken>((_, attachments, _) =>
+            {
+                savedAttachments = attachments;
+            })
+            .Returns(Task.CompletedTask);
+
+        var docClient = new Mock<IDocumentServiceClient>();
+        docClient.Setup(d => d.UploadAsync(
+                It.IsAny<Stream>(),
+                "note.pdf",
+                "application/pdf",
+                3,
+                referral.TenantId,
+                "note.pdf",
+                null,
+                null,
+                It.IsAny<string>(),
+                "referral-comment",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentUploadResult(true, "doc-auth-1", null));
+
+        var sut = BuildService(repo, commentsRepo, documents: docClient);
+        await using var stream = new MemoryStream([1, 2, 3]);
+
+        var result = await sut.PostAuthenticatedCommentWithAttachmentsAsync(
+            TenantId,
+            referral.Id,
+            ReceivingOrgId,
+            callerEmail: null,
+            "Dr. Gray",
+            "Attached note.",
+            useGlobalLookup: true,
+            [new ReferralMessageAttachmentUpload(stream, "note.pdf", "application/pdf", 3)]);
+
+        Assert.NotNull(result);
+        var saved = Assert.Single(savedAttachments!);
+        Assert.NotNull(saved.ReferralCommentId);
+        Assert.Equal("doc-auth-1", saved.ExternalDocumentId);
+        Assert.Equal("note.pdf", result!.Attachments.Single().FileName);
     }
 
     [Fact]
@@ -423,6 +543,102 @@ public class ReferralThreadServiceTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task PostPublicCommentWithAttachmentsAsync_UploadsAndPersistsMessageAttachments()
+    {
+        var referral = BuildReferral();
+
+        var emailService = new Mock<IReferralEmailService>();
+        emailService.Setup(e => e.ValidateViewTokenDetailed("valid-token"))
+            .Returns(CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        ReferralComment? savedComment = null;
+        IReadOnlyCollection<ReferralAttachment>? savedAttachments = null;
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.AddWithAttachmentsAsync(
+                It.IsAny<ReferralComment>(),
+                It.IsAny<IReadOnlyCollection<ReferralAttachment>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<ReferralComment, IReadOnlyCollection<ReferralAttachment>, CancellationToken>((comment, attachments, _) =>
+            {
+                savedComment = comment;
+                savedAttachments = attachments;
+            })
+            .Returns(Task.CompletedTask);
+
+        var docClient = new Mock<IDocumentServiceClient>();
+        docClient.Setup(d => d.UploadAsync(
+                It.IsAny<Stream>(),
+                "scan.png",
+                "image/png",
+                3,
+                referral.TenantId,
+                "scan.png",
+                null,
+                null,
+                It.IsAny<string>(),
+                "referral-comment",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentUploadResult(true, "doc-message-1", null));
+
+        var sut = BuildService(repo, commentsRepo, emailService.Object, documents: docClient);
+        await using var stream = new MemoryStream([1, 2, 3]);
+
+        var result = await sut.PostPublicCommentWithAttachmentsAsync(
+            "valid-token",
+            "provider",
+            "See attached.",
+            [new ReferralMessageAttachmentUpload(stream, "scan.png", "image/png", 3)]);
+
+        Assert.NotNull(result);
+        Assert.NotNull(savedComment);
+        var saved = Assert.Single(savedAttachments!);
+        Assert.Equal(savedComment!.Id, saved.ReferralCommentId);
+        Assert.Equal("doc-message-1", saved.ExternalDocumentId);
+        Assert.Equal("scan.png", result!.Attachments.Single().FileName);
+        commentsRepo.Verify(r => r.AddAsync(It.IsAny<ReferralComment>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PostPublicCommentWithAttachmentsAsync_InvalidToken_DoesNotUpload()
+    {
+        var repo = new Mock<IReferralRepository>();
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        var docClient = new Mock<IDocumentServiceClient>();
+        var sut = BuildService(repo, commentsRepo, documents: docClient);
+        await using var stream = new MemoryStream([1, 2, 3]);
+
+        var result = await sut.PostPublicCommentWithAttachmentsAsync(
+            "invalid-token",
+            "provider",
+            "See attached.",
+            [new ReferralMessageAttachmentUpload(stream, "scan.png", "image/png", 3)]);
+
+        Assert.Null(result);
+        docClient.Verify(d => d.UploadAsync(
+                It.IsAny<Stream>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<long>(),
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        commentsRepo.Verify(r => r.AddWithAttachmentsAsync(
+                It.IsAny<ReferralComment>(),
+                It.IsAny<IReadOnlyCollection<ReferralAttachment>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private static Referral BuildReferral()
         => BuildReferral(ReferringOrgId);
 
@@ -454,11 +670,23 @@ public class ReferralThreadServiceTests
         Mock<IReferralRepository> referrals,
         Mock<IReferralCommentRepository> comments,
         IReferralEmailService? emailService = null,
-        IServiceScopeFactory? scopeFactory = null)
+        IServiceScopeFactory? scopeFactory = null,
+        Mock<IReferralAttachmentRepository>? attachments = null,
+        Mock<IDocumentServiceClient>? documents = null)
     {
-        var attachments = new Mock<IReferralAttachmentRepository>();
-        attachments.Setup(r => r.GetByReferralAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+        if (attachments is null)
+        {
+            attachments = new Mock<IReferralAttachmentRepository>();
+            attachments.Setup(r => r.GetByReferralAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
+            attachments.Setup(r => r.GetByReferralCommentIdsAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<Guid>(),
+                    It.IsAny<IReadOnlyCollection<Guid>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
+        }
+        documents ??= new Mock<IDocumentServiceClient>();
 
         emailService ??= Mock.Of<IReferralEmailService>(e =>
             e.ValidateViewTokenDetailed(It.IsAny<string>()) == CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Failure(CareConnect.Application.DTOs.ReferralTokenFailureReasons.Malformed));
@@ -468,6 +696,7 @@ public class ReferralThreadServiceTests
             referrals.Object,
             comments.Object,
             attachments.Object,
+            documents.Object,
             emailService,
             Mock.Of<IIdentityOrganizationService>(),
             scopeFactory,
@@ -490,6 +719,35 @@ public class ReferralThreadServiceTests
     private static void SetProvider(Referral referral, Provider provider)
     {
         typeof(Referral).GetProperty(nameof(Referral.Provider))!.SetValue(referral, provider);
+    }
+
+    private static ReferralAttachment CreateMessageAttachment(
+        Guid attachmentId,
+        Guid tenantId,
+        Guid referralId,
+        Guid commentId,
+        string fileName,
+        string contentType,
+        long fileSizeBytes,
+        string documentId)
+    {
+        var attachment = ReferralAttachment.Create(
+            tenantId,
+            referralId,
+            fileName,
+            contentType,
+            fileSizeBytes,
+            externalDocumentId:      documentId,
+            externalStorageProvider: AttachmentScope.Shared,
+            status:                  "Uploaded",
+            notes:                   null,
+            createdByUserId:         null,
+            referralCommentId:       commentId);
+
+        typeof(ReferralAttachment).GetProperty(nameof(ReferralAttachment.Id))!
+            .SetValue(attachment, attachmentId);
+
+        return attachment;
     }
 
     private sealed class ProviderStub

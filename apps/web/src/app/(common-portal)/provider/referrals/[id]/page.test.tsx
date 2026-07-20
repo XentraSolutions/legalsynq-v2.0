@@ -60,6 +60,17 @@ const REFERRAL = {
   status: 'New',
 };
 
+const COMMENTS = [
+  {
+    id: 'comment-1',
+    senderType: 'referrer',
+    senderName: 'Demo Firm',
+    message: 'Can you review this referral?',
+    createdAtUtc: '2026-06-09T10:00:00Z',
+    attachments: [],
+  },
+];
+
 describe('Provider referral detail page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,9 +78,12 @@ describe('Provider referral detail page', () => {
     vi.mocked(careConnectServerApi.referrals.getById).mockResolvedValue(
       REFERRAL as Awaited<ReturnType<typeof careConnectServerApi.referrals.getById>>,
     );
+    vi.mocked(careConnectServerApi.referrals.getComments).mockResolvedValue(
+      COMMENTS as Awaited<ReturnType<typeof careConnectServerApi.referrals.getComments>>,
+    );
   });
 
-  test('renders provider referral detail without owning the message thread', async () => {
+  test('renders provider referral detail with the shared message thread', async () => {
     const page = await ProviderReferralDetailPage({
       params: Promise.resolve({ id: 'ref-123' }),
     });
@@ -81,7 +95,7 @@ describe('Provider referral detail page', () => {
     expect(screen.getByText('Status actions')).toBeInTheDocument();
     expect(screen.getByText('Attachment panel:true')).toBeInTheDocument();
     expect(screen.getByText('Timeline')).toBeInTheDocument();
-    expect(screen.queryByText('Message thread')).not.toBeInTheDocument();
-    expect(careConnectServerApi.referrals.getComments).not.toHaveBeenCalled();
+    expect(screen.getByText('Message thread')).toBeInTheDocument();
+    expect(careConnectServerApi.referrals.getComments).toHaveBeenCalledWith('ref-123');
   });
 });

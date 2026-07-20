@@ -7,6 +7,7 @@ public class ReferralCommentResponse
     public string SenderName { get; init; } = string.Empty;
     public string Message { get; init; } = string.Empty;
     public DateTime CreatedAtUtc { get; init; }
+    public IReadOnlyList<ReferralMessageAttachmentResponse> Attachments { get; init; } = [];
 }
 
 public class CreateReferralCommentRequest
@@ -21,6 +22,21 @@ public class ReferralThreadAttachmentResponse
     public string ContentType { get; init; } = string.Empty;
     public long FileSizeBytes { get; init; }
 }
+
+public class ReferralMessageAttachmentResponse
+{
+    public Guid Id { get; init; }
+    public string FileName { get; init; } = string.Empty;
+    public string ContentType { get; init; } = string.Empty;
+    public long FileSizeBytes { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
+}
+
+public sealed record ReferralMessageAttachmentUpload(
+    Stream FileContent,
+    string FileName,
+    string ContentType,
+    long FileSizeBytes);
 
 public class PublicReferralThreadResponse
 {

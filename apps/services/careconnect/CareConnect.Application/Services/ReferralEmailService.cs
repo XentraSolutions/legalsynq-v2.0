@@ -1379,6 +1379,16 @@ public class ReferralEmailService : IReferralEmailService
             Row("From",     senderLabel);
 
         var footer = "Reply directly in the referral thread using the button above.";
+        IReadOnlyCollection<ReferralAttachment> commentAttachments = comment.Attachments ?? [];
+        var attachmentCount = commentAttachments.Count;
+        var attachmentHtml = attachmentCount == 0
+            ? string.Empty
+            : $"""
+              <p style="margin:0 0 16px;font-size:14px;color:#374151">
+                {attachmentCount} attachment{(attachmentCount == 1 ? "" : "s")} included:
+                {System.Net.WebUtility.HtmlEncode(string.Join(", ", commentAttachments.Select(a => a.FileName)))}
+              </p>
+              """;
 
         var body = $"""
             <p style="margin:0 0 16px;font-size:15px">Hello,</p>
@@ -1389,6 +1399,7 @@ public class ReferralEmailService : IReferralEmailService
             <div style="background:#f3f4f6;border-left:4px solid #1a56db;padding:14px 18px;border-radius:4px;margin:0 0 24px">
               <p style="margin:0;font-size:14px;color:#111827;line-height:1.6">{System.Net.WebUtility.HtmlEncode(comment.Message)}</p>
             </div>
+            {attachmentHtml}
             {Section("Referral Details", summaryRows)}
             <div style="text-align:center;margin:28px 0">
               <a href="{threadLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Thread &amp; Reply</a>
