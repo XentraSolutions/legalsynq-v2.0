@@ -116,10 +116,4 @@ export const contactsApi = {
       ContactType: contactType,
     });
   },
-
-  exportFacility(contactType: string) {
-    return apiClient.post<ExportResponse>(`${BASE}/generate-facility-csv`, {
-      id: contactType,
-    });
-  },
 };

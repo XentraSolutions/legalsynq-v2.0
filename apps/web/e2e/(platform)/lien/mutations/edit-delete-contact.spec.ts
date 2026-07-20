@@ -54,7 +54,7 @@ test.describe(`SynqLien contacts — edit & delete via row and detail-page actio
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Contact Created')).toBeVisible();
 
-    await findContactRow(page, originalName);
+    await findContactRow(page, originalName, 'Leads');
   });
 
   test('edits the contact via the row-level Action Menu', async ({
@@ -65,7 +65,7 @@ test.describe(`SynqLien contacts — edit & delete via row and detail-page actio
     // findContactRow also waits out the "Refreshing..." indicator that
     // briefly overlaps the Actions column while the search re-query is in
     // flight — clicking through it too early can silently miss the button.
-    const row = await findContactRow(page, originalName);
+    const row = await findContactRow(page, originalName, 'Leads');
 
     await clickMenuItem(page, row.getByRole('button', { name: 'Actions menu' }), 'Edit Contact');
     await expect(page.getByRole('heading', { name: 'Edit Contact' })).toBeVisible();
@@ -83,7 +83,7 @@ test.describe(`SynqLien contacts — edit & delete via row and detail-page actio
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Contact Updated')).toBeVisible();
 
-    await findContactRow(page, rowEditedName);
+    await findContactRow(page, rowEditedName, 'Leads');
   });
 
   test('edits the contact via the details-page Actions menu', async ({
@@ -91,7 +91,7 @@ test.describe(`SynqLien contacts — edit & delete via row and detail-page actio
     credentials,
   }) => {
     await page.goto(`${env.originFor(credentials.tenantCode)}/lien/contacts`);
-    const row = await findContactRow(page, rowEditedName);
+    const row = await findContactRow(page, rowEditedName, 'Leads');
     await row.getByRole('link', { name: rowEditedName, exact: true }).click();
     // Wait for the detail page (and its background data fetches) to settle
     // before opening the dropdown — clicking "Actions" too early raced with
@@ -123,7 +123,7 @@ test.describe(`SynqLien contacts — edit & delete via row and detail-page actio
     credentials,
   }) => {
     await page.goto(`${env.originFor(credentials.tenantCode)}/lien/contacts`);
-    const row = await findContactRow(page, detailEditedName);
+    const row = await findContactRow(page, detailEditedName, 'Leads');
     await row
       .getByRole('link', { name: detailEditedName, exact: true })
       .click();

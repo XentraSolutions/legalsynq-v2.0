@@ -116,7 +116,7 @@ test.describe(`SynqLien lien detail — Medical Facility and Provider Informatio
   }) => {
     await page.goto(`${env.originFor(credentials.tenantCode)}/lien/contacts`);
 
-    const facilityRow = await findContactRow(page, facilityName);
+    const facilityRow = await findContactRow(page, facilityName, 'Medical Facilities');
     await facilityRow.getByRole('link', { name: facilityName, exact: true }).click();
     await page.getByRole('link', { name: 'Medical Facility Staff' }).click();
 
@@ -128,14 +128,14 @@ test.describe(`SynqLien lien detail — Medical Facility and Provider Informatio
     await expect(staffCard).toBeHidden();
 
     await page.goto(`${env.originFor(credentials.tenantCode)}/lien/contacts`);
-    const providerRow = await findContactRow(page, providerName);
+    const providerRow = await findContactRow(page, providerName, 'Medical Providers');
     await clickMenuItem(page, providerRow.getByRole('button', { name: 'Actions menu' }), 'Delete');
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(page.getByText('Contact deleted').first()).toBeVisible();
     await expect(providerRow).toBeHidden();
 
     await page.goto(`${env.originFor(credentials.tenantCode)}/lien/contacts`);
-    const facilityRowAgain = await findContactRow(page, facilityName);
+    const facilityRowAgain = await findContactRow(page, facilityName, 'Medical Facilities');
     await clickMenuItem(page, facilityRowAgain.getByRole('button', { name: 'Actions menu' }), 'Delete');
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(page.getByText('Contact deleted').first()).toBeVisible();
