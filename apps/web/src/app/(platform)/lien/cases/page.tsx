@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
@@ -25,11 +25,11 @@ import {
   type BulkActionConfig,
   type BulkOperationResult,
 } from "@/lib/bulk-operations";
-import { ApiError } from "@/lib/api-client";
-import { CasesFilter } from "./components/cases-filter";
-import { CasesQuery, CaseStatusResponse } from "@/lib/cases/cases.types";
+import { CasesFilter, EMPTY_CASES_FILTERS, type CasesFilterValues } from "./components/cases-filter";
+import { CasesQuery } from "@/lib/cases/cases.types";
 import { useCases, useCreateCase } from "@/hooks/use-case-liens";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePrimaryLoad, useBackgroundReady } from "@/hooks/use-background-queue";
 import MedicalLienComponent from "@/components/lien/add-medical-lien/add-medical-lien/medical-lien-component";
 
 export const dynamic = "force-dynamic";
@@ -83,7 +83,6 @@ export default function CasesPage() {
   const selection = useSelectionState();
 
   // const [cases, setCases] = useState<CaseListItem[]>([]);
-  const [status, setStatus] = useState<Array<CaseStatusResponse>>();
 
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
@@ -92,23 +91,11 @@ export default function CasesPage() {
     totalPages: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
 
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [params, setParams] = useState<{
-    accidentTypeId: string | null;
-    caseManagerId: string | null;
-    lawFirmId: string | null;
-    statusId: string | null;
-  }>({
-    accidentTypeId: null,
-    caseManagerId: null,
-    lawFirmId: null,
-    statusId: null,
-  });
+  const [filters, setFilters] = useState<CasesFilterValues>(EMPTY_CASES_FILTERS);
   const [showCreate, setShowCreate] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [showMedicalLien, setShowMedicalLien] = useState(false);
@@ -133,14 +120,19 @@ export default function CasesPage() {
     limit: 10,
     sortBy: (sorting[0] && SORT_BY_MAP[sorting[0].id]) ?? "createdAt",
     sortDirection: sorting[0]?.desc === false ? "asc" : "desc",
-    accidentTypeId: params?.accidentTypeId?.toString() ?? "",
-    caseManagerId: params?.caseManagerId?.toString() ?? "",
-    lawFirmId: params?.lawFirmId?.toString() ?? "",
-    statusId: statusFilter.toString() || params?.statusId?.toString(),
+    accidentTypeId: filters.accidentTypeId.join(",") || "",
+    caseManagerId: filters.caseManagerId.join(",") || "",
+    lawFirmId: filters.lawFirmId.join(",") || "",
+    statusId: filters.statusId.join(",") || "",
   };
 
   const { data: cases, isLoading, isFetching } = useCases(query);
   const queryClient = useQueryClient();
+  // Registers the table's own load with the app-wide background queue so the
+  // filter modal's option prefetch waits for it instead of competing with the
+  // primary table fetch — same pattern as the liens page.
+  usePrimaryLoad(isLoading);
+  const bgReady = useBackgroundReady() && !isLoading;
   const caseNumber = useMemo(() => {
     if (!showCreate) return "";
     const year = new Date().getFullYear();
@@ -155,23 +147,14 @@ export default function CasesPage() {
     });
   };
 
-  const lookupCaseStatus = useCallback(async () => {
-    try {
-      const result = await casesService.getCaseStatus();
-      setStatus(result);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      }
-    } finally {
-    }
-  }, []);
-
   const exportCases = async () => {
     const response = await casesService.exportCases({
       caseId: null,
       keyword: search,
-      ...params,
+      lawFirmId: filters.lawFirmId.join(",") || null,
+      accidentTypeId: filters.accidentTypeId.join(",") || null,
+      statusId: filters.statusId.join(",") || null,
+      caseManagerId: filters.caseManagerId.join(",") || null,
     });
 
     const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
@@ -183,7 +166,6 @@ export default function CasesPage() {
   };
 
   useEffect(() => {
-    lookupCaseStatus();
     if (cases) setPagination(cases?.pagination);
   }, [cases]);
 
@@ -202,11 +184,6 @@ export default function CasesPage() {
 
   const canEdit = ra.can("case:edit");
 
-  const handleChangeStatusFilter = async (statusName: string) => {
-    const filtered = status?.find((s) => s.code == statusName);
-    setStatusFilter(filtered?.code ?? "");
-  };
-
   const confirmStatusChange = async () => {
     setShowMedicalLien(true);
     setConfirmAction(false);
@@ -218,9 +195,8 @@ export default function CasesPage() {
     setConfirmAction(true);
   };
 
-  const handleCasesFilter = (e: any) => {
-    setShowFilter(false);
-    setParams(e);
+  const handleApplyFilter = (next: CasesFilterValues) => {
+    setFilters(next);
   };
 
   const handleBulkAction = (actionKey: string) => {
@@ -395,19 +371,6 @@ export default function CasesPage() {
         onSearch={(e) => {
           setSearchInput(e);
         }}
-        filters={[
-          {
-            label: "All Statuses",
-            value: statusFilter,
-            onChange: (e) => handleChangeStatusFilter(e),
-            options: status
-              ? status?.map((s) => ({
-                  value: s.code,
-                  label: s.name,
-                }))
-              : [],
-          },
-        ]}
       />
 
       <BulkResultBanner
@@ -415,19 +378,6 @@ export default function CasesPage() {
         onDismiss={() => setBulkResult(null)}
         entityLabel="cases"
       />
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center gap-2">
-          <i className="ri-error-warning-line text-red-500 text-sm" />
-          <p className="text-sm text-red-700">{error}</p>
-          <button
-            onClick={() => fetchCases()}
-            className="ml-auto text-sm text-red-600 hover:underline font-medium"
-          >
-            Retry
-          </button>
-        </div>
-      )}
 
       <BaseTable
         data={cases?.items ?? []}
@@ -473,7 +423,9 @@ export default function CasesPage() {
       <CasesFilter
         open={showFilter}
         onClose={() => setShowFilter(false)}
-        onApplyFilter={handleCasesFilter}
+        value={filters}
+        onApplyFilter={handleApplyFilter}
+        primaryReady={bgReady}
       />
 
       <ConfirmDialog

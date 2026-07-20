@@ -14,15 +14,17 @@ import type {
   ReassignMedicalProviderRequestDto,
 } from './liens.types';
 
+// Arrays are sent as a single comma-joined value (e.g. `lawFirmIds=a,b`) —
+// same convention the cases v3 endpoint uses for its multi-select filters
+// (see cases/page.tsx's `.join(",")` query fields) — rather than repeated
+// query keys.
 function toQs(params: Record<string, unknown>): string {
   const pairs: string[] = [];
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null || v === '') continue;
     if (Array.isArray(v)) {
       if (v.length === 0) continue;
-      for (const item of v) {
-        pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(item))}`);
-      }
+      pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(v.join(','))}`);
     } else {
       pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
     }

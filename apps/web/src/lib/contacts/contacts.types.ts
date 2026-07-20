@@ -19,8 +19,35 @@ export interface ContactResponseDto {
   activeCases: number;
   createdAtUtc: string;
   updatedAtUtc: string;
+  /**
+   * Present (non-null) only for MedicalFacility contacts. `null`/absent for
+   * every other contactType.
+   */
   contactSubtype?: string | null;
   lawFirmId?: string | null;
+  /**
+   * Overloaded — its meaning depends on `contactSubtype` on this same
+   * record, not on some other lookup:
+   *
+   * - `contactSubtype` is null (a "main" MedicalFacility contact — the
+   *   facility org record itself, e.g. "Arlington General Hospital"): this
+   *   is the **legacy Facility entity id** — a different entity than any
+   *   Contact record, from the pre-unified-Contacts data model that the
+   *   lien-facility API (get-facility/update-facility) still speaks. It is
+   *   NOT this contact's own `id`, and a direct `contacts/{id}` lookup
+   *   using it 404s (see contact-entity-select.tsx's
+   *   `needsFacilityFallback` — it falls back to a `FacilityId=`-scoped
+   *   search instead). May be `null` for a main contact created entirely
+   *   through the unified Contacts UI, which never got a legacy link.
+   * - `contactSubtype` is `"FacilityContactPerson"` (staff under a
+   *   facility): this is a **Contact id** — the parent main contact's own
+   *   `id` (see AddContactModal, which passes the selected facility's
+   *   `id` straight through as the new sub-contact's `facilityId`).
+   *
+   * In short: on a main contact, `facilityId` points at a different kind of
+   * entity entirely (legacy Facility, not Contact); on a sub-contact, it
+   * points at another Contact (its parent facility).
+   */
   facilityId?: string | null;
 }
 
@@ -103,6 +130,7 @@ export interface ContactListItem {
   isActive: boolean;
   activeCases: number;
   createdAt: string;
+  /** Overloaded by this record's contactSubtype — see the doc on ContactResponseDto.facilityId above. */
   facilityId: string | null;
   lawFirmId: string | null;
 }

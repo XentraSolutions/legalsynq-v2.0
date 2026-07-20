@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 import { PageHeader } from "@/components/lien/page-header";
 import { StatusBadge } from "@/components/lien/status-badge";
@@ -60,6 +60,25 @@ function lienDetailHref(lien: LienListItem): string {
     : `/lien/liens/${lien.id}`;
 }
 
+// Maps table column ids to the sortBy keys ListLiens is expected to
+// recognize (mirrors LienResponse field names — the same convention the
+// lawFirmIds/medicalFacilityIds/etc. filter params already follow, see the
+// TODO on LiensQuery in liens.types.ts). Backend support for sortBy/
+// sortDirection on this endpoint isn't confirmed yet — this is what
+// e2e/(platform)/lien/mutations/liens-sort.spec.ts verifies.
+const SORT_BY_MAP: Record<string, string> = {
+  lienNumber: "lienNumber",
+  plaintiffName: "plaintiff",
+  lawFirm: "lawFirm",
+  facilityName: "medicalFacility",
+  purchaseDate: "purchaseDate",
+  purchaseAmount: "totalPurchase",
+  totalBilling: "totalBilling",
+  status: "status",
+  initialServiceDate: "initialServiceDate",
+  caseManager: "caseManager",
+};
+
 export default function LiensPage() {
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
@@ -84,6 +103,7 @@ export default function LiensPage() {
 
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
 
@@ -102,8 +122,10 @@ export default function LiensPage() {
       purchaseDateTo: filters.purchaseDateTo || undefined,
       closedDateFrom: filters.closedDateFrom || undefined,
       closedDateTo: filters.closedDateTo || undefined,
+      sortBy: sorting[0] ? SORT_BY_MAP[sorting[0].id] : undefined,
+      sortDirection: sorting[0] ? (sorting[0].desc ? "desc" : "asc") : undefined,
     }),
-    [search, filters],
+    [search, filters, sorting],
   );
 
   const fetchLiens = useCallback(async (query: LiensQuery = {}) => {
@@ -126,7 +148,7 @@ export default function LiensPage() {
 
   useEffect(() => {
     fetchLiens(currentQuery());
-  }, [search, filters, fetchLiens, currentQuery]);
+  }, [search, filters, sorting, fetchLiens, currentQuery]);
 
   const handlePageChange = (newPage: number) => {
     fetchLiens({
@@ -165,6 +187,10 @@ export default function LiensPage() {
       },
       {
         id: "plaintiffName",
+        // Display-only columns (no accessorKey) are unsortable to TanStack by
+        // default — this accessorFn is what makes the column sortable at all,
+        // matching the isConfidential masking the cell itself renders.
+        accessorFn: (row) => (row.isConfidential ? "Confidential" : row.plaintiff || row.subjectName || ""),
         header: "Plaintiff Name",
         meta: frozenColumn("left-[110px]", "w-[160px] min-w-[160px]"),
         cell: ({ row }) =>
@@ -306,6 +332,9 @@ export default function LiensPage() {
           data={liens}
           columns={columns}
           getRowId={(l) => l.id}
+          sorting={sorting}
+          onSortingChange={setSorting}
+          manualSorting
           toolbar={
             activeFilterCount > 0 ? (
               <div className="flex items-center justify-between gap-3 px-4 py-3 bg-blue-50/70 border-b border-blue-100">

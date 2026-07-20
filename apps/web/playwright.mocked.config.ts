@@ -32,12 +32,26 @@ function systemChromiumPath(): string | undefined {
 const chromiumExe = systemChromiumPath();
 
 // Mocked component/rendering checks — NOT the e2e suite (that's
-// playwright.config.ts / `pnpm test:e2e`). These never leave the local dev
-// server: an in-process mock stands in for the identity service, so they
-// stay hermetic and safe to run on every PR (see .github/workflows/e2e.yml).
-// Kept under a separate config specifically so they can never accidentally
-// run against a live environment, and so the real e2e suite can never
-// accidentally run against this mocked webServer.
+// playwright.config.ts / `pnpm test:e2e`, which mocks nothing at all — see
+// its own doc comment). These never leave the local dev server: MSW
+// (src/mocks/upstream-server.ts, started from src/instrumentation.ts when
+// MOCK_UPSTREAM=1 below) intercepts outbound requests the BFF proxy routes
+// make to GATEWAY_URL, so they stay hermetic and safe to run on every PR
+// (see .github/workflows/e2e.yml). Kept under a separate config specifically
+// so they can never accidentally run against a live environment, and so the
+// real e2e suite can never accidentally run against this mocked webServer.
+//
+// Why MSW intercepts at the gateway boundary (GATEWAY_URL) rather than
+// Playwright's own page.route() intercepting the browser-facing /api/*
+// paths directly: the BFF proxy routes under src/app/api/*\/[...path]/
+// route.ts aren't thin passthroughs — they read the session cookie, attach
+// it as an Authorization: Bearer header, and do path/error handling of their
+// own. page.route() intercepts in the browser, before the request ever
+// reaches that code, so a spec built on it gets zero coverage of the BFF's
+// own logic. Mocking one layer deeper (what the BFF calls out to) lets the
+// real route handler run for real every time. GATEWAY_URL is pointed at an
+// obviously-fake host below specifically so any request MSW doesn't have a
+// handler for fails loudly instead of silently reaching a real service.
 export default defineConfig({
   testDir: './e2e/mocked',
   timeout: 30_000,
@@ -75,15 +89,8 @@ export default defineConfig({
 
   webServer: [
     {
-      name:                'mock-identity-api',
-      command:             'node e2e/mocked/mock-identity-server.mjs',
-      url:                 'http://localhost:15001',
-      reuseExistingServer: !process.env.CI,
-      timeout:             10_000,
-    },
-    {
       name:                'next-app',
-      command:             'GATEWAY_URL=http://localhost:15001 CC_COMMON_PORTAL_HOSTNAME=test-careconnect.local npx next dev -p 3001',
+      command:             'MOCK_UPSTREAM=1 GATEWAY_URL=http://mock-gateway.invalid CC_COMMON_PORTAL_HOSTNAME=test-careconnect.local npx next dev -p 3001',
       url:                 'http://localhost:3001',
       reuseExistingServer: !process.env.CI,
       timeout:             60_000,

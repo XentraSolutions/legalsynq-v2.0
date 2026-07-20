@@ -163,6 +163,12 @@ export interface LiensQuery {
   // are silently ignored server-side. Revisit once that lands.
   initialServiceDateFrom?: string;
   initialServiceDateTo?: string;
+  // Same situation as the filter fields above — not yet in ListLiens'
+  // documented parameter list, sent on the assumption the backend will
+  // recognize them once wired up. sortBy is expected to be a LienResponse
+  // field name (see the SORT_BY_MAP comment in liens/page.tsx).
+  sortBy?: string;
+  sortDirection?: "asc" | "desc";
 }
 
 export interface LienListItem {

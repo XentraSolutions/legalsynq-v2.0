@@ -14,6 +14,54 @@ import type { BatchReassignCasesRequestDto } from "@/lib/cases/cases.types";
 export const CONTACTS_QUERY_KEY = (query: ContactsQuery) =>
   ["contacts", query] as const;
 
+export const CONTACT_QUERY_KEY = (id: string) => ["contact", id] as const;
+
+/**
+ * Resolves a single contact by id — used to seed a dropdown's display label
+ * when it's initialized with a value (e.g. from saved form data) that isn't
+ * necessarily among the currently loaded list options.
+ */
+export function useContact(id: string | null | undefined) {
+  return useQuery({
+    queryKey: CONTACT_QUERY_KEY(id ?? ""),
+    queryFn: () => contactsService.getContact(id as string),
+    enabled: Boolean(id),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export const MEDICAL_FACILITY_BY_FACILITY_ID_QUERY_KEY = (facilityId: string) =>
+  ["contact-by-facility-id", facilityId] as const;
+
+/**
+ * Medical facility liens (the legacy `get-facility`/`update-facility` API)
+ * store a facility's own `facilityId` field rather than its contact id —
+ * pre-dating the unified Contacts system, where a MedicalFacility contact's
+ * `id` normally doubles as the value used elsewhere. Used as a fallback to
+ * resolve a display label when a direct by-id lookup finds no match.
+ */
+export function useMedicalFacilityByFacilityId(facilityId: string | null | undefined) {
+  return useQuery({
+    queryKey: MEDICAL_FACILITY_BY_FACILITY_ID_QUERY_KEY(facilityId ?? ""),
+    queryFn: async () => {
+      const { items } = await contactsService.getContacts({
+        ContactType: "MedicalFacility",
+        // Explicit "" restricts the match to the main facility record,
+        // excluding its FacilityContactPerson sub-contacts.
+        ContactSubtype: "",
+        FacilityId: facilityId as string,
+        page: 1,
+        pageSize: 1,
+      });
+      return items[0] ?? null;
+    },
+    enabled: Boolean(facilityId),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
 const CONTACTS_PAGE_SIZE = 25;
 
 export const INFINITE_CONTACTS_QUERY_KEY = (query: ContactsQuery) =>

@@ -6,14 +6,17 @@ import { test, expect } from '@playwright/test';
  * Journey: accept-invite page (/accept-invite?token=...)
  *          → user fills password form
  *          → browser POST → Next.js BFF /api/auth/accept-invite (real route, runs on server)
- *          → BFF fetches http://localhost:15001/identity/api/auth/accept-invite (mock identity API)
+ *          → BFF fetches GATEWAY_URL/identity/api/auth/accept-invite (MSW-intercepted)
  *          → mock returns tenantPortalUrl: "https://acmefirm.portal.example.com"
  *          → form updates "Sign in" link to https://acmefirm.portal.example.com/login
  *
- * The mock identity server (e2e/mocked/mock-identity-server.mjs) is started automatically
- * by playwright.config.ts and simulates a seeded invitation: it accepts any token
- * and returns the deterministic tenant portal URL, exercising the real BFF route code
- * and the seam between the Next.js server and the identity service.
+ * The gateway response is faked by MSW (src/mocks/upstream-handlers.ts),
+ * started in-process from src/instrumentation.ts when MOCK_UPSTREAM=1 (set
+ * by playwright.mocked.config.ts) — it accepts any invite token and returns
+ * a deterministic tenant portal URL. This exercises the real BFF route code
+ * (cookie/error handling included) and only fakes the seam beyond it; see
+ * playwright.mocked.config.ts's doc comment for why that's mocked here
+ * rather than via page.route() on the BFF path directly.
  */
 
 test.describe('accept-invite → tenant subdomain redirect', () => {

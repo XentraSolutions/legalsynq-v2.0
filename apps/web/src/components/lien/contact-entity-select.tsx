@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
-import { useInfiniteContacts, INFINITE_CONTACTS_QUERY_KEY } from "@/hooks/use-contacts";
+import {
+  useInfiniteContacts,
+  useContact,
+  useMedicalFacilityByFacilityId,
+  INFINITE_CONTACTS_QUERY_KEY,
+} from "@/hooks/use-contacts";
 import { AddContactModal } from "@/components/lien/add-contact-modal";
 import type { ContactDetail } from "@/lib/contacts";
 
@@ -92,10 +97,56 @@ export function ContactEntitySelect({
   // which have their own skeleton treatment already.
   const isSearching = isFetching && !isLoading && !isFetchingNextPage;
 
+  const fetched: BaseSelectOption[] = useMemo(
+    () =>
+      (data?.pages ?? []).flatMap((page) =>
+        page.items.map((c) => ({ value: c.id, label: c.displayName })),
+      ),
+    [data],
+  );
+
+  // A value can arrive pre-set from saved data (e.g. an existing facility's
+  // contact id) without ever having been chosen through this dropdown, so
+  // there's no label for it yet — resolve it directly by id.
+  const needsResolve =
+    Boolean(value) && selectedOption?.value !== value && !fetched.some((o) => o.value === value);
+  const { data: resolvedContact, isError: resolveByIdFailed } = useContact(
+    needsResolve ? value : undefined,
+  );
+
+  // Medical facility liens predate the unified Contacts system and store a
+  // facility's own `facilityId`, not its contact id — if the direct by-id
+  // lookup above comes up empty, fall back to resolving it that way. Only
+  // applies to the *main* MedicalFacility contact (no contactSubtype) — see
+  // the doc on ContactResponseDto.facilityId in contacts.types.ts for why
+  // that field means something else entirely on a FacilityContactPerson
+  // sub-contact (a Contact id, not a legacy Facility id).
+  const isMedicalFacilitySelect = contactType === "MedicalFacility" && !contactSubtype;
+  const needsFacilityFallback = needsResolve && isMedicalFacilitySelect && resolveByIdFailed;
+  const { data: facilityFallbackContact } = useMedicalFacilityByFacilityId(
+    needsFacilityFallback ? value : undefined,
+  );
+
+  useEffect(() => {
+    if (resolvedContact && resolvedContact.id === value) {
+      setSelectedOption({ value: resolvedContact.id, label: resolvedContact.displayName });
+    }
+  }, [resolvedContact, value]);
+
+  useEffect(() => {
+    if (facilityFallbackContact && value && needsFacilityFallback) {
+      setSelectedOption({ value, label: facilityFallbackContact.displayName });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facilityFallbackContact, value]);
+
+  useEffect(() => {
+    if (!value) {
+      setSelectedOption(null);
+    }
+  }, [value]);
+
   const options: BaseSelectOption[] = useMemo(() => {
-    const fetched = (data?.pages ?? []).flatMap((page) =>
-      page.items.map((c) => ({ value: c.id, label: c.displayName })),
-    );
     // The selected item may not be in the pages loaded so far — keep it
     // around so the trigger can still show its label instead of reverting
     // to the placeholder.
@@ -103,7 +154,7 @@ export function ContactEntitySelect({
       return [selectedOption, ...fetched];
     }
     return fetched;
-  }, [data, value, selectedOption]);
+  }, [fetched, value, selectedOption]);
 
   const handleChange = (nextValue: string, option: BaseSelectOption) => {
     setSelectedOption(option);
