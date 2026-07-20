@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { Modal as ReactNativeModal, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import type { NavigationProp } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { CaseDetailHeader } from '@/features/cases/components/CaseDetailHeader';
