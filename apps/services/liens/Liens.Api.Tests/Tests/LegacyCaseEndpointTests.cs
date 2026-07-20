@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
@@ -106,5 +107,22 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
 
         var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
         doc!.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GenerateCaseCsv_applies_keyword_filter()
+    {
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/generate-csv", new
+        {
+            keyword = "CASE-TEST-001",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var document = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var encoded = document!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
+
+        csv.Should().Contain("CASE-TEST-001");
     }
 }

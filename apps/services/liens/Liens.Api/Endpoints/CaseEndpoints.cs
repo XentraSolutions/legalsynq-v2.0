@@ -221,6 +221,7 @@ public static class CaseEndpoints
     private sealed class LegacyGenerateCaseCsvRequest
     {
         public string? caseId { get; init; }
+        public string? keyword { get; init; }
         public string? lawFirmId { get; init; }
         public string? accidentTypeId { get; init; }
         public string? statusId { get; init; }
@@ -2429,7 +2430,7 @@ public static class CaseEndpoints
             {
                 var result = await caseService.SearchAsync(
                     tenantId,
-                    search: null,
+                    search: string.IsNullOrWhiteSpace(request.keyword) ? null : request.keyword,
                     status: string.IsNullOrWhiteSpace(request.statusId) ? null : request.statusId,
                     page: page,
                     pageSize: pageSize,
@@ -4497,7 +4498,7 @@ public static class CaseEndpoints
         }
     }
 
-    // ── Dashboard stubs ───────────────────────────────────────────────────────
+    // ── Dashboard reports ─────────────────────────────────────────────────────
     private sealed class ReportFilterRequest
     {
         public int    Page          { get; init; } = 1;
@@ -4514,8 +4515,68 @@ public static class CaseEndpoints
     private static Task<IResult> GetTotalLienReportV3(ReportFilterRequest _, ICurrentRequestContext __) =>
         Task.FromResult<IResult>(Results.Ok(new PaginatedResult<object>()));
 
-    private static Task<IResult> GetTotalCaseReport(ICurrentRequestContext _) =>
-        Task.FromResult<IResult>(Results.Ok(Array.Empty<object>()));
+    private static async Task<IResult> GetTotalCaseReport(
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        const int pageSize = 100;
+        var page = 1;
+        var cases = new List<CaseResponse>();
+
+        while (true)
+        {
+            var result = await caseService.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                page: page,
+                pageSize: pageSize,
+                orgId: null,
+                ct: ct);
+
+            if (result.Items.Count == 0)
+                break;
+
+            cases.AddRange(result.Items);
+            if (cases.Count >= result.TotalCount)
+                break;
+
+            page++;
+        }
+
+        var report = cases
+            .OrderByDescending(item => item.UpdatedAtUtc)
+            .Select(item =>
+            {
+                var fields = ParseLegacyNoteFields(item.Notes);
+                return new
+                {
+                    id = item.Id,
+                    caseId = item.Id,
+                    item.CaseNumber,
+                    item.ExternalReference,
+                    item.ClientFirstName,
+                    item.ClientLastName,
+                    item.ClientDisplayName,
+                    item.Status,
+                    dateOfLoss = item.DateOfIncident,
+                    item.DateOfIncident,
+                    lawFirmId = fields.GetValueOrDefault("lawFirmId", string.Empty),
+                    lawFirm = fields.GetValueOrDefault("lawFirm", string.Empty),
+                    accidentTypeId = fields.GetValueOrDefault("accidentTypeId", string.Empty),
+                    accidentType = fields.GetValueOrDefault("accidentType", string.Empty),
+                    caseManagerId = fields.GetValueOrDefault("caseManagerId", string.Empty),
+                    caseManager = fields.GetValueOrDefault("caseManager", string.Empty),
+                    item.CreatedAtUtc,
+                    item.UpdatedAtUtc,
+                };
+            })
+            .ToList();
+
+        return Results.Ok(report);
+    }
     private static Task<IResult> GetTotalCaseReportV3(ReportFilterRequest _, ICurrentRequestContext __) =>
         Task.FromResult<IResult>(Results.Ok(new PaginatedResult<object>()));
 

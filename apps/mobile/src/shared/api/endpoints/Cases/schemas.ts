@@ -4,6 +4,24 @@ import { paginationParamsSchema } from '@/shared/validation/commonSchemas';
 
 import { lienCaseTypeSchema, lienSchema, lienStatusSchema } from '../Liens/schemas';
 
+const optionalIsoDateSchema = z.string().refine(
+  (value) => {
+    if (!value) return true;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return false;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return (
+      parsed.getUTCFullYear() === year &&
+      parsed.getUTCMonth() === month - 1 &&
+      parsed.getUTCDate() === day
+    );
+  },
+  'Use a valid date in YYYY-MM-DD format'
+);
+
 export const caseStatusSchema = z.enum(['OPEN', 'PENDING', 'CLOSED', 'ARCHIVED']);
 
 export const caseSchema = z.object({
@@ -38,6 +56,53 @@ export const noteSchema = z.object({
 
 export const addCaseNoteRequestSchema = z.object({
   content: z.string().trim().min(1, 'Note is required'),
+  category: z.string().optional(),
+  createdByName: z.string().optional(),
+});
+
+export const caseDetailResponseSchema = z.object({
+  id: z.string(),
+  caseNumber: z.string(),
+  externalReference: z.string().nullish(),
+  title: z.string().nullish(),
+  clientFirstName: z.string(),
+  clientLastName: z.string(),
+  clientDisplayName: z.string(),
+  status: z.string(),
+  dateOfIncident: z.string().nullish(),
+  clientDob: z.string().nullish(),
+  clientPhone: z.string().nullish(),
+  clientEmail: z.string().nullish(),
+  clientAddress: z.string().nullish(),
+  insuranceCarrier: z.string().nullish(),
+  policyNumber: z.string().nullish(),
+  claimNumber: z.string().nullish(),
+  demandAmount: z.number().nullish(),
+  settlementAmount: z.number().nullish(),
+  description: z.string().nullish(),
+  notes: z.string().nullish(),
+  openedAtUtc: z.string().nullish(),
+  closedAtUtc: z.string().nullish(),
+  createdAtUtc: z.string(),
+  updatedAtUtc: z.string(),
+});
+
+export const createCaseRequestSchema = z.object({
+  caseNumber: z.string().trim().optional(),
+  clientFirstName: z.string().trim().min(1, 'First name is required'),
+  clientLastName: z.string().trim().min(1, 'Last name is required'),
+  externalReference: z.string().trim().optional(),
+  title: z.string().trim().optional(),
+  clientDob: optionalIsoDateSchema.optional(),
+  clientPhone: z.string().trim().optional(),
+  clientEmail: z.string().trim().email('Enter a valid email').or(z.literal('')).optional(),
+  clientAddress: z.string().trim().optional(),
+  dateOfIncident: optionalIsoDateSchema.optional(),
+  insuranceCarrier: z.string().trim().optional(),
+  policyNumber: z.string().trim().optional(),
+  claimNumber: z.string().trim().optional(),
+  description: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
 });
 
 export const linkedLienSchema = lienSchema.pick({
@@ -153,6 +218,13 @@ export const dashboardTotalCaseReportRowSchema = z
     firmName: z.string().optional(),
     assignedAttorney: z.string().optional(),
     organizationName: z.string().optional(),
+    lawFirmId: z.string().optional(),
+    accidentType: z.string().optional(),
+    accidentTypeId: z.string().optional(),
+    caseManager: z.string().optional(),
+    caseManagerId: z.string().optional(),
+    createdAtUtc: z.string().optional(),
+    updatedAtUtc: z.string().optional(),
     count: reportNumericSchema.optional(),
     total: reportNumericSchema.optional(),
     value: reportNumericSchema.optional(),
@@ -163,6 +235,21 @@ export const dashboardTotalCaseReportRowSchema = z
     percent: reportNumericSchema.optional(),
   })
   .passthrough();
+
+export const caseExportFilterSchema = z.object({
+  caseId: z.string().optional(),
+  keyword: z.string().optional(),
+  lawFirmId: z.string().optional(),
+  accidentTypeId: z.string().optional(),
+  statusId: z.string().optional(),
+  caseManagerId: z.string().optional(),
+});
+
+export const caseExportFileSchema = z.object({
+  base64: z.string(),
+  filename: z.string(),
+  export_format: z.string(),
+});
 
 export const dashboardLawFirmCaseReportRowSchema = z
   .object({

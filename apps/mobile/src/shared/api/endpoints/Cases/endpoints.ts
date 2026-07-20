@@ -4,7 +4,11 @@ import type { PagedResult } from '@/shared/types/api';
 import type {
   AddCaseNoteRequest,
   Case,
+  CaseDetailResponse,
+  CaseExportFile,
+  CaseExportFilter,
   CaseQueryParams,
+  CreateCaseRequest,
   DashboardPiechart,
   DashboardLawFirmCaseReportRow,
   DashboardMedicalProviderReportRow,
@@ -81,6 +85,25 @@ function readArray<TItem>(record: Record<string, unknown>, keys: string[]): TIte
   return [];
 }
 
+function normalizeArray<TItem>(payload: unknown): TItem[] {
+  const unwrapped = unwrapEnvelope(payload);
+  if (Array.isArray(unwrapped)) return unwrapped as TItem[];
+  const record = asRecord(unwrapped);
+  return record ? readArray<TItem>(record, ['items', 'data', 'results', 'records', 'rows']) : [];
+}
+
+function normalizeNote(raw: unknown): Note {
+  const note = asRecord(raw) ?? {};
+  return {
+    id: String(note.id ?? ''),
+    caseId: String(note.caseId ?? ''),
+    authorId: String(note.authorId ?? note.createdByUserId ?? ''),
+    authorName: String(note.authorName ?? note.createdByName ?? 'Unknown user'),
+    content: String(note.content ?? note.note ?? ''),
+    createdAt: String(note.createdAt ?? note.createdAtUtc ?? new Date(0).toISOString()),
+  };
+}
+
 export function normalizePagedResult<TItem>(payload: unknown): PagedResult<TItem> {
   const unwrapped = unwrapEnvelope(payload);
 
@@ -128,8 +151,13 @@ export const CasesApi = {
     return response.data;
   },
 
-  async getCase(id: string): Promise<Case> {
-    const response = await apiClient.get<Case>(`${CASES_BASE_PATH}/${id}`);
+  async getCase(id: string): Promise<CaseDetailResponse> {
+    const response = await apiClient.get<CaseDetailResponse>(`${CASES_BASE_PATH}/${id}`);
+    return response.data;
+  },
+
+  async createCase(body: CreateCaseRequest): Promise<CaseDetailResponse> {
+    const response = await apiClient.post<CaseDetailResponse>(CASES_BASE_PATH, body);
     return response.data;
   },
 
@@ -139,13 +167,13 @@ export const CasesApi = {
   },
 
   async getCaseNotes(caseId: string): Promise<Note[]> {
-    const response = await apiClient.get<Note[]>(`${CASES_BASE_PATH}/${caseId}/notes`);
-    return response.data;
+    const response = await apiClient.get<unknown>(`${CASES_BASE_PATH}/${caseId}/notes`);
+    return normalizeArray<unknown>(response.data).map(normalizeNote);
   },
 
   async addCaseNote(caseId: string, body: AddCaseNoteRequest): Promise<Note> {
-    const response = await apiClient.post<Note>(`${CASES_BASE_PATH}/${caseId}/notes`, body);
-    return response.data;
+    const response = await apiClient.post<unknown>(`${CASES_BASE_PATH}/${caseId}/notes`, body);
+    return normalizeNote(response.data);
   },
 
   async getDashboardPiechart(): Promise<DashboardPiechart> {
@@ -179,11 +207,20 @@ export const CasesApi = {
     return normalizePagedResult<DashboardTotalLienReportRow>(response.data);
   },
 
-  async getDashboardTotalCaseReport(): Promise<unknown[]> {
-    const response = await apiClient.get<unknown[]>(
+  async getDashboardTotalCaseReport(): Promise<DashboardTotalCaseReportRow[]> {
+    const response = await apiClient.get<unknown>(
       `${CASES_BASE_PATH}/dashboard/total-case-report-export`
     );
-    return response.data;
+    return normalizeArray<DashboardTotalCaseReportRow>(response.data);
+  },
+
+  async exportCases(body: CaseExportFilter): Promise<CaseExportFile> {
+    const response = await apiClient.post<unknown>(`${CASES_BASE_PATH}/generate-csv`, body);
+    const files = normalizeArray<CaseExportFile>(response.data);
+    if (!files[0]) {
+      throw new Error('The case export did not contain a file.');
+    }
+    return files[0];
   },
 
   async getDashboardTotalCaseReportV3(

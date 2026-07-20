@@ -2,9 +2,13 @@ import type { z } from 'zod';
 
 import type {
   addCaseNoteRequestSchema,
+  caseDetailResponseSchema,
+  caseExportFileSchema,
+  caseExportFilterSchema,
   caseQueryParamsSchema,
   caseSchema,
   caseStatusSchema,
+  createCaseRequestSchema,
   dashboardPiechartSchema,
   dashboardLawFirmCaseReportRowSchema,
   dashboardMedicalProviderReportRowSchema,
@@ -25,6 +29,10 @@ export type Case = z.infer<typeof caseSchema>;
 export type CaseQueryParams = z.infer<typeof caseQueryParamsSchema>;
 export type Note = z.infer<typeof noteSchema>;
 export type AddCaseNoteRequest = z.infer<typeof addCaseNoteRequestSchema>;
+export type CaseDetailResponse = z.infer<typeof caseDetailResponseSchema>;
+export type CreateCaseRequest = z.infer<typeof createCaseRequestSchema>;
+export type CaseExportFilter = z.infer<typeof caseExportFilterSchema>;
+export type CaseExportFile = z.infer<typeof caseExportFileSchema>;
 export type LinkedLien = z.infer<typeof linkedLienSchema>;
 export type UpdateCaseStatusRequest = z.infer<typeof updateCaseStatusRequestSchema>;
 export type PiechartStatus = z.infer<typeof piechartStatusSchema>;
