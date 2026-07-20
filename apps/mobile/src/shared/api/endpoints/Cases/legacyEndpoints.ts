@@ -45,6 +45,8 @@ export const LegacyCasesApi = {
       ...toLegacyReportPage(body),
       lienId: '',
       keyword: '',
+      startDate: body.startDate,
+      endDate: body.endDate,
     });
   },
 
@@ -52,6 +54,8 @@ export const LegacyCasesApi = {
     return LegacyPsaService.callCaseService(LEGACY_METHOD.totalCaseReport, {
       ...toLegacyReportPage(body),
       keyword: '',
+      startDate: body.startDate,
+      endDate: body.endDate,
     });
   },
 
