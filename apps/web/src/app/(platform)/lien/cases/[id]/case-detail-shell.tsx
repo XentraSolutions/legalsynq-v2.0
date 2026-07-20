@@ -430,7 +430,11 @@ export function CaseDetailShell({
             <MedicalLienComponent
               caseInfo={{ ...caseDetail }}
               caseId={id}
-              onClose={() => setShowMedicalLienModal(false)}
+              onClose={() => {
+                setShowMedicalLienModal(false);
+                queryClient.invalidateQueries({ queryKey: ["case-liens", id] });
+                queryClient.invalidateQueries({ queryKey: ["case-liens-all", id] });
+              }}
             />
           </div>
         </div>
