@@ -7,6 +7,7 @@ export * from './DeviceSecurity';
 export * from './ErrorTracking';
 export * from './FeatureFlags';
 export * from './Logger';
+export * from './MenuSettings';
 export * from './Network';
 export * from './Notifications';
 export * from './Permissions';
