@@ -59,6 +59,9 @@ const PUBLIC_PATHS = [
   // referral links can open attachments without a platform session cookie.
   "/api/documents/access/",
   "/documents/access/",
+  // SynqLien document view/download redemption — namespaced under /api/lien/
+  // to avoid colliding with CareConnect's top-level /api/documents/ routing.
+  "/api/lien/documents/access/",
   // LSCC-005: Public referral token routes — no session required
   "/referrals/view",
   "/referrals/accept",
