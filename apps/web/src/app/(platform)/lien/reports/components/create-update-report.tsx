@@ -1070,7 +1070,7 @@ export default function CreateUpdateReport({
             <div className="space-y-4">
               <div className="min-h-[100px]">
                 <div className="flex justify-between items-center mb-2">
-                  <p className="font-medium text-sm">Available Columns</p>
+                  <p className="font-medium text-sm">Selected Columns</p>
 
                   <button
                     type="button"
