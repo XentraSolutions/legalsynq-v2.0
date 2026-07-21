@@ -19,6 +19,7 @@ export function ServicingDetailsSection({
   onCurrentCaseManagerChange,
   attorneyRoleCode,
   caseManagerRoleCode,
+  canSave,
   onSave,
 }: {
   caseStatus: string;
@@ -36,6 +37,7 @@ export function ServicingDetailsSection({
   onCurrentCaseManagerChange: (v: string) => void;
   attorneyRoleCode?: string;
   caseManagerRoleCode?: string;
+  canSave: boolean;
   onSave: () => void;
 }) {
   return (
@@ -88,10 +90,11 @@ export function ServicingDetailsSection({
           </label>
           <ContactEntitySelect
             contactType="LawFirm"
-            value={switchedLawFirm ? currentLawFirm : ""}
+            value={currentLawFirm}
             onChange={(v) => onCurrentLawFirmChange(v)}
             placeholder="Select law firm..."
             searchPlaceholder="Search law firms..."
+            disabled={!switchedLawFirm}
           />
         </div>
 
@@ -103,13 +106,14 @@ export function ServicingDetailsSection({
             <ContactEntitySelect
               contactType="LawFirm"
               contactSubtype={attorneyRoleCode}
-              lawFirmId={switchedLawFirm ? currentLawFirm : undefined}
+              lawFirmId={currentLawFirm}
               requireParent
               parentHint="Select a law firm first"
-              value={switchedLawFirm ? currentLawyer : ""}
+              value={currentLawyer}
               onChange={(v) => onCurrentLawyerChange(v)}
               placeholder="Select lawyer..."
               searchPlaceholder="Search lawyers..."
+              disabled={!switchedLawFirm}
             />
           </div>
           <div>
@@ -119,20 +123,21 @@ export function ServicingDetailsSection({
             <ContactEntitySelect
               contactType="LawFirm"
               contactSubtype={caseManagerRoleCode}
-              lawFirmId={switchedLawFirm ? currentLawFirm : undefined}
+              lawFirmId={currentLawFirm}
               requireParent
               parentHint="Select a law firm first"
-              value={switchedLawFirm ? currentCaseManager : ""}
+              value={currentCaseManager}
               onChange={(v) => onCurrentCaseManagerChange(v)}
               placeholder="Select case manager..."
               searchPlaceholder="Search case managers..."
+              disabled={!switchedLawFirm}
             />
           </div>
         </div>
 
         <div className="pt-2 flex items-center gap-3">
           <button
-            disabled={!switchedLawFirm}
+            disabled={!canSave}
             onClick={onSave}
             className="px-6 py-2.5 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >

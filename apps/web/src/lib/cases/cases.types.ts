@@ -265,7 +265,9 @@ export interface CaseDetail {
   createdAt: string;
   updatedAt: string;
   lawFirm: string;
+  lawFirmId: string;
   caseManager: string;
+  caseManagerId: string;
   accidentType: string;
   shareCase: string;
   minorComp: string;
