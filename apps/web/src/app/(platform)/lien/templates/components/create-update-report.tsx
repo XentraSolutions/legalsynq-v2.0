@@ -703,7 +703,7 @@ export default function CreateUpdateReport({
     setSelectedCols(filtered);
   };
   useEffect(() => {
-    console.log(form);
+    console.log(selectedCols);
   }, []);
   return (
     <Modal
