@@ -78,6 +78,6 @@ export const settlementService = {
   },
   async getSettlementPaymentDetails(caseId: string): Promise<LegacyCasePayment[]> {
     const { data } = await settlementApi.getSettlementPaymentDetails(caseId)
-    return Array.isArray(data) ? data : []
+    return Array.isArray(data?.data) ? data.data : []
   },
 }
