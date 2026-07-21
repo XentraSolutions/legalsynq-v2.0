@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Modal } from "@/components/lien/modal";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { casesService } from "@/lib/cases";
@@ -525,24 +531,17 @@ export default function CreateUpdateReport({
     if (!over || active.id === over.id) return;
 
     setSelectedCols((prev) => {
-      const flattened = prev.flatMap((section) =>
-        section.value.map((item: any) => ({
-          ...item,
-          sectionKey: section.key,
-        })),
-      );
-
-      const oldIndex = flattened.findIndex(
+      const oldIndex = flattenedItems.findIndex(
         (item) => `${item.sectionKey}__${item.key}` === active.id,
       );
 
-      const newIndex = flattened.findIndex(
+      const newIndex = flattenedItems.findIndex(
         (item) => `${item.sectionKey}__${item.key}` === over.id,
       );
 
       if (oldIndex === -1 || newIndex === -1) return prev;
 
-      const reordered = arrayMove(flattened, oldIndex, newIndex).map(
+      const reordered = arrayMove(flattenedItems, oldIndex, newIndex).map(
         (item, index) => ({
           ...item,
           sortOrder: index + 1,
@@ -617,14 +616,27 @@ export default function CreateUpdateReport({
     };
   };
 
-  const flattenedItems = selectedCols
-    .flatMap((section) =>
-      section.value.map((item: any) => ({
-        ...item,
-        sectionKey: section.key,
-      })),
-    )
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+  // const flattenedItems = selectedCols
+  //   .flatMap((section) =>
+  //     section.value.map((item: any) => ({
+  //       ...item,
+  //       sectionKey: section.key,
+  //     })),
+  //   )
+  //   .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const flattenedItems = useMemo(
+    () =>
+      selectedCols
+        .flatMap((section) =>
+          section.value.map((item: any) => ({
+            ...item,
+            sectionKey: section.key,
+          })),
+        )
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+    [selectedCols],
+  );
 
   const handleSearch = (value: any) => {
     setSearchInput(value);
@@ -664,6 +676,9 @@ export default function CreateUpdateReport({
 
     setSelectedCols(filtered);
   };
+  useEffect(() => {
+    console.log(selectedCols);
+  }, []);
   return (
     <Modal
       open={true}
