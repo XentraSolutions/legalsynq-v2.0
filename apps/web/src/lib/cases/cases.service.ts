@@ -138,11 +138,11 @@ export const casesService = {
 
   async getMedicalFacilityCaseAllocation(
     request: CaseAllocationReportRequest,
-  ): Promise<{ segments: AllocationSegment[]; rows: CaseReportItem[] }> {
+  ): Promise<{ segments: AllocationSegment[]; rows: LienReportItem[] }> {
     const { data } = await casesApi.getMedicalProviderCaseReport(request);
     const rows = data.items ?? [];
     return {
-      segments: groupAndCount(rows, (item) => item.medicalFacility),
+      segments: groupAndCount(rows, (item) => item.facilityName),
       rows,
     };
   },
@@ -315,9 +315,9 @@ export const casesService = {
   },
 };
 
-function groupAndCount(
-  items: CaseReportItem[],
-  getKey: (item: CaseReportItem) => unknown,
+function groupAndCount<T>(
+  items: T[],
+  getKey: (item: T) => unknown,
 ): AllocationSegment[] {
   const counts = new Map<string, number>();
   for (const item of items) {
