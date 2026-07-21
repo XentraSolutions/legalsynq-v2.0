@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQueries } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/lien/page-header";
@@ -21,6 +21,7 @@ import {
   useContactTypes,
   useDeleteContact,
   useBatchReassignContact,
+  CONTACTS_QUERY_KEY,
 } from "@/hooks/use-contacts";
 import { useSessionContext } from "@/providers/session-provider";
 import { ConfirmDialog, Modal } from "@/components/lien/modal";
@@ -290,6 +291,39 @@ export default function ContactsPage() {
     [activeKnownContactTypes],
   );
 
+  // Fetches each tab's first page up front. This both powers the "(n)" count
+  // shown on each tab and, since it uses the same query key/params the main
+  // list uses for page 1 with no search, warms the cache so switching tabs
+  // is instant instead of showing a loading state.
+  const tabContactsQueries = useQueries({
+    queries: tabs.map((tab) => ({
+      queryKey: CONTACTS_QUERY_KEY({
+        ContactType: tab.key,
+        ContactSubtype: "",
+        page: 1,
+        pageSize: PAGE_SIZE,
+      }),
+      queryFn: () =>
+        contactsService.getContacts({
+          ContactType: tab.key,
+          ContactSubtype: "",
+          page: 1,
+          pageSize: PAGE_SIZE,
+        }),
+      staleTime: 0,
+      refetchOnWindowFocus: false,
+    })),
+  });
+
+  const tabCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    tabs.forEach((tab, i) => {
+      const data = tabContactsQueries[i]?.data;
+      if (data) map[tab.key] = data.pagination.totalCount;
+    });
+    return map;
+  }, [tabs, tabContactsQueries]);
+
   // Preselect the first tab once contact types load, since there's no more "All" tab.
   useEffect(() => {
     if (!typeFilter && tabs.length > 0) {
@@ -446,6 +480,11 @@ export default function ContactsPage() {
             }`}
           >
             {tab.label}
+            {tabCounts[tab.key] !== undefined && (
+              <span className="ml-1.5 text-xs opacity-70">
+                ({tabCounts[tab.key]})
+              </span>
+            )}
           </Link>
         ))}
       </div>
