@@ -110,7 +110,7 @@ export function CaseDetailShell({
     setError(null);
     try {
       const updates = await casesService.getCaseUpdates(id);
-      setCaseUpdates(updates.data ?? []);
+      setCaseUpdates(updates ?? []);
     } catch (err) {}
   }, [id]);
 
