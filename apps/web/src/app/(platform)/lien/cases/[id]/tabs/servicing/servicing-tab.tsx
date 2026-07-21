@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLienStore } from "@/stores/lien-store";
 import { useTimezone } from "@/lib/use-timezone";
 import { useSessionContext } from "@/providers/session-provider";
-import { useCaseLiens } from "@/hooks/use-case-liens";
+import { useCaseLiens, CASE_PAYMENTS_QUERY_KEY } from "@/hooks/use-case-liens";
 import { useSettlementHistory } from "@/hooks/use-settlement-history";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import type { CaseDetail, CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
@@ -82,6 +82,18 @@ export function ServicingTab({
     historyQueryClient.invalidateQueries({
       queryKey: ["settlement-history"],
       refetchType: isHistoryVisible ? "active" : "none",
+    });
+  };
+  // onRefreshLiens only refetches the paged "case-liens" query (used by the
+  // Liens tab). This tab reads from the separate "case-liens-all" query (see
+  // useCaseLiens call above), so payment/reduction/no-recovery mutations must
+  // invalidate that key too or the open/closed lien balances go stale.
+  const refreshAllLienData = () => {
+    historyQueryClient.invalidateQueries({
+      queryKey: ["case-liens-all", caseDetail.id],
+    });
+    historyQueryClient.invalidateQueries({
+      queryKey: CASE_PAYMENTS_QUERY_KEY(caseDetail.id),
     });
   };
 
@@ -339,6 +351,8 @@ export function ServicingTab({
         onSaved={() => {
           showSetupReductionForm(false);
           onRefreshLiens();
+          refreshAllLienData();
+          onRefreshPayments();
           refetchHistory();
         }}
       />
@@ -353,6 +367,8 @@ export function ServicingTab({
         onSaved={() => {
           setIsNoRecoveryOpen(false);
           onRefreshLiens();
+          refreshAllLienData();
+          onRefreshPayments();
           refetchHistory();
         }}
       />
@@ -367,6 +383,7 @@ export function ServicingTab({
         onSaved={() => {
           setIsAddPaymentOpen(false);
           onRefreshPayments();
+          refreshAllLienData();
           refetchHistory();
         }}
       />
