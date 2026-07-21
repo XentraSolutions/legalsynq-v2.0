@@ -43,47 +43,48 @@ export function DocumentsTab({
   }>({ id: "", isOpen: false, type: "" });
   const [submitting, setIsSubmitting] = useState<boolean>(false);
 
-  const uploadCaseDocuments = async (payload: any) => {
-    if (!payload || payload.length == 0) return;
-    setIsSubmitting(true);
-    try {
-      payload.forEach(async (element: File) => {
-        const formData = new FormData();
-        formData.append("File", element ?? "");
-        formData.append("caseId", caseDetail.id ?? "");
-        formData.append("DocName", element.name);
-        formData.append("DocDescription", "Legacy Case Document upload");
-        formData.append("DocFileTypeId", selectedDocType);
+  const uploadCaseDocuments = useCallback(
+    async (payload: any) => {
+      if (!payload || payload.length == 0) return;
+      setIsSubmitting(true);
+      try {
+        payload.forEach(async (element: File) => {
+          const formData = new FormData();
+          formData.append("File", element ?? "");
+          formData.append("caseId", caseDetail.id ?? "");
+          formData.append("DocName", element.name);
+          formData.append("DocDescription", "Legacy Case Document upload");
+          formData.append("DocFileTypeId", selectedDocType);
 
-        await casesService.uploadCaseDocuments(formData);
-        addToast({
-          type: "success",
-          title: "Document Uploaded",
-          description: `Document has been updated.`,
-        });
-        setTimeout(() => {
+          await casesService.uploadCaseDocuments(formData);
+          addToast({
+            type: "success",
+            title: "Document Uploaded",
+            description: `Document has been updated.`,
+          });
           setIsSubmitting(false);
-          dropzoneRef?.current?.reset();
           setSelectedDocType("");
-          fetchDocuments();
-        }, 1000);
-      });
-    } catch (err) {
-      if (err instanceof ApiError) {
-        addToast({
-          type: "error",
-          title: "Update Failed",
-          description: err.message,
+          dropzoneRef?.current?.reset();
         });
-      } else {
-        addToast({
-          type: "error",
-          title: "Update Failed",
-          description: "An unexpected error occurred",
-        });
+      } catch (err) {
+        if (err instanceof ApiError) {
+          addToast({
+            type: "error",
+            title: "Update Failed",
+            description: err.message,
+          });
+        } else {
+          addToast({
+            type: "error",
+            title: "Update Failed",
+            description: "An unexpected error occurred",
+          });
+        }
+        console.log(err);
       }
-    }
-  };
+    },
+    [selectedFiles, submitting, selectedDocType],
+  );
 
   const fetchDocuments = async () => {
     const docs = await casesService.loadDocuments(caseDetail.id);
@@ -140,7 +141,7 @@ export function DocumentsTab({
   useEffect(() => {
     fetchDocuments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [submitting]);
 
   const leftContent = (
     <div className="space-y-4">
