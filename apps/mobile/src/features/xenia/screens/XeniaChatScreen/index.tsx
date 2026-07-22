@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -9,10 +10,14 @@ import {
   Text,
   TextInput,
   View,
+  type TextStyle,
+  type ViewStyle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
+import Markdown from 'react-native-markdown-display';
+import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
 
 import { useXeniaChat } from '@/features/xenia/hooks/useXeniaChat';
 import type { MainStackParamList } from '@/navigation/types/navigation';
@@ -21,6 +26,14 @@ import { cx } from '@/shared/styles';
 
 const ACCENT = '#ee7132';
 const SHADOW = '#000000';
+const MARKDOWN_FOREGROUND = '#18181b';
+const MARKDOWN_MUTED = '#71717a';
+const MARKDOWN_DARK_FOREGROUND = '#f4f4f5';
+const MARKDOWN_DARK_MUTED = '#d4d4d8';
+const MARKDOWN_SEPARATOR = '#e4e4e7';
+const MARKDOWN_DARK_SEPARATOR = '#3f3f46';
+const MARKDOWN_SURFACE = '#efeff0';
+const MARKDOWN_DARK_SURFACE = '#27272a';
 const SUGGESTIONS = ['Search liens by client, case, or status', 'Summarize my lien queue'];
 
 export function XeniaChatScreen() {
@@ -248,9 +261,7 @@ function MessageRow({ message }: { message: XeniaMessage & { pending?: boolean }
 
   return (
     <View className="px-6 py-4">
-      <Text className="font-jakarta text-sm leading-5 text-[#71717a] dark:text-[#a1a1aa]">
-        {message.content}
-      </Text>
+      <XeniaResponseMarkdown content={message.content} />
       {message.citations.length ? (
         <View className="mt-3 gap-2">
           {message.citations.map((citation) => (
@@ -266,6 +277,200 @@ function MessageRow({ message }: { message: XeniaMessage & { pending?: boolean }
     </View>
   );
 }
+
+export function XeniaResponseMarkdown({ content }: { content: string }) {
+  const { colorScheme } = useNativeWindColorScheme();
+
+  return (
+    <Markdown
+      mergeStyle={false}
+      style={colorScheme === 'dark' ? MARKDOWN_DARK_STYLES : MARKDOWN_LIGHT_STYLES}
+      onLinkPress={openMarkdownLink}
+    >
+      {content}
+    </Markdown>
+  );
+}
+
+function openMarkdownLink(url: string): boolean {
+  if (/^https?:\/\//i.test(url)) {
+    void Linking.openURL(url);
+  }
+
+  return false;
+}
+
+function createMarkdownStyles(dark: boolean): Record<string, TextStyle | ViewStyle> {
+  const foreground = dark ? MARKDOWN_DARK_FOREGROUND : MARKDOWN_FOREGROUND;
+  const muted = dark ? MARKDOWN_DARK_MUTED : MARKDOWN_MUTED;
+  const separator = dark ? MARKDOWN_DARK_SEPARATOR : MARKDOWN_SEPARATOR;
+  const surface = dark ? MARKDOWN_DARK_SURFACE : MARKDOWN_SURFACE;
+
+  return {
+    body: {
+      color: muted,
+      fontFamily: 'PlusJakartaSans_400Regular',
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    paragraph: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      marginBottom: 8,
+      marginTop: 0,
+      width: '100%',
+    },
+    heading1: {
+      color: foreground,
+      fontFamily: 'PlusJakartaSans_600SemiBold',
+      fontSize: 20,
+      lineHeight: 28,
+      marginBottom: 8,
+      marginTop: 0,
+    },
+    heading2: {
+      color: foreground,
+      fontFamily: 'PlusJakartaSans_600SemiBold',
+      fontSize: 18,
+      lineHeight: 26,
+      marginBottom: 8,
+      marginTop: 0,
+    },
+    heading3: {
+      color: foreground,
+      fontFamily: 'PlusJakartaSans_600SemiBold',
+      fontSize: 16,
+      lineHeight: 24,
+      marginBottom: 8,
+      marginTop: 0,
+    },
+    heading4: {
+      color: foreground,
+      fontFamily: 'PlusJakartaSans_600SemiBold',
+      fontSize: 14,
+      lineHeight: 20,
+      marginBottom: 8,
+      marginTop: 0,
+    },
+    heading5: {
+      color: foreground,
+      fontFamily: 'PlusJakartaSans_600SemiBold',
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    heading6: {
+      color: foreground,
+      fontFamily: 'PlusJakartaSans_600SemiBold',
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    strong: {
+      color: foreground,
+      fontFamily: 'PlusJakartaSans_600SemiBold',
+    },
+    em: {
+      fontFamily: 'PlusJakartaSans_400Regular',
+      fontStyle: 'italic',
+    },
+    bullet_list: {
+      marginBottom: 8,
+    },
+    ordered_list: {
+      marginBottom: 8,
+    },
+    list_item: {
+      flexDirection: 'row',
+      justifyContent: 'flex-start',
+      marginBottom: 4,
+    },
+    bullet_list_icon: {
+      color: muted,
+      marginLeft: 4,
+      marginRight: 8,
+    },
+    bullet_list_content: {
+      flex: 1,
+    },
+    ordered_list_icon: {
+      color: muted,
+      marginLeft: 4,
+      marginRight: 8,
+    },
+    ordered_list_content: {
+      flex: 1,
+    },
+    blockquote: {
+      backgroundColor: surface,
+      borderColor: ACCENT,
+      borderLeftWidth: 3,
+      marginBottom: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    code_inline: {
+      backgroundColor: surface,
+      borderRadius: 4,
+      color: foreground,
+      fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+      paddingHorizontal: 4,
+      paddingVertical: 2,
+    },
+    code_block: {
+      backgroundColor: surface,
+      borderColor: separator,
+      borderRadius: 8,
+      borderWidth: 1,
+      color: foreground,
+      fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+      marginBottom: 8,
+      padding: 12,
+    },
+    fence: {
+      backgroundColor: surface,
+      borderColor: separator,
+      borderRadius: 8,
+      borderWidth: 1,
+      color: foreground,
+      fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+      marginBottom: 8,
+      padding: 12,
+    },
+    link: {
+      color: ACCENT,
+      textDecorationLine: 'underline',
+    },
+    hr: {
+      backgroundColor: separator,
+      height: 1,
+      marginVertical: 12,
+    },
+    table: {
+      borderColor: separator,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginBottom: 8,
+    },
+    tr: {
+      borderBottomColor: separator,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+    },
+    th: {
+      color: foreground,
+      flex: 1,
+      fontFamily: 'PlusJakartaSans_600SemiBold',
+      padding: 8,
+    },
+    td: {
+      color: muted,
+      flex: 1,
+      padding: 8,
+    },
+  };
+}
+
+const MARKDOWN_LIGHT_STYLES = createMarkdownStyles(false);
+const MARKDOWN_DARK_STYLES = createMarkdownStyles(true);
 
 function Composer({
   disabled,

@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
-import { WelcomeState, XeniaChatScreen } from './index';
+import { WelcomeState, XeniaChatScreen, XeniaResponseMarkdown } from './index';
 
 describe('XeniaChatScreen', () => {
   it('exports the Xenia chat screen', () => {
@@ -15,5 +15,16 @@ describe('XeniaChatScreen', () => {
 
     fireEvent.press(getByLabelText('Summarize my lien queue'));
     expect(onSuggestion).toHaveBeenCalledWith('Summarize my lien queue');
+  });
+
+  it('renders Xenia responses as Markdown', () => {
+    const { getByText, queryByText } = render(
+      <XeniaResponseMarkdown content={'## Summary\n\n- **First** item\n- Second item'} />
+    );
+
+    expect(getByText('Summary')).toBeTruthy();
+    expect(getByText('First')).toBeTruthy();
+    expect(getByText('Second item')).toBeTruthy();
+    expect(queryByText('## Summary')).toBeNull();
   });
 });
