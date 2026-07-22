@@ -17,7 +17,7 @@ import type { DropdownOption } from "@/lib/lookup/lookup.types";
 import {
   useCaseLiens,
   useDeleteCase,
-  useSettlementPaymentDetails,
+  useLienPaymentsByCase,
 } from "@/hooks/use-case-liens";
 import { MergeCaseForm } from "@/components/lien/forms/merge-case-form";
 import { HeaderMeta } from "./components/header-meta";
@@ -70,7 +70,7 @@ export function CaseDetailShell({
     dataUpdatedAt: paymentsUpdatedAt,
     refetch: refetchPayments,
     isFetching: isPaymentsFetching,
-  } = useSettlementPaymentDetails(id);
+  } = useLienPaymentsByCase(id);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>("split");
@@ -110,7 +110,7 @@ export function CaseDetailShell({
     setError(null);
     try {
       const updates = await casesService.getCaseUpdates(id);
-      setCaseUpdates(updates.data ?? []);
+      setCaseUpdates(updates ?? []);
     } catch (err) {}
   }, [id]);
 
@@ -430,7 +430,11 @@ export function CaseDetailShell({
             <MedicalLienComponent
               caseInfo={{ ...caseDetail }}
               caseId={id}
-              onClose={() => setShowMedicalLienModal(false)}
+              onClose={() => {
+                setShowMedicalLienModal(false);
+                queryClient.invalidateQueries({ queryKey: ["case-liens", id] });
+                queryClient.invalidateQueries({ queryKey: ["case-liens-all", id] });
+              }}
             />
           </div>
         </div>

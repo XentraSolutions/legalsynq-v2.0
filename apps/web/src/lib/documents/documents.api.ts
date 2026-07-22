@@ -10,7 +10,7 @@ import type {
   UploadDocumentParams,
 } from './documents.types';
 
-const BASE = '/documents/documents';
+const BASE = '/lien/documents/documents';
 
 function toQs(params: Record<string, unknown>): string {
   const pairs = Object.entries(params)

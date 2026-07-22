@@ -19,8 +19,6 @@ export function ReportDetailModal({ open, onClose, config, periodLabel, onExport
 }) {
   const filteredSegments = config.segments.filter((s) => s.value > 0);
   const grandTotal = filteredSegments.reduce((s, seg) => s + seg.value, 0);
-  const dominant = filteredSegments.length > 0 ? filteredSegments.reduce((a, b) => a.value > b.value ? a : b) : { value: 0 };
-  const pct = grandTotal > 0 ? ((dominant.value / grandTotal) * 100).toFixed(1) : '0';
   const tileSegments = filteredSegments.slice(0, 3);
 
   const columns = useMemo<ColumnDef<unknown, any>[]>(
@@ -73,11 +71,11 @@ export function ReportDetailModal({ open, onClose, config, periodLabel, onExport
 
       <h3 className="text-sm font-semibold text-gray-800 mb-3">Distribution</h3>
       <div className="flex items-start gap-8 mb-6">
-        <DonutChart segments={filteredSegments.length > 0 ? filteredSegments : [{ label: 'None', value: 1, color: '#e5e7eb' }]} pctLabel={`${pct}%`} size={160} />
+        <DonutChart segments={filteredSegments.length > 0 ? filteredSegments : [{ label: 'None', value: 1, color: '#e5e7eb' }]} size={260} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-blue-600 mb-2">Legends:</p>
           <hr className="border-gray-100 mb-2" />
-          <ul className="max-h-32 overflow-y-auto space-y-2 pr-2">
+          <ul className="max-h-54 overflow-y-auto space-y-2 pr-2">
             {filteredSegments.map((seg) => (
               <li key={seg.label} className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-2 min-w-0">

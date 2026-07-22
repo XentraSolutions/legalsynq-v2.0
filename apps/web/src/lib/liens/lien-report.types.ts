@@ -67,7 +67,7 @@ export interface ReportListResponse {
   createdAt?: string;
   createdBy?: string;
   updatedAt?: string;
-  reportConfig?: ReportConfig;
+  reportConfig: ReportConfig;
   columnCount?: number;
   summaryTotals?: ReportTotals;
 }
@@ -144,23 +144,24 @@ export interface ReportsResponse {
 
 interface ReportConfig {
   reportType: string;
-  statusView: string;
+  viewBy: string;
+  columns: Array<ReportColumnValue>;
+  attorneyIds?: Array<string>;
+  caseManagerIds?: Array<string>;
+  closedDateFrom?: null;
+  closedDateTo?: null;
+  fundingCompanyIds: Array<string>;
+  isBulk: string;
+  lawFirmIds: Array<string>;
   lienStatusIds: Array<string>;
+  medicalFacilityIds: Array<string>;
+  medicalProviderIds: Array<string>;
+  plaintiffCaseIds: Array<string>;
   purchaseDateFrom: string;
   purchaseDateTo: string;
-  closedDateFrom: string;
-  closedDateTo: string;
-  isBulk: string;
-  plaintiffCaseIds: Array<string>;
-  lawFirmIds: Array<string>;
-  attorneyIds: Array<string>;
-  fundingCompanyIds: Array<string>;
-  medicalFacilityIds: Array<string>;
-  caseManagerIds: Array<string>;
-  medicalProviderIds: Array<string>;
-  columns: Array<ReportColumnValue>;
-  page: number | string;
-  limit: number | string;
+  statusView: string;
+  page?: number | string;
+  limit?: number | string;
 }
 
 export interface ReportTotals {
@@ -189,10 +190,8 @@ export interface UpdateReportConfigRequest {
   config: Record<string, unknown>;
 }
 
-export interface ExportReportRequest {
+export interface ExportReportRequest extends ReportConfig {
   reportId: string;
-  filters: Record<string, unknown>;
-  columns: Array<unknown>;
   format: string;
 }
 

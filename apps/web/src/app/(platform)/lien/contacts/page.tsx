@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQueries } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/lien/page-header";
@@ -21,11 +21,12 @@ import {
   useContactTypes,
   useDeleteContact,
   useBatchReassignContact,
+  CONTACTS_QUERY_KEY,
 } from "@/hooks/use-contacts";
 import { useSessionContext } from "@/providers/session-provider";
 import { ConfirmDialog, Modal } from "@/components/lien/modal";
 import { ContactPicker } from "@/components/lien/contact-picker";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 
@@ -42,6 +43,7 @@ export const dynamic = "force-dynamic";
 export default function ContactsPage() {
   const addToast = useLienStore((s) => s.addToast);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const ra = useRoleAccess();
   const queryClient = useQueryClient();
 
@@ -51,7 +53,9 @@ export default function ContactsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
+  // Driven by the ?type= query param (see the tabs below) so tab links are
+  // real navigable links rather than plain state-setting buttons.
+  const typeFilter = searchParams.get("type") ?? "";
   const [showCreate, setShowCreate] = useState<{
     open: boolean;
     mode?: "create" | "edit" | undefined;
@@ -136,7 +140,6 @@ export default function ContactsPage() {
   };
 
   const exportContacts = async () => {
-    if (typeFilter == "MedicalFacility") return exportFacilityContacts();
     const response = await contactsService.exportContacts(typeFilter);
     const csv = atob(response.data);
 
@@ -145,20 +148,6 @@ export default function ContactsPage() {
     const time = now.toTimeString().split(" ")[0].replace(/:/g, "-");
     const filename = `contacts_${date}_${time}.csv`;
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-  };
-
-  const exportFacilityContacts = async () => {
-    const response = await contactsService.exportFacilityContacts("");
-    const csv = atob(response.data);
-    const now = new Date();
-    const date = now.toISOString().split("T")[0];
-    const time = now.toTimeString().split(" ")[0].replace(/:/g, "-");
-    const filename = `contacts_${date}_${time}.csv`;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -294,15 +283,53 @@ export default function ContactsPage() {
   );
 
   const tabs = useMemo(
-    () => [
-      { key: "", label: "All" },
-      ...activeKnownContactTypes.map((t) => ({
+    () =>
+      activeKnownContactTypes.map((t) => ({
         key: t.code,
         label: pluralize(t.name),
       })),
-    ],
     [activeKnownContactTypes],
   );
+
+  // Fetches each tab's first page up front. This both powers the "(n)" count
+  // shown on each tab and, since it uses the same query key/params the main
+  // list uses for page 1 with no search, warms the cache so switching tabs
+  // is instant instead of showing a loading state.
+  const tabContactsQueries = useQueries({
+    queries: tabs.map((tab) => ({
+      queryKey: CONTACTS_QUERY_KEY({
+        ContactType: tab.key,
+        ContactSubtype: "",
+        page: 1,
+        pageSize: PAGE_SIZE,
+      }),
+      queryFn: () =>
+        contactsService.getContacts({
+          ContactType: tab.key,
+          ContactSubtype: "",
+          page: 1,
+          pageSize: PAGE_SIZE,
+        }),
+      staleTime: 0,
+      refetchOnWindowFocus: false,
+    })),
+  });
+
+  const tabCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    tabs.forEach((tab, i) => {
+      const data = tabContactsQueries[i]?.data;
+      if (data) map[tab.key] = data.pagination.totalCount;
+    });
+    return map;
+  }, [tabs, tabContactsQueries]);
+
+  // Preselect the first tab once contact types load, since there's no more "All" tab.
+  useEffect(() => {
+    if (!typeFilter && tabs.length > 0) {
+      router.replace(`/lien/contacts?type=${tabs[0].key}`);
+    }
+  }, [tabs, typeFilter, router]);
 
   const nameColumnLabel = typeFilter
     ? (contactTypeMap[typeFilter] ?? "Contact Name")
@@ -443,9 +470,9 @@ export default function ContactsPage() {
       {/* Contact type tabs */}
       <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200 pb-0">
         {tabs.map((tab) => (
-          <button
+          <Link
             key={tab.key}
-            onClick={() => setTypeFilter(tab.key)}
+            href={`/lien/contacts?type=${tab.key}`}
             className={`shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               typeFilter === tab.key
                 ? "border-primary text-primary"
@@ -453,7 +480,12 @@ export default function ContactsPage() {
             }`}
           >
             {tab.label}
-          </button>
+            {tabCounts[tab.key] !== undefined && (
+              <span className="ml-1.5 text-xs opacity-70">
+                ({tabCounts[tab.key]})
+              </span>
+            )}
+          </Link>
         ))}
       </div>
 

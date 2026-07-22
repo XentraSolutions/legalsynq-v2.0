@@ -51,13 +51,13 @@ export const documentsService = {
   async getViewUrl(id: string): Promise<string> {
     const { data } = await documentsApi.requestViewUrl(id);
     const redeem = data.data.redeemUrl.replace(/^\/+/, '');
-    return `/api/documents/${redeem}`;
+    return `/api/lien/documents/${redeem}`;
   },
 
   async getDownloadUrl(id: string): Promise<string> {
     const { data } = await documentsApi.requestDownloadUrl(id);
     const redeem = data.data.redeemUrl.replace(/^\/+/, '');
-    return `/api/documents/${redeem}`;
+    return `/api/lien/documents/${redeem}`;
   },
 
   async listVersions(id: string): Promise<DocumentVersion[]> {

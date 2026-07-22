@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { FormModal } from '@/components/lien/modal';
 import { DatePicker } from '@/components/ui/date-picker';
 import { BaseSelect } from '@/components/ui/base-select';
@@ -8,8 +8,8 @@ import {
   useInfiniteContactOptions,
   useInfiniteCaseManagerOptions,
   useLienStatusOptions,
-  type InfiniteOptions,
 } from '@/hooks/use-filter-options';
+import { FilterSection, InfiniteFilterList } from '@/components/lien/filter-section';
 
 export interface LiensFilterValues {
   lawFirmIds: string[];
@@ -53,97 +53,6 @@ interface LiensFilterProps {
   primaryReady?: boolean;
 }
 
-/**
- * Label + "Select All" header above an inline BaseSelect list. Pages load in
- * the background as soon as the list is enabled, so by the time someone
- * clicks Select All it's normally already the complete list; `loadAll` is
- * the fallback for the rare case that background load hasn't finished yet.
- */
-function FilterSection({
-  label,
-  source,
-  selected,
-  onChange,
-  children,
-}: {
-  label: string;
-  source: InfiniteOptions;
-  selected: string[];
-  onChange: (values: string[]) => void;
-  children: ReactNode;
-}) {
-  const [selecting, setSelecting] = useState(false);
-
-  const selectAll = async () => {
-    if (source.allLoaded) {
-      onChange(Array.from(new Set([...selected, ...source.options.map((o) => o.value)])));
-      return;
-    }
-    setSelecting(true);
-    try {
-      const all = await source.loadAll();
-      onChange(Array.from(new Set([...selected, ...all.map((o) => o.value)])));
-    } finally {
-      setSelecting(false);
-    }
-  };
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="block text-sm font-medium text-gray-700">{label}</span>
-        <button
-          type="button"
-          onClick={selectAll}
-          disabled={selecting}
-          className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
-        >
-          {selecting ? 'Loading…' : 'Select All'}
-        </button>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-/**
- * Inline checkbox list backed by a scroll-paginated option source. Every
- * page is background-loaded before this ever renders (see
- * useBackgroundInfiniteOptions), so search is plain client-side filtering
- * over whatever's already loaded — no server round-trip per keystroke,
- * `loadingMode="infinite"` here only covers the (usually already-finished)
- * background page loading, not searching.
- */
-function InfiniteFilterList({
-  source,
-  searchPlaceholder,
-  selected,
-  onChange,
-}: {
-  source: InfiniteOptions;
-  searchPlaceholder: string;
-  selected: string[];
-  onChange: (values: string[]) => void;
-}) {
-  return (
-    <BaseSelect
-      multiple
-      inline
-      showCheckboxes
-      options={source.options}
-      value={selected}
-      onChange={(values) => onChange(values)}
-      loadingMode="infinite"
-      isLoading={source.isLoading}
-      isFetchingMore={source.isFetchingMore}
-      hasNextPage={source.hasNextPage}
-      onLoadMore={source.loadMore}
-      searchPlaceholder={searchPlaceholder}
-      emptyText="No results found"
-    />
-  );
-}
-
 export function LiensFilter({ open, onClose, value, onApplyFilter, primaryReady }: LiensFilterProps) {
   const [draft, setDraft] = useState<LiensFilterValues>(value);
 
@@ -158,7 +67,13 @@ export function LiensFilter({ open, onClose, value, onApplyFilter, primaryReady 
     enabled: listsEnabled,
     mainOnly: true,
   });
-  const caseManagers = useInfiniteCaseManagerOptions({ enabled: listsEnabled });
+  // Scoped to the law firm(s) currently selected in this draft — case
+  // managers belong to a single law firm, so narrowing Law Firm should
+  // narrow which case managers are selectable too.
+  const caseManagers = useInfiniteCaseManagerOptions({
+    enabled: listsEnabled,
+    lawFirmIds: draft.lawFirmIds,
+  });
   const statuses = useLienStatusOptions({ enabled: listsEnabled });
 
   // Re-sync the draft with the page's active filters every time the modal opens.
@@ -200,65 +115,70 @@ export function LiensFilter({ open, onClose, value, onApplyFilter, primaryReady 
     >
       <div className="space-y-5">
         <div className="grid grid-cols-2 gap-4">
-          <FilterSection
-            label="Law Firm"
-            source={lawFirms}
-            selected={draft.lawFirmIds}
-            onChange={(v) => setDraft({ ...draft, lawFirmIds: v })}
-          >
-            <InfiniteFilterList
+          {/* Case Manager sits under Law Firm — it's scoped to whichever law
+              firm(s) are selected above, so grouping them in one column keeps
+              that dependency visually obvious. */}
+          <div className="space-y-4">
+            <FilterSection
+              label="Law Firm"
               source={lawFirms}
-              searchPlaceholder="Search Law Firm…"
               selected={draft.lawFirmIds}
               onChange={(v) => setDraft({ ...draft, lawFirmIds: v })}
-            />
-          </FilterSection>
-          <FilterSection
-            label="Medical Facility"
-            source={facilities}
-            selected={draft.medicalFacilityIds}
-            onChange={(v) => setDraft({ ...draft, medicalFacilityIds: v })}
-          >
-            <InfiniteFilterList
-              source={facilities}
-              searchPlaceholder="Search Medical Facility…"
-              selected={draft.medicalFacilityIds}
-              onChange={(v) => setDraft({ ...draft, medicalFacilityIds: v })}
-            />
-          </FilterSection>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <FilterSection
-            label="Case Manager"
-            source={caseManagers}
-            selected={draft.caseManagerIds}
-            onChange={(v) => setDraft({ ...draft, caseManagerIds: v })}
-          >
-            <InfiniteFilterList
+            >
+              <InfiniteFilterList
+                source={lawFirms}
+                searchPlaceholder="Search Law Firm…"
+                selected={draft.lawFirmIds}
+                onChange={(v) => setDraft({ ...draft, lawFirmIds: v })}
+              />
+            </FilterSection>
+            <FilterSection
+              label="Case Manager"
               source={caseManagers}
-              searchPlaceholder="Search Case Manager…"
               selected={draft.caseManagerIds}
               onChange={(v) => setDraft({ ...draft, caseManagerIds: v })}
-            />
-          </FilterSection>
-          <FilterSection
-            label="Liens Status"
-            source={statuses}
-            selected={draft.lienStatusIds}
-            onChange={(v) => setDraft({ ...draft, lienStatusIds: v })}
-          >
-            <BaseSelect
-              multiple
-              inline
-              showCheckboxes
-              options={statuses.options}
-              value={draft.lienStatusIds}
-              onChange={(values) => setDraft({ ...draft, lienStatusIds: values })}
-              isLoading={statuses.isLoading}
-              searchPlaceholder="Search Lien Status…"
-              emptyText="No results found"
-            />
-          </FilterSection>
+            >
+              <InfiniteFilterList
+                source={caseManagers}
+                searchPlaceholder="Search Case Manager…"
+                selected={draft.caseManagerIds}
+                onChange={(v) => setDraft({ ...draft, caseManagerIds: v })}
+              />
+            </FilterSection>
+          </div>
+          <div className="space-y-4">
+            <FilterSection
+              label="Medical Facility"
+              source={facilities}
+              selected={draft.medicalFacilityIds}
+              onChange={(v) => setDraft({ ...draft, medicalFacilityIds: v })}
+            >
+              <InfiniteFilterList
+                source={facilities}
+                searchPlaceholder="Search Medical Facility…"
+                selected={draft.medicalFacilityIds}
+                onChange={(v) => setDraft({ ...draft, medicalFacilityIds: v })}
+              />
+            </FilterSection>
+            <FilterSection
+              label="Liens Status"
+              source={statuses}
+              selected={draft.lienStatusIds}
+              onChange={(v) => setDraft({ ...draft, lienStatusIds: v })}
+            >
+              <BaseSelect
+                multiple
+                inline
+                showCheckboxes
+                options={statuses.options}
+                value={draft.lienStatusIds}
+                onChange={(values) => setDraft({ ...draft, lienStatusIds: values })}
+                isLoading={statuses.isLoading}
+                searchPlaceholder="Search Lien Status…"
+                emptyText="No results found"
+              />
+            </FilterSection>
+          </div>
         </div>
         <div>
           <p className="text-sm font-medium text-gray-700 mb-2">Purchase Date</p>

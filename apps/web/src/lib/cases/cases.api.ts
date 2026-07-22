@@ -179,7 +179,7 @@ export const casesApi = {
   },
 
   getMedicalProviderCaseReport(request: CaseAllocationReportRequest) {
-    return apiClient.post<ReportPaginatedResult<CaseReportItem>>(
+    return apiClient.post<ReportPaginatedResult<LienReportItem>>(
       `${BASE}/dashboard/medical-provider-report-export/v3`,
       withApiDates(request),
     );
@@ -223,9 +223,6 @@ export const casesApi = {
 
   createMedicalLiens(request: CreateMedicalLiensDto) {
     return apiClient.post<ApiResponse>(`${BASE}/liens/medical`, request);
-  },
-  createMedicalFacilityLiens(request: CreateMedicalFacilityDto) {
-    return apiClient.post<ApiResponse>(`${BASE}/liens/facility`, request);
   },
   createMedicalPaymentLiens(request: CreateMedicalPaymentDto) {
     return apiClient.post<ApiResponse>(`${BASE}/liens/payment`, request);

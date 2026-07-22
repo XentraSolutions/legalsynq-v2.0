@@ -16,7 +16,7 @@ export type CaseDetailContextValue = {
   liensLoadedAt: Date | null;
   refetchLiens: () => void;
   isLiensFetching: boolean;
-  casePayments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
+  casePayments: import("@/lib/settlement/settlement.types").CasePayment[];
   paymentsLoadedAt: Date | null;
   refetchPayments: () => Promise<unknown>;
   isPaymentsFetching: boolean;

@@ -11,6 +11,7 @@ import type {
   CreateMedicalPaymentDto,
 } from "@/lib/cases/cases.types";
 import { MedicalLienDetailSection } from "./sections/medical-lien-detail-section";
+import { useCaseDetailContext } from "../../case-detail-context";
 
 export function LienDetailView({
   caseId,
@@ -22,6 +23,7 @@ export function LienDetailView({
   onGoBack: () => void;
 }) {
   const addToast = useLienStore((s) => s.addToast);
+  const { relatedLiens } = useCaseDetailContext();
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [forms, setForms] = useState<Record<number, any>>({
@@ -51,9 +53,24 @@ export function LienDetailView({
       results.forEach((result, index) => {
         if (result.status === "fulfilled") {
           if (result.value.data) {
+            let itemData = result.value.data;
+            // get-medical's own `status` can drift out of sync with the
+            // lien's real status. The liens list (used to navigate here)
+            // is the source of truth, so prefer it when the two disagree.
+            if (index === 0) {
+              const canonicalStatus = relatedLiens.find(
+                (l) => l.id === lienId,
+              )?.status;
+              if (
+                canonicalStatus &&
+                canonicalStatus.toLowerCase() !== itemData.status?.toLowerCase()
+              ) {
+                itemData = { ...itemData, status: canonicalStatus };
+              }
+            }
             setData((prev) => ({
               ...prev,
-              [index]: { ...result.value.data, hasInitialValue: true },
+              [index]: { ...itemData, hasInitialValue: true },
             }));
           }
         } else {
@@ -65,7 +82,7 @@ export function LienDetailView({
     } finally {
       setLoading(false);
     }
-  }, [lienId]);
+  }, [lienId, relatedLiens]);
 
   const fetchLienDocuments = useCallback(async () => {
     try {
@@ -162,9 +179,7 @@ export function LienDetailView({
         medicalProviderId: payload.medicalProviderId,
         medicalProvider: payload.medicalProvider,
       };
-      !forms[1].hasInitialValue
-        ? await casesService.createMedicalFacilityLiens(request)
-        : await casesService.updateMedicalFacilityLiens(request);
+      await casesService.updateMedicalFacilityLiens(request);
       // addToast({
       //   type: "success",
       //   title: "Facility Updated",

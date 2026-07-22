@@ -1,188 +1,161 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { FormModal } from "@/components/lien/modal";
-import { lookupService } from "@/lib/lookup";
-import { contactsService } from "@/lib/contacts";
-import { useSessionContext } from "@/providers/session-provider";
-import Field from "@/components/lien/field";
+import { BaseSelect } from "@/components/ui/base-select";
+import { FilterSection, InfiniteFilterList } from "@/components/lien/filter-section";
+import {
+  useInfiniteContactOptions,
+  useInfiniteCaseManagerOptions,
+  useAccidentTypeOptions,
+  useCaseStatusOptions,
+} from "@/hooks/use-filter-options";
 
-interface CasesFilterForm {
+export interface CasesFilterValues {
   lawFirmId: string[];
   accidentTypeId: string[];
   caseManagerId: string[];
   statusId: string[];
 }
 
-interface CasesFilterProps {
-  open: boolean;
-  onClose: () => void;
-  onApplyFilter?: (e: CasesFilterForm) => void;
-}
-
-const INITIAL_FORM: CasesFilterForm = {
+export const EMPTY_CASES_FILTERS: CasesFilterValues = {
   lawFirmId: [],
   accidentTypeId: [],
   caseManagerId: [],
   statusId: [],
 };
 
-export function CasesFilter({
-  open,
-  onClose,
-  onApplyFilter,
-}: CasesFilterProps) {
-  const { lookup } = useSessionContext();
+interface CasesFilterProps {
+  open: boolean;
+  onClose: () => void;
+  value: CasesFilterValues;
+  onApplyFilter: (filters: CasesFilterValues) => void;
+  /** From `useBackgroundReady()` — see the same prop on LiensFilter. */
+  primaryReady?: boolean;
+}
 
-  const [form, setForm] = useState<CasesFilterForm>({ ...INITIAL_FORM });
-  const [submitting, setSubmitting] = useState(false);
+export function CasesFilter({ open, onClose, value, onApplyFilter, primaryReady }: CasesFilterProps) {
+  const [draft, setDraft] = useState<CasesFilterValues>(value);
 
-  const handleSubmit = async () => {
-    setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
-      onApplyFilter?.(form);
-    }, 2000); // 2 seconds
-  };
+  const listsEnabled = open || !!primaryReady;
 
-  const reset = () => {
-    setForm({ ...INITIAL_FORM });
+  const lawFirms = useInfiniteContactOptions("LawFirm", { enabled: listsEnabled });
+  // Scoped to the law firm(s) currently selected in this draft, same as LiensFilter.
+  const caseManagers = useInfiniteCaseManagerOptions({
+    enabled: listsEnabled,
+    lawFirmIds: draft.lawFirmId,
+  });
+  const accidentTypes = useAccidentTypeOptions();
+  const statuses = useCaseStatusOptions();
+
+  // Re-sync the draft with the page's active filters every time the modal opens.
+  useEffect(() => {
+    if (open) setDraft(value);
+  }, [open, value]);
+
+  const handleSubmit = () => {
+    onApplyFilter(draft);
     onClose();
   };
 
-  const [data, setData] = useState<{
-    status: Array<{ key: string; value: string; label: string }>;
-    lawFirm: Array<{ key: string; value: string; label: string }>;
-    caseManagers: Array<{ key: string; value: string; label: string }>;
-    accidentType: Array<{ key: string; value: string; label: string }>;
-  }>({
-    status: [],
-    lawFirm: [],
-    caseManagers: [],
-    accidentType: [],
-  });
+  const handleClear = () => setDraft(EMPTY_CASES_FILTERS);
 
-  const fetchData = useCallback(async () => {
-    const [lawfirmRes, caseManagersRes] = await Promise.allSettled([
-      lookupService.getLawfirm(),
-      contactsService.getCaseManagers(),
-    ]);
-    if (
-      lawfirmRes.status === "fulfilled" &&
-      caseManagersRes.status === "fulfilled"
-    ) {
-      setData((prev: any) => ({
-        ...prev,
-        status:
-          lookup?.CaseStatus?.map((c) => {
-            return { key: c.id, value: c.code, label: c.name };
-          }) ?? [],
-        lawFirm: lawfirmRes.value.items.map((c) => {
-          return { key: c.id, value: c.id, label: c.displayName };
-        }),
-        caseManagers: caseManagersRes.value.items.map((c) => {
-          return { key: c.id, value: c.id, label: c.displayName };
-        }),
-        accidentType:
-          lookup?.AccidentType?.map((c) => {
-            return { key: c.id, value: c.code, label: c.name };
-          }) ?? [],
-      }));
-    }
-  }, [open, setData]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData, open]);
+  const handleClose = () => {
+    setDraft(value);
+    onClose();
+  };
 
   return (
     <FormModal
       open={open}
-      onClose={reset}
+      onClose={handleClose}
       onSubmit={handleSubmit}
-      size="lg"
       title="Filter Cases"
       subtitle="Narrow down cases using filters to quickly find relevant results."
-      submitLabel={submitting ? "Filtering..." : "Apply Filters"}
+      submitLabel="Apply Filters"
+      size="lg"
+      headerActions={
+        <button
+          type="button"
+          onClick={handleClear}
+          className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg px-3 py-1.5 hover:bg-primary/5 transition-colors"
+        >
+          <i className="ri-refresh-line text-sm" />
+          Clear Filter
+        </button>
+      }
     >
-      <div className="space-y-4 min-h-[250px]">
-        <div className="grid grid-cols-2 gap-3">
-          <Field
-            label="Law Firm"
-            value={form.lawFirmId}
-            options={data.lawFirm ? data.lawFirm : []}
-            placeholder="Select one or more"
-            onChange={(v) => {
-              setForm({
-                ...form,
-                lawFirmId: Array.isArray(v)
-                  ? v
-                  : typeof v === "string" && v
-                    ? [v]
-                    : [],
-              });
-            }}
-            type="select"
-            multiple
-          />
-
-          <Field
-            label="Accident Type"
-            value={form.accidentTypeId}
-            options={data.accidentType ? data.accidentType : []}
-            placeholder="Select one or more"
-            onChange={(v) => {
-              setForm({
-                ...form,
-                accidentTypeId: Array.isArray(v)
-                  ? v
-                  : typeof v === "string" && v
-                    ? [v]
-                    : [],
-              });
-            }}
-            type="select"
-            multiple
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field
-            label="Case Manager"
-            value={form.caseManagerId}
-            options={data.caseManagers ? data.caseManagers : []}
-            placeholder="Select one or more"
-            onChange={(v) =>
-              setForm({
-                ...form,
-                caseManagerId: Array.isArray(v)
-                  ? v
-                  : typeof v === "string" && v
-                    ? [v]
-                    : [],
-              })
-            }
-            type="select"
-            multiple
-          />
-
-          <Field
-            label="Status"
-            value={form.statusId}
-            options={data.status}
-            placeholder="Select one or more"
-            onChange={(v) => {
-              setForm({
-                ...form,
-                statusId: Array.isArray(v)
-                  ? v
-                  : typeof v === "string" && v
-                    ? [v]
-                    : [],
-              });
-            }}
-            type="select"
-            multiple
-          />
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 gap-4">
+          {/* Case Manager sits under Law Firm — it's scoped to whichever law
+              firm(s) are selected above, so grouping them in one column keeps
+              that dependency visually obvious. */}
+          <div className="space-y-4">
+            <FilterSection
+              label="Law Firm"
+              source={lawFirms}
+              selected={draft.lawFirmId}
+              onChange={(v) => setDraft({ ...draft, lawFirmId: v })}
+            >
+              <InfiniteFilterList
+                source={lawFirms}
+                searchPlaceholder="Search Law Firm…"
+                selected={draft.lawFirmId}
+                onChange={(v) => setDraft({ ...draft, lawFirmId: v })}
+              />
+            </FilterSection>
+            <FilterSection
+              label="Case Manager"
+              source={caseManagers}
+              selected={draft.caseManagerId}
+              onChange={(v) => setDraft({ ...draft, caseManagerId: v })}
+            >
+              <InfiniteFilterList
+                source={caseManagers}
+                searchPlaceholder="Search Case Manager…"
+                selected={draft.caseManagerId}
+                onChange={(v) => setDraft({ ...draft, caseManagerId: v })}
+              />
+            </FilterSection>
+          </div>
+          <div className="space-y-4">
+            <FilterSection
+              label="Accident Type"
+              source={accidentTypes}
+              selected={draft.accidentTypeId}
+              onChange={(v) => setDraft({ ...draft, accidentTypeId: v })}
+            >
+              <BaseSelect
+                multiple
+                inline
+                showCheckboxes
+                options={accidentTypes.options}
+                value={draft.accidentTypeId}
+                onChange={(values) => setDraft({ ...draft, accidentTypeId: values })}
+                isLoading={accidentTypes.isLoading}
+                searchPlaceholder="Search Accident Type…"
+                emptyText="No results found"
+              />
+            </FilterSection>
+            <FilterSection
+              label="Status"
+              source={statuses}
+              selected={draft.statusId}
+              onChange={(v) => setDraft({ ...draft, statusId: v })}
+            >
+              <BaseSelect
+                multiple
+                inline
+                showCheckboxes
+                options={statuses.options}
+                value={draft.statusId}
+                onChange={(values) => setDraft({ ...draft, statusId: values })}
+                isLoading={statuses.isLoading}
+                searchPlaceholder="Search Status…"
+                emptyText="No results found"
+              />
+            </FilterSection>
+          </div>
         </div>
       </div>
     </FormModal>

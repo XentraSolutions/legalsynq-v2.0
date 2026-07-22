@@ -47,10 +47,15 @@ function systemChromiumPath(): string | undefined {
  * project directory). "qa" and "production" hit already-deployed frontends
  * directly — no webServer entry at all.
  *
- * This is the only e2e suite meant by the name "e2e" — the pre-existing
- * mocked component/rendering checks (login page, logos) live under
- * playwright.mocked.config.ts / `pnpm test:e2e:mocked` and are not e2e in
- * this sense: they never leave the local dev server.
+ * This is the only e2e suite meant by the name "e2e" — the mocked
+ * component/rendering checks (login page, logos, and any spec that needs a
+ * backend response this suite's live environments can't reliably produce)
+ * live under playwright.mocked.config.ts / `pnpm test:e2e:mocked` and are
+ * not e2e in this sense: they never leave the local dev server. "No mocks"
+ * above is a statement about *this* suite specifically, not a repo-wide
+ * rule — see that config's doc comment for how and why mocking is done
+ * there (MSW, at the BFF-to-gateway boundary, not Playwright's page.route()
+ * on the browser-facing path).
  *
  * Run with:
  *   pnpm --dir apps/web test:e2e         (E2E_ENV=local, default — readonly + mutations)

@@ -121,8 +121,63 @@ created), since they run against real QA tenant data repeatedly.
   false positive to silence.
 - Do not add login steps inline in a spec — `login-flow.ts` already handles it via the factories'
   `autoLogin` fixture.
-- Do not add this coverage to `e2e/mocked/` or `playwright.mocked.config.ts` — that suite is a
-  separate, hermetic set of component/rendering checks used by CI, not part of this e2e suite.
+- Do not add coverage to `e2e/mocked/` / `playwright.mocked.config.ts` just because it's more
+  convenient than dealing with real data — that suite is for hermetic component/rendering checks
+  and for the narrow case in section 7 below (a spec that genuinely needs a backend response the
+  real local/qa environment can't reliably produce), not a general escape hatch from this suite's
+  "no mocks" rule.
+- Do not use Playwright's `page.route()` to mock a response from a BFF-proxied endpoint
+  (`src/app/api/*/[...path]/route.ts`) in `e2e/mocked/`, even though that suite does allow
+  mocking. `page.route()` intercepts in the browser, before the request reaches the BFF route
+  handler — so its own logic (cookie reading, `Authorization: Bearer` attachment, error shaping)
+  never runs, and the test loses coverage of exactly the code most worth testing there. See
+  section 7.
+
+## 7. When a spec genuinely needs a mocked backend response
+
+This only applies to `e2e/mocked/` — never to `e2e/(platform)/...`, which stays mock-free
+structurally (see `playwright.config.ts`'s doc comment). Reach for this when a flow depends on a
+backend response real local/qa data can't reliably guarantee (an edge case, a not-yet-implemented
+endpoint, a specific error condition).
+
+The mocked suite intercepts at the gateway boundary via MSW (`msw/node`), not at the browser via
+`page.route()` — see `playwright.mocked.config.ts`'s doc comment for the full reasoning. In short:
+`src/instrumentation.ts` starts `src/mocks/upstream-server.ts` when `MOCK_UPSTREAM=1` (set by
+`playwright.mocked.config.ts`'s `next-app` webServer command), which intercepts the `fetch()`
+calls the real BFF route handlers make to `GATEWAY_URL`. Handlers live under
+`src/mocks/handlers/<domain>.ts` (one file per product/domain — `identity.ts`, `lien.ts`, ...),
+spread together in `src/mocks/upstream-handlers.ts`; add a new domain file rather than growing an
+existing one indefinitely. Pattern-match against the gateway-side path (e.g.
+`*/liens/api/liens/cases/liens/get-facility/:lienId`), not the browser-facing `/api/lien/...`
+path — the BFF route itself still runs for real.
+
+Because `MOCK_UPSTREAM=1` starts the MSW server once, in-process, when the dev server itself
+boots (not per-test), handlers can't be swapped per-test the way `server.use()` works in a
+single-process Vitest run — every handler a spec needs must already be registered in
+`src/mocks/handlers/`. For an authenticated platform page this can mean a real handler per
+endpoint the page's full render tree touches (session, tenant settings, sidebar data, the page's
+own API calls) — `src/mocks/handlers/lien.ts` plus `e2e/mocked/lien-facility-provider-contact.spec.ts`
+is a complete worked example: an authenticated lien case detail page with a session cookie set
+directly via `context.addCookies()` (no real login flow needed — MSW's `/identity/api/auth/me`
+handler accepts any token), and a `get-facility` handler returning fields the real backend
+currently doesn't persist, proving the frontend displays them correctly once it does. Two
+response-shape pitfalls that cost real iteration time building that example: (1) not every
+endpoint uses the `{isSuccess, message, data}` envelope — some (`lookupApi.getDocumentType()`,
+`casesApi.getCaseUpdates()`) return the payload flat; check the `apiClient.get<T>()` type
+argument at the call site rather than assuming; (2) `onUnhandledRequest: 'warn'` (the default
+here) still lets the request fall through to a real `fetch()` against `GATEWAY_URL`, which is
+pointed at a deliberately non-resolving host — the resulting `ENOTFOUND` errors are themselves how
+you discover which endpoints still need handlers; run the spec, read the webServer's stdout for
+MSW's warnings, add handlers for whichever leave the assertion still failing.
+
+For a Vitest component test that needs to mock a fetch response instead (e.g. testing a hook or
+component's data-fetching logic in isolation), use `msw/node`'s `setupServer()` directly in the
+test file rather than `vi.mock()`-ing the service module away — see
+`src/components/lien/contact-entity-select.test.tsx` for the pattern. This exercises the real
+service/API-client code (query building, response mapping) and only fakes the network response,
+which matters most for exactly the kind of bug that lives in that plumbing (see the comment atop
+that test file). `vi.mock()` is still the right tool when a test doesn't care about that layer at
+all and just needs a service call to resolve to a canned value.
 
 ## 6. Verify
 

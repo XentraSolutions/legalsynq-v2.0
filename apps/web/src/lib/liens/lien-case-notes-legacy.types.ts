@@ -11,6 +11,7 @@ export interface CaseFeedNote {
   caseId: string;
   note: string;
   isDeleted: 'Y' | 'N';
+  /** ISO UTC instant — normalized by the service from the API's raw "MM/DD/YYYY hh:mm AM/PM" string. */
   created: string;
   createdBy: string;
   userId: string;

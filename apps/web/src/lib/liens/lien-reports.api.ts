@@ -10,6 +10,7 @@ import {
   ExportReportRequest,
   FilterQuery,
   ReportColumnReponse,
+  ReportListResponse,
   ReportsResponse,
   ReportTemplate,
   UpdateReportConfigRequest,
@@ -46,7 +47,7 @@ export const lienReportsApi = {
   },
 
   createTemplate(request: ReportTemplate) {
-    return apiClient.post<ApiResponse>(`${BASE_PATH}`, request);
+    return apiClient.post<ReportListResponse>(`${BASE_PATH}`, request);
   },
 
   createReport(request: CreateReports) {

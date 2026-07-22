@@ -4,8 +4,10 @@ import { getEnv } from '../../../config/environments';
 /**
  * Covers the "Feeds" widget (src/app/(platform)/lien/cases/[id]/components/feeds-section.tsx)
  * on a case's Details tab: adding a note, filtering (Newest / Oldest / Show Deleted Comment —
- * a single-select, mutually-exclusive filter, not independent toggles), and deleting a note
- * through its confirm dialog. Also covers the Email tab's "Compose New Email" placeholder toast.
+ * a single-select, mutually-exclusive filter, not independent toggles), deleting a note
+ * through its confirm dialog, and that each note's timestamp renders via DateDisplay (legacy
+ * "MM/DD/YYYY, H:MM AM/PM" in the tenant's timezone) rather than the raw UTC string the
+ * get-notes API returns. Also covers the Email tab's "Compose New Email" placeholder toast.
  *
  * Which case this runs against isn't the point of this spec — it just needs *a* case to attach
  * notes to, and case creation isn't covered by e2e yet (tracked separately). So this test picks
@@ -76,6 +78,14 @@ test.describe(`SynqLien case Feeds — notes add/filter/delete, email placeholde
       return feedsCard.locator('p.whitespace-pre-wrap', { hasText: text });
     }
 
+    // Shared by deleteNote() and the timestamp assertions below — climbs from
+    // the note body paragraph to its enclosing row via ancestor:: (see
+    // deleteNote's original comment on why a CSS `.filter({has})` chain off
+    // an xpath-rooted locator was unreliable here).
+    function noteRow(text: string) {
+      return noteParagraph(text).locator('xpath=ancestor::div[contains(@class, "group")][1]');
+    }
+
     async function chooseFilter(label: 'Newest' | 'Oldest' | 'Show Deleted Comment') {
       await filterTrigger.click();
       // Not `exact: true` — the currently-selected option's accessible name picks
@@ -97,12 +107,7 @@ test.describe(`SynqLien case Feeds — notes add/filter/delete, email placeholde
       // the note to actually be on-screen under the current filter before
       // trying to locate/hover its row, rather than racing the refetch.
       await expect(noteParagraph(text)).toBeVisible();
-      // Climb from the paragraph to its row via ancestor:: (like feedsCard
-      // itself) rather than feedsCard.locator('div.group').filter({has}) —
-      // that chain (CSS selector off an xpath-rooted locator, then .filter)
-      // unreliably resolved to zero matches despite the element genuinely
-      // being present with the expected class.
-      const row = noteParagraph(text).locator('xpath=ancestor::div[contains(@class, "group")][1]');
+      const row = noteRow(text);
       await row.hover();
       await row.getByRole('button', { name: 'Delete note' }).click();
 
@@ -125,6 +130,16 @@ test.describe(`SynqLien case Feeds — notes add/filter/delete, email placeholde
 
     await addNote(noteA);
     await addNote(noteB);
+
+    // --- Timestamp: DateDisplay renders each note's "created" time in the
+    // tenant's configured timezone, in the legacy "MM/DD/YYYY, H:MM AM/PM"
+    // format — never the raw ISO/UTC string the get-notes API returns (that
+    // was the bug: the feed used to print note.created verbatim, always UTC
+    // regardless of the viewer's tenant).
+    const LEGACY_TIMESTAMP_PATTERN = /^\d{2}\/\d{2}\/\d{4}, \d{1,2}:\d{2}\s?(AM|PM)$/i;
+    const timestampText = await noteRow(noteA).locator('p.text-xs.text-gray-400').innerText();
+    expect(timestampText).toMatch(LEGACY_TIMESTAMP_PATTERN);
+    expect(timestampText).not.toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
     // --- Filtering: Newest puts the just-created B above A; Oldest reverses it.
     async function indexOf(text: string): Promise<number> {

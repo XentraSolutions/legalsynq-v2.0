@@ -44,7 +44,7 @@ test.describe(`SynqLien contacts — LawFirm Legal Contact subtype [${env.name}]
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Contact Created')).toBeVisible();
 
-    const row = await findContactRow(page, lawFirmName);
+    const row = await findContactRow(page, lawFirmName, 'Law Firms');
     await row.getByRole('link', { name: lawFirmName, exact: true }).click();
 
     await page.getByRole('link', { name: 'Legal Contacts' }).click();
@@ -75,7 +75,7 @@ test.describe(`SynqLien contacts — LawFirm Legal Contact subtype [${env.name}]
     credentials,
   }) => {
     await page.goto(`${env.originFor(credentials.tenantCode)}/lien/contacts`);
-    const initialRow = await findContactRow(page, lawFirmName);
+    const initialRow = await findContactRow(page, lawFirmName, 'Law Firms');
     await initialRow
       .getByRole('link', { name: lawFirmName, exact: true })
       .click();
@@ -92,7 +92,7 @@ test.describe(`SynqLien contacts — LawFirm Legal Contact subtype [${env.name}]
     // findContactRow also waits out the "Refreshing..." indicator that
     // briefly overlaps the Actions column while the search re-query is in
     // flight — clicking through it too early can silently miss the button.
-    const lawFirmRow = await findContactRow(page, lawFirmName);
+    const lawFirmRow = await findContactRow(page, lawFirmName, 'Law Firms');
     await clickMenuItem(page, lawFirmRow.getByRole('button', { name: 'Actions menu' }), 'Delete');
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(page.getByText('Contact deleted')).toBeVisible();

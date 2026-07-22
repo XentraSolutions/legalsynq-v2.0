@@ -13,6 +13,7 @@ import {
   DeletePaymentRequest,
   GetSettlementHistoryResponse,
   GetSettlementHistoryV3Response,
+  GetSettlementPaymentDetailsResponse,
   LegacyCasePayment,
   LegacySaveReductionRequest,
   SettlementGenericResponse,
@@ -66,6 +67,6 @@ export const settlementApi = {
     return apiClient.get<CaseReduction[]>(`/lien/api/liens/settlement/reductions/case/${caseId}`)
   },
   getSettlementPaymentDetails(caseId: string) {
-    return apiClient.get<LegacyCasePayment[]>(`${BASE}/liens/settlement/payment-details/${caseId}`)
+    return apiClient.get<GetSettlementPaymentDetailsResponse>(`${BASE}/liens/settlement/payment-details/${caseId}`)
   },
 }

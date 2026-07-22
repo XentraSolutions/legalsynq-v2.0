@@ -26,6 +26,9 @@ export function UploadDocumentSection({
   onAddDocument: () => void;
 }) {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(submitting);
+  useEffect(() => {
+    setIsSubmitting(submitting);
+  }, [submitting]);
   return (
     <CollapsibleSection title="Upload Document" icon="ri-upload-cloud-2-line">
       <div className="space-y-4">
@@ -53,7 +56,8 @@ export function UploadDocumentSection({
         <button
           disabled={isSubmitting || !selectedFiles?.length || !selectedDocType}
           className="w-full px-4 py-2.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             setIsSubmitting(true);
             onAddDocument();
           }}

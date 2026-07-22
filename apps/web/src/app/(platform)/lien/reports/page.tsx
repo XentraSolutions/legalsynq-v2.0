@@ -62,7 +62,7 @@ export default function ReportsPage() {
   useEffect(() => {
     fetchReports();
   }, []);
-  useEffect(()=>{},[template])
+  useEffect(() => {}, [template]);
 
   return (
     <div className="space-y-4">
@@ -106,26 +106,6 @@ export default function ReportsPage() {
           </div>
         </>
       ) : (
-        // <ReportDisplay
-        //   report={template}
-        //   onBack={() => {
-        //     setTemplate(null);
-        //     setIsSettingTemplate(false);
-        //   }}
-        //   onSaved={() => {
-        //     // setTemplate(data);
-        //     setIsSettingTemplate(false);
-        //     setTemplate(null);
-        //     fetchReports();
-        //   }}
-        //   // onExport={() => {
-        //   //   console.log("export report:", template);
-        //   // }}
-        //   onEdit={() => {
-        //     console.log(template);
-        //     setShowCreate({ isOpen: true, mode: "edit" });
-        //   }}
-
         // />
         <ReportDisplay
           report={{ ...template }}

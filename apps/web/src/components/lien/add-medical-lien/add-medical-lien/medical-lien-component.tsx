@@ -102,7 +102,11 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [forms, setForms] = useState<any[]>(Array(totalSteps).fill(null));
-  const [valid, setValid] = useState<Record<number, boolean>>({});
+  // Step 4 (upload docs) is optional — there's nothing to invalidate, so it
+  // starts valid instead of waiting for a signal from the child form.
+  const [valid, setValid] = useState<Record<number, boolean>>({
+    [totalSteps]: true,
+  });
   const isLastStep = currentStep === steps.length;
   const [liensId, setLiensId] = useState("");
   const notComplete = useMemo(() => !valid[currentStep], [valid, currentStep]);
@@ -191,7 +195,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     }
   };
 
-  const createMedicalFacilityLiens = async (
+  const saveMedicalFacilityLiens = async (
     payload: CreateMedicalFacilityDto,
   ) => {
     try {
@@ -205,7 +209,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
         medicalProviderId: payload.medicalProviderId,
         medicalProvider: payload.medicalProvider,
       };
-      await casesService.createMedicalFacilityLiens(request);
+      await casesService.updateMedicalFacilityLiens(request);
       addToast({
         type: "success",
         title: "Facility Created",
@@ -355,6 +359,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
     try {
       // Implement save logic here (API call)
       Promise.allSettled([
+        await saveMedicalFacilityLiens(forms[1]),
         await saveMedicalPayee(forms[2]),
         await uploadDocuments(forms[3]),
         fetchDocument(),

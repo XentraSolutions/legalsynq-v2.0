@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import { contactsService } from "@/lib/contacts";
 import { lookupService } from "@/lib/lookup";
+import { useSessionContext } from "@/providers/session-provider";
 import type { BaseSelectOption } from "@/components/ui/base-select";
 import type { ContactListResult } from "@/lib/contacts/contacts.service";
 
@@ -129,21 +130,71 @@ export function useInfiniteContactOptions(
   );
 }
 
-/** Same as useInfiniteContactOptions, for case managers (law-firm sub-contacts). */
+/** Fetches every page of case managers for a single law firm, merged into one option list. */
+async function fetchAllCaseManagerOptions(lawFirmId: string): Promise<BaseSelectOption[]> {
+  const options: BaseSelectOption[] = [];
+  let page = 1;
+  for (;;) {
+    const result = await contactsService.getCaseManagers({ lawFirmId, page, pageSize: PAGE_SIZE });
+    options.push(...mapPageToOptions(result));
+    if (result.pagination.page >= result.pagination.totalPages) break;
+    page++;
+  }
+  return options;
+}
+
+/**
+ * Same as useInfiniteContactOptions, for case managers (law-firm sub-contacts).
+ *
+ * The contacts endpoint only accepts a single `lawFirmId` per request (no
+ * array param), so when the caller scopes to more than one firm this fires
+ * one query per firm (via `useQueries`, each looping its own pages) and
+ * merges the results — rather than the single background-paginated list
+ * `useBackgroundInfiniteOptions` uses for the unscoped case.
+ */
 export function useInfiniteCaseManagerOptions(
-  opts?: { enabled?: boolean; lawFirmId?: string },
+  opts?: { enabled?: boolean; lawFirmIds?: string[] },
 ): InfiniteOptions {
   const enabled = opts?.enabled ?? true;
-  return useBackgroundInfiniteOptions(
-    ["case-manager-options", opts?.lawFirmId ?? null],
-    (page) =>
-      contactsService.getCaseManagers({
-        lawFirmId: opts?.lawFirmId,
-        page,
-        pageSize: PAGE_SIZE,
-      }),
-    enabled,
+  const lawFirmIds = opts?.lawFirmIds ?? [];
+  const scoped = lawFirmIds.length > 0;
+
+  const unscoped = useBackgroundInfiniteOptions(
+    ["case-manager-options", null],
+    (page) => contactsService.getCaseManagers({ page, pageSize: PAGE_SIZE }),
+    enabled && !scoped,
   );
+
+  const scopedQueries = useQueries({
+    queries: lawFirmIds.map((lawFirmId) => ({
+      queryKey: ["case-manager-options", lawFirmId],
+      queryFn: () => fetchAllCaseManagerOptions(lawFirmId),
+      enabled: enabled && scoped,
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    })),
+  });
+
+  return useMemo(() => {
+    if (!scoped) return unscoped;
+
+    const isLoading = scopedQueries.some((q) => q.isLoading);
+    const merged = new Map<string, BaseSelectOption>();
+    for (const q of scopedQueries) {
+      for (const option of q.data ?? []) merged.set(option.value, option);
+    }
+    const options = Array.from(merged.values());
+
+    return {
+      options,
+      isLoading,
+      isFetchingMore: false,
+      hasNextPage: false,
+      loadMore: () => {},
+      allLoaded: !isLoading,
+      loadAll: async () => options,
+    };
+  }, [scoped, unscoped, scopedQueries]);
 }
 
 /** Lien status lookup — small, single-request list, wrapped in the same shape as the paginated sources above. */
@@ -172,5 +223,66 @@ export function useLienStatusOptions(opts?: { enabled?: boolean }): InfiniteOpti
       loadAll: async () => options,
     }),
     [options, query.isLoading],
+  );
+}
+
+/**
+ * Accident type options for the cases filter — sourced from the session's
+ * `/lookup/all` payload (already fetched once at session start, see
+ * session-provider.tsx), so this is a synchronous wrap rather than its own
+ * query. Uses the lookup row's `id` as the option value: verified directly
+ * against the cases v3 endpoint — `accidentTypeId` matches against
+ * CaseResponse.accidentTypeId (a GUID FK), and passing the `code` string
+ * instead (e.g. "DogBite") returns zero results despite matching cases
+ * existing. The pre-existing CasesFilter used `code` here, which had the
+ * same bug.
+ */
+export function useAccidentTypeOptions(): InfiniteOptions {
+  const { lookup } = useSessionContext();
+
+  const options = useMemo<BaseSelectOption[]>(
+    () => (lookup?.AccidentType ?? []).map((a) => ({ value: a.id, label: a.name })),
+    [lookup],
+  );
+
+  return useMemo(
+    () => ({
+      options,
+      isLoading: false,
+      isFetchingMore: false,
+      hasNextPage: false,
+      loadMore: () => {},
+      allLoaded: true,
+      loadAll: async () => options,
+    }),
+    [options],
+  );
+}
+
+/**
+ * Case status options for the cases filter — same source as
+ * useAccidentTypeOptions, but `code` is correct here: verified against the
+ * cases v3 endpoint, `statusId` matches against Case.status directly (a
+ * string code like "PreDemand"), unlike accidentTypeId's GUID FK.
+ */
+export function useCaseStatusOptions(): InfiniteOptions {
+  const { lookup } = useSessionContext();
+
+  const options = useMemo<BaseSelectOption[]>(
+    () => (lookup?.CaseStatus ?? []).map((s) => ({ value: s.code, label: s.name })),
+    [lookup],
+  );
+
+  return useMemo(
+    () => ({
+      options,
+      isLoading: false,
+      isFetchingMore: false,
+      hasNextPage: false,
+      loadMore: () => {},
+      allLoaded: true,
+      loadAll: async () => options,
+    }),
+    [options],
   );
 }

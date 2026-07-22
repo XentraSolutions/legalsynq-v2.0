@@ -223,13 +223,13 @@ export default function LienDashboardPage() {
       total: facilitySegments.reduce((s, seg) => s + seg.value, 0),
       segments: facilitySegments,
       columns: [
-        { label: 'Case ID', render: (r: CaseReportItem) => r.caseNumber ?? '—' },
-        { label: 'Plaintiff Name', render: (r: CaseReportItem) => r.clientName ?? '—' },
-        { label: 'Date of Loss', render: (r: CaseReportItem) => r.dateOfIncident ?? '—' },
-        { label: 'Medical Facility', render: (r: CaseReportItem) => r.medicalFacility ?? '—' },
+        { label: 'Case ID', render: (r: LienReportItem) => r.caseNumber ?? '—' },
+        { label: 'Plaintiff Name', render: (r: LienReportItem) => r.clientName ?? '—' },
+        { label: 'Date of Loss', render: (r: LienReportItem) => r.incidentDate ?? '—' },
+        { label: 'Medical Facility', render: (r: LienReportItem) => r.facilityName ?? '—' },
       ],
       rows: facilityRows,
-      rowKey: (r: CaseReportItem) => r.id,
+      rowKey: (r: LienReportItem) => r.id,
     },
   };
 
