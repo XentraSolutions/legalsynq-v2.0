@@ -33,6 +33,20 @@ public class ContactRepository : IContactRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<Contact>> GetByOrgIdAsync(
+        Guid tenantId,
+        Guid orgId,
+        bool? isActive = true,
+        CancellationToken ct = default)
+    {
+        var q = _db.Contacts.Where(c => c.TenantId == tenantId && c.OrgId == orgId);
+
+        if (isActive.HasValue)
+            q = q.Where(c => c.IsActive == isActive.Value);
+
+        return await q.OrderBy(c => c.DisplayName).ToListAsync(ct);
+    }
+
     public async Task<(List<Contact> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? contactType, bool? isActive,
         int page, int pageSize, Guid? lawFirmId = null, Guid? facilityId = null, string? contactSubtype = null, CancellationToken ct = default)

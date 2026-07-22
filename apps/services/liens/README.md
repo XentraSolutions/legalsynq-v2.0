@@ -39,6 +39,23 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `GET` | `/api/liens/cases` | Case list |
 | `GET` | `/api/liens/cases/{id}` | Case detail |
 
+## Selling Workflow
+
+Seller-mode endpoints live under `/api/liens/selling` and require SynqLien product access plus sell mode. The lien-first
+confirm-sale route is:
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and optionally sends the buyer `New Lien Offer` email |
+
+Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. When
+`sendBuyerNotification=true`, the service validates real buyer/seller contact data, creates a 30-day buyer access link,
+and sends the email through Notifications with an idempotency key. Supporting document names are pulled from existing
+legacy lien/case document servicing metadata; the email omits the document section when no real document names exist.
+Configure the buyer portal URL with `Liens:Selling:BuyerPortalBaseUrl` or the environment variable
+`Liens__Selling__BuyerPortalBaseUrl`. The value must be an absolute portal URL; if it contains `{token}` the token is
+substituted, otherwise the token is appended as the final path segment.
+
 ## Assistant Tool Endpoints
 
 SynqLien exposes read-only assistant tool endpoints for Xenia under `/api/assistant-tools`. These endpoints require a

@@ -1,5 +1,8 @@
 using System.Globalization;
+using System.Net;
+using System.Text;
 using BuildingBlocks.Exceptions;
+using BuildingBlocks.Notifications;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
@@ -17,9 +20,11 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private readonly IContactRepository _contactRepo;
     private readonly ILienSettlementRepository _settlementRepo;
     private readonly ISettlementPaymentDetailRepository _paymentDetailRepo;
+    private readonly IServicingItemRepository _servicingItemRepo;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IAuditPublisher _audit;
     private readonly INotificationPublisher _notifications;
+    private readonly ISellingBuyerAccessLinkService _buyerAccessLinks;
     private readonly ILienEligibilityValidator _eligibilityValidator;
     private readonly ILogger<SellingPortfolioService> _logger;
 
@@ -30,9 +35,11 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         IContactRepository contactRepo,
         ILienSettlementRepository settlementRepo,
         ISettlementPaymentDetailRepository paymentDetailRepo,
+        IServicingItemRepository servicingItemRepo,
         IUnitOfWork unitOfWork,
         IAuditPublisher audit,
         INotificationPublisher notifications,
+        ISellingBuyerAccessLinkService buyerAccessLinks,
         ILienEligibilityValidator eligibilityValidator,
         ILogger<SellingPortfolioService> logger)
     {
@@ -42,9 +49,11 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         _contactRepo = contactRepo;
         _settlementRepo = settlementRepo;
         _paymentDetailRepo = paymentDetailRepo;
+        _servicingItemRepo = servicingItemRepo;
         _unitOfWork = unitOfWork;
         _audit = audit;
         _notifications = notifications;
+        _buyerAccessLinks = buyerAccessLinks;
         _eligibilityValidator = eligibilityValidator;
         _logger = logger;
     }
@@ -782,6 +791,595 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             Body = body,
         };
     }
+
+    public async Task<ConfirmSellingLienSaleResponse> ConfirmSaleAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        ConfirmSellingLienSaleRequest request,
+        string? idempotencyKey,
+        CancellationToken ct = default)
+    {
+        if (!request.ConfirmationAccepted)
+        {
+            throw new ValidationException("Sale confirmation must be accepted.",
+                new Dictionary<string, string[]>
+                {
+                    ["confirmationAccepted"] = ["Confirm the sale before submitting it."],
+                });
+        }
+
+        var lien = await _lienRepo.GetByIdAsync(tenantId, lienId, ct)
+            ?? throw new NotFoundException($"Lien '{lienId}' not found for tenant '{tenantId}'.");
+
+        if (lien.SellingOrgId != sellerOrgId && lien.OrgId != sellerOrgId)
+            throw new ValidationException("Referenced lien is not owned by the seller organization.",
+                new Dictionary<string, string[]> { ["lienId"] = [$"Lien '{lienId}' is not owned by seller organization '{sellerOrgId}'."] });
+
+        if (lien.Status != LienStatus.Draft &&
+            !(lien.Status == LienStatus.Offered &&
+              string.Equals(lien.SellerStatus, SellingLienStatus.SubmittedForSale, StringComparison.Ordinal)))
+        {
+            throw new ValidationException("Lien cannot be confirmed for sale from its current status.",
+                new Dictionary<string, string[]>
+                {
+                    ["status"] = [$"Only draft or already submitted-for-sale liens can be confirmed. Current status: '{lien.Status}'."],
+                });
+        }
+
+        if (!lien.AskAmount.HasValue || lien.AskAmount.Value <= 0m)
+        {
+            throw new ValidationException("Ask amount is required before confirming sale.",
+                new Dictionary<string, string[]>
+                {
+                    ["askAmount"] = ["A positive AskAmount is required before confirming sale."],
+                });
+        }
+
+        ConfirmSaleNotificationContext? notificationContext = null;
+        string? notificationIdempotencyKey = null;
+        if (request.SendBuyerNotification)
+        {
+            notificationContext = await BuildConfirmSaleNotificationContextAsync(
+                tenantId,
+                sellerOrgId,
+                actingUserId,
+                lien,
+                ct);
+
+            notificationIdempotencyKey = BuildConfirmSaleNotificationIdempotencyKey(
+                tenantId,
+                lien.Id,
+                notificationContext.BuyerContact.Id,
+                idempotencyKey);
+        }
+
+        SellingBuyerAccessLinkResult? accessLink = null;
+        await InTransactionAsync(async () =>
+        {
+            if (lien.Status == LienStatus.Draft)
+                lien.ListForSale(lien.AskAmount.Value, actingUserId);
+
+            await _lienRepo.UpdateAsync(lien, ct);
+
+            if (notificationContext is not null)
+            {
+                accessLink = await _buyerAccessLinks.CreateOrGetForConfirmSaleAsync(
+                    tenantId,
+                    lien.Id,
+                    sellerOrgId,
+                    notificationContext.BuyerContact.OrgId,
+                    notificationContext.BuyerContact.Id,
+                    actingUserId,
+                    notificationIdempotencyKey!,
+                    TimeSpan.FromDays(30),
+                    ct);
+            }
+        }, ct);
+
+        ConfirmSellingLienBuyerNotificationResponse? notification = null;
+        if (notificationContext is not null && accessLink is not null)
+        {
+            notification = await SendConfirmSaleNotificationAsync(
+                tenantId,
+                actingUserId,
+                lien,
+                notificationContext,
+                accessLink,
+                notificationIdempotencyKey!,
+                ct);
+        }
+
+        _audit.Publish(
+            eventType: "liens.selling.confirm_sale",
+            action: "confirm_sale",
+            description: $"Lien '{lien.LienNumber}' confirmed for sale",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Lien",
+            entityId: lien.Id.ToString(),
+            metadata: $"{{\"sendBuyerNotification\":{request.SendBuyerNotification.ToString().ToLowerInvariant()}}}");
+
+        return MapConfirmSaleResponse(lien, notification);
+    }
+
+    private async Task<ConfirmSaleNotificationContext> BuildConfirmSaleNotificationContextAsync(
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        Lien lien,
+        CancellationToken ct)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (!lien.FundingCompanyId.HasValue || lien.FundingCompanyId.Value == Guid.Empty)
+            errors["fundingCompanyId"] = ["FundingCompanyId is required before sending the buyer notification."];
+
+        if (!lien.FundingCompanyContactId.HasValue || lien.FundingCompanyContactId.Value == Guid.Empty)
+            errors["fundingCompanyContactId"] = ["FundingCompanyContactId is required before sending the buyer notification."];
+
+        if (!lien.InitialServiceDate.HasValue)
+            errors["initialServiceDate"] = ["InitialServiceDate is required before sending the buyer notification."];
+
+        if (errors.Count > 0)
+            throw new ValidationException("One or more required fields are missing or invalid.", errors);
+
+        var buyerContact = await _contactRepo.GetByIdAsync(tenantId, lien.FundingCompanyContactId!.Value, ct)
+            ?? throw new NotFoundException($"Buyer contact '{lien.FundingCompanyContactId.Value}' not found for tenant '{tenantId}'.");
+
+        if (!buyerContact.IsActive)
+            errors["fundingCompanyContactId"] = ["Buyer contact must be active."];
+
+        if (buyerContact.OrgId != lien.FundingCompanyId!.Value)
+            errors["fundingCompanyContactId"] = ["Buyer contact must belong to the selected funding company."];
+
+        if (string.IsNullOrWhiteSpace(buyerContact.Email))
+            errors["fundingCompanyContactId"] = ["Buyer contact must have an email address."];
+
+        var sellerContact = SelectSellerContact(await _contactRepo.GetByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct));
+        if (sellerContact is null)
+            errors["sellerContact"] = ["An active seller contact is required before sending the buyer notification."];
+        else
+        {
+            if (string.IsNullOrWhiteSpace(sellerContact.DisplayName))
+                errors["sellerContact"] = ["Seller contact must have a display name."];
+            if (string.IsNullOrWhiteSpace(sellerContact.Organization))
+                errors["sellerCompany"] = ["Seller contact must have an organization/company."];
+            if (string.IsNullOrWhiteSpace(sellerContact.Email))
+                errors["sellerEmail"] = ["Seller contact must have an email address."];
+        }
+
+        var caseEntity = lien.CaseId.HasValue
+            ? await _caseRepo.GetByIdAsync(tenantId, lien.CaseId.Value, ct)
+            : null;
+        var handlingLawFirm = await ResolveHandlingLawFirmAsync(tenantId, caseEntity, ct);
+        if (string.IsNullOrWhiteSpace(handlingLawFirm))
+            errors["handlingLawFirm"] = ["A real handling law firm is required before sending the buyer notification."];
+
+        if (errors.Count > 0)
+            throw new ValidationException("One or more required fields are missing or invalid.", errors);
+
+        var caseManager = await ResolveCaseManagerAsync(tenantId, caseEntity, ct);
+        var documentNames = await GetSupportingDocumentNamesAsync(tenantId, lien, caseEntity, ct);
+
+        return new ConfirmSaleNotificationContext(
+            buyerContact,
+            sellerContact!,
+            caseEntity,
+            handlingLawFirm!,
+            caseManager,
+            documentNames);
+    }
+
+    private async Task<ConfirmSellingLienBuyerNotificationResponse> SendConfirmSaleNotificationAsync(
+        Guid tenantId,
+        Guid actingUserId,
+        Lien lien,
+        ConfirmSaleNotificationContext context,
+        SellingBuyerAccessLinkResult accessLink,
+        string idempotencyKey,
+        CancellationToken ct)
+    {
+        if (IsSubmittedNotificationStatus(accessLink.NotificationStatus))
+        {
+            return new ConfirmSellingLienBuyerNotificationResponse
+            {
+                Requested = true,
+                Submitted = true,
+                NotificationId = accessLink.NotificationId,
+                NotificationStatus = accessLink.NotificationStatus,
+                BuyerAccessLinkId = accessLink.Id,
+                BuyerPortalUrl = accessLink.BuyerPortalUrl,
+                ExpiresAtUtc = accessLink.ExpiresAtUtc,
+                BuyerContactId = context.BuyerContact.Id,
+                BuyerOrgId = context.BuyerContact.OrgId,
+                BuyerEmail = context.BuyerContact.Email!.Trim(),
+            };
+        }
+
+        var email = BuildConfirmSaleEmail(lien, context, accessLink);
+        var metadata = new Dictionary<string, string>
+        {
+            ["tenantId"] = tenantId.ToString(),
+            ["lienId"] = lien.Id.ToString(),
+            ["lienCode"] = ResolveLienCode(lien),
+            ["buyerContactId"] = context.BuyerContact.Id.ToString(),
+            ["buyerOrgId"] = context.BuyerContact.OrgId.ToString(),
+            ["sellerOrgId"] = context.SellerContact.OrgId.ToString(),
+            ["buyerAccessLinkId"] = accessLink.Id.ToString(),
+            ["buyerAccessExpiresAtUtc"] = accessLink.ExpiresAtUtc.ToString("O", CultureInfo.InvariantCulture),
+            ["requestedBy"] = actingUserId.ToString(),
+        };
+
+        try
+        {
+            var notificationResult = await _notifications.SendEmailAsync(
+                NotificationTaxonomy.Liens.Events.SellingLienSubmitted,
+                tenantId,
+                context.BuyerContact.Email!.Trim(),
+                email.Subject,
+                email.Body,
+                metadata,
+                ct,
+                new NotificationEmailSendOptions(
+                    IdempotencyKey: idempotencyKey,
+                    TemplateKey: NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail,
+                    TemplateData: email.TemplateData,
+                    RequestedBy: actingUserId.ToString(),
+                    BrandedRendering: true));
+
+            await _buyerAccessLinks.MarkNotificationSubmittedAsync(
+                tenantId,
+                accessLink.Id,
+                notificationResult.NotificationId,
+                notificationResult.Status,
+                ct);
+
+            var submitted = IsSubmittedNotificationStatus(notificationResult.Status) &&
+                            !notificationResult.BlockedByPolicy &&
+                            string.IsNullOrWhiteSpace(notificationResult.FailureCategory);
+
+            return new ConfirmSellingLienBuyerNotificationResponse
+            {
+                Requested = true,
+                Submitted = submitted,
+                NotificationId = notificationResult.NotificationId,
+                NotificationStatus = notificationResult.Status,
+                FailureMessage = submitted ? null : notificationResult.LastErrorMessage,
+                BuyerAccessLinkId = accessLink.Id,
+                BuyerPortalUrl = accessLink.BuyerPortalUrl,
+                ExpiresAtUtc = accessLink.ExpiresAtUtc,
+                BuyerContactId = context.BuyerContact.Id,
+                BuyerOrgId = context.BuyerContact.OrgId,
+                BuyerEmail = context.BuyerContact.Email.Trim(),
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Confirm-sale buyer notification failed: Tenant={TenantId} Lien={LienId} BuyerContact={BuyerContactId}",
+                tenantId, lien.Id, context.BuyerContact.Id);
+
+            await _buyerAccessLinks.MarkNotificationSubmittedAsync(
+                tenantId,
+                accessLink.Id,
+                null,
+                "failed",
+                ct);
+
+            return new ConfirmSellingLienBuyerNotificationResponse
+            {
+                Requested = true,
+                Submitted = false,
+                NotificationStatus = "failed",
+                FailureMessage = ex.Message,
+                BuyerAccessLinkId = accessLink.Id,
+                BuyerPortalUrl = accessLink.BuyerPortalUrl,
+                ExpiresAtUtc = accessLink.ExpiresAtUtc,
+                BuyerContactId = context.BuyerContact.Id,
+                BuyerOrgId = context.BuyerContact.OrgId,
+                BuyerEmail = context.BuyerContact.Email!.Trim(),
+            };
+        }
+    }
+
+    private static ConfirmSaleEmail BuildConfirmSaleEmail(
+        Lien lien,
+        ConfirmSaleNotificationContext context,
+        SellingBuyerAccessLinkResult accessLink)
+    {
+        const string subject = "New Lien Offer";
+        var lienCode = ResolveLienCode(lien);
+        var billingAmount = lien.OriginalAmount.ToString("C", CultureInfo.GetCultureInfo("en-US"));
+        var initialServiceDate = lien.InitialServiceDate!.Value.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+
+        var templateData = new Dictionary<string, string>
+        {
+            ["subject"] = subject,
+            ["status"] = "Awaiting Your Response",
+            ["intro"] = "A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.",
+            ["sellerName"] = context.SellerContact.DisplayName.Trim(),
+            ["sellerCompany"] = context.SellerContact.Organization!.Trim(),
+            ["billingAmount"] = billingAmount,
+            ["initialServiceDate"] = initialServiceDate,
+            ["contactPerson"] = context.SellerContact.DisplayName.Trim(),
+            ["emailAddress"] = context.SellerContact.Email!.Trim(),
+            ["handlingLawFirm"] = context.HandlingLawFirm,
+            ["lienCode"] = lienCode,
+            ["buyerPortalUrl"] = accessLink.BuyerPortalUrl,
+            ["expiresAtUtc"] = accessLink.ExpiresAtUtc.ToString("O", CultureInfo.InvariantCulture),
+        };
+
+        if (!string.IsNullOrWhiteSpace(context.CaseManager))
+            templateData["caseManager"] = context.CaseManager;
+
+        if (context.DocumentNames.Count > 0)
+            templateData["supportingDocuments"] = string.Join(", ", context.DocumentNames);
+
+        var body = new StringBuilder();
+        body.AppendLine("<!doctype html><html><body>");
+        body.AppendLine("<p><strong>LegalSynq</strong></p>");
+        body.AppendLine("<p><strong>Awaiting Your Response</strong></p>");
+        body.AppendLine("<h1>New Lien Offer</h1>");
+        body.AppendLine("<p>A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.</p>");
+        AppendSection(body, "Seller Information", new Dictionary<string, string?>
+        {
+            ["Seller Name"] = context.SellerContact.DisplayName,
+            ["Seller Company"] = context.SellerContact.Organization,
+        });
+        AppendSection(body, "Asset Overview", new Dictionary<string, string?>
+        {
+            ["Billing Amount"] = billingAmount,
+            ["Initial Service Date"] = initialServiceDate,
+            ["Contact Person"] = context.SellerContact.DisplayName,
+            ["Email Address"] = context.SellerContact.Email,
+            ["Handling Law Firm"] = context.HandlingLawFirm,
+            ["Case Manager"] = context.CaseManager,
+        });
+
+        if (context.DocumentNames.Count > 0)
+        {
+            body.AppendLine("<h2>Supporting Documents</h2>");
+            body.AppendLine("<ul>");
+            foreach (var documentName in context.DocumentNames)
+                body.Append("<li>").Append(Html(documentName)).AppendLine("</li>");
+            body.AppendLine("</ul>");
+        }
+
+        body.Append("<p><a href=\"")
+            .Append(Html(accessLink.BuyerPortalUrl))
+            .AppendLine("\">View Lien for Sale</a></p>");
+        body.AppendLine("<p>This Link Expires in 30 Days</p>");
+        body.Append("<p>This offer was sent on behalf of the ")
+            .Append(Html(context.SellerContact.Organization!.Trim()))
+            .Append(". Please reply directly to ")
+            .Append(Html(context.SellerContact.Email!.Trim()))
+            .AppendLine(" for any questions.</p>");
+        body.AppendLine("</body></html>");
+
+        return new ConfirmSaleEmail(subject, body.ToString(), templateData);
+    }
+
+    private static void AppendSection(
+        StringBuilder body,
+        string title,
+        IReadOnlyDictionary<string, string?> values)
+    {
+        body.Append("<h2>").Append(Html(title)).AppendLine("</h2>");
+        body.AppendLine("<dl>");
+        foreach (var (label, value) in values)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                continue;
+
+            body.Append("<dt>")
+                .Append(Html(label))
+                .Append("</dt><dd>")
+                .Append(Html(value.Trim()))
+                .AppendLine("</dd>");
+        }
+        body.AppendLine("</dl>");
+    }
+
+    private async Task<string?> ResolveHandlingLawFirmAsync(
+        Guid tenantId,
+        Case? caseEntity,
+        CancellationToken ct)
+    {
+        if (caseEntity is null)
+            return null;
+
+        var metadata = ParseLegacyNoteFields(caseEntity.Notes);
+        if (Guid.TryParse(metadata.GetValueOrDefault("lawFirmId"), out var lawFirmId))
+        {
+            var lawFirm = await _contactRepo.GetByIdAsync(tenantId, lawFirmId, ct);
+            var name = FirstNonEmpty(lawFirm?.Organization, lawFirm?.DisplayName);
+            if (!string.IsNullOrWhiteSpace(name))
+                return name;
+        }
+
+        var contacts = await _contactRepo.GetByOrgIdAsync(tenantId, caseEntity.OrgId, isActive: true, ct);
+        var defaultLawFirm = contacts.FirstOrDefault(c =>
+            string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
+            string.IsNullOrWhiteSpace(c.ContactSubtype));
+
+        return FirstNonEmpty(defaultLawFirm?.Organization, defaultLawFirm?.DisplayName);
+    }
+
+    private async Task<string?> ResolveCaseManagerAsync(
+        Guid tenantId,
+        Case? caseEntity,
+        CancellationToken ct)
+    {
+        if (caseEntity is null)
+            return null;
+
+        var metadata = ParseLegacyNoteFields(caseEntity.Notes);
+        if (!Guid.TryParse(metadata.GetValueOrDefault("caseManagerId"), out var caseManagerId))
+            return null;
+
+        var caseManager = await _contactRepo.GetByIdAsync(tenantId, caseManagerId, ct);
+        return FirstNonEmpty(caseManager?.DisplayName);
+    }
+
+    private async Task<List<string>> GetSupportingDocumentNamesAsync(
+        Guid tenantId,
+        Lien lien,
+        Case? caseEntity,
+        CancellationToken ct)
+    {
+        var names = new List<string>();
+        var lienDocs = await _servicingItemRepo.SearchAsync(
+            tenantId,
+            search: null,
+            status: null,
+            priority: null,
+            assignedTo: null,
+            caseId: null,
+            lienId: lien.Id,
+            page: 1,
+            pageSize: 100,
+            ct: ct);
+        names.AddRange(ExtractDocumentNames(lienDocs.Items));
+
+        if (caseEntity is not null)
+        {
+            var caseDocs = await _servicingItemRepo.SearchAsync(
+                tenantId,
+                search: null,
+                status: null,
+                priority: null,
+                assignedTo: null,
+                caseId: caseEntity.Id,
+                lienId: null,
+                page: 1,
+                pageSize: 100,
+                ct: ct);
+            names.AddRange(ExtractDocumentNames(caseDocs.Items));
+        }
+
+        return names
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IEnumerable<string> ExtractDocumentNames(IEnumerable<ServicingItem> items)
+    {
+        foreach (var item in items.Where(IsDocumentServicingItem))
+        {
+            var fields = ParseLegacyNoteFields(item.Notes);
+            var name = FirstNonEmpty(
+                fields.GetValueOrDefault("originalFileName"),
+                fields.GetValueOrDefault("filename"),
+                item.Description);
+
+            if (!string.IsNullOrWhiteSpace(name))
+                yield return name;
+        }
+    }
+
+    private static bool IsDocumentServicingItem(ServicingItem item)
+        => string.Equals(item.TaskType, "LegacyCaseDocument", StringComparison.Ordinal) ||
+           string.Equals(item.TaskType, "LegacyLienDocument", StringComparison.Ordinal) ||
+           string.Equals(item.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal);
+
+    private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts)
+        => contacts.FirstOrDefault(c =>
+               string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
+               string.IsNullOrWhiteSpace(c.ContactSubtype) &&
+               !string.IsNullOrWhiteSpace(c.Email))
+           ?? contacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
+           ?? contacts.FirstOrDefault();
+
+    private static ConfirmSellingLienSaleResponse MapConfirmSaleResponse(
+        Lien lien,
+        ConfirmSellingLienBuyerNotificationResponse? notification)
+        => new()
+        {
+            LienId = lien.Id,
+            LienCode = ResolveLienCode(lien),
+            Status = lien.Status,
+            SellerStatus = lien.SellerStatus ?? string.Empty,
+            AskAmount = lien.AskAmount,
+            OfferPrice = lien.OfferPrice,
+            SubmittedForSaleAtUtc = lien.SubmittedForSaleAtUtc,
+            SoldAtUtc = lien.SoldAtUtc,
+            Notification = notification,
+        };
+
+    private static string BuildConfirmSaleNotificationIdempotencyKey(
+        Guid tenantId,
+        Guid lienId,
+        Guid buyerContactId,
+        string? requestIdempotencyKey)
+    {
+        var requestSegment = string.IsNullOrWhiteSpace(requestIdempotencyKey)
+            ? "default"
+            : requestIdempotencyKey.Trim();
+
+        var key = string.Join(":", new[]
+        {
+            "liens.confirm-sale.email",
+            tenantId.ToString("N"),
+            lienId.ToString("N"),
+            buyerContactId.ToString("N"),
+            requestSegment,
+        });
+
+        return key.Length > 280 ? key[..280] : key;
+    }
+
+    private static bool IsSubmittedNotificationStatus(string? status)
+        => string.Equals(status, "sent", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(status, "accepted", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(status, "queued", StringComparison.OrdinalIgnoreCase);
+
+    private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(notes))
+            return result;
+
+        foreach (var segment in notes.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = segment.IndexOf('=');
+            if (eq <= 0)
+                continue;
+
+            var key = segment[..eq].Trim();
+            var value = segment[(eq + 1)..].Trim();
+            if (!string.IsNullOrWhiteSpace(key))
+                result[key] = value;
+        }
+
+        return result;
+    }
+
+    private static string ResolveLienCode(Lien lien)
+        => string.IsNullOrWhiteSpace(lien.LienNumber) ? lien.Id.ToString() : lien.LienNumber;
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static string Html(string value)
+        => WebUtility.HtmlEncode(value);
+
+    private sealed record ConfirmSaleNotificationContext(
+        Contact BuyerContact,
+        Contact SellerContact,
+        Case? Case,
+        string HandlingLawFirm,
+        string? CaseManager,
+        IReadOnlyList<string> DocumentNames);
+
+    private sealed record ConfirmSaleEmail(
+        string Subject,
+        string Body,
+        Dictionary<string, string> TemplateData);
 
     private static void ValidateCreateRequest(CreateSellingPortfolioRequest request)
     {

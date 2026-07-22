@@ -366,7 +366,7 @@
               }
             },
             "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/confirm-sale",
-            "description": "POST /api/liens/selling/liens/{lienId}/confirm-sale. Sets SellerStatus=SubmittedForSale, core Lien.Status=Offered, copies AskAmount to Lien.OfferPrice, and keeps SoldAtUtc null."
+            "description": "POST /api/liens/selling/liens/{lienId}/confirm-sale. Sets SellerStatus=SubmittedForSale, core Lien.Status=Offered, copies AskAmount to Lien.OfferPrice, and keeps SoldAtUtc null. When sendBuyerNotification=true, the API validates persisted buyer/seller/lien/case data, creates a 30-day buyer access link from Liens:Selling:BuyerPortalBaseUrl, and submits the New Lien Offer email idempotently; callers do not provide email placeholder data or a CTA URL."
           }
         },
         {

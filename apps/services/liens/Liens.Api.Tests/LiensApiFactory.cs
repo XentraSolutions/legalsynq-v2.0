@@ -38,6 +38,8 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Services__TaskServiceUrl",   "http://localhost:19996/");
         Environment.SetEnvironmentVariable("Services__DocumentsUrl",     "http://localhost:19995/");
         Environment.SetEnvironmentVariable("Services__CommerceUrl",      "http://localhost:19994/");
+        Environment.SetEnvironmentVariable("Liens__Selling__BuyerPortalBaseUrl",
+            "https://app.legalsynq.test/selling/public");
 
         // Service token issuer requires a signing key.
         Environment.SetEnvironmentVariable("ServiceTokens__liens-service__SigningKey",
@@ -141,7 +143,13 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
 
     public IReadOnlyList<CapturedEmail> Emails => _emails;
 
-    public void Clear() => _emails.Clear();
+    public void Clear()
+    {
+        _emails.Clear();
+        FailEmailSends = false;
+    }
+
+    public bool FailEmailSends { get; set; }
 
     public Task PublishAsync(
         string notificationType,
@@ -157,8 +165,20 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
         string subject,
         string body,
         Dictionary<string, string> metadata,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        NotificationEmailSendOptions? options = null)
     {
+        if (FailEmailSends)
+        {
+            return Task.FromResult(new NotificationEmailSendResult(
+                null,
+                "failed",
+                false,
+                null,
+                "transient",
+                "Simulated notification failure."));
+        }
+
         var notificationId = Guid.CreateVersion7();
         _emails.Add(new CapturedEmail(
             notificationType,
@@ -167,6 +187,7 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
             subject,
             body,
             metadata,
+            options,
             notificationId));
 
         return Task.FromResult(new NotificationEmailSendResult(
@@ -186,6 +207,7 @@ internal sealed record CapturedEmail(
     string Subject,
     string Body,
     IReadOnlyDictionary<string, string> Metadata,
+    NotificationEmailSendOptions? Options,
     Guid NotificationId);
 
 internal sealed class CapturingAuditPublisher : IAuditPublisher

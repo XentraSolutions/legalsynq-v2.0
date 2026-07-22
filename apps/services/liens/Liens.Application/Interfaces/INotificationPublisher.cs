@@ -15,8 +15,16 @@ public interface INotificationPublisher
         string subject,
         string body,
         Dictionary<string, string> metadata,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        NotificationEmailSendOptions? options = null);
 }
+
+public sealed record NotificationEmailSendOptions(
+    string? IdempotencyKey = null,
+    string? TemplateKey = null,
+    Dictionary<string, string>? TemplateData = null,
+    string? RequestedBy = null,
+    bool? BrandedRendering = null);
 
 public sealed record NotificationEmailSendResult(
     Guid? NotificationId,

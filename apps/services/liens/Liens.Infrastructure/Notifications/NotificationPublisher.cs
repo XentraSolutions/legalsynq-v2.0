@@ -91,7 +91,8 @@ public sealed class NotificationPublisher : INotificationPublisher
         string subject,
         string body,
         Dictionary<string, string> metadata,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        NotificationEmailSendOptions? options = null)
     {
         var client = _httpClientFactory.CreateClient("NotificationsService");
 
@@ -102,6 +103,11 @@ public sealed class NotificationPublisher : INotificationPublisher
             EventKey     = notificationType,
             SourceSystem = "liens-service",
             Subject      = subject,
+            TemplateKey  = options?.TemplateKey,
+            TemplateData = options?.TemplateData,
+            IdempotencyKey = options?.IdempotencyKey,
+            RequestedBy = options?.RequestedBy,
+            BrandedRendering = options?.BrandedRendering,
             Recipient    = new NotificationsRecipient
             {
                 Mode     = "Email",
