@@ -13,6 +13,7 @@ import {
   useMedicareCosts,
   useMedicareProcedureCodes,
 } from "@/hooks/use-case-liens";
+import { Input } from "@/components/ui/input";
 
 export interface MedicalCodesDescriptionProps {
   caseId?: string;
@@ -91,18 +92,42 @@ export default function MedicalCodesDescription(
     const valid = rowsChanged ? rows.length > 0 && !form.procedure : false;
     if (valid) onFormValid?.(valid, { ...form, codeRows: rows });
   }
+  function cleanNumericInput(raw: string): string {
+    const cleaned = raw.replace(/[^\d.]/g, "");
+    const parts = cleaned.split(".");
+    return parts.length > 2 ? parts[0] + "." + parts[1] : cleaned;
+  }
+
   const currentBilling = form.billingAmount;
   const currentPurchase = form.purchaseAmount;
+  const [isPercent, setIsPercent] = useState(false);
+  const handleParentInputChange = (raw: string) => {
+    const sanitized = cleanNumericInput(raw);
+    if (isPercent) {
+      const n = parseFloat(sanitized);
+      if (!isNaN(n)) {
+        return;
+      }
+    }
+    setForm({ ...form, purchaseAmount: sanitized });
+  };
 
-  const handleTypeChange = (type: "amount" | "percent") => {
-    setForm((prev: any) => ({
-      ...prev,
-      purchaseAmountType: type,
-      purchaseAmount:
-        type === "amount"
-          ? ((prev.purchaseAmount / 100) * prev.billingAmount).toFixed(2)
-          : roundToTwo((prev.purchaseAmount / prev.billingAmount) * 100),
-    }));
+  const inverseValue = (() => {
+    return form.purchaseAmountType === "percent"
+      ? Math.floor((form.purchaseAmount / 100) * form.billingAmount).toFixed(2)
+      : roundToTwo((form.purchaseAmount / form.billingAmount) * 100);
+  })();
+
+  const handleToggleMode = (toPercent: boolean) => {
+    if (inverseValue !== null) {
+      setForm((prev: any) => ({
+        ...prev,
+        purchaseAmountType: toPercent ? "percent" : "amount",
+        purchaseAmount: toPercent
+          ? roundToTwo((prev.purchaseAmount / prev.billingAmount) * 100)
+          : ((prev.purchaseAmount / 100) * prev.billingAmount).toFixed(2),
+      }));
+    }
   };
 
   const totals = useMemo(() => {
@@ -312,51 +337,59 @@ export default function MedicalCodesDescription(
               <span className="text-red-500 ml-0.5">*</span>
             </label>
             <div className="flex flex-col gap-2">
-              <input
-                type="text"
-                required
-                value={form.purchaseAmount}
-                onChange={(e) => {
-                  setForm({ ...form, purchaseAmount: e.target.value });
-                }}
-                placeholder="Purchase Amount"
-                className="w-full border rounded-lg px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-              <div className="flex flex-wrap items-center justify-end gap-2 mb-4">
-                <span className="text-sm text-gray-500">
-                  {form.purchaseAmountType === "amount"
-                    ? `$${form.purchaseAmount}`
-                    : `${form.purchaseAmount}%`}
-                </span>
-                <label
-                  className={`inline-flex w-10 items-center justify-center p-1 rounded text-sm text-gray-600 ${form.purchaseAmountType === "amount" ? "border-2 border-gray-300 bg-gray-100" : ""}`}
-                >
-                  <input
-                    type="radio"
-                    checked={form.purchaseAmountType === "amount"}
-                    onChange={() => {
-                      setForm({ ...form, purchaseAmountType: "amount" });
-                      handleTypeChange("amount");
-                    }}
-                    className="appearance-none peer"
+              <div
+                className={`flex items-stretch h-9 rounded-lg border overflow-hidden transition-colors `}
+              >
+                <div className={`relative w-40}`}>
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                    {form.purchaseAmountType == "percent" ? "%" : "$"}
+                  </span>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={form.purchaseAmount}
+                    onChange={(e) => handleParentInputChange(e.target.value)}
+                    placeholder="0.00"
+                    className={`h-full border-0 rounded-none focus:ring-0 bg-transparent text-gray-400 pl-6 pr-3}`}
                   />
-                  <i className="ri-exchange-dollar-line radio-icon"></i>
-                </label>
-                <label
-                  className={`inline-flex w-10 items-center justify-center p-1 rounded text-sm text-gray-600 ${form.purchaseAmountType === "percent" ? "border-2 border-gray-300 bg-gray-100" : ""}`}
-                >
-                  <input
-                    type="radio"
-                    checked={form.purchaseAmountType === "percent"}
-                    onChange={() => {
-                      setForm({ ...form, purchaseAmountType: "percent" });
-                      handleTypeChange("percent");
-                    }}
-                    className="appearance-none peer"
-                  />
+                </div>
 
-                  <i className="ri-percent-line radio-icon"></i>
-                </label>
+                <div className={`relative bg-gray-50 w-10}`}>
+                  {form.purchaseAmountType == "percent" && (
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                      $
+                    </span>
+                  )}
+                  <Input
+                    type="text"
+                    disabled
+                    readOnly
+                    value={inverseValue}
+                    placeholder="0.00"
+                    className={`h-full border-0 rounded-none focus:ring-0 bg-transparent text-gray-400 ${form.purchaseAmountType == "amount" ? "pl-6 pr-2" : "pl-5 pr-6"}`}
+                  />
+                  {form.purchaseAmountType == "amount" && (
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                      %
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-stretch border-l border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleMode(false)}
+                    className={`w-8 text-xs font-semibold transition-colors ${form.purchaseAmountType == "amount" ? "bg-primary text-white" : "bg-gray-50 text-gray-400 hover:bg-gray-100"}`}
+                  >
+                    $
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleMode(true)}
+                    className={`w-8 text-xs font-semibold transition-colors border-l border-gray-200 ${form.purchaseAmountType == "percent" ? "bg-primary text-white" : "bg-gray-50 text-gray-400 hover:bg-gray-100"}`}
+                  >
+                    %
+                  </button>
+                </div>
               </div>
             </div>
           </div>
