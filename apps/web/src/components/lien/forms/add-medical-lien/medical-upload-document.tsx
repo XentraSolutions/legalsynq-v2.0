@@ -241,7 +241,6 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         </div>
         <Field
           label="Document Type"
-          required
           value={form.documentType}
           options={documentTypes}
           onChange={(v: string) =>
