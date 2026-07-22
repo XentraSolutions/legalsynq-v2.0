@@ -49,7 +49,8 @@ function isLienReducible(l: CaseLienItem & CaseLienItemMetadata): boolean {
     l.status !== "Closed" &&
     l.status !== "Withdrawn" &&
     l.status !== "Sold" &&
-    l.balance > 0
+    l.balance > 0 &&
+    !l.reductionAmount
   );
 }
 
@@ -64,7 +65,7 @@ export function SetupReductionForm({
   onSaved,
 }: SetupReductionFormProps) {
   const addToast = useLienStore((s) => s.addToast);
-
+  console.log(liens, open);
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [reductionInput, setReductionInput] = useState("");
   const [isPercent, setIsPercent] = useState(false);
@@ -92,7 +93,7 @@ export function SetupReductionForm({
 
       for (const l of activeLiens) {
         const amt = l.reductionAmount ?? 0;
-        if (amt > 0) {
+        if (amt == 0) {
           preChecked.add(l.id);
           preReductions[l.id] = amt;
           preInputs[l.id] = amt.toFixed(2);
@@ -301,10 +302,7 @@ export function SetupReductionForm({
   };
 
   const totalBilling = liens.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
-  const totalPurchase = liens.reduce(
-    (s, l) => s + (l.purchaseAmount ?? 0),
-    0,
-  );
+  const totalPurchase = liens.reduce((s, l) => s + (l.purchaseAmount ?? 0), 0);
   const totalReduction = liens.reduce(
     (s, l) => s + (lienReductions[l.id] ?? 0),
     0,
