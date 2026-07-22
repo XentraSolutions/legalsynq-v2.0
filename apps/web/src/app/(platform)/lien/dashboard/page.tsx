@@ -162,11 +162,11 @@ export default function LienDashboardPage() {
   }, [caseRows]);
 
   const totalLienPurchase = lienRows.reduce(
-    (s, l) => s + (l.purchasePrice ?? 0),
+    (s, l) => s + (l.totalPurchaseAmount ?? 0),
     0,
   );
   const totalLienBilling = lienRows.reduce(
-    (s, l) => s + (l.originalAmount ?? 0),
+    (s, l) => s + (l.totalBillingAmount ?? 0),
     0,
   );
 
