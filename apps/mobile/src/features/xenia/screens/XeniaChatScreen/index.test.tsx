@@ -27,4 +27,16 @@ describe('XeniaChatScreen', () => {
     expect(getByText('Second item')).toBeTruthy();
     expect(queryByText('## Summary')).toBeNull();
   });
+
+  it('renders Markdown tables inside a horizontal scroller', () => {
+    const { getByTestId, getByText } = render(
+      <XeniaResponseMarkdown
+        content={'| Case | Status | Balance |\n| --- | --- | --- |\n| C-100 | Active | $1,250 |'}
+      />
+    );
+
+    expect(getByTestId('xenia-markdown-table-scroll').props.horizontal).toBe(true);
+    expect(getByText('C-100')).toBeTruthy();
+    expect(getByText('$1,250')).toBeTruthy();
+  });
 });

@@ -16,7 +16,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
-import Markdown from 'react-native-markdown-display';
+import Markdown, { type RenderRules } from 'react-native-markdown-display';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
 
 import { useXeniaChat } from '@/features/xenia/hooks/useXeniaChat';
@@ -35,6 +35,23 @@ const MARKDOWN_DARK_SEPARATOR = '#3f3f46';
 const MARKDOWN_SURFACE = '#efeff0';
 const MARKDOWN_DARK_SURFACE = '#27272a';
 const SUGGESTIONS = ['Search liens by client, case, or status', 'Summarize my lien queue'];
+const MARKDOWN_TABLE_SCROLL_STYLE: ViewStyle = { marginBottom: 8 };
+
+const XENIA_MARKDOWN_RULES: RenderRules = {
+  table: (node, children, _parent, styles) => (
+    <ScrollView
+      directionalLockEnabled
+      horizontal
+      nestedScrollEnabled
+      key={node.key}
+      showsHorizontalScrollIndicator
+      style={MARKDOWN_TABLE_SCROLL_STYLE}
+      testID="xenia-markdown-table-scroll"
+    >
+      <View style={styles._VIEW_SAFE_table}>{children}</View>
+    </ScrollView>
+  ),
+};
 
 export function XeniaChatScreen() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
@@ -110,6 +127,8 @@ export function XeniaChatScreen() {
       <ConversationDrawer
         activeId={chat.conversationId}
         conversations={chat.conversations}
+        conversationsError={chat.conversationsQuery.isError}
+        conversationsLoading={chat.conversationsQuery.isLoading}
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
         onNewChat={() => {
@@ -120,6 +139,7 @@ export function XeniaChatScreen() {
           setMenuVisible(false);
           void chat.selectConversation(conversation);
         }}
+        onRetry={() => void chat.conversationsQuery.refetch()}
       />
     </SafeAreaView>
   );
@@ -284,6 +304,7 @@ export function XeniaResponseMarkdown({ content }: { content: string }) {
   return (
     <Markdown
       mergeStyle={false}
+      rules={XENIA_MARKDOWN_RULES}
       style={colorScheme === 'dark' ? MARKDOWN_DARK_STYLES : MARKDOWN_LIGHT_STYLES}
       onLinkPress={openMarkdownLink}
     >
@@ -448,7 +469,6 @@ function createMarkdownStyles(dark: boolean): Record<string, TextStyle | ViewSty
       borderColor: separator,
       borderRadius: 8,
       borderWidth: 1,
-      marginBottom: 8,
     },
     tr: {
       borderBottomColor: separator,
@@ -459,11 +479,13 @@ function createMarkdownStyles(dark: boolean): Record<string, TextStyle | ViewSty
       color: foreground,
       flex: 1,
       fontFamily: 'PlusJakartaSans_600SemiBold',
+      minWidth: 140,
       padding: 8,
     },
     td: {
       color: muted,
       flex: 1,
+      minWidth: 140,
       padding: 8,
     },
   };
@@ -518,16 +540,22 @@ function Composer({
 function ConversationDrawer({
   activeId,
   conversations,
+  conversationsError,
+  conversationsLoading,
   visible,
   onClose,
   onNewChat,
+  onRetry,
   onSelect,
 }: {
   activeId?: string;
   conversations: XeniaConversationSummary[];
+  conversationsError: boolean;
+  conversationsLoading: boolean;
   visible: boolean;
   onClose: () => void;
   onNewChat: () => void;
+  onRetry: () => void;
   onSelect: (conversation: XeniaConversationSummary) => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -581,25 +609,45 @@ function ConversationDrawer({
           </View>
           <Text className="px-4 pb-2 pt-6 font-jakarta-medium text-sm text-[#71717a]">Recent</Text>
           <ScrollView>
-            {filtered.map((conversation) => (
-              <Pressable
-                accessibilityRole="button"
-                className={cx(
-                  'rounded-xl p-4',
-                  activeId === conversation.id && 'bg-[#efeff0] dark:bg-[#27272a]'
-                )}
-                key={conversation.id}
-                onPress={() => onSelect(conversation)}
-              >
-                <Text
-                  className="font-jakarta-medium text-sm text-[#18181b] dark:text-white"
-                  numberOfLines={1}
-                >
-                  {conversation.title || 'Untitled conversation'}
+            {conversationsLoading ? (
+              <View className="items-center px-4 py-6">
+                <ActivityIndicator color={ACCENT} />
+                <Text className="mt-2 font-jakarta text-sm text-[#71717a]">
+                  Loading recent conversations...
                 </Text>
-              </Pressable>
-            ))}
-            {!filtered.length ? (
+              </View>
+            ) : null}
+            {conversationsError ? (
+              <View className="items-start px-4 py-6">
+                <Text className="font-jakarta text-sm leading-5 text-[#71717a]">
+                  Recent conversations could not be loaded.
+                </Text>
+                <Pressable accessibilityRole="button" className="mt-3" onPress={onRetry}>
+                  <Text className="font-jakarta-semibold text-sm text-[#ee7132]">Try Again</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {!conversationsLoading && !conversationsError
+              ? filtered.map((conversation) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    className={cx(
+                      'rounded-xl p-4',
+                      activeId === conversation.id && 'bg-[#efeff0] dark:bg-[#27272a]'
+                    )}
+                    key={conversation.id}
+                    onPress={() => onSelect(conversation)}
+                  >
+                    <Text
+                      className="font-jakarta-medium text-sm text-[#18181b] dark:text-white"
+                      numberOfLines={1}
+                    >
+                      {conversation.title || 'Untitled conversation'}
+                    </Text>
+                  </Pressable>
+                ))
+              : null}
+            {!conversationsLoading && !conversationsError && !filtered.length ? (
               <Text className="px-4 py-6 font-jakarta text-sm text-[#71717a]">
                 No recent conversations.
               </Text>

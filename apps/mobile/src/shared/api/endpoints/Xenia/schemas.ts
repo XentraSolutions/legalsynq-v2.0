@@ -35,6 +35,10 @@ export const xeniaConversationSummarySchema = z.object({
   updatedAtUtc: z.string(),
 });
 
+export const xeniaConversationListSchema = z.object({
+  conversations: z.array(xeniaConversationSummarySchema),
+});
+
 export const xeniaConversationSchema = xeniaConversationSummarySchema.extend({
   contextJson: z.string().nullable().optional(),
   messages: z.array(xeniaMessageSchema).default([]),

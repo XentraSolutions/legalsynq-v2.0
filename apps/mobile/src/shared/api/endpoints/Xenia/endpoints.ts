@@ -9,8 +9,8 @@ import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
 
 import {
   xeniaBootstrapSchema,
+  xeniaConversationListSchema,
   xeniaConversationSchema,
-  xeniaConversationSummarySchema,
   xeniaMessageSchema,
   xeniaPreferencesSchema,
   xeniaStreamEventSchema,
@@ -75,7 +75,7 @@ export const XeniaApi = {
   async listConversations(): Promise<XeniaConversationSummary[]> {
     assertCurrentApiMode();
     const response = await apiClient.get(`${BASE_PATH}/conversations`);
-    return xeniaConversationSummarySchema.array().parse(response.data);
+    return xeniaConversationListSchema.parse(response.data).conversations;
   },
 
   async createConversation(body: CreateXeniaConversationRequest): Promise<XeniaConversation> {
