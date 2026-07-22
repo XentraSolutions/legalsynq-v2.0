@@ -38,6 +38,8 @@ interface LienTableProps {
   checkedIds?: Set<string>;
   onToggleCheck?: (id: string) => void;
   onToggleAll?: () => void;
+  /** When provided, rows for which this returns false render a disabled, unselectable checkbox. */
+  isRowSelectable?: (lien: LienRow) => boolean;
   /**
    * Timestamp of last fetch. When provided (even null), renders a "Last loaded" toolbar.
    * Omit to hide the toolbar entirely.
@@ -103,6 +105,7 @@ export function LienTable({
   checkedIds,
   onToggleCheck,
   onToggleAll,
+  isRowSelectable,
   columns,
   footer,
   emptyMessage = "No liens found",
@@ -116,6 +119,11 @@ export function LienTable({
 }: LienTableProps) {
   const selectable = checkedIds !== undefined;
   const showLastLoaded = loadedAt !== undefined || onRefresh !== undefined;
+
+  const selectableLiens = React.useMemo(
+    () => (isRowSelectable ? liens.filter(isRowSelectable) : liens),
+    [liens, isRowSelectable],
+  );
 
   const rowSelection = React.useMemo<RowSelectionState>(() => {
     const obj: RowSelectionState = {};
@@ -132,8 +140,9 @@ export function LienTable({
 
     if (nextIds.size === prevIds.size) return;
 
-    const allNowSelected = nextIds.size === liens.length && prevIds.size !== liens.length;
-    const allNowDeselected = nextIds.size === 0 && prevIds.size === liens.length;
+    const allNowSelected =
+      nextIds.size === selectableLiens.length && prevIds.size !== selectableLiens.length;
+    const allNowDeselected = nextIds.size === 0 && prevIds.size === selectableLiens.length;
     if (allNowSelected || allNowDeselected) {
       onToggleAll?.();
       return;
@@ -170,6 +179,11 @@ export function LienTable({
       getRowId={(lien) => lien.id}
       rowSelection={selectable ? rowSelection : undefined}
       onRowSelectionChange={handleRowSelectionChange}
+      enableRowSelection={
+        selectable && isRowSelectable
+          ? (row) => isRowSelectable(row.original)
+          : undefined
+      }
       enablePagination={paginated}
       pageSize={pageSize}
       enableExpanding={expandable}
