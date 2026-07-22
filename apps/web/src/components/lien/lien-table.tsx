@@ -152,17 +152,37 @@ export function LienTable({
     if (toggled) onToggleCheck?.(toggled.id);
   };
 
+  // `columns` and `checkedIds` are re-created by the caller on every render
+  // (they close over form state like input values). TanStack's flexRender
+  // treats a function passed as `cell` as a component *type*, so recomputing
+  // this memo's `cell` functions on every keystroke makes React remount each
+  // cell instead of updating it — dropping input focus. Route through refs
+  // so the `cell` function identity stays stable while still reading live
+  // values, and only rebuild the memo when the column shape itself changes.
+  const columnsRef = React.useRef(columns);
+  columnsRef.current = columns;
+  const checkedIdsRef = React.useRef(checkedIds);
+  checkedIdsRef.current = checkedIds;
+
+  const columnIds = columns.map((col) => col.id).join("|");
+
   const tanstackColumns = React.useMemo<ColumnDef<LienRow, any>[]>(
     () =>
-      columns.map((col) => ({
+      columnsRef.current.map((col) => ({
         id: col.id,
         header: col.header,
         meta: { align: col.align },
         enableSorting: false,
-        cell: ({ row }) =>
-          col.cell(row.original, selectable ? checkedIds!.has(row.original.id) : false),
+        cell: ({ row }) => {
+          const currentCol = columnsRef.current.find((c) => c.id === col.id)!;
+          return currentCol.cell(
+            row.original,
+            selectable ? checkedIdsRef.current!.has(row.original.id) : false,
+          );
+        },
       })),
-    [columns, checkedIds, selectable],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- columnsRef/checkedIdsRef read live values; only the column shape (ids) and selectability should force a rebuild
+    [columnIds, selectable],
   );
 
   const footerCells: BaseTableFooterCell[] | undefined = footer?.map((cell) => ({
