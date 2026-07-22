@@ -301,9 +301,6 @@ export function SessionProvider({
   }, [clearSession]);
 
   const startWarningCountdown = useCallback(() => {
-    doLogout();
-    return;
-
     setCountdown(WARNING_LEAD_SECONDS);
     showWarningRef.current = true;
     setShowWarning(true);
