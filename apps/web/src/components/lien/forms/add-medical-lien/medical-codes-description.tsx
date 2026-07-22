@@ -113,8 +113,9 @@ export default function MedicalCodesDescription(
   };
 
   const inverseValue = (() => {
+    if (!form.purchaseAmount) return;
     return form.purchaseAmountType === "percent"
-      ? Math.floor((form.purchaseAmount / 100) * form.billingAmount).toFixed(2)
+      ? ((form.purchaseAmount / 100) * form.billingAmount).toFixed(2)
       : roundToTwo((form.purchaseAmount / form.billingAmount) * 100);
   })();
 
