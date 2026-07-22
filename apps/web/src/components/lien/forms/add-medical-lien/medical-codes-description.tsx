@@ -65,9 +65,6 @@ export default function MedicalCodesDescription(
   const { data: medicalCodes } = useMedicareProcedureCodes();
 
   const [form, setForm] = useState<any>({ ...INITIAL_FORM, ...data });
-  const [procedureOptions, setProcedureOptions] = useState(
-    [] as Array<{ key: string; value: string; label: string }>,
-  );
   const { data: medicareCosts } = useMedicareCosts(form.procedureCode);
 
   const [rows, setRows] = useState<Array<typeof INITIAL_ROW>>(
@@ -131,7 +128,7 @@ export default function MedicalCodesDescription(
   }
 
   function handleAddOrUpdateLine() {
-    const selectedOption = procedureOptions.find(
+    const selectedOption = medicalCodes?.find(
       (option) => option.value === form.procedureCode,
     );
     const nextRow = {
@@ -163,7 +160,7 @@ export default function MedicalCodesDescription(
   }
 
   const findCodeByDescription = (description: string) => {
-    return procedureOptions.find((c) => c.value == description)?.key ?? "";
+    return medicalCodes?.find((c) => c.value == description)?.key ?? "";
   };
 
   const createMedicalCodeLiens = async (
@@ -252,7 +249,6 @@ export default function MedicalCodesDescription(
         title: `Deleted`,
         description: reason,
       });
-      setProcedureOptions([]);
     }
   }
 
