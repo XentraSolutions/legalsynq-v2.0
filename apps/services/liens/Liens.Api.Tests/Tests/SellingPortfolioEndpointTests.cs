@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using BuildingBlocks.Notifications;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.DTOs;
 using Liens.Domain.Entities;
@@ -883,6 +884,229 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
     }
 
+    [Fact]
+    public async Task ConfirmSale_sends_new_lien_offer_email_with_real_data_and_documents()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var caseManagerId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            dateOfIncident: new DateOnly(2026, 3, 12),
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            caseNotes: $"caseManagerId={caseManagerId}",
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.operations@smithlaw.test",
+            buyerEmail: "buyer.reviewer@capital.test",
+            caseManagerId: caseManagerId,
+            documentFileName: "signed-lien-real.pdf");
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-success");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        body.Should().NotBeNull();
+        body!.Status.Should().Be(LienStatus.Offered);
+        body.SellerStatus.Should().Be(SellingLienStatus.SubmittedForSale);
+        body.AskAmount.Should().Be(2500m);
+        body.OfferPrice.Should().Be(2500m);
+        body.SoldAtUtc.Should().BeNull();
+        body.Notification.Should().NotBeNull();
+        body.Notification!.Submitted.Should().BeTrue();
+        body.Notification.BuyerEmail.Should().Be("buyer.reviewer@capital.test");
+        body.Notification.BuyerPortalUrl.Should().StartWith("https://app.legalsynq.test/selling/public/");
+        body.Notification.BuyerPortalUrl.Should().NotContain("example.com");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().ContainSingle();
+        var email = publisher.Emails[0];
+        email.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.SellingLienSubmitted);
+        email.Subject.Should().Be("New Lien Offer");
+        email.RecipientEmail.Should().Be("buyer.reviewer@capital.test");
+        email.Body.Should().Contain("Awaiting Your Response");
+        email.Body.Should().Contain("A medical lien has been submitted to your company for review and potential purchase.");
+        email.Body.Should().Contain("View Lien for Sale");
+        email.Body.Should().Contain("This Link Expires in 30 Days");
+        email.Body.Should().Contain("$3,875.00");
+        email.Body.Should().Contain("06/01/2026");
+        email.Body.Should().Contain("Seller Operator");
+        email.Body.Should().Contain("Smith &amp; Associates LLP");
+        email.Body.Should().Contain("Case Manager");
+        email.Body.Should().Contain("signed-lien-real.pdf");
+        email.Body.Should().NotContain("John Doe");
+        email.Body.Should().NotContain("Velantrix");
+        email.Body.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        email.Body.Should().NotContain("example.com");
+        email.Metadata["lienId"].Should().Be(lienId.ToString());
+        email.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
+        email.Options.Should().NotBeNull();
+        email.Options!.IdempotencyKey.Should().Contain("confirm-sale-success");
+        email.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
+    }
+
+    [Fact]
+    public async Task ConfirmSale_without_notification_transitions_lien_without_sending_email()
+    {
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            originalAmount: 4000m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            Guid.CreateVersion7(),
+            sellerEmail: null,
+            buyerEmail: "unused.buyer@capital.test");
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/confirm-sale",
+            new ConfirmSellingLienSaleRequest
+            {
+                ConfirmationAccepted = true,
+                SendBuyerNotification = false,
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        body!.Status.Should().Be(LienStatus.Offered);
+        body.SellerStatus.Should().Be(SellingLienStatus.SubmittedForSale);
+        body.Notification.Should().BeNull();
+
+        using var verifyScope = _factory.Services.CreateScope();
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConfirmSale_rejects_notification_when_buyer_contact_email_is_missing()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.operations@smithlaw.test",
+            buyerEmail: null);
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-missing-buyer-email");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Draft);
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConfirmSale_rejects_notification_when_seller_email_is_missing()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: null,
+            buyerEmail: "buyer.reviewer@capital.test");
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-missing-seller-email");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Draft);
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConfirmSale_replay_with_same_idempotency_key_does_not_send_duplicate_email()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.operations@smithlaw.test",
+            buyerEmail: "buyer.reviewer@capital.test");
+
+        var first = await PostConfirmSaleAsync(lienId, "confirm-sale-replay");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var second = await PostConfirmSaleAsync(lienId, "confirm-sale-replay");
+        second.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await second.Content.ReadAsStringAsync()}");
+        var secondBody = await second.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        secondBody!.Notification!.Submitted.Should().BeTrue();
+
+        using var verifyScope = _factory.Services.CreateScope();
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ConfirmSale_notification_failure_does_not_roll_back_lien_transition()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.operations@smithlaw.test",
+            buyerEmail: "buyer.reviewer@capital.test");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().FailEmailSends = true;
+        }
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-notification-failure");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        body!.Status.Should().Be(LienStatus.Offered);
+        body.Notification!.Submitted.Should().BeFalse();
+        body.Notification.NotificationStatus.Should().Be("failed");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Offered);
+    }
+
     private async Task<SellingPortfolioResponse> CreatePortfolioAsync()
     {
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
@@ -900,6 +1124,110 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await response.Content.ReadFromJsonAsync<SellingPortfolioResponse>())!;
+    }
+
+    private Task<HttpResponseMessage> PostConfirmSaleAsync(Guid lienId, string idempotencyKey)
+    {
+        var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/liens/selling/liens/{lienId}/confirm-sale");
+        message.Headers.Add("Idempotency-Key", idempotencyKey);
+        message.Content = JsonContent.Create(new ConfirmSellingLienSaleRequest
+        {
+            ConfirmationAccepted = true,
+            SendBuyerNotification = true,
+        });
+
+        return _client.SendAsync(message);
+    }
+
+    private async Task PrepareConfirmSaleDataAsync(
+        Guid lienId,
+        Guid buyerContactId,
+        string? sellerEmail,
+        string? buyerEmail,
+        Guid? caseManagerId = null,
+        string? documentFileName = null)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+        if (sellerEmail is null)
+        {
+            foreach (var contact in db.Contacts.Where(c =>
+                         c.TenantId == SeedHelper.TenantId &&
+                         c.OrgId == SeedHelper.OrgId &&
+                         c.Email != null &&
+                         c.IsActive))
+            {
+                contact.Deactivate(SeedHelper.UserId);
+            }
+        }
+        else
+        {
+            db.Contacts.Add(Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.LawFirm,
+                "Seller",
+                "Operator",
+                SeedHelper.UserId,
+                organization: "Smith & Associates LLP",
+                email: sellerEmail));
+        }
+
+        var buyerContact = Contact.Create(
+            SeedHelper.TenantId,
+            SeedHelper.FundingCompanyId,
+            ContactType.LienHolder,
+            "Buyer",
+            "Reviewer",
+            SeedHelper.UserId,
+            organization: "Capital Fund LLC",
+            email: buyerEmail);
+        SetId(buyerContact, buyerContactId);
+        db.Contacts.Add(buyerContact);
+
+        if (caseManagerId.HasValue)
+        {
+            var caseManager = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.InternalUser,
+                "Case",
+                "Manager",
+                SeedHelper.UserId,
+                organization: "Smith & Associates LLP",
+                email: "case.manager@smithlaw.test");
+            SetId(caseManager, caseManagerId.Value);
+            db.Contacts.Add(caseManager);
+        }
+
+        var lien = db.Liens.Single(l => l.Id == lienId);
+        lien.UpdateSellingAnalyticsFields(
+            SeedHelper.UserId,
+            sellerStatus: SellingLienStatus.PreparedForSale,
+            listingVisibility: SellingListingVisibility.Private,
+            fundingCompanyId: SeedHelper.FundingCompanyId,
+            fundingCompanyContactId: buyerContactId,
+            askAmount: 2500m);
+
+        if (!string.IsNullOrWhiteSpace(documentFileName))
+        {
+            var documentId = Guid.CreateVersion7();
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"DOC-{Guid.CreateVersion7():N}"[..36],
+                "LegacyLienDocument",
+                $"Lien document uploaded: {Path.GetFileNameWithoutExtension(documentFileName)}",
+                "Seller Operator",
+                SeedHelper.UserId,
+                lienId: lienId,
+                notes: $"documentId={documentId}; url=/documents/{documentId}; filename={Path.GetFileNameWithoutExtension(documentFileName)}; originalFileName={documentFileName}"));
+        }
+
+        await db.SaveChangesAsync();
     }
 
     private async Task<SellingPortfolioResponse> CreateEmptyPortfolioAsync()
@@ -920,6 +1248,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         string lienExternalId,
         string lienNumber,
         DateOnly? dateOfIncident = null,
+        DateOnly? initialServiceDate = null,
+        DateOnly? endServiceDate = null,
+        string? caseNotes = null,
         string? status = null,
         decimal originalAmount = 12345m)
     {
@@ -937,7 +1268,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             "Client",
             SeedHelper.UserId,
             externalReference: caseExternalId,
-            dateOfIncident: dateOfIncident);
+            dateOfIncident: dateOfIncident,
+            notes: caseNotes);
 
         SetId(caseEntity, caseId);
         db.Cases.Add(caseEntity);
@@ -950,7 +1282,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             originalAmount,
             SeedHelper.UserId,
             externalReference: lienExternalId,
-            caseId: caseId);
+            caseId: caseId,
+            initialServiceDate: initialServiceDate,
+            endServiceDate: endServiceDate);
 
         if (status == LienStatus.Sold)
         {

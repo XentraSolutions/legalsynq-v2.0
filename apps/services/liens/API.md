@@ -283,6 +283,69 @@ Update an existing lien.
 
 ---
 
+## Selling Endpoints
+
+Base path: `/api/liens/selling`
+
+### POST `/api/liens/selling/liens/{lienId}/confirm-sale`
+
+Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared lien to `Offered` with
+`SellerStatus=SubmittedForSale`, copies the persisted `AskAmount` into `OfferPrice`, and keeps `SoldAtUtc` null.
+
+**Permission:** `SYNQ_LIENS.lien_sale:update`
+
+**Headers:**
+
+| Header | Required | Description |
+|---|---|---|
+| `Idempotency-Key` | No | Used with tenant/lien/buyer contact to suppress duplicate buyer email sends on replay |
+
+**Request:**
+
+```json
+{
+  "confirmationAccepted": true,
+  "sendBuyerNotification": true
+}
+```
+
+When `sendBuyerNotification=true`, the lien must have real `FundingCompanyId`, `FundingCompanyContactId`,
+`InitialServiceDate`, `AskAmount`, buyer email, seller name/company/email, and handling law firm data. The API creates a
+30-day buyer access link from `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide the CTA URL. The buyer email
+uses the `New Lien Offer` copy and includes only real supporting document names found in lien/case document metadata.
+
+**Response:** `200 OK`
+
+```json
+{
+  "lienId": "guid",
+  "lienCode": "LIEN-001",
+  "status": "Offered",
+  "sellerStatus": "SubmittedForSale",
+  "askAmount": 2500.00,
+  "offerPrice": 2500.00,
+  "submittedForSaleAtUtc": "2026-07-22T00:00:00Z",
+  "soldAtUtc": null,
+  "notification": {
+    "requested": true,
+    "submitted": true,
+    "notificationId": "guid",
+    "notificationStatus": "sent",
+    "buyerAccessLinkId": "guid",
+    "buyerPortalUrl": "<configured-buyer-portal-url>/<token>",
+    "expiresAtUtc": "2026-08-21T00:00:00Z",
+    "buyerContactId": "guid",
+    "buyerOrgId": "guid",
+    "buyerEmail": "<buyer-contact-email>"
+  }
+}
+```
+
+If notification submission fails after the lien is confirmed, the lien transition remains committed and
+`notification.submitted=false` reports the failure for retry.
+
+---
+
 ## Cases Endpoints
 
 Base path: `/api/liens/cases`
