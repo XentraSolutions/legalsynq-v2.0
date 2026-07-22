@@ -92,6 +92,40 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
             row.GetProperty("caseNumber").GetString() == otherCaseNumber);
     }
 
+    [Fact]
+    public async Task GetCase_returns_summary_metadata_as_typed_fields()
+    {
+        var caseEntity = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-DETAIL-{Guid.CreateVersion7():N}",
+            "Marcus",
+            "Delgado",
+            SeedHelper.UserId,
+            clientDob: new DateOnly(1995, 1, 10),
+            dateOfIncident: new DateOnly(2025, 3, 14),
+            notes: "accidentType=Motor Vehicle; accidentState=AZ; lawFirm=Aaron Law Group; caseManager=Aaron Law Group");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync($"/api/liens/cases/{caseEntity.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var document = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var body = document!.RootElement;
+
+        body.GetProperty("accidentType").GetString().Should().Be("Motor Vehicle");
+        body.GetProperty("stateOfIncident").GetString().Should().Be("AZ");
+        body.GetProperty("lawFirm").GetString().Should().Be("Aaron Law Group");
+        body.GetProperty("caseManager").GetString().Should().Be("Aaron Law Group");
+    }
+
     private sealed class CaseResponseBody
     {
         public string CaseNumber { get; init; } = string.Empty;
