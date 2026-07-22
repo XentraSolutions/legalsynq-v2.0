@@ -307,6 +307,11 @@ export const casesService = {
     return data;
   },
 
+  async getCaseNotes(caseId: string): Promise<any> {
+    const { data } = await casesApi.getCaseNotes(caseId);
+    return data.data;
+  },
+
   async mergeCase(request: {
     caseIdA: string;
     caseIdB: string;

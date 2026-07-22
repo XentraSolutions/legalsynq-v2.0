@@ -359,4 +359,8 @@ export const casesApi = {
       request,
     );
   },
+
+  getCaseNotes(caseId: string) {
+    return apiClient.get<any>(`${BASE}/notes/${caseId}`);
+  },
 };
