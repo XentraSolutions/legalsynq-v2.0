@@ -35,15 +35,6 @@ export function LienDocumentsSection({
       ),
     },
     {
-      id: "liensId",
-      header: "Lien",
-      cell: ({ row }) => (
-        <span className="text-xs font-mono text-primary">
-          {row.original.liensId}
-        </span>
-      ),
-    },
-    {
       id: "updated",
       header: "Last Update",
       cell: ({ row }) => (
