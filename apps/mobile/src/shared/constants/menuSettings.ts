@@ -1,5 +1,6 @@
 export const MENU_VISIBILITY_OPTIONS = [
   { key: 'dashboard', label: 'Dashboard', defaultVisible: true },
+  { key: 'xeniaAi', label: 'Xenia AI', defaultVisible: true },
   { key: 'buying', label: 'Buying', defaultVisible: true },
   { key: 'selling', label: 'Selling', defaultVisible: false },
   { key: 'taskManager', label: 'Task Manager', defaultVisible: false },
@@ -20,6 +21,7 @@ export type MenuVisibilitySettings = Record<MenuVisibilityKey, boolean>;
 
 export const MENU_VISIBILITY_HIERARCHY = [
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'xeniaAi', label: 'Xenia AI' },
   {
     key: 'accountType',
     label: 'Account Type',

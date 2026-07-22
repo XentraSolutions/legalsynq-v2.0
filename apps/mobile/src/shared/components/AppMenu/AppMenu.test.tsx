@@ -42,6 +42,7 @@ describe('AppMenu', () => {
       }))
     ).toEqual([
       { label: 'Dashboard', children: [] },
+      { label: 'Xenia AI', children: [] },
       { label: 'Account Type', children: ['Selling', 'Buying'] },
       {
         label: 'Management',

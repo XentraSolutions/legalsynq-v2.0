@@ -45,6 +45,14 @@ jest.mock('@/shared/hooks/useDashboardSettings', () => ({
   useDashboardSettings: () => ({ hydrated: true, settings: { useDummyData: false } }),
 }));
 
+jest.mock('@/shared/hooks/useMenuSettings', () => ({
+  useMenuSettings: () => ({ settings: { xeniaAi: true } }),
+}));
+
+jest.mock('@/shared/hooks/useApiMode', () => ({
+  useApiMode: () => ({ mode: 'current' }),
+}));
+
 jest.mock('@/shared/components/AppMenu', () => ({
   AppMenu: () => null,
 }));
@@ -97,6 +105,13 @@ describe('DashboardScreen', () => {
 
     expect(getAllByTestId('dashboard-stat-skeleton')).toHaveLength(2);
     expect(getAllByTestId('dashboard-report-skeleton')).toHaveLength(4);
+  });
+
+  it('opens Xenia AI from the dashboard shortcut', () => {
+    const { getByLabelText } = renderScreen();
+
+    fireEvent.press(getByLabelText('Open Xenia AI'));
+    expect(mockNavigate).toHaveBeenCalledWith('XeniaAI');
   });
 
   it('removes only the skeleton for a report that has settled', () => {

@@ -27,6 +27,7 @@ export type MainStackParamList = {
   CaseDetail: { caseId: string };
   CreateCase: undefined;
   Settings: undefined;
+  XeniaAI: undefined;
   DashboardReportDetail: { reportType: DashboardReportType; dateRange: DashboardDateRange };
   Placeholder: { title: string; subtitle?: string };
 };

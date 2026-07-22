@@ -6,6 +6,7 @@ import { LienDetailScreen, MyLiensScreen, SellLienScreen } from '@/features/lien
 import { OfferDetailScreen } from '@/features/offers';
 import { PlaceholderScreen } from '@/features/placeholders';
 import { SettingsScreen } from '@/features/profile';
+import { XeniaChatScreen } from '@/features/xenia';
 import type { MainStackParamList } from '@/navigation/types/navigation';
 
 import { BottomTabNavigator } from './BottomTabNavigator';
@@ -23,6 +24,7 @@ export function MainStack() {
       <Stack.Screen component={CaseDetailScreen} name="CaseDetail" />
       <Stack.Screen component={CreateCaseScreen} name="CreateCase" />
       <Stack.Screen component={SettingsScreen} name="Settings" />
+      <Stack.Screen component={XeniaChatScreen} name="XeniaAI" />
       <Stack.Screen component={DashboardReportDetailScreen} name="DashboardReportDetail" />
       <Stack.Screen component={PlaceholderScreen} name="Placeholder" />
     </Stack.Navigator>

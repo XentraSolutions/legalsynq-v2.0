@@ -13,6 +13,7 @@ import { AuthenticationService } from '@/shared/services/Authentication';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT } from '@/shared/styles';
 import { useAuth } from '@/shared/hooks';
+import { useApiMode } from '@/shared/hooks/useApiMode';
 import { useMenuSettings } from '@/shared/hooks/useMenuSettings';
 import type { MenuVisibilityKey, MenuVisibilitySettings } from '@/shared/constants/menuSettings';
 
@@ -23,7 +24,7 @@ export interface AppMenuProps {
 
 type DirectRoute = keyof Pick<
   MainStackParamList,
-  'Dashboard' | 'Cases' | 'Marketplace' | 'MyLiens' | 'Offers' | 'Settings'
+  'Dashboard' | 'Cases' | 'Marketplace' | 'MyLiens' | 'Offers' | 'Settings' | 'XeniaAI'
 >;
 type MenuSectionId = 'management' | 'tools';
 
@@ -187,6 +188,7 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { settings: menuVisibility } = useMenuSettings();
+  const { mode: apiMode } = useApiMode();
   const isDark = colorScheme === 'dark';
   const stripWidth = Math.min(72, Dimensions.get('window').width * 0.17);
   const iconColor = isDark ? '#a8a9b0' : '#737681';
@@ -223,6 +225,9 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
         break;
       case 'Settings':
         navigation.navigate('Settings');
+        break;
+      case 'XeniaAI':
+        navigation.navigate('XeniaAI');
         break;
     }
   };
@@ -305,6 +310,14 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
                   iconColor={iconColor}
                   label="Dashboard"
                   onPress={() => navigateToRoute('Dashboard')}
+                />
+              ) : null}
+              {apiMode === 'current' && menuVisibility.xeniaAi ? (
+                <DirectMenuRow
+                  icon="sparkles-outline"
+                  iconColor={iconColor}
+                  label="Xenia AI"
+                  onPress={() => navigateToRoute('XeniaAI')}
                 />
               ) : null}
               {sections.map((section) => (

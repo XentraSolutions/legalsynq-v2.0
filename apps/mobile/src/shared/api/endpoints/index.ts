@@ -5,3 +5,4 @@ export * from './LegacyPsa';
 export * from './Liens';
 export * as OffersEndpoint from './Offers';
 export * from './User';
+export * from './Xenia';

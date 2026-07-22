@@ -25,6 +25,8 @@ import type { MainStackParamList } from '@/navigation/types/navigation';
 import { AppMenu } from '@/shared/components/AppMenu';
 import { DateRangePicker } from '@/shared/components/DateRangePicker';
 import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
+import { useApiMode } from '@/shared/hooks/useApiMode';
+import { useMenuSettings } from '@/shared/hooks/useMenuSettings';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
 import type {
@@ -248,6 +250,8 @@ export function DashboardScreen() {
   const isDark = colorScheme === 'dark';
   const { hydrated: dashboardSettingsHydrated, settings: dashboardSettings } =
     useDashboardSettings();
+  const { settings: menuVisibility } = useMenuSettings();
+  const { mode: apiMode } = useApiMode();
   const useDashboardDummyData = dashboardSettings.useDummyData;
   const reportFilter = useMemo(() => buildDashboardReportFilter(dateRange), [dateRange]);
   const handleViewReport = (reportType: DashboardReportType) => {
@@ -292,6 +296,8 @@ export function DashboardScreen() {
           accountMode={accountMode}
           isDark={isDark}
           onOpenMenu={() => setDrawerVisible(true)}
+          showXenia={apiMode === 'current' && menuVisibility.xeniaAi}
+          onOpenXenia={() => navigation.navigate('XeniaAI')}
         />
         <DateRangePicker
           containerClassName="mt-4"
@@ -321,10 +327,14 @@ function DashboardHeader({
   accountMode,
   isDark,
   onOpenMenu,
+  onOpenXenia,
+  showXenia,
 }: {
   accountMode: AccountMode;
   isDark: boolean;
   onOpenMenu: () => void;
+  onOpenXenia: () => void;
+  showXenia: boolean;
 }) {
   const { user } = useAuth();
   const userName = user ? `${user.firstName}`.trim() : '';
@@ -348,6 +358,16 @@ function DashboardHeader({
         </Text>
       </View>
       <View className="flex-row gap-2">
+        {showXenia ? (
+          <CircleButton
+            accessibilityLabel="Open Xenia AI"
+            accent
+            icon="sparkles"
+            iconColor="white"
+            isDark={isDark}
+            onPress={onOpenXenia}
+          />
+        ) : null}
         <CircleButton icon="search-outline" iconColor={iconColor} isDark={isDark} />
         <CircleButton dot icon="notifications-outline" iconColor={iconColor} isDark={isDark} />
       </View>
@@ -356,12 +376,16 @@ function DashboardHeader({
 }
 
 function CircleButton({
+  accessibilityLabel,
+  accent,
   dot,
   icon,
   iconColor,
   isDark,
   onPress,
 }: {
+  accessibilityLabel?: string;
+  accent?: boolean;
   dot?: boolean;
   icon: keyof typeof Ionicons.glyphMap;
   iconColor: string;
@@ -370,8 +394,12 @@ function CircleButton({
 }) {
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
-      className="h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-[#191a1f]"
+      className={cx(
+        'h-10 w-10 items-center justify-center rounded-full',
+        accent ? 'bg-[#ee7132]' : 'bg-white dark:bg-[#191a1f]'
+      )}
       style={{
         shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
         shadowOpacity: isDark ? 0.18 : 0.5,
