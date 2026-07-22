@@ -324,11 +324,21 @@ export function LiensTab({
         open={!!lienToDelete}
         onClose={() => setLienToDelete(null)}
         onConfirm={handleConfirmDelete}
-        title="Delete Lien"
-        description={`Are you sure you want to delete lien ${lienToDelete?.lienNumber}? This action cannot be undone.`}
-        confirmLabel="Delete"
+        title="Delete Lien Confirmation"
+        description={
+          <>
+            Are you sure you want to delete <span className="font-semibold text-primary">{lienToDelete?.lienNumber}</span>? This action cannot be undone and will permanently remove all associated data.
+          </>
+        }
+        confirmLabel="Yes, Delete Lien"
         confirmVariant="danger"
         loading={deleteLien.isPending}
+        warningTitle="Warning: Deleting this lien will also remove:"
+        warningItems={[
+          "All case associations",
+          "All uploaded documents",
+          "All activity history",
+        ]}
       />
     </>
   );
