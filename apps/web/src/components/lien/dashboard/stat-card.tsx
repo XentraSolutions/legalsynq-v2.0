@@ -14,9 +14,6 @@ export function StatCard({ title, total, segments, href, additionalStats, icon =
   onViewDetails?: () => void;
 }) {
   const filteredSegments = segments.filter((s) => s.value > 0);
-  const grandTotal = filteredSegments.reduce((s, seg) => s + seg.value, 0);
-  const dominant = filteredSegments.length > 0 ? filteredSegments.reduce((a, b) => a.value > b.value ? a : b) : { value: 0 };
-  const pct = grandTotal > 0 ? ((dominant.value / grandTotal) * 100).toFixed(1) : '0';
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-4">
@@ -80,7 +77,7 @@ export function StatCard({ title, total, segments, href, additionalStats, icon =
           </ul>
         </div>
         <div className="shrink-0">
-          <DonutChart segments={filteredSegments.length > 0 ? filteredSegments : [{ label: 'None', value: 1, color: '#e5e7eb' }]} pctLabel={`${pct}%`} />
+          <DonutChart segments={filteredSegments.length > 0 ? filteredSegments : [{ label: 'None', value: 1, color: '#e5e7eb' }]} />
         </div>
       </div>
     </div>

@@ -128,8 +128,11 @@ async function enrichLiens(
   queryClient: QueryClient,
 ): Promise<CaseLienRow[]> {
   const [payments, reductions, facilities] = await Promise.all([
-    // Reuse the cached payments query if already fetched; otherwise fetch now
-    queryClient.ensureQueryData({
+    // Reuse the cached payments query if it's still fresh; otherwise fetch now.
+    // Must be fetchQuery (not ensureQueryData) — ensureQueryData returns whatever
+    // is cached whenever data is already present, ignoring invalidateQueries, so a
+    // payment/reduction save would never be reflected in the recomputed balance.
+    queryClient.fetchQuery({
       queryKey: CASE_PAYMENTS_QUERY_KEY(caseId),
       queryFn: () =>
         settlementService

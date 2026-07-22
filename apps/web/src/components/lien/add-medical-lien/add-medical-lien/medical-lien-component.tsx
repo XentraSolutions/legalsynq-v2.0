@@ -99,10 +99,14 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
 
   const { caseId, caseInfo, purchase, onClose } = props;
   const totalSteps = steps.length;
-  const [currentStep, setCurrentStep] = useState<number>(4);
+  const [currentStep, setCurrentStep] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [forms, setForms] = useState<any[]>(Array(totalSteps).fill(null));
-  const [valid, setValid] = useState<Record<number, boolean>>({});
+  // Step 4 (upload docs) is optional — there's nothing to invalidate, so it
+  // starts valid instead of waiting for a signal from the child form.
+  const [valid, setValid] = useState<Record<number, boolean>>({
+    [totalSteps]: true,
+  });
   const isLastStep = currentStep === steps.length;
   const [liensId, setLiensId] = useState("");
   const notComplete = useMemo(() => !valid[currentStep], [valid, currentStep]);

@@ -120,6 +120,13 @@ export interface CasePayment {
   updatedAtUtc: string
 }
 
+/** Envelope returned by the legacy settlement/payment-details endpoint */
+export interface GetSettlementPaymentDetailsResponse {
+  isSuccess: boolean
+  message: string
+  data: LegacyCasePayment[]
+}
+
 /** Payment record returned by the legacy settlement payments endpoint */
 export interface LegacyCasePayment {
   id?: string

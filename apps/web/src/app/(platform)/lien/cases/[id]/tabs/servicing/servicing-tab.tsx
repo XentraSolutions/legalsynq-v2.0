@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLienStore } from "@/stores/lien-store";
 import { useTimezone } from "@/lib/use-timezone";
 import { useSessionContext } from "@/providers/session-provider";
-import { useCaseLiens } from "@/hooks/use-case-liens";
+import { useCaseLiens, CASE_PAYMENTS_QUERY_KEY } from "@/hooks/use-case-liens";
 import { useSettlementHistory } from "@/hooks/use-settlement-history";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import type { CaseDetail, CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
@@ -46,7 +46,7 @@ export function ServicingTab({
   liensLoadedAt: Date | null;
   onRefreshLiens: () => void;
   isLiensFetching: boolean;
-  payments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
+  payments: import("@/lib/settlement/settlement.types").CasePayment[];
   paymentsLoadedAt: Date | null;
   onRefreshPayments: () => void;
   isPaymentsFetching: boolean;
@@ -84,16 +84,32 @@ export function ServicingTab({
       refetchType: isHistoryVisible ? "active" : "none",
     });
   };
+  // onRefreshLiens only refetches the paged "case-liens" query (used by the
+  // Liens tab). This tab reads from the separate "case-liens-all" query (see
+  // useCaseLiens call above), so payment/reduction/no-recovery mutations must
+  // invalidate that key too or the open/closed lien balances go stale.
+  const refreshAllLienData = () => {
+    historyQueryClient.invalidateQueries({
+      queryKey: ["case-liens-all", caseDetail.id],
+    });
+    historyQueryClient.invalidateQueries({
+      queryKey: CASE_PAYMENTS_QUERY_KEY(caseDetail.id),
+    });
+  };
 
   /* TEMP: visual fallback data for UI review only */
-  const [caseStatus, setCaseStatus] = useState(
-    caseDetail.status || "PreDemand",
-  );
+  const initialCaseStatus = caseDetail.status || "PreDemand";
+  const [caseStatus, setCaseStatus] = useState(initialCaseStatus);
+  const [savedCaseStatus, setSavedCaseStatus] = useState(initialCaseStatus);
   const [switchedLawFirm, setSwitchedLawFirm] = useState(false);
   const [switchedDate, setSwitchedDate] = useState("");
-  const [currentLawFirm, setCurrentLawFirm] = useState("");
+  const [currentLawFirm, setCurrentLawFirm] = useState(
+    caseDetail.lawFirmId || "",
+  );
   const [currentLawyer, setCurrentLawyer] = useState("");
-  const [currentCaseManager, setCurrentCaseManager] = useState("");
+  const [currentCaseManager, setCurrentCaseManager] = useState(
+    caseDetail.caseManagerId || "",
+  );
   const [attorneyRoleCode, setAttorneyRoleCode] = useState<string | undefined>();
   const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string | undefined>();
 
@@ -144,6 +160,8 @@ export function ServicingTab({
     lookup?.CaseStatus.map((s) => {
       return { key: s.id, value: s.code, label: s.name };
     }) ?? [];
+  const canSaveServicingDetails =
+    switchedLawFirm || caseStatus !== savedCaseStatus;
   // Fetch role codes for attorney and case manager on component mount
   useEffect(() => {
     const fetchRoleCodes = async () => {
@@ -175,6 +193,7 @@ export function ServicingTab({
       description: "Your servicing details were saved.",
     });
     setSwitchedLawFirm(false);
+    setSavedCaseStatus(caseStatus);
   };
 
   useEffect(() => {
@@ -248,6 +267,7 @@ export function ServicingTab({
           onCurrentCaseManagerChange={setCurrentCaseManager}
           attorneyRoleCode={attorneyRoleCode}
           caseManagerRoleCode={caseManagerRoleCode}
+          canSave={canSaveServicingDetails}
           onSave={handleSaveServicingDetails}
         />
       )}
@@ -339,6 +359,8 @@ export function ServicingTab({
         onSaved={() => {
           showSetupReductionForm(false);
           onRefreshLiens();
+          refreshAllLienData();
+          onRefreshPayments();
           refetchHistory();
         }}
       />
@@ -353,6 +375,8 @@ export function ServicingTab({
         onSaved={() => {
           setIsNoRecoveryOpen(false);
           onRefreshLiens();
+          refreshAllLienData();
+          onRefreshPayments();
           refetchHistory();
         }}
       />
@@ -367,6 +391,7 @@ export function ServicingTab({
         onSaved={() => {
           setIsAddPaymentOpen(false);
           onRefreshPayments();
+          refreshAllLienData();
           refetchHistory();
         }}
       />

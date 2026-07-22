@@ -179,7 +179,7 @@ export const casesApi = {
   },
 
   getMedicalProviderCaseReport(request: CaseAllocationReportRequest) {
-    return apiClient.post<ReportPaginatedResult<CaseReportItem>>(
+    return apiClient.post<ReportPaginatedResult<LienReportItem>>(
       `${BASE}/dashboard/medical-provider-report-export/v3`,
       withApiDates(request),
     );

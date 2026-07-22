@@ -30,6 +30,8 @@ interface ContactEntitySelectProps {
   /** When true, the select stays disabled and shows `parentHint` until its scoping parent id is set. */
   requireParent?: boolean;
   parentHint?: string;
+  /** Forces the select non-interactive regardless of parent scoping. */
+  disabled?: boolean;
 
   value?: string | null;
   onChange: (value: string, option: BaseSelectOption) => void;
@@ -50,6 +52,7 @@ export function ContactEntitySelect({
   facilityId,
   requireParent,
   parentHint = "Select a parent option first",
+  disabled,
   value,
   onChange,
   placeholder = "Select...",
@@ -173,7 +176,7 @@ export function ContactEntitySelect({
         isFetchingMore={isFetchingNextPage}
         hasNextPage={hasNextPage}
         onLoadMore={fetchNextPage}
-        disabled={parentMissing}
+        disabled={disabled || parentMissing}
         placeholder={parentMissing ? parentHint : placeholder}
         searchPlaceholder={searchPlaceholder}
         search={search}

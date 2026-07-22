@@ -16,15 +16,6 @@ const liensUpdatesColumns: ColumnDef<CaseLienUpdateRow, any>[] = [
     ),
   },
   {
-    id: "lienId",
-    header: "Lien ID",
-    cell: ({ row }) => (
-      <span className="text-xs font-mono text-primary">
-        {row.original.lienId ?? "—"}
-      </span>
-    ),
-  },
-  {
     id: "action",
     header: "Actions",
     cell: ({ row }) => (
