@@ -9,7 +9,11 @@ import { useSessionContext } from "@/providers/session-provider";
 import { useCaseLiens, CASE_PAYMENTS_QUERY_KEY } from "@/hooks/use-case-liens";
 import { useSettlementHistory } from "@/hooks/use-settlement-history";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
-import type { CaseDetail, CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
+import type {
+  CaseDetail,
+  CaseLienItem,
+  CaseLienItemMetadata,
+} from "@/lib/cases";
 import { contactsService } from "@/lib/contacts";
 import { servicingService } from "@/lib/servicing";
 import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types";
@@ -110,8 +114,12 @@ export function ServicingTab({
   const [currentCaseManager, setCurrentCaseManager] = useState(
     caseDetail.caseManagerId || "",
   );
-  const [attorneyRoleCode, setAttorneyRoleCode] = useState<string | undefined>();
-  const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string | undefined>();
+  const [attorneyRoleCode, setAttorneyRoleCode] = useState<
+    string | undefined
+  >();
+  const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<
+    string | undefined
+  >();
 
   let openLiens = liens.filter((i) => i.closedAtUtc === null);
   let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
@@ -222,8 +230,10 @@ export function ServicingTab({
     {
       id: "updatedBy",
       header: "Updated By",
-      cell: () => (
-        <span className="text-sm text-gray-500 whitespace-nowrap">—</span>
+      cell: ({ row }) => (
+        <span className="text-sm text-gray-500 whitespace-nowrap">
+          {row.original.updatedBy}
+        </span>
       ),
     },
   ];

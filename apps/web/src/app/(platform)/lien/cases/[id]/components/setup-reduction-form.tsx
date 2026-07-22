@@ -44,6 +44,16 @@ const INITIAL_FORM = {
   note: "",
 };
 
+function isLienReducible(l: CaseLienItem & CaseLienItemMetadata): boolean {
+  return (
+    l.status !== "Closed" &&
+    l.status !== "Withdrawn" &&
+    l.status !== "Sold" &&
+    l.balance > 0 &&
+    !l.reductionAmount
+  );
+}
+
 export function SetupReductionForm({
   open,
   onClose,
@@ -55,7 +65,7 @@ export function SetupReductionForm({
   onSaved,
 }: SetupReductionFormProps) {
   const addToast = useLienStore((s) => s.addToast);
-
+  console.log(liens, open);
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [reductionInput, setReductionInput] = useState("");
   const [isPercent, setIsPercent] = useState(false);
@@ -74,12 +84,7 @@ export function SetupReductionForm({
       });
       setIsPercent(false);
 
-      const activeLiens = liens.filter(
-        (l) =>
-          l.status !== "Closed" &&
-          l.status !== "Withdrawn" &&
-          l.status !== "Sold",
-      );
+      const activeLiens = liens.filter(isLienReducible);
 
       const preChecked = new Set<string>();
       const preReductions: Record<string, number> = {};
@@ -88,7 +93,7 @@ export function SetupReductionForm({
 
       for (const l of activeLiens) {
         const amt = l.reductionAmount ?? 0;
-        if (amt > 0) {
+        if (amt == 0) {
           preChecked.add(l.id);
           preReductions[l.id] = amt;
           preInputs[l.id] = amt.toFixed(2);
@@ -103,13 +108,10 @@ export function SetupReductionForm({
     }
   }, [open, liens]);
 
-  const openLiens = liens.filter(
-    (l) =>
-      l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
-  );
+  const selectableLiens = liens.filter(isLienReducible);
 
   const allChecked =
-    openLiens.length > 0 && checkedIds.size === openLiens.length;
+    selectableLiens.length > 0 && checkedIds.size === selectableLiens.length;
 
   const toggleCheck = (id: string) => {
     const next = new Set(checkedIds);
@@ -135,7 +137,7 @@ export function SetupReductionForm({
   const toggleAll = () => {
     const next = allChecked
       ? new Set<string>()
-      : new Set(openLiens.map((l) => l.id));
+      : new Set(selectableLiens.map((l) => l.id));
     if (allChecked) {
       setLienReductions({});
       setLienInputs({});
@@ -145,7 +147,7 @@ export function SetupReductionForm({
     setCheckedIds(next);
   };
 
-  const checkedLiens = openLiens.filter((l) => checkedIds.has(l.id));
+  const checkedLiens = selectableLiens.filter((l) => checkedIds.has(l.id));
   const checkedBilling = checkedLiens.reduce(
     (s, l) => s + (l.originalAmount ?? 0),
     0,
@@ -183,12 +185,12 @@ export function SetupReductionForm({
     reductions: Record<string, number>,
     checked: Set<string>,
   ) => {
-    const total = openLiens
+    const total = selectableLiens
       .filter((l) => checked.has(l.id))
       .reduce((s, l) => s + (reductions[l.id] ?? 0), 0);
 
     if (isPercent) {
-      const totalBill = openLiens
+      const totalBill = selectableLiens
         .filter((l) => checked.has(l.id))
         .reduce((s, l) => s + (l.originalAmount ?? 0), 0);
       if (totalBill > 0)
@@ -199,7 +201,7 @@ export function SetupReductionForm({
   };
 
   const handleRowInputChange = (id: string, raw: string) => {
-    const lien = openLiens.find((l) => l.id === id);
+    const lien = selectableLiens.find((l) => l.id === id);
     if (!lien) return;
     const sanitized = cleanNumericInput(raw);
     setLienInputs((prev) => ({ ...prev, [id]: sanitized }));
@@ -216,7 +218,7 @@ export function SetupReductionForm({
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
     if (isPercent && val > 100) return;
     const updates = { ...lienReductions };
-    for (const l of openLiens) {
+    for (const l of selectableLiens) {
       if (checkedIds.has(l.id)) {
         const computed = isPercent
           ? ((l.originalAmount ?? 0) * val) / 100
@@ -232,7 +234,7 @@ export function SetupReductionForm({
     const val = parseFloat(reductionInput);
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
     if (isPercent && val > 100) return;
-    const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
+    const selectedLiens = selectableLiens.filter((l) => checkedIds.has(l.id));
     const totalCheckedBilling = selectedLiens.reduce(
       (s, l) => s + (l.originalAmount ?? 0),
       0,
@@ -260,7 +262,7 @@ export function SetupReductionForm({
   };
 
   const handleSave = async () => {
-    const liensToSave = openLiens.filter(
+    const liensToSave = selectableLiens.filter(
       (l) => checkedIds.has(l.id) && (lienReductions[l.id] ?? 0) > 0,
     );
     if (liensToSave.length === 0) {
@@ -299,15 +301,9 @@ export function SetupReductionForm({
     }
   };
 
-  const totalBilling = openLiens.reduce(
-    (s, l) => s + (l.originalAmount ?? 0),
-    0,
-  );
-  const totalPurchase = openLiens.reduce(
-    (s, l) => s + (l.purchaseAmount ?? 0),
-    0,
-  );
-  const totalReduction = openLiens.reduce(
+  const totalBilling = liens.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
+  const totalPurchase = liens.reduce((s, l) => s + (l.purchaseAmount ?? 0), 0);
+  const totalReduction = liens.reduce(
     (s, l) => s + (lienReductions[l.id] ?? 0),
     0,
   );
@@ -350,6 +346,12 @@ export function SetupReductionForm({
         const inputNumeric = parseFloat(inputVal) || 0;
         const rowExceedsBilling =
           inputNumeric > (l.originalAmount ?? 0) && inputNumeric > 0;
+        if (!isLienReducible(l))
+          return (
+            <span className="text-sm text-gray-700 tabular-nums">
+              {formatCurrency(l.reductionAmount ?? 0)}
+            </span>
+          );
         if (!isChecked)
           return <span className="text-sm text-gray-300">---</span>;
         return (
@@ -393,6 +395,15 @@ export function SetupReductionForm({
       header: "Amount to Settle",
       align: "right",
       cell: (l, isChecked) => {
+        if (!isLienReducible(l)) {
+          return (
+            <span className="text-sm text-gray-700 tabular-nums">
+              {formatCurrency(
+                (l.originalAmount ?? 0) - (l.reductionAmount ?? 0),
+              )}
+            </span>
+          );
+        }
         if (!isChecked)
           return <span className="text-sm text-gray-300">---</span>;
         const reduction = lienReductions[l.id] ?? 0;
@@ -630,10 +641,11 @@ export function SetupReductionForm({
         </div>
 
         <LienTable
-          liens={openLiens}
+          liens={liens}
           checkedIds={checkedIds}
           onToggleCheck={toggleCheck}
           onToggleAll={toggleAll}
+          isRowSelectable={isLienReducible}
           columns={reductionColumns}
           footer={reductionFooter}
           loadedAt={liensLoadedAt}

@@ -301,6 +301,9 @@ export function SessionProvider({
   }, [clearSession]);
 
   const startWarningCountdown = useCallback(() => {
+    doLogout();
+    return;
+
     setCountdown(WARNING_LEAD_SECONDS);
     showWarningRef.current = true;
     setShowWarning(true);
@@ -392,13 +395,13 @@ export function SessionProvider({
   return (
     <SessionContext.Provider value={ctxValue}>
       {children}
-      {showWarning && (
+      {/* {showWarning && (
         <IdleWarningDialog
           countdown={countdown}
           onStay={stayActive}
           onLogout={doLogout}
         />
-      )}
+      )} */}
     </SessionContext.Provider>
   );
 }

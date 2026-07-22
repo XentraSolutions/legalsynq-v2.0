@@ -86,11 +86,25 @@ export function DetailsTab({
       return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
 
-  const [caseStatusList, setCaseStatusList] = useState(
-    lookup?.CaseStatus.map((s) => {
-      return { key: s.id, value: s.code, label: s.name };
-    }) ?? [],
-  );
+  const [caseStatusList, setCaseStatusList] = useState(() => {
+    const initialList =
+      lookup?.CaseStatus.map((s) => ({
+        key: s.id,
+        value: s.code,
+        label: s.name,
+      })) ?? [];
+
+    // Update the label directly upon component load
+    if (d.status.includes("Litigation")) {
+      return initialList.map((item) =>
+        item.label === "Litigation"
+          ? { ...item, label: d.statusLabel, value: d.status }
+          : item,
+      );
+    } else {
+      return initialList;
+    }
+  });
 
   const resetPlaintiffForm = useCallback(() => {
     setForm({ ...d });

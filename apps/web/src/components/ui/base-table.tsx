@@ -70,7 +70,7 @@ export interface BaseTableProps<TData> {
   // Row selection — checkbox column rendered only when this is provided.
   rowSelection?: RowSelectionState;
   onRowSelectionChange?: OnChangeFn<RowSelectionState>;
-  enableRowSelection?: boolean;
+  enableRowSelection?: boolean | ((row: Row<TData>) => boolean);
 
   // Row expansion — chevron column rendered only when both are provided.
   enableExpanding?: boolean;
@@ -286,10 +286,12 @@ export function BaseTable<TData>({
                 >
                   {selectable && (
                     <TableCell>
-                      <Checkbox
-                        checked={row.getIsSelected()}
-                        onCheckedChange={(v) => row.toggleSelected(!!v)}
-                      />
+                      {row.getCanSelect() && (
+                        <Checkbox
+                          checked={row.getIsSelected()}
+                          onCheckedChange={(v) => row.toggleSelected(!!v)}
+                        />
+                      )}
                     </TableCell>
                   )}
                   {expandable && (
