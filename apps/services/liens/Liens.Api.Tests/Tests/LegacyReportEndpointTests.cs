@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
@@ -186,7 +187,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
-    public async Task ExportReport_returns_same_columns_and_data_as_run_report()
+    public async Task ExportReport_returns_case_export_compatible_base64_csv()
     {
         var request = new
         {
@@ -218,34 +219,30 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             limit = 10,
         };
 
-        var runResp = await _client.PostAsJsonAsync("/report/diy", request);
-        runResp.StatusCode.Should().Be(HttpStatusCode.OK,
-            $"Body: {await runResp.Content.ReadAsStringAsync()}");
-
         var exportResp = await _client.PostAsJsonAsync("/report/diy/export", request);
         exportResp.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await exportResp.Content.ReadAsStringAsync()}");
 
-        var runDoc = await runResp.Content.ReadFromJsonAsync<JsonDocument>();
         var exportDoc = await exportResp.Content.ReadFromJsonAsync<JsonDocument>();
-
-        runDoc.Should().NotBeNull();
         exportDoc.Should().NotBeNull();
 
         exportDoc!.RootElement.GetProperty("isSuccess").GetBoolean()
-            .Should().Be(runDoc!.RootElement.GetProperty("isSuccess").GetBoolean());
+            .Should().BeTrue();
         exportDoc.RootElement.GetProperty("message").GetString()
-            .Should().Be(runDoc.RootElement.GetProperty("message").GetString());
-        exportDoc.RootElement.GetProperty("page").GetInt32()
-            .Should().Be(runDoc.RootElement.GetProperty("page").GetInt32());
-        exportDoc.RootElement.GetProperty("limit").GetInt32()
-            .Should().Be(runDoc.RootElement.GetProperty("limit").GetInt32());
-        exportDoc.RootElement.GetProperty("totalCount").GetInt32()
-            .Should().Be(runDoc.RootElement.GetProperty("totalCount").GetInt32());
-        exportDoc.RootElement.GetProperty("summaryTotals").ToString()
-            .Should().Be(runDoc.RootElement.GetProperty("summaryTotals").ToString());
-        exportDoc.RootElement.GetProperty("data").ToString()
-            .Should().Be(runDoc.RootElement.GetProperty("data").ToString());
+            .Should().Be("CSV generated successfully.");
+        exportDoc.RootElement.TryGetProperty("summaryTotals", out _).Should().BeFalse();
+        exportDoc.RootElement.TryGetProperty("page", out _).Should().BeFalse();
+        exportDoc.RootElement.TryGetProperty("limit", out _).Should().BeFalse();
+        exportDoc.RootElement.TryGetProperty("totalCount", out _).Should().BeFalse();
+
+        var exportItems = exportDoc.RootElement.GetProperty("data").EnumerateArray().ToList();
+        exportItems.Should().ContainSingle();
+        var exportItem = exportItems.Single();
+        exportItem.GetProperty("filename").GetString().Should().StartWith("diy_report_");
+        exportItem.GetProperty("export_format").GetString().Should().Be("csv");
+
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(exportItem.GetProperty("base64").GetString()!));
+        csv.Should().StartWith("billing_amt,case_status,plaintiff_last_name,plaintiff_first_name");
     }
 
     // ── POST /report/diy/save ─────────────────────────────────────────────────

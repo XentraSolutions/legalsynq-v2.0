@@ -7,6 +7,7 @@ using Liens.Domain.Enums;
 using Liens.Domain;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using System.Text;
 using System.Text.Json;
 
 namespace Liens.Api.Endpoints;
@@ -175,7 +176,24 @@ public static class ReportEndpoints
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
         var result = await svc.RunReportAsync(tenantId, request, ct);
-        return Results.Ok(ToLegacyRunResponse(result, request));
+        var rows = BuildLegacyReportRows(result, request);
+        var csvBytes = BuildLegacyReportCsv(rows);
+        var filename = $"diy_report_{DateTime.UtcNow:yyyyMMddHHmmss}.csv";
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "CSV generated successfully.",
+            data = new object[]
+            {
+                new
+                {
+                    base64 = Convert.ToBase64String(csvBytes),
+                    filename,
+                    export_format = "csv",
+                },
+            },
+        });
     }
 
     private static IResult GetLegacyColumns(string reportType = "LIENS")
@@ -299,10 +317,7 @@ public static class ReportEndpoints
         DIYReportResult result,
         DIYReportRunRequest request)
     {
-        var requestedColumns = GetRequestedColumns(request);
-        var rows = result.Items
-            .Select(r => ProjectColumns(BuildLegacyRow(r), requestedColumns))
-            .ToList();
+        var rows = BuildLegacyReportRows(result, request);
 
         var message = result.ReportType.ToUpperInvariant() switch
         {
@@ -335,6 +350,40 @@ public static class ReportEndpoints
             limit = result.PageSize,
             totalCount = result.TotalCount,
         };
+    }
+
+    private static List<Dictionary<string, object?>> BuildLegacyReportRows(
+        DIYReportResult result,
+        DIYReportRunRequest request)
+    {
+        var requestedColumns = GetRequestedColumns(request);
+        return result.Items
+            .Select(r => ProjectColumns(BuildLegacyRow(r), requestedColumns))
+            .ToList();
+    }
+
+    private static byte[] BuildLegacyReportCsv(IReadOnlyList<Dictionary<string, object?>> rows)
+    {
+        var columns = rows
+            .SelectMany(row => row.Keys)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var csv = new StringBuilder();
+        csv.AppendLine(string.Join(',', columns.Select(EscapeCsvValue)));
+
+        foreach (var row in rows)
+        {
+            csv.AppendLine(string.Join(',', columns.Select(column =>
+                EscapeCsvValue(row.TryGetValue(column, out var value) ? value?.ToString() : null))));
+        }
+
+        return Encoding.UTF8.GetBytes(csv.ToString());
+    }
+
+    private static string EscapeCsvValue(string? value)
+    {
+        var escaped = (value ?? string.Empty).Replace("\"", "\"\"");
+        return escaped.IndexOfAny([',', '\"', '\r', '\n']) >= 0 ? $"\"{escaped}\"" : escaped;
     }
 
     private static Dictionary<string, object?> BuildLegacyRow(DIYReportRow r) =>

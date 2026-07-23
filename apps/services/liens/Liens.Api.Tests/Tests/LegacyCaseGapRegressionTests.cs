@@ -4,7 +4,10 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -85,6 +88,52 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
         var deleteResponse = await _client.DeleteAsync($"/api/liens/cases/delete/{caseId}");
         deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await deleteResponse.Content.ReadAsStringAsync()}");
+    }
+
+    [Fact]
+    public async Task Delete_legacy_case_with_only_rejected_liens_detaches_liens_then_deletes_case()
+    {
+        Guid caseId;
+        Guid lienId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DELETE-REJECTED-{Guid.CreateVersion7():N}"[..30],
+                "Maria",
+                "Lopez",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-REJECTED-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            lien.SetLegacyMedicalStatus("Rejected", SeedHelper.UserId);
+
+            caseId = caseEntity.Id;
+            lienId = lien.Id;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var deleteResponse = await _client.DeleteAsync($"/api/liens/cases/delete/{caseId}");
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deleteResponse.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await verifyDb.Cases.FindAsync(caseId)).Should().BeNull();
+
+        var storedLien = await verifyDb.Liens.SingleAsync(l => l.Id == lienId);
+        storedLien.Status.Should().Be(LienStatus.Cancelled);
+        storedLien.CaseId.Should().BeNull();
     }
 
     [Fact]
