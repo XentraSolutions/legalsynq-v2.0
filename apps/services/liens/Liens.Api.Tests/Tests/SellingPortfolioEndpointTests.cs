@@ -1130,6 +1130,184 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task PublicBuyerPortal_accept_records_buyer_response_without_finalizing_sale()
+    {
+        var (lienId, token) = await CreatePublicLienOfferAsync("accept");
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "accept",
+            new { notes = "Accepted at ask from public portal" },
+            "public-accept-response");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var accessLink = json.GetProperty("accessLink");
+        accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Accepted);
+        accessLink.GetProperty("responseAmount").GetDecimal().Should().Be(2500m);
+        accessLink.GetProperty("responseNotes").GetString().Should().Be("Accepted at ask from public portal");
+        accessLink.GetProperty("respondedAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Offered);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.SubmittedForSale);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+        persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Accepted);
+        persistedLink.ResponseAmount.Should().Be(2500m);
+        persistedLink.ResponseNotes.Should().Be("Accepted at ask from public portal");
+        persistedLink.ResponseIdempotencyKey.Should().Be("public-accept-response");
+        persistedLink.RespondedAtUtc.Should().NotBeNull();
+        persistedLink.LastAccessedAtUtc.Should().NotBeNull();
+
+        var lien = db.Liens.Single(l => l.Id == lienId);
+        lien.Status.Should().Be(LienStatus.Offered);
+        lien.SellerStatus.Should().Be(SellingLienStatus.SubmittedForSale);
+        lien.SoldAtUtc.Should().BeNull();
+        lien.BuyingOrgId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_decline_records_buyer_response()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("decline");
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Not in buying criteria" },
+            "public-decline-response");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var accessLink = json.GetProperty("accessLink");
+        accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Declined);
+        accessLink.GetProperty("responseAmount").ValueKind.Should().Be(JsonValueKind.Null);
+        accessLink.GetProperty("responseNotes").GetString().Should().Be("Not in buying criteria");
+        accessLink.GetProperty("respondedAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+        persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Declined);
+        persistedLink.ResponseAmount.Should().BeNull();
+        persistedLink.ResponseNotes.Should().Be("Not in buying criteria");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_repeated_same_response_is_idempotent()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("idempotent");
+
+        var first = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Not this one" },
+            "public-decline-idempotent");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var second = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Different duplicate reason" },
+            "public-decline-idempotent-replay");
+
+        second.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await second.Content.ReadAsStringAsync()}");
+        var json = await second.Content.ReadFromJsonAsync<JsonElement>();
+        var accessLink = json.GetProperty("accessLink");
+        accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Declined);
+        accessLink.GetProperty("responseNotes").GetString().Should().Be("Not this one");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_opposite_response_after_recorded_response_conflicts()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("conflict");
+
+        var first = await PostPublicBuyerResponseAsync(
+            token,
+            "accept",
+            new { },
+            "public-accept-before-conflict");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var second = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Changed mind" },
+            "public-decline-conflict");
+
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var json = await second.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("response-conflict");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_response_rejects_unknown_token_without_authentication()
+    {
+        var response = await PostPublicBuyerResponseAsync(
+            "not-a-real-token",
+            "accept",
+            new { },
+            "public-accept-unknown");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("not-found");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_response_rejects_expired_token()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("expired");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var accessLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+            SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.ExpiresAtUtc), DateTime.UtcNow.AddMinutes(-1));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "accept",
+            new { },
+            "public-accept-expired");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Gone);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("expired");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_response_rejects_revoked_token()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("revoked");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var accessLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+            accessLink.Revoke(SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "No longer interested" },
+            "public-decline-revoked");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Gone);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("revoked");
+    }
+
+    [Fact]
     public async Task PublicBuyerPortal_rejects_unknown_token_without_authentication()
     {
         using var anonClient = _factory.CreateClient();
@@ -1332,6 +1510,47 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         });
 
         return _client.SendAsync(message);
+    }
+
+    private async Task<(Guid LienId, string Token)> CreatePublicLienOfferAsync(string scenario)
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: $"seller.{scenario}@smithlaw.test",
+            buyerEmail: $"buyer.{scenario}@capital.test");
+
+        var confirmResponse = await PostConfirmSaleAsync(
+            lienId,
+            $"confirm-sale-public-response-{scenario}-{Guid.NewGuid():N}");
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await confirmResponse.Content.ReadAsStringAsync()}");
+
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        return (lienId, ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!));
+    }
+
+    private async Task<HttpResponseMessage> PostPublicBuyerResponseAsync(
+        string token,
+        string action,
+        object body,
+        string idempotencyKey)
+    {
+        using var anonClient = _factory.CreateClient();
+        var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/liens/selling/public/{token}/{action}");
+        message.Headers.Add("Idempotency-Key", idempotencyKey);
+        message.Content = JsonContent.Create(body);
+        return await anonClient.SendAsync(message);
     }
 
     private async Task PrepareConfirmSaleDataAsync(
@@ -1550,6 +1769,13 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     private static void SetStringProperty<T>(T entity, string propertyName, string value) where T : class
+    {
+        var prop = typeof(T).GetProperty(propertyName,
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        prop?.SetValue(entity, value);
+    }
+
+    private static void SetDateTimeProperty<T>(T entity, string propertyName, DateTime value) where T : class
     {
         var prop = typeof(T).GetProperty(propertyName,
             System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);

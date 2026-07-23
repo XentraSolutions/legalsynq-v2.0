@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain;
+using Liens.Domain.Enums;
 
 namespace Liens.Domain.Entities;
 
@@ -19,6 +20,11 @@ public class SellingBuyerAccessLink : AuditableEntity
     public Guid? NotificationId { get; private set; }
     public string? NotificationStatus { get; private set; }
     public DateTime? NotificationSubmittedAtUtc { get; private set; }
+    public string? ResponseStatus { get; private set; }
+    public decimal? ResponseAmount { get; private set; }
+    public string? ResponseNotes { get; private set; }
+    public DateTime? RespondedAtUtc { get; private set; }
+    public string? ResponseIdempotencyKey { get; private set; }
 
     private SellingBuyerAccessLink() { }
 
@@ -81,6 +87,33 @@ public class SellingBuyerAccessLink : AuditableEntity
     public void MarkAccessed()
     {
         LastAccessedAtUtc = DateTime.UtcNow;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void RecordResponse(
+        string responseStatus,
+        decimal? responseAmount,
+        string? responseNotes,
+        string? responseIdempotencyKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(responseStatus);
+        if (!SellingBuyerResponseStatus.All.Contains(responseStatus))
+            throw new ArgumentException($"Invalid buyer response status: '{responseStatus}'.", nameof(responseStatus));
+
+        if (responseStatus == SellingBuyerResponseStatus.Accepted &&
+            (!responseAmount.HasValue || responseAmount.Value <= 0m))
+        {
+            throw new ArgumentOutOfRangeException(nameof(responseAmount), "Accepted responses require a positive amount.");
+        }
+
+        if (responseStatus == SellingBuyerResponseStatus.Declined && responseAmount.HasValue)
+            throw new ArgumentException("Declined responses cannot include a response amount.", nameof(responseAmount));
+
+        ResponseStatus = responseStatus;
+        ResponseAmount = responseAmount;
+        ResponseNotes = responseNotes?.Trim();
+        ResponseIdempotencyKey = responseIdempotencyKey?.Trim();
+        RespondedAtUtc = DateTime.UtcNow;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 

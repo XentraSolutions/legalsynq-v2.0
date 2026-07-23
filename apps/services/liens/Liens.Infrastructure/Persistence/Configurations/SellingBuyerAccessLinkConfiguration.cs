@@ -41,6 +41,20 @@ public class SellingBuyerAccessLinkConfiguration : IEntityTypeConfiguration<Sell
 
         builder.Property(l => l.NotificationSubmittedAtUtc);
 
+        builder.Property(l => l.ResponseStatus)
+            .HasMaxLength(50);
+
+        builder.Property(l => l.ResponseAmount)
+            .HasColumnType("decimal(18,2)");
+
+        builder.Property(l => l.ResponseNotes)
+            .HasMaxLength(4000);
+
+        builder.Property(l => l.RespondedAtUtc);
+
+        builder.Property(l => l.ResponseIdempotencyKey)
+            .HasMaxLength(280);
+
         builder.Property(l => l.CreatedByUserId).IsRequired();
         builder.Property(l => l.UpdatedByUserId);
         builder.Property(l => l.CreatedAtUtc).IsRequired();

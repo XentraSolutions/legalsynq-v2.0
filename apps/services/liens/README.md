@@ -65,10 +65,13 @@ such as `localhost` and `127.0.0.1` are rejected because outbound email recipien
 `.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. If it contains `{token}` the
 token is substituted, otherwise the token is appended as the final path segment.
 
-The temporary buyer portal data endpoint is `GET /api/liens/selling/public/{token}`. It is anonymous, token-scoped,
-expires with the generated access link, and returns JSON from persisted lien, case, contact, access-link, and servicing
-document metadata only. It does not render HTML; the tenant portal route `/selling/public/{token}` in `apps/web` fetches
-this JSON through the gateway and renders the funding-company review page.
+The temporary buyer portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
+JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only. It does not render
+HTML; the tenant portal route `/selling/public/{token}` in `apps/web` fetches this JSON through the gateway and renders
+the funding-company review page. The page records buyer responses with
+`POST /api/liens/selling/public/{token}/accept` and `POST /api/liens/selling/public/{token}/decline`; accepting records
+the current ask amount and declining can record an optional reason. These public responses do not finalize the sale,
+create a Bill of Sale, or mark the lien sold.
 When sending links through the tenant portal host, configure
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain, so the public web route can render without a
