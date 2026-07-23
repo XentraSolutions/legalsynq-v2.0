@@ -21,6 +21,9 @@ const CASE_STATUS_LABELS: Record<string, string> = {
   Closed: "Closed",
 };
 
+const LEGACY_FEED_TIMESTAMP_PATTERN =
+  /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}) (AM|PM)$/;
+
 function safeString(val: string | null | undefined): string {
   return val ?? "";
 }
@@ -247,4 +250,12 @@ export function mapDocuments(
     caseDocuments: cases,
     liensDocuments: liens,
   };
+}
+export function toIsoUtc(created: string): string {
+  const match = LEGACY_FEED_TIMESTAMP_PATTERN.exec(created.trim());
+  if (!match) return created;
+  const [, month, day, year, hour12, minute, meridiem] = match;
+  let hour = Number(hour12) % 12;
+  if (meridiem === "PM") hour += 12;
+  return `${year}-${month}-${day}T${String(hour).padStart(2, "0")}:${minute}:00Z`;
 }

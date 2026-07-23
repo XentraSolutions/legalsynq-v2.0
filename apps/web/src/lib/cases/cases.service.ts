@@ -10,6 +10,7 @@ import {
   mapMedicalInfo,
   mapMedicalCodes,
   mapDocuments,
+  toIsoUtc,
 } from "./cases.mapper";
 import type {
   CasesQuery,
@@ -38,6 +39,7 @@ import type {
   UpdateCaseDetailsRequestDto,
   MedicalCodeLiensResponse,
   CaseResponseDto,
+  CaseTrackingNote,
 } from "./cases.types";
 import { lookupService } from "../lookup";
 
@@ -307,9 +309,15 @@ export const casesService = {
     return data;
   },
 
-  async getCaseNotes(caseId: string): Promise<any> {
+  async getCaseNotes(caseId: string): Promise<CaseTrackingNote[]> {
     const { data } = await casesApi.getCaseNotes(caseId);
-    return data.data;
+    const res = await casesApi.getCaseNotes(caseId);
+    if (!res.data.isSuccess)
+      throw new Error(res.data.message || "Failed to load notes");
+    return (res.data.data ?? []).map((note) => ({
+      ...note,
+      created: toIsoUtc(note.created),
+    }));
   },
 
   async mergeCase(request: {

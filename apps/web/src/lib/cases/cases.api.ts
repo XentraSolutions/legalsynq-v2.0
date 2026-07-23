@@ -31,6 +31,8 @@ import type {
   ReassignLawFirmRequestDto,
   ReassignCaseManagerRequestDto,
   CaseDetail,
+  CaseTrackingNote,
+  GetCaseNotesResponse,
 } from "./cases.types";
 import { ApiResponse } from "../liens/lien-report.types";
 
@@ -361,6 +363,6 @@ export const casesApi = {
   },
 
   getCaseNotes(caseId: string) {
-    return apiClient.get<any>(`${BASE}/notes/${caseId}`);
+    return apiClient.get<GetCaseNotesResponse>(`${BASE}/notes/${caseId}`);
   },
 };

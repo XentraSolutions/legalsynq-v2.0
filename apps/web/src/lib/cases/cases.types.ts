@@ -628,3 +628,24 @@ export interface ReassignCaseManagerRequestDto {
   caseId: string;
   caseManager: string;
 }
+
+export interface CaseTrackingNote {
+  id: string;
+  caseId: string;
+  note: string;
+  isDeleted: "Y" | "N";
+  /** ISO UTC instant — normalized by the service from the API's raw "MM/DD/YYYY hh:mm AM/PM" string. */
+  created: string;
+  createdBy: string;
+  userId: string;
+  canDelete: boolean;
+}
+
+export interface LegacyEnvelope<T> {
+  isSuccess: boolean;
+  message: string;
+  data: T;
+}
+
+export type GetCaseNotesResponse = LegacyEnvelope<CaseTrackingNote[]>;
+export type MutateCaseNoteResponse = LegacyEnvelope<null>;
