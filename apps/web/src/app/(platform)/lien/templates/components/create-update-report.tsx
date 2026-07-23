@@ -39,9 +39,9 @@ import { ApiError } from "@/lib/api-client";
 const INITIAL_FORM = {
   name: "",
   description: "",
-  reportType: "LIENS",
-  statusView: "",
-  lienStatusIds: "",
+  reportType: [],
+  statusView: [],
+  lienStatusIds: [],
   purchaseDateFrom: null,
   purchaseDateTo: null,
   closedDateFrom: null,
@@ -640,7 +640,7 @@ export default function CreateUpdateReport({
       if (response) {
         addToast({
           type: "success",
-          title: "Template Saved",
+          title: "Report Template Saved",
         });
         onSaved();
       }
@@ -810,8 +810,8 @@ export default function CreateUpdateReport({
                   setForm({
                     ...form,
                     reportType: v,
-                    lienStatusIds: "",
-                    statusView: "",
+                    lienStatusIds: [],
+                    statusView: [],
                   });
                 }}
                 type="select"

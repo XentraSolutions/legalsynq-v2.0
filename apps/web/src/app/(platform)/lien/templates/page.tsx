@@ -115,7 +115,7 @@ export default function TemplatesPage() {
       {/* HEADER */}
       <>
         <PageHeader
-          title="Templates"
+          title="Report Templates"
           subtitle={`${reports?.length} saved templates`}
           actions={
             <button
@@ -126,7 +126,7 @@ export default function TemplatesPage() {
               className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
             >
               <i className="ri-add-line text-base" />
-              Create New Template
+              Create New Report Template
             </button>
           }
         />
