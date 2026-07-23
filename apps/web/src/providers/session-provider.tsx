@@ -392,13 +392,13 @@ export function SessionProvider({
   return (
     <SessionContext.Provider value={ctxValue}>
       {children}
-      {showWarning && (
+      {/* {showWarning && (
         <IdleWarningDialog
           countdown={countdown}
           onStay={stayActive}
           onLogout={doLogout}
         />
-      )}
+      )} */}
     </SessionContext.Provider>
   );
 }

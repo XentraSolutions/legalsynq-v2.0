@@ -38,6 +38,8 @@ interface LienTableProps {
   checkedIds?: Set<string>;
   onToggleCheck?: (id: string) => void;
   onToggleAll?: () => void;
+  /** When provided, rows for which this returns false render a disabled, unselectable checkbox. */
+  isRowSelectable?: (lien: LienRow) => boolean;
   /**
    * Timestamp of last fetch. When provided (even null), renders a "Last loaded" toolbar.
    * Omit to hide the toolbar entirely.
@@ -103,6 +105,7 @@ export function LienTable({
   checkedIds,
   onToggleCheck,
   onToggleAll,
+  isRowSelectable,
   columns,
   footer,
   emptyMessage = "No liens found",
@@ -116,6 +119,11 @@ export function LienTable({
 }: LienTableProps) {
   const selectable = checkedIds !== undefined;
   const showLastLoaded = loadedAt !== undefined || onRefresh !== undefined;
+
+  const selectableLiens = React.useMemo(
+    () => (isRowSelectable ? liens.filter(isRowSelectable) : liens),
+    [liens, isRowSelectable],
+  );
 
   const rowSelection = React.useMemo<RowSelectionState>(() => {
     const obj: RowSelectionState = {};
@@ -132,8 +140,9 @@ export function LienTable({
 
     if (nextIds.size === prevIds.size) return;
 
-    const allNowSelected = nextIds.size === liens.length && prevIds.size !== liens.length;
-    const allNowDeselected = nextIds.size === 0 && prevIds.size === liens.length;
+    const allNowSelected =
+      nextIds.size === selectableLiens.length && prevIds.size !== selectableLiens.length;
+    const allNowDeselected = nextIds.size === 0 && prevIds.size === selectableLiens.length;
     if (allNowSelected || allNowDeselected) {
       onToggleAll?.();
       return;
@@ -143,17 +152,37 @@ export function LienTable({
     if (toggled) onToggleCheck?.(toggled.id);
   };
 
+  // `columns` and `checkedIds` are re-created by the caller on every render
+  // (they close over form state like input values). TanStack's flexRender
+  // treats a function passed as `cell` as a component *type*, so recomputing
+  // this memo's `cell` functions on every keystroke makes React remount each
+  // cell instead of updating it — dropping input focus. Route through refs
+  // so the `cell` function identity stays stable while still reading live
+  // values, and only rebuild the memo when the column shape itself changes.
+  const columnsRef = React.useRef(columns);
+  columnsRef.current = columns;
+  const checkedIdsRef = React.useRef(checkedIds);
+  checkedIdsRef.current = checkedIds;
+
+  const columnIds = columns.map((col) => col.id).join("|");
+
   const tanstackColumns = React.useMemo<ColumnDef<LienRow, any>[]>(
     () =>
-      columns.map((col) => ({
+      columnsRef.current.map((col) => ({
         id: col.id,
         header: col.header,
         meta: { align: col.align },
         enableSorting: false,
-        cell: ({ row }) =>
-          col.cell(row.original, selectable ? checkedIds!.has(row.original.id) : false),
+        cell: ({ row }) => {
+          const currentCol = columnsRef.current.find((c) => c.id === col.id)!;
+          return currentCol.cell(
+            row.original,
+            selectable ? checkedIdsRef.current!.has(row.original.id) : false,
+          );
+        },
       })),
-    [columns, checkedIds, selectable],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- columnsRef/checkedIdsRef read live values; only the column shape (ids) and selectability should force a rebuild
+    [columnIds, selectable],
   );
 
   const footerCells: BaseTableFooterCell[] | undefined = footer?.map((cell) => ({
@@ -170,6 +199,11 @@ export function LienTable({
       getRowId={(lien) => lien.id}
       rowSelection={selectable ? rowSelection : undefined}
       onRowSelectionChange={handleRowSelectionChange}
+      enableRowSelection={
+        selectable && isRowSelectable
+          ? (row) => isRowSelectable(row.original)
+          : undefined
+      }
       enablePagination={paginated}
       pageSize={pageSize}
       enableExpanding={expandable}
