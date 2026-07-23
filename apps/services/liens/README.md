@@ -52,9 +52,37 @@ Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldA
 `sendBuyerNotification=true`, the service validates real buyer/seller contact data, creates a 30-day buyer access link,
 and sends the email through Notifications with an idempotency key. Supporting document names are pulled from existing
 legacy lien/case document servicing metadata; the email omits the document section when no real document names exist.
+The email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange
+wordmark text, and the section icons are also delivered as inline CID image attachments. No remote placeholder assets
+are required.
 Configure the buyer portal URL with `Liens:Selling:BuyerPortalBaseUrl` or the environment variable
-`Liens__Selling__BuyerPortalBaseUrl`. The value must be an absolute portal URL; if it contains `{token}` the token is
-substituted, otherwise the token is appended as the final path segment.
+`Liens__Selling__BuyerPortalBaseUrl`. If that value is absent, the API derives it from
+`SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
+`http://synqlien-demo.localhost:5000/selling/public` for the full `scripts/run-dev.sh` proxy. The value must be an
+absolute portal URL and must match the active tenant-web browser origin. Use
+`http://synqlien-demo.localhost:3000/selling/public` when running only `pnpm --dir apps/web dev`. Literal loopback hosts
+such as `localhost` and `127.0.0.1` are rejected because outbound email recipients cannot open those links. Named
+`.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. If it contains `{token}` the
+token is substituted, otherwise the token is appended as the final path segment.
+
+The built-in temporary buyer portal is `GET /api/liens/selling/public/{token}`. It is anonymous, token-scoped, expires
+with the generated access link, and renders the funding-company review page from persisted lien, case, contact, and
+servicing document metadata only.
+When sending links through the tenant portal host, configure
+`Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
+`https://<portal-host>/selling/public` behind a real portal domain, so the public web route forwards to the Liens
+gateway without requiring a `platform_session` cookie. The confirm-sale email disables SendGrid click tracking for this
+CTA so recipients see and open the LegalSynq portal URL directly.
+
+Local SynqLien demo portal example:
+
+```bash
+SYNQLIEN_COMMON_PORTAL_HOSTNAME=synqlien-demo.localhost
+PORTAL_SYNQLIEN_SUBDOMAIN=synqlien-demo
+Liens__Selling__BuyerPortalBaseUrl=http://synqlien-demo.localhost:5000/selling/public
+# or, when only apps/web dev is running:
+Liens__Selling__BuyerPortalBaseUrl=http://synqlien-demo.localhost:3000/selling/public
+```
 
 ## Assistant Tool Endpoints
 

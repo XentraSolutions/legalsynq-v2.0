@@ -311,8 +311,30 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 When `sendBuyerNotification=true`, the lien must have real `FundingCompanyId`, `FundingCompanyContactId`,
 `InitialServiceDate`, `AskAmount`, buyer email, seller name/company/email, and handling law firm data. The API creates a
-30-day buyer access link from `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide the CTA URL. The buyer email
-uses the `New Lien Offer` copy and includes only real supporting document names found in lien/case document metadata.
+30-day buyer access link from `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide the CTA URL. If the explicit
+base URL is absent, the API derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
+`http://synqlien-demo.localhost:5000/selling/public` for the full `scripts/run-dev.sh` proxy. The configured buyer
+portal base URL must be absolute and must match the active tenant-web browser origin; use
+`http://synqlien-demo.localhost:3000/selling/public` when running only `pnpm --dir apps/web dev`. Literal loopback hosts
+such as `localhost` or `127.0.0.1` are rejected because the email CTA must work from the recipient's inbox, while named
+`.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. The buyer email uses the
+`New Lien Offer` copy and includes only real supporting document names found in lien/case document metadata. The
+LegalSynq mark and section icons are sent as inline CID image attachments; no remote placeholder assets are required.
+For a CTA hosted by the tenant portal, use
+`Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
+`https://<portal-host>/selling/public` behind a real portal domain; that public browser route forwards to the Liens
+gateway without requiring a `platform_session` cookie. The confirm-sale email disables SendGrid click tracking for this
+CTA so the recipient receives the real LegalSynq portal URL instead of a provider tracking URL.
+
+Local SynqLien demo portal example:
+
+```bash
+SYNQLIEN_COMMON_PORTAL_HOSTNAME=synqlien-demo.localhost
+PORTAL_SYNQLIEN_SUBDOMAIN=synqlien-demo
+Liens__Selling__BuyerPortalBaseUrl=http://synqlien-demo.localhost:5000/selling/public
+# or, when only apps/web dev is running:
+Liens__Selling__BuyerPortalBaseUrl=http://synqlien-demo.localhost:3000/selling/public
+```
 
 **Response:** `200 OK`
 
@@ -343,6 +365,27 @@ uses the `New Lien Offer` copy and includes only real supporting document names 
 
 If notification submission fails after the lien is confirmed, the lien transition remains committed and
 `notification.submitted=false` reports the failure for retry.
+
+### GET `/api/liens/selling/public/{token}`
+
+Renders the temporary funding-company portal opened from the `New Lien Offer` email CTA. This endpoint is anonymous; the
+opaque token controls tenant, lien, buyer contact, expiry, and revocation.
+
+**Authentication:** None.
+
+**Response:** `200 OK`, `text/html`
+
+The HTML page follows the Figma temporary portal frame and is populated only from persisted lien, case, contact, buyer,
+seller, and servicing document metadata. It displays the response card, lien summary, document list or real empty state,
+messages area, and 30-day secure-link expiry copy. It never inserts sample company names, sample people, sample files,
+`example.com`, or caller-provided CTA data.
+
+**Errors:**
+
+| Status | Description |
+|---|---|
+| `404 Not Found` | Token or linked lien data cannot be resolved |
+| `410 Gone` | Token is expired or revoked |
 
 ---
 

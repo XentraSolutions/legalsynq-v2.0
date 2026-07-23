@@ -24,7 +24,17 @@ public sealed record NotificationEmailSendOptions(
     string? TemplateKey = null,
     Dictionary<string, string>? TemplateData = null,
     string? RequestedBy = null,
-    bool? BrandedRendering = null);
+    bool? BrandedRendering = null,
+    string? HtmlBody = null,
+    string? TextBody = null,
+    IReadOnlyList<NotificationEmailInlineAttachment>? InlineAttachments = null,
+    bool DisableClickTracking = false);
+
+public sealed record NotificationEmailInlineAttachment(
+    string ContentId,
+    string FileName,
+    string ContentType,
+    string Base64Content);
 
 public sealed record NotificationEmailSendResult(
     Guid? NotificationId,

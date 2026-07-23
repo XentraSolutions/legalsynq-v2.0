@@ -1,4 +1,6 @@
 ﻿using System;
+using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -6,6 +8,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Liens.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(LiensDbContext))]
+    [Migration("20260722000001_AddSellingBuyerAccessLinks")]
     public partial class AddSellingBuyerAccessLinks : Migration
     {
         /// <inheritdoc />

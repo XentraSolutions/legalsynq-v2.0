@@ -35,6 +35,9 @@ echo "[next] Using: $NEXT_BIN"
 #   PROBE_TIMEOUT_DOTNET — seconds to wait for .NET services    (default 90)
 PROBE_TIMEOUT_NODEJS="${PROBE_TIMEOUT_NODEJS:-60}"
 PROBE_TIMEOUT_DOTNET="${PROBE_TIMEOUT_DOTNET:-90}"
+SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}"
+PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}"
+Liens__Selling__BuyerPortalBaseUrl="${Liens__Selling__BuyerPortalBaseUrl:-http://${SYNQLIEN_COMMON_PORTAL_HOSTNAME}:5000/selling/public}"
 
 # ── Health-check probe helper ──────────────────────────────────────────────────
 # Polls <scheme>://<host>:<port><path> in the background for up to $deadline
@@ -67,6 +70,8 @@ NEXT_INTERNAL_PORT=3050
 echo "[web] Starting Next.js on :$NEXT_INTERNAL_PORT (internal)"
 (cd "$ROOT/apps/web" && NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 \
   CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
+  SYNQLIEN_COMMON_PORTAL_HOSTNAME="$SYNQLIEN_COMMON_PORTAL_HOSTNAME" \
+  PORTAL_SYNQLIEN_SUBDOMAIN="$PORTAL_SYNQLIEN_SUBDOMAIN" \
   node "$NEXT_BIN" start -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
@@ -261,7 +266,10 @@ if command -v dotnet &>/dev/null; then
             "ReferralToken__Secret=${FLOW_SERVICE_TOKEN_SECRET:-}"
           PID_CARECONNECT=$! ;;
         Documents.Api) launch_svc "$_svc_label" "$csproj"; PID_DOCUMENTS=$! ;;
-        Liens.Api)     launch_svc "$_svc_label" "$csproj"; PID_LIENS=$! ;;
+        Liens.Api)
+          launch_svc "$_svc_label" "$csproj" env \
+            "Liens__Selling__BuyerPortalBaseUrl=${Liens__Selling__BuyerPortalBaseUrl}"
+          PID_LIENS=$! ;;
         Commerce.Api)
           launch_svc "$_svc_label" "$csproj" env \
             ASPNETCORE_URLS=http://0.0.0.0:5030 \

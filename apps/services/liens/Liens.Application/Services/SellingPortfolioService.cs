@@ -14,6 +14,17 @@ namespace Liens.Application.Services;
 
 public sealed class SellingPortfolioService : ISellingPortfolioService
 {
+    private const string LegalSynqBrandIconContentId = "legalsynq-brand-icon";
+    private const string SellerInformationIconContentId = "seller-information-icon";
+    private const string AssetOverviewIconContentId = "asset-overview-icon";
+    private const string SupportingDocumentsIconContentId = "supporting-documents-icon";
+    private const string LegalSynqLogoWhitePngBase64 = "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";
+    private const string LegalSynqBrandIconPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAFH0lEQVR42u2d23HiMBSGU4JLcAmOSWZ4pIR0sDxsAYLdfQ4dLB2QDrYEtgOX4AZCVILXwmJyWRsdCev+/zPnFbA+jq7Wf+7uIAiCvIqzVcG39fq0XRzeNnXbR0cI/rZZHE/bmnG2LNGKocLd1s8DLBLUyRB/DoAOKmuXZZ+Bza1gv2a1yGi0bhBwyV2xdoheAa2cKNz3LhuZ7EViYmQb7qW7xpjsWK/9TNkRXBmLI1rdbfY2bgH34zF7rNDy7sZe9djJ6p2qa+WsKjg79wYtYSzeofUdqAfHVDBee2h6f5qKMGFDN+0G8KbeK5Y2B7Oe4WGlmmyh9QOYPZsua0R3rR6HqwIEPAMWM2zzz1YCxnIJgCEAhgA4610ssSadils2JAA4+d4BgAEYAmAIgPNS13VFH099sD52DuLJBHCvveJzxe9fiecB1QHsuo9j514HQ8A6Es+1zhWs+Je3nT+5AHyReM4yJ7jPnX+5BHzRcw5wD10Y8gE4bciBZK5vwEIs1TG3A+CzeHJjsucJVWiAzzPs1JZCOksL1Voz1HXwXnPJt0oF8JEI1nu3NcdOlngOYo+1T2WHSqUmta1KIuQ2l8lVmRpgjWcvYge8jmmyMfdhg5wxX1MVO2BmMptNCHCT9ERLzi5zBnwE4LQBV3IsnooCgCMGnMPhAgADMAADMADnA/hsdsaWpY1QAv75sLL13apwAoz/eqwGJ7ma/Xej4MfiyQVg9/4cQcXZlU+0wWzQpT2g0kVu7OI1AFuN9mYfLx17QAD2CFo3m0XW6vpQAbBvyMRLdxJuY2D7B8AxZLK04u0AOMZQOAHd0ngAHEaIpdy1hX4LwIlmMcEn6oOX8uLwNfiI+VhsO1khS+yiCfc+mu3iyI4bZewVJmQ6XlEAbAO0ugcb9SlRzZxNHOQA2NaeucIMrk/EsfGXGw/eAOxUKr/O0WS0cZKSO2B5qX19JYze6FBNNAHYHWAr72QBMAADMAADMAADMABfXHSmggFwxIBzly3ARmUNbGx0ALAdwKpDodEKMeo3OBYNkPkFLN+POxgdGarS/nIUhTJv9gGLN1TF26sf47R9+E08zuUT/w7ycWE3HEyIjM8rXN0unPtcXqObzvxtiRgAX/uNelkMwKEBJpXfo741AMBhAT5t7l/oC+nN4gVA4wGsBReZHBVgLg7/jaf51NKrAOwcMJfvx82zZB1AY4btCnA/RO7H3lwd6kKJK6wWi2SKOzDDl/gJ9dBx/9fWd4eyVZm0jE5SEtuLBmAABmAABmAABuDMAfu4XQjAbh9wnTngJnfAPFXA0vVdpej9oikPyRIFrKwTlcSkiOB6znX+yTEA7p/nWzaldWS5GVLZN0r9hpABSw9oavm+dSqAZ696ZgI4sMJcaVUk7R/mBYA/aZfU5oSsn9QCcCL1kiYauCJMuFIHnFbXbAtypIDThvtlbdxmBvjY5VTm/cM+dZs4YJ76FVnqduYfHdiBA27lWnh1B0124ZPRfK+YIeDSdoDeDIrpNAkCYAiAARiAAZimsZv1nwLuBnEDVl3PGfVhhgAYAmAIgAEYgHMAPOkTRQJ8/eI13P4cSNxPJrjNMP3PPRfihF9nCKJURBWVUynrVmkP+JtSGxAt70g028V3MIq43UEOmrubrsrQ/Tkgt1l8U5Ac5KDZs7hwZPGEsddzV20TcouuOVnI+vbBkM0xeT7rRWEPiDE31Gw2dOXjQ8bWzKqLHDQ38GV53b1OuPbhEB+CoND1D6mLXlFVwRdjAAAAAElFTkSuQmCC";
+    private const string SellerInformationIconPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAACwAAAAsCAYAAAAehFoBAAAAmElEQVR42u2YQQ4AIQgD/QL/f+zu3cPGboDa0CaeBJ00gtG1LMtaEfGcDinYK6ClgTPirnCU5nY2bCl0FWwZdOYmFODb1mupcgOPAEYKig6Mti0q8J9eSwP+AjudowEjuQYeASxxhuW6hGQflrvppC+OU2gKMOLiHkMHRvPbgdEN93iaw+g67Q7LPUIln/mjf3/8GWhZ1mC9npUaA0DVsI8AAAAASUVORK5CYII=";
+    private const string AssetOverviewIconPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAACwAAAAsCAYAAAAehFoBAAAAhElEQVR42u2YQQrAMAgE8wX//9j21lvoUmJcm1nIJQcdRBd0DITQo4i4Zq8VrCW0AmwD/QZUCqxW0qLiq2FTobNg06BXJikBdou3ZdIBVoN/TVgCrPzPhmw7sAJiYWttK9yyh3EJehiXoIdxCVwCl8Alfu8S7ZbQlmv+0dcfjoEIoYN1A/1gCnlwVRmTAAAAAElFTkSuQmCC";
+    private const string SupportingDocumentsIconPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAACwAAAAsCAYAAAAehFoBAAAAbUlEQVR42u3XwQkAIQwF0bSQ/ovVBjyYEPITmAdedVBZVjMAAAAAT+5+fsaq2DHR0WB5dCRkRHQ0InMipaeUmUQanZ1AFq26l+l1q3aqbZcJ7gxed4cJJpjgpnW7o0v/J0Z/g9XRkteHLBYAdrldSpQUXZpi0gAAAABJRU5ErkJggg==";
+    private static readonly Lazy<IReadOnlyList<NotificationEmailInlineAttachment>> ConfirmSaleInlineAttachments = new(BuildConfirmSaleInlineAttachments);
+
     private readonly ISellingPortfolioRepository _portfolioRepo;
     private readonly ILienRepository _lienRepo;
     private readonly ICaseRepository _caseRepo;
@@ -1019,7 +1030,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 tenantId,
                 context.BuyerContact.Email!.Trim(),
                 email.Subject,
-                email.Body,
+                email.TextBody,
                 metadata,
                 ct,
                 new NotificationEmailSendOptions(
@@ -1027,7 +1038,11 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                     TemplateKey: NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail,
                     TemplateData: email.TemplateData,
                     RequestedBy: actingUserId.ToString(),
-                    BrandedRendering: true));
+                    BrandedRendering: true,
+                    HtmlBody: email.HtmlBody,
+                    TextBody: email.TextBody,
+                    InlineAttachments: email.InlineAttachments,
+                    DisableClickTracking: true));
 
             await _buyerAccessLinks.MarkNotificationSubmittedAsync(
                 tenantId,
@@ -1093,93 +1108,346 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var lienCode = ResolveLienCode(lien);
         var billingAmount = lien.OriginalAmount.ToString("C", CultureInfo.GetCultureInfo("en-US"));
         var initialServiceDate = lien.InitialServiceDate!.Value.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+        var sellerName = context.SellerContact.DisplayName.Trim();
+        var sellerCompany = context.SellerContact.Organization!.Trim();
+        var sellerEmail = context.SellerContact.Email!.Trim();
+        var handlingLawFirm = context.HandlingLawFirm.Trim();
+        var caseManager = context.CaseManager?.Trim();
+        var documentNames = context.DocumentNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .ToList();
 
         var templateData = new Dictionary<string, string>
         {
             ["subject"] = subject,
             ["status"] = "Awaiting Your Response",
             ["intro"] = "A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.",
-            ["sellerName"] = context.SellerContact.DisplayName.Trim(),
-            ["sellerCompany"] = context.SellerContact.Organization!.Trim(),
+            ["sellerName"] = sellerName,
+            ["sellerCompany"] = sellerCompany,
             ["billingAmount"] = billingAmount,
             ["initialServiceDate"] = initialServiceDate,
-            ["contactPerson"] = context.SellerContact.DisplayName.Trim(),
-            ["emailAddress"] = context.SellerContact.Email!.Trim(),
-            ["handlingLawFirm"] = context.HandlingLawFirm,
+            ["contactPerson"] = sellerName,
+            ["emailAddress"] = sellerEmail,
+            ["handlingLawFirm"] = handlingLawFirm,
             ["lienCode"] = lienCode,
             ["buyerPortalUrl"] = accessLink.BuyerPortalUrl,
             ["expiresAtUtc"] = accessLink.ExpiresAtUtc.ToString("O", CultureInfo.InvariantCulture),
         };
 
-        if (!string.IsNullOrWhiteSpace(context.CaseManager))
-            templateData["caseManager"] = context.CaseManager;
+        if (!string.IsNullOrWhiteSpace(caseManager))
+            templateData["caseManager"] = caseManager;
 
-        if (context.DocumentNames.Count > 0)
-            templateData["supportingDocuments"] = string.Join(", ", context.DocumentNames);
+        if (documentNames.Count > 0)
+            templateData["supportingDocuments"] = string.Join(", ", documentNames);
 
-        var body = new StringBuilder();
-        body.AppendLine("<!doctype html><html><body>");
-        body.AppendLine("<p><strong>LegalSynq</strong></p>");
-        body.AppendLine("<p><strong>Awaiting Your Response</strong></p>");
-        body.AppendLine("<h1>New Lien Offer</h1>");
-        body.AppendLine("<p>A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.</p>");
-        AppendSection(body, "Seller Information", new Dictionary<string, string?>
+        var sellerRows = new (string Label, string? Value)[]
         {
-            ["Seller Name"] = context.SellerContact.DisplayName,
-            ["Seller Company"] = context.SellerContact.Organization,
-        });
-        AppendSection(body, "Asset Overview", new Dictionary<string, string?>
-        {
-            ["Billing Amount"] = billingAmount,
-            ["Initial Service Date"] = initialServiceDate,
-            ["Contact Person"] = context.SellerContact.DisplayName,
-            ["Email Address"] = context.SellerContact.Email,
-            ["Handling Law Firm"] = context.HandlingLawFirm,
-            ["Case Manager"] = context.CaseManager,
-        });
+            ("Seller Name", sellerName),
+            ("Seller Company", sellerCompany),
+        };
 
-        if (context.DocumentNames.Count > 0)
+        var assetRows = new (string Label, string? Value)[]
         {
-            body.AppendLine("<h2>Supporting Documents</h2>");
-            body.AppendLine("<ul>");
-            foreach (var documentName in context.DocumentNames)
-                body.Append("<li>").Append(Html(documentName)).AppendLine("</li>");
-            body.AppendLine("</ul>");
-        }
+            ("Billing Amount", billingAmount),
+            ("Initial Service Date", initialServiceDate),
+            ("Contact Person", sellerName),
+            ("Email Address", sellerEmail),
+            ("Handling Law Firm", handlingLawFirm),
+            ("Case Manager", caseManager),
+        };
 
-        body.Append("<p><a href=\"")
+        var htmlBody = new StringBuilder();
+        htmlBody.AppendLine("<!doctype html>");
+        htmlBody.AppendLine("<html lang=\"en\">");
+        htmlBody.AppendLine("<head>");
+        htmlBody.AppendLine("<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        htmlBody.AppendLine("<meta name=\"color-scheme\" content=\"light only\"><meta name=\"supported-color-schemes\" content=\"light only\">");
+        htmlBody.AppendLine("<title>New Lien Offer</title>");
+        htmlBody.AppendLine("<style>");
+        htmlBody.AppendLine(":root{color-scheme:light only;supported-color-schemes:light only;}");
+        htmlBody.AppendLine("body,table,td,p,a,span{color-scheme:light only;supported-color-schemes:light only;}");
+        htmlBody.AppendLine(".email-bg{background-color:#f4f5f7 !important;}.email-shell{background-color:#ffffff !important;}.email-card{background-color:#ffffff !important;color:#111827 !important;}");
+        htmlBody.AppendLine(".email-label{color:#6f6f6f !important;}.email-value{color:#111111 !important;}.email-rule{border-color:#e5e5e5 !important;}");
+        htmlBody.AppendLine("@media (prefers-color-scheme: dark){.email-bg{background-color:#f4f5f7 !important;}.email-shell,.email-card{background-color:#ffffff !important;color:#111827 !important;}.email-label{color:#6f6f6f !important;}.email-value{color:#111111 !important;}.email-rule{border-color:#e5e5e5 !important;}}");
+        htmlBody.AppendLine("[data-ogsc] .email-bg{background-color:#f4f5f7 !important;}[data-ogsc] .email-shell,[data-ogsc] .email-card{background-color:#ffffff !important;color:#111827 !important;}");
+        htmlBody.AppendLine("</style>");
+        htmlBody.AppendLine("</head>");
+        htmlBody.AppendLine("<body class=\"email-bg\" bgcolor=\"#f4f5f7\" style=\"margin:0;padding:0;background-color:#f4f5f7 !important;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;color:#111827 !important;color-scheme:light only;supported-color-schemes:light only;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;\">");
+        htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#f4f5f7\" class=\"email-bg\" style=\"width:100%;border-collapse:collapse;background-color:#f4f5f7 !important;\">");
+        htmlBody.AppendLine("<tr><td align=\"center\" bgcolor=\"#f4f5f7\" class=\"email-bg\" style=\"padding:28px 14px;background-color:#f4f5f7 !important;\">");
+        htmlBody.AppendLine("<table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" class=\"email-shell\" bgcolor=\"#ffffff\" style=\"width:100%;max-width:560px;border-collapse:separate;border-spacing:0;background-color:#ffffff !important;border-radius:10px;overflow:hidden;\">");
+        htmlBody.AppendLine("<tr><td bgcolor=\"#071b31\" style=\"background-color:#071b31 !important;border-radius:10px 10px 0 0;padding:28px 30px 28px;\">");
+        htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"width:100%;border-collapse:collapse;margin:0 0 28px 0;\"><tr>");
+        htmlBody.AppendLine("<td align=\"left\" style=\"vertical-align:middle;padding:0;\">");
+        AppendLegalSynqEmailBrand(htmlBody);
+        htmlBody.AppendLine("</td>");
+        htmlBody.AppendLine("<td align=\"right\" style=\"vertical-align:middle;padding:0;\">");
+        htmlBody.AppendLine("<span style=\"display:inline-block;background-color:#263127 !important;color:#f3c400 !important;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;line-height:1.1;white-space:nowrap;\">Awaiting Your Response</span>");
+        htmlBody.AppendLine("</td>");
+        htmlBody.AppendLine("</tr></table>");
+        htmlBody.AppendLine("<h1 style=\"margin:0 0 10px 0;color:#ffffff !important;font-size:24px;line-height:1.25;font-weight:700;letter-spacing:0;\">New Lien Offer</h1>");
+        htmlBody.AppendLine("<p style=\"margin:0;color:#ffffff !important;font-size:16px;line-height:1.55;font-weight:400;opacity:.92;\">A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.</p>");
+        htmlBody.AppendLine("</td></tr>");
+        htmlBody.AppendLine("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"background-color:#ffffff !important;color:#111827 !important;border:1px solid #e5e5e5;border-top:0;border-radius:0 0 10px 10px;padding:24px 24px 28px;\">");
+        AppendEmailSection(htmlBody, "Seller Information", sellerRows);
+        AppendEmailSection(htmlBody, "Asset Overview", assetRows);
+
+        if (documentNames.Count > 0)
+            AppendDocumentsSection(htmlBody, documentNames);
+
+        htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:separate;border-spacing:0;margin:4px 0 12px 0;\"><tr>");
+        htmlBody.Append("<td align=\"center\" bgcolor=\"#f26a2e\" style=\"background-color:#f26a2e !important;border-radius:8px;\"><a href=\"")
             .Append(Html(accessLink.BuyerPortalUrl))
-            .AppendLine("\">View Lien for Sale</a></p>");
-        body.AppendLine("<p>This Link Expires in 30 Days</p>");
-        body.Append("<p>This offer was sent on behalf of the ")
-            .Append(Html(context.SellerContact.Organization!.Trim()))
-            .Append(". Please reply directly to ")
-            .Append(Html(context.SellerContact.Email!.Trim()))
-            .AppendLine(" for any questions.</p>");
-        body.AppendLine("</body></html>");
+            .AppendLine("\" style=\"display:block;padding:12px 20px;color:#ffffff !important;text-decoration:none;font-size:13px;font-weight:700;line-height:1.1;\">View Lien for Sale</a></td>");
+        htmlBody.AppendLine("</tr></table>");
+        htmlBody.AppendLine("<p class=\"email-label\" style=\"margin:0 0 20px 0;text-align:center;color:#7a7a7a !important;font-size:13px;line-height:1.5;\">This Link Expires in 30 Days</p>");
+        htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card email-rule\" style=\"border-collapse:separate;border-spacing:0;background-color:#ffffff !important;\"><tr>");
+        htmlBody.Append("<td style=\"width:28px;padding:15px 0 15px 14px;vertical-align:top;")
+            .Append(EmailTableCellBorder(isFirstRow: true, isLastRow: true, leftEdge: true, rightEdge: false))
+            .AppendLine("\"><span style=\"display:inline-block;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;border:1px solid #f3c400;color:#f3a800 !important;font-size:10px;font-weight:700;\">i</span></td>");
+        htmlBody.Append("<td class=\"email-label\" style=\"padding:14px 16px 14px 8px;color:#6f6f6f !important;font-size:13px;line-height:1.55;")
+            .Append(EmailTableCellBorder(isFirstRow: true, isLastRow: true, leftEdge: false, rightEdge: true))
+            .Append("\">This offer was sent on behalf of the <strong class=\"email-value\" style=\"color:#111111 !important;font-weight:700;\">")
+            .Append(Html(sellerCompany))
+            .Append("</strong>. Please reply directly to <a href=\"mailto:")
+            .Append(Html(sellerEmail))
+            .Append("\" style=\"color:#f26a2e !important;text-decoration:underline;\">")
+            .Append(Html(sellerEmail))
+            .AppendLine("</a> for any questions.</td>");
+        htmlBody.AppendLine("</tr></table>");
+        htmlBody.AppendLine("</td></tr>");
+        htmlBody.AppendLine("</table>");
+        htmlBody.AppendLine("</td></tr>");
+        htmlBody.AppendLine("</table>");
+        htmlBody.AppendLine("</body></html>");
 
-        return new ConfirmSaleEmail(subject, body.ToString(), templateData);
+        var textBody = BuildConfirmSaleTextBody(
+            accessLink.BuyerPortalUrl,
+            sellerCompany,
+            sellerEmail,
+            sellerRows,
+            assetRows,
+            documentNames);
+
+        return new ConfirmSaleEmail(subject, htmlBody.ToString(), textBody, templateData, ConfirmSaleInlineAttachments.Value);
     }
 
-    private static void AppendSection(
+    private static void AppendEmailSection(
         StringBuilder body,
         string title,
-        IReadOnlyDictionary<string, string?> values)
+        IReadOnlyList<(string Label, string? Value)> rows)
     {
-        body.Append("<h2>").Append(Html(title)).AppendLine("</h2>");
-        body.AppendLine("<dl>");
-        foreach (var (label, value) in values)
+        var visibleRows = rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.Value))
+            .ToList();
+        if (visibleRows.Count == 0)
+            return;
+
+        body.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card\" style=\"width:100%;border-collapse:collapse;margin:0 0 28px 0;background-color:#ffffff !important;\">");
+        AppendEmailSectionHeading(body, title);
+        body.AppendLine("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"padding:0;background-color:#ffffff !important;\">");
+        body.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card email-rule\" style=\"width:100%;border-collapse:separate;border-spacing:0;background-color:#ffffff !important;\">");
+
+        for (var i = 0; i < visibleRows.Count; i++)
+        {
+            var (label, value) = visibleRows[i];
+            var isFirstRow = i == 0;
+            var isLastRow = i == visibleRows.Count - 1;
+            var labelBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: true, rightEdge: false);
+            var valueBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: false, rightEdge: true);
+
+            body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card email-label\" style=\"width:44%;padding:15px 14px;color:#6f6f6f !important;background-color:#ffffff !important;font-size:13px;line-height:1.45;")
+                .Append(labelBorder)
+                .Append("\">")
+                .Append(Html(label))
+                .Append("</td><td align=\"right\" bgcolor=\"#ffffff\" class=\"email-card email-value\" style=\"width:56%;padding:15px 14px;color:#111111 !important;background-color:#ffffff !important;font-size:15px;line-height:1.45;font-weight:500;")
+                .Append(valueBorder)
+                .Append("\">");
+            AppendEmailValue(body, label, value!.Trim());
+            body.AppendLine("</td></tr>");
+        }
+
+        body.AppendLine("</table>");
+        body.AppendLine("</td></tr>");
+        body.AppendLine("</table>");
+    }
+
+    private static void AppendEmailValue(StringBuilder body, string label, string value)
+    {
+        if (string.Equals(label, "Email Address", StringComparison.OrdinalIgnoreCase))
+        {
+            body.Append("<a href=\"mailto:")
+                .Append(Html(value))
+                .Append("\" style=\"color:#111111 !important;text-decoration:none;\">")
+                .Append(Html(value))
+                .Append("</a>");
+            return;
+        }
+
+        body.Append(Html(value));
+    }
+
+    private static void AppendLegalSynqEmailBrand(StringBuilder body)
+    {
+        body.Append("<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" aria-label=\"LegalSynq\" style=\"border-collapse:collapse;\"><tr><td width=\"36\" style=\"width:36px;padding:0 6px 0 0;vertical-align:middle;\"><img src=\"cid:")
+            .Append(LegalSynqBrandIconContentId)
+            .AppendLine("\" width=\"36\" height=\"36\" alt=\"\" role=\"presentation\" style=\"display:block;width:36px;height:36px;border:0;outline:none;text-decoration:none;\"></td><td style=\"padding:0;vertical-align:middle;white-space:nowrap;\"><span style=\"color:#ffffff !important;-webkit-text-fill-color:#ffffff;font-size:22px;line-height:1;font-weight:700;letter-spacing:0;\">Legal</span><span style=\"color:#f26a2e !important;-webkit-text-fill-color:#f26a2e;font-size:22px;line-height:1;font-weight:700;letter-spacing:0;\">Synq</span></td></tr></table>");
+    }
+
+    private static void AppendEmailSectionHeading(StringBuilder body, string title)
+    {
+        body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"padding:0 0 13px 0;background-color:#ffffff !important;\"><img src=\"cid:")
+            .Append(EmailSectionIconContentId(title))
+            .Append("\" width=\"22\" height=\"22\" alt=\"\" role=\"presentation\" style=\"display:inline-block;width:22px;height:22px;border:0;outline:none;text-decoration:none;vertical-align:middle;\"><span style=\"display:inline-block;margin-left:8px;color:#111111 !important;-webkit-text-fill-color:#111111;font-size:16px;font-weight:600;line-height:22px;letter-spacing:0;vertical-align:middle;\">")
+            .Append(Html(title))
+            .AppendLine("</span></td></tr>");
+    }
+
+    private static string EmailSectionIconContentId(string title)
+        => title switch
+        {
+            "Seller Information" => SellerInformationIconContentId,
+            "Asset Overview" => AssetOverviewIconContentId,
+            "Supporting Documents" => SupportingDocumentsIconContentId,
+            _ => AssetOverviewIconContentId,
+        };
+
+    private static void AppendDocumentsSection(
+        StringBuilder body,
+        IReadOnlyList<string> documentNames)
+    {
+        body.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card\" style=\"width:100%;border-collapse:collapse;margin:0 0 24px 0;background-color:#ffffff !important;\">");
+        AppendEmailSectionHeading(body, "Supporting Documents");
+        body.AppendLine("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"padding:0;background-color:#ffffff !important;\">");
+        body.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card email-rule\" style=\"width:100%;border-collapse:separate;border-spacing:0;background-color:#ffffff !important;\">");
+
+        for (var i = 0; i < documentNames.Count; i++)
+        {
+            var isFirstRow = i == 0;
+            var isLastRow = i == documentNames.Count - 1;
+            var iconBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: true, rightEdge: false);
+            var valueBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: false, rightEdge: true);
+            body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"width:32px;padding:15px 0 15px 14px;background-color:#ffffff !important;")
+                .Append(iconBorder)
+                .Append("\"><span style=\"display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;border-radius:5px;background-color:#f26a2e !important;color:#ffffff !important;font-size:12px;font-weight:700;\">&#10003;</span></td><td align=\"right\" bgcolor=\"#ffffff\" class=\"email-card email-value\" style=\"padding:15px 14px 15px 8px;color:#111111 !important;background-color:#ffffff !important;font-size:15px;line-height:1.45;font-weight:500;")
+                .Append(valueBorder)
+                .Append("\">")
+                .Append(Html(documentNames[i]))
+                .AppendLine("</td></tr>");
+        }
+
+        body.AppendLine("</table>");
+        body.AppendLine("</td></tr>");
+        body.AppendLine("</table>");
+    }
+
+    private static string EmailTableCellBorder(bool isFirstRow, bool isLastRow, bool leftEdge, bool rightEdge)
+    {
+        var border = new StringBuilder();
+
+        if (isFirstRow)
+            border.Append("border-top:1px solid #e5e5e5;");
+
+        border.Append("border-bottom:1px solid #e5e5e5;");
+
+        if (leftEdge)
+        {
+            border.Append("border-left:1px solid #e5e5e5;");
+            if (isFirstRow)
+                border.Append("border-top-left-radius:10px;");
+            if (isLastRow)
+                border.Append("border-bottom-left-radius:10px;");
+        }
+
+        if (rightEdge)
+        {
+            border.Append("border-right:1px solid #e5e5e5;");
+            if (isFirstRow)
+                border.Append("border-top-right-radius:10px;");
+            if (isLastRow)
+                border.Append("border-bottom-right-radius:10px;");
+        }
+
+        return border.ToString();
+    }
+
+    private static IReadOnlyList<NotificationEmailInlineAttachment> BuildConfirmSaleInlineAttachments()
+        =>
+        [
+            new(
+                LegalSynqBrandIconContentId,
+                "legalsynq-brand-icon.png",
+                "image/png",
+                LegalSynqBrandIconPngBase64),
+            new(
+                SellerInformationIconContentId,
+                "seller-information-icon.png",
+                "image/png",
+                SellerInformationIconPngBase64),
+            new(
+                AssetOverviewIconContentId,
+                "asset-overview-icon.png",
+                "image/png",
+                AssetOverviewIconPngBase64),
+            new(
+                SupportingDocumentsIconContentId,
+                "supporting-documents-icon.png",
+                "image/png",
+                SupportingDocumentsIconPngBase64),
+        ];
+
+    private static string BuildConfirmSaleTextBody(
+        string buyerPortalUrl,
+        string sellerCompany,
+        string sellerEmail,
+        IReadOnlyList<(string Label, string? Value)> sellerRows,
+        IReadOnlyList<(string Label, string? Value)> assetRows,
+        IReadOnlyList<string> documentNames)
+    {
+        var body = new StringBuilder();
+        body.AppendLine("LegalSynq");
+        body.AppendLine("Awaiting Your Response");
+        body.AppendLine();
+        body.AppendLine("New Lien Offer");
+        body.AppendLine("A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.");
+        body.AppendLine();
+        AppendTextSection(body, "Seller Information", sellerRows);
+        AppendTextSection(body, "Asset Overview", assetRows);
+
+        if (documentNames.Count > 0)
+        {
+            body.AppendLine("Supporting Documents");
+            foreach (var documentName in documentNames)
+                body.Append("- ").AppendLine(documentName);
+            body.AppendLine();
+        }
+
+        body.Append("View Lien for Sale: ").AppendLine(buyerPortalUrl);
+        body.AppendLine("This Link Expires in 30 Days");
+        body.Append("This offer was sent on behalf of the ")
+            .Append(sellerCompany)
+            .Append(". Please reply directly to ")
+            .Append(sellerEmail)
+            .AppendLine(" for any questions.");
+
+        return body.ToString();
+    }
+
+    private static void AppendTextSection(
+        StringBuilder body,
+        string title,
+        IReadOnlyList<(string Label, string? Value)> rows)
+    {
+        body.AppendLine(title);
+        foreach (var (label, value) in rows)
         {
             if (string.IsNullOrWhiteSpace(value))
                 continue;
 
-            body.Append("<dt>")
-                .Append(Html(label))
-                .Append("</dt><dd>")
-                .Append(Html(value.Trim()))
-                .AppendLine("</dd>");
+            body.Append(label).Append(": ").AppendLine(value.Trim());
         }
-        body.AppendLine("</dl>");
+        body.AppendLine();
     }
 
     private async Task<string?> ResolveHandlingLawFirmAsync(
@@ -1378,8 +1646,10 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
     private sealed record ConfirmSaleEmail(
         string Subject,
-        string Body,
-        Dictionary<string, string> TemplateData);
+        string HtmlBody,
+        string TextBody,
+        Dictionary<string, string> TemplateData,
+        IReadOnlyList<NotificationEmailInlineAttachment> InlineAttachments);
 
     private static void ValidateCreateRequest(CreateSellingPortfolioRequest request)
     {

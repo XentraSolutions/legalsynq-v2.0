@@ -930,6 +930,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.SellingLienSubmitted);
         email.Subject.Should().Be("New Lien Offer");
         email.RecipientEmail.Should().Be("buyer.reviewer@capital.test");
+        email.Body.Should().Contain("LegalSynq");
         email.Body.Should().Contain("Awaiting Your Response");
         email.Body.Should().Contain("A medical lien has been submitted to your company for review and potential purchase.");
         email.Body.Should().Contain("View Lien for Sale");
@@ -937,9 +938,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.Body.Should().Contain("$3,875.00");
         email.Body.Should().Contain("06/01/2026");
         email.Body.Should().Contain("Seller Operator");
-        email.Body.Should().Contain("Smith &amp; Associates LLP");
+        email.Body.Should().Contain("Smith & Associates LLP");
         email.Body.Should().Contain("Case Manager");
         email.Body.Should().Contain("signed-lien-real.pdf");
+        email.Body.Should().NotContain("<!doctype html>");
+        email.Body.Should().NotContain("<html");
+        email.Body.Should().NotContain("<body");
         email.Body.Should().NotContain("John Doe");
         email.Body.Should().NotContain("Velantrix");
         email.Body.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
@@ -949,6 +953,189 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.Options.Should().NotBeNull();
         email.Options!.IdempotencyKey.Should().Contain("confirm-sale-success");
         email.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
+        email.Options.TextBody.Should().Be(email.Body);
+        email.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
+        email.Options.DisableClickTracking.Should().BeTrue();
+
+        var html = email.Options.HtmlBody!;
+        html.Should().StartWith("<!doctype html>");
+        html.Should().Contain("color-scheme\" content=\"light only\"");
+        html.Should().Contain("background-color:#071b31 !important");
+        html.Should().Contain("background-color:#ffffff !important");
+        html.Should().Contain("bgcolor=\"#ffffff\"");
+        html.Should().Contain("border-collapse:separate;border-spacing:0;background-color:#ffffff !important;");
+        html.Should().Contain("border-top:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;border-left:1px solid #e5e5e5;border-top-left-radius:10px;");
+        html.Should().Contain("border-top:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;border-right:1px solid #e5e5e5;border-top-right-radius:10px;");
+        html.Should().Contain("border-bottom:1px solid #e5e5e5;border-left:1px solid #e5e5e5;border-bottom-left-radius:10px;");
+        html.Should().Contain("border-bottom:1px solid #e5e5e5;border-right:1px solid #e5e5e5;border-bottom-right-radius:10px;");
+        html.Should().NotContain("border:1px solid #e5e5e5;border-radius:10px;");
+        html.Should().Contain("src=\"cid:legalsynq-brand-icon\"");
+        html.Should().Contain("width:36px;padding:0 6px 0 0;vertical-align:middle;");
+        html.Should().Contain("-webkit-text-fill-color:#ffffff;font-size:22px;line-height:1;font-weight:700;letter-spacing:0;\">Legal</span>");
+        html.Should().Contain("-webkit-text-fill-color:#f26a2e;font-size:22px;line-height:1;font-weight:700;letter-spacing:0;\">Synq</span>");
+        html.Should().Contain("src=\"cid:seller-information-icon\"");
+        html.Should().Contain("src=\"cid:asset-overview-icon\"");
+        html.Should().Contain("src=\"cid:supporting-documents-icon\"");
+        html.Should().NotContain("<svg");
+        html.Should().NotContain("class=\"email-brand-mark\"");
+        html.Should().NotContain("&#10010;");
+        html.Should().NotContain("&#9635;");
+        html.Should().NotContain("&#9633;");
+        html.Should().Contain("Awaiting Your Response");
+        html.Should().Contain("View Lien for Sale");
+        html.Should().Contain("This Link Expires in 30 Days");
+        html.Should().Contain("$3,875.00");
+        html.Should().Contain("06/01/2026");
+        html.Should().Contain("Seller Operator");
+        html.Should().Contain("Smith &amp; Associates LLP");
+        html.Should().Contain("Case Manager");
+        html.Should().Contain("signed-lien-real.pdf");
+        html.Should().Contain("href=\"mailto:seller.operations@smithlaw.test\" style=\"color:#111111 !important;text-decoration:none;\"");
+        html.Should().Contain("href=\"mailto:seller.operations@smithlaw.test\" style=\"color:#f26a2e !important;text-decoration:underline;\"");
+        html.Should().Contain("href=\"https://app.legalsynq.test/selling/public/");
+        html.Should().NotContain("John Doe");
+        html.Should().NotContain("Velantrix");
+        html.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        html.Should().NotContain("example.com");
+
+        email.Options.InlineAttachments.Should().NotBeNull();
+        email.Options.InlineAttachments!.Should().HaveCount(4);
+        email.Options.InlineAttachments.Should().Contain(attachment =>
+            attachment.ContentId == "legalsynq-brand-icon" &&
+            attachment.FileName == "legalsynq-brand-icon.png" &&
+            attachment.ContentType == "image/png" &&
+            !string.IsNullOrWhiteSpace(attachment.Base64Content));
+        email.Options.InlineAttachments.Should().Contain(attachment =>
+            attachment.ContentId == "seller-information-icon" &&
+            attachment.ContentType == "image/png" &&
+            !string.IsNullOrWhiteSpace(attachment.Base64Content));
+        email.Options.InlineAttachments.Should().Contain(attachment =>
+            attachment.ContentId == "asset-overview-icon" &&
+            attachment.ContentType == "image/png" &&
+            !string.IsNullOrWhiteSpace(attachment.Base64Content));
+        email.Options.InlineAttachments.Should().Contain(attachment =>
+            attachment.ContentId == "supporting-documents-icon" &&
+            attachment.ContentType == "image/png" &&
+            !string.IsNullOrWhiteSpace(attachment.Base64Content));
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_renders_figma_temporary_portal_with_real_data()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var caseManagerId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            dateOfIncident: new DateOnly(2026, 3, 12),
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            endServiceDate: new DateOnly(2026, 6, 30),
+            caseNotes: $"caseManagerId={caseManagerId}",
+            lienNotes: "Medical provider lien filed after treatment and pending review.",
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.portal@smithlaw.test",
+            buyerEmail: "buyer.portal@capital.test",
+            caseManagerId: caseManagerId,
+            documentFileName: "signed-lien-real.pdf");
+
+        var confirmResponse = await PostConfirmSaleAsync(lienId, "confirm-sale-public-portal");
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await confirmResponse.Content.ReadAsStringAsync()}");
+
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        var token = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
+
+        using var anonClient = _factory.CreateClient();
+        var response = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        response.Content.Headers.ContentType!.MediaType.Should().Be("text/html");
+
+        var html = await response.Content.ReadAsStringAsync();
+        html.Should().Contain("Manage Offered Liens");
+        html.Should().Contain("Activate Free Account");
+        html.Should().Contain("Your Response");
+        html.Should().Contain("Accept Lien");
+        html.Should().Contain("Decline Lien");
+        html.Should().Contain("Lien Summary");
+        html.Should().Contain("Awaiting Your Response");
+        html.Should().Contain("Seller Information");
+        html.Should().Contain("Lien Information");
+        html.Should().Contain("Funding Company &amp; Case Information");
+        html.Should().Contain("Documents (1)");
+        html.Should().Contain("Messages");
+        html.Should().Contain("Accessible only with the secure link from the email. The link will expire 30 days from the date it was sent.");
+        html.Should().Contain("Seller Operator");
+        html.Should().Contain("Smith &amp; Associates LLP");
+        html.Should().Contain("Capital Fund LLC");
+        html.Should().Contain("Case Manager");
+        html.Should().Contain("seller.portal@smithlaw.test");
+        html.Should().Contain("Private");
+        html.Should().Contain("06/01/2026");
+        html.Should().Contain("06/30/2026");
+        html.Should().Contain("Medical provider lien filed after treatment and pending review.");
+        html.Should().Contain("signed-lien-real.pdf");
+        html.Should().Contain("Lien Document");
+        html.Should().Contain("PDF");
+        html.Should().NotContain("John Doe");
+        html.Should().NotContain("Velantrix");
+        html.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        html.Should().NotContain("ApexIndustries");
+        html.Should().NotContain("example.com");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.SellingBuyerAccessLinks.Single(link => link.Token == token)
+            .LastAccessedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_without_documents_uses_empty_state_without_sample_files()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.no-docs@smithlaw.test",
+            buyerEmail: "buyer.no-docs@capital.test");
+
+        var confirmResponse = await PostConfirmSaleAsync(lienId, "confirm-sale-public-no-docs");
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        var token = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
+
+        using var anonClient = _factory.CreateClient();
+        var response = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var html = await response.Content.ReadAsStringAsync();
+        html.Should().Contain("No supporting documents are available for this lien.");
+        html.Should().NotContain("Documents (");
+        html.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        html.Should().NotContain("ApexIndustries");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_rejects_unknown_token_without_authentication()
+    {
+        using var anonClient = _factory.CreateClient();
+        var response = await anonClient.GetAsync("/api/liens/selling/public/not-a-real-token");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var html = await response.Content.ReadAsStringAsync();
+        html.Should().Contain("Lien offer link unavailable");
+        html.Should().NotContain("example.com");
     }
 
     [Fact]
@@ -1165,6 +1352,15 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         }
         else
         {
+            foreach (var contact in db.Contacts.Where(c =>
+                         c.TenantId == SeedHelper.TenantId &&
+                         c.OrgId == SeedHelper.OrgId &&
+                         c.Email != null &&
+                         c.IsActive))
+            {
+                contact.Deactivate(SeedHelper.UserId);
+            }
+
             db.Contacts.Add(Contact.Create(
                 SeedHelper.TenantId,
                 SeedHelper.OrgId,
@@ -1251,6 +1447,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         DateOnly? initialServiceDate = null,
         DateOnly? endServiceDate = null,
         string? caseNotes = null,
+        string? lienNotes = null,
         string? status = null,
         decimal originalAmount = 12345m)
     {
@@ -1284,7 +1481,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             externalReference: lienExternalId,
             caseId: caseId,
             initialServiceDate: initialServiceDate,
-            endServiceDate: endServiceDate);
+            endServiceDate: endServiceDate,
+            notes: lienNotes);
 
         if (status == LienStatus.Sold)
         {
@@ -1350,5 +1548,11 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var prop = typeof(T).GetProperty(propertyName,
             System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
         prop?.SetValue(entity, value);
+    }
+
+    private static string ExtractBuyerAccessToken(string buyerPortalUrl)
+    {
+        var uri = new Uri(buyerPortalUrl, UriKind.Absolute);
+        return Uri.UnescapeDataString(uri.Segments.Last().Trim('/'));
     }
 }
