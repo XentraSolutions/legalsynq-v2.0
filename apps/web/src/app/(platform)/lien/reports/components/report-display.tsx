@@ -36,6 +36,7 @@ export default function ReportDisplay({
   onEdit,
   onSaved,
 }: ReportDisplayProps) {
+  console.log(report);
   const [loading, setLoading] = useState(true);
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [columns, setColumns] = useState<any>();
@@ -283,15 +284,6 @@ export default function ReportDisplay({
             {viewBy === "case" ? "Cases Report" : "Liens Report"}
           </p>
         </div>
-
-        <div className="flex gap-2">
-          <button
-            className="px-3 py-2 bg-primary text-white rounded-lg text-sm hover:shadow-sm"
-            onClick={onEdit}
-          >
-            Edit Template
-          </button>
-        </div>
       </div>
 
       {/* METRICS GRID */}
@@ -308,7 +300,7 @@ export default function ReportDisplay({
       </div>
 
       {/* TABLE PLACEHOLDER */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-scroll h-full max-h-[60vh]">
         {loading ? (
           <div className="py-12 text-center">
             <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -370,24 +362,10 @@ export default function ReportDisplay({
           {/* RIGHT */}
           <div className="flex flex-wrap gap-2 sm:gap-2 sm:flex-row sm:items-center sm:justify-end">
             <button
-              onClick={() => setConfirmAction(true)}
-              className="px-3 py-2 border border-gray-200 text-red-500 rounded-lg text-sm hover:shadow-sm"
-            >
-              Delete Template
-            </button>
-
-            <button
               onClick={onExport}
               className="px-3 py-2 border border-gray-200 text-blue-500 rounded-lg text-sm hover:shadow-sm"
             >
               Export CSV
-            </button>
-
-            <button
-              onClick={onSave}
-              className="px-3 py-2 bg-primary text-white rounded-lg text-sm hover:shadow-sm"
-            >
-              Save Template
             </button>
           </div>
         </div>

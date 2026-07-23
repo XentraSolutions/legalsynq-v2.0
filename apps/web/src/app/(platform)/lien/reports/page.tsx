@@ -72,15 +72,6 @@ export default function ReportsPage() {
           <PageHeader
             title="Reports"
             subtitle={`${reports?.length} saved reports`}
-            actions={
-              <button
-                onClick={() => setShowCreate({ isOpen: true, mode: "create" })}
-                className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
-              >
-                <i className="ri-add-line text-base" />
-                Create New Report
-              </button>
-            }
           />
 
           {/* LIST */}

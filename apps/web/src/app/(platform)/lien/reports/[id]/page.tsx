@@ -36,6 +36,7 @@ export default function ReportDetailsPage() {
   const [template, setTemplate] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
+  console.log(id);
   const fetchReport = useCallback(async () => {
     setLoading(true);
     try {
@@ -44,6 +45,8 @@ export default function ReportDetailsPage() {
       );
       const generatedTemplate =
         await lienReportsService.generateTemplate(result);
+
+      console.log(result, generatedTemplate);
       setReport(result);
       setTemplate(generatedTemplate);
     } catch (err) {
