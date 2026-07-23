@@ -205,13 +205,15 @@ export function LoginScreen() {
               />
             )}
           />
+          {/* 
+          // ENABLE THIS WHEN FORGOT PASSWORD IS IMPLEMENTED
           <Pressable
             accessibilityRole="button"
             className="mt-2 items-end"
             onPress={() => navigation.navigate('ForgotPassword')}
           >
             <Text className={cx(FIGMA_TEXT.rowValue, 'text-[#f97332]')}>Forgot Password?</Text>
-          </Pressable>
+          </Pressable> */}
           <Button
             className="mt-6"
             label="Sign In"
@@ -219,17 +221,21 @@ export function LoginScreen() {
             onPress={handleSubmit(submit)}
           />
 
+          {/* 
+          // ENABLE THIS WHEN WE HAVE BIOMETRICS WORKING
           {biometricsAvailable ? (
             <>
               <Divider label="or continue with" />
               <Button label="Face ID / Touch ID" variant="ghost" />
             </>
-          ) : null}
+          ) : null} */}
+          {/* 
+          // ENABLE THIS WHEN WE HAVE A WAY TO CONTACT THE ADMIN
           <Text
             className={cx(FIGMA_TEXT.body, 'mt-8 text-center text-[#6f737d] dark:text-[#a1a1aa]')}
           >
             Do not have an account? <Text className="text-[#f97332]">Contact your admin</Text>
-          </Text>
+          </Text> */}
         </>
       )}
     </View>
