@@ -636,6 +636,7 @@ export interface CaseTrackingNote {
   isDeleted: "Y" | "N";
   /** ISO UTC instant — normalized by the service from the API's raw "MM/DD/YYYY hh:mm AM/PM" string. */
   created: string;
+  createdAtUtc: string;
   createdBy: string;
   userId: string;
   canDelete: boolean;

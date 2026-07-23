@@ -315,7 +315,7 @@ export const casesService = {
       throw new Error(res.data.message || "Failed to load notes");
     return (res.data.data ?? []).map((note) => ({
       ...note,
-      created: note.created,
+      created: toIsoUtc(note.createdAtUtc),
     }));
   },
 
