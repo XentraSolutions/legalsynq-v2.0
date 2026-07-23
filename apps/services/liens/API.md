@@ -322,8 +322,8 @@ such as `localhost` or `127.0.0.1` are rejected because the email CTA must work 
 LegalSynq mark and section icons are sent as inline CID image attachments; no remote placeholder assets are required.
 For a CTA hosted by the tenant portal, use
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
-`https://<portal-host>/selling/public` behind a real portal domain; that public browser route forwards to the Liens
-gateway without requiring a `platform_session` cookie. The confirm-sale email disables SendGrid click tracking for this
+`https://<portal-host>/selling/public` behind a real portal domain; that public browser route renders in `apps/web`,
+fetches the Liens JSON endpoint through the gateway, and does not require a `platform_session` cookie. The confirm-sale email disables SendGrid click tracking for this
 CTA so the recipient receives the real LegalSynq portal URL instead of a provider tracking URL.
 
 Local SynqLien demo portal example:
@@ -368,17 +368,64 @@ If notification submission fails after the lien is confirmed, the lien transitio
 
 ### GET `/api/liens/selling/public/{token}`
 
-Renders the temporary funding-company portal opened from the `New Lien Offer` email CTA. This endpoint is anonymous; the
-opaque token controls tenant, lien, buyer contact, expiry, and revocation.
+Returns the temporary funding-company portal data opened from the `New Lien Offer` email CTA. This endpoint is
+anonymous; the opaque token controls tenant, lien, buyer contact, expiry, and revocation. It does not render HTML. The
+tenant portal route `/selling/public/{token}` fetches this JSON through the gateway and owns the Figma UI rendering.
 
 **Authentication:** None.
 
-**Response:** `200 OK`, `text/html`
+**Response:** `200 OK`, `application/json`
 
-The HTML page follows the Figma temporary portal frame and is populated only from persisted lien, case, contact, buyer,
-seller, and servicing document metadata. It displays the response card, lien summary, document list or real empty state,
-messages area, and 30-day secure-link expiry copy. It never inserts sample company names, sample people, sample files,
-`example.com`, or caller-provided CTA data.
+The JSON payload is populated only from persisted lien, case, contact, buyer, seller, access-link, and servicing
+document metadata. It includes seller, buyer/funding company, lien summary, case, access-link expiry, and real
+supporting-document fields. It never inserts sample company names, sample people, sample files, `example.com`, or
+caller-provided CTA data.
+
+```json
+{
+  "accessLink": {
+    "createdAtUtc": "2026-07-23T13:59:57.67655Z",
+    "expiresAtUtc": "2026-08-22T13:59:57.67655Z",
+    "lastAccessedAtUtc": "2026-07-23T14:01:00Z",
+    "notificationSubmittedAtUtc": "2026-07-23T13:59:58Z"
+  },
+  "lien": {
+    "id": "guid",
+    "lienCode": "LIEN-001",
+    "status": "Offered",
+    "sellerStatus": "SubmittedForSale",
+    "submittedAtUtc": "2026-07-23T13:59:57.67655Z",
+    "listingVisibility": "Private",
+    "initialServiceDate": "2026-01-12",
+    "endServiceDate": "2026-02-14",
+    "originalAmount": 24850.00,
+    "askAmount": 21000.00,
+    "offerPrice": 21000.00,
+    "notes": "Persisted lien notes"
+  },
+  "seller": {
+    "name": "Seller display name",
+    "company": "Seller company",
+    "email": "seller@company.test"
+  },
+  "buyer": {
+    "contactName": "Buyer contact",
+    "company": "Funding company",
+    "email": "buyer@company.test"
+  },
+  "case": {
+    "handlingLawFirm": "Handling law firm",
+    "caseManager": "Case manager"
+  },
+  "documents": [
+    {
+      "fileName": "real-document.pdf",
+      "category": "Lien Document",
+      "sizeOrType": "PDF"
+    }
+  ]
+}
+```
 
 **Errors:**
 

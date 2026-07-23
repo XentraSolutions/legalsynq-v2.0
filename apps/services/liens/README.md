@@ -65,13 +65,14 @@ such as `localhost` and `127.0.0.1` are rejected because outbound email recipien
 `.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. If it contains `{token}` the
 token is substituted, otherwise the token is appended as the final path segment.
 
-The built-in temporary buyer portal is `GET /api/liens/selling/public/{token}`. It is anonymous, token-scoped, expires
-with the generated access link, and renders the funding-company review page from persisted lien, case, contact, and
-servicing document metadata only.
+The temporary buyer portal data endpoint is `GET /api/liens/selling/public/{token}`. It is anonymous, token-scoped,
+expires with the generated access link, and returns JSON from persisted lien, case, contact, access-link, and servicing
+document metadata only. It does not render HTML; the tenant portal route `/selling/public/{token}` in `apps/web` fetches
+this JSON through the gateway and renders the funding-company review page.
 When sending links through the tenant portal host, configure
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
-`https://<portal-host>/selling/public` behind a real portal domain, so the public web route forwards to the Liens
-gateway without requiring a `platform_session` cookie. The confirm-sale email disables SendGrid click tracking for this
+`https://<portal-host>/selling/public` behind a real portal domain, so the public web route can render without a
+`platform_session` cookie while fetching Liens data through the gateway. The confirm-sale email disables SendGrid click tracking for this
 CTA so recipients see and open the LegalSynq portal URL directly.
 
 Local SynqLien demo portal example:
