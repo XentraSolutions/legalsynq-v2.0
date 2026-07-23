@@ -141,19 +141,12 @@ export default function ReportDisplay({
       format: "csv",
     });
 
-    const csv = atob(response.data.toString());
-
-    const now = new Date();
-    const date = now.toISOString().split("T")[0]; // YYYY-MM-DD
-    const time = now.toTimeString().split(" ")[0].replace(/:/g, "-"); // HH-MM-SS
-    const filename = `reports_${date}_${time}.csv`;
-
-    // Create a Blob and trigger download
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
+    link.href = src;
+    link.download = response.data[0]?.filename;
     link.click();
+    link.remove();
   };
 
   const handleConfirmAction = () => {
