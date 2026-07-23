@@ -310,7 +310,6 @@ export const casesService = {
   },
 
   async getCaseNotes(caseId: string): Promise<CaseTrackingNote[]> {
-    const { data } = await casesApi.getCaseNotes(caseId);
     const res = await casesApi.getCaseNotes(caseId);
     if (!res.data.isSuccess)
       throw new Error(res.data.message || "Failed to load notes");
