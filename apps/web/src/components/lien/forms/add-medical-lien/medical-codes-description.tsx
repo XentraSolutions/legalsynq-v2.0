@@ -179,7 +179,11 @@ export default function MedicalCodesDescription(
       const response = await createMedicalCodeLiens(
         {
           ...form,
-          id: editingId ?? form.id,
+          id: form.id,
+          code: form.procedureCode,
+          description: selectedOption?.label ?? "",
+          medicareCost: parseNumber(form.medicareCost),
+          billingAmount: parseNumber(currentBilling),
           purchaseAmount: getCurrentValue(),
         },
         editingId != "",
@@ -460,7 +464,7 @@ export default function MedicalCodesDescription(
                   <tr key={row.id}>
                     <td className="px-4 py-3 text-sm text-gray-700">
                       <div className="font-medium">{row.code}</div>
-                      <div className="text-gray-500 text-xs truncate">
+                      <div className="text-gray-500 text-xs truncate max-w-90 block">
                         {row.description}
                       </div>
                     </td>
