@@ -673,7 +673,7 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}",
-            "description": "GET /api/liens/selling/public/{token}. No JWT; token controls tenant, lien, buyer, expiry, and visibility."
+            "description": "GET /api/liens/selling/public/{token}. No JWT; token controls tenant, lien, buyer, expiry, and visibility. Returns JSON data for apps/web to render /selling/public/{token}; this endpoint does not render HTML."
           }
         },
         {

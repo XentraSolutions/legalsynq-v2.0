@@ -959,6 +959,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         var html = email.Options.HtmlBody!;
         html.Should().StartWith("<!doctype html>");
+        html.Should().Contain("Plus Jakarta Sans");
         html.Should().Contain("color-scheme\" content=\"light only\"");
         html.Should().Contain("background-color:#071b31 !important");
         html.Should().Contain("background-color:#ffffff !important");
@@ -1020,7 +1021,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task PublicBuyerPortal_renders_figma_temporary_portal_with_real_data()
+    public async Task PublicBuyerPortal_returns_temporary_portal_json_with_real_data()
     {
         var buyerContactId = Guid.CreateVersion7();
         var caseManagerId = Guid.CreateVersion7();
@@ -1055,39 +1056,40 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await response.Content.ReadAsStringAsync()}");
-        response.Content.Headers.ContentType!.MediaType.Should().Be("text/html");
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
 
-        var html = await response.Content.ReadAsStringAsync();
-        html.Should().Contain("Manage Offered Liens");
-        html.Should().Contain("Activate Free Account");
-        html.Should().Contain("Your Response");
-        html.Should().Contain("Accept Lien");
-        html.Should().Contain("Decline Lien");
-        html.Should().Contain("Lien Summary");
-        html.Should().Contain("Awaiting Your Response");
-        html.Should().Contain("Seller Information");
-        html.Should().Contain("Lien Information");
-        html.Should().Contain("Funding Company &amp; Case Information");
-        html.Should().Contain("Documents (1)");
-        html.Should().Contain("Messages");
-        html.Should().Contain("Accessible only with the secure link from the email. The link will expire 30 days from the date it was sent.");
-        html.Should().Contain("Seller Operator");
-        html.Should().Contain("Smith &amp; Associates LLP");
-        html.Should().Contain("Capital Fund LLC");
-        html.Should().Contain("Case Manager");
-        html.Should().Contain("seller.portal@smithlaw.test");
-        html.Should().Contain("Private");
-        html.Should().Contain("06/01/2026");
-        html.Should().Contain("06/30/2026");
-        html.Should().Contain("Medical provider lien filed after treatment and pending review.");
-        html.Should().Contain("signed-lien-real.pdf");
-        html.Should().Contain("Lien Document");
-        html.Should().Contain("PDF");
-        html.Should().NotContain("John Doe");
-        html.Should().NotContain("Velantrix");
-        html.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
-        html.Should().NotContain("ApexIndustries");
-        html.Should().NotContain("example.com");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var serialized = json.GetRawText();
+        json.GetProperty("lien").GetProperty("lienCode").GetString().Should().StartWith("LIEN-");
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Offered);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.SubmittedForSale);
+        json.GetProperty("lien").GetProperty("listingVisibility").GetString().Should().Be(SellingListingVisibility.Private);
+        json.GetProperty("lien").GetProperty("initialServiceDate").GetString().Should().Be("2026-06-01");
+        json.GetProperty("lien").GetProperty("endServiceDate").GetString().Should().Be("2026-06-30");
+        json.GetProperty("lien").GetProperty("notes").GetString().Should().Be("Medical provider lien filed after treatment and pending review.");
+        json.GetProperty("seller").GetProperty("name").GetString().Should().Be("Seller Operator");
+        json.GetProperty("seller").GetProperty("company").GetString().Should().Be("Smith & Associates LLP");
+        json.GetProperty("seller").GetProperty("email").GetString().Should().Be("seller.portal@smithlaw.test");
+        json.GetProperty("buyer").GetProperty("company").GetString().Should().Be("Capital Fund LLC");
+        json.GetProperty("case").GetProperty("caseManager").GetString().Should().Be("Case Manager");
+        json.GetProperty("case").GetProperty("handlingLawFirm").GetString().Should().Be("Smith & Associates LLP");
+        json.GetProperty("accessLink").GetProperty("expiresAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+
+        var documents = json.GetProperty("documents").EnumerateArray().ToList();
+        documents.Should().ContainSingle();
+        documents[0].GetProperty("fileName").GetString().Should().Be("signed-lien-real.pdf");
+        documents[0].GetProperty("category").GetString().Should().Be("Lien Document");
+        documents[0].GetProperty("sizeOrType").GetString().Should().Be("PDF");
+
+        serialized.Should().NotContain("<!doctype html>");
+        serialized.Should().NotContain("<html");
+        serialized.Should().NotContain("John Doe");
+        serialized.Should().NotContain("Velantrix");
+        serialized.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        serialized.Should().NotContain("ApexIndustries");
+        serialized.Should().NotContain("example.com");
+        serialized.Should().NotContain("class=\"safari\"");
+        serialized.Should().NotContain("toolbar-icons");
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -1119,11 +1121,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var response = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var html = await response.Content.ReadAsStringAsync();
-        html.Should().Contain("No supporting documents are available for this lien.");
-        html.Should().NotContain("Documents (");
-        html.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
-        html.Should().NotContain("ApexIndustries");
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("documents").EnumerateArray().Should().BeEmpty();
+        var serialized = json.GetRawText();
+        serialized.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        serialized.Should().NotContain("ApexIndustries");
     }
 
     [Fact]
@@ -1133,9 +1136,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var response = await anonClient.GetAsync("/api/liens/selling/public/not-a-real-token");
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        var html = await response.Content.ReadAsStringAsync();
-        html.Should().Contain("Lien offer link unavailable");
-        html.Should().NotContain("example.com");
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("not-found");
+        json.GetProperty("error").GetProperty("title").GetString().Should().Be("Lien offer link unavailable");
+        json.GetProperty("error").GetProperty("message").GetString().Should().Be("The secure link could not be found.");
+        json.GetRawText().Should().NotContain("example.com");
     }
 
     [Fact]

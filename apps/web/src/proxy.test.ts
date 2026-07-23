@@ -13,7 +13,7 @@ describe("proxy", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("allows SynqLien public buyer offer links without a platform session", () => {
+  it("allows SynqLien public buyer offer JSON paths without a platform session", () => {
     const response = proxy(
       request("/api/lien/api/liens/selling/public/test-token"),
     );

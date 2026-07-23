@@ -1165,15 +1165,17 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         htmlBody.AppendLine("<meta name=\"color-scheme\" content=\"light only\"><meta name=\"supported-color-schemes\" content=\"light only\">");
         htmlBody.AppendLine("<title>New Lien Offer</title>");
         htmlBody.AppendLine("<style>");
+        htmlBody.AppendLine("@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');");
         htmlBody.AppendLine(":root{color-scheme:light only;supported-color-schemes:light only;}");
         htmlBody.AppendLine("body,table,td,p,a,span{color-scheme:light only;supported-color-schemes:light only;}");
+        htmlBody.AppendLine("body,table,td,p,a,span,h1,h2,strong{font-family:'Plus Jakarta Sans',Arial,'Helvetica Neue',Helvetica,sans-serif !important;}");
         htmlBody.AppendLine(".email-bg{background-color:#f4f5f7 !important;}.email-shell{background-color:#ffffff !important;}.email-card{background-color:#ffffff !important;color:#111827 !important;}");
         htmlBody.AppendLine(".email-label{color:#6f6f6f !important;}.email-value{color:#111111 !important;}.email-rule{border-color:#e5e5e5 !important;}");
         htmlBody.AppendLine("@media (prefers-color-scheme: dark){.email-bg{background-color:#f4f5f7 !important;}.email-shell,.email-card{background-color:#ffffff !important;color:#111827 !important;}.email-label{color:#6f6f6f !important;}.email-value{color:#111111 !important;}.email-rule{border-color:#e5e5e5 !important;}}");
         htmlBody.AppendLine("[data-ogsc] .email-bg{background-color:#f4f5f7 !important;}[data-ogsc] .email-shell,[data-ogsc] .email-card{background-color:#ffffff !important;color:#111827 !important;}");
         htmlBody.AppendLine("</style>");
         htmlBody.AppendLine("</head>");
-        htmlBody.AppendLine("<body class=\"email-bg\" bgcolor=\"#f4f5f7\" style=\"margin:0;padding:0;background-color:#f4f5f7 !important;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;color:#111827 !important;color-scheme:light only;supported-color-schemes:light only;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;\">");
+        htmlBody.AppendLine("<body class=\"email-bg\" bgcolor=\"#f4f5f7\" style=\"margin:0;padding:0;background-color:#f4f5f7 !important;font-family:'Plus Jakarta Sans',Arial,'Helvetica Neue',Helvetica,sans-serif;color:#111827 !important;color-scheme:light only;supported-color-schemes:light only;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;\">");
         htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#f4f5f7\" class=\"email-bg\" style=\"width:100%;border-collapse:collapse;background-color:#f4f5f7 !important;\">");
         htmlBody.AppendLine("<tr><td align=\"center\" bgcolor=\"#f4f5f7\" class=\"email-bg\" style=\"padding:28px 14px;background-color:#f4f5f7 !important;\">");
         htmlBody.AppendLine("<table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" class=\"email-shell\" bgcolor=\"#ffffff\" style=\"width:100%;max-width:560px;border-collapse:separate;border-spacing:0;background-color:#ffffff !important;border-radius:10px;overflow:hidden;\">");

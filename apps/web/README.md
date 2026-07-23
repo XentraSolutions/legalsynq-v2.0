@@ -121,8 +121,8 @@ Implemented routes:
 |---|---|
 | `/funding/dashboard` | Funding dashboard with KPI summary, pending offers, acquisition pipeline, provider performance, and Offer Inbox. |
 | `/funding/offered-liens` | Server-rendered offered-liens list with search, status filters, pagination, and API-authorized row actions. |
-| `/selling/public/{token}` | Public, token-gated buyer offer page opened from `New Lien Offer` emails; forwarded to the Liens gateway without a `platform_session` cookie. |
-| `/api/lien/api/liens/selling/public/{token}` | Public BFF compatibility route for the same buyer offer page; kept for previously generated links. |
+| `/selling/public/{token}` | Public, token-gated buyer offer page opened from `New Lien Offer` emails; rendered by `apps/web` from Liens JSON without a `platform_session` cookie. |
+| `/api/lien/api/liens/selling/public/{token}` | Public BFF compatibility path for the Liens JSON data endpoint; kept for direct API callers and older integrations. |
 
 The frontend is API-ready but does not include mock rows. Server components target the future Liens endpoints through the gateway:
 
