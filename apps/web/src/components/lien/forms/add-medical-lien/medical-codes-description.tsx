@@ -177,7 +177,11 @@ export default function MedicalCodesDescription(
 
     setTimeout(async () => {
       const response = await createMedicalCodeLiens(
-        { ...form, id: editingId ?? form.id },
+        {
+          ...form,
+          id: editingId ?? form.id,
+          purchaseAmount: getCurrentValue(),
+        },
         editingId != "",
       );
 
