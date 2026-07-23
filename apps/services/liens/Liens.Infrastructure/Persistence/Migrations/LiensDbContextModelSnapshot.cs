@@ -1893,6 +1893,24 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<decimal?>("ResponseAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ResponseIdempotencyKey")
+                        .HasMaxLength(280)
+                        .HasColumnType("varchar(280)");
+
+                    b.Property<string>("ResponseNotes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<string>("ResponseStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime?>("RespondedAtUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime(6)");
 

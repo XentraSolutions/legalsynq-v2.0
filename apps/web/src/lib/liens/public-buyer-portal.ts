@@ -6,6 +6,10 @@ export interface PublicBuyerPortalData {
     expiresAtUtc: string;
     lastAccessedAtUtc: string | null;
     notificationSubmittedAtUtc: string | null;
+    responseStatus?: string | null;
+    responseAmount?: number | null;
+    responseNotes?: string | null;
+    respondedAtUtc?: string | null;
   };
   lien: {
     id: string;

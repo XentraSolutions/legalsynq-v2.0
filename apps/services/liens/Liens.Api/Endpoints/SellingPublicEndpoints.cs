@@ -22,6 +22,12 @@ public static class SellingPublicEndpoints
 
         group.MapGet("/{token}", GetTemporaryBuyerPortal)
             .AllowAnonymous();
+
+        group.MapPost("/{token}/accept", AcceptTemporaryBuyerPortal)
+            .AllowAnonymous();
+
+        group.MapPost("/{token}/decline", DeclineTemporaryBuyerPortal)
+            .AllowAnonymous();
     }
 
     private static async Task<IResult> GetTemporaryBuyerPortal(
@@ -29,46 +35,11 @@ public static class SellingPublicEndpoints
         LiensDbContext db,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            return PublicLinkState(
-                "missing-token",
-                "Lien offer link unavailable",
-                "The secure link is missing from this request.",
-                StatusCodes.Status404NotFound);
-        }
+        var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
+        if (resolved.Error is not null)
+            return resolved.Error;
 
-        var accessLink = await db.SellingBuyerAccessLinks
-            .FirstOrDefaultAsync(link => link.Token == token.Trim(), ct);
-
-        if (accessLink is null)
-        {
-            return PublicLinkState(
-                "not-found",
-                "Lien offer link unavailable",
-                "The secure link could not be found.",
-                StatusCodes.Status404NotFound);
-        }
-
-        if (accessLink.RevokedAtUtc.HasValue)
-        {
-            return PublicLinkState(
-                "revoked",
-                "Lien offer link revoked",
-                "This secure link is no longer active.",
-                StatusCodes.Status410Gone);
-        }
-
-        if (accessLink.ExpiresAtUtc <= DateTime.UtcNow)
-        {
-            return PublicLinkState(
-                "expired",
-                "Lien offer link expired",
-                "This secure link has expired.",
-                StatusCodes.Status410Gone);
-        }
-
-        var view = await BuildPublicViewAsync(db, accessLink, ct);
+        var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
         if (view is null)
         {
             return PublicLinkState(
@@ -78,9 +49,178 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status404NotFound);
         }
 
-        accessLink.MarkAccessed();
+        resolved.AccessLink!.MarkAccessed();
         await db.SaveChangesAsync(ct);
 
+        return Results.Ok(MapPublicPortalResponse(view));
+    }
+
+    private static async Task<IResult> AcceptTemporaryBuyerPortal(
+        string token,
+        PublicBuyerAcceptLienRequest? request,
+        HttpContext httpContext,
+        LiensDbContext db,
+        CancellationToken ct = default)
+    {
+        var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
+        if (view is null)
+        {
+            return PublicLinkState(
+                "unavailable",
+                "Lien offer unavailable",
+                "The lien offer data could not be resolved.",
+                StatusCodes.Status404NotFound);
+        }
+
+        if (!IsActionableLienStatus(view.Lien.Status))
+        {
+            return PublicLinkState(
+                "not-actionable",
+                "Lien offer unavailable",
+                "This lien is no longer accepting buyer responses.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var responseAmount = view.Lien.AskAmount;
+        if (!responseAmount.HasValue || responseAmount.Value <= 0m)
+        {
+            return PublicLinkState(
+                "ask-unavailable",
+                "Lien offer unavailable",
+                "This lien does not have a valid ask amount.",
+                StatusCodes.Status409Conflict);
+        }
+
+        return await RecordPublicResponseAsync(
+            db,
+            view,
+            SellingBuyerResponseStatus.Accepted,
+            responseAmount.Value,
+            request?.Notes,
+            ReadIdempotencyKey(httpContext),
+            ct);
+    }
+
+    private static async Task<IResult> DeclineTemporaryBuyerPortal(
+        string token,
+        PublicBuyerDeclineLienRequest? request,
+        HttpContext httpContext,
+        LiensDbContext db,
+        CancellationToken ct = default)
+    {
+        var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
+        if (view is null)
+        {
+            return PublicLinkState(
+                "unavailable",
+                "Lien offer unavailable",
+                "The lien offer data could not be resolved.",
+                StatusCodes.Status404NotFound);
+        }
+
+        if (!IsActionableLienStatus(view.Lien.Status))
+        {
+            return PublicLinkState(
+                "not-actionable",
+                "Lien offer unavailable",
+                "This lien is no longer accepting buyer responses.",
+                StatusCodes.Status409Conflict);
+        }
+
+        return await RecordPublicResponseAsync(
+            db,
+            view,
+            SellingBuyerResponseStatus.Declined,
+            responseAmount: null,
+            responseNotes: request?.Reason,
+            responseIdempotencyKey: ReadIdempotencyKey(httpContext),
+            ct);
+    }
+
+    private static async Task<(SellingBuyerAccessLink? AccessLink, IResult? Error)> ResolvePublicAccessLinkAsync(
+        string token,
+        LiensDbContext db,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return (null, PublicLinkState(
+                "missing-token",
+                "Lien offer link unavailable",
+                "The secure link is missing from this request.",
+                StatusCodes.Status404NotFound));
+        }
+
+        var accessLink = await db.SellingBuyerAccessLinks
+            .FirstOrDefaultAsync(link => link.Token == token.Trim(), ct);
+
+        if (accessLink is null)
+        {
+            return (null, PublicLinkState(
+                "not-found",
+                "Lien offer link unavailable",
+                "The secure link could not be found.",
+                StatusCodes.Status404NotFound));
+        }
+
+        if (accessLink.RevokedAtUtc.HasValue)
+        {
+            return (null, PublicLinkState(
+                "revoked",
+                "Lien offer link revoked",
+                "This secure link is no longer active.",
+                StatusCodes.Status410Gone));
+        }
+
+        if (accessLink.ExpiresAtUtc <= DateTime.UtcNow)
+        {
+            return (null, PublicLinkState(
+                "expired",
+                "Lien offer link expired",
+                "This secure link has expired.",
+                StatusCodes.Status410Gone));
+        }
+
+        return (accessLink, null);
+    }
+
+    private static async Task<IResult> RecordPublicResponseAsync(
+        LiensDbContext db,
+        PublicPortalView view,
+        string responseStatus,
+        decimal? responseAmount,
+        string? responseNotes,
+        string? responseIdempotencyKey,
+        CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(view.AccessLink.ResponseStatus))
+        {
+            if (string.Equals(view.AccessLink.ResponseStatus, responseStatus, StringComparison.Ordinal))
+                return Results.Ok(MapPublicPortalResponse(view));
+
+            return PublicLinkState(
+                "response-conflict",
+                "Lien response already recorded",
+                "A different response has already been securely recorded for this lien offer.",
+                StatusCodes.Status409Conflict);
+        }
+
+        view.AccessLink.MarkAccessed();
+        view.AccessLink.RecordResponse(
+            responseStatus,
+            responseAmount,
+            responseNotes,
+            responseIdempotencyKey);
+
+        await db.SaveChangesAsync(ct);
         return Results.Ok(MapPublicPortalResponse(view));
     }
 
@@ -241,7 +381,11 @@ public static class SellingPublicEndpoints
                 view.AccessLink.CreatedAtUtc,
                 view.AccessLink.ExpiresAtUtc,
                 view.AccessLink.LastAccessedAtUtc,
-                view.AccessLink.NotificationSubmittedAtUtc),
+                view.AccessLink.NotificationSubmittedAtUtc,
+                view.AccessLink.ResponseStatus,
+                view.AccessLink.ResponseAmount,
+                view.AccessLink.ResponseNotes,
+                view.AccessLink.RespondedAtUtc),
             new PublicBuyerLienResponse(
                 view.Lien.Id,
                 ResolveLienCode(view.Lien),
@@ -347,6 +491,13 @@ public static class SellingPublicEndpoints
             _ => "Document",
         };
 
+    private static bool IsActionableLienStatus(string status)
+        => string.Equals(status, LienStatus.Offered, StringComparison.Ordinal)
+           || string.Equals(status, LienStatus.UnderReview, StringComparison.Ordinal);
+
+    private static string? ReadIdempotencyKey(HttpContext httpContext)
+        => httpContext.Request.Headers["Idempotency-Key"].FirstOrDefault();
+
     private sealed record PublicPortalView(
         SellingBuyerAccessLink AccessLink,
         Lien Lien,
@@ -371,7 +522,11 @@ public static class SellingPublicEndpoints
         DateTime CreatedAtUtc,
         DateTime ExpiresAtUtc,
         DateTime? LastAccessedAtUtc,
-        DateTime? NotificationSubmittedAtUtc);
+        DateTime? NotificationSubmittedAtUtc,
+        string? ResponseStatus,
+        decimal? ResponseAmount,
+        string? ResponseNotes,
+        DateTime? RespondedAtUtc);
 
     private sealed record PublicBuyerLienResponse(
         Guid Id,
@@ -409,4 +564,8 @@ public static class SellingPublicEndpoints
     private sealed record PublicBuyerPortalErrorResponse(PublicBuyerPortalError Error);
 
     private sealed record PublicBuyerPortalError(string Code, string Title, string Message);
+
+    private sealed record PublicBuyerAcceptLienRequest(string? Notes);
+
+    private sealed record PublicBuyerDeclineLienRequest(string? Reason);
 }

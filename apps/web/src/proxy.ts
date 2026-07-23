@@ -70,6 +70,7 @@ const PUBLIC_PATHS = [
   // reachable from email before a platform_session exists.
   "/selling/public/",
   "/api/lien/api/liens/selling/public/",
+  "/api/liens/api/liens/selling/public/",
   // LSCC-005: Public referral token routes — no session required
   "/referrals/view",
   "/referrals/accept",

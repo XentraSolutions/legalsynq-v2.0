@@ -32,6 +32,10 @@ describe("PublicBuyerPortalPage", () => {
           expiresAtUtc: "2026-08-22T13:59:57.67655Z",
           lastAccessedAtUtc: null,
           notificationSubmittedAtUtc: "2026-07-23T13:59:58Z",
+          responseStatus: null,
+          responseAmount: null,
+          responseNotes: null,
+          respondedAtUtc: null,
         },
         lien: {
           id: "019f8a97-aa3c-7fe0-aa87-e3b8c693f96b",

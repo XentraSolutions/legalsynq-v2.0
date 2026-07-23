@@ -36,6 +36,11 @@ async function proxy(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
+  const idempotencyKey = req.headers.get("Idempotency-Key");
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
+
   let body: ArrayBuffer | string | undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {
     if (isMultipart) {

@@ -387,7 +387,11 @@ caller-provided CTA data.
     "createdAtUtc": "2026-07-23T13:59:57.67655Z",
     "expiresAtUtc": "2026-08-22T13:59:57.67655Z",
     "lastAccessedAtUtc": "2026-07-23T14:01:00Z",
-    "notificationSubmittedAtUtc": "2026-07-23T13:59:58Z"
+    "notificationSubmittedAtUtc": "2026-07-23T13:59:58Z",
+    "responseStatus": null,
+    "responseAmount": null,
+    "responseNotes": null,
+    "respondedAtUtc": null
   },
   "lien": {
     "id": "guid",
@@ -427,12 +431,78 @@ caller-provided CTA data.
 }
 ```
 
+### POST `/api/liens/selling/public/{token}/accept`
+
+Records an accepted buyer response for the token-scoped lien. This is anonymous and uses the same token validation as
+the public `GET`: missing or unknown tokens return `404`, revoked or expired tokens return `410`, and contradictory
+repeat responses return `409`. Accepting records the current ask amount on the access link; it does not create a Bill of
+Sale, mark the lien sold, or finalize sale.
+
+**Authentication:** None.
+
+**Headers:**
+
+| Header | Required | Notes |
+|---|---|---|
+| `Idempotency-Key` | No | Stored with the access-link response for replay/audit correlation |
+
+**Request:**
+
+```json
+{
+  "notes": "Accepted at ask"
+}
+```
+
+**Response:** `200 OK`, same JSON shape as `GET /api/liens/selling/public/{token}`, with:
+
+```json
+{
+  "accessLink": {
+    "responseStatus": "Accepted",
+    "responseAmount": 2500.00,
+    "responseNotes": "Accepted at ask",
+    "respondedAtUtc": "2026-07-23T14:10:00Z"
+  }
+}
+```
+
+### POST `/api/liens/selling/public/{token}/decline`
+
+Records a declined buyer response for the token-scoped lien. This is anonymous and uses the same token validation and
+conflict behavior as public accept. Declining can record an optional reason; it does not withdraw the lien or change the
+seller workflow state.
+
+**Authentication:** None.
+
+**Request:**
+
+```json
+{
+  "reason": "Not in buying criteria"
+}
+```
+
+**Response:** `200 OK`, same JSON shape as `GET /api/liens/selling/public/{token}`, with:
+
+```json
+{
+  "accessLink": {
+    "responseStatus": "Declined",
+    "responseAmount": null,
+    "responseNotes": "Not in buying criteria",
+    "respondedAtUtc": "2026-07-23T14:10:00Z"
+  }
+}
+```
+
 **Errors:**
 
 | Status | Description |
 |---|---|
 | `404 Not Found` | Token or linked lien data cannot be resolved |
 | `410 Gone` | Token is expired or revoked |
+| `409 Conflict` | Lien is no longer actionable, ask amount is unavailable, or a different response was already recorded |
 
 ---
 
