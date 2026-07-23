@@ -142,7 +142,7 @@ Avoid changing generated/support directories unless the task explicitly targets 
 | Auth | JWT bearer tokens plus HttpOnly session cookies in browser-facing apps |
 | Messaging/Comms | SendGrid, SMTP/MailKit, Twilio, and service-specific adapters |
 
-The root package manager is `pnpm@10.26.1`. The repo currently contains both `pnpm-lock.yaml` and `package-lock.json`; do not change lockfiles unless a dependency change requires it.
+The root package manager is `pnpm@10.26.1`. Frontend app packages also declare `packageManager: pnpm@10.26.1` so Corepack uses the same pnpm version when EC2 runtime artifacts install production dependencies. `scripts/build-fe-local.sh` packages each frontend with its app-level `pnpm-lock.yaml` and `pnpm-workspace.yaml`; keep those files with the artifact if changing frontend deployment. The repo currently contains both `pnpm-lock.yaml` and `package-lock.json`; do not change lockfiles unless a dependency change requires it.
 
 ## Common Commands
 

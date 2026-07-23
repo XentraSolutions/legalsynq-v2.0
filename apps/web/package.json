@@ -2,6 +2,7 @@
   "name": "legalsynq-web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.26.1",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "NODE_OPTIONS=--max-old-space-size=4096 next build --webpack",
@@ -54,15 +55,5 @@
     "fast-xml-parser": "^5.7.1",
     "postcss": "^8.5.10",
     "uuid": "^11.1.1"
-  },
-  "pnpm": {
-    "overrides": {
-      "next": "^16.2.6",
-      "postcss": "^8.5.10",
-      "brace-expansion": "^5.0.6",
-      "file-type": "^22.0.1",
-      "fast-xml-parser": "^5.7.1",
-      "uuid": "^11.1.1"
-    }
   }
 }

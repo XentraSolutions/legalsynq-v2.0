@@ -6,8 +6,8 @@ Internal operator administration portal for LegalSynq platform staff. Requires `
 
 ## Tech
 
-- Next.js 15.2.9 App Router, TypeScript, Tailwind CSS v4, React 18
-- `node_modules` at monorepo root — must NOT have a local `node_modules` (duplicate React causes `useReducer` null errors)
+- Next.js 16.2.6 App Router, TypeScript, Tailwind CSS v4, React 18
+- Local development uses the monorepo/root pnpm install path; do not add a duplicate source-tree `apps/control-center/node_modules` manually because duplicate React can break hooks. Production runtime artifacts are separate and are packaged with `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml`; the app manifest pins `packageManager: pnpm@10.26.1` so Corepack does not drift during `pnpm install --production`.
 
 ## Auth
 
