@@ -14,7 +14,7 @@ public static class AssistantToolEndpoints
 {
     private static readonly string[] QueueStatuses = LienStatus.All.ToArray();
     private static readonly string[] DraftStatusGroup = [LienStatus.Draft];
-    private static readonly string[] MarketplaceStatusGroup = [LienStatus.Offered, LienStatus.UnderReview];
+    private static readonly string[] MarketplaceStatusGroup = [LienStatus.Offered, LienStatus.Accepted, LienStatus.UnderReview];
     private static readonly string[] ServicingStatusGroup = [LienStatus.Sold, LienStatus.Active, LienStatus.Disputed];
 
     public static void MapAssistantToolEndpoints(this WebApplication app)
@@ -1955,6 +1955,8 @@ public static class AssistantToolEndpoints
         {
             "DRAFT" => LienStatus.Draft,
             "OFFERED" => LienStatus.Offered,
+            "ACCEPTED" => LienStatus.Accepted,
+            "DECLINED" => LienStatus.Declined,
             "UNDERREVIEW" => LienStatus.UnderReview,
             "SOLD" => LienStatus.Sold,
             "ACTIVE" => LienStatus.Active,

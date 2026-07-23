@@ -1130,7 +1130,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task PublicBuyerPortal_accept_records_buyer_response_without_finalizing_sale()
+    public async Task PublicBuyerPortal_accept_records_buyer_response_and_marks_lien_accepted_without_finalizing_sale()
     {
         var (lienId, token) = await CreatePublicLienOfferAsync("accept");
 
@@ -1148,8 +1148,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         accessLink.GetProperty("responseAmount").GetDecimal().Should().Be(2500m);
         accessLink.GetProperty("responseNotes").GetString().Should().Be("Accepted at ask from public portal");
         accessLink.GetProperty("respondedAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
-        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Offered);
-        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.SubmittedForSale);
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Accepted);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Accepted);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -1162,16 +1162,36 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         persistedLink.LastAccessedAtUtc.Should().NotBeNull();
 
         var lien = db.Liens.Single(l => l.Id == lienId);
-        lien.Status.Should().Be(LienStatus.Offered);
-        lien.SellerStatus.Should().Be(SellingLienStatus.SubmittedForSale);
+        lien.Status.Should().Be(LienStatus.Accepted);
+        lien.SellerStatus.Should().Be(SellingLienStatus.Accepted);
         lien.SoldAtUtc.Should().BeNull();
         lien.BuyingOrgId.Should().BeNull();
     }
 
     [Fact]
+    public async Task PublicBuyerPortal_offers_alias_records_accepted_buyer_response()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("offers-alias");
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "offers",
+            new { offerAmount = 999m, message = "Accepted through legacy public offer route" },
+            "public-offers-alias-response");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var accessLink = json.GetProperty("accessLink");
+        accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Accepted);
+        accessLink.GetProperty("responseAmount").GetDecimal().Should().Be(2500m);
+        accessLink.GetProperty("responseNotes").GetString().Should().Be("Accepted through legacy public offer route");
+    }
+
+    [Fact]
     public async Task PublicBuyerPortal_decline_records_buyer_response()
     {
-        var (_, token) = await CreatePublicLienOfferAsync("decline");
+        var (lienId, token) = await CreatePublicLienOfferAsync("decline");
 
         var response = await PostPublicBuyerResponseAsync(
             token,
@@ -1187,6 +1207,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         accessLink.GetProperty("responseAmount").ValueKind.Should().Be(JsonValueKind.Null);
         accessLink.GetProperty("responseNotes").GetString().Should().Be("Not in buying criteria");
         accessLink.GetProperty("respondedAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Declined);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Declined);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -1194,6 +1216,14 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Declined);
         persistedLink.ResponseAmount.Should().BeNull();
         persistedLink.ResponseNotes.Should().Be("Not in buying criteria");
+
+        var lien = db.Liens.Single(l => l.Id == lienId);
+        lien.Status.Should().Be(LienStatus.Declined);
+        lien.SellerStatus.Should().Be(SellingLienStatus.Declined);
+        lien.ClosedAtUtc.Should().NotBeNull();
+        lien.WithdrawnAtUtc.Should().BeNull();
+        lien.SoldAtUtc.Should().BeNull();
+        lien.BuyingOrgId.Should().BeNull();
     }
 
     [Fact]
@@ -1220,6 +1250,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var accessLink = json.GetProperty("accessLink");
         accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Declined);
         accessLink.GetProperty("responseNotes").GetString().Should().Be("Not this one");
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Declined);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Declined);
     }
 
     [Fact]

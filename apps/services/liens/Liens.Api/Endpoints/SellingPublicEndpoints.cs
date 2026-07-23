@@ -26,6 +26,9 @@ public static class SellingPublicEndpoints
         group.MapPost("/{token}/accept", AcceptTemporaryBuyerPortal)
             .AllowAnonymous();
 
+        group.MapPost("/{token}/offers", AcceptTemporaryBuyerPortal)
+            .AllowAnonymous();
+
         group.MapPost("/{token}/decline", DeclineTemporaryBuyerPortal)
             .AllowAnonymous();
     }
@@ -76,15 +79,6 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status404NotFound);
         }
 
-        if (!IsActionableLienStatus(view.Lien.Status))
-        {
-            return PublicLinkState(
-                "not-actionable",
-                "Lien offer unavailable",
-                "This lien is no longer accepting buyer responses.",
-                StatusCodes.Status409Conflict);
-        }
-
         var responseAmount = view.Lien.AskAmount;
         if (!responseAmount.HasValue || responseAmount.Value <= 0m)
         {
@@ -100,7 +94,7 @@ public static class SellingPublicEndpoints
             view,
             SellingBuyerResponseStatus.Accepted,
             responseAmount.Value,
-            request?.Notes,
+            FirstNonEmpty(request?.Notes, request?.Message),
             ReadIdempotencyKey(httpContext),
             ct);
     }
@@ -124,15 +118,6 @@ public static class SellingPublicEndpoints
                 "Lien offer unavailable",
                 "The lien offer data could not be resolved.",
                 StatusCodes.Status404NotFound);
-        }
-
-        if (!IsActionableLienStatus(view.Lien.Status))
-        {
-            return PublicLinkState(
-                "not-actionable",
-                "Lien offer unavailable",
-                "This lien is no longer accepting buyer responses.",
-                StatusCodes.Status409Conflict);
         }
 
         return await RecordPublicResponseAsync(
@@ -204,12 +189,27 @@ public static class SellingPublicEndpoints
         if (!string.IsNullOrWhiteSpace(view.AccessLink.ResponseStatus))
         {
             if (string.Equals(view.AccessLink.ResponseStatus, responseStatus, StringComparison.Ordinal))
-                return Results.Ok(MapPublicPortalResponse(view));
+            {
+                await ApplyPublicResponseToLienAsync(db, view, responseStatus, ct);
+                await db.SaveChangesAsync(ct);
+
+                var reconciledView = await BuildPublicViewAsync(db, view.AccessLink, ct) ?? view;
+                return Results.Ok(MapPublicPortalResponse(reconciledView));
+            }
 
             return PublicLinkState(
                 "response-conflict",
                 "Lien response already recorded",
                 "A different response has already been securely recorded for this lien offer.",
+                StatusCodes.Status409Conflict);
+        }
+
+        if (!IsActionableLienStatus(view.Lien.Status))
+        {
+            return PublicLinkState(
+                "not-actionable",
+                "Lien offer unavailable",
+                "This lien is no longer accepting buyer responses.",
                 StatusCodes.Status409Conflict);
         }
 
@@ -220,9 +220,53 @@ public static class SellingPublicEndpoints
             responseNotes,
             responseIdempotencyKey);
 
+        await ApplyPublicResponseToLienAsync(db, view, responseStatus, ct);
         await db.SaveChangesAsync(ct);
-        return Results.Ok(MapPublicPortalResponse(view));
+
+        var updatedView = await BuildPublicViewAsync(db, view.AccessLink, ct) ?? view;
+        return Results.Ok(MapPublicPortalResponse(updatedView));
     }
+
+    private static async Task ApplyPublicResponseToLienAsync(
+        LiensDbContext db,
+        PublicPortalView view,
+        string responseStatus,
+        CancellationToken ct)
+    {
+        var lien = await db.Liens
+            .FirstOrDefaultAsync(l =>
+                l.TenantId == view.AccessLink.TenantId &&
+                l.Id == view.AccessLink.LienId,
+                ct);
+
+        if (lien is null)
+            return;
+
+        var updatedByUserId = ResolvePublicResponseActorId(view.AccessLink);
+        if (string.Equals(responseStatus, SellingBuyerResponseStatus.Accepted, StringComparison.Ordinal))
+        {
+            if (IsActionableLienStatus(lien.Status))
+                lien.TransitionStatus(LienStatus.Accepted, updatedByUserId);
+
+            if (string.Equals(lien.Status, LienStatus.Accepted, StringComparison.Ordinal) &&
+                !string.Equals(lien.SellerStatus, SellingLienStatus.Accepted, StringComparison.Ordinal))
+                lien.UpdateSellingAnalyticsFields(updatedByUserId, sellerStatus: SellingLienStatus.Accepted);
+        }
+        else if (string.Equals(responseStatus, SellingBuyerResponseStatus.Declined, StringComparison.Ordinal))
+        {
+            if (IsActionableLienStatus(lien.Status))
+                lien.TransitionStatus(LienStatus.Declined, updatedByUserId);
+            else if (string.Equals(lien.Status, LienStatus.Withdrawn, StringComparison.Ordinal))
+                lien.SetLegacyMedicalStatus(LienStatus.Declined, updatedByUserId);
+
+            if (string.Equals(lien.Status, LienStatus.Declined, StringComparison.Ordinal) &&
+                !string.Equals(lien.SellerStatus, SellingLienStatus.Declined, StringComparison.Ordinal))
+                lien.UpdateSellingAnalyticsFields(updatedByUserId, sellerStatus: SellingLienStatus.Declined);
+        }
+    }
+
+    private static Guid ResolvePublicResponseActorId(SellingBuyerAccessLink accessLink)
+        => accessLink.CreatedByUserId.GetValueOrDefault(accessLink.BuyerContactId);
 
     private static async Task<PublicPortalView?> BuildPublicViewAsync(
         LiensDbContext db,
@@ -565,7 +609,7 @@ public static class SellingPublicEndpoints
 
     private sealed record PublicBuyerPortalError(string Code, string Title, string Message);
 
-    private sealed record PublicBuyerAcceptLienRequest(string? Notes);
+    private sealed record PublicBuyerAcceptLienRequest(string? Notes, string? Message);
 
     private sealed record PublicBuyerDeclineLienRequest(string? Reason);
 }

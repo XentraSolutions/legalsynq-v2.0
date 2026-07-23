@@ -21,12 +21,14 @@ describe("proxy", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("allows SynqLien public buyer offer gateway rewrite paths without a platform session", () => {
+  it("redirects SynqLien public buyer offer gateway rewrite paths without a platform session", () => {
     const response = proxy(
       request("/api/liens/api/liens/selling/public/test-token/accept"),
     );
 
-    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("location")).toContain(
+      "/login?reason=unauthenticated",
+    );
   });
 
   it("continues redirecting protected SynqLien API paths without a platform session", () => {

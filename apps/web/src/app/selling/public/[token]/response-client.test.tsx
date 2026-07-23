@@ -137,11 +137,22 @@ function withResponse(
   data: PublicBuyerPortalData,
   response: Partial<PublicBuyerPortalData["accessLink"]>,
 ): PublicBuyerPortalData {
+  const responseStatus = response.responseStatus === "Accepted" || response.responseStatus === "Declined"
+    ? response.responseStatus
+    : null;
+  const lienStatus = responseStatus ?? data.lien.status;
+  const sellerStatus = responseStatus ?? data.lien.sellerStatus;
+
   return {
     ...data,
     accessLink: {
       ...data.accessLink,
       ...response,
+    },
+    lien: {
+      ...data.lien,
+      status: lienStatus,
+      sellerStatus,
     },
   };
 }

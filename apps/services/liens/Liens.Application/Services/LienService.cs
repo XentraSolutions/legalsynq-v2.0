@@ -430,7 +430,7 @@ public sealed class LienService : ILienService
 
     private static string MapBusinessStatusLabel(string status) => status switch
     {
-        LienStatus.Cancelled => "Rejected",
+        LienStatus.Cancelled or LienStatus.Declined => "Rejected",
         LienStatus.Settled or LienStatus.Withdrawn => "Closed",
         _ => "Open",
     };
