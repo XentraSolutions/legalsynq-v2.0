@@ -7,7 +7,10 @@ import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { lookupService } from "@/lib/lookup";
-import type { LiensStatusResponse, LookupData } from "@/lib/lookup/lookup.types";
+import type {
+  LiensStatusResponse,
+  LookupData,
+} from "@/lib/lookup/lookup.types";
 import {
   Select,
   SelectContent,
@@ -19,7 +22,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { LienTable } from "@/components/lien/lien-table";
-import type { LienColumnDef, LienFooterCell } from "@/components/lien/lien-table";
+import type {
+  LienColumnDef,
+  LienFooterCell,
+} from "@/components/lien/lien-table";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "";
@@ -29,13 +35,15 @@ function formatCurrency(amount: number | null): string {
   }).format(amount);
 }
 
-function pickLienStatusOptions(items: LiensStatusResponse[]): LiensStatusResponse[] {
+function pickLienStatusOptions(
+  items: LiensStatusResponse[],
+): LiensStatusResponse[] {
   const byCode = (codes: string[]) =>
     items.find((i) => codes.includes((i.code || "").toLowerCase()));
   const openOrActive = byCode(["active", "open"]);
   const settledOrClosed = byCode(["settled", "closed"]);
-  return [openOrActive, settledOrClosed].filter(
-    (i): i is LiensStatusResponse => Boolean(i),
+  return [openOrActive, settledOrClosed].filter((i): i is LiensStatusResponse =>
+    Boolean(i),
   );
 }
 
@@ -83,7 +91,9 @@ export function AddPaymentForm({
   const [saving, setSaving] = useState(false);
 
   const [settlementTypes, setSettlementTypes] = useState<LookupData[]>([]);
-  const [settlementStatuses, setSettlementStatuses] = useState<LookupData[]>([]);
+  const [settlementStatuses, setSettlementStatuses] = useState<LookupData[]>(
+    [],
+  );
   const [lienStatuses, setLienStatuses] = useState<LiensStatusResponse[]>([]);
   const [lookupsLoading, setLookupsLoading] = useState(true);
   const [typeError, setTypeError] = useState(false);
@@ -92,18 +102,90 @@ export function AddPaymentForm({
 
   // TEMP: hardcoded until API endpoint is ready
   const TEMP_SETTLEMENT_TYPES: LookupData[] = [
-    { id: "full_payment", name: "Full Payment", code: "full_payment", category: "", description: null, isActive: true, isSystem: false, sortOrder: 1 },
-    { id: "reduced_payment", name: "Reduced Payment", code: "reduced_payment", category: "", description: null, isActive: true, isSystem: false, sortOrder: 2 },
-    { id: "partial_loss", name: "Partial Loss", code: "partial_loss", category: "", description: null, isActive: true, isSystem: false, sortOrder: 3 },
-    { id: "no_recovery", name: "No Recovery", code: "no_recovery", category: "", description: null, isActive: true, isSystem: false, sortOrder: 4 },
+    {
+      id: "full_payment",
+      name: "Full Payment",
+      code: "full_payment",
+      category: "",
+      description: null,
+      isActive: true,
+      isSystem: false,
+      sortOrder: 1,
+    },
+    {
+      id: "reduced_payment",
+      name: "Reduced Payment",
+      code: "reduced_payment",
+      category: "",
+      description: null,
+      isActive: true,
+      isSystem: false,
+      sortOrder: 2,
+    },
+    {
+      id: "partial_loss",
+      name: "Partial Loss",
+      code: "partial_loss",
+      category: "",
+      description: null,
+      isActive: true,
+      isSystem: false,
+      sortOrder: 3,
+    },
+    {
+      id: "no_recovery",
+      name: "No Recovery",
+      code: "no_recovery",
+      category: "",
+      description: null,
+      isActive: true,
+      isSystem: false,
+      sortOrder: 4,
+    },
   ];
 
   // TEMP: hardcoded until API endpoint is ready
   const TEMP_SETTLEMENT_STATUSES: LookupData[] = [
-    { id: "by_attorney", name: "By Attorney", code: "by_attorney", category: "", description: null, isActive: true, isSystem: false, sortOrder: 1 },
-    { id: "by_medical_provider", name: "By Medical Provider", code: "by_medical_provider", category: "", description: null, isActive: true, isSystem: false, sortOrder: 2 },
-    { id: "by_funding_company", name: "By Funding Company", code: "by_funding_company", category: "", description: null, isActive: true, isSystem: false, sortOrder: 3 },
-    { id: "other", name: "Other", code: "other", category: "", description: null, isActive: true, isSystem: false, sortOrder: 4 },
+    {
+      id: "by_attorney",
+      name: "By Attorney",
+      code: "by_attorney",
+      category: "",
+      description: null,
+      isActive: true,
+      isSystem: false,
+      sortOrder: 1,
+    },
+    {
+      id: "by_medical_provider",
+      name: "By Medical Provider",
+      code: "by_medical_provider",
+      category: "",
+      description: null,
+      isActive: true,
+      isSystem: false,
+      sortOrder: 2,
+    },
+    {
+      id: "by_funding_company",
+      name: "By Funding Company",
+      code: "by_funding_company",
+      category: "",
+      description: null,
+      isActive: true,
+      isSystem: false,
+      sortOrder: 3,
+    },
+    {
+      id: "other",
+      name: "Other",
+      code: "other",
+      category: "",
+      description: null,
+      isActive: true,
+      isSystem: false,
+      sortOrder: 4,
+    },
   ];
 
   useEffect(() => {
@@ -123,7 +205,10 @@ export function AddPaymentForm({
         // TEMP: fall back to hardcoded options until API endpoint is ready
         setSettlementTypes(TEMP_SETTLEMENT_TYPES);
       }
-      if (statusRes.status === "fulfilled" && statusRes.value.items.length > 0) {
+      if (
+        statusRes.status === "fulfilled" &&
+        statusRes.value.items.length > 0
+      ) {
         setSettlementStatuses(statusRes.value.items);
       } else {
         // setStatusError(true);
@@ -147,10 +232,12 @@ export function AddPaymentForm({
   }, [open]);
 
   const openLiens = liens.filter(
-    (l) => l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
+    (l) =>
+      l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
   );
 
-  const allChecked = openLiens.length > 0 && checkedIds.size === openLiens.length;
+  const allChecked =
+    openLiens.length > 0 && checkedIds.size === openLiens.length;
 
   const toggleCheck = (id: string) => {
     const next = new Set(checkedIds);
@@ -165,7 +252,10 @@ export function AddPaymentForm({
       next.add(id);
       const lien = openLiens.find((l) => l.id === id);
       if (lien?.paymentAmount != null) {
-        setLienPayments((prev) => ({ ...prev, [id]: lien.paymentAmount!.toFixed(2) }));
+        setLienPayments((prev) => ({
+          ...prev,
+          [id]: lien.paymentAmount!.toFixed(2),
+        }));
       }
     }
     setCheckedIds(next);
@@ -186,12 +276,36 @@ export function AddPaymentForm({
       setLienPayments(initialPayments);
     }
   };
+  const computeTotal = () => {
+    let balances = 0;
+    const initialPayments: Record<string, string> = {};
+
+    // Create a Set for fast lookups
+    const checkedSet = new Set(checkedIds);
+
+    for (const l of openLiens) {
+      // Check if current lien ID is in the checked list
+      if (checkedSet.has(l.id)) {
+        if (l.balance != null) {
+          balances += l.balance;
+        }
+
+        // If you also need to populate initialPayments for checked items:
+        // initialPayments[l.id] = ...;
+      }
+    }
+    return balances;
+    console.log(balances);
+  };
 
   const handleAllocateProportionally = () => {
     const val = parseFloat(form.checkAmount);
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
     const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
-    const totalBalance = selectedLiens.reduce((s, l) => s + (l.balance ?? 0), 0);
+    const totalBalance = selectedLiens.reduce(
+      (s, l) => s + (l.balance ?? 0),
+      0,
+    );
     if (totalBalance === 0) return;
     const ratio = Math.min(val, totalBalance) / totalBalance;
     const updates: Record<string, string> = { ...lienPayments };
@@ -252,7 +366,7 @@ export function AddPaymentForm({
             settlementDate: paymentDate,
             notes: form.note,
           }),
-        ])
+        ]),
       );
 
       addToast({
@@ -284,13 +398,22 @@ export function AddPaymentForm({
 
   const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
-  const totalAmountToSettle = openLiens.reduce((s, l) => s + (l.balance ?? 0), 0);
-  const totalBilling = openLiens.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
-  const totalPurchase = openLiens.reduce((s, l) => s + (l.purchaseAmount ?? 0), 0);
+  const totalAmountToSettle = openLiens.reduce(
+    (s, l) => s + (l.balance ?? 0),
+    0,
+  );
+  const totalBilling = openLiens.reduce(
+    (s, l) => s + (l.originalAmount ?? 0),
+    0,
+  );
+  const totalPurchase = openLiens.reduce(
+    (s, l) => s + (l.purchaseAmount ?? 0),
+    0,
+  );
   const totalReceivedPayment = openLiens.reduce((s, l) => {
     const val = checkedIds.has(l.id)
       ? parseFloat(lienPayments[l.id] || "0") || 0
-      : l.paymentAmount ?? 0;
+      : (l.paymentAmount ?? 0);
     return s + val;
   }, 0);
 
@@ -351,7 +474,8 @@ export function AddPaymentForm({
           );
         const inputVal = lienPayments[l.id] ?? "";
         const inputNumeric = parseFloat(inputVal) || 0;
-        const rowExceedsBilling = inputNumeric > (l.balance ?? 0) && inputNumeric > 0;
+        const rowExceedsBilling =
+          inputNumeric > (l.balance ?? 0) && inputNumeric > 0;
         return (
           <div className="flex flex-col items-end gap-0.5">
             <div className="relative">
@@ -369,7 +493,10 @@ export function AddPaymentForm({
                 onBlur={() => {
                   const n = parseFloat(inputVal);
                   if (!isNaN(n))
-                    setLienPayments((prev) => ({ ...prev, [l.id]: n.toFixed(2) }));
+                    setLienPayments((prev) => ({
+                      ...prev,
+                      [l.id]: n.toFixed(2),
+                    }));
                 }}
                 placeholder="0.00"
                 className={`w-28 pl-5 pr-2 py-1 text-right ${
@@ -490,7 +617,11 @@ export function AddPaymentForm({
                 Amount to Settle
               </label>
               <div className="h-9 flex items-center px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 tabular-nums">
-                {checkedIds.size > 0 ? formatCurrency(totalAmountToSettle) : <span className="text-gray-400">Select liens below</span>}
+                {checkedIds.size > 0 ? (
+                  computeTotal()
+                ) : (
+                  <span className="text-gray-400">Select liens below</span>
+                )}
               </div>
             </div>
 
@@ -499,15 +630,23 @@ export function AddPaymentForm({
                 Check Amount <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">$</span>
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                  $
+                </span>
                 <Input
                   type="text"
                   inputMode="decimal"
                   value={form.checkAmount}
-                  onChange={(e) => setForm({ ...form, checkAmount: cleanNumericInput(e.target.value) })}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      checkAmount: cleanNumericInput(e.target.value),
+                    })
+                  }
                   onBlur={() => {
                     const n = parseFloat(form.checkAmount);
-                    if (!isNaN(n) && n > 0) setForm({ ...form, checkAmount: n.toFixed(2) });
+                    if (!isNaN(n) && n > 0)
+                      setForm({ ...form, checkAmount: n.toFixed(2) });
                   }}
                   placeholder="0.00"
                   className="pl-6"
@@ -540,7 +679,9 @@ export function AddPaymentForm({
                 onValueChange={(v) => setForm({ ...form, type: v })}
                 disabled={lookupsLoading}
               >
-                <SelectTrigger className={typeError ? "border-red-300" : undefined}>
+                <SelectTrigger
+                  className={typeError ? "border-red-300" : undefined}
+                >
                   <SelectValue
                     placeholder={
                       lookupsLoading
@@ -562,7 +703,9 @@ export function AddPaymentForm({
                 </SelectContent>
               </Select>
               {typeError && (
-                <p className="text-xs text-red-500 mt-1">Could not load settlement types.</p>
+                <p className="text-xs text-red-500 mt-1">
+                  Could not load settlement types.
+                </p>
               )}
             </div>
 
@@ -575,7 +718,9 @@ export function AddPaymentForm({
                 onValueChange={(v) => setForm({ ...form, status: v })}
                 disabled={lookupsLoading}
               >
-                <SelectTrigger className={statusError ? "border-red-300" : undefined}>
+                <SelectTrigger
+                  className={statusError ? "border-red-300" : undefined}
+                >
                   <SelectValue
                     placeholder={
                       lookupsLoading
@@ -597,7 +742,9 @@ export function AddPaymentForm({
                 </SelectContent>
               </Select>
               {statusError && (
-                <p className="text-xs text-red-500 mt-1">Could not load settlement statuses.</p>
+                <p className="text-xs text-red-500 mt-1">
+                  Could not load settlement statuses.
+                </p>
               )}
             </div>
 
