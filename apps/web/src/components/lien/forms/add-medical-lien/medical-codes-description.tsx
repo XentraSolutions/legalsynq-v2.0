@@ -165,7 +165,9 @@ export default function MedicalCodesDescription(
           : inverseValue;
       return val;
     } else {
-      return parseNumber(currentPurchase);
+      return typeof currentPurchase == "string"
+        ? parseNumber(currentPurchase)
+        : currentPurchase;
     }
   };
   function handleAddOrUpdateLine() {
