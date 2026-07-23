@@ -162,6 +162,7 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 app.MapLienEndpoints();
 app.MapAssistantToolEndpoints();
 app.MapLienOfferEndpoints();
+app.MapSellingPublicEndpoints();
 app.MapSellingEndpoints();
 app.MapSellingAnalyticsEndpoints();
 app.MapBillOfSaleEndpoints();

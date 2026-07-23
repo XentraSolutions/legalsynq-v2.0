@@ -101,7 +101,7 @@ describe('POST /api/auth/login', () => {
   });
 
   test('sends SynqLien portalProductCode for SynqLien common portal login', async () => {
-    process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME = 'funding.localhost';
+    process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME = 'synqlien-demo.localhost';
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -120,10 +120,10 @@ describe('POST /api/auth/login', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const { POST } = await import('./route');
-    const request = new NextRequest('http://funding.localhost/api/auth/login', {
+    const request = new NextRequest('http://synqlien-demo.localhost/api/auth/login', {
       method: 'POST',
       headers: {
-        host: 'funding.localhost',
+        host: 'synqlien-demo.localhost',
         'content-type': 'application/json',
       },
       body: JSON.stringify({
@@ -146,7 +146,7 @@ describe('POST /api/auth/login', () => {
   });
 
   test('passes through SynqLien portal restriction message on the common portal host', async () => {
-    process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME = 'funding.localhost';
+    process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME = 'synqlien-demo.localhost';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
       status: 403,
@@ -157,10 +157,10 @@ describe('POST /api/auth/login', () => {
     }));
 
     const { POST } = await import('./route');
-    const request = new NextRequest('http://funding.localhost/api/auth/login', {
+    const request = new NextRequest('http://synqlien-demo.localhost/api/auth/login', {
       method: 'POST',
       headers: {
-        host: 'funding.localhost',
+        host: 'synqlien-demo.localhost',
         'content-type': 'application/json',
       },
       body: JSON.stringify({

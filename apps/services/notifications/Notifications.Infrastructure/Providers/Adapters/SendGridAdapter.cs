@@ -33,14 +33,44 @@ public class SendGridAdapter : IEmailProviderAdapter
         if (!await ValidateConfigAsync())
             return new EmailSendResult { Success = false, Failure = new ProviderFailure { Category = "auth_config_failure", Message = "SendGrid is not configured", Retryable = false } };
 
-        var body = new
+        var body = new Dictionary<string, object?>
         {
-            personalizations = new[] { new { to = new[] { new { email = payload.To } } } },
-            from = new { email = payload.From ?? _defaultFromEmail, name = _defaultFromName },
-            subject = payload.Subject,
-            content = new List<object> { new { type = "text/plain", value = payload.Body } }
-                .Concat(payload.Html != null ? new[] { new { type = "text/html", value = payload.Html } } : Array.Empty<object>()).ToArray()
+            ["personalizations"] = new[] { new { to = new[] { new { email = payload.To } } } },
+            ["from"] = new { email = payload.From ?? _defaultFromEmail, name = _defaultFromName },
+            ["subject"] = payload.Subject,
+            ["content"] = new List<object> { new { type = "text/plain", value = payload.Body } }
+                .Concat(payload.Html != null ? new[] { new { type = "text/html", value = payload.Html } } : Array.Empty<object>())
+                .ToArray()
         };
+
+        if (payload.Attachments.Count > 0)
+        {
+            body["attachments"] = payload.Attachments
+                .Select(attachment =>
+                {
+                    var item = new Dictionary<string, object?>
+                    {
+                        ["content"] = attachment.Content,
+                        ["type"] = attachment.Type,
+                        ["filename"] = attachment.Filename,
+                        ["disposition"] = attachment.Disposition,
+                    };
+
+                    if (!string.IsNullOrWhiteSpace(attachment.ContentId))
+                        item["content_id"] = attachment.ContentId;
+
+                    return item;
+                })
+                .ToArray();
+        }
+
+        if (payload.DisableClickTracking)
+        {
+            body["tracking_settings"] = new
+            {
+                click_tracking = new { enable = false, enable_text = false },
+            };
+        }
 
         var request = new HttpRequestMessage(HttpMethod.Post, "https://api.sendgrid.com/v3/mail/send");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);

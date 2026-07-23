@@ -85,19 +85,49 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
 
     private string ResolveBuyerPortalBaseUrl()
     {
-        var value = _configuration["Liens:Selling:BuyerPortalBaseUrl"]?.Trim();
+        var value = ResolveConfiguredBuyerPortalBaseUrl();
+        var previewValue = value?.Replace("{token}", "token-preview", StringComparison.Ordinal);
         if (string.IsNullOrWhiteSpace(value) ||
-            !Uri.TryCreate(value.Replace("{token}", "token-preview", StringComparison.Ordinal), UriKind.Absolute, out _))
+            !Uri.TryCreate(previewValue, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
             throw new ValidationException("Buyer portal base URL is required.",
                 new Dictionary<string, string[]>
                 {
-                    ["buyerPortalBaseUrl"] = ["Configure Liens:Selling:BuyerPortalBaseUrl with an absolute buyer portal URL."],
+                    ["buyerPortalBaseUrl"] = ["Configure Liens:Selling:BuyerPortalBaseUrl with an absolute buyer portal URL, or configure SYNQLIEN_COMMON_PORTAL_HOSTNAME so the API can derive the local buyer portal URL."],
+                });
+        }
+
+        if (uri.IsLoopback && !IsNamedLocalhostAlias(uri.Host))
+        {
+            throw new ValidationException("Buyer portal base URL must be externally reachable.",
+                new Dictionary<string, string[]>
+                {
+                    ["buyerPortalBaseUrl"] = ["Configure Liens:Selling:BuyerPortalBaseUrl with an externally reachable URL or a named .localhost demo alias; literal localhost and 127.0.0.1 links do not work from outbound email."],
                 });
         }
 
         return value;
     }
+
+    private string? ResolveConfiguredBuyerPortalBaseUrl()
+    {
+        var value = _configuration["Liens:Selling:BuyerPortalBaseUrl"]?.Trim();
+        if (!string.IsNullOrWhiteSpace(value))
+            return value;
+
+        var portalHostname = _configuration["SYNQLIEN_COMMON_PORTAL_HOSTNAME"]?.Trim();
+        if (string.IsNullOrWhiteSpace(portalHostname))
+            return null;
+
+        var scheme = IsNamedLocalhostAlias(portalHostname) ? Uri.UriSchemeHttp : Uri.UriSchemeHttps;
+        var port = IsNamedLocalhostAlias(portalHostname) ? ":5000" : string.Empty;
+        return $"{scheme}://{portalHostname.TrimEnd('/')}{port}/selling/public";
+    }
+
+    private static bool IsNamedLocalhostAlias(string host)
+        => host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase) &&
+           !host.Equals("localhost", StringComparison.OrdinalIgnoreCase);
 
     private static SellingBuyerAccessLinkResult Map(
         SellingBuyerAccessLink link,

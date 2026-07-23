@@ -66,6 +66,10 @@ const PUBLIC_PATHS = [
   // SynqLien document view/download redemption — namespaced under /api/lien/
   // to avoid colliding with CareConnect's top-level /api/documents/ routing.
   "/api/lien/documents/access/",
+  // SynqLien buyer offer links are token-gated by the Liens API and must stay
+  // reachable from email before a platform_session exists.
+  "/selling/public/",
+  "/api/lien/api/liens/selling/public/",
   // LSCC-005: Public referral token routes — no session required
   "/referrals/view",
   "/referrals/accept",

@@ -95,6 +95,41 @@ public sealed class NotificationPublisher : INotificationPublisher
         NotificationEmailSendOptions? options = null)
     {
         var client = _httpClientFactory.CreateClient("NotificationsService");
+        var textBody = string.IsNullOrWhiteSpace(options?.TextBody)
+            ? body
+            : options.TextBody;
+        var htmlBody = options?.HtmlBody;
+        if (string.IsNullOrWhiteSpace(htmlBody) && LooksLikeHtml(body))
+        {
+            htmlBody = body;
+            if (string.Equals(textBody, body, StringComparison.Ordinal))
+                textBody = "Please view this email in an HTML-capable mail client.";
+        }
+
+        var message = new Dictionary<string, object?>
+        {
+            ["type"] = notificationType,
+            ["subject"] = subject,
+            ["body"] = textBody,
+        };
+
+        if (!string.IsNullOrWhiteSpace(htmlBody))
+            message["html"] = htmlBody;
+
+        if (options?.InlineAttachments is { Count: > 0 } inlineAttachments)
+        {
+            message["attachments"] = inlineAttachments.Select(attachment => new
+            {
+                contentId = attachment.ContentId,
+                filename = attachment.FileName,
+                type = attachment.ContentType,
+                content = attachment.Base64Content,
+                disposition = "inline",
+            }).ToArray();
+        }
+
+        if (options?.DisableClickTracking == true)
+            message["disableClickTracking"] = true;
 
         var request = new NotificationsProducerRequest
         {
@@ -114,12 +149,7 @@ public sealed class NotificationPublisher : INotificationPublisher
                 TenantId = tenantId.ToString(),
                 Email    = recipientEmail,
             },
-            Message = new
-            {
-                type = notificationType,
-                subject,
-                body,
-            },
+            Message = message,
             Metadata = metadata,
         };
 
@@ -175,6 +205,11 @@ public sealed class NotificationPublisher : INotificationPublisher
 
         return result;
     }
+
+    private static bool LooksLikeHtml(string value)
+        => value.Contains("<!doctype", StringComparison.OrdinalIgnoreCase) ||
+           value.Contains("<html", StringComparison.OrdinalIgnoreCase) ||
+           value.Contains("<body", StringComparison.OrdinalIgnoreCase);
 
     private sealed class NotificationResultDto
     {

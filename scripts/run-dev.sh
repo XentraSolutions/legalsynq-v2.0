@@ -26,6 +26,10 @@ require_free_port 5000 "web dev proxy"
 require_free_port 5004 "control-center Next.js"
 require_free_port 5020 "artifacts API"
 
+SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}"
+PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}"
+Liens__Selling__BuyerPortalBaseUrl="${Liens__Selling__BuyerPortalBaseUrl:-http://${SYNQLIEN_COMMON_PORTAL_HOSTNAME}:5000/selling/public}"
+
 # Start Next.js on an internal port; the proxy on :5000 gates requests
 # until the cold-compile race condition is resolved (HTTP 200 on /login).
 NEXT_INTERNAL_PORT=3050
@@ -54,6 +58,8 @@ if [ -d "$PNPM_NEXT16" ]; then
 fi
 (cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 \
   CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
+  SYNQLIEN_COMMON_PORTAL_HOSTNAME="$SYNQLIEN_COMMON_PORTAL_HOSTNAME" \
+  PORTAL_SYNQLIEN_SUBDOMAIN="$PORTAL_SYNQLIEN_SUBDOMAIN" \
   exec "$NODE" "$WEB_NEXT_BIN" dev -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
@@ -249,6 +255,7 @@ PID_CC=$!
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
+    Liens__Selling__BuyerPortalBaseUrl="$Liens__Selling__BuyerPortalBaseUrl" \
     dotnet run --no-build --project "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" &
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \

@@ -78,6 +78,8 @@ build_web() {
   NEXT_PUBLIC_TENANT_CODE="${NEXT_PUBLIC_TENANT_CODE:-}" \
   GATEWAY_URL="${GATEWAY_URL:-http://127.0.0.1:5010}" \
   CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
+  SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}" \
+  PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}" \
   node "$next_bin" build --webpack
 
   mkdir -p "$DIST_ROOT"

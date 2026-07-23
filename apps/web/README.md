@@ -103,8 +103,15 @@ The SynqLien funding-company common portal uses the same Identity-backed `platfo
 
 | Variable | Example / Default | Purpose |
 |---|---|---|
-| `SYNQLIEN_COMMON_PORTAL_HOSTNAME` | `funding.legalsynq.com` | Hostname the BFF uses to detect SynqLien common-portal login and send `resolveByEmail=true` with `portalProductCode=SYNQ_LIENS`. Root `/` redirects to `/funding/dashboard`. |
+| `SYNQLIEN_COMMON_PORTAL_HOSTNAME` | `synqlien-demo.localhost` | Hostname the BFF uses to detect SynqLien common-portal login and send `resolveByEmail=true` with `portalProductCode=SYNQ_LIENS`. Root `/` redirects to `/funding/dashboard`. |
 | `PORTAL_SYNQLIEN_SUBDOMAIN` | `synqlien-demo` | Subdomain that renders the SynqLien-branded `/login` layout and defaults successful login to `/funding/dashboard`. |
+
+Use the same hostname as the Liens buyer-offer email CTA:
+
+```bash
+SYNQLIEN_COMMON_PORTAL_HOSTNAME=synqlien-demo.localhost
+PORTAL_SYNQLIEN_SUBDOMAIN=synqlien-demo
+```
 
 Eligibility is enforced in Identity and again in the web route layout: users must have SynqLien product access and `SYNQ_LIENS:SYNQLIEN_BUYER`, may also have `SYNQ_LIENS:SYNQLIEN_HOLDER`, and must not have platform/tenant system roles or `SYNQ_LIENS:SYNQLIEN_SELLER`.
 
@@ -114,6 +121,8 @@ Implemented routes:
 |---|---|
 | `/funding/dashboard` | Funding dashboard with KPI summary, pending offers, acquisition pipeline, provider performance, and Offer Inbox. |
 | `/funding/offered-liens` | Server-rendered offered-liens list with search, status filters, pagination, and API-authorized row actions. |
+| `/selling/public/{token}` | Public, token-gated buyer offer page opened from `New Lien Offer` emails; forwarded to the Liens gateway without a `platform_session` cookie. |
+| `/api/lien/api/liens/selling/public/{token}` | Public BFF compatibility route for the same buyer offer page; kept for previously generated links. |
 
 The frontend is API-ready but does not include mock rows. Server components target the future Liens endpoints through the gateway:
 

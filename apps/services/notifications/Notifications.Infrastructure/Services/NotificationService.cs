@@ -1046,6 +1046,11 @@ public class NotificationServiceImpl : INotificationService
         // in the correct slots: Html → text/html, Body → text/plain.
         string? html    = notification.RenderedBody;
         string? body    = notification.RenderedText;
+        var emailAttachments = string.Equals(notification.Channel, "email", StringComparison.OrdinalIgnoreCase)
+            ? ExtractEmailAttachments(notification.MessageJson)
+            : [];
+        var disableClickTracking = string.Equals(notification.Channel, "email", StringComparison.OrdinalIgnoreCase) &&
+                                   ExtractDisableClickTracking(notification.MessageJson);
 
         if (string.IsNullOrEmpty(subject) || (string.IsNullOrEmpty(html) && string.IsNullOrEmpty(body)))
         {
@@ -1156,7 +1161,12 @@ public class NotificationServiceImpl : INotificationService
             {
                 var result = await _sendGridAdapter.SendAsync(new EmailSendPayload
                 {
-                    To = contactValue ?? "", Subject = subject ?? "", Body = body ?? "", Html = html
+                    To = contactValue ?? "",
+                    Subject = subject ?? "",
+                    Body = body ?? "",
+                    Html = html,
+                    Attachments = emailAttachments,
+                    DisableClickTracking = disableClickTracking,
                 });
                 success = result.Success;
                 providerMessageId = result.ProviderMessageId;
@@ -2123,5 +2133,105 @@ public class NotificationServiceImpl : INotificationService
             return null;
         }
         catch { return null; }
+    }
+
+    private static List<EmailAttachmentPayload> ExtractEmailAttachments(string messageJson)
+    {
+        var attachments = new List<EmailAttachmentPayload>();
+
+        if (string.IsNullOrWhiteSpace(messageJson))
+            return attachments;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(messageJson);
+            if (!doc.RootElement.TryGetProperty("attachments", out var rawAttachments) ||
+                rawAttachments.ValueKind != JsonValueKind.Array)
+            {
+                return attachments;
+            }
+
+            foreach (var rawAttachment in rawAttachments.EnumerateArray())
+            {
+                if (rawAttachment.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var content = ReadStringProperty(rawAttachment, "content");
+                var filename = ReadStringProperty(rawAttachment, "filename");
+
+                if (string.IsNullOrWhiteSpace(content) || string.IsNullOrWhiteSpace(filename))
+                    continue;
+
+                attachments.Add(new EmailAttachmentPayload
+                {
+                    Content = content,
+                    Filename = filename,
+                    Type = ReadStringProperty(rawAttachment, "type") ?? "application/octet-stream",
+                    Disposition = ReadStringProperty(rawAttachment, "disposition") ?? "attachment",
+                    ContentId = ReadStringProperty(rawAttachment, "contentId") ??
+                                ReadStringProperty(rawAttachment, "content_id"),
+                });
+            }
+        }
+        catch
+        {
+            return [];
+        }
+
+        return attachments;
+    }
+
+    private static bool ExtractDisableClickTracking(string messageJson)
+    {
+        if (string.IsNullOrWhiteSpace(messageJson))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(messageJson);
+            if (!TryGetProperty(doc.RootElement, "disableClickTracking", out var value))
+                return false;
+
+            return value.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.String => bool.TryParse(value.GetString(), out var parsed) && parsed,
+                _ => false,
+            };
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string? ReadStringProperty(JsonElement element, string propertyName)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return property.Value.ValueKind == JsonValueKind.String
+                ? property.Value.GetString()
+                : null;
+        }
+
+        return null;
+    }
+
+    private static bool TryGetProperty(JsonElement element, string propertyName, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            value = property.Value;
+            return true;
+        }
+
+        value = default;
+        return false;
     }
 }
