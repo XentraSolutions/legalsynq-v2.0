@@ -7,6 +7,8 @@ public static class SellingLienStatus
     public const string Internal = "Internal";
     public const string PreparedForSale = "PreparedForSale";
     public const string SubmittedForSale = "SubmittedForSale";
+    public const string Accepted = "Accepted";
+    public const string Declined = "Declined";
     public const string Sold = "Sold";
     public const string Withdrawn = "Withdrawn";
     public const string Archived = "Archived";
@@ -18,6 +20,8 @@ public static class SellingLienStatus
         Internal,
         PreparedForSale,
         SubmittedForSale,
+        Accepted,
+        Declined,
         Sold,
         Withdrawn,
         Archived,

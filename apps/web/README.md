@@ -122,7 +122,7 @@ Implemented routes:
 | `/funding/dashboard` | Funding dashboard with KPI summary, pending offers, acquisition pipeline, provider performance, and Offer Inbox. |
 | `/funding/offered-liens` | Server-rendered offered-liens list with search, status filters, pagination, and API-authorized row actions. |
 | `/selling/public/{token}` | Public, token-gated buyer offer page opened from `New Lien Offer` emails; rendered by `apps/web` from Liens JSON without a `platform_session` cookie. Includes accept/decline buttons that record the buyer response without finalizing sale. |
-| `/api/lien/api/liens/selling/public/{token}` | Public BFF compatibility path for the Liens JSON data endpoint; kept for direct API callers and older integrations. Response actions post through `/api/lien/api/liens/selling/public/{token}/accept` and `/api/lien/api/liens/selling/public/{token}/decline`, with a public fallback through `/api/liens/api/liens/selling/public/{token}/{action}` for local/dev gateway rewrites. |
+| `/api/lien/api/liens/selling/public/{token}` | Public BFF path for the Liens JSON data endpoint and response actions. Accept/decline posts use `/api/lien/api/liens/selling/public/{token}/{action}` so browser traffic always runs through the tenant portal BFF before reaching the gateway. |
 
 The frontend is API-ready but does not include mock rows. Server components target the future Liens endpoints through the gateway:
 

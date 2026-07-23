@@ -34,31 +34,17 @@ export async function submitPublicBuyerPortalResponse(
 
   const fetcher = options.fetchImpl ?? fetch;
   const request = buildPublicBuyerPortalActionRequest(action, options);
-  const primaryResult = await sendPublicBuyerPortalResponse(
+  const result = await sendPublicBuyerPortalResponse(
     fetcher,
     buildPublicBuyerPortalActionUrl(normalizedToken, action),
     request,
   );
 
-  if (!primaryResult.ok) {
-    return primaryResult.error;
+  if (!result.ok) {
+    return result.error;
   }
 
-  let { response, body } = primaryResult;
-  if (shouldRetryGatewayRewrite(response, body)) {
-    const retryResult = await sendPublicBuyerPortalResponse(
-      fetcher,
-      buildPublicBuyerPortalGatewayRewriteUrl(normalizedToken, action),
-      request,
-    );
-
-    if (!retryResult.ok) {
-      return retryResult.error;
-    }
-
-    response = retryResult.response;
-    body = retryResult.body;
-  }
+  const { response, body } = result;
 
   const correlationId = response.headers.get("x-correlation-id");
 
@@ -83,14 +69,21 @@ export function buildPublicBuyerPortalActionUrl(
   token: string,
   action: PublicBuyerPortalResponseAction,
 ): string {
-  return `/api/lien/api/liens/selling/public/${encodeURIComponent(token)}/${action}`;
+  return buildPublicBuyerPortalActionUrls(token, action)[0];
 }
 
-export function buildPublicBuyerPortalGatewayRewriteUrl(
+export function buildPublicBuyerPortalActionUrls(
+  token: string,
+  action: PublicBuyerPortalResponseAction,
+): string[] {
+  return [buildPublicBuyerPortalBffActionUrl(token, action)];
+}
+
+export function buildPublicBuyerPortalBffActionUrl(
   token: string,
   action: PublicBuyerPortalResponseAction,
 ): string {
-  return `/api/liens/api/liens/selling/public/${encodeURIComponent(token)}/${action}`;
+  return `/api/lien/api/liens/selling/public/${encodeURIComponent(token)}/${action}`;
 }
 
 function buildPublicBuyerPortalActionRequest(
@@ -127,24 +120,22 @@ async function sendPublicBuyerPortalResponse(
   } catch {
     return {
       ok: false,
-      error: {
-        ok: false,
-        status: 0,
-        correlationId: null,
-        error: {
-          code: "network-error",
-          title: "Lien offer unavailable",
-          message: "The lien offer response could not be recorded.",
-        },
-      },
+      error: networkErrorResult(),
     };
   }
 }
 
-function shouldRetryGatewayRewrite(response: Response, body: unknown): boolean {
-  if (response.status !== 404) return false;
-  if (!isPublicBuyerPortalErrorBody(body)) return true;
-  return body.error.code !== "not-found" && body.error.code !== "missing-token";
+function networkErrorResult(): PublicBuyerPortalResult {
+  return {
+    ok: false,
+    status: 0,
+    correlationId: null,
+    error: {
+      code: "network-error",
+      title: "Lien offer unavailable",
+      message: "The lien offer response could not be recorded.",
+    },
+  };
 }
 
 function buildActionHeaders(idempotencyKey?: string): Record<string, string> {

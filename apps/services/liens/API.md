@@ -129,7 +129,7 @@ Base path: `/api/liens/liens`
 
 Search and list liens with optional filters.
 
-Buying-facing lien list responses exclude liens in `Rejected` or `Cancelled` status and normalize the remaining statuses to `Open` or `Closed`. Selling-specific workflow statuses remain available on selling endpoints and on direct lien detail responses.
+Buying-facing lien list responses exclude liens in `Rejected`, `Declined`, or `Cancelled` status and normalize the remaining statuses to `Open` or `Closed`. Selling-specific workflow statuses remain available on selling endpoints and on direct lien detail responses.
 All liens API timestamp responses are serialized in U.S. Pacific time (`-07:00` or `-08:00` depending on DST). Legacy string-formatted timestamps use the same Pacific conversion.
 
 **Permission:** `SYNQ_LIENS.lien:read`
@@ -261,7 +261,7 @@ Update an existing lien.
 | `lienNumber` | `string` | No | Lien number |
 | `externalReference` | `string` | Yes | External reference |
 | `lienType` | `string` | No | Type of lien |
-| `status` | `string` | No | Current status. Buying list endpoints exclude `Rejected` and `Cancelled` liens and normalize remaining values to `Open` or `Closed`; direct lien detail responses may still return workflow statuses used by selling flows. |
+| `status` | `string` | No | Current status. Buying list endpoints exclude `Rejected`, `Declined`, and `Cancelled` liens and normalize remaining values to `Open` or `Closed`; direct lien detail responses may still return workflow statuses used by selling flows. |
 | `caseId` | `guid` | Yes | Associated case ID |
 | `facilityId` | `guid` | Yes | Associated facility ID |
 | `originalAmount` | `decimal` | No | Original lien amount |
@@ -437,10 +437,14 @@ caller-provided CTA data.
 
 ### POST `/api/liens/selling/public/{token}/accept`
 
+Compatibility alias: `POST /api/liens/selling/public/{token}/offers`.
+
 Records an accepted buyer response for the token-scoped lien. This is anonymous and uses the same token validation as
 the public `GET`: missing or unknown tokens return `404`, revoked or expired tokens return `410`, and contradictory
-repeat responses return `409`. Accepting records the current ask amount on the access link; it does not create a Bill of
-Sale, mark the lien sold, or finalize sale.
+repeat responses return `409`. Accepting records the current ask amount on the access link and moves the lien lifecycle
+status from `Offered` to `Accepted` with `SellerStatus=Accepted`; it does not create a Bill of Sale, mark the lien sold,
+or finalize sale. The
+`/offers` alias accepts the same response shape; legacy `message` fields are stored as response notes.
 
 **Authentication:** None.
 
@@ -467,6 +471,10 @@ Sale, mark the lien sold, or finalize sale.
     "responseAmount": 2500.00,
     "responseNotes": "Accepted at ask",
     "respondedAtUtc": "2026-07-23T14:10:00Z"
+  },
+  "lien": {
+    "status": "Accepted",
+    "sellerStatus": "Accepted"
   }
 }
 ```
@@ -474,8 +482,9 @@ Sale, mark the lien sold, or finalize sale.
 ### POST `/api/liens/selling/public/{token}/decline`
 
 Records a declined buyer response for the token-scoped lien. This is anonymous and uses the same token validation and
-conflict behavior as public accept. Declining can record an optional reason; it does not withdraw the lien or change the
-seller workflow state.
+conflict behavior as public accept. Declining can record an optional reason and marks the offered lien with
+`Status=Declined` and `SellerStatus=Declined`; it does not mark the lien sold, withdraw the seller listing, or create a
+Bill of Sale.
 
 **Authentication:** None.
 
@@ -496,6 +505,10 @@ seller workflow state.
     "responseAmount": null,
     "responseNotes": "Not in buying criteria",
     "respondedAtUtc": "2026-07-23T14:10:00Z"
+  },
+  "lien": {
+    "status": "Declined",
+    "sellerStatus": "Declined"
   }
 }
 ```

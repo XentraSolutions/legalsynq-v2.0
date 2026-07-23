@@ -57,9 +57,9 @@ public static class LookupEndpoints
 
     private static readonly (string Code, string Name, string[] SourceCodes, int SortOrder)[] LegacyLienStatusOptions =
     [
-        ("Open", "Open", [LienStatus.Draft, LienStatus.Offered, LienStatus.UnderReview, LienStatus.Sold, LienStatus.Active, LienStatus.Disputed], 1),
+        ("Open", "Open", [LienStatus.Draft, LienStatus.Offered, LienStatus.Accepted, LienStatus.UnderReview, LienStatus.Sold, LienStatus.Active, LienStatus.Disputed], 1),
         ("Closed", "Closed", [LienStatus.Settled], 2),
-        ("Rejected", "Rejected", [LienStatus.Withdrawn, LienStatus.Cancelled], 3),
+        ("Rejected", "Rejected", [LienStatus.Declined, LienStatus.Withdrawn, LienStatus.Cancelled], 3),
     ];
 
     private static readonly (Guid FallbackId, string Code, string Name, string[] SourceCodes, int SortOrder)[] LegacyDocumentTypeOptions =

@@ -109,10 +109,10 @@ public sealed class LienSaleService : ILienSaleService
         if (lien.TenantId != tenantId)
             throw new NotFoundException($"Lien '{offer.LienId}' not found for tenant '{tenantId}'.");
 
-        if (lien.Status != LienStatus.Offered && lien.Status != LienStatus.UnderReview)
+        if (lien.Status != LienStatus.Offered && lien.Status != LienStatus.Accepted && lien.Status != LienStatus.UnderReview)
             throw new ConflictException(
                 $"Lien '{lien.Id}' is in status '{lien.Status}' and cannot accept an offer. " +
-                "Only liens in 'Offered' or 'UnderReview' status can finalize a sale.",
+                "Only liens in 'Offered', 'Accepted', or 'UnderReview' status can finalize a sale.",
                 "LIEN_NOT_SELLABLE");
 
         var existingBosForLien = await _bosRepo.GetByLienIdAsync(tenantId, lien.Id, ct);

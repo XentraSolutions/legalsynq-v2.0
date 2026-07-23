@@ -6,7 +6,7 @@ Medical lien lifecycle management — creation, marketplace listing, offer/purch
 
 ## Responsibilities
 
-- Lien CRUD (Draft → Offered → Sold / Withdrawn)
+- Lien CRUD (Draft → Offered → Accepted / Declined → Sold / Withdrawn)
 - Marketplace browse and search
 - Offer submission and negotiation
 - Direct purchase at asking price
@@ -72,8 +72,10 @@ JSON from persisted lien, case, contact, access-link, response, and servicing do
 HTML; the tenant portal route `/selling/public/{token}` in `apps/web` fetches this JSON through the gateway and renders
 the funding-company review page. The page records buyer responses with
 `POST /api/liens/selling/public/{token}/accept` and `POST /api/liens/selling/public/{token}/decline`; accepting records
-the current ask amount and declining can record an optional reason. These public responses do not finalize the sale,
-create a Bill of Sale, or mark the lien sold.
+the current ask amount and moves the lien to `Status=Accepted` / `SellerStatus=Accepted`; declining records an optional
+reason and moves the lien to `Status=Declined` / `SellerStatus=Declined`. `POST
+/api/liens/selling/public/{token}/offers` is a compatibility alias for public accept. These public responses do not
+finalize the sale, create a Bill of Sale, or mark the lien sold.
 When sending links through the tenant portal host, configure
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain, so the public web route can render without a
