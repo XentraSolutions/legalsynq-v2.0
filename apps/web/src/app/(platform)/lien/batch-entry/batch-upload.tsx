@@ -30,6 +30,7 @@ export default function BatchUploadComponent({
   const [currentStep, setCurrentStep] = useState(action == "create" ? 0 : 1);
   const [totalImports, setTotalImport] = useState<number>(0);
   const [templateData, setTemplateData] = useState<TemplateItem>();
+  const [isValid, setIsValid] = useState<boolean>(false);
 
   const [template, setTemplate] = useState<{
     columns: string[];
@@ -301,6 +302,7 @@ export default function BatchUploadComponent({
             templateList={templateList}
             onTemplateUpdate={(data) => setTemplateData(data)}
             onDownload={download}
+            onValidate={(e) => setIsValid(e)}
           ></BatchUploadDocumentComponent>
         )}
 
@@ -334,7 +336,7 @@ export default function BatchUploadComponent({
           </button>
           <button
             onClick={() => nextStep()}
-            disabled={currentStep === STEPS.length - 1}
+            disabled={currentStep === STEPS.length - 1 || !isValid}
             className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {currentStep === 2 ? "Start Import" : "Next"}

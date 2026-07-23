@@ -19,11 +19,13 @@ type BatchUploadComponentProps = {
   templateList: templateItem[];
   onTemplateUpdate: (data: templateData) => void;
   onDownload: (id: string) => void;
+  onValidate?: (valid: boolean) => void;
 };
 export default function BatchUploadDocumentComponent({
   templateList,
   onDownload,
   onTemplateUpdate,
+  onValidate,
 }: BatchUploadComponentProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>();
   const [templateLabel, setTemplateLabel] = useState<string | null>();
@@ -35,7 +37,6 @@ export default function BatchUploadDocumentComponent({
   }, []);
 
   useEffect(() => {
-    console.log(caseId, templateLabel, selectedTemplate, selectedFile);
     if (templateLabel && selectedTemplate && selectedFile) {
       onTemplateUpdate({
         caseId: caseId ?? "",
@@ -43,6 +44,8 @@ export default function BatchUploadDocumentComponent({
         templateLabel: templateLabel,
         file: selectedFile,
       });
+      const valid = !!selectedTemplate && !!selectedFile && !!templateLabel;
+      if (onValidate) onValidate(valid);
     }
   }, [templateLabel, selectedTemplate, selectedFile]);
 
@@ -70,7 +73,25 @@ export default function BatchUploadDocumentComponent({
       </h3>
 
       <UploadDocumentComponent
-        config={{ isMultiple: false, accepted: ".csv" }}
+        config={{
+          isMultiple: false,
+          accepted: {
+            "text/csv": [".csv"],
+            "text/plain": [".csv"],
+            // XLSX fallback MIME types (Excel / Zip formats)
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+              [".xlsx"],
+            "application/octet-stream": [".xlsx", ".xls"],
+            "application/x-zip-compressed": [".xlsx"],
+            // XLS fallback MIME types
+            "application/vnd.ms-excel": [".xls", ".csv"], // Excel often marks CSVs with this!
+            "application/msexcel": [".xls"],
+            "application/x-msexcel": [".xls"],
+            // DOCX
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+              [".docx"],
+          },
+        }}
         // ref={dropzoneRef}
         onUploaded={(e) => onUploaded(e)}
       />

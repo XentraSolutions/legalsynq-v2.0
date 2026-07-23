@@ -498,14 +498,6 @@ export function SetupReductionForm({
             </h3>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <Field
-                label="Note"
-                value={form.note}
-                onChange={(v) => setForm({ ...form, note: v })}
-                placeholder="e.g. Negotiated reduction per agreement"
-              />
-            </div>
             <div>
               <Field
                 label="Reduction Date"

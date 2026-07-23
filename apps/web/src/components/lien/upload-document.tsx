@@ -93,9 +93,7 @@ const UploadDocumentComponent = forwardRef<
   const multiple = config?.isMultiple ?? isMultiple ?? true;
   const acceptedFiles = config?.accepted ?? DEFAULT_ACCEPTED_FILES;
   const acceptedLabel =
-    typeof acceptedFiles === "string"
-      ? acceptedFiles
-      : ".pdf,.jpg,.jpeg,.png,.csv,.xlsx,.xls,.docx";
+    typeof acceptedFiles === "string" ? acceptedFiles : ".csv,.xlsx,.xls,.docx";
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     onDropRejected: (rejectedFiles) => {
@@ -138,7 +136,7 @@ const UploadDocumentComponent = forwardRef<
 
         <i className="ri-upload-cloud-2-line text-3xl text-gray-300 mb-2" />
         <p className="text-sm text-gray-500">Click or drag file to upload</p>
-        <p className="text-xs text-gray-400 mt-1">{acceptedLabel} (max 10MB)</p>
+        <p className="text-xs text-gray-400 mt-1">{acceptedLabel} (max 50MB)</p>
       </div>
       {errorMessage && (
         <p className="text-red-500 bg-red-100/80 rounded-md p-4 my-3 text-sm whitespace-pre-line break-all">
