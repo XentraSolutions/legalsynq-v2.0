@@ -1,4 +1,5 @@
 import { CaseListItem } from "../cases";
+import { ExportResponse } from "../cases/cases.types";
 import {
   ApiResponse,
   ColumnGroup,
@@ -61,14 +62,10 @@ export const lienReportsService = {
     return data ?? [];
   },
 
-  async exportReports(request: ExportReportRequest): Promise<ApiResponse> {
+  async exportReports(request: ExportReportRequest): Promise<ExportResponse> {
     const { data } = await lienReportsApi.export(request);
     if (!data) throw new Error("Failed to export report");
-    return {
-      isSuccess: data.isSuccess,
-      message: data.message,
-      data: data.data,
-    };
+    return data as ExportResponse;
   },
 
   async updateReports(

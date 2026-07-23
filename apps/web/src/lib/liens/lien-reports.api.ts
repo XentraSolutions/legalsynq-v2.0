@@ -17,6 +17,7 @@ import {
   ViewType,
 } from "./lien-report.types";
 import { ReportColumnDto } from "../reports/reports.types";
+import { ExportResponse } from "../cases/cases.types";
 
 const BASE_PATH = "/lien/report/diy";
 
@@ -55,7 +56,7 @@ export const lienReportsApi = {
   },
 
   export(request: ExportReportRequest) {
-    return apiClient.post<ApiResponse>(`${BASE_PATH}/export`, request);
+    return apiClient.post<ExportResponse>(`${BASE_PATH}/export`, request);
   },
 
   update(request: UpdateReportConfigRequest) {
