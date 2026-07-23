@@ -227,7 +227,6 @@ export function ServicingTab({
         </span>
       ),
     },
-<<<<<<< Updated upstream
     {
       id: "updatedBy",
       header: "Updated By",
@@ -237,8 +236,6 @@ export function ServicingTab({
         </span>
       ),
     },
-=======
->>>>>>> Stashed changes
   ];
 
   const leftContent = (

@@ -1,6 +1,5 @@
 "use client";
 
-<<<<<<< Updated upstream
 import { LayoutSplit, PanelMode } from "@/components/lien/layout-split";
 import { FeedsSection } from "../../components/feeds-section";
 import { CaseDetail, casesService } from "@/lib/cases";
@@ -8,24 +7,16 @@ import { CollapsibleSection } from "../../components/collapsible-section";
 import { useEffect, useState } from "react";
 import { DateDisplay } from "@/components/ui/date-display";
 import { emailToDisplayName } from "@/lib/liens/note-utils";
-=======
-import { useEffect, useState } from "react";
-import type { PanelMode } from "@/components/lien/layout-split";
-import type { CaseDetail } from "@/lib/cases";
-import {
-  lienCaseNotesLegacyService,
-  type CaseFeedNote,
-} from "@/lib/liens/lien-case-notes-legacy.service";
->>>>>>> Stashed changes
 
 export function NotesTab({
   caseDetail,
+  panelMode,
+  onPanelModeChange,
 }: {
   caseDetail: CaseDetail;
   panelMode: PanelMode;
-  onPanelModeChange: (mode: PanelMode) => void;
+  onPanelModeChange: (m: PanelMode) => void;
 }) {
-<<<<<<< Updated upstream
   const [notes, setNotes] = useState<any>([]);
   const [loading, setIsLoading] = useState<boolean>(false);
   const fetchNotes = async () => {
@@ -97,75 +88,14 @@ export function NotesTab({
       </div>
     </CollapsibleSection>
   );
-=======
-  const [notes, setNotes] = useState<CaseFeedNote[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isCurrent = true;
-
-    void lienCaseNotesLegacyService
-      .getCaseNotes(caseDetail.id)
-      .then((items) => {
-        if (!isCurrent) return;
-        setNotes(items);
-        setError(null);
-      })
-      .catch(() => {
-        if (!isCurrent) return;
-        setNotes([]);
-        setError("Unable to load note history.");
-      })
-      .finally(() => {
-        if (isCurrent) setIsLoading(false);
-      });
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [caseDetail.id]);
->>>>>>> Stashed changes
 
   return (
-    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <header className="border-b border-gray-200 px-7 py-5">
-        <h2 className="text-lg font-semibold text-slate-900">Notes</h2>
-      </header>
-
-      {isLoading ? (
-        <div className="px-7 py-12 text-sm text-gray-400">Loading notes...</div>
-      ) : error ? (
-        <div className="px-7 py-12 text-sm text-red-500">{error}</div>
-      ) : notes.length === 0 ? (
-        <div className="px-7 py-12 text-sm text-gray-400">No notes found.</div>
-      ) : (
-        <div className="px-6">
-          {notes.map((note) => (
-            <article
-              key={note.id}
-              className="flex items-start gap-3 border-b border-gray-200 py-5 last:border-b-0"
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                <i className="ri-user-line text-sm" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-4">
-                  <p className="text-sm font-semibold text-slate-800">
-                    {note.createdBy || "Unknown User"}
-                  </p>
-                  <time className="shrink-0 text-xs text-slate-400">
-                    {note.created}
-                  </time>
-                </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
-                  {note.note}
-                </p>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
+    <LayoutSplit
+      left={leftContent}
+      right={rightContent}
+      mode={panelMode}
+      onModeChange={onPanelModeChange}
+      showControls={false}
+    />
   );
 }
