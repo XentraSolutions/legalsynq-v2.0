@@ -2231,6 +2231,7 @@ public static class CaseEndpoints
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
 
         var item = await db.Cases
             .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id, ct);
@@ -2243,8 +2244,13 @@ public static class CaseEndpoints
             });
         }
 
-        var hasLinkedLiens = await db.Liens.AnyAsync(l => l.TenantId == tenantId && l.CaseId == id, ct);
-        if (hasLinkedLiens)
+        var linkedLiens = await db.Liens
+            .Where(l => l.TenantId == tenantId && l.CaseId == id)
+            .ToListAsync(ct);
+        var hasBlockingLiens = linkedLiens.Any(l =>
+            !LienStatus.Terminal.Contains(l.Status) &&
+            !string.Equals(l.Status, "Rejected", StringComparison.OrdinalIgnoreCase));
+        if (hasBlockingLiens)
         {
             return Results.BadRequest(new
             {
@@ -2252,6 +2258,9 @@ public static class CaseEndpoints
                 message = "Error: Unable to delete Case. Linked liens must be removed or reassigned first.",
             });
         }
+
+        foreach (var lien in linkedLiens)
+            lien.DetachCase(userId);
 
         db.LienCaseNotes.RemoveRange(db.LienCaseNotes.Where(n => n.TenantId == tenantId && n.CaseId == id));
         db.ServicingItems.RemoveRange(db.ServicingItems.Where(s => s.TenantId == tenantId && s.CaseId == id));
