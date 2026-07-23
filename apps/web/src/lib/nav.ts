@@ -71,7 +71,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       heading: 'MY TOOLS',
       items: [
-        { href: '/lien/templates', label: 'Templates', icon: 'ri-file-list-3-line' },
+        { href: '/lien/templates', label: 'Report Templates', icon: 'ri-file-list-3-line' },
         { href: '/lien/reports', label: 'Reports', icon: 'ri-file-list-2-line' },
         { href: '/lien/batch-entry',       label: 'Batch Upload',      icon: 'ri-upload-line', requiredRoles: [ProductRole.SynqLienSeller] },
         { href: '/lien/document-handling', label: 'Document Handling', icon: 'ri-file-list-line', disabledMessage: 'Document Handling is coming soon' },
