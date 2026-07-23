@@ -165,33 +165,38 @@ export default function MedicalCodesDescription(
           : inverseValue;
       return val;
     } else {
-      return parseNumber(currentPurchase);
+      return typeof currentPurchase == "string"
+        ? parseNumber(currentPurchase)
+        : currentPurchase;
     }
   };
   function handleAddOrUpdateLine() {
     const selectedOption = medicalCodes?.find(
       (option) => option.value === form.procedureCode,
     );
-    const nextRow = {
-      id: editingId || `temp-${Date.now()}`,
-      code: form.procedureCode,
-      description: selectedOption?.label ?? "",
-      medicareCost: parseNumber(form.medicareCost),
-      billingAmount: parseNumber(currentBilling),
-      purchaseAmount: getCurrentValue(),
-    };
 
-    setRows((current) => {
-      if (editingId) {
-        return current.map((row) => (row.id === editingId ? nextRow : row));
-      }
-      return [...current, nextRow];
-    });
-    setTimeout(() => {
-      createMedicalCodeLiens(
+    setTimeout(async () => {
+      const response = await createMedicalCodeLiens(
         { ...form, id: editingId ?? form.id },
         editingId != "",
       );
+
+      const nextRow = {
+        id: editingId || response.data,
+        code: form.procedureCode,
+        description: selectedOption?.label ?? "",
+        medicareCost: parseNumber(form.medicareCost),
+        billingAmount: parseNumber(currentBilling),
+        purchaseAmount: getCurrentValue(),
+      };
+
+      setRows((current) => {
+        if (editingId) {
+          return current.map((row) => (row.id === editingId ? nextRow : row));
+        }
+        return [...current, nextRow];
+      });
+      validateForm();
     }, 100);
     resetLine();
   }
@@ -215,7 +220,7 @@ export default function MedicalCodesDescription(
         payee: payload.payee,
         outboundCheckNumber: payload.outboundCheckNumber,
       };
-      isEditing
+      const res = isEditing
         ? await casesService.updateMedicalCodeLiens(request)
         : await casesService.createMedicalCodeLiens(request);
       addToast({
@@ -223,6 +228,7 @@ export default function MedicalCodesDescription(
         title: `Medical Code ${isEditing ? "Updated" : "Created"}`,
         description: `Medical Code has been ${isEditing ? "updated" : "created"}.`,
       });
+      return res;
     } catch (err) {
       if (err instanceof ApiError) {
         addToast({

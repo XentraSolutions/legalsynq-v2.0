@@ -174,7 +174,10 @@ export function CreateCaseForm({
     ) {
       setData((prev: any) => ({
         ...prev,
-        status: [...LEGACY_CASE_STATUS_OPTIONS],
+        status:
+          lookup?.CaseStatus?.map((c) => {
+            return { key: c.id, value: c.code, label: c.name };
+          }) ?? [],
         state:
           lookup?.State?.map((c) => {
             return { key: c.id, value: c.code, label: c.code };
