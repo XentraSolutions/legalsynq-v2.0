@@ -91,6 +91,56 @@ export const caseDetailResponseSchema = z.object({
   updatedAtUtc: z.string(),
 });
 
+export const payoffQuoteSchema = z.object({
+  url: z.string().url(),
+});
+
+export const personalCaseUpdateRequestSchema = z.object({
+  caseId: z.string(),
+  firstName: z.string().trim().min(1, 'First name is required'),
+  lastName: z.string().trim().min(1, 'Last name is required'),
+  dob: optionalIsoDateSchema.optional(),
+  phone: z.string().trim().optional(),
+  email: z.string().trim().email('Enter a valid email').or(z.literal('')).optional(),
+  address: z.string().trim().optional(),
+  city: z.string().trim().optional(),
+  state: z.string().trim().optional(),
+  zipcode: z.string().trim().optional(),
+});
+
+export const primaryCaseUpdateRequestSchema = z.object({
+  caseId: z.string(),
+  title: z.string().trim().optional(),
+  status: z.string().trim().optional(),
+  dateOfLoss: optionalIsoDateSchema.optional(),
+  insuranceCarrier: z.string().trim().optional(),
+  policyNumber: z.string().trim().optional(),
+  claimNumber: z.string().trim().optional(),
+});
+
+export const caseDetailsUpdateRequestSchema = z.object({
+  caseId: z.string(),
+  description: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
+  demandAmount: z.number().nonnegative().optional(),
+  settlementAmount: z.number().nonnegative().optional(),
+});
+
+export const caseUpdateSchema = z
+  .object({
+    id: z.string().optional(),
+    title: z.string().optional(),
+    action: z.string().optional(),
+    description: z.string().optional(),
+    message: z.string().optional(),
+    note: z.string().optional(),
+    createdAt: z.string().optional(),
+    createdAtUtc: z.string().optional(),
+    updatedAt: z.string().optional(),
+    updatedAtUtc: z.string().optional(),
+  })
+  .passthrough();
+
 export const createCaseRequestSchema = z.object({
   caseNumber: z.string().trim().optional(),
   clientFirstName: z.string().trim().min(1, 'First name is required'),

@@ -45,7 +45,7 @@ export function CaseDetailHeader({ title, subtitle, onBack, onMore }: CaseDetail
         </View>
 
         <Pressable
-          accessibilityLabel="Add case note"
+          accessibilityLabel="Manage case"
           accessibilityRole="button"
           className="h-10 w-10 items-center justify-center rounded-full bg-white dark:bg-[#191a1f]"
           hitSlop={12}

@@ -1,6 +1,12 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import { CaseDetailScreen, CreateCaseScreen } from '@/features/cases';
+import {
+  CaseDetailScreen,
+  CreateCaseScreen,
+  EditCaseDetailsScreen,
+  EditCasePersonalScreen,
+  PayoffQuoteScreen,
+} from '@/features/cases';
 import { DashboardReportDetailScreen } from '@/features/dashboard';
 import { LienDetailScreen, MyLiensScreen, SellLienScreen } from '@/features/liens';
 import { OfferDetailScreen } from '@/features/offers';
@@ -22,6 +28,9 @@ export function MainStack() {
       <Stack.Screen component={MyLiensScreen} name="MyLiens" />
       <Stack.Screen component={OfferDetailScreen} name="OfferDetail" />
       <Stack.Screen component={CaseDetailScreen} name="CaseDetail" />
+      <Stack.Screen component={EditCaseDetailsScreen} name="EditCaseDetails" />
+      <Stack.Screen component={EditCasePersonalScreen} name="EditCasePersonal" />
+      <Stack.Screen component={PayoffQuoteScreen} name="PayoffQuote" />
       <Stack.Screen component={CreateCaseScreen} name="CreateCase" />
       <Stack.Screen component={SettingsScreen} name="Settings" />
       <Stack.Screen component={XeniaChatScreen} name="XeniaAI" />

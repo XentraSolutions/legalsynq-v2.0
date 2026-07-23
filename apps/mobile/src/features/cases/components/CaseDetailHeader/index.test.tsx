@@ -18,7 +18,7 @@ describe('CaseDetailHeader', () => {
     expect(getByText('Marcus Delgado')).toBeTruthy();
     expect(getByText('Case ID: 24-18743')).toBeTruthy();
     fireEvent.press(getByLabelText('Go back'));
-    fireEvent.press(getByLabelText('Add case note'));
+    fireEvent.press(getByLabelText('Manage case'));
     expect(onBack).toHaveBeenCalledTimes(1);
     expect(onMore).toHaveBeenCalledTimes(1);
   });

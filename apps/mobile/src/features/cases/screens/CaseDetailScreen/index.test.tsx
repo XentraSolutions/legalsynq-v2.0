@@ -3,6 +3,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { CaseDetailScreen } from './index';
 
 const mockGoBack = jest.fn();
+const mockNavigate = jest.fn();
 const mockMutateAsync = jest.fn();
 const mockUseCaseDetail = jest.fn();
 
@@ -38,7 +39,7 @@ const caseDetail = {
 };
 
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ goBack: mockGoBack }),
+  useNavigation: () => ({ goBack: mockGoBack, navigate: mockNavigate }),
   useRoute: () => ({ params: { caseId: 'case-1' } }),
 }));
 
@@ -46,10 +47,15 @@ jest.mock('@/features/cases/hooks', () => ({
   useAddCaseNote: () => ({ isPending: false, mutateAsync: mockMutateAsync }),
   useCaseDetail: () => mockUseCaseDetail(),
   useCaseNotes: () => ({ data: [], isLoading: false }),
+  useCaseUpdates: () => ({ data: [], isLoading: false }),
 }));
 
 jest.mock('@/shared/hooks', () => ({
-  useToast: () => ({ showError: jest.fn(), showSuccess: jest.fn() }),
+  useToast: () => ({
+    showError: jest.fn(),
+    showInfo: jest.fn(),
+    showSuccess: jest.fn(),
+  }),
 }));
 
 describe('CaseDetailScreen', () => {
@@ -111,5 +117,17 @@ describe('CaseDetailScreen', () => {
     fireEvent.press(getByText('Documents'));
     expect(getByTestId('case-documents-page')).toBeTruthy();
     expect(getByText('This section is ready for case-specific content.')).toBeTruthy();
+  });
+
+  it('opens the manage case menu and routes to the payoff quote', () => {
+    const { getByLabelText, getByText } = render(<CaseDetailScreen />);
+
+    fireEvent.press(getByLabelText('Manage case'));
+    expect(getByText('Manage Case')).toBeTruthy();
+    expect(getByText('Merge Case')).toBeTruthy();
+    expect(getByText('Delete Case')).toBeTruthy();
+
+    fireEvent.press(getByText('Payoff Quote'));
+    expect(mockNavigate).toHaveBeenCalledWith('PayoffQuote', { caseId: 'case-1' });
   });
 });

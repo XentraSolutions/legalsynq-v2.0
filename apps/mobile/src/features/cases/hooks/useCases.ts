@@ -11,7 +11,13 @@ import {
   LegacyCasesAdapter,
   LegacyCasesApi,
 } from '@/shared/api/endpoints/Cases';
-import type { CaseExportFilter, CreateCaseRequest } from '@/shared/api/endpoints/Cases';
+import type {
+  CaseDetailsUpdateRequest,
+  CaseExportFilter,
+  CreateCaseRequest,
+  PersonalCaseUpdateRequest,
+  PrimaryCaseUpdateRequest,
+} from '@/shared/api/endpoints/Cases';
 import { useAuth } from '@/shared/hooks';
 import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
 
@@ -20,6 +26,8 @@ export const caseFeatureKeys = {
   list: (mode: string) => [...caseFeatureKeys.all, 'list', mode] as const,
   detail: (id: string) => [...caseFeatureKeys.all, 'detail', id] as const,
   notes: (id: string) => [...caseFeatureKeys.all, 'notes', id] as const,
+  updates: (id: string) => [...caseFeatureKeys.all, 'updates', id] as const,
+  payoffQuote: (id: string) => [...caseFeatureKeys.all, 'payoff-quote', id] as const,
 };
 
 export function useCases(search = '', filters: CaseFilters = EMPTY_CASE_FILTERS) {
@@ -62,6 +70,58 @@ export function useCaseDetail(caseId: string) {
       }
       return CasesApi.getCase(caseId);
     },
+  });
+}
+
+export function usePayoffQuote(caseId: string) {
+  return useQuery({
+    queryKey: caseFeatureKeys.payoffQuote(caseId),
+    queryFn: () => CasesApi.getPayoffQuote(caseId),
+    retry: false,
+  });
+}
+
+export function useCaseUpdates(caseId: string) {
+  return useQuery({
+    queryKey: caseFeatureKeys.updates(caseId),
+    queryFn: () => CasesApi.getCaseUpdates(caseId),
+  });
+}
+
+function useRefreshCase(caseId: string) {
+  const queryClient = useQueryClient();
+  return async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: caseFeatureKeys.detail(caseId) }),
+      queryClient.invalidateQueries({ queryKey: caseFeatureKeys.updates(caseId) }),
+      queryClient.invalidateQueries({ queryKey: caseFeatureKeys.all }),
+    ]);
+  };
+}
+
+export function useUpdatePersonalInfo(caseId: string) {
+  const refreshCase = useRefreshCase(caseId);
+  return useMutation({
+    mutationFn: (input: Omit<PersonalCaseUpdateRequest, 'caseId'>) =>
+      CasesApi.updatePersonalInfo({ ...input, caseId }),
+    onSuccess: refreshCase,
+  });
+}
+
+export function useUpdateCaseDetails(caseId: string) {
+  const refreshCase = useRefreshCase(caseId);
+  return useMutation({
+    mutationFn: async ({
+      primary,
+      details,
+    }: {
+      primary: Omit<PrimaryCaseUpdateRequest, 'caseId'>;
+      details: Omit<CaseDetailsUpdateRequest, 'caseId'>;
+    }) => {
+      await CasesApi.updatePrimaryInfo({ ...primary, caseId });
+      await CasesApi.updateCaseDetails({ ...details, caseId });
+    },
+    onSuccess: refreshCase,
   });
 }
 

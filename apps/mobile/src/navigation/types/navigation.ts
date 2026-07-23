@@ -25,6 +25,9 @@ export type MainStackParamList = {
   MyLiens: undefined;
   OfferDetail: { offerId: string };
   CaseDetail: { caseId: string };
+  EditCaseDetails: { caseId: string };
+  EditCasePersonal: { caseId: string };
+  PayoffQuote: { caseId: string };
   CreateCase: undefined;
   Settings: undefined;
   XeniaAI: undefined;

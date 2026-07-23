@@ -5,6 +5,7 @@ import type {
   AddCaseNoteRequest,
   Case,
   CaseDetailResponse,
+  CaseDetailsUpdateRequest,
   CaseExportFile,
   CaseExportFilter,
   CaseQueryParams,
@@ -18,6 +19,10 @@ import type {
   DashboardTotalCaseReportRow,
   DashboardTotalLienReportRow,
   Note,
+  PayoffQuote,
+  PersonalCaseUpdateRequest,
+  PrimaryCaseUpdateRequest,
+  CaseUpdate,
   ReportFilterRequest,
 } from './types';
 
@@ -154,6 +159,33 @@ export const CasesApi = {
   async getCase(id: string): Promise<CaseDetailResponse> {
     const response = await apiClient.get<CaseDetailResponse>(`${CASES_BASE_PATH}/${id}`);
     return response.data;
+  },
+
+  async getPayoffQuote(caseId: string): Promise<PayoffQuote> {
+    const response = await apiClient.get<unknown>(`${CASES_BASE_PATH}/payoff-quote/${caseId}`);
+    const payload = asRecord(response.data);
+    const url = payload?.url;
+    if (typeof url !== 'string' || !url.trim()) {
+      throw new Error('A payoff quote is not available for this case.');
+    }
+    return { url };
+  },
+
+  async updatePersonalInfo(body: PersonalCaseUpdateRequest): Promise<void> {
+    await apiClient.patch(`${CASES_BASE_PATH}/personal-update`, body);
+  },
+
+  async updatePrimaryInfo(body: PrimaryCaseUpdateRequest): Promise<void> {
+    await apiClient.patch(`${CASES_BASE_PATH}/primary-update`, body);
+  },
+
+  async updateCaseDetails(body: CaseDetailsUpdateRequest): Promise<void> {
+    await apiClient.patch(`${CASES_BASE_PATH}/details-update`, body);
+  },
+
+  async getCaseUpdates(caseId: string): Promise<CaseUpdate[]> {
+    const response = await apiClient.get<unknown>(`${CASES_BASE_PATH}/case-updates/${caseId}`);
+    return normalizeArray<CaseUpdate>(response.data);
   },
 
   async createCase(body: CreateCaseRequest): Promise<CaseDetailResponse> {
