@@ -23,11 +23,20 @@ export interface FileDropzoneRef {
 const DEFAULT_ACCEPTED_FILES: Accept = {
   "application/pdf": [".pdf"],
   "image/*": [".jpg", ".jpeg", ".png"],
+  // CSVs are frequently given Excel's MIME type or text/plain
   "text/csv": [".csv"],
+  "text/plain": [".csv"],
+  // XLSX fallback MIME types (Excel / Zip formats)
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
     ".xlsx",
   ],
-  "application/vnd.ms-excel": [".xls"],
+  "application/octet-stream": [".xlsx", ".xls"],
+  "application/x-zip-compressed": [".xlsx"],
+  // XLS fallback MIME types
+  "application/vnd.ms-excel": [".xls", ".csv"], // Excel often marks CSVs with this!
+  "application/msexcel": [".xls"],
+  "application/x-msexcel": [".xls"],
+  // DOCX
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
     ".docx",
   ],
@@ -39,6 +48,29 @@ const UploadDocumentComponent = forwardRef<
 >(({ onUploaded, isMultiple, config }, ref) => {
   const [files, setFiles] = useState<File[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const allowedExtensions = [
+    ".pdf",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".csv",
+    ".xlsx",
+    ".xls",
+    ".docx",
+  ];
+
+  const nameValidator = (file: File) => {
+    const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+
+    if (!allowedExtensions.includes(extension)) {
+      return {
+        code: "file-invalid-type",
+        message: `File type ${extension} is not supported.`,
+      };
+    }
+    return null;
+  };
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -70,6 +102,7 @@ const UploadDocumentComponent = forwardRef<
       // Fallback hook callback if you prefer handling errors on-drop
       handleErrors(rejectedFiles);
     },
+    validator: nameValidator,
     multiple,
     accept: acceptedFiles as Accept,
     maxSize: 50 * 1024 * 1024,
