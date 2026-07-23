@@ -728,7 +728,7 @@ export default function CreateUpdateReport({
             onClick={handleNextOrSubmit}
             className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-primary/70"
           >
-            {isLastStep ? "Generate" : "Next"}
+            {isLastStep ? "Save" : "Next"}
           </button>
         </div>
       }
