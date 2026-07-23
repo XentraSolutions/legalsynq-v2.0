@@ -1,5 +1,8 @@
-import { lienCaseNotesLegacyApi } from './lien-case-notes-legacy.api';
-import type { CaseFeedNote, CaseNoteFeedSort } from './lien-case-notes-legacy.types';
+import { lienCaseNotesLegacyApi } from "./lien-case-notes-legacy.api";
+import type {
+  CaseFeedNote,
+  CaseNoteFeedSort,
+} from "./lien-case-notes-legacy.types";
 
 export type { CaseFeedNote, CaseNoteFeedSort };
 
@@ -14,15 +17,16 @@ export type { CaseFeedNote, CaseNoteFeedSort };
 // machine happens to be in that same timezone. Normalize to a real ISO UTC
 // instant here, once, so every consumer (just DateDisplay today) gets a
 // value it can actually convert.
-const LEGACY_FEED_TIMESTAMP_PATTERN = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}) (AM|PM)$/;
+const LEGACY_FEED_TIMESTAMP_PATTERN =
+  /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}) (AM|PM)$/;
 
 function toIsoUtc(created: string): string {
   const match = LEGACY_FEED_TIMESTAMP_PATTERN.exec(created.trim());
   if (!match) return created;
   const [, month, day, year, hour12, minute, meridiem] = match;
   let hour = Number(hour12) % 12;
-  if (meridiem === 'PM') hour += 12;
-  return `${year}-${month}-${day}T${String(hour).padStart(2, '0')}:${minute}:00Z`;
+  if (meridiem === "PM") hour += 12;
+  return `${year}-${month}-${day}T${String(hour).padStart(2, "0")}:${minute}:00Z`;
 }
 
 export const lienCaseNotesLegacyService = {
@@ -32,17 +36,23 @@ export const lienCaseNotesLegacyService = {
     sort: CaseNoteFeedSort,
   ): Promise<CaseFeedNote[]> {
     const res = await lienCaseNotesLegacyApi.list(caseId, showDeleted, sort);
-    if (!res.data.isSuccess) throw new Error(res.data.message || 'Failed to load notes');
-    return (res.data.data ?? []).map((note) => ({ ...note, created: toIsoUtc(note.created) }));
+    if (!res.data.isSuccess)
+      throw new Error(res.data.message || "Failed to load notes");
+    return (res.data.data ?? []).map((note) => ({
+      ...note,
+      created: note.created,
+    }));
   },
 
   async addNote(caseId: string, note: string): Promise<void> {
     const res = await lienCaseNotesLegacyApi.create(caseId, note);
-    if (!res.data.isSuccess) throw new Error(res.data.message || 'Failed to add note');
+    if (!res.data.isSuccess)
+      throw new Error(res.data.message || "Failed to add note");
   },
 
   async deleteNote(noteId: string): Promise<void> {
     const res = await lienCaseNotesLegacyApi.remove(noteId);
-    if (!res.data.isSuccess) throw new Error(res.data.message || 'Failed to delete note');
+    if (!res.data.isSuccess)
+      throw new Error(res.data.message || "Failed to delete note");
   },
 };
