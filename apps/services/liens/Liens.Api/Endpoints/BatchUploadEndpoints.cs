@@ -17,6 +17,28 @@ namespace Liens.Api.Endpoints;
 
 public static class BatchUploadEndpoints
 {
+    private sealed record DefaultBatchTemplateDefinition(string Code, string Name, string ColumnsHeader);
+
+    private static readonly DefaultBatchTemplateDefinition[] DefaultBatchTemplates =
+    [
+        new(
+            "ADD_LIENS_EXISTING_CASE",
+            "Add Liens To Existing Case",
+            "Case Code*|Lien Status*|Purchase Date*|Initial Service Date*|End Service Date|Notes|Is Bulk|Funding Company|Facility Name*|Contact Person|Facility Email Address|Medical Provider Name|Medical Code & Description*|Medicare Cost|Billing Amount*|Purchase Amount*|Payee|Outbound Check Number|Document Type*|Attachment"),
+        new(
+            "ADD_PAYMENTS_EXISTING_LIENS",
+            "Add Payments To Existing Liens",
+            "Lien Code*|Lien Status*|Amount to Settle|Check Amount*|Check Received*|Check Number*|Settlement Type*|Settlement Status|Notes"),
+        new(
+            "INITIAL_CASE_IMPORT",
+            "Initial Case Import",
+            "First Name*|Last Name*|Date of Birth*|Address|City|State|Zip Code|Is Servicing*|Case Status*|Accident Type*|Accident State*|Date of Loss|Law Firm*|Case Manager|Notes"),
+        new(
+            "UPDATE_CASE_TRACKING_STATUS",
+            "Update Case Tracking Status",
+            "Case Code*|Current Status*|Current Medical Status|Case Type*|State of Incident*|Lead|Date of Loss|Notes"),
+    ];
+
     private sealed class BatchUploadRequest
     {
         public string? id { get; init; }
@@ -96,36 +118,31 @@ public static class BatchUploadEndpoints
 
     private static async Task SeedDefaultTemplatesAsync(LiensDbContext db, Guid userId, CancellationToken ct)
     {
-        if (await db.BatchTemplates.AnyAsync(ct))
-            return;
+        var codes = DefaultBatchTemplates.Select(template => template.Code).ToList();
+        var existingTemplates = await db.BatchTemplates
+            .Where(template => template.IsSystem && template.TenantId == null && codes.Contains(template.Code))
+            .ToDictionaryAsync(template => template.Code, StringComparer.OrdinalIgnoreCase, ct);
 
-        db.BatchTemplates.AddRange(
-            BatchTemplate.Create(
-                "ADD_LIENS_EXISTING_CASE",
-                "Add Liens To Existing Case",
-                "Case Code*|Lien Status*|Purchase Date*|Initial Service Date*|End Service Date|Notes|Is Bulk|Funding Company|Facility Name*|Contact Person|Facility Email Address|Medical Provider Name|Medical Code & Description*|Medicare Cost|Billing Amount*|Purchase Amount*|Payee|Outbound Check Number|Document Type*|Attachment",
-                userId,
-                isSystem: true),
-            BatchTemplate.Create(
-                "ADD_PAYMENTS_EXISTING_LIENS",
-                "Add Payments To Existing Liens",
-                "Lien Code*|Payment Number*|Payment Date*|Amount*|Payee|Check Number|Note",
-                userId,
-                isSystem: true),
-            BatchTemplate.Create(
-                "INITIAL_CASE_IMPORT",
-                "Initial Case Import",
-                "Case Code*|First Name*|Last Name*|Date Of Loss|Date Of Birth|Address|City|State|Zipcode|Note|External Case Id",
-                userId,
-                isSystem: true),
-            BatchTemplate.Create(
-                "UPDATE_CASE_TRACKING_STATUS",
-                "Update Case Tracking Status",
-                "Case Code*|Case Status*|Note|Switched Date",
+        var hasChanges = false;
+        foreach (var definition in DefaultBatchTemplates)
+        {
+            if (existingTemplates.TryGetValue(definition.Code, out var existing))
+            {
+                hasChanges |= existing.UpdateSystemDefinition(definition.Name, definition.ColumnsHeader, userId);
+                continue;
+            }
+
+            db.BatchTemplates.Add(BatchTemplate.Create(
+                definition.Code,
+                definition.Name,
+                definition.ColumnsHeader,
                 userId,
                 isSystem: true));
+            hasChanges = true;
+        }
 
-        await db.SaveChangesAsync(ct);
+        if (hasChanges)
+            await db.SaveChangesAsync(ct);
     }
 
     private static async Task<IResult> GetBatchUploadById(
@@ -426,10 +443,7 @@ public static class BatchUploadEndpoints
         if (details.Count == 0)
             return Results.BadRequest(new { isSuccess = false, message = "No detail rows found to process." });
 
-        var requiredHeaders = template.ColumnsHeader
-            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(h => h.EndsWith('*'))
-            .ToList();
+        var requiredHeaders = GetRequiredHeadersForProcessing(template);
         var allowsGeneratedCaseCode = string.Equals(
             template.Code,
             "INITIAL_CASE_IMPORT",
@@ -740,6 +754,20 @@ public static class BatchUploadEndpoints
         string.Equals(templateCode, "INITIAL_CASE_IMPORT", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(templateCode, "UPDATE_CASE_TRACKING_STATUS", StringComparison.OrdinalIgnoreCase);
 
+    private static List<string> GetRequiredHeadersForProcessing(BatchTemplate template)
+    {
+        if (string.Equals(template.Code, "INITIAL_CASE_IMPORT", StringComparison.OrdinalIgnoreCase))
+            return ["First Name*", "Last Name*"];
+
+        if (string.Equals(template.Code, "UPDATE_CASE_TRACKING_STATUS", StringComparison.OrdinalIgnoreCase))
+            return ["Case Code*", "Current Status*"];
+
+        return template.ColumnsHeader
+            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(h => h.EndsWith('*'))
+            .ToList();
+    }
+
     private static async Task ImportInitialCaseRowAsync(
         JsonObject row,
         Guid tenantId,
@@ -753,18 +781,61 @@ public static class BatchUploadEndpoints
             CaseNumber = ResolveRowValue(row, "Case Code*")?.Trim() ?? string.Empty,
             ClientFirstName = RequireRowValue(row, "First Name*"),
             ClientLastName = RequireRowValue(row, "Last Name*"),
-            DateOfIncident = ParseBatchDate(ResolveRowValue(row, "Date Of Loss")),
-            ClientDob = ParseBatchDate(ResolveRowValue(row, "Date Of Birth")),
+            DateOfIncident = ParseBatchDate(ResolveRowValue(row, "Date of Loss")),
+            ClientDob = ParseBatchDate(ResolveRowValue(row, "Date of Birth*")),
             ClientAddress = BuildAddress(
                 ResolveRowValue(row, "Address"),
                 ResolveRowValue(row, "City"),
                 ResolveRowValue(row, "State"),
-                ResolveRowValue(row, "Zipcode")),
-            Notes = ResolveRowValue(row, "Note"),
+                ResolveRowValue(row, "Zip Code")),
+            Notes = ResolveRowValue(row, "Notes"),
+            CaseType = ResolveRowValue(row, "Accident Type*"),
+            StateOfIncident = ResolveRowValue(row, "Accident State*"),
+            StatusLabel = ResolveRowValue(row, "Case Status*"),
             ExternalReference = ResolveRowValue(row, "External Case Id"),
         };
 
-        await caseService.CreateAsync(tenantId, orgId, userId, request, ct);
+        var result = await caseService.CreateAsync(tenantId, orgId, userId, request, ct);
+        var importedStatus = ResolveRowValue(row, "Case Status*");
+        if (string.IsNullOrWhiteSpace(importedStatus))
+            return;
+
+        var normalizedStatus = NormalizeImportedCaseStatus(importedStatus);
+        if (string.Equals(normalizedStatus, result.Status, StringComparison.Ordinal))
+            return;
+
+        var updateRequest = new UpdateCaseRequest
+        {
+            ClientFirstName = result.ClientFirstName,
+            ClientLastName = result.ClientLastName,
+            ExternalReference = result.ExternalReference,
+            Title = result.Title,
+            ClientDob = result.ClientDob,
+            ClientPhone = result.ClientPhone,
+            ClientEmail = result.ClientEmail,
+            ClientAddress = result.ClientAddress,
+            DateOfIncident = result.DateOfIncident,
+            InsuranceCarrier = result.InsuranceCarrier,
+            PolicyNumber = result.PolicyNumber,
+            ClaimNumber = result.ClaimNumber,
+            Description = result.Description,
+            Notes = FirstNonEmpty(ResolveRowValue(row, "Notes"), result.Notes),
+            Status = normalizedStatus,
+            DemandAmount = result.DemandAmount,
+            SettlementAmount = result.SettlementAmount,
+            Sex = result.Sex,
+            CaseType = FirstNonEmpty(ResolveRowValue(row, "Accident Type*"), result.CaseType),
+            CurrentMedicalStatus = result.CurrentMedicalStatus,
+            StateOfIncident = FirstNonEmpty(ResolveRowValue(row, "Accident State*"), result.StateOfIncident),
+            TrackingFollowUpDate = result.TrackingFollowUpDate,
+            LeadId = result.LeadId,
+            LawFirmId = result.LawFirmId,
+            AccidentTypeId = result.AccidentTypeId,
+            CaseManagerId = result.CaseManagerId,
+            StatusLabel = FirstNonEmpty(ResolveRowValue(row, "Case Status*"), result.StatusLabel),
+        };
+
+        await caseService.UpdateAsync(tenantId, result.Id, userId, updateRequest, ct);
     }
 
     private static async Task ImportCaseTrackingRowAsync(
@@ -788,19 +859,19 @@ public static class BatchUploadEndpoints
             ClientPhone = existing.ClientPhone,
             ClientEmail = existing.ClientEmail,
             ClientAddress = existing.ClientAddress,
-            DateOfIncident = existing.DateOfIncident,
+            DateOfIncident = ParseBatchDate(ResolveRowValue(row, "Date of Loss")) ?? existing.DateOfIncident,
             InsuranceCarrier = existing.InsuranceCarrier,
             PolicyNumber = existing.PolicyNumber,
             ClaimNumber = existing.ClaimNumber,
             Description = existing.Description,
-            Notes = FirstNonEmpty(ResolveRowValue(row, "Note"), existing.Notes),
-            Status = NormalizeImportedCaseStatus(RequireRowValue(row, "Case Status*")),
+            Notes = FirstNonEmpty(ResolveRowValue(row, "Notes"), existing.Notes),
+            Status = NormalizeImportedCaseStatus(RequireRowValue(row, "Current Status*")),
             DemandAmount = existing.DemandAmount,
             SettlementAmount = existing.SettlementAmount,
             Sex = existing.Sex,
-            CaseType = existing.CaseType,
-            CurrentMedicalStatus = existing.CurrentMedicalStatus,
-            StateOfIncident = existing.StateOfIncident,
+            CaseType = FirstNonEmpty(ResolveRowValue(row, "Case Type*"), existing.CaseType),
+            CurrentMedicalStatus = FirstNonEmpty(ResolveRowValue(row, "Current Medical Status"), existing.CurrentMedicalStatus),
+            StateOfIncident = FirstNonEmpty(ResolveRowValue(row, "State of Incident*"), existing.StateOfIncident),
             TrackingFollowUpDate = existing.TrackingFollowUpDate,
             LeadId = existing.LeadId,
         };
@@ -1009,14 +1080,57 @@ public static class BatchUploadEndpoints
 
     private static string? ResolveRowValue(JsonObject row, string key)
     {
-        var normalizedKey = NormalizeHeaderKey(key);
-        foreach (var property in row)
+        foreach (var candidate in GetHeaderCandidates(key))
         {
-            if (string.Equals(NormalizeHeaderKey(property.Key), normalizedKey, StringComparison.OrdinalIgnoreCase))
-                return property.Value?.ToString();
+            var normalizedKey = NormalizeHeaderKey(candidate);
+            foreach (var property in row)
+            {
+                if (string.Equals(NormalizeHeaderKey(property.Key), normalizedKey, StringComparison.OrdinalIgnoreCase))
+                    return property.Value?.ToString();
+            }
         }
 
         return null;
+    }
+
+    private static IEnumerable<string> GetHeaderCandidates(string key)
+    {
+        yield return key;
+
+        var normalized = NormalizeHeaderKey(key);
+        switch (normalized.ToUpperInvariant())
+        {
+            case "CASE STATUS":
+                yield return "Current Status*";
+                break;
+            case "CURRENT STATUS":
+                yield return "Case Status*";
+                break;
+            case "NOTE":
+                yield return "Notes";
+                break;
+            case "NOTES":
+                yield return "Note";
+                break;
+            case "ZIPCODE":
+                yield return "Zip Code";
+                break;
+            case "ZIP CODE":
+                yield return "Zipcode";
+                break;
+            case "DATE OF BIRTH":
+                yield return "Date Of Birth";
+                break;
+            case "DATE OF LOSS":
+                yield return "Date Of Loss";
+                break;
+            case "ACCIDENT STATE":
+                yield return "State of Incident*";
+                break;
+            case "STATE OF INCIDENT":
+                yield return "Accident State*";
+                break;
+        }
     }
 
     private static string NormalizeHeaderKey(string value) =>

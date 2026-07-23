@@ -1,6 +1,7 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
+using Liens.Api.Serialization;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
@@ -351,7 +352,7 @@ public static class TaskEndpoints
                         status,
                         statusId = status,
                         assignedTo = i.AssignedTo,
-                        createdAt = i.CreatedAtUtc.ToString("MM/dd/yyyy hh:mm tt", System.Globalization.CultureInfo.InvariantCulture),
+                        createdAt = PacificTimeHelper.FormatTimestamp(i.CreatedAtUtc),
                     };
                 })
                 .ToList();

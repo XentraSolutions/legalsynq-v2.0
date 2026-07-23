@@ -13,6 +13,7 @@
 - [Lien Offers](#lien-offers-endpoints)
 - [Contacts](#contacts-endpoints)
 - [Servicing](#servicing-endpoints)
+- [Reports](#reports-endpoints)
 
 ---
 
@@ -127,6 +128,9 @@ Base path: `/api/liens/liens`
 ### GET `/api/liens/liens`
 
 Search and list liens with optional filters.
+
+Buying-facing lien list responses exclude liens in `Rejected` or `Cancelled` status and normalize the remaining statuses to `Open` or `Closed`. Selling-specific workflow statuses remain available on selling endpoints and on direct lien detail responses.
+All liens API timestamp responses are serialized in U.S. Pacific time (`-07:00` or `-08:00` depending on DST). Legacy string-formatted timestamps use the same Pacific conversion.
 
 **Permission:** `SYNQ_LIENS.lien:read`
 
@@ -257,7 +261,7 @@ Update an existing lien.
 | `lienNumber` | `string` | No | Lien number |
 | `externalReference` | `string` | Yes | External reference |
 | `lienType` | `string` | No | Type of lien |
-| `status` | `string` | No | Current status |
+| `status` | `string` | No | Current status. Buying list endpoints exclude `Rejected` and `Cancelled` liens and normalize remaining values to `Open` or `Closed`; direct lien detail responses may still return workflow statuses used by selling flows. |
 | `caseId` | `guid` | Yes | Associated case ID |
 | `facilityId` | `guid` | Yes | Associated facility ID |
 | `originalAmount` | `decimal` | No | Original lien amount |
@@ -598,6 +602,7 @@ Create a new case.
 **Response:** `201 Created` — `CaseResponse`
 
 Returns the created case with a `Location` header pointing to `/api/liens/cases/{id}`.
+Creation also adds a `Case Created` entry to the legacy case-update history endpoint (`POST /api/liens/cases/case-updates/v3`), including the case code, client, status, law firm, manager, and creator.
 
 ---
 
@@ -638,6 +643,26 @@ Update an existing case.
 **Response:** `200 OK` — `CaseResponse`
 
 **Error:** `404 Not Found` — if the case does not exist.
+
+---
+
+### GET `/api/liens/cases/notes/{caseId}`
+
+Return the legacy case-note history. Each changed non-empty `notes` value submitted through `PATCH /api/liens/cases/details-update` is appended as a new case-note entry rather than replacing prior entries. Feed notes and system update-history entries are intentionally excluded.
+
+**Permission:** `SYNQ_LIENS.case:read`
+
+The response uses the legacy envelope `{ isSuccess, message, data }`. `data` is ordered newest first and each item includes the historical `note` value and creator metadata. `created` is the U.S. Pacific display string, while `createdAtUtc` is the corresponding canonical UTC ISO timestamp.
+
+`POST /api/liens/cases/add-note` and `POST /api/liens/cases/get-notes` are the separate Feed-note routes. Feed notes are shown only in the case Feed; they are not returned by this case-notes endpoint or by case-update history.
+
+---
+
+### POST `/api/liens/cases/dashboard/deployed` and `/api/liens/cases/dashboard/cash-received`
+
+Return dashboard totals for deployed liens and cash received. Supplying both `startDate` and `endDate` filters the metric to that inclusive range. When neither date is supplied, the metric includes all available tenant history; `periodStart` and `periodEnd` are returned as empty strings to indicate the all-time result.
+
+The dashboard Total Lien Report, including its status chart and totals, excludes `Rejected` and `Cancelled` liens before aggregation and pagination.
 
 ---
 
@@ -1425,3 +1450,11 @@ Update the status of a servicing item.
 | `escalatedAtUtc` | `datetime` | Yes | When item was escalated |
 | `createdAtUtc` | `datetime` | No | Record creation timestamp |
 | `updatedAtUtc` | `datetime` | No | Record last-updated timestamp |
+
+---
+
+## Reports Endpoints
+
+### GET `/report/diy/columns`
+
+Returns the legacy DIY-report column metadata and the ordered default selection for the requested report type. For `LIENS`, the default selection includes `days_since_reduction_approval` in position 9 (zero-based), followed by `case_status` and `date_of_loss` in positions 14 and 15 respectively. `initial_service_date` and `number_of_liens` remain available as optional columns but are not selected by default.

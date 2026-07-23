@@ -595,6 +595,7 @@ public class AuthService : IAuthService
         var tenantGuidParsed = Guid.TryParse(tenantId, out var tenantGuid);
         Guid? avatarDocumentId = null;
         string? phone = null;
+        Organization? organization = null;
         if (Guid.TryParse(userId, out var userGuid))
         {
             var user = await _userRepository.GetByIdAsync(userGuid, ct);
@@ -637,7 +638,7 @@ public class AuthService : IAuthService
             var membership = tenantGuidParsed
                 ? await _userRepository.GetPrimaryOrgMembershipAsync(userGuid, tenantGuid, ct)
                 : await _userRepository.GetPrimaryOrgMembershipAsync(userGuid, ct);
-            var organization = membership?.Organization;
+            organization = membership?.Organization;
             if (organization is not null)
             {
                 orgId = organization.Id.ToString();
@@ -667,6 +668,40 @@ public class AuthService : IAuthService
             .Select(c => c.Value)
             .ToList();
 
+        string? refreshedAccessToken = null;
+        if (Guid.TryParse(userId, out var refreshUserId) && tenantGuidParsed)
+        {
+            var refreshUser = await _userRepository.GetByIdWithRolesAsync(refreshUserId, ct);
+            var refreshTenant = await _tenantRepository.GetByIdAsync(tenantGuid, ct);
+
+            if (refreshUser is not null && refreshTenant is not null)
+            {
+                var tenantMemberships = await _userRepository.GetActiveTenantMembershipsAsync(refreshUser.Id, ct);
+                var rawTenantIds = principal.FindAll("tenant_ids")
+                    .Select(claim => Guid.TryParse(claim.Value, out var parsedTenantId) ? parsedTenantId : (Guid?)null)
+                    .Where(value => value.HasValue)
+                    .Select(value => value!.Value);
+                var tenantIds = rawTenantIds
+                    .Concat(tenantMemberships.Select(ut => ut.TenantId))
+                    .Distinct()
+                    .ToArray();
+
+                var (renewedToken, renewedExpiresAtUtc) = _jwtTokenService.GenerateToken(
+                    refreshUser,
+                    refreshTenant,
+                    systemRoles,
+                    organization,
+                    productRoles,
+                    sessionTimeoutMinutes: sessionTimeoutMinutes,
+                    productCodes: rawUserProductCodes,
+                    permissions: permissions,
+                    tenantIds: tenantIds);
+
+                refreshedAccessToken = renewedToken;
+                expiresAtUtc = renewedExpiresAtUtc;
+            }
+        }
+
         return new AuthMeResponse(
             UserId:                 userId,
             Email:                  email,
@@ -683,7 +718,8 @@ public class AuthService : IAuthService
             EnabledProducts:        enabledProducts,
             Phone:                  phone,
             UserProducts:           userProducts,
-            Permissions:            permissions);
+            Permissions:            permissions,
+            RefreshedAccessToken:   refreshedAccessToken);
     }
 
     private static bool IsEligibleForCareConnectPortal(

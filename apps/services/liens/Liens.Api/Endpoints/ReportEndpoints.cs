@@ -174,22 +174,8 @@ public static class ReportEndpoints
         CancellationToken ct = default)
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
-        var result = await svc.RunReportAsync(tenantId,
-            new DIYReportRunRequest
-            {
-                Config = request.Config,
-                Page = request.Page,
-                Limit = 10_000,
-                SortBy = request.SortBy,
-                SortDir = request.SortDir,
-                ExtensionData = request.ExtensionData,
-            },
-            ct);
-
-        var csv = BuildCsv(result.Items);
-        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
-        var base64 = Convert.ToBase64String(bytes);
-        return Results.Ok(new { data = base64 });
+        var result = await svc.RunReportAsync(tenantId, request, ct);
+        return Results.Ok(ToLegacyRunResponse(result, request));
     }
 
     private static IResult GetLegacyColumns(string reportType = "LIENS")
@@ -219,7 +205,9 @@ public static class ReportEndpoints
             isSuccess = true,
             message = "Columns retrieved.",
             reportType = NormalizeLegacyReportType(reportType),
-            defaultColumn = columns.Where(column => column.IsDefault).Select(column => column.Key).ToList(),
+            // The report editor uses this sequence to render its initially selected columns.
+            // Keep it independent of the grouped metadata order below.
+            defaultColumn = GetLegacyDefaultColumnKeys(reportType),
             liensInfo = liensInfo ?? [],
             settlementInfo = settlementInfo ?? [],
             procedureInfo = procedureInfo ?? [],
@@ -307,16 +295,9 @@ public static class ReportEndpoints
         });
     }
 
-    private static string BuildCsv(List<DIYReportRow> rows)
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("CaseId,CaseNumber,ClientName,Status,LienTotal");
-        foreach (var r in rows)
-            sb.AppendLine($"{r.CaseId},{CsvEscape(r.CaseNumber)},{CsvEscape(r.ClientName)},{CsvEscape(r.Status)},{r.LienTotal}");
-        return sb.ToString();
-    }
-
-    private static object ToLegacyRunResponse(DIYReportResult result, DIYReportRunRequest request)
+    private static object ToLegacyRunResponse(
+        DIYReportResult result,
+        DIYReportRunRequest request)
     {
         var requestedColumns = GetRequestedColumns(request);
         var rows = result.Items
@@ -364,18 +345,74 @@ public static class ReportEndpoints
             ["case_id"] = r.CaseNumber,
             ["lien_id"] = r.LienNumber,
             ["purchase_date"] = string.Empty,
+            ["days_since_purchase"] = string.Empty,
             ["purchase_amt"] = FormatLegacyMoney(r.PurchaseAmount),
             ["billing_amt"] = FormatLegacyMoney(r.BillingAmount),
+            ["expected_settlement_amount"] = FormatLegacyMoney(r.ToSettleAmount),
+            ["reduction_percentage"] = string.Empty,
+            ["capital_providers"] = string.Empty,
+            ["first_purchase_date"] = string.Empty,
+            ["last_purchase_date"] = string.Empty,
             ["date_closed"] = FormatLegacyDate(r.DateClosed),
+            ["reduction"] = string.Empty,
+            ["amt_to_settle"] = FormatLegacyMoney(r.ToSettleAmount),
+            ["returned_amount"] = FormatLegacyMoney(r.ReturnedAmount),
+            ["gross_profit"] = FormatLegacyMoney((r.ReturnedAmount ?? 0m) - (r.PurchaseAmount ?? 0m)),
+            ["roi"] = string.Empty,
+            ["annualized_roi"] = string.Empty,
             ["returned_amt"] = FormatLegacyMoney(r.ReturnedAmount),
             ["initial_service_date"] = FormatLegacyDate(r.InitialServiceDate),
+            ["end_service_date"] = string.Empty,
+            ["medical_provider"] = string.Empty,
+            ["medical_facility_contact"] = string.Empty,
             ["medical_facility"] = string.Empty,
+            ["medical_facility_address"] = string.Empty,
+            ["medical_facility_city"] = string.Empty,
+            ["medical_facility_state"] = string.Empty,
+            ["medical_facility_zip_code"] = string.Empty,
+            ["medical_codes"] = string.Empty,
+            ["notes"] = string.Empty,
+            ["attorney"] = string.Empty,
+            ["attorney_phone"] = string.Empty,
+            ["attorney_email"] = string.Empty,
             ["lawfirm"] = string.Empty,
+            ["law_firm_address"] = string.Empty,
+            ["law_firm_city"] = string.Empty,
+            ["law_firm_state"] = string.Empty,
+            ["law_firm_zip_code"] = string.Empty,
+            ["law_firm_phone"] = string.Empty,
             ["case_type"] = string.Empty,
             ["case_manager"] = " ",
+            ["case_manager_email"] = string.Empty,
+            ["state_of_incident"] = string.Empty,
+            ["settlement_date"] = string.Empty,
+            ["reduction_date"] = string.Empty,
+            ["days_since_reduction_approval"] = string.Empty,
+            ["days_to_return"] = string.Empty,
+            ["lawfirm_email"] = string.Empty,
             ["number_of_liens"] = r.NumberOfLiens,
             ["case_status"] = FormatLegacyStatus(r.CaseStatus),
+            ["medical_status"] = string.Empty,
+            ["last_case_tracking_date"] = string.Empty,
+            ["last_case_tracking_note"] = string.Empty,
+            ["case_tracking_follow_up_date"] = string.Empty,
+            ["case_tracking_contact"] = string.Empty,
+            ["case_tracking_contact_email"] = string.Empty,
+            ["last_case_note"] = string.Empty,
+            ["last_case_note_date"] = string.Empty,
             ["date_of_loss"] = FormatLegacyDate(r.DateOfLoss),
+            ["plaintiff_date_of_birth"] = string.Empty,
+            ["plaintiff_phone"] = string.Empty,
+            ["plaintiff_email"] = string.Empty,
+            ["plaintiff_address"] = string.Empty,
+            ["plaintiff_city"] = string.Empty,
+            ["plaintiff_state"] = string.Empty,
+            ["plaintiff_zip_code"] = string.Empty,
+            ["case_entered_by"] = string.Empty,
+            ["lead_source"] = string.Empty,
+            ["case_dropped"] = string.Empty,
+            ["ucc_filed"] = string.Empty,
+            ["minor_comp"] = string.Empty,
             ["id"] = r.CaseId?.ToString() ?? string.Empty,
             ["l_id"] = r.LienId?.ToString() ?? string.Empty,
             ["to_settle_amt"] = FormatLegacyMoney(r.ToSettleAmount),
@@ -461,14 +498,6 @@ public static class ReportEndpoints
             "CaseSettled" => "Case Settled",
             _ => value,
         };
-    }
-
-    private static string CsvEscape(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return string.Empty;
-        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
-            return $"\"{value.Replace("\"", "\"\"")}\"";
-        return value;
     }
 
     private static async Task<List<object>> GetLegacyFilterOptionsInternalAsync(
@@ -574,26 +603,9 @@ public static class ReportEndpoints
 
     private static List<LegacyReportColumnDefinition> GetLegacyReportColumns(string reportType)
     {
-        var normalizedReportType = NormalizeLegacyReportType(reportType);
-        var defaultColumns = normalizedReportType == "CASES"
-            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "plaintiff_first_name",
-                "plaintiff_last_name",
-                "case_id",
-                "case_status",
-                "date_of_loss",
-            }
-            : new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "plaintiff_first_name",
-                "plaintiff_last_name",
-                "case_id",
-                "lien_id",
-                "purchase_amt",
-                "billing_amt",
-                "case_status",
-            };
+        var defaultColumns = new HashSet<string>(
+            GetLegacyDefaultColumnKeys(reportType),
+            StringComparer.OrdinalIgnoreCase);
 
         return new List<LegacyReportColumnDefinition>
         {
@@ -602,26 +614,110 @@ public static class ReportEndpoints
             new("case_id", "Case ID", "caseInfo"),
             new("lien_id", "Lien ID", "liensInfo"),
             new("purchase_date", "Purchase Date", "liensInfo"),
-            new("purchase_amt", "Purchase Amount", "liensInfo"),
-            new("billing_amt", "Billing Amount", "liensInfo"),
-            new("date_closed", "Date Closed", "caseTrackingInfo"),
-            new("returned_amt", "Returned Amount", "settlementInfo"),
-            new("initial_service_date", "Initial Service Date", "procedureInfo"),
-            new("medical_facility", "Medical Facility", "liensInfo"),
-            new("lawfirm", "Law Firm", "caseInfo"),
-            new("case_type", "Case Type", "caseInfo"),
-            new("case_manager", "Case Manager", "caseInfo"),
+            new("days_since_purchase", "Days Since Purchase", "liensInfo"),
+            new("purchase_amt", "Purchase Amt", "liensInfo"),
+            new("billing_amt", "Billing Amt", "liensInfo"),
+            new("expected_settlement_amount", "Expected Settlement Amount", "liensInfo"),
+            new("reduction_percentage", "Reduction Percentage", "liensInfo"),
+            new("capital_providers", "Capital Providers", "liensInfo"),
             new("number_of_liens", "Number Of Liens", "liensInfo"),
-            new("case_status", "Case Status", "caseTrackingInfo"),
-            new("date_of_loss", "Date Of Loss", "caseTrackingInfo"),
-            new("id", "Case Guid", "caseInfo"),
-            new("l_id", "Lien Guid", "liensInfo"),
+            new("date_closed", "Date Closed", "liensInfo"),
+            new("first_purchase_date", "First Purchase Date", "liensInfo"),
+            new("last_purchase_date", "Last Purchase Date", "liensInfo"),
+            new("reduction", "Reduction", "settlementInfo"),
+            new("amt_to_settle", "Amt To Settle", "settlementInfo"),
+            new("gross_profit", "Gross Profit", "settlementInfo"),
+            new("roi", "ROI", "settlementInfo"),
+            new("annualized_roi", "Annualized ROI", "settlementInfo"),
+            new("returned_amount", "Returned Amount", "settlementInfo"),
             new("to_settle_amt", "To Settle Amount", "settlementInfo"),
             new("settled_amt", "Settled Amount", "settlementInfo"),
+            new("initial_service_date", "Initial Service Date", "procedureInfo"),
+            new("end_service_date", "End Service Date", "procedureInfo"),
+            new("medical_provider", "Medical Provider", "procedureInfo"),
+            new("medical_facility_contact", "Medical Facility Contact", "procedureInfo"),
+            new("medical_facility", "Medical Facility", "procedureInfo"),
+            new("medical_facility_address", "Medical Facility Address", "procedureInfo"),
+            new("medical_facility_city", "Medical Facility City", "procedureInfo"),
+            new("medical_facility_state", "Medical Facility State", "procedureInfo"),
+            new("medical_facility_zip_code", "Medical Facility ZIP Code", "procedureInfo"),
+            new("medical_codes", "Medical Codes", "procedureInfo"),
+            new("notes", "Notes", "procedureInfo"),
+            new("attorney", "Attorney", "caseInfo"),
+            new("attorney_phone", "Attorney Phone", "caseInfo"),
+            new("attorney_email", "Attorney Email", "caseInfo"),
+            new("lawfirm", "Law Firm", "caseInfo"),
+            new("law_firm_address", "Law Firm Address", "caseInfo"),
+            new("law_firm_city", "Law Firm City", "caseInfo"),
+            new("law_firm_state", "Law Firm State", "caseInfo"),
+            new("law_firm_zip_code", "Law Firm ZIP Code", "caseInfo"),
+            new("law_firm_phone", "Law Firm Phone", "caseInfo"),
+            new("case_type", "Case Type", "caseInfo"),
+            new("case_manager", "Case Manager", "caseInfo"),
+            new("case_manager_email", "Case Manager Email", "caseInfo"),
+            new("state_of_incident", "State of Incident", "caseInfo"),
+            new("date_of_loss", "Date of Loss", "caseInfo"),
+            new("settlement_date", "Settlement Date", "caseInfo"),
+            new("reduction_date", "Reduction Date", "caseInfo"),
+            new("days_since_reduction_approval", "Days Since Reduction Approval", "caseInfo"),
+            new("days_to_return", "Days To Return", "caseInfo"),
+            new("lawfirm_email", "Lawfirm Email", "caseInfo"),
+            new("case_status", "Case Status", "caseTrackingInfo"),
+            new("medical_status", "Medical Status", "caseTrackingInfo"),
+            new("last_case_tracking_date", "Last Case Tracking Date", "caseTrackingInfo"),
+            new("last_case_tracking_note", "Last Case Tracking Note", "caseTrackingInfo"),
+            new("case_tracking_follow_up_date", "Case Tracking Follow Up Date (For later from Servicing)", "caseTrackingInfo"),
+            new("case_tracking_contact", "Case Tracking Contact (case manager)", "caseTrackingInfo"),
+            new("case_tracking_contact_email", "Case Tracking Contact Email (case manager note)", "caseTrackingInfo"),
+            new("last_case_note", "Last Case Note", "caseTrackingInfo"),
+            new("last_case_note_date", "Last Case Note Date", "caseTrackingInfo"),
+            new("plaintiff_date_of_birth", "Plaintiff Date of Birth", "plaintiffInfo"),
+            new("plaintiff_phone", "Plaintiff Phone", "plaintiffInfo"),
+            new("plaintiff_email", "Plaintiff Email", "plaintiffInfo"),
+            new("plaintiff_address", "Plaintiff Address", "plaintiffInfo"),
+            new("plaintiff_city", "Plaintiff City", "plaintiffInfo"),
+            new("plaintiff_state", "Plaintiff State", "plaintiffInfo"),
+            new("plaintiff_zip_code", "Plaintiff ZIP Code", "plaintiffInfo"),
+            new("case_entered_by", "Case Entered by", "plaintiffInfo"),
+            new("lead_source", "Lead Source", "plaintiffInfo"),
+            new("case_dropped", "Case Dropped", "plaintiffInfo"),
+            new("ucc_filed", "UCC Filed", "plaintiffInfo"),
+            new("minor_comp", "Minor Comp", "plaintiffInfo"),
+            new("id", "Case Guid", "caseInfo"),
         }
         .Select(column => column with { IsDefault = defaultColumns.Contains(column.Key) })
         .ToList();
     }
+
+    private static IReadOnlyList<string> GetLegacyDefaultColumnKeys(string reportType)
+        => NormalizeLegacyReportType(reportType) == "CASES"
+            ?
+            [
+                "plaintiff_first_name",
+                "plaintiff_last_name",
+                "case_id",
+                "case_status",
+                "date_of_loss",
+            ]
+            :
+            [
+                "plaintiff_first_name",
+                "plaintiff_last_name",
+                "case_id",
+                "lien_id",
+                "purchase_date",
+                "purchase_amt",
+                "billing_amt",
+                "date_closed",
+                "returned_amount",
+                "days_since_reduction_approval",
+                "medical_facility",
+                "lawfirm",
+                "case_type",
+                "case_manager",
+                "case_status",
+                "date_of_loss",
+            ];
 
     private sealed record LegacyReportColumnDefinition(
         string Key,

@@ -1,12 +1,16 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
+using Liens.Api.Serialization;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
 using Liens.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Liens.Infrastructure.Persistence;
+using Microsoft.Extensions.Primitives;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Globalization;
 using System.Text;
 
@@ -40,6 +44,14 @@ public static class ServiceLegacyEndpoints
         public string CaseId { get; init; } = string.Empty;
         public int Page { get; init; } = 1;
         public int Limit { get; init; } = 10;
+    }
+
+    private sealed class IdentityUserResponse
+    {
+        public Guid Id { get; init; }
+        public string? FirstName { get; init; }
+        public string? LastName { get; init; }
+        public string? Email { get; init; }
     }
 
     private sealed class LegacyServicingDetailsRequest
@@ -168,11 +180,6 @@ public static class ServiceLegacyEndpoints
             filter.caseManagerId,
             ct);
 
-        if (result.Items.Count == 0)
-        {
-            return Results.NotFound(new { isSuccess = false, message = "No record found." });
-        }
-
         return Results.Ok(new
         {
             isSuccess = true,
@@ -299,6 +306,9 @@ public static class ServiceLegacyEndpoints
     private static async Task<IResult> GetSettlementHistoryV3Legacy(
         LegacySettlementHistoryRequest request,
         ISettlementService settlementService,
+        ILienService lienService,
+        IHttpClientFactory httpClientFactory,
+        HttpContext httpContext,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -308,7 +318,14 @@ public static class ServiceLegacyEndpoints
             return Results.BadRequest(new { isSuccess = false, message = "Invalid CaseId" });
         }
 
-        var history = await BuildSettlementHistoryAsync(tenantId, caseId, settlementService, ct);
+        var history = await BuildSettlementHistoryAsync(
+            tenantId,
+            caseId,
+            settlementService,
+            lienService,
+            httpClientFactory,
+            httpContext.Request.Headers.Authorization,
+            ct);
         var page = Math.Max(request.Page, 1);
         var limit = Math.Max(request.Limit, 1);
         var data = history.Skip((page - 1) * limit).Take(limit).ToList();
@@ -419,7 +436,7 @@ public static class ServiceLegacyEndpoints
                 netProfit = string.Empty,
                 note = payment.Note ?? string.Empty,
                 paymentNumber = payment.PaymentNumber.ToString(CultureInfo.InvariantCulture),
-                date = payment.CreatedAtUtc.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture),
+                date = PacificTimeHelper.FormatDate(payment.CreatedAtUtc),
                 amountToSettle = lien?.CurrentBalance?.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00",
             };
         }).ToList();
@@ -582,49 +599,113 @@ public static class ServiceLegacyEndpoints
         Guid tenantId,
         Guid caseId,
         ISettlementService settlementService,
+        ILienService lienService,
+        IHttpClientFactory httpClientFactory,
+        StringValues authorizationHeader,
         CancellationToken ct)
     {
         var results = new List<object>();
         var reductions = await settlementService.GetReductionsByCaseAsync(tenantId, caseId, ct);
         var settlements = await settlementService.GetSettlementsByCaseAsync(tenantId, caseId, ct);
         var payments = await settlementService.GetPaymentsByCaseAsync(tenantId, caseId, ct);
+        var liens = await SearchLiensByCaseAsync(lienService, tenantId, caseId, ct);
+        var lienNumbersById = liens.ToDictionary(lien => lien.Id, lien => lien.LienNumber);
+        var updatedByNames = await ResolveUserNamesAsync(
+            reductions.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId)
+                .Concat(settlements.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId))
+                .Concat(payments.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId)),
+            httpClientFactory,
+            authorizationHeader,
+            ct);
 
         results.AddRange(reductions.Select(item => (object)new
         {
             id = item.Id.ToString(),
             type = "reduction",
-            lienId = item.LienId.ToString(),
+            lienId = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
+            lienCode = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
             amount = item.Amount,
             date = item.ReductionDate.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture),
             note = item.Note ?? string.Empty,
             createdAt = item.CreatedAtUtc,
+            updatedBy = ResolveUpdatedByName(item.UpdatedByUserId ?? item.CreatedByUserId, updatedByNames),
         }));
         results.AddRange(settlements.Select(item => (object)new
         {
             id = item.Id.ToString(),
             type = "settlement",
-            lienId = item.LienId.ToString(),
+            lienId = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
+            lienCode = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
             amount = item.Amount,
             paymentNumber = item.PaymentNumber,
             status = item.Status,
             note = item.Note ?? string.Empty,
             createdAt = item.CreatedAtUtc,
+            updatedBy = ResolveUpdatedByName(item.UpdatedByUserId ?? item.CreatedByUserId, updatedByNames),
         }));
         results.AddRange(payments.Select(item => (object)new
         {
             id = item.Id.ToString(),
             type = "payment",
-            lienId = item.LienId.ToString(),
+            lienId = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
+            lienCode = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
             amount = item.Amount,
             paymentNumber = item.PaymentNumber,
             payee = item.Payee ?? string.Empty,
             checkNumber = item.CheckNumber ?? string.Empty,
             note = item.Note ?? string.Empty,
             createdAt = item.CreatedAtUtc,
+            updatedBy = ResolveUpdatedByName(item.UpdatedByUserId ?? item.CreatedByUserId, updatedByNames),
         }));
 
         return results.OrderByDescending(item => ((dynamic)item).createdAt).ToList();
     }
+
+    private static async Task<IReadOnlyDictionary<Guid, string>> ResolveUserNamesAsync(
+        IEnumerable<Guid?> userIds,
+        IHttpClientFactory httpClientFactory,
+        StringValues authorizationHeader,
+        CancellationToken ct)
+    {
+        var ids = userIds
+            .Where(userId => userId.HasValue)
+            .Select(userId => userId!.Value)
+            .Distinct()
+            .ToHashSet();
+        if (ids.Count == 0)
+            return new Dictionary<Guid, string>();
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "api/users");
+            if (AuthenticationHeaderValue.TryParse(authorizationHeader, out var authorization))
+                request.Headers.Authorization = authorization;
+
+            using var response = await httpClientFactory.CreateClient("Identity").SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+                return new Dictionary<Guid, string>();
+
+            var users = await response.Content.ReadFromJsonAsync<List<IdentityUserResponse>>(cancellationToken: ct)
+                ?? [];
+            return users
+                .Where(user => ids.Contains(user.Id))
+                .ToDictionary(
+                    user => user.Id,
+                    user => string.Join(" ", new[] { user.FirstName, user.LastName }
+                        .Where(value => !string.IsNullOrWhiteSpace(value))).Trim());
+        }
+        catch (HttpRequestException)
+        {
+            return new Dictionary<Guid, string>();
+        }
+    }
+
+    private static string ResolveUpdatedByName(
+        Guid? userId,
+        IReadOnlyDictionary<Guid, string> userNames)
+        => userId.HasValue && userNames.TryGetValue(userId.Value, out var userName)
+            ? userName
+            : string.Empty;
 
     private static object MapLegacyServiceCase(CaseResponse item) => new
     {

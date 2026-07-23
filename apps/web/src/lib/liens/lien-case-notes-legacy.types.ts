@@ -13,6 +13,7 @@ export interface CaseFeedNote {
   isDeleted: "Y" | "N";
   /** ISO UTC instant — normalized by the service from the API's raw "MM/DD/YYYY hh:mm AM/PM" string. */
   created: string;
+  /** Canonical UTC ISO timestamp; the legacy `created` field is used for display. */
   createdAtUtc: string;
   createdBy: string;
   userId: string;

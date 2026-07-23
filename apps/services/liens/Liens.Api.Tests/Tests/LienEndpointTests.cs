@@ -140,9 +140,32 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     }
 
     [Fact]
+    public async Task ListLiens_serializes_datetime_fields_in_pacific_time()
+    {
+        var response = await _client.GetAsync("/api/liens/liens?page=1&pageSize=1");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var createdAtUtc = doc.RootElement
+            .GetProperty("items")[0]
+            .GetProperty("createdAtUtc")
+            .GetString();
+
+        createdAtUtc.Should().NotBeNullOrWhiteSpace();
+        (createdAtUtc!.EndsWith("-07:00", StringComparison.Ordinal) ||
+         createdAtUtc.EndsWith("-08:00", StringComparison.Ordinal))
+            .Should().BeTrue($"expected Pacific offset in serialized timestamp but got '{createdAtUtc}'");
+    }
+
+    [Fact]
     public async Task ListLiens_includes_plaintiff_law_firm_medical_facility_and_case_manager()
     {
         var caseManagerId = Guid.CreateVersion7();
+        var lienNumber = "LIEN-LIST-CONTEXT-001";
+        var lienId = Guid.CreateVersion7();
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -176,25 +199,221 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 policyNumber: caseEntity.PolicyNumber,
                 claimNumber: caseEntity.ClaimNumber,
                 description: caseEntity.Description,
-                notes: "[legacy-meta]\nlawFirmId=40000000-0000-0000-0000-000000000010; caseManagerId=" + caseManagerId);
+                notes: "[legacy-meta]\nlawFirmId=40000000-0000-0000-0000-000000000010;caseManagerId=" + caseManagerId);
 
-            var lien = db.Liens.Single(l => l.Id == SeedHelper.LienId);
-            lien.AttachFacility(SeedHelper.FacilityId, SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                lienNumber,
+                LienType.MedicalLien,
+                150m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                facilityId: SeedHelper.FacilityId,
+                subjectFirstName: "Context",
+                subjectLastName: "Lien");
+            typeof(Lien).GetProperty(nameof(Lien.Id))!.SetValue(lien, lienId);
+            db.Liens.Add(lien);
+
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LMFI-LIST-001",
+                "LegacyMedicalFacilityInfo",
+                "Legacy medical facility information",
+                "system",
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                lienId: lienId,
+                notes: $"facilityId={SeedHelper.FacilityId};facilityName=Sunrise Clinic"));
 
             await db.SaveChangesAsync();
         }
 
-        var response = await _client.GetAsync("/api/liens/liens?page=1&pageSize=10");
+        var response = await _client.GetAsync($"/api/liens/liens?search={lienNumber}&page=1&pageSize=10");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await response.Content.ReadAsStringAsync()}");
 
         var body = await response.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
         body.Should().NotBeNull();
-        var match = body!.Items.Single(item => item.Plaintiff == "John Plaintiff");
+        var match = body!.Items.Single(item => item.LienNumber == lienNumber);
+        match.Plaintiff.Should().Be("John Plaintiff");
         match.LawFirm.Should().Be("Smith & Associates LLP");
         match.MedicalFacility.Should().Be("Sunrise Clinic");
         match.CaseManager.Should().Be("Jamie Manager");
+    }
+
+    [Theory]
+    [InlineData("Open")]
+    [InlineData("Closed")]
+    public async Task ListLiens_returns_business_status_label(string requestedStatusLabel)
+    {
+        var lienNumber = $"LIEN-STATUS-{requestedStatusLabel}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                lienNumber,
+                LienType.MedicalLien,
+                125m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+
+            lien.SetLegacyMedicalStatus(requestedStatusLabel, SeedHelper.UserId);
+
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync($"/api/liens/liens?search={lienNumber}&page=1&pageSize=10");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        body.Should().NotBeNull();
+        var match = body!.Items.Single(item => item.LienNumber == lienNumber);
+        match.Status.Should().Be(requestedStatusLabel);
+        match.StatusLabel.Should().Be(requestedStatusLabel);
+    }
+
+    [Fact]
+    public async Task ListLiens_excludes_rejected_and_cancelled_before_pagination()
+    {
+        var prefix = $"LIEN-LIST-HIDE-{Guid.NewGuid():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            var openLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-OPEN",
+                LienType.MedicalLien,
+                125m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+
+            var rejectedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-REJECTED",
+                LienType.MedicalLien,
+                125m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            rejectedLien.SetLegacyMedicalStatus("Rejected", SeedHelper.UserId);
+
+            var cancelledLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-CANCELLED",
+                LienType.MedicalLien,
+                125m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            cancelledLien.SetLegacyMedicalStatus("Cancelled", SeedHelper.UserId);
+
+            db.Liens.AddRange(openLien, rejectedLien, cancelledLien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync(
+            $"/api/liens/liens?search={prefix}&page=1&pageSize=1");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        body.Should().NotBeNull();
+        body!.TotalCount.Should().Be(1);
+        body.Items.Should().ContainSingle();
+        body.Items[0].LienNumber.Should().Be($"{prefix}-OPEN");
+        body.Items[0].Status.Should().NotBe("Rejected").And.NotBe("Cancelled");
+    }
+
+    [Theory]
+    [InlineData("Open")]
+    [InlineData("Closed")]
+    public async Task SearchLiensV3_returns_business_status_label(string requestedStatusLabel)
+    {
+        var lienNumber = $"CASE-LIEN-STATUS-{requestedStatusLabel}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                lienNumber,
+                LienType.MedicalLien,
+                125m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+
+            lien.SetLegacyMedicalStatus(requestedStatusLabel, SeedHelper.UserId);
+
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/liens/v3", new
+        {
+            caseId = SeedHelper.CaseId,
+            page = 1,
+            limit = 50,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        body.Should().NotBeNull();
+        var match = body!.Items.Single(item => item.LienNumber == lienNumber);
+        match.Status.Should().Be(requestedStatusLabel);
+        match.StatusLabel.Should().Be(requestedStatusLabel);
+    }
+
+    [Fact]
+    public async Task ListLiens_by_caseId_excludes_rejected_liens_from_response()
+    {
+        var lienNumber = "CASE-LIEN-HIDE-REJECTED";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                lienNumber,
+                LienType.MedicalLien,
+                125m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+
+            lien.SetLegacyMedicalStatus("Rejected", SeedHelper.UserId);
+
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync($"/api/liens/liens?caseId={SeedHelper.CaseId}&page=1&pageSize=50");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        body.Should().NotBeNull();
+        body!.Items.Should().NotContain(item => item.LienNumber == lienNumber);
+        body.TotalCount.Should().Be(body.Items.Count);
     }
 
     [Fact]
@@ -687,9 +906,11 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     private sealed class LienListItemResponseBody
     {
         public string LienNumber { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+        public string StatusLabel { get; init; } = string.Empty;
         public string PurchaseDate { get; init; } = string.Empty;
-        public decimal TotalPurchase { get; init; }
-        public decimal TotalBilling { get; init; }
+        public decimal? TotalPurchase { get; init; }
+        public decimal? TotalBilling { get; init; }
         public string? Plaintiff { get; init; }
         public string? LawFirm { get; init; }
         public string? MedicalFacility { get; init; }
