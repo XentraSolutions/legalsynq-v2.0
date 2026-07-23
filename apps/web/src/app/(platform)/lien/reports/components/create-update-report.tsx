@@ -575,9 +575,7 @@ export default function CreateUpdateReport({
   };
 
   const createReportTemplate = async () => {
-    const cols = selectedCols.flatMap((section) =>
-      section.value.map((item: any) => item.key),
-    );
+    const cols = flattenedItems.flatMap((item: any) => item.key);
     const payload = {
       viewBy: form.reportType,
       reportType: form.reportType,
@@ -602,9 +600,6 @@ export default function CreateUpdateReport({
       page: "1",
       limit: "10",
     });
-    const reportRows = Array.isArray(reportDataRes.data)
-      ? reportDataRes.data
-      : [];
     return {
       data: reportDataRes.data,
       summaryTotals: reportDataRes.summaryTotals,
@@ -615,15 +610,6 @@ export default function CreateUpdateReport({
       description: form.description,
     };
   };
-
-  // const flattenedItems = selectedCols
-  //   .flatMap((section) =>
-  //     section.value.map((item: any) => ({
-  //       ...item,
-  //       sectionKey: section.key,
-  //     })),
-  //   )
-  //   .sort((a, b) => a.sortOrder - b.sortOrder);
 
   const flattenedItems = useMemo(
     () =>
@@ -810,14 +796,13 @@ export default function CreateUpdateReport({
                   value={form.lienStatusIds}
                   options={data.liensStatus ? data.liensStatus : []}
                   placeholder="Select one or more lien statuses"
-                  onChange={(v) =>
+                  onChange={(v: string) =>
                     setForm({
                       ...form,
-                      lienStatusIds: Array.isArray(v) ? v : v ? [v] : [],
+                      lienStatusIds: v,
                     })
                   }
                   type="select"
-                  multiple
                 />
               )}
 

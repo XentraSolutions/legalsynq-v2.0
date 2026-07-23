@@ -100,33 +100,37 @@ export default function MedicalCodesDescription(
 
   const currentBilling = form.billingAmount;
   const currentPurchase = form.purchaseAmount;
-  const [isPercent, setIsPercent] = useState(false);
   const handleParentInputChange = (raw: string) => {
     const sanitized = cleanNumericInput(raw);
-    if (isPercent) {
-      const n = parseFloat(sanitized);
-      if (!isNaN(n)) {
-        return;
-      }
+    const n = parseFloat(sanitized);
+    if (!isNaN(n)) {
+      setForm({ ...form, purchaseAmount: n });
+      return;
+    } else {
+      setForm({ ...form, purchaseAmount: sanitized });
     }
-    setForm({ ...form, purchaseAmount: sanitized });
   };
 
   const inverseValue = (() => {
-    if (!form.purchaseAmount) return;
-    return form.purchaseAmountType === "percent"
-      ? ((form.purchaseAmount / 100) * form.billingAmount).toFixed(2)
-      : roundToTwo((form.purchaseAmount / form.billingAmount) * 100);
+    if (!form.purchaseAmount) return "";
+    return !form.billingAmount
+      ? 0
+      : form.purchaseAmountType === "percent"
+        ? Number(((form.purchaseAmount / 100) * form.billingAmount).toFixed(2))
+        : roundToTwo((form.purchaseAmount / form.billingAmount) * 100);
   })();
 
   const handleToggleMode = (toPercent: boolean) => {
+    const computated = !form.billingAmount
+      ? 0
+      : toPercent
+        ? roundToTwo((form.purchaseAmount / form.billingAmount) * 100)
+        : Number(((form.purchaseAmount / 100) * form.billingAmount).toFixed(2));
     if (inverseValue !== null) {
       setForm((prev: any) => ({
         ...prev,
         purchaseAmountType: toPercent ? "percent" : "amount",
-        purchaseAmount: toPercent
-          ? roundToTwo((prev.purchaseAmount / prev.billingAmount) * 100)
-          : ((prev.purchaseAmount / 100) * prev.billingAmount).toFixed(2),
+        purchaseAmount: computated,
       }));
     }
   };
@@ -153,6 +157,17 @@ export default function MedicalCodesDescription(
     setEditingId("");
   }
 
+  const getCurrentValue = () => {
+    if (form.purchaseAmountType == "percent") {
+      const val =
+        typeof inverseValue == "string"
+          ? parseNumber(inverseValue)
+          : inverseValue;
+      return val;
+    } else {
+      return parseNumber(currentPurchase);
+    }
+  };
   function handleAddOrUpdateLine() {
     const selectedOption = medicalCodes?.find(
       (option) => option.value === form.procedureCode,
@@ -163,10 +178,7 @@ export default function MedicalCodesDescription(
       description: selectedOption?.label ?? "",
       medicareCost: parseNumber(form.medicareCost),
       billingAmount: parseNumber(currentBilling),
-      purchaseAmount:
-        form.purchaseAmountType === "amount"
-          ? parseNumber(currentPurchase)
-          : currentBilling * (currentPurchase / 100),
+      purchaseAmount: getCurrentValue(),
     };
 
     setRows((current) => {
@@ -175,7 +187,6 @@ export default function MedicalCodesDescription(
       }
       return [...current, nextRow];
     });
-
     setTimeout(() => {
       createMedicalCodeLiens(
         { ...form, id: editingId ?? form.id },
@@ -339,9 +350,9 @@ export default function MedicalCodesDescription(
             </label>
             <div className="flex flex-col gap-2">
               <div
-                className={`flex items-stretch h-9 rounded-lg border overflow-hidden transition-colors `}
+                className={`flex h-9.5 rounded-lg border border-gray-200 overflow-hidden transition-colors `}
               >
-                <div className={`relative w-40}`}>
+                <div className={`relative w-50 flex-1`}>
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
                     {form.purchaseAmountType == "percent" ? "%" : "$"}
                   </span>
@@ -355,7 +366,7 @@ export default function MedicalCodesDescription(
                   />
                 </div>
 
-                <div className={`relative bg-gray-50 w-10}`}>
+                <div className={`relative bg-gray-50 w-25`}>
                   {form.purchaseAmountType == "percent" && (
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
                       $
@@ -401,7 +412,7 @@ export default function MedicalCodesDescription(
             type="button"
             disabled={!isLineValid}
             onClick={handleAddOrUpdateLine}
-            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-gray-300"
+            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-gray-300 mt-2"
           >
             {editingId ? "Update" : "Add"}
           </button>

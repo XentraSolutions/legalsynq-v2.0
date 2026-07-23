@@ -8,17 +8,14 @@ import { CaseListItem } from "@/lib/cases";
 import {
   ColumnGroup,
   CreateReports,
-  DynamicColumns,
   ExportReportRequest,
+  ReportColumnOption,
   ReportListResponse,
-  ReportsResponse,
   ReportTotals,
 } from "@/lib/liens/lien-report.types";
-import { ReportListItem } from "@/lib/liens/lien-reports.mapper";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { useLienStore } from "@/stores/lien-store";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type SummaryTotals = {
   summaryTotals: ReportTotals;
@@ -192,12 +189,16 @@ export default function ReportDisplay({
       "defaultColumn",
     ]);
 
-    const groupedCols = Object.entries(columnGroups)
+    const groupedCols: ColumnGroup[] = Object.entries(
+      columnGroups as Record<string, unknown>,
+    )
       .filter(([key]) => !excludedKeys.has(key))
       .filter(([_, value]) => Array.isArray(value))
       .map(([key, value]) => ({
-        value,
+        key,
+        value: value as ReportColumnOption[],
       }));
+
     if (!report.config?.columns) {
       const cols = groupedCols
         .flatMap((config: any) => config.value)
@@ -207,14 +208,61 @@ export default function ReportDisplay({
       setColumns(cols);
       setCases(report.data ?? []);
     } else {
-      const labels = groupedCols
-        .flatMap((config: any) => config.value)
-        .filter((item) => report.config?.columns.includes(item.key))
-        .map((item) => {
-          return { key: item.key, label: item.label };
-        });
+      let sortOrder = 1;
+      let selected;
 
-      setColumns(labels);
+      const globallyOrderedItems = groupedCols
+        .flatMap((section) =>
+          (section.value || []).map((item) => ({
+            ...item,
+            sectionKey: section.key,
+          })),
+        )
+        .filter((item) => report.config?.columns.includes(item.key))
+        .sort((a, b) => {
+          const rawResponse = report.config?.columns;
+
+          const defaultColsArray = Array.isArray(rawResponse)
+            ? (rawResponse as string[])
+            : [];
+
+          const indexA = defaultColsArray.indexOf(a.key);
+          const indexB = defaultColsArray.indexOf(b.key);
+          return (
+            (indexA === -1 ? Infinity : indexA) -
+            (indexB === -1 ? Infinity : indexB)
+          );
+        })
+        .map((item) => ({
+          ...item,
+          sortOrder: sortOrder++,
+        }));
+
+      // Step 2: Re-group them back into the original format based on the original groupedCols order
+      selected = groupedCols
+        .map((section) => {
+          // Pull out only the items that belong to this specific section
+          const sectionItems = globallyOrderedItems.filter(
+            (item) => item.sectionKey === section.key,
+          );
+
+          return {
+            key: section.key,
+            value: sectionItems,
+          };
+        })
+        // Filter out any sections that ended up with 0 items
+        .filter((section) => section.value.length > 0);
+
+      const selectedValues = selected
+        .flatMap((section) =>
+          section.value.map((item: any) => ({
+            ...item,
+            sectionKey: section.key,
+          })),
+        )
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      setColumns(selectedValues);
       setCases(report.data ?? []);
     }
 
@@ -223,7 +271,7 @@ export default function ReportDisplay({
 
   useEffect(() => {
     fetchColumns();
-  }, [report.data]);
+  }, [report.data, report.columns]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
