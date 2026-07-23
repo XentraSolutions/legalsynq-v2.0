@@ -6,8 +6,8 @@ The main product application used by end users (law firms, healthcare providers,
 
 ## Tech
 
-- Next.js 15.2.9 App Router, TypeScript, Tailwind CSS, React 18
-- `node_modules` installed at monorepo root — `apps/web` inherits via Node resolution traversal
+- Next.js 16.2.6 App Router, TypeScript, Tailwind CSS, React 18
+- Local development uses the monorepo/root pnpm install path. Production runtime artifacts are packaged with `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml`, and the app manifest pins `packageManager: pnpm@10.26.1` so Corepack does not drift to a newer pnpm during `pnpm install --production`.
 
 ## Auth & Session
 

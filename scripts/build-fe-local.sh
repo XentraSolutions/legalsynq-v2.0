@@ -15,6 +15,12 @@ package_runtime_artifact() {
   cp -R "$app_dir/.next" "$artifact_dir/.next"
   cp "$app_dir/package.json" "$artifact_dir/package.json"
 
+  for metadata_file in pnpm-lock.yaml pnpm-workspace.yaml .npmrc; do
+    if [ -f "$app_dir/$metadata_file" ]; then
+      cp "$app_dir/$metadata_file" "$artifact_dir/$metadata_file"
+    fi
+  done
+
   if [ -f "$app_dir/next.config.mjs" ]; then
     cp "$app_dir/next.config.mjs" "$artifact_dir/next.config.mjs"
   fi
