@@ -13,6 +13,11 @@ namespace Liens.Api.Tests.Tests;
 public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
 {
     private static readonly Guid CaseManagerContactId = new("40000000-0000-0000-0000-000000000099");
+    private static readonly Guid AliasedLawFirmCaseId = new("60000000-0000-0000-0000-000000000099");
+    private static readonly Guid AliasedProviderLienId = new("70000000-0000-0000-0000-000000000099");
+    private static readonly Guid ActiveDashboardLienId = new("70000000-0000-0000-0000-000000000100");
+    private static readonly Guid CancelledDashboardLienId = new("70000000-0000-0000-0000-000000000101");
+    private static readonly Guid SettledDashboardLienId = new("70000000-0000-0000-0000-000000000102");
 
     private readonly LiensApiFactory _factory;
     private HttpClient _client = null!;
@@ -46,10 +51,11 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         payload.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
 
-        var item = payload.RootElement.GetProperty("items")[0];
+        var item = payload.RootElement.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("caseNumber").GetString() == "CASE-TEST-001");
         item.GetProperty("caseNumber").GetString().Should().Be("CASE-TEST-001");
         item.GetProperty("lawFirm").GetString().Should().Be("Smith & Associates LLP");
-        item.GetProperty("totalLienAmount").GetDecimal().Should().Be(5000m);
+        item.GetProperty("totalLienAmount").GetDecimal().Should().Be(9800m);
     }
 
     [Fact]
@@ -64,7 +70,8 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         payload.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
 
-        var item = payload.RootElement.GetProperty("items")[0];
+        var item = payload.RootElement.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("lienNumber").GetString() == "LIEN-TEST-001");
         item.GetProperty("lienNumber").GetString().Should().Be("LIEN-TEST-001");
         item.GetProperty("caseId").GetString().Should().Be("CASE-TEST-001");
         item.GetProperty("caseRecordId").GetString().Should().Be(SeedHelper.CaseId.ToString());
@@ -72,6 +79,42 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         item.GetProperty("medicalProvider").GetString().Should().Be("City Medical Center");
         item.GetProperty("totalPurchaseAmount").GetDecimal().Should().Be(100m);
         item.GetProperty("totalBillingAmount").GetDecimal().Should().Be(150m);
+        item.GetProperty("status").GetString().Should().Be("Open");
+    }
+
+    [Fact]
+    public async Task TotalLienReportV3_excludes_rejected_and_normalizes_remaining_business_statuses()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-lien-report-export/v3",
+            new { page = 1, limit = 50 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var items = payload.RootElement.GetProperty("items").EnumerateArray().ToList();
+
+        items.Should().Contain(i =>
+            i.GetProperty("id").GetString() == SeedHelper.LienId.ToString() &&
+            i.GetProperty("status").GetString() == "Open");
+        items.Should().Contain(i =>
+            i.GetProperty("id").GetString() == ActiveDashboardLienId.ToString() &&
+            i.GetProperty("status").GetString() == "Open");
+        items.Should().NotContain(i =>
+            i.GetProperty("id").GetString() == CancelledDashboardLienId.ToString());
+        items.Should().NotContain(i =>
+            i.GetProperty("status").GetString() == "Rejected");
+        items.Should().Contain(i =>
+            i.GetProperty("id").GetString() == SettledDashboardLienId.ToString() &&
+            i.GetProperty("status").GetString() == "Closed");
+
+        var counts = items
+            .GroupBy(i => i.GetProperty("status").GetString())
+            .ToDictionary(group => group.Key!, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
+        counts["Open"].Should().Be(3);
+        counts["Closed"].Should().Be(1);
+        payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(4);
     }
 
     [Fact]
@@ -84,7 +127,8 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
 
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var item = payload.RootElement.GetProperty("items")[0];
+        var item = payload.RootElement.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("lienNumber").GetString() == "LIEN-TEST-001");
         item.GetProperty("facilityId").GetString().Should().Be(SeedHelper.MedicalFacilityContactId.ToString());
         item.GetProperty("facilityName").GetString().Should().Be("Sunrise Clinic");
     }
@@ -105,9 +149,9 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
 
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
-        payload.RootElement.GetProperty("items")[0].GetProperty("lawFirmId").GetString()
-            .Should().Be(SeedHelper.LawFirmId.ToString());
+        payload.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
+        payload.RootElement.GetProperty("items").EnumerateArray()
+            .Should().Contain(item => item.GetProperty("lawFirmId").GetString() == SeedHelper.LawFirmId.ToString());
     }
 
     [Fact]
@@ -126,9 +170,9 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
 
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
-        payload.RootElement.GetProperty("items")[0].GetProperty("medicalProviderId").GetString()
-            .Should().Be(SeedHelper.MedicalProviderId.ToString());
+        payload.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
+        payload.RootElement.GetProperty("items").EnumerateArray()
+            .Should().Contain(item => item.GetProperty("medicalProviderId").GetString() == SeedHelper.MedicalProviderId.ToString());
     }
 
     [Fact]
@@ -152,6 +196,52 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         payload.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
         payload.RootElement.GetProperty("items")[0].GetProperty("lienNumber").GetString()
             .Should().Be("LIEN-TEST-001");
+    }
+
+    [Fact]
+    public async Task LawFirmCaseReportV3_canonicalizes_law_firm_id_from_matching_label()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/lawfirm-case-report-export/v3",
+            new
+            {
+                page = 1,
+                limit = 50,
+                filterType = "lawfirm",
+                filterId = SeedHelper.LawFirmId.ToString(),
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("items").EnumerateArray()
+            .Should().Contain(item =>
+                item.GetProperty("id").GetString() == AliasedLawFirmCaseId.ToString() &&
+                item.GetProperty("lawFirm").GetString() == "Smith & Associates LLP" &&
+                item.GetProperty("lawFirmId").GetString() == SeedHelper.LawFirmId.ToString());
+    }
+
+    [Fact]
+    public async Task MedicalProviderReportV3_canonicalizes_provider_id_from_matching_label()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/medical-provider-report-export/v3",
+            new
+            {
+                page = 1,
+                limit = 50,
+                filterType = "medicalProvider",
+                filterId = SeedHelper.MedicalProviderId.ToString(),
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("items").EnumerateArray()
+            .Should().Contain(item =>
+                item.GetProperty("id").GetString() == AliasedProviderLienId.ToString() &&
+                item.GetProperty("medicalProvider").GetString() == "City Medical Center" &&
+                item.GetProperty("medicalProviderId").GetString() == SeedHelper.MedicalProviderId.ToString());
     }
 
     private static async Task SeedDashboardDataAsync(LiensDbContext db)
@@ -237,6 +327,105 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
                 caseId: SeedHelper.CaseId,
                 lienId: SeedHelper.LienId,
                 notes: "code=12345; medicareCost=75.00; billingAmount=150.00; purchaseAmount=100.00; payee=Health System; outboundCheckNumber=CHK-100"));
+        }
+
+        if (!db.Cases.Any(c => c.Id == AliasedLawFirmCaseId))
+        {
+            var aliasedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "CASE-TEST-ALIAS",
+                "Alias",
+                "Client",
+                SeedHelper.UserId,
+                title: "Alias law firm case",
+                dateOfIncident: new DateOnly(2024, 6, 15),
+                notes: "lawFirmId=019f6aea-947f-7985-955f-cf69b056d289; lawFirm=Smith & Associates LLP; accidentTypeId=MVA; accidentType=Motor Vehicle Accident");
+            SetId(aliasedCase, AliasedLawFirmCaseId);
+            db.Cases.Add(aliasedCase);
+        }
+
+        if (!db.Liens.Any(l => l.Id == AliasedProviderLienId))
+        {
+            var aliasedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-TEST-ALIAS",
+                LienType.MedicalLien,
+                2500m,
+                SeedHelper.UserId,
+                caseId: AliasedLawFirmCaseId,
+                facilityId: SeedHelper.FacilityId);
+            SetId(aliasedLien, AliasedProviderLienId);
+            db.Liens.Add(aliasedLien);
+        }
+
+        if (!db.Liens.Any(l => l.Id == ActiveDashboardLienId))
+        {
+            var activeLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASH-ACTIVE",
+                LienType.MedicalLien,
+                1500m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                facilityId: SeedHelper.FacilityId);
+            SetId(activeLien, ActiveDashboardLienId);
+            activeLien.ListForSale(1000m, SeedHelper.UserId);
+            activeLien.MarkSold(1000m, SeedHelper.OrgId, SeedHelper.UserId);
+            activeLien.Activate(SeedHelper.UserId);
+            db.Liens.Add(activeLien);
+        }
+
+        if (!db.Liens.Any(l => l.Id == CancelledDashboardLienId))
+        {
+            var cancelledLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASH-CANCELLED",
+                LienType.MedicalLien,
+                1600m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                facilityId: SeedHelper.FacilityId);
+            SetId(cancelledLien, CancelledDashboardLienId);
+            cancelledLien.TransitionStatus(LienStatus.Cancelled, SeedHelper.UserId);
+            db.Liens.Add(cancelledLien);
+        }
+
+        if (!db.Liens.Any(l => l.Id == SettledDashboardLienId))
+        {
+            var settledLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASH-SETTLED",
+                LienType.MedicalLien,
+                1700m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                facilityId: SeedHelper.FacilityId);
+            SetId(settledLien, SettledDashboardLienId);
+            settledLien.ListForSale(1100m, SeedHelper.UserId);
+            settledLien.MarkSold(1100m, SeedHelper.OrgId, SeedHelper.UserId);
+            settledLien.Activate(SeedHelper.UserId);
+            settledLien.Settle(0m, SeedHelper.UserId);
+            db.Liens.Add(settledLien);
+        }
+
+        if (!db.ServicingItems.Any(s => s.LienId == AliasedProviderLienId && s.TaskType == "LegacyMedicalFacilityInfo"))
+        {
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "SVC-DASH-ALIAS-001",
+                "LegacyMedicalFacilityInfo",
+                "Facility info for alias dashboard report",
+                "system",
+                SeedHelper.UserId,
+                caseId: AliasedLawFirmCaseId,
+                lienId: AliasedProviderLienId,
+                notes: "facilityName=Sunrise Clinic; facilityContactPerson=Alice Nurse; email=alice@sunrise.com; phone=555-0101; medicalProviderId=019f6b0e-4e90-78ea-908d-f2e94adc33b2; medicalProvider=City Medical Center"));
         }
 
         await db.SaveChangesAsync();

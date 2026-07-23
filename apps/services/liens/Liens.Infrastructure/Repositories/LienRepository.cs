@@ -47,7 +47,8 @@ public class LienRepository : ILienRepository
         bool includeSellerOrg = false,
         bool includeBuyerOrg = false,
         bool includeHolderOrg = false,
-        bool includeMarketplace = false)
+        bool includeMarketplace = false,
+        bool excludeRejectedAndCancelled = false)
     {
         var q = _db.Liens.Where(l => l.TenantId == tenantId);
 
@@ -59,6 +60,13 @@ public class LienRepository : ILienRepository
                 (includeBuyerOrg && l.BuyingOrgId == orgId) ||
                 (includeHolderOrg && l.HoldingOrgId == orgId) ||
                 (includeMarketplace && (l.Status == LienStatus.Offered || l.Status == LienStatus.UnderReview)));
+        }
+
+        if (excludeRejectedAndCancelled)
+        {
+            q = q.Where(l =>
+                l.Status != LienStatus.Cancelled &&
+                l.Status != "Rejected");
         }
 
         if (!string.IsNullOrWhiteSpace(search))

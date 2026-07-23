@@ -166,6 +166,7 @@ export interface CaseReduction {
 export type SettlementHistoryItemType = "payment" | "reduction" | "settlement";
 
 interface SettlementHistoryItemBase {
+<<<<<<< Updated upstream
   id: string;
   type: SettlementHistoryItemType;
   lienId: string;
@@ -173,6 +174,15 @@ interface SettlementHistoryItemBase {
   note: string;
   createdAt: string;
   updatedBy: string;
+=======
+  id: string
+  type: SettlementHistoryItemType
+  lienId: string
+  lienCode?: string
+  amount: number
+  note: string
+  createdAt: string
+>>>>>>> Stashed changes
 }
 
 export interface SettlementHistoryPaymentItem extends SettlementHistoryItemBase {
@@ -208,7 +218,13 @@ export interface GetSettlementHistoryV3Response {
 }
 
 export interface SettlementHistoryV3Query {
+<<<<<<< Updated upstream
   caseId: string;
   page?: number;
   limit?: number;
+=======
+  caseId: string
+  page?: number
+  limit?: number
+>>>>>>> Stashed changes
 }

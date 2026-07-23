@@ -110,6 +110,27 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task ServiceCase_v3_returns_empty_success_payload_when_no_cases_match()
+    {
+        var response = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            keyword = $"NO-MATCH-{Guid.CreateVersion7():N}",
+            page = 1,
+            limit = 10,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        body["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+        body["data"]!.AsArray().Should().BeEmpty();
+        body["page"]!.GetValue<int>().Should().Be(1);
+        body["limit"]!.GetValue<int>().Should().Be(10);
+        body["totalCount"]!.GetValue<int>().Should().Be(0);
+    }
+
+    [Fact]
     public async Task ServiceLien_routes_return_seeded_lien_data()
     {
         var listResponse = await _client.GetAsync($"/service/all-liens/{SeedHelper.CaseId}");
@@ -153,6 +174,32 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
         var settlementResponse = await _client.GetAsync($"/service/liens/settlement-details/{SeedHelper.CaseId}");
         settlementResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await settlementResponse.Content.ReadAsStringAsync()}");
+    }
+
+    [Fact]
+    public async Task ServiceSettlementHistory_v3_returns_lien_code_for_history_items()
+    {
+        var historyResponse = await _client.PostAsJsonAsync("/service/settlement/history/v3", new
+        {
+            caseId = SeedHelper.CaseId,
+            page = 1,
+            limit = 10,
+        });
+        historyResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await historyResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await historyResponse.Content.ReadAsStringAsync())!;
+        var hasExpectedItem = body["data"]!.AsArray().Any(item =>
+        {
+            var lienId = item?["lienId"]?.GetValue<string>();
+            var lienCode = item?["lienCode"]?.GetValue<string>();
+            var updatedBy = item?["updatedBy"]?.GetValue<string>();
+            return lienId == "LIEN-TEST-001"
+                && lienCode == "LIEN-TEST-001"
+                && updatedBy == "Demo User";
+        });
+
+        hasExpectedItem.Should().BeTrue();
     }
 
     [Fact]
@@ -240,6 +287,36 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task LegacyCaseNotes_route_keeps_details_update_notes_as_history()
+    {
+        const string firstDetailsNote = "First details update note";
+        const string secondDetailsNote = "Second details update note";
+        var firstUpdateResponse = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId = SeedHelper.CaseId,
+            notes = firstDetailsNote,
+        });
+        firstUpdateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await firstUpdateResponse.Content.ReadAsStringAsync()}");
+
+        var secondUpdateResponse = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId = SeedHelper.CaseId,
+            notes = secondDetailsNote,
+        });
+        secondUpdateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await secondUpdateResponse.Content.ReadAsStringAsync()}");
+
+        var response = await _client.GetAsync($"/api/liens/cases/notes/{SeedHelper.CaseId}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var data = JsonNode.Parse(await response.Content.ReadAsStringAsync())!["data"]!.AsArray();
+        data.Should().Contain(item => item!["note"]!.GetValue<string>() == firstDetailsNote);
+        data.Should().Contain(item => item!["note"]!.GetValue<string>() == secondDetailsNote);
+    }
+
+    [Fact]
     public async Task LegacyCaseDocument_route_returns_uploaded_case_documents()
     {
         using var form = new MultipartFormDataContent();
@@ -281,5 +358,35 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
         });
         cashReceivedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await cashReceivedResponse.Content.ReadAsStringAsync()}");
+    }
+
+    [Fact]
+    public async Task LegacyDashboardMetric_routes_without_date_range_include_all_history()
+    {
+        var deployedResponse = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/deployed", new
+        {
+            page = 1,
+            limit = 1000,
+        });
+        deployedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deployedResponse.Content.ReadAsStringAsync()}");
+
+        var deployed = JsonNode.Parse(await deployedResponse.Content.ReadAsStringAsync())!["data"]!;
+        deployed["periodStart"]!.GetValue<string>().Should().BeEmpty();
+        deployed["periodEnd"]!.GetValue<string>().Should().BeEmpty();
+        deployed["totalCount"]!.GetValue<int>().Should().BeGreaterThan(0);
+
+        var cashReceivedResponse = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/cash-received", new
+        {
+            page = 1,
+            limit = 1000,
+        });
+        cashReceivedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await cashReceivedResponse.Content.ReadAsStringAsync()}");
+
+        var cashReceived = JsonNode.Parse(await cashReceivedResponse.Content.ReadAsStringAsync())!["data"]!;
+        cashReceived["periodStart"]!.GetValue<string>().Should().BeEmpty();
+        cashReceived["periodEnd"]!.GetValue<string>().Should().BeEmpty();
+        cashReceived["totalCount"]!.GetValue<int>().Should().BeGreaterThan(0);
     }
 }
