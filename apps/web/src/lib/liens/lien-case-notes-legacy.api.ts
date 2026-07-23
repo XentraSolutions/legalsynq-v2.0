@@ -6,6 +6,12 @@ import type {
 } from './lien-case-notes-legacy.types';
 
 export const lienCaseNotesLegacyApi = {
+  listCaseNotes(caseId: string) {
+    return apiClient.get<GetCaseNotesFeedResponse>(
+      `/lien/api/liens/cases/notes/${caseId}`,
+    );
+  },
+
   list(caseId: string, showDeleted: boolean, sort: CaseNoteFeedSort) {
     return apiClient.post<GetCaseNotesFeedResponse>('/lien/api/liens/cases/get-notes', {
       caseId,

@@ -446,10 +446,62 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     }
 
     [Theory]
+    [InlineData("New")]
+    [InlineData("Processing")]
+    public async Task DetailsUpdate_preserves_legacy_pre_demand_status_variants(string currentStatus)
+    {
+        Guid caseId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-PRE-{Guid.CreateVersion7():N}",
+                "Legacy",
+                "Status",
+                SeedHelper.UserId);
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var patchResp = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            currentStatus,
+            currentMedicalStatus = "Treating",
+            caseType = "Motor Vehicle Accident",
+            stateOfIncident = "CA",
+        });
+
+        patchResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await patchResp.Content.ReadAsStringAsync()}");
+
+        var getResp = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        getResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await getResp.Content.ReadAsStringAsync()}");
+
+        var body = await getResp.Content.ReadFromJsonAsync<JsonDocument>();
+        body.Should().NotBeNull();
+        body!.RootElement.GetProperty("status").GetString()
+            .Should().Be(currentStatus);
+        body.RootElement.GetProperty("statusLabel").GetString()
+            .Should().Be(currentStatus);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var updatedCase = await verifyDb.Cases.FindAsync(caseId);
+        updatedCase.Should().NotBeNull();
+        updatedCase!.Status.Should().Be(CaseStatus.PreDemand);
+    }
+
+    [Theory]
     [InlineData("Litigation(Pending)")]
     [InlineData("Litigation(Open)")]
     [InlineData("Litigation(Closed)")]
-    public async Task DetailsUpdate_accepts_legacy_litigation_status_variants(string currentStatus)
+    public async Task DetailsUpdate_preserves_legacy_litigation_status_variants(string currentStatus)
     {
         Guid caseId;
 
@@ -486,8 +538,11 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
 
         var body = await getResp.Content.ReadFromJsonAsync<JsonDocument>();
         body.Should().NotBeNull();
+        var expectedLegacyStatus = currentStatus.Replace("(", " (", StringComparison.Ordinal);
         body!.RootElement.GetProperty("status").GetString()
-            .Should().Be(CaseStatus.InNegotiation);
+            .Should().Be(expectedLegacyStatus);
+        body.RootElement.GetProperty("statusLabel").GetString()
+            .Should().Be(expectedLegacyStatus);
 
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -723,6 +778,104 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         body.RootElement.GetProperty("data").EnumerateArray().Should().BeEmpty();
         body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task DetailsUpdate_creates_case_update_entry_visible_in_case_updates_v3()
+    {
+        Guid caseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-UPD-{Guid.NewGuid():N}"[..20],
+                "Update",
+                "Case",
+                SeedHelper.UserId);
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+            caseId = caseEntity.Id;
+        }
+
+        var patchResp = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            currentStatus = "New",
+            currentMedicalStatus = "Treating",
+            caseType = "Motor Vehicle Accident",
+            stateOfIncident = "CA",
+            notes = "status change from details update",
+        });
+        patchResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await patchResp.Content.ReadAsStringAsync()}");
+
+        var resp = await _client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        {
+            CaseId = caseId,
+            page = 1,
+            limit = 10,
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        body.Should().NotBeNull();
+        body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
+        body.RootElement.GetProperty("data").EnumerateArray().Should().Contain(item =>
+            item.GetProperty("description").GetString()!.Contains("Case updated:", StringComparison.Ordinal) &&
+            item.GetProperty("description").GetString()!.Contains("medical status changed to Treating", StringComparison.Ordinal));
+        body.RootElement.GetProperty("data").EnumerateArray().Should().NotContain(item =>
+            item.GetProperty("description").GetString() == "status change from details update");
+    }
+
+    [Fact]
+    public async Task DetailsUpdate_with_default_false_flags_records_only_the_status_change()
+    {
+        Guid caseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-STATUS-{Guid.NewGuid():N}"[..20],
+                "Status",
+                "Only",
+                SeedHelper.UserId);
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+            caseId = caseEntity.Id;
+        }
+
+        var patchResp = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            currentStatus = "Closed",
+            shareCase = "false",
+            minorComp = "false",
+            caseDropped = "false",
+            childSupportLiens = "false",
+            isUccFiled = "false",
+        });
+        patchResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await patchResp.Content.ReadAsStringAsync()}");
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        {
+            CaseId = caseId,
+            page = 1,
+            limit = 10,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("data").EnumerateArray()
+            .Select(item => item.GetProperty("description").GetString())
+            .Should().Contain("Case updated: status changed to Closed.");
     }
 
     [Fact]

@@ -68,6 +68,8 @@ public class SettlementService : ISettlementService
         Note          = r.Note,
         CreatedAtUtc  = r.CreatedAtUtc,
         UpdatedAtUtc  = r.UpdatedAtUtc,
+        CreatedByUserId = r.CreatedByUserId,
+        UpdatedByUserId = r.UpdatedByUserId,
     };
 
     // ── Settlements ───────────────────────────────────────────────────────────
@@ -119,6 +121,8 @@ public class SettlementService : ISettlementService
         Note          = s.Note,
         CreatedAtUtc  = s.CreatedAtUtc,
         UpdatedAtUtc  = s.UpdatedAtUtc,
+        CreatedByUserId = s.CreatedByUserId,
+        UpdatedByUserId = s.UpdatedByUserId,
     };
 
     // ── Payment Details ───────────────────────────────────────────────────────
@@ -171,5 +175,7 @@ public class SettlementService : ISettlementService
         Note          = p.Note,
         CreatedAtUtc  = p.CreatedAtUtc,
         UpdatedAtUtc  = p.UpdatedAtUtc,
+        CreatedByUserId = p.CreatedByUserId,
+        UpdatedByUserId = p.UpdatedByUserId,
     };
 }

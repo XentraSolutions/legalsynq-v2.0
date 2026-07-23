@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
+using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -102,6 +103,56 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task UpdateFacility_persists_medical_provider_and_facility_contact_metadata()
+    {
+        var facilityContactId = Guid.CreateVersion7();
+
+        var payload = new
+        {
+            liensId = SeedHelper.LienId.ToString(),
+            facilityId = SeedHelper.MedicalFacilityContactId.ToString(),
+            facility = "Sunrise Clinic",
+            facilityContactId = facilityContactId.ToString(),
+            facilityContact = "MedicalFacility Primary Staff I",
+            email = "",
+            phone = "555-0101",
+            medicalProviderId = SeedHelper.MedicalProviderId.ToString(),
+            medicalProvider = "Dr. Anthony Ashworth, MD",
+        };
+
+        var updateResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-facility",
+            payload);
+
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var getResponse = await _client.GetAsync($"/api/liens/cases/liens/get-facility/{SeedHelper.LienId}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await getResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await getResponse.Content.ReadAsStringAsync())!;
+        body["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+
+        var data = body["data"]!;
+        data["facilityId"]!.GetValue<string>().Should().Be(SeedHelper.MedicalFacilityContactId.ToString());
+        data["facilityContactId"]!.GetValue<string>().Should().Be(facilityContactId.ToString());
+        data["medicalProviderId"]!.GetValue<string>().Should().Be(SeedHelper.MedicalProviderId.ToString());
+        data["phone"]!.GetValue<string>().Should().Be("555-0101");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var info = db.ServicingItems.Single(item =>
+            item.LienId == SeedHelper.LienId &&
+            item.TaskType == "LegacyMedicalFacilityInfo");
+
+        info.Notes.Should().Contain($"facilityId={SeedHelper.MedicalFacilityContactId}");
+        info.Notes.Should().Contain($"facilityContactId={facilityContactId}");
+        info.Notes.Should().Contain($"medicalProviderId={SeedHelper.MedicalProviderId}");
+        info.Notes.Should().Contain("medicalProvider=Dr. Anthony Ashworth, MD");
+    }
+
+    [Fact]
     public async Task UpdateMedical_accepts_legacy_open_status()
     {
         var payload = new
@@ -136,7 +187,8 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     [Fact]
     public async Task MedicalCode_create_can_be_retrieved_by_lien_id()
     {
-        var code = $"MC-{Guid.NewGuid():N}"[..10];
+        var code = "99213";
+        var description = "Office Visit";
         var payload = new
         {
             id = (string?)null,
@@ -165,6 +217,7 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         var item = data.Single(item => item!["code"]!.GetValue<string>() == code)!;
         item["liensId"]!.GetValue<string>().Should().Be(SeedHelper.LienId.ToString());
         item["code"]!.GetValue<string>().Should().Be(code);
+        item["description"]!.GetValue<string>().Should().Be(description);
         item["medicareCost"]!.GetValue<string>().Should().Be("100.00");
         item["billingAmount"]!.GetValue<string>().Should().Be("100.00");
         item["purchaseAmount"]!.GetValue<string>().Should().Be("100.00");

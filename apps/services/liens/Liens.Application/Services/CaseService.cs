@@ -724,11 +724,8 @@ public sealed class CaseService : ICaseService
 
     private static string ResolveCaseStatusLabel(string status, string? customStatusLabel)
     {
-        if (string.Equals(status, CaseStatus.InNegotiation, StringComparison.Ordinal) &&
-            !string.IsNullOrWhiteSpace(customStatusLabel))
-        {
+        if (!string.IsNullOrWhiteSpace(customStatusLabel))
             return customStatusLabel.Trim();
-        }
 
         return status switch
         {
@@ -743,11 +740,8 @@ public sealed class CaseService : ICaseService
 
     private static string ResolveCaseStatusValue(string status, string? customStatusLabel)
     {
-        if (string.Equals(status, CaseStatus.InNegotiation, StringComparison.Ordinal) &&
-            !string.IsNullOrWhiteSpace(customStatusLabel))
-        {
+        if (!string.IsNullOrWhiteSpace(customStatusLabel))
             return customStatusLabel.Trim();
-        }
 
         return status;
     }

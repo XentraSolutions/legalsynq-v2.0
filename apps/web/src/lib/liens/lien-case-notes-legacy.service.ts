@@ -26,6 +26,12 @@ function toIsoUtc(created: string): string {
 }
 
 export const lienCaseNotesLegacyService = {
+  async getCaseNotes(caseId: string): Promise<CaseFeedNote[]> {
+    const res = await lienCaseNotesLegacyApi.listCaseNotes(caseId);
+    if (!res.data.isSuccess) throw new Error(res.data.message || 'Failed to load case notes');
+    return res.data.data ?? [];
+  },
+
   async getNotes(
     caseId: string,
     showDeleted: boolean,

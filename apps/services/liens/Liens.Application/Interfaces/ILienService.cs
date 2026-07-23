@@ -14,7 +14,8 @@ public interface ILienService
         bool includeSellerOrg = false,
         bool includeBuyerOrg = false,
         bool includeHolderOrg = false,
-        bool includeMarketplace = false);
+        bool includeMarketplace = false,
+        bool excludeRejectedAndCancelled = false);
 
     Task<LienResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 

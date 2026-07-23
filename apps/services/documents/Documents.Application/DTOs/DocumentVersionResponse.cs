@@ -11,15 +11,15 @@ public sealed class DocumentVersionResponse
     public string   MimeType         { get; init; } = string.Empty;
     public long     FileSizeBytes    { get; init; }
     public string   ScanStatus       { get; init; } = string.Empty;
-    public DateTime? ScanCompletedAt { get; init; }
+    public DateTimeOffset? ScanCompletedAt { get; init; }
     public int?     ScanDurationMs   { get; init; }
     public List<string> ScanThreats  { get; init; } = new();
     public string?  ScanEngineVersion { get; init; }
     public string?  Label            { get; init; }
     public bool     IsDeleted        { get; init; }
-    public DateTime? DeletedAt       { get; init; }
+    public DateTimeOffset? DeletedAt { get; init; }
     public Guid?    DeletedBy        { get; init; }
-    public DateTime UploadedAt       { get; init; }
+    public DateTimeOffset UploadedAt { get; init; }
     public Guid     UploadedBy       { get; init; }
 
     public static DocumentVersionResponse From(DocumentVersion v) => new()
@@ -31,15 +31,15 @@ public sealed class DocumentVersionResponse
         MimeType          = v.MimeType,
         FileSizeBytes     = v.FileSizeBytes,
         ScanStatus        = v.ScanStatus.ToString().ToUpperInvariant(),
-        ScanCompletedAt   = v.ScanCompletedAt,
+        ScanCompletedAt   = ResponseTimestampConverter.Convert(v.ScanCompletedAt),
         ScanDurationMs    = v.ScanDurationMs,
         ScanThreats       = v.ScanThreats,
         ScanEngineVersion = v.ScanEngineVersion,
         Label             = v.Label,
         IsDeleted         = v.IsDeleted,
-        DeletedAt         = v.DeletedAt,
+        DeletedAt         = ResponseTimestampConverter.Convert(v.DeletedAt),
         DeletedBy         = v.DeletedBy,
-        UploadedAt        = v.UploadedAt,
+        UploadedAt        = ResponseTimestampConverter.Convert(v.UploadedAt),
         UploadedBy        = v.UploadedBy,
     };
 }

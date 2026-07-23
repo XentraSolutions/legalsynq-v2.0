@@ -43,4 +43,25 @@ public class BatchTemplate : AuditableEntity
             UpdatedAtUtc = now,
         };
     }
+
+    public bool UpdateSystemDefinition(
+        string name,
+        string columnsHeader,
+        Guid updatedByUserId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(columnsHeader);
+        if (updatedByUserId == Guid.Empty) throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        var normalizedName = name.Trim();
+        var normalizedColumnsHeader = columnsHeader.Trim();
+        if (Name == normalizedName && ColumnsHeader == normalizedColumnsHeader)
+            return false;
+
+        Name = normalizedName;
+        ColumnsHeader = normalizedColumnsHeader;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
 }

@@ -11,6 +11,8 @@ public sealed class LienReductionResponse
     public string?  Note          { get; init; }
     public DateTime CreatedAtUtc  { get; init; }
     public DateTime UpdatedAtUtc  { get; init; }
+    public Guid?    CreatedByUserId { get; init; }
+    public Guid?    UpdatedByUserId { get; init; }
 }
 
 public sealed class CreateLienReductionRequest

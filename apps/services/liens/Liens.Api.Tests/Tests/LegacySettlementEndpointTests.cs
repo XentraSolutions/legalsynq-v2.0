@@ -44,6 +44,38 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
             $"Body: {await resp.Content.ReadAsStringAsync()}");
     }
 
+    [Fact]
+    public async Task CreateReduction_accepts_legacy_bulk_payload()
+    {
+        var resp = await _client.PostAsJsonAsync("/service/liens/update/reduction", new
+        {
+            caseId = SeedHelper.CaseId,
+            data = new[]
+            {
+                new
+                {
+                    liensId = SeedHelper.LienId,
+                    reductionAmount = 111.1m,
+                },
+            },
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var historyResp = await _client.GetAsync($"/service/settlement/history/{SeedHelper.CaseId}");
+        historyResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await historyResp.Content.ReadAsStringAsync()}");
+
+        var doc = await historyResp.Content.ReadFromJsonAsync<JsonDocument>();
+        doc!.RootElement.GetProperty("reductions")
+            .EnumerateArray()
+            .Should()
+            .Contain(item =>
+                item.GetProperty("lienId").GetGuid() == SeedHelper.LienId &&
+                item.GetProperty("amount").GetDecimal() == 111.1m);
+    }
+
     // ── POST /service/liens/update/settlement ─────────────────────────────────
 
     [Fact]

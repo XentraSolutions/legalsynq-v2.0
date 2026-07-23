@@ -143,7 +143,7 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
-    public async Task Legacy_notes_routes_return_created_note_items()
+    public async Task Legacy_notes_routes_keep_case_notes_and_feed_notes_in_separate_streams()
     {
         var addResponse = await _client.PostAsJsonAsync("/api/liens/cases/add-note", new
         {
@@ -152,6 +152,14 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
         });
         addResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await addResponse.Content.ReadAsStringAsync()}");
+
+        var detailsUpdateResponse = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId = SeedHelper.CaseId,
+            notes = "Details tab note coverage",
+        });
+        detailsUpdateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detailsUpdateResponse.Content.ReadAsStringAsync()}");
 
         var listResponse = await _client.GetAsync($"/api/liens/cases/notes/{SeedHelper.CaseId}");
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -168,11 +176,23 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
 
         var listBody = JsonNode.Parse(await listResponse.Content.ReadAsStringAsync())!;
         listBody["data"]!.AsArray().Should().Contain(item =>
+            item!["note"]!.GetValue<string>() == "Details tab note coverage");
+        listBody["data"]!.AsArray().Should().NotContain(item =>
             item!["note"]!.GetValue<string>() == "Matrix note coverage");
+        var detailsNote = listBody["data"]!.AsArray()
+            .Single(item => item!["note"]!.GetValue<string>() == "Details tab note coverage")!
+            .AsObject();
+        detailsNote["createdAtUtc"]!.GetValue<string>().Should().EndWith("Z");
 
         var filteredBody = JsonNode.Parse(await filteredResponse.Content.ReadAsStringAsync())!;
         filteredBody["data"]!.AsArray().Should().Contain(item =>
             item!["note"]!.GetValue<string>() == "Matrix note coverage");
+        filteredBody["data"]!.AsArray().Should().NotContain(item =>
+            item!["note"]!.GetValue<string>() == "Details tab note coverage");
+        var feedNote = filteredBody["data"]!.AsArray()
+            .Single(item => item!["note"]!.GetValue<string>() == "Matrix note coverage")!
+            .AsObject();
+        feedNote["createdAtUtc"]!.GetValue<string>().Should().EndWith("Z");
     }
 
     [Fact]

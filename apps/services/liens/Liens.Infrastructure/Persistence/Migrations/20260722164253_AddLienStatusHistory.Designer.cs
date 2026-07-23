@@ -4,6 +4,7 @@ using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Liens.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(LiensDbContext))]
-    partial class LiensDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260722164253_AddLienStatusHistory")]
+    partial class AddLienStatusHistory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1892,110 +1895,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.ToTable("liens_ManualMedicalCodes", (string)null);
                 });
 
-            modelBuilder.Entity("Liens.Domain.Entities.SellingBuyerAccessLink", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("BuyerContactId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("BuyerOrgId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("CreatedByUserId")
-                        .IsRequired()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("ExpiresAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("IdempotencyKey")
-                        .IsRequired()
-                        .HasMaxLength(280)
-                        .HasColumnType("varchar(280)");
-
-                    b.Property<DateTime?>("LastAccessedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("LienId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid?>("NotificationId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("NotificationStatus")
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<DateTime?>("NotificationSubmittedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Purpose")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<decimal?>("ResponseAmount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("ResponseIdempotencyKey")
-                        .HasMaxLength(280)
-                        .HasColumnType("varchar(280)");
-
-                    b.Property<string>("ResponseNotes")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
-
-                    b.Property<string>("ResponseStatus")
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<DateTime?>("RespondedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("RevokedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("SellerOrgId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("Token")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("varchar(128)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LienId");
-
-                    b.HasIndex("TenantId", "IdempotencyKey")
-                        .IsUnique()
-                        .HasDatabaseName("UX_SellingBuyerAccessLinks_TenantId_IdempotencyKey");
-
-                    b.HasIndex("TenantId", "Token")
-                        .IsUnique()
-                        .HasDatabaseName("UX_SellingBuyerAccessLinks_TenantId_Token");
-
-                    b.HasIndex("TenantId", "LienId", "BuyerContactId")
-                        .HasDatabaseName("IX_SellingBuyerAccessLinks_Tenant_Lien_BuyerContact");
-
-                    b.ToTable("liens_SellingBuyerAccessLinks", (string)null);
-                });
-
             modelBuilder.Entity("Liens.Domain.Entities.SellingPortfolio", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2604,15 +2503,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .WithMany("Transitions")
                         .HasForeignKey("WorkflowConfigId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Liens.Domain.Entities.SellingBuyerAccessLink", b =>
-                {
-                    b.HasOne("Liens.Domain.Entities.Lien", null)
-                        .WithMany()
-                        .HasForeignKey("LienId")
-                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

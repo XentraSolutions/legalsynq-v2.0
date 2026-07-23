@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain.Entities;
+using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -113,7 +116,35 @@ public class LegacyBatchUploadEndpointTests : IClassFixture<LiensApiFactory>, IA
             $"Body: {await downloadResponse.Content.ReadAsStringAsync()}");
 
         var body = JsonNode.Parse(await downloadResponse.Content.ReadAsStringAsync())!;
-        body["data"]!.AsArray().Count.Should().Be(1);
+        var downloadItem = body["data"]!.AsArray()[0]!;
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(downloadItem["base64"]!.GetValue<string>()));
+        csv.Should().Be("Case Code*,Lien Status*,Purchase Date*,Initial Service Date*,End Service Date,Notes,Is Bulk,Funding Company,Facility Name*,Contact Person,Facility Email Address,Medical Provider Name,Medical Code & Description*,Medicare Cost,Billing Amount*,Purchase Amount*,Payee,Outbound Check Number,Document Type*,Attachment");
+    }
+
+    [Fact]
+    public async Task Download_template_reconciles_an_existing_lien_template_header()
+    {
+        var seededResponse = await _client.GetAsync("/Batch/download-template/ADD_LIENS_EXISTING_CASE");
+        seededResponse.EnsureSuccessStatusCode();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var template = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(
+                db.BatchTemplates.Where(item =>
+                    item.Code == "ADD_LIENS_EXISTING_CASE" && item.IsSystem && item.TenantId == null));
+            template.UpdateSystemDefinition("Add Liens To Existing Case", "Case Code*|Lien Status*", SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync("/Batch/download-template/ADD_LIENS_EXISTING_CASE");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var downloadItem = body["data"]!.AsArray()[0]!;
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(downloadItem["base64"]!.GetValue<string>()));
+        csv.Should().Be("Case Code*,Lien Status*,Purchase Date*,Initial Service Date*,End Service Date,Notes,Is Bulk,Funding Company,Facility Name*,Contact Person,Facility Email Address,Medical Provider Name,Medical Code & Description*,Medicare Cost,Billing Amount*,Purchase Amount*,Payee,Outbound Check Number,Document Type*,Attachment");
     }
 
     [Fact]
@@ -190,8 +221,8 @@ public class LegacyBatchUploadEndpointTests : IClassFixture<LiensApiFactory>, IA
     [Fact]
     public async Task CreateBatchUpload_initial_case_import_creates_case_and_returns_import_counts()
     {
-        var caseNumber = $"CASE-IMPORT-{Guid.NewGuid():N}"[..20];
-        var csv = $"Case Code*,First Name*,Last Name*,Date Of Loss,Date Of Birth,Address,City,State,Zipcode,Note,External Case Id\n{caseNumber},Maria,Lopez,06/01/2026,01/02/1990,123 Main St,Austin,TX,78701,Imported from batch,EXT-{caseNumber}\n";
+        var externalRef = $"BATCH-{Guid.NewGuid():N}"[..20];
+        var csv = $"First Name*,Last Name*,Date of Birth*,Address,City,State,Zip Code,Is Servicing*,Case Status*,Accident Type*,Accident State*,Date of Loss,Law Firm*,Case Manager,Notes\nMaria,Lopez,01/02/1990,123 Main St,Austin,TX,78701,Yes,Open,Motor Vehicle,TX,06/01/2026,Firm A,Manager A,{externalRef}\n";
 
         var createResponse = await _client.PostAsJsonAsync("/Batch/create", new
         {
@@ -214,15 +245,14 @@ public class LegacyBatchUploadEndpointTests : IClassFixture<LiensApiFactory>, IA
         var listResponse = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
         {
             page = 1,
-            limit = 10,
-            keyword = caseNumber,
+            limit = 50,
         });
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await listResponse.Content.ReadAsStringAsync()}");
 
         var listBody = JsonNode.Parse(await listResponse.Content.ReadAsStringAsync())!;
         listBody["data"]!.AsArray().Should().Contain(item =>
-            item!["caseNumber"]!.GetValue<string>() == caseNumber);
+            item!["notes"]!.GetValue<string>() == externalRef);
     }
 
     [Fact]
@@ -270,5 +300,104 @@ public class LegacyBatchUploadEndpointTests : IClassFixture<LiensApiFactory>, IA
         });
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await listResponse.Content.ReadAsStringAsync()}");
+    }
+
+    [Fact]
+    public async Task Download_template_returns_updated_payment_header()
+    {
+        var response = await _client.GetAsync("/Batch/download-template/ADD_PAYMENTS_EXISTING_LIENS");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var downloadItem = body["data"]!.AsArray()[0]!;
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(downloadItem["base64"]!.GetValue<string>()));
+        csv.Should().Be("Lien Code*,Lien Status*,Amount to Settle,Check Amount*,Check Received*,Check Number*,Settlement Type*,Settlement Status,Notes");
+    }
+
+    [Fact]
+    public async Task Download_template_reconciles_an_existing_payment_template_header()
+    {
+        var seededResponse = await _client.GetAsync("/Batch/download-template/ADD_PAYMENTS_EXISTING_LIENS");
+        seededResponse.EnsureSuccessStatusCode();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var template = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(
+                db.BatchTemplates.Where(item =>
+                    item.Code == "ADD_PAYMENTS_EXISTING_LIENS" && item.IsSystem && item.TenantId == null));
+            template.UpdateSystemDefinition("Add Payments To Existing Liens", "Lien Code*|Amount*", SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync("/Batch/download-template/ADD_PAYMENTS_EXISTING_LIENS");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var downloadItem = body["data"]!.AsArray()[0]!;
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(downloadItem["base64"]!.GetValue<string>()));
+        csv.Should().Be("Lien Code*,Lien Status*,Amount to Settle,Check Amount*,Check Received*,Check Number*,Settlement Type*,Settlement Status,Notes");
+    }
+
+    [Fact]
+    public async Task Download_template_reconciles_an_existing_case_tracking_template_header()
+    {
+        var seededResponse = await _client.GetAsync("/Batch/download-template/UPDATE_CASE_TRACKING_STATUS");
+        seededResponse.EnsureSuccessStatusCode();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var template = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(
+                db.BatchTemplates.Where(item =>
+                    item.Code == "UPDATE_CASE_TRACKING_STATUS" && item.IsSystem && item.TenantId == null));
+            template.UpdateSystemDefinition("Update Case Tracking Status", "Case Code*|Current Status*", SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync("/Batch/download-template/UPDATE_CASE_TRACKING_STATUS");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var downloadItem = body["data"]!.AsArray()[0]!;
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(downloadItem["base64"]!.GetValue<string>()));
+        csv.Should().Be("Case Code*,Current Status*,Current Medical Status,Case Type*,State of Incident*,Lead,Date of Loss,Notes");
+    }
+
+    [Fact]
+    public async Task Process_update_case_tracking_status_supports_new_template_headers()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/Batch/create", new
+        {
+            label = "Case tracking import",
+            template = "UPDATE_CASE_TRACKING_STATUS",
+            caseId = SeedHelper.CaseId,
+            file = "tracking.csv",
+            date = "07/20/2026",
+            rows = 1,
+            dataContext = "Case Code*,Current Status*,Current Medical Status,Case Type*,State of Incident*,Lead,Date of Loss,Notes\nCASE-TEST-001,Open,Recovering,PI,TX,,06/01/2026,Updated from new template\n",
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var createBody = JsonNode.Parse(await createResponse.Content.ReadAsStringAsync())!;
+        createBody["failedCount"]!.GetValue<int>().Should().Be(0);
+        var batchId = createBody["id"]!.GetValue<string>();
+
+        var processResponse = await _client.PostAsJsonAsync("/Batch/process", new
+        {
+            batchUploadId = batchId,
+            templateId = "UPDATE_CASE_TRACKING_STATUS",
+            caseId = SeedHelper.CaseId,
+        });
+        processResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await processResponse.Content.ReadAsStringAsync()}");
+
+        var processBody = JsonNode.Parse(await processResponse.Content.ReadAsStringAsync())!;
+        processBody["successCount"]!.GetValue<int>().Should().Be(1);
+        processBody["failedCount"]!.GetValue<int>().Should().Be(0);
     }
 }

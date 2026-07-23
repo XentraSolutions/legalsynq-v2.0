@@ -1,5 +1,6 @@
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Api.Tests.Helpers;
 using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -86,6 +87,8 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
 
             services.AddHttpClient("MedicareProcedureLookup")
                 .ConfigurePrimaryHttpMessageHandler(() => new StubMedicareProcedureLookupHandler());
+            services.AddHttpClient("Identity")
+                .ConfigurePrimaryHttpMessageHandler(() => new StubIdentityHandler());
         });
     }
 }
@@ -127,6 +130,25 @@ internal sealed class StubMedicareProcedureLookupHandler : HttpMessageHandler
         {
             Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
         };
+}
+
+internal sealed class StubIdentityHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        request.RequestUri?.AbsolutePath.Should().Be("/api/users");
+        request.Headers.Authorization.Should().NotBeNull();
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                $$"""[{"id":"{{SeedHelper.UserId}}","firstName":"Demo","lastName":"User","email":"demo@example.com"}]""",
+                System.Text.Encoding.UTF8,
+                "application/json"),
+        });
+    }
 }
 
 /// <summary>No-op stub — returns (null, null) for every case lookup.</summary>

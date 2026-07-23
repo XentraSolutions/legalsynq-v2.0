@@ -22,6 +22,7 @@ public class LiensDbContext : DbContext
     public DbSet<ManualMedicalCode>       ManualMedicalCodes       => Set<ManualMedicalCode>();
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
     public DbSet<Lien> Liens => Set<Lien>();
+    public DbSet<LienStatusHistory> LienStatusHistories => Set<LienStatusHistory>();
     public DbSet<LienOffer> LienOffers => Set<LienOffer>();
     public DbSet<SellingPortfolio> SellingPortfolios => Set<SellingPortfolio>();
     public DbSet<SellingPortfolioLien> SellingPortfolioLiens => Set<SellingPortfolioLien>();

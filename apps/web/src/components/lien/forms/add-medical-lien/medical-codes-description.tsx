@@ -210,10 +210,16 @@ export default function MedicalCodesDescription(
     isEditing: boolean,
   ) => {
     try {
+      const selectedCode =
+        payload.code ||
+        (typeof (payload as any).procedureCode === "string"
+          ? (payload as any).procedureCode
+          : "");
+
       const request: CreateMedicalCodeLiensDto = {
         id: payload.id,
         liensId: props.lienId ?? "",
-        code: findCodeByDescription(form.procedureCode),
+        code: findCodeByDescription(selectedCode),
         medicareCost: parseFloat(payload.medicareCost).toFixed(2),
         billingAmount: parseFloat(payload.billingAmount).toFixed(2),
         purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),

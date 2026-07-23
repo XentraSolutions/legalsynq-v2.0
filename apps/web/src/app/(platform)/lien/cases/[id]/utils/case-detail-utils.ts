@@ -13,6 +13,7 @@ export function describeSettlementHistoryItem(
   item: SettlementHistoryItemV3,
 ): string {
   let description: string;
+  const lienReference = item.lienCode || item.lienId;
   switch (item.type) {
     case "payment":
       description = `Payment of ${formatCurrency(item.amount)}${item.payee ? ` to ${item.payee}` : ""}${item.checkNumber ? ` (Check #${item.checkNumber})` : ""}`;
@@ -24,7 +25,7 @@ export function describeSettlementHistoryItem(
       description = `Settlement of ${formatCurrency(item.amount)}${item.status ? ` — ${item.status}` : ""}`;
       break;
   }
-  description += ` to lien ID ${item.lienId}`;
+  description += ` to lien ${lienReference}`;
   return item.note ? `${description}: ${item.note}` : description;
 }
 

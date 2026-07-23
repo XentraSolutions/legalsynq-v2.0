@@ -23,7 +23,8 @@ public interface ILienRepository
         bool includeSellerOrg = false,
         bool includeBuyerOrg = false,
         bool includeHolderOrg = false,
-        bool includeMarketplace = false);
+        bool includeMarketplace = false,
+        bool excludeRejectedAndCancelled = false);
     Task<(List<Lien> PageItems, List<Lien> AllItems, int TotalCount)> SearchReportAsync(
         Guid tenantId,
         string? search,

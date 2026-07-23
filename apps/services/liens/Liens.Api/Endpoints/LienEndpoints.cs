@@ -6,6 +6,7 @@ using Liens.Application.Interfaces;
 using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
+using Liens.Api.Serialization;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
@@ -285,11 +286,21 @@ public static class LienEndpoints
         }
 
         var result = await lienService.SearchAsync(
-            tenantId, search, status, lienType, caseId, facilityId, page, pageSize, ct);
+            tenantId,
+            search,
+            status,
+            lienType,
+            caseId,
+            facilityId,
+            page,
+            pageSize,
+            ct,
+            excludeRejectedAndCancelled: true);
         var enriched = await EnrichLienResponsesAsync(result.Items, tenantId, servicingItemService, ct);
+        var mappedItems = MapBuyingLienStatuses(enriched);
         return Results.Ok(new PaginatedResult<LienResponse>
         {
-            Items = enriched,
+            Items = mappedItems,
             Page = result.Page,
             PageSize = result.PageSize,
             TotalCount = result.TotalCount,
@@ -371,7 +382,7 @@ public static class LienEndpoints
         {
             var codeResults = await servicingItemService.SearchAsync(
                 tenantId,
-                search: "LegacyMedicalCode",
+                search: null,
                 status: null,
                 priority: null,
                 assignedTo: null,
@@ -407,6 +418,7 @@ public static class LienEndpoints
                 ExternalReference = lien.ExternalReference,
                 LienType = lien.LienType,
                 Status = lien.Status,
+                StatusLabel = lien.StatusLabel,
                 CaseId = lien.CaseId,
                 FacilityId = lien.FacilityId,
                 OriginalAmount = lien.OriginalAmount,
@@ -484,7 +496,8 @@ public static class LienEndpoints
 
         var query = db.Liens
             .AsNoTracking()
-            .Where(l => l.TenantId == tenantId);
+            .Where(l => l.TenantId == tenantId)
+            .Where(l => l.Status != LienStatus.Cancelled && l.Status != "Rejected");
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -550,13 +563,66 @@ public static class LienEndpoints
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToList();
+        var mappedItems = MapBuyingLienStatuses(pagedLiens);
+
         return Results.Ok(new PaginatedResult<LienResponse>
         {
-            Items = pagedLiens,
+            Items = mappedItems,
             Page = page,
             PageSize = pageSize,
             TotalCount = filteredLiens.Count,
         });
+    }
+
+    private static List<LienResponse> MapBuyingLienStatuses(List<LienResponse> liens)
+        => liens.Select(MapBuyingLienStatus).ToList();
+
+    private static LienResponse MapBuyingLienStatus(LienResponse lien)
+    {
+        var buyingStatus = string.IsNullOrWhiteSpace(lien.StatusLabel) ? lien.Status : lien.StatusLabel;
+
+        return new LienResponse
+        {
+            Id = lien.Id,
+            LienNumber = lien.LienNumber,
+            ExternalReference = lien.ExternalReference,
+            LienType = lien.LienType,
+            Status = buyingStatus,
+            StatusLabel = buyingStatus,
+            CaseId = lien.CaseId,
+            FacilityId = lien.FacilityId,
+            OriginalAmount = lien.OriginalAmount,
+            CurrentBalance = lien.CurrentBalance,
+            OfferPrice = lien.OfferPrice,
+            PurchasePrice = lien.PurchasePrice,
+            PayoffAmount = lien.PayoffAmount,
+            Jurisdiction = lien.Jurisdiction,
+            IsConfidential = lien.IsConfidential,
+            SubjectFirstName = lien.SubjectFirstName,
+            SubjectLastName = lien.SubjectLastName,
+            SubjectDisplayName = lien.SubjectDisplayName,
+            Plaintiff = lien.Plaintiff,
+            LawFirm = lien.LawFirm,
+            MedicalFacility = lien.MedicalFacility,
+            CaseManager = lien.CaseManager,
+            OrgId = lien.OrgId,
+            SellingOrgId = lien.SellingOrgId,
+            BuyingOrgId = lien.BuyingOrgId,
+            HoldingOrgId = lien.HoldingOrgId,
+            IncidentDate = lien.IncidentDate,
+            PurchaseDate = lien.PurchaseDate,
+            InitialServiceDate = lien.InitialServiceDate,
+            EndServiceDate = lien.EndServiceDate,
+            TotalPurchase = lien.TotalPurchase,
+            TotalBilling = lien.TotalBilling,
+            IsBulk = lien.IsBulk,
+            IsServicing = lien.IsServicing,
+            Description = lien.Description,
+            OpenedAtUtc = lien.OpenedAtUtc,
+            ClosedAtUtc = lien.ClosedAtUtc,
+            CreatedAtUtc = lien.CreatedAtUtc,
+            UpdatedAtUtc = lien.UpdatedAtUtc,
+        };
     }
 
     private static async Task<List<LienResponse>> GetDetailedLienResponsesAsync(
@@ -1675,7 +1741,7 @@ public static class LienEndpoints
         if (markerIndex >= 0)
             rawMetadata = notes[(markerIndex + legacyMetadataMarker.Length)..].Trim();
 
-        foreach (var segment in rawMetadata.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+        foreach (var segment in rawMetadata.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var eq = segment.IndexOf('=');
             if (eq > 0)
@@ -1701,7 +1767,7 @@ public static class LienEndpoints
         => value?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
 
     private static string FormatLegacyTimestamp(DateTime value)
-        => value.ToString("MM/dd/yyyy hh:mm tt", CultureInfo.InvariantCulture);
+        => PacificTimeHelper.FormatTimestamp(value);
 
     private static async Task<IResult> UpdateLien(
         Guid id,

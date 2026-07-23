@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<IFacilityContactPersonRepository, FacilityContactPersonRepository>();
         services.AddScoped<ILookupValueRepository, LookupValueRepository>();
         services.AddScoped<ILienRepository, LienRepository>();
+        services.AddScoped<ILienStatusHistoryRepository, LienStatusHistoryRepository>();
         services.AddScoped<ILienOfferRepository, LienOfferRepository>();
         services.AddScoped<ISellingPortfolioRepository, SellingPortfolioRepository>();
         services.AddScoped<IBillOfSaleRepository, BillOfSaleRepository>();
