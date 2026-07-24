@@ -73,15 +73,32 @@ const UploadDocumentComponent = forwardRef<
   };
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    async (acceptedFiles: File[]) => {
       const updatedFiles = [...files, ...acceptedFiles];
 
-      setFiles(updatedFiles);
-      onUploaded(updatedFiles);
+      const cleanedFiles = await Promise.all(updatedFiles.map(cleanFile));
+
+      console.log(cleanedFiles);
+
+      setFiles(cleanedFiles);
+      onUploaded(cleanedFiles);
       setErrorMessage("");
     },
     [files, onUploaded],
   );
+
+  const cleanFile = async (file: File): Promise<File> => {
+    const text = await file.text();
+
+    const cleanedText = text
+      .split(/\r?\n/)
+      .filter((line) => line.trim() !== "" && !/^,+$/.test(line.trim()))
+      .join("\n");
+
+    return new File([cleanedText], file.name, {
+      type: "text/csv",
+    });
+  };
 
   useImperativeHandle(ref, () => ({
     reset() {
@@ -94,7 +111,7 @@ const UploadDocumentComponent = forwardRef<
   const acceptedFiles = config?.accepted ?? DEFAULT_ACCEPTED_FILES;
   const acceptedLabel =
     typeof acceptedFiles === "string" ? acceptedFiles : ".csv,.xlsx,.xls,.docx";
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps } = useDropzone({
     onDrop,
     onDropRejected: (rejectedFiles) => {
       // Fallback hook callback if you prefer handling errors on-drop
