@@ -439,6 +439,7 @@ export interface CaseAllocationReportRequest {
   limit: number;
   startDate?: string;
   endDate?: string;
+  isCsv?: boolean;
 }
 
 export interface CaseReportItem {

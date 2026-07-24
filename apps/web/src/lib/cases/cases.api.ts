@@ -180,10 +180,24 @@ export const casesApi = {
     );
   },
 
+  exportLawFirmCaseReport(request: CaseAllocationReportRequest) {
+    return apiClient.post<ExportResponse>(
+      `${BASE}/dashboard/lawfirm-case-report-export/v3`,
+      { ...withApiDates(request), isCsv: true },
+    );
+  },
+
   getMedicalProviderCaseReport(request: CaseAllocationReportRequest) {
     return apiClient.post<ReportPaginatedResult<LienReportItem>>(
       `${BASE}/dashboard/medical-provider-report-export/v3`,
       withApiDates(request),
+    );
+  },
+
+  exportMedicalProviderCaseReport(request: CaseAllocationReportRequest) {
+    return apiClient.post<ExportResponse>(
+      `${BASE}/dashboard/medical-provider-report-export/v3`,
+      { ...withApiDates(request), isCsv: true },
     );
   },
 
@@ -194,10 +208,24 @@ export const casesApi = {
     );
   },
 
+  exportTotalLienReport(request: CaseAllocationReportRequest) {
+    return apiClient.post<ExportResponse>(
+      `${BASE}/dashboard/total-lien-report-export/v3`,
+      { ...withApiDates(request), isCsv: true },
+    );
+  },
+
   getTotalCaseReport(request: CaseAllocationReportRequest) {
     return apiClient.post<ReportPaginatedResult<CaseReportItem>>(
       `${BASE}/dashboard/total-case-report-export/v3`,
       withApiDates(request),
+    );
+  },
+
+  exportTotalCaseReport(request: CaseAllocationReportRequest) {
+    return apiClient.post<ExportResponse>(
+      `${BASE}/dashboard/total-case-report-export/v3`,
+      { ...withApiDates(request), isCsv: true },
     );
   },
 

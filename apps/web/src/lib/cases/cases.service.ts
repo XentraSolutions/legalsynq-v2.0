@@ -164,6 +164,34 @@ export const casesService = {
     return { items: data.items ?? [], totalCount: data.totalCount ?? 0 };
   },
 
+  async exportLawFirmCaseReport(
+    request: CaseAllocationReportRequest,
+  ): Promise<ExportResponse> {
+    const { data } = await casesApi.exportLawFirmCaseReport(request);
+    return data as ExportResponse;
+  },
+
+  async exportMedicalFacilityCaseReport(
+    request: CaseAllocationReportRequest,
+  ): Promise<ExportResponse> {
+    const { data } = await casesApi.exportMedicalProviderCaseReport(request);
+    return data as ExportResponse;
+  },
+
+  async exportTotalLienReport(
+    request: CaseAllocationReportRequest,
+  ): Promise<ExportResponse> {
+    const { data } = await casesApi.exportTotalLienReport(request);
+    return data as ExportResponse;
+  },
+
+  async exportTotalCaseReport(
+    request: CaseAllocationReportRequest,
+  ): Promise<ExportResponse> {
+    const { data } = await casesApi.exportTotalCaseReport(request);
+    return data as ExportResponse;
+  },
+
   async getCashReceived(
     request: CaseAllocationReportRequest,
   ): Promise<CashMetricResponse> {
