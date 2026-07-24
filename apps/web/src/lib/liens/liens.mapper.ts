@@ -53,16 +53,18 @@ export function mapLienToListItem(dto: LienResponseDto): LienListItem {
     caseManager: dto.caseManager ?? null,
     initialServiceDate: dto.initialServiceDate,
     purchaseDate: formatDateField(dto.purchaseDate),
-    // ListLiens enriches totalPurchase/totalBilling from legacy medical
-    // codes; the DTO's own purchaseAmount is never set by that endpoint.
+    // A medical lien can bundle multiple billing line items; ListLiens sums
+    // them server-side into totalPurchase/totalBilling. The DTO's own
+    // purchaseAmount is never set by that endpoint, so totalPurchase (the
+    // real aggregate) is what we surface here under that name. The DTO also
+    // carries originalAmount/currentBalance/offerPrice/purchasePrice (used by
+    // mapLienToDetail for the single-lien view) — the list view only ever
+    // needs the aggregate, so they're intentionally not carried over here.
     purchaseAmount: dto.totalPurchase ?? null,
     status: dto.status,
     caseId: safeString(dto.caseId),
-    originalAmount: dto.originalAmount,
-    currentBalance: dto.currentBalance ?? null,
-    offerPrice: dto.offerPrice ?? null,
-    purchasePrice: dto.purchasePrice ?? null,
     totalBilling: dto.totalBilling ?? null,
+    closedAtUtc: dto.closedAtUtc ?? null,
     isServicing: dto.isServicing === true || dto.isServicing === "Y",
     jurisdiction: safeString(dto.jurisdiction),
     isConfidential: dto.isConfidential,

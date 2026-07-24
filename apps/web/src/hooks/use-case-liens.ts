@@ -171,26 +171,30 @@ async function enrichLiens(
     return facilities.items.find((f) => f.id == facilityId)?.displayName;
   }
   return liens.map((lien) => {
-    const ext = lien as LienListItem & CaseLienItemMetadata;
-    const paymentAmount =
-      paymentsByLien.get(lien.id) ?? ext.paymentAmount ?? null;
-    const reductionAmount =
-      latestReductionByLien.get(lien.id) ?? ext.reductionAmount ?? null;
-    const originalAmount = ext.totalBilling ?? ext.originalAmount ?? 0;
+    // paymentAmount/reductionAmount only ever come from the payments/reductions
+    // endpoints fetched above — LienListItem (the raw lien list row) has no such
+    // fields, so there is no fallback to them here.
+    const paymentAmount = paymentsByLien.get(lien.id) ?? null;
+    const reductionAmount = latestReductionByLien.get(lien.id) ?? null;
+    // A lien can bundle multiple medical billing line items; totalBilling is
+    // the server-aggregated sum across those. The DTO also has a legacy
+    // single-value originalAmount field, but we don't consume it on the
+    // client — the aggregate is the only "billing amount" this view needs.
+    const originalAmount = lien.totalBilling ?? 0;
     return {
       ...lien,
-      facility: ext.facility ?? "",
+      facility: lien.facility ?? "",
       facilityName:
-        ext.facilityName || facilityName(ext.facilityId ?? "") || "",
-      serviceDate: ext.initialServiceDate,
-      purchaseDateDate: ext.purchaseDate,
+        lien.facilityName || facilityName(lien.facilityId ?? "") || "",
+      serviceDate: lien.initialServiceDate,
+      purchaseDateDate: lien.purchaseDate,
       originalAmount,
       reductionAmount,
-      purchaseAmount: ext.purchaseAmount ?? 0,
-      isServicing: ext.isServicing ?? false,
+      purchaseAmount: lien.purchaseAmount ?? 0,
+      isServicing: lien.isServicing ?? false,
       paymentAmount,
       balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
-      closedAtUtc: ext.closedAtUtc ?? null,
+      closedAtUtc: lien.closedAtUtc ?? null,
     };
   });
 }

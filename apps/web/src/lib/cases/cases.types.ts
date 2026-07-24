@@ -299,10 +299,8 @@ export interface CaseLienItem {
 }
 
 export interface CaseLienItemMetadata {
-  facility: string;
   closedAtUtc: string | null;
   reductionAmount: number | null;
-  purchaseAmount: number | null;
   paymentAmount: number | null;
   balance: number;
 }
@@ -441,6 +439,7 @@ export interface CaseAllocationReportRequest {
   limit: number;
   startDate?: string;
   endDate?: string;
+  isCsv?: boolean;
 }
 
 export interface CaseReportItem {

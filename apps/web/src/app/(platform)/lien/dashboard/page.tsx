@@ -34,6 +34,7 @@ import type {
   Segment,
   ReportModalConfig,
 } from "@/components/lien/dashboard/types";
+import { casesService } from "@/lib/cases";
 import type { CaseReportItem, LienReportItem } from "@/lib/cases/cases.types";
 
 export const dynamic = "force-dynamic";
@@ -89,6 +90,7 @@ export default function LienDashboardPage() {
   const [activeReport, setActiveReport] = useState<
     "liens" | "cases" | "lawFirm" | "facility" | null
   >(null);
+  const [isExportingReport, setIsExportingReport] = useState(false);
 
   const { data: dashboardStats } = useDashboardStats();
   const { data: reports, isLoading: reportLoading } =
@@ -216,6 +218,44 @@ export default function LienDashboardPage() {
       .sort((a, b) => b.value - a.value)
       .map((seg, i) => ({ ...seg, color: getAllocationColor(i) }));
   }, [facilityAllocation]);
+
+  const reportExporters: Record<
+    "liens" | "cases" | "lawFirm" | "facility",
+    (request: {
+      page: number;
+      limit: number;
+      startDate?: string;
+      endDate?: string;
+    }) => ReturnType<typeof casesService.exportTotalLienReport>
+  > = {
+    liens: casesService.exportTotalLienReport,
+    cases: casesService.exportTotalCaseReport,
+    lawFirm: casesService.exportLawFirmCaseReport,
+    facility: casesService.exportMedicalFacilityCaseReport,
+  };
+
+  const handleExportReport = async () => {
+    if (!activeReport) return;
+    setIsExportingReport(true);
+    try {
+      const response = await reportExporters[activeReport]({
+        page: 1,
+        limit: 1000,
+        startDate: dashboardRange.from,
+        endDate: dashboardRange.to,
+      });
+      const item = response.data?.[0];
+      if (!item) return;
+      const src = `data:text/${item.export_format};base64,${item.base64}`;
+      const link = document.createElement("a");
+      link.href = src;
+      link.download = item.filename;
+      link.click();
+      link.remove();
+    } finally {
+      setIsExportingReport(false);
+    }
+  };
 
   const reportConfig: Record<
     "liens" | "cases" | "lawFirm" | "facility",
@@ -447,6 +487,8 @@ export default function LienDashboardPage() {
           onClose={() => setActiveReport(null)}
           config={reportConfig[activeReport]}
           periodLabel={periodLabel}
+          onExport={handleExportReport}
+          isExporting={isExportingReport}
         />
       )}
       {/* not part of phase 1 migration */}

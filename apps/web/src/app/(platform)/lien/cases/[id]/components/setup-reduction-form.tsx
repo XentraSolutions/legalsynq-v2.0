@@ -300,13 +300,19 @@ export function SetupReductionForm({
       setSaving(false);
     }
   };
+  // Effective reduction for a row: the persisted amount for liens no longer
+  // reducible (already reduced/closed/paid off), otherwise whatever is
+  // currently staged for it in this session (0 if unchecked).
+  const getRowReduction = (l: CaseLienItem & CaseLienItemMetadata): number =>
+    isLienReducible(l)
+      ? checkedIds.has(l.id)
+        ? (lienReductions[l.id] ?? 0)
+        : 0
+      : (l.reductionAmount ?? 0);
 
   const totalBilling = liens.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
   const totalPurchase = liens.reduce((s, l) => s + (l.purchaseAmount ?? 0), 0);
-  const totalReduction = liens.reduce(
-    (s, l) => s + (lienReductions[l.id] ?? 0),
-    0,
-  );
+  const totalReduction = liens.reduce((s, l) => s + getRowReduction(l), 0);
   const totalSettle = totalBilling - totalReduction;
 
   const reductionColumns: LienColumnDef[] = [
@@ -394,25 +400,11 @@ export function SetupReductionForm({
       id: "toSettle",
       header: "Amount to Settle",
       align: "right",
-      cell: (l, isChecked) => {
-        if (!isLienReducible(l)) {
-          return (
-            <span className="text-sm text-gray-700 tabular-nums">
-              {formatCurrency(
-                (l.originalAmount ?? 0) - (l.reductionAmount ?? 0),
-              )}
-            </span>
-          );
-        }
-        if (!isChecked)
-          return <span className="text-sm text-gray-300">---</span>;
-        const reduction = lienReductions[l.id] ?? 0;
-        return (
-          <span className="text-sm text-gray-700 tabular-nums">
-            {formatCurrency((l.originalAmount ?? 0) - reduction)}
-          </span>
-        );
-      },
+      cell: (l) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency((l.originalAmount ?? 0) - getRowReduction(l))}
+        </span>
+      ),
     },
   ];
 

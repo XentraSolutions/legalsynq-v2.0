@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ReportDisplay from "../components/report-display";
-import CreateUpdateReport from "../components/create-update-report";
 import { ReportTemplate } from "@/lib/liens/lien-report.types";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 
@@ -94,21 +93,6 @@ export default function ReportDetailsPage() {
             }, 500);
           }}
         />
-      )}
-      {editMode ? (
-        <CreateUpdateReport
-          mode="edit"
-          initialData={{ ...report, ...template }}
-          onClose={(data: ReportTemplate | null) => {
-            setEditMode(false);
-          }}
-          onSaved={(data: any) => {
-            setEditMode(false);
-            setTemplate(data);
-          }}
-        />
-      ) : (
-        ""
       )}
     </div>
   );

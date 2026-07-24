@@ -171,6 +171,15 @@ export interface LiensQuery {
   sortDirection?: "asc" | "desc";
 }
 
+// mapLienToListItem only carries over the subset of LienResponseDto that the
+// liens list and case-liens views actually read. The backend response has
+// more fields than this (see LienResponseDto) — originalAmount, currentBalance,
+// offerPrice, purchasePrice, etc. are real DTO fields, deliberately left out
+// here because nothing on this list-item path consumes them. A lien can
+// bundle multiple medical billing line items, so purchaseAmount/totalBilling
+// are the server-aggregated sums across those items, not a single line's
+// price — that's the only "amount" shape this view needs. Add a field here
+// only once something actually reads it; don't mirror the DTO 1:1.
 export interface LienListItem {
   id: string;
   lienNumber: string;
@@ -187,11 +196,8 @@ export interface LienListItem {
   initialServiceDate: string;
   purchaseDate: string;
   purchaseAmount: number | null;
-  originalAmount: number;
-  currentBalance: number | null;
-  offerPrice: number | null;
-  purchasePrice: number | null;
   totalBilling: number | null;
+  closedAtUtc: string | null;
   isServicing: boolean;
   jurisdiction: string;
   isConfidential: boolean;

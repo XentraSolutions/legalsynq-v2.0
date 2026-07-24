@@ -4,13 +4,13 @@
  * Distinct from the richer categorized notes in lien-case-notes.types.ts.
  */
 
-export type CaseNoteFeedSort = 'newest' | 'oldest';
+export type CaseNoteFeedSort = "newest" | "oldest";
 
 export interface CaseFeedNote {
   id: string;
   caseId: string;
   note: string;
-  isDeleted: 'Y' | 'N';
+  isDeleted: "Y" | "N";
   /** ISO UTC instant — normalized by the service from the API's raw "MM/DD/YYYY hh:mm AM/PM" string. */
   created: string;
   /** Canonical UTC ISO timestamp; the legacy `created` field is used for display. */
