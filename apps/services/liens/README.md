@@ -76,11 +76,20 @@ the current ask amount and moves the lien to `Status=Accepted` / `SellerStatus=A
 reason and moves the lien to `Status=Declined` / `SellerStatus=Declined`. `POST
 /api/liens/selling/public/{token}/offers` is a compatibility alias for public accept. These public responses do not
 finalize the sale, create a Bill of Sale, or mark the lien sold.
+The public page's `Activate Free Account` CTA opens `/selling/public/{token}/activate`, which submits account
+activation through the tenant-portal BFF to `POST /api/liens/selling/public/{token}/activate-account`. That endpoint
+uses the token-scoped buyer organization/contact data to ask Identity to create or resolve a tenant-scoped
+`LIEN_OWNER` organization for the source Liens buyer org, then create or link an active user with
+`SYNQ_LIENS:SYNQLIEN_BUYER`; it does not accept or decline the lien and does not finalize sale.
 When sending links through the tenant portal host, configure
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain, so the public web route can render without a
 `platform_session` cookie while fetching Liens data through the gateway. The confirm-sale email disables SendGrid click tracking for this
 CTA so recipients see and open the LegalSynq portal URL directly.
+
+Public buyer activation requires the Liens service to reach Identity. Configure `IdentityService:BaseUrl` (or the
+existing fallback `ExternalServices:Identity:BaseUrl`) and, outside local development, set
+`IdentityService:ProvisioningToken` to match Identity's `TenantService:ProvisioningSecret`.
 
 Local SynqLien demo portal example:
 

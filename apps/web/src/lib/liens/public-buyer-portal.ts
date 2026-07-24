@@ -34,6 +34,7 @@ export interface PublicBuyerPortalData {
     contactName: string | null;
     company: string | null;
     email: string | null;
+    phone?: string | null;
   };
   case: {
     handlingLawFirm: string | null;

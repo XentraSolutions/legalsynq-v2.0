@@ -8,6 +8,7 @@ using Liens.Application.Repositories;
 using Liens.Application.Services;
 using Liens.Infrastructure.Audit;
 using Liens.Infrastructure.Documents;
+using Liens.Infrastructure.Identity;
 using Liens.Infrastructure.Notifications;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Repositories;
@@ -98,6 +99,14 @@ public static class DependencyInjection
         services.AddScoped<IFlowEventHandler, FlowEventHandler>();
         // TASK-B04 — backfill service
         services.AddScoped<ILienTaskBackfillService, LienTaskBackfillService>();
+
+        services.Configure<IdentityServiceOptions>(options =>
+        {
+            configuration.GetSection(IdentityServiceOptions.SectionName).Bind(options);
+            options.BaseUrl ??= configuration["ExternalServices:Identity:BaseUrl"];
+        });
+        services.AddHttpClient("IdentityService");
+        services.AddScoped<IPublicBuyerAccountProvisioningService, IdentityBuyerAccountProvisioningService>();
 
         // TASK-MIG-09: LiensGovernanceSyncService REMOVED. Governance is fully Task-owned.
         // TASK-MIG-09: LiensTemplateSyncService REMOVED. Templates are fully Task-owned.

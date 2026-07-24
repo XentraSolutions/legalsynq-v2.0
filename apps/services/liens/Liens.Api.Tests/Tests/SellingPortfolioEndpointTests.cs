@@ -6,6 +6,7 @@ using System.Text.Json;
 using BuildingBlocks.Notifications;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.DTOs;
+using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
@@ -27,6 +28,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         await SeedHelper.SeedAsync(scope.ServiceProvider);
         scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().Clear();
         scope.ServiceProvider.GetRequiredService<CapturingAuditPublisher>().Clear();
+        scope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>().Clear();
 
         _client = _factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization =
@@ -1130,6 +1132,73 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task PublicBuyerPortal_activate_account_provisions_synqlien_buyer_from_token_contact()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync(
+            "activate-account",
+            buyerPhone: "3105551212");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>()
+                .NextResult = PublicBuyerAccountProvisioningResult.Created(
+                    new Guid("20000000-0000-0000-0000-000000000201"),
+                    isNew: true);
+        }
+
+        var response = await PostPublicBuyerActivationAsync(
+            token,
+            new
+            {
+                companyName = "Overridden Company",
+                email = "override@capital.test",
+                firstName = "Override",
+                lastName = "Person",
+                phone = "9999999999",
+                password = "Password123!",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("userId").GetGuid().Should().Be(new Guid("20000000-0000-0000-0000-000000000201"));
+        json.GetProperty("isNew").GetBoolean().Should().BeTrue();
+        json.GetProperty("loginUrl").GetString().Should().Be("/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var provisioning = verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>();
+        provisioning.Requests.Should().ContainSingle();
+        var request = provisioning.Requests.Single();
+        request.TenantId.Should().Be(SeedHelper.TenantId);
+        request.BuyerOrgId.Should().Be(SeedHelper.FundingCompanyId);
+        request.BuyerCompanyName.Should().Be("Capital Fund LLC");
+        request.Email.Should().Be("buyer.activate-account@capital.test");
+        request.FirstName.Should().Be("Buyer");
+        request.LastName.Should().Be("Reviewer");
+        request.Phone.Should().Be("+13105551212");
+        request.Password.Should().Be("Password123!");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_activate_account_rejects_unknown_token_without_provisioning()
+    {
+        var response = await PostPublicBuyerActivationAsync(
+            "not-a-real-token",
+            new
+            {
+                email = "buyer@capital.test",
+                firstName = "Buyer",
+                password = "Password123!",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>()
+            .Requests.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task PublicBuyerPortal_accept_records_buyer_response_and_marks_lien_accepted_without_finalizing_sale()
     {
         var (lienId, token) = await CreatePublicLienOfferAsync("accept");
@@ -1544,7 +1613,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         return _client.SendAsync(message);
     }
 
-    private async Task<(Guid LienId, string Token)> CreatePublicLienOfferAsync(string scenario)
+    private async Task<(Guid LienId, string Token)> CreatePublicLienOfferAsync(
+        string scenario,
+        string? buyerPhone = null)
     {
         var buyerContactId = Guid.CreateVersion7();
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
@@ -1558,7 +1629,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             lienId,
             buyerContactId,
             sellerEmail: $"seller.{scenario}@smithlaw.test",
-            buyerEmail: $"buyer.{scenario}@capital.test");
+            buyerEmail: $"buyer.{scenario}@capital.test",
+            buyerPhone: buyerPhone);
 
         var confirmResponse = await PostConfirmSaleAsync(
             lienId,
@@ -1585,13 +1657,24 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         return await anonClient.SendAsync(message);
     }
 
+    private async Task<HttpResponseMessage> PostPublicBuyerActivationAsync(
+        string token,
+        object body)
+    {
+        using var anonClient = _factory.CreateClient();
+        return await anonClient.PostAsJsonAsync(
+            $"/api/liens/selling/public/{token}/activate-account",
+            body);
+    }
+
     private async Task PrepareConfirmSaleDataAsync(
         Guid lienId,
         Guid buyerContactId,
         string? sellerEmail,
         string? buyerEmail,
         Guid? caseManagerId = null,
-        string? documentFileName = null)
+        string? documentFileName = null,
+        string? buyerPhone = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -1637,7 +1720,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             "Reviewer",
             SeedHelper.UserId,
             organization: "Capital Fund LLC",
-            email: buyerEmail);
+            email: buyerEmail,
+            phone: buyerPhone);
         SetId(buyerContact, buyerContactId);
         db.Contacts.Add(buyerContact);
 

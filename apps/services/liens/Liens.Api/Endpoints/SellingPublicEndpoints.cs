@@ -1,4 +1,5 @@
 using System.Globalization;
+using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
@@ -30,6 +31,9 @@ public static class SellingPublicEndpoints
             .AllowAnonymous();
 
         group.MapPost("/{token}/decline", DeclineTemporaryBuyerPortal)
+            .AllowAnonymous();
+
+        group.MapPost("/{token}/activate-account", ActivateBuyerAccount)
             .AllowAnonymous();
     }
 
@@ -128,6 +132,106 @@ public static class SellingPublicEndpoints
             responseNotes: request?.Reason,
             responseIdempotencyKey: ReadIdempotencyKey(httpContext),
             ct);
+    }
+
+    private static async Task<IResult> ActivateBuyerAccount(
+        string token,
+        PublicBuyerActivateAccountRequest? request,
+        IPublicBuyerAccountProvisioningService provisioningService,
+        LiensDbContext db,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+        {
+            return PublicLinkState(
+                "invalid-activation-request",
+                "Account activation failed",
+                "The account activation request is missing.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password))
+        {
+            return PublicLinkState(
+                "password-required",
+                "Account activation failed",
+                "Password is required.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
+        if (view is null)
+        {
+            return PublicLinkState(
+                "unavailable",
+                "Lien offer unavailable",
+                "The lien offer data could not be resolved.",
+                StatusCodes.Status404NotFound);
+        }
+
+        var email = FirstNonEmpty(view.BuyerContact?.Email, request.Email);
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return PublicLinkState(
+                "buyer-email-required",
+                "Account activation failed",
+                "This lien offer does not have a buyer email address.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var buyerCompanyName = FirstNonEmpty(view.BuyerContact?.Organization, request.CompanyName);
+        if (string.IsNullOrWhiteSpace(buyerCompanyName))
+        {
+            return PublicLinkState(
+                "buyer-company-required",
+                "Account activation failed",
+                "Company name is required to activate a buyer account.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var nameParts = SplitName(view.BuyerContact?.DisplayName);
+        var firstName = FirstNonEmpty(view.BuyerContact?.FirstName, nameParts.FirstName, request.FirstName);
+        if (string.IsNullOrWhiteSpace(firstName))
+        {
+            return PublicLinkState(
+                "first-name-required",
+                "Account activation failed",
+                "First name is required.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await provisioningService.ProvisionBuyerAccountAsync(
+            new PublicBuyerAccountProvisioningRequest(
+                view.AccessLink.TenantId,
+                view.AccessLink.BuyerOrgId,
+                buyerCompanyName,
+                email,
+                request.Password.Trim(),
+                firstName,
+                FirstNonEmpty(view.BuyerContact?.LastName, nameParts.LastName, request.LastName),
+                NormalizePhoneForIdentity(FirstNonEmpty(view.BuyerContact?.Phone, request.Phone))),
+            ct);
+
+        if (!result.Success)
+        {
+            return PublicLinkState(
+                FirstNonEmpty(result.ErrorCode, "activation-failed")!,
+                "Account activation failed",
+                FirstNonEmpty(result.ErrorMessage, "Account activation could not be completed.")!,
+                result.StatusCode.GetValueOrDefault(StatusCodes.Status503ServiceUnavailable));
+        }
+
+        view.AccessLink.MarkAccessed();
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(new PublicBuyerAccountActivationResponse(
+            result.UserId!.Value,
+            result.IsNew,
+            "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation"));
     }
 
     private static async Task<(SellingBuyerAccessLink? AccessLink, IResult? Error)> ResolvePublicAccessLinkAsync(
@@ -450,7 +554,8 @@ public static class SellingPublicEndpoints
             new PublicBuyerOrganizationResponse(
                 view.BuyerContact?.DisplayName,
                 view.BuyerContact?.Organization,
-                view.BuyerContact?.Email),
+                view.BuyerContact?.Email,
+                view.BuyerContact?.Phone),
             new PublicBuyerCaseResponse(
                 view.HandlingLawFirm,
                 view.CaseManager),
@@ -497,6 +602,43 @@ public static class SellingPublicEndpoints
 
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static string? NormalizePhoneForIdentity(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var trimmed = value.Trim();
+        var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+            return trimmed;
+
+        if (trimmed.StartsWith('+'))
+            return "+" + digits;
+
+        return digits.Length switch
+        {
+            10 => "+1" + digits,
+            11 when digits.StartsWith('1') => "+" + digits,
+            _ => trimmed,
+        };
+    }
+
+    private static (string? FirstName, string? LastName) SplitName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return (null, null);
+
+        var parts = value.Trim()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return parts.Length switch
+        {
+            0 => (null, null),
+            1 => (parts[0], null),
+            _ => (parts[0], string.Join(' ', parts.Skip(1))),
+        };
+    }
 
     private static string ResolveLienCode(Lien lien)
         => string.IsNullOrWhiteSpace(lien.LienNumber) ? lien.Id.ToString() : lien.LienNumber;
@@ -594,7 +736,8 @@ public static class SellingPublicEndpoints
     private sealed record PublicBuyerOrganizationResponse(
         string? ContactName,
         string? Company,
-        string? Email);
+        string? Email,
+        string? Phone);
 
     private sealed record PublicBuyerCaseResponse(
         string? HandlingLawFirm,
@@ -612,4 +755,17 @@ public static class SellingPublicEndpoints
     private sealed record PublicBuyerAcceptLienRequest(string? Notes, string? Message);
 
     private sealed record PublicBuyerDeclineLienRequest(string? Reason);
+
+    private sealed record PublicBuyerActivateAccountRequest(
+        string? CompanyName,
+        string? Email,
+        string Password,
+        string? FirstName,
+        string? LastName,
+        string? Phone);
+
+    private sealed record PublicBuyerAccountActivationResponse(
+        Guid UserId,
+        bool IsNew,
+        string LoginUrl);
 }

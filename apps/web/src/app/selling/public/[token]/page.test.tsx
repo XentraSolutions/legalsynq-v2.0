@@ -89,6 +89,10 @@ describe("PublicBuyerPortalPage", () => {
       "/legalsynq-logo-temp-portal.svg",
     );
     expect(screen.getByText("Manage Offered Liens")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Activate Free Account" })).toHaveAttribute(
+      "href",
+      "/selling/public/token-abc/activate",
+    );
     expect(screen.getByText("Your Response")).toBeInTheDocument();
     expect(screen.getByText("Lien Summary")).toBeInTheDocument();
     expect(screen.getByText("Awaiting Your Response")).toBeInTheDocument();
