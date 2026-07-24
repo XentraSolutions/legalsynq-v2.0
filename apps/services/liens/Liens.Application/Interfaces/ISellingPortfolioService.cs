@@ -109,4 +109,13 @@ public interface ISellingPortfolioService
         Guid actingUserId,
         SendLienBuyerEmailRequest request,
         CancellationToken ct = default);
+
+    Task<ConfirmSellingLienSaleResponse> ConfirmSaleAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        ConfirmSellingLienSaleRequest request,
+        string? idempotencyKey,
+        CancellationToken ct = default);
 }

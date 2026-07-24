@@ -31,6 +31,8 @@ public sealed class SellingAnalyticsSummary
     public int InternalCount { get; init; }
     public int PreparedForSaleCount { get; init; }
     public int SubmittedForSaleCount { get; init; }
+    public int AcceptedCount { get; init; }
+    public int DeclinedCount { get; init; }
     public int SoldCount { get; init; }
     public int WithdrawnCount { get; init; }
     public int ArchivedCount { get; init; }

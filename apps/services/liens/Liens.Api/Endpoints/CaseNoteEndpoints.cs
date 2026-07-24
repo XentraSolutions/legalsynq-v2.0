@@ -4,7 +4,9 @@ using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
+using Liens.Api.Serialization;
 using Liens.Domain;
+using Liens.Domain.Enums;
 using System.Globalization;
 
 namespace Liens.Api.Endpoints;
@@ -40,6 +42,8 @@ public static class CaseNoteEndpoints
         public string note { get; init; } = string.Empty;
         public string isDeleted { get; init; } = "N";
         public string created { get; init; } = string.Empty;
+        // Preserve the canonical UTC instant for consumers that need it.
+        public string createdAtUtc { get; init; } = string.Empty;
         public string createdBy { get; init; } = string.Empty;
         public string userId { get; init; } = string.Empty;
         public bool canDelete { get; init; }
@@ -100,7 +104,7 @@ public static class CaseNoteEndpoints
         ctx.UserId ?? throw new UnauthorizedAccessException("User context is required.");
 
     private static string FormatLegacyTimestamp(DateTime value)
-        => value.ToString("MM/dd/yyyy hh:mm tt", CultureInfo.InvariantCulture);
+        => PacificTimeHelper.FormatTimestamp(value);
 
     private static async Task<IResult> GetCaseNotesLegacy(
         Guid caseId,
@@ -112,7 +116,7 @@ public static class CaseNoteEndpoints
 
         try
         {
-            var notes = await repo.GetByCaseIdAsync(tenantId, caseId, ct);
+            var notes = await repo.GetByCaseIdIncludingDeletedAsync(tenantId, caseId, ct);
             if (notes.Count == 0)
             {
                 return Results.NotFound(new
@@ -123,6 +127,7 @@ public static class CaseNoteEndpoints
             }
 
             var data = notes
+                .Where(n => string.Equals(n.Category, CaseNoteCategory.General, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(n => n.CreatedAtUtc)
                 .Select(n => new LegacyCaseNoteResponseItem
                 {
@@ -131,6 +136,8 @@ public static class CaseNoteEndpoints
                     note = n.Content,
                     isDeleted = n.IsDeleted ? "Y" : "N",
                     created = FormatLegacyTimestamp(n.CreatedAtUtc),
+                    createdAtUtc = DateTime.SpecifyKind(n.CreatedAtUtc, DateTimeKind.Utc)
+                        .ToString("O", CultureInfo.InvariantCulture),
                     createdBy = n.CreatedByName,
                     userId = n.CreatedByUserId.ToString(),
                     canDelete = false,
@@ -188,7 +195,9 @@ public static class CaseNoteEndpoints
             var showDeletedOnly = string.Equals(request.showDeleted, "true", StringComparison.OrdinalIgnoreCase);
             var sortOldest = string.Equals(request.sort, "oldest", StringComparison.OrdinalIgnoreCase);
 
-            var query = notes.Where(n => showDeletedOnly ? n.IsDeleted : !n.IsDeleted);
+            var query = notes
+                .Where(n => string.Equals(n.Category, CaseNoteCategory.Feed, StringComparison.OrdinalIgnoreCase))
+                .Where(n => showDeletedOnly ? n.IsDeleted : !n.IsDeleted);
             query = sortOldest
                 ? query.OrderBy(n => n.CreatedAtUtc)
                 : query.OrderByDescending(n => n.CreatedAtUtc);
@@ -200,6 +209,8 @@ public static class CaseNoteEndpoints
                 note = n.Content,
                 isDeleted = n.IsDeleted ? "Y" : "N",
                 created = FormatLegacyTimestamp(n.CreatedAtUtc),
+                createdAtUtc = DateTime.SpecifyKind(n.CreatedAtUtc, DateTimeKind.Utc)
+                    .ToString("O", CultureInfo.InvariantCulture),
                 createdBy = n.CreatedByName,
                 userId = n.CreatedByUserId.ToString(),
                 canDelete = n.CreatedByUserId == userId,
@@ -324,8 +335,8 @@ public static class CaseNoteEndpoints
             new CreateCaseNoteRequest
             {
                 Content = request.note.Trim(),
-                Category = "general",
-                CreatedByName = ctx.Email ?? ctx.Name ?? userId.ToString(),
+                Category = CaseNoteCategory.Feed,
+                CreatedByName = ctx.Name ?? ctx.Email ?? userId.ToString(),
             },
             ct);
 

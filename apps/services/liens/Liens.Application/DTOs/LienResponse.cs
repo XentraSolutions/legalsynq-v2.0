@@ -7,6 +7,7 @@ public sealed class LienResponse
     public string? ExternalReference { get; init; }
     public string LienType { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
+    public string StatusLabel { get; init; } = string.Empty;
     public Guid? CaseId { get; init; }
     public Guid? FacilityId { get; init; }
     public decimal OriginalAmount { get; init; }

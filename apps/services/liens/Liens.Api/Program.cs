@@ -7,10 +7,12 @@ using BuildingBlocks.FlowClient;
 using Contracts;
 using Liens.Api.Endpoints;
 using Liens.Api.Middleware;
+using Liens.Api.Serialization;
 using Liens.Domain;
 using Liens.Infrastructure;
 using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -58,7 +60,20 @@ builder.Services.AddAuthorization(options =>
         policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
 });
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new PacificDateTimeJsonConverterFactory());
+});
+
 builder.Services.AddLiensServices(builder.Configuration);
+builder.Services.AddHttpClient("Identity", client =>
+{
+    var baseUrl = builder.Configuration["ExternalServices:Identity:BaseUrl"];
+    if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var identityBaseUri))
+        client.BaseAddress = identityBaseUri;
+
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
 builder.Services.AddHttpClient("MedicareProcedureLookup", client =>
 {
     client.BaseAddress = new Uri("https://www.medicare.gov/api/procedure-price-lookup/api/v1/core/");
@@ -162,6 +177,7 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 app.MapLienEndpoints();
 app.MapAssistantToolEndpoints();
 app.MapLienOfferEndpoints();
+app.MapSellingPublicEndpoints();
 app.MapSellingEndpoints();
 app.MapSellingAnalyticsEndpoints();
 app.MapBillOfSaleEndpoints();

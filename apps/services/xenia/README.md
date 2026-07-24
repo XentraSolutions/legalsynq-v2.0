@@ -104,7 +104,11 @@ Production: Replace with a durable broker adapter (SQS, RabbitMQ).
 
 ---
 
-## API Endpoints
+## Common API Endpoints
+
+This table is a service-local summary of common Xenia routes. For the Xenia AI assistant
+gateway reference intended for mobile app integration, see
+[`docs/xenia-ai-assistant-gateway-api-reference.md`](../../../docs/xenia-ai-assistant-gateway-api-reference.md).
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
@@ -130,7 +134,7 @@ Production: Replace with a durable broker adapter (SQS, RabbitMQ).
 | POST | `/assistant/conversations/{conversationId}/messages` | `xenia.assistant.use` | Create a non-streaming message |
 | POST | `/assistant/conversations/{conversationId}/messages:stream` | `xenia.assistant.use` | Stream an assistant response with grounded tool execution |
 | GET | `/assistant/preferences` | `xenia.assistant.use` | Read assistant UI preferences |
-| PUT | `/assistant/preferences` | `xenia.assistant.use` | Update assistant UI preferences |
+| PATCH | `/assistant/preferences` | `xenia.assistant.use` | Update assistant UI preferences |
 | GET | `/email/module` | `xenia.email.read` | Email module status for the current tenant |
 | PUT | `/email/module/enable` | `xenia.email.manage` | Enable the email module for the current tenant |
 | PUT | `/email/module/disable` | `xenia.email.manage` | Disable the email module for the current tenant |

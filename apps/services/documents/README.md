@@ -51,3 +51,8 @@ AWS S3 (configured via `AWS_S3_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY
 - ClamAV integration with circuit breaker (bypasses scan on ClamAV failure, logs warning)
 - Large files (>50MB) skip AV scan with policy flag
 - Public logo endpoint is intentionally anonymous but serves only registered logo document IDs
+
+## Timestamp Contract
+
+- Document API response timestamps are serialized in Pacific time with an explicit offset (`-08:00` or `-07:00`), including document `createdAt` / `updatedAt` and version `uploadedAt`.
+- The service computes Pacific offsets even when the host runtime is missing OS timezone metadata, so QA and production stay aligned with the application timezone.

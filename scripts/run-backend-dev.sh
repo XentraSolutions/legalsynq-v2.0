@@ -2,6 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}"
+PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}"
+Liens__Selling__BuyerPortalBaseUrl="${Liens__Selling__BuyerPortalBaseUrl:-http://${SYNQLIEN_COMMON_PORTAL_HOSTNAME}:5000/selling/public}"
 
 echo "====== LegalSynq backend dev startup ======"
 
@@ -133,6 +136,7 @@ require_free_port 5020 "artifacts API"
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
+    Liens__Selling__BuyerPortalBaseUrl="$Liens__Selling__BuyerPortalBaseUrl" \
     dotnet run --no-build --project "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" &
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \

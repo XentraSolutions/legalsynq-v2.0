@@ -8,6 +8,7 @@ using Liens.Application.Repositories;
 using Liens.Application.Services;
 using Liens.Infrastructure.Audit;
 using Liens.Infrastructure.Documents;
+using Liens.Infrastructure.Identity;
 using Liens.Infrastructure.Notifications;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Repositories;
@@ -42,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IFacilityContactPersonRepository, FacilityContactPersonRepository>();
         services.AddScoped<ILookupValueRepository, LookupValueRepository>();
         services.AddScoped<ILienRepository, LienRepository>();
+        services.AddScoped<ILienStatusHistoryRepository, LienStatusHistoryRepository>();
         services.AddScoped<ILienOfferRepository, LienOfferRepository>();
         services.AddScoped<ISellingPortfolioRepository, SellingPortfolioRepository>();
         services.AddScoped<IBillOfSaleRepository, BillOfSaleRepository>();
@@ -63,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<ILienOfferService, LienOfferService>();
         services.AddScoped<ILienEligibilityValidator, LienEligibilityValidator>();
         services.AddScoped<ISellingPortfolioService, SellingPortfolioService>();
+        services.AddScoped<ISellingBuyerAccessLinkService, SellingBuyerAccessLinkService>();
         services.AddScoped<ISellingAnalyticsService, SellingAnalyticsService>();
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();
         services.AddScoped<IBillOfSaleDocumentQueryService, BillOfSaleDocumentQueryService>();
@@ -96,6 +99,14 @@ public static class DependencyInjection
         services.AddScoped<IFlowEventHandler, FlowEventHandler>();
         // TASK-B04 — backfill service
         services.AddScoped<ILienTaskBackfillService, LienTaskBackfillService>();
+
+        services.Configure<IdentityServiceOptions>(options =>
+        {
+            configuration.GetSection(IdentityServiceOptions.SectionName).Bind(options);
+            options.BaseUrl ??= configuration["ExternalServices:Identity:BaseUrl"];
+        });
+        services.AddHttpClient("IdentityService");
+        services.AddScoped<IPublicBuyerAccountProvisioningService, IdentityBuyerAccountProvisioningService>();
 
         // TASK-MIG-09: LiensGovernanceSyncService REMOVED. Governance is fully Task-owned.
         // TASK-MIG-09: LiensTemplateSyncService REMOVED. Templates are fully Task-owned.

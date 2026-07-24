@@ -117,7 +117,13 @@ rm -rf .next
 # Remove stray app-level lockfile so Next.js sees only the workspace-root
 # pnpm-lock.yaml and does not over-trace files or emit a workspace-root warning.
 rm -f "$ROOT/apps/web/pnpm-lock.yaml"
-NODE_OPTIONS="--max-old-space-size=2048" NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" build --webpack
+NODE_OPTIONS="--max-old-space-size=2048" \
+NEXT_PUBLIC_ENV=production \
+NEXT_PUBLIC_TENANT_CODE= \
+GATEWAY_URL=http://127.0.0.1:5010 \
+SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}" \
+PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}" \
+node "$NEXT_BIN" build --webpack
 
 echo "====== Building control center ======"
 # Deduplicate React: control-center has its own node_modules/react which creates

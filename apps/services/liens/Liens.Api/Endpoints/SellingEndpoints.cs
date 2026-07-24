@@ -39,6 +39,9 @@ public static class SellingEndpoints
             .RequirePermission(LiensPermissions.LienSaleCreate)
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(SellingImportMaxBytes));
 
+        group.MapPost("/liens/{lienId:guid}/confirm-sale", ConfirmSale)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
+
         var portfolios = group.MapGroup("/portfolios");
 
         portfolios.MapGet("/", SearchPortfolios)
@@ -214,6 +217,29 @@ public static class SellingEndpoints
         var sellerOrgId = RequireOrgId(ctx);
         var userId = RequireUserId(ctx);
         var result = await service.SendBuyerEmailAsync(tenantId, id, lienIdOrCode, sellerOrgId, userId, request, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> ConfirmSale(
+        Guid lienId,
+        ConfirmSellingLienSaleRequest request,
+        ISellingPortfolioService service,
+        ICurrentRequestContext ctx,
+        HttpContext httpContext,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var sellerOrgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+        var idempotencyKey = httpContext.Request.Headers["Idempotency-Key"].FirstOrDefault();
+        var result = await service.ConfirmSaleAsync(
+            tenantId,
+            lienId,
+            sellerOrgId,
+            userId,
+            request,
+            idempotencyKey,
+            ct);
         return Results.Ok(result);
     }
 

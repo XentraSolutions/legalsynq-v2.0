@@ -46,7 +46,11 @@ const REASON_MESSAGES: Record<string, { icon: string; text: string }> = {
  * Supports a `returnTo` query param for deep-linking after login
  * (e.g., LSCC-005 active-tenant provider referral view flow).
  */
-export function LoginForm() {
+export function LoginForm({
+  defaultReturnTo = '/dashboard',
+}: {
+  defaultReturnTo?: string;
+}) {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const { refresh }  = useSession();
@@ -108,9 +112,12 @@ export function LoginForm() {
       await refresh();
 
       const rawReturnTo = searchParams?.get('returnTo') ?? '';
+      const safeDefaultReturnTo = defaultReturnTo.startsWith('/') && !defaultReturnTo.startsWith('//')
+        ? defaultReturnTo
+        : '/dashboard';
       const safeDest    = rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')
         ? rawReturnTo
-        : '/dashboard';
+        : safeDefaultReturnTo;
       router.push(safeDest);
     } catch {
       setError('Network error. Please check your connection and try again.');

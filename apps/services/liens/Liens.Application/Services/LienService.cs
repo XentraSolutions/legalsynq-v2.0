@@ -11,6 +11,7 @@ namespace Liens.Application.Services;
 public sealed class LienService : ILienService
 {
     private readonly ILienRepository           _lienRepo;
+    private readonly ILienStatusHistoryRepository _lienStatusHistoryRepo;
     private readonly ICaseRepository           _caseRepo;
     private readonly IContactRepository        _contactRepo;
     private readonly IFacilityRepository       _facilityRepo;
@@ -20,6 +21,7 @@ public sealed class LienService : ILienService
 
     public LienService(
         ILienRepository lienRepo,
+        ILienStatusHistoryRepository lienStatusHistoryRepo,
         ICaseRepository caseRepo,
         IContactRepository contactRepo,
         IFacilityRepository facilityRepo,
@@ -28,6 +30,7 @@ public sealed class LienService : ILienService
         ILogger<LienService> logger)
     {
         _lienRepo          = lienRepo;
+        _lienStatusHistoryRepo = lienStatusHistoryRepo;
         _caseRepo          = caseRepo;
         _contactRepo       = contactRepo;
         _facilityRepo      = facilityRepo;
@@ -46,7 +49,8 @@ public sealed class LienService : ILienService
         bool includeSellerOrg = false,
         bool includeBuyerOrg = false,
         bool includeHolderOrg = false,
-        bool includeMarketplace = false)
+        bool includeMarketplace = false,
+        bool excludeRejectedAndCancelled = false)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
@@ -68,7 +72,8 @@ public sealed class LienService : ILienService
             includeSellerOrg,
             includeBuyerOrg,
             includeHolderOrg,
-            includeMarketplace);
+            includeMarketplace,
+            excludeRejectedAndCancelled);
 
         var casesById = await LoadCasesByIdAsync(tenantId, items, ct);
         var facilitiesById = await LoadFacilitiesByIdAsync(tenantId, items, ct);
@@ -323,6 +328,11 @@ public sealed class LienService : ILienService
         entity.SetLegacyMedicalStatus(status.Trim(), actingUserId);
 
         await _lienRepo.UpdateAsync(entity, ct);
+        await RecordStatusHistoryAsync(
+            entity,
+            actingUserId,
+            $"Lien status updated to {MapBusinessStatusLabel(entity.Status)}.",
+            ct);
 
         _logger.LogInformation(
             "Legacy medical lien status updated: {LienId} Status={Status} Tenant={TenantId}",
@@ -381,6 +391,7 @@ public sealed class LienService : ILienService
             ExternalReference = entity.ExternalReference,
             LienType = entity.LienType,
             Status = entity.Status,
+            StatusLabel = MapBusinessStatusLabel(entity.Status),
             CaseId = entity.CaseId,
             FacilityId = entity.FacilityId,
             OriginalAmount = entity.OriginalAmount,
@@ -416,6 +427,13 @@ public sealed class LienService : ILienService
             UpdatedAtUtc = entity.UpdatedAtUtc,
         };
     }
+
+    private static string MapBusinessStatusLabel(string status) => status switch
+    {
+        LienStatus.Cancelled or LienStatus.Declined => "Rejected",
+        LienStatus.Settled or LienStatus.Withdrawn => "Closed",
+        _ => "Open",
+    };
 
     private async Task<Dictionary<Guid, Case>> LoadCasesByIdAsync(
         Guid tenantId,
@@ -525,7 +543,7 @@ public sealed class LienService : ILienService
             return result;
         }
 
-        foreach (var segment in rawMetadata.Split("; ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var segment in rawMetadata.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var separatorIndex = segment.IndexOf('=');
             if (separatorIndex <= 0)
@@ -644,16 +662,13 @@ public sealed class LienService : ILienService
         var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
 
-        // Already terminal — treat as success (idempotent soft-delete).
         if (LienStatus.Terminal.Contains(entity.Status))
         {
-            return;
+            // A closed lien can still be removed from the case. Use the same
+            // hidden terminal state as other delete requests so list APIs omit it.
+            entity.SetLegacyMedicalStatus(LienStatus.Cancelled, actingUserId);
         }
-
-        // Transition to the appropriate terminal state respecting the state machine.
-        // Cancelled is reachable from Draft, Sold, Active, Disputed.
-        // Withdrawn is reachable from Offered, UnderReview.
-        if (LienStatus.AllowedTransitions.TryGetValue(entity.Status, out var allowed) &&
+        else if (LienStatus.AllowedTransitions.TryGetValue(entity.Status, out var allowed) &&
             allowed.Contains(LienStatus.Cancelled))
         {
             entity.TransitionStatus(LienStatus.Cancelled, actingUserId);
@@ -664,6 +679,7 @@ public sealed class LienService : ILienService
         }
 
         await _lienRepo.UpdateAsync(entity, ct);
+        await RecordStatusHistoryAsync(entity, actingUserId, "Lien status updated to Delete.", ct);
 
         _logger.LogInformation(
             "Lien deleted (status={Status}): {LienId} Tenant={TenantId}", entity.Status, entity.Id, tenantId);
@@ -677,4 +693,13 @@ public sealed class LienService : ILienService
             entityType: "Lien",
             entityId: entity.Id.ToString());
     }
+
+    private Task RecordStatusHistoryAsync(
+        Lien entity,
+        Guid actingUserId,
+        string description,
+        CancellationToken ct) =>
+        _lienStatusHistoryRepo.AddAsync(
+            LienStatusHistory.Create(entity.TenantId, entity.Id, entity.CaseId, description, actingUserId),
+            ct);
 }

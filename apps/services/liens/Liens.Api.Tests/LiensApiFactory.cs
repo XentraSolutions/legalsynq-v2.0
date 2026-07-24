@@ -1,5 +1,6 @@
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Api.Tests.Helpers;
 using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -38,6 +39,8 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Services__TaskServiceUrl",   "http://localhost:19996/");
         Environment.SetEnvironmentVariable("Services__DocumentsUrl",     "http://localhost:19995/");
         Environment.SetEnvironmentVariable("Services__CommerceUrl",      "http://localhost:19994/");
+        Environment.SetEnvironmentVariable("Liens__Selling__BuyerPortalBaseUrl",
+            "https://app.legalsynq.test/selling/public");
 
         // Service token issuer requires a signing key.
         Environment.SetEnvironmentVariable("ServiceTokens__liens-service__SigningKey",
@@ -82,8 +85,15 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<CapturingLegacyDocumentUploadClient>();
             services.AddSingleton<ILegacyDocumentUploadClient>(sp => sp.GetRequiredService<CapturingLegacyDocumentUploadClient>());
 
+            services.RemoveAll<IPublicBuyerAccountProvisioningService>();
+            services.AddSingleton<CapturingPublicBuyerAccountProvisioningService>();
+            services.AddSingleton<IPublicBuyerAccountProvisioningService>(
+                sp => sp.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>());
+
             services.AddHttpClient("MedicareProcedureLookup")
                 .ConfigurePrimaryHttpMessageHandler(() => new StubMedicareProcedureLookupHandler());
+            services.AddHttpClient("Identity")
+                .ConfigurePrimaryHttpMessageHandler(() => new StubIdentityHandler());
         });
     }
 }
@@ -127,6 +137,25 @@ internal sealed class StubMedicareProcedureLookupHandler : HttpMessageHandler
         };
 }
 
+internal sealed class StubIdentityHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        request.RequestUri?.AbsolutePath.Should().Be("/api/users");
+        request.Headers.Authorization.Should().NotBeNull();
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                $$"""[{"id":"{{SeedHelper.UserId}}","firstName":"Demo","lastName":"User","email":"demo@example.com"}]""",
+                System.Text.Encoding.UTF8,
+                "application/json"),
+        });
+    }
+}
+
 /// <summary>No-op stub — returns (null, null) for every case lookup.</summary>
 internal sealed class NoOpFlowInstanceResolver : IFlowInstanceResolver
 {
@@ -141,7 +170,13 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
 
     public IReadOnlyList<CapturedEmail> Emails => _emails;
 
-    public void Clear() => _emails.Clear();
+    public void Clear()
+    {
+        _emails.Clear();
+        FailEmailSends = false;
+    }
+
+    public bool FailEmailSends { get; set; }
 
     public Task PublishAsync(
         string notificationType,
@@ -157,8 +192,20 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
         string subject,
         string body,
         Dictionary<string, string> metadata,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        NotificationEmailSendOptions? options = null)
     {
+        if (FailEmailSends)
+        {
+            return Task.FromResult(new NotificationEmailSendResult(
+                null,
+                "failed",
+                false,
+                null,
+                "transient",
+                "Simulated notification failure."));
+        }
+
         var notificationId = Guid.CreateVersion7();
         _emails.Add(new CapturedEmail(
             notificationType,
@@ -167,6 +214,7 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
             subject,
             body,
             metadata,
+            options,
             notificationId));
 
         return Task.FromResult(new NotificationEmailSendResult(
@@ -186,7 +234,32 @@ internal sealed record CapturedEmail(
     string Subject,
     string Body,
     IReadOnlyDictionary<string, string> Metadata,
+    NotificationEmailSendOptions? Options,
     Guid NotificationId);
+
+internal sealed class CapturingPublicBuyerAccountProvisioningService : IPublicBuyerAccountProvisioningService
+{
+    private readonly List<PublicBuyerAccountProvisioningRequest> _requests = [];
+
+    public IReadOnlyList<PublicBuyerAccountProvisioningRequest> Requests => _requests;
+    public PublicBuyerAccountProvisioningResult? NextResult { get; set; }
+
+    public void Clear()
+    {
+        _requests.Clear();
+        NextResult = null;
+    }
+
+    public Task<PublicBuyerAccountProvisioningResult> ProvisionBuyerAccountAsync(
+        PublicBuyerAccountProvisioningRequest request,
+        CancellationToken ct = default)
+    {
+        _requests.Add(request);
+        return Task.FromResult(
+            NextResult
+            ?? PublicBuyerAccountProvisioningResult.Created(Guid.CreateVersion7(), isNew: true));
+    }
+}
 
 internal sealed class CapturingAuditPublisher : IAuditPublisher
 {

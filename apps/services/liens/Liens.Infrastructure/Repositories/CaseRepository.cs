@@ -109,8 +109,13 @@ public class CaseRepository : ICaseRepository
             q = q.Where(c => c.Notes != null &&
                 (c.Notes == accidentTypeToken ||
                  c.Notes.StartsWith(accidentTypeToken + ";") ||
+                 c.Notes.Contains(";" + accidentTypeToken + ";") ||
                  c.Notes.Contains("; " + accidentTypeToken + ";") ||
-                 c.Notes.EndsWith("; " + accidentTypeToken)));
+                 c.Notes.Contains(Environment.NewLine + accidentTypeToken + ";") ||
+                 c.Notes.EndsWith(";" + accidentTypeToken) ||
+                 c.Notes.EndsWith("; " + accidentTypeToken) ||
+                 c.Notes.EndsWith(Environment.NewLine + accidentTypeToken) ||
+                 c.Notes.EndsWith(accidentTypeToken)));
         }
 
         if (!string.IsNullOrWhiteSpace(caseManagerId))
@@ -119,8 +124,13 @@ public class CaseRepository : ICaseRepository
             q = q.Where(c => c.Notes != null &&
                 (c.Notes == caseManagerToken ||
                  c.Notes.StartsWith(caseManagerToken + ";") ||
+                 c.Notes.Contains(";" + caseManagerToken + ";") ||
                  c.Notes.Contains("; " + caseManagerToken + ";") ||
-                 c.Notes.EndsWith("; " + caseManagerToken)));
+                 c.Notes.Contains(Environment.NewLine + caseManagerToken + ";") ||
+                 c.Notes.EndsWith(";" + caseManagerToken) ||
+                 c.Notes.EndsWith("; " + caseManagerToken) ||
+                 c.Notes.EndsWith(Environment.NewLine + caseManagerToken) ||
+                 c.Notes.EndsWith(caseManagerToken)));
         }
 
         var totalCount = await q.CountAsync(ct);

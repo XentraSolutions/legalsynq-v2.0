@@ -6,7 +6,7 @@ Medical lien lifecycle management — creation, marketplace listing, offer/purch
 
 ## Responsibilities
 
-- Lien CRUD (Draft → Offered → Sold / Withdrawn)
+- Lien CRUD (Draft → Offered → Accepted / Declined → Sold / Withdrawn)
 - Marketplace browse and search
 - Offer submission and negotiation
 - Direct purchase at asking price
@@ -38,6 +38,68 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `GET` | `/api/liens/portfolio` | Buyer/holder portfolio |
 | `GET` | `/api/liens/cases` | Case list |
 | `GET` | `/api/liens/cases/{id}` | Case detail |
+| `DELETE` | `/api/liens/cases/delete/{id}` | Legacy case deletion; blocks when a linked lien is active, and detaches terminal/rejected liens before removing the case |
+| `POST` | `/api/liens/reports/diy/export` | Export a DIY report as Base64-encoded CSV in the legacy `data` export envelope |
+
+## Selling Workflow
+
+Seller-mode endpoints live under `/api/liens/selling` and require SynqLien product access plus sell mode. The lien-first
+confirm-sale route is:
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and optionally sends the buyer `New Lien Offer` email |
+
+Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. When
+`sendBuyerNotification=true`, the service validates real buyer/seller contact data, creates a 30-day buyer access link,
+and sends the email through Notifications with an idempotency key. Supporting document names are pulled from existing
+legacy lien/case document servicing metadata; the email omits the document section when no real document names exist.
+The email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange
+wordmark text, and the section icons are also delivered as inline CID image attachments. No remote placeholder assets
+are required.
+Configure the buyer portal URL with `Liens:Selling:BuyerPortalBaseUrl` or the environment variable
+`Liens__Selling__BuyerPortalBaseUrl`. If that value is absent, the API derives it from
+`SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
+`http://synqlien-demo.localhost:5000/selling/public` for the full `scripts/run-dev.sh` proxy. The value must be an
+absolute portal URL and must match the active tenant-web browser origin. Use
+`http://synqlien-demo.localhost:3000/selling/public` when running only `pnpm --dir apps/web dev`. Literal loopback hosts
+such as `localhost` and `127.0.0.1` are rejected because outbound email recipients cannot open those links. Named
+`.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. If it contains `{token}` the
+token is substituted, otherwise the token is appended as the final path segment.
+
+The temporary buyer portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
+JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only. It does not render
+HTML; the tenant portal route `/selling/public/{token}` in `apps/web` fetches this JSON through the gateway and renders
+the funding-company review page. The page records buyer responses with
+`POST /api/liens/selling/public/{token}/accept` and `POST /api/liens/selling/public/{token}/decline`; accepting records
+the current ask amount and moves the lien to `Status=Accepted` / `SellerStatus=Accepted`; declining records an optional
+reason and moves the lien to `Status=Declined` / `SellerStatus=Declined`. `POST
+/api/liens/selling/public/{token}/offers` is a compatibility alias for public accept. These public responses do not
+finalize the sale, create a Bill of Sale, or mark the lien sold.
+The public page's `Activate Free Account` CTA opens `/selling/public/{token}/activate`, which submits account
+activation through the tenant-portal BFF to `POST /api/liens/selling/public/{token}/activate-account`. That endpoint
+uses the token-scoped buyer organization/contact data to ask Identity to create or resolve a tenant-scoped
+`LIEN_OWNER` organization for the source Liens buyer org, then create or link an active user with
+`SYNQ_LIENS:SYNQLIEN_BUYER`; it does not accept or decline the lien and does not finalize sale.
+When sending links through the tenant portal host, configure
+`Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
+`https://<portal-host>/selling/public` behind a real portal domain, so the public web route can render without a
+`platform_session` cookie while fetching Liens data through the gateway. The confirm-sale email disables SendGrid click tracking for this
+CTA so recipients see and open the LegalSynq portal URL directly.
+
+Public buyer activation requires the Liens service to reach Identity. Configure `IdentityService:BaseUrl` (or the
+existing fallback `ExternalServices:Identity:BaseUrl`) and, outside local development, set
+`IdentityService:ProvisioningToken` to match Identity's `TenantService:ProvisioningSecret`.
+
+Local SynqLien demo portal example:
+
+```bash
+SYNQLIEN_COMMON_PORTAL_HOSTNAME=synqlien-demo.localhost
+PORTAL_SYNQLIEN_SUBDOMAIN=synqlien-demo
+Liens__Selling__BuyerPortalBaseUrl=http://synqlien-demo.localhost:5000/selling/public
+# or, when only apps/web dev is running:
+Liens__Selling__BuyerPortalBaseUrl=http://synqlien-demo.localhost:3000/selling/public
+```
 
 ## Assistant Tool Endpoints
 

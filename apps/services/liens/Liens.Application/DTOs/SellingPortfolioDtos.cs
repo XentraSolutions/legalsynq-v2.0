@@ -106,6 +106,40 @@ public sealed class SendLienBuyerEmailResponse
     public string Body { get; init; } = string.Empty;
 }
 
+public sealed class ConfirmSellingLienSaleRequest
+{
+    public bool ConfirmationAccepted { get; init; }
+    public bool SendBuyerNotification { get; init; }
+}
+
+public sealed class ConfirmSellingLienSaleResponse
+{
+    public Guid LienId { get; init; }
+    public string LienCode { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public string SellerStatus { get; init; } = string.Empty;
+    public decimal? AskAmount { get; init; }
+    public decimal? OfferPrice { get; init; }
+    public DateTime? SubmittedForSaleAtUtc { get; init; }
+    public DateTime? SoldAtUtc { get; init; }
+    public ConfirmSellingLienBuyerNotificationResponse? Notification { get; init; }
+}
+
+public sealed class ConfirmSellingLienBuyerNotificationResponse
+{
+    public bool Requested { get; init; }
+    public bool Submitted { get; init; }
+    public Guid? NotificationId { get; init; }
+    public string? NotificationStatus { get; init; }
+    public string? FailureMessage { get; init; }
+    public Guid? BuyerAccessLinkId { get; init; }
+    public string? BuyerPortalUrl { get; init; }
+    public DateTime? ExpiresAtUtc { get; init; }
+    public Guid? BuyerContactId { get; init; }
+    public Guid? BuyerOrgId { get; init; }
+    public string? BuyerEmail { get; init; }
+}
+
 public sealed class SellingPortfolioResponse
 {
     public Guid Id { get; init; }

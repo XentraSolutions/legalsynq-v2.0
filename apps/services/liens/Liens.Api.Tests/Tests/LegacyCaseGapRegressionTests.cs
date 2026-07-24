@@ -4,7 +4,10 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -88,6 +91,52 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
+    public async Task Delete_legacy_case_with_only_rejected_liens_detaches_liens_then_deletes_case()
+    {
+        Guid caseId;
+        Guid lienId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DELETE-REJECTED-{Guid.CreateVersion7():N}"[..30],
+                "Maria",
+                "Lopez",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-REJECTED-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            lien.SetLegacyMedicalStatus("Rejected", SeedHelper.UserId);
+
+            caseId = caseEntity.Id;
+            lienId = lien.Id;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var deleteResponse = await _client.DeleteAsync($"/api/liens/cases/delete/{caseId}");
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deleteResponse.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await verifyDb.Cases.FindAsync(caseId)).Should().BeNull();
+
+        var storedLien = await verifyDb.Liens.SingleAsync(l => l.Id == lienId);
+        storedLien.Status.Should().Be(LienStatus.Cancelled);
+        storedLien.CaseId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Case_other_metadata_roundtrips_through_legacy_routes()
     {
         var updateResponse = await _client.PostAsJsonAsync("/api/liens/cases/update-other", new
@@ -143,7 +192,7 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
-    public async Task Legacy_notes_routes_return_created_note_items()
+    public async Task Legacy_notes_routes_keep_case_notes_and_feed_notes_in_separate_streams()
     {
         var addResponse = await _client.PostAsJsonAsync("/api/liens/cases/add-note", new
         {
@@ -152,6 +201,14 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
         });
         addResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await addResponse.Content.ReadAsStringAsync()}");
+
+        var detailsUpdateResponse = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId = SeedHelper.CaseId,
+            notes = "Details tab note coverage",
+        });
+        detailsUpdateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detailsUpdateResponse.Content.ReadAsStringAsync()}");
 
         var listResponse = await _client.GetAsync($"/api/liens/cases/notes/{SeedHelper.CaseId}");
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -168,11 +225,23 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
 
         var listBody = JsonNode.Parse(await listResponse.Content.ReadAsStringAsync())!;
         listBody["data"]!.AsArray().Should().Contain(item =>
+            item!["note"]!.GetValue<string>() == "Details tab note coverage");
+        listBody["data"]!.AsArray().Should().NotContain(item =>
             item!["note"]!.GetValue<string>() == "Matrix note coverage");
+        var detailsNote = listBody["data"]!.AsArray()
+            .Single(item => item!["note"]!.GetValue<string>() == "Details tab note coverage")!
+            .AsObject();
+        detailsNote["createdAtUtc"]!.GetValue<string>().Should().EndWith("Z");
 
         var filteredBody = JsonNode.Parse(await filteredResponse.Content.ReadAsStringAsync())!;
         filteredBody["data"]!.AsArray().Should().Contain(item =>
             item!["note"]!.GetValue<string>() == "Matrix note coverage");
+        filteredBody["data"]!.AsArray().Should().NotContain(item =>
+            item!["note"]!.GetValue<string>() == "Details tab note coverage");
+        var feedNote = filteredBody["data"]!.AsArray()
+            .Single(item => item!["note"]!.GetValue<string>() == "Matrix note coverage")!
+            .AsObject();
+        feedNote["createdAtUtc"]!.GetValue<string>().Should().EndWith("Z");
     }
 
     [Fact]

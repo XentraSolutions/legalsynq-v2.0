@@ -169,6 +169,7 @@ interface SettlementHistoryItemBase {
   id: string;
   type: SettlementHistoryItemType;
   lienId: string;
+  lienCode?: string;
   amount: number;
   note: string;
   createdAt: string;

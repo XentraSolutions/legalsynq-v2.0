@@ -473,6 +473,8 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
             InternalCount = liens.Count(l => StatusFor(l) == SellingLienStatus.Internal),
             PreparedForSaleCount = liens.Count(l => StatusFor(l) == SellingLienStatus.PreparedForSale),
             SubmittedForSaleCount = liens.Count(l => StatusFor(l) == SellingLienStatus.SubmittedForSale),
+            AcceptedCount = liens.Count(l => StatusFor(l) == SellingLienStatus.Accepted),
+            DeclinedCount = liens.Count(l => StatusFor(l) == SellingLienStatus.Declined),
             SoldCount = liens.Count(IsSoldForAnalytics),
             WithdrawnCount = liens.Count(l => StatusFor(l) == SellingLienStatus.Withdrawn),
             ArchivedCount = liens.Count(l => StatusFor(l) == SellingLienStatus.Archived),
@@ -536,7 +538,9 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
         return lien.Status switch
         {
             LienStatus.Sold => SellingLienStatus.Sold,
+            LienStatus.Declined => SellingLienStatus.Declined,
             LienStatus.Withdrawn => SellingLienStatus.Withdrawn,
+            LienStatus.Accepted => SellingLienStatus.Accepted,
             LienStatus.Offered or LienStatus.UnderReview => SellingLienStatus.SubmittedForSale,
             _ => SellingLienStatus.Draft,
         };
@@ -547,6 +551,8 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
         return StatusFor(lien) switch
         {
             SellingLienStatus.SubmittedForSale => lien.SubmittedForSaleAtUtc ?? lien.UpdatedAtUtc,
+            SellingLienStatus.Accepted => lien.UpdatedAtUtc,
+            SellingLienStatus.Declined => lien.ClosedAtUtc ?? lien.UpdatedAtUtc,
             SellingLienStatus.Sold => lien.SoldAtUtc ?? lien.ClosedAtUtc ?? lien.UpdatedAtUtc,
             SellingLienStatus.Withdrawn => lien.WithdrawnAtUtc ?? lien.ClosedAtUtc ?? lien.UpdatedAtUtc,
             SellingLienStatus.Archived => lien.ArchivedAtUtc ?? lien.UpdatedAtUtc,

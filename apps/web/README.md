@@ -6,8 +6,8 @@ The main product application used by end users (law firms, healthcare providers,
 
 ## Tech
 
-- Next.js 15.2.9 App Router, TypeScript, Tailwind CSS, React 18
-- `node_modules` installed at monorepo root — `apps/web` inherits via Node resolution traversal
+- Next.js 16.2.6 App Router, TypeScript, Tailwind CSS, React 18
+- Local development uses the monorepo/root pnpm install path. Production runtime artifacts are packaged with `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml`, and the app manifest pins `packageManager: pnpm@10.26.1` so Corepack does not drift to a newer pnpm during `pnpm install --production`.
 
 ## Auth & Session
 
@@ -97,12 +97,39 @@ Two additional env vars are required when hosting the CareConnect common portal 
 
 If `CC_COMMON_PORTAL_HOSTNAME` is unset, the CC forgot-password path is silently disabled (a startup warning is logged). See `apps/gateway/README.md` for the required proxy header-stripping rules.
 
-### SynqLien common portal login
+### SynqLien funding common portal
 
-The SynqLien common portal currently has a login-page-only shell with no auth/API integration. It is selected by the product portal subdomain config:
+The SynqLien funding-company common portal uses the same Identity-backed `platform_session` cookie as CareConnect common portal login, but it serves buyer-side SynqLien users from `/funding/*`.
 
-| Variable | Default | Purpose |
+| Variable | Example / Default | Purpose |
 |---|---|---|
-| `PORTAL_SYNQLIEN_SUBDOMAIN` | `synqlien-demo` | Subdomain that renders the SynqLien-branded `/login` layout and points future portal redirects at `/lien/dashboard`. |
+| `SYNQLIEN_COMMON_PORTAL_HOSTNAME` | `synqlien-demo.localhost` | Hostname the BFF uses to detect SynqLien common-portal login and send `resolveByEmail=true` with `portalProductCode=SYNQ_LIENS`. Root `/` redirects to `/funding/dashboard`. |
+| `PORTAL_SYNQLIEN_SUBDOMAIN` | `synqlien-demo` | Subdomain that renders the SynqLien-branded `/login` layout and defaults successful login to `/funding/dashboard`. |
 
-Until auth integration is added, submitting the SynqLien portal login form only shows an in-page "not connected yet" notice and does not call `/api/auth/login`. In full local dev, use `http://synqlien-demo.localhost:5000/login`; when running `next dev` directly, use the Next.js port instead.
+Use the same hostname as the Liens buyer-offer email CTA:
+
+```bash
+SYNQLIEN_COMMON_PORTAL_HOSTNAME=synqlien-demo.localhost
+PORTAL_SYNQLIEN_SUBDOMAIN=synqlien-demo
+```
+
+Eligibility is enforced in Identity and again in the web route layout: users must have SynqLien product access and only the `SYNQ_LIENS:SYNQLIEN_BUYER` role for SynqLien. Any other SynqLien role, including `SYNQ_LIENS:SYNQLIEN_HOLDER` or `SYNQ_LIENS:SYNQLIEN_SELLER`, and any platform/tenant system role is rejected for the funding portal.
+
+Implemented routes:
+
+| Route | Purpose |
+|---|---|
+| `/funding/dashboard` | Funding dashboard with KPI summary, pending offers, acquisition pipeline, provider performance, and Offer Inbox. |
+| `/funding/offered-liens` | Server-rendered offered-liens list with search, status filters, pagination, and API-authorized row actions. |
+| `/selling/public/{token}` | Public, token-gated buyer offer page opened from `New Lien Offer` emails; rendered by `apps/web` from Liens JSON without a `platform_session` cookie. Includes accept/decline buttons that record the buyer response without finalizing sale. |
+| `/selling/public/{token}/activate` | Public SynqLien buyer account activation page. Prefills and locks available buyer contact data from the lien offer, then creates or links a `SYNQ_LIENS:SYNQLIEN_BUYER` login through Liens and Identity. |
+| `/api/lien/api/liens/selling/public/{token}` | Public BFF path for the Liens JSON data endpoint and response/account-activation actions. Accept/decline posts use `/api/lien/api/liens/selling/public/{token}/{action}` and account activation uses `/api/lien/api/liens/selling/public/{token}/activate-account`, so browser traffic always runs through the tenant portal BFF before reaching the gateway. |
+
+The frontend is API-ready but does not include mock rows. Server components target the future Liens endpoints through the gateway:
+
+| Frontend server request | Liens service endpoint after gateway prefix removal |
+|---|---|
+| `/liens/api/liens/selling/buyer/dashboard?range=last7Days\|last30Days\|custom&from=&to=` | `/api/liens/selling/buyer/dashboard` |
+| `/liens/api/liens/selling/buyer/liens?status=&search=&page=&pageSize=` | `/api/liens/selling/buyer/liens` |
+
+Until those backend endpoints exist, the funding portal converts only `404`, `501`, and `204` responses into semantic empty states. `401`, `403`, and `5xx` remain auth/error states.

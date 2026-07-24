@@ -3,8 +3,10 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using BuildingBlocks.Notifications;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.DTOs;
+using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
@@ -26,6 +28,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         await SeedHelper.SeedAsync(scope.ServiceProvider);
         scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().Clear();
         scope.ServiceProvider.GetRequiredService<CapturingAuditPublisher>().Clear();
+        scope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>().Clear();
 
         _client = _factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization =
@@ -883,6 +886,699 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
     }
 
+    [Fact]
+    public async Task ConfirmSale_sends_new_lien_offer_email_with_real_data_and_documents()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var caseManagerId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            dateOfIncident: new DateOnly(2026, 3, 12),
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            caseNotes: $"caseManagerId={caseManagerId}",
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.operations@smithlaw.test",
+            buyerEmail: "buyer.reviewer@capital.test",
+            caseManagerId: caseManagerId,
+            documentFileName: "signed-lien-real.pdf");
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-success");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        body.Should().NotBeNull();
+        body!.Status.Should().Be(LienStatus.Offered);
+        body.SellerStatus.Should().Be(SellingLienStatus.SubmittedForSale);
+        body.AskAmount.Should().Be(2500m);
+        body.OfferPrice.Should().Be(2500m);
+        body.SoldAtUtc.Should().BeNull();
+        body.Notification.Should().NotBeNull();
+        body.Notification!.Submitted.Should().BeTrue();
+        body.Notification.BuyerEmail.Should().Be("buyer.reviewer@capital.test");
+        body.Notification.BuyerPortalUrl.Should().StartWith("https://app.legalsynq.test/selling/public/");
+        body.Notification.BuyerPortalUrl.Should().NotContain("example.com");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().ContainSingle();
+        var email = publisher.Emails[0];
+        email.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.SellingLienSubmitted);
+        email.Subject.Should().Be("New Lien Offer");
+        email.RecipientEmail.Should().Be("buyer.reviewer@capital.test");
+        email.Body.Should().Contain("LegalSynq");
+        email.Body.Should().Contain("Awaiting Your Response");
+        email.Body.Should().Contain("A medical lien has been submitted to your company for review and potential purchase.");
+        email.Body.Should().Contain("View Lien for Sale");
+        email.Body.Should().Contain("This Link Expires in 30 Days");
+        email.Body.Should().Contain("$3,875.00");
+        email.Body.Should().Contain("06/01/2026");
+        email.Body.Should().Contain("Seller Operator");
+        email.Body.Should().Contain("Smith & Associates LLP");
+        email.Body.Should().Contain("Case Manager");
+        email.Body.Should().Contain("signed-lien-real.pdf");
+        email.Body.Should().NotContain("<!doctype html>");
+        email.Body.Should().NotContain("<html");
+        email.Body.Should().NotContain("<body");
+        email.Body.Should().NotContain("John Doe");
+        email.Body.Should().NotContain("Velantrix");
+        email.Body.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        email.Body.Should().NotContain("example.com");
+        email.Metadata["lienId"].Should().Be(lienId.ToString());
+        email.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
+        email.Options.Should().NotBeNull();
+        email.Options!.IdempotencyKey.Should().Contain("confirm-sale-success");
+        email.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
+        email.Options.TextBody.Should().Be(email.Body);
+        email.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
+        email.Options.DisableClickTracking.Should().BeTrue();
+
+        var html = email.Options.HtmlBody!;
+        html.Should().StartWith("<!doctype html>");
+        html.Should().Contain("Plus Jakarta Sans");
+        html.Should().Contain("color-scheme\" content=\"light only\"");
+        html.Should().Contain("background-color:#071b31 !important");
+        html.Should().Contain("background-color:#ffffff !important");
+        html.Should().Contain("bgcolor=\"#ffffff\"");
+        html.Should().Contain("border-collapse:separate;border-spacing:0;background-color:#ffffff !important;");
+        html.Should().Contain("border-top:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;border-left:1px solid #e5e5e5;border-top-left-radius:10px;");
+        html.Should().Contain("border-top:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;border-right:1px solid #e5e5e5;border-top-right-radius:10px;");
+        html.Should().Contain("border-bottom:1px solid #e5e5e5;border-left:1px solid #e5e5e5;border-bottom-left-radius:10px;");
+        html.Should().Contain("border-bottom:1px solid #e5e5e5;border-right:1px solid #e5e5e5;border-bottom-right-radius:10px;");
+        html.Should().NotContain("border:1px solid #e5e5e5;border-radius:10px;");
+        html.Should().Contain("src=\"cid:legalsynq-brand-icon\"");
+        html.Should().Contain("width:36px;padding:0 6px 0 0;vertical-align:middle;");
+        html.Should().Contain("-webkit-text-fill-color:#ffffff;font-size:22px;line-height:1;font-weight:700;letter-spacing:0;\">Legal</span>");
+        html.Should().Contain("-webkit-text-fill-color:#f26a2e;font-size:22px;line-height:1;font-weight:700;letter-spacing:0;\">Synq</span>");
+        html.Should().Contain("src=\"cid:seller-information-icon\"");
+        html.Should().Contain("src=\"cid:asset-overview-icon\"");
+        html.Should().Contain("src=\"cid:supporting-documents-icon\"");
+        html.Should().NotContain("<svg");
+        html.Should().NotContain("class=\"email-brand-mark\"");
+        html.Should().NotContain("&#10010;");
+        html.Should().NotContain("&#9635;");
+        html.Should().NotContain("&#9633;");
+        html.Should().Contain("Awaiting Your Response");
+        html.Should().Contain("View Lien for Sale");
+        html.Should().Contain("This Link Expires in 30 Days");
+        html.Should().Contain("$3,875.00");
+        html.Should().Contain("06/01/2026");
+        html.Should().Contain("Seller Operator");
+        html.Should().Contain("Smith &amp; Associates LLP");
+        html.Should().Contain("Case Manager");
+        html.Should().Contain("signed-lien-real.pdf");
+        html.Should().Contain("href=\"mailto:seller.operations@smithlaw.test\" style=\"color:#111111 !important;text-decoration:none;\"");
+        html.Should().Contain("href=\"mailto:seller.operations@smithlaw.test\" style=\"color:#f26a2e !important;text-decoration:underline;\"");
+        html.Should().Contain("href=\"https://app.legalsynq.test/selling/public/");
+        html.Should().NotContain("John Doe");
+        html.Should().NotContain("Velantrix");
+        html.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        html.Should().NotContain("example.com");
+
+        email.Options.InlineAttachments.Should().NotBeNull();
+        email.Options.InlineAttachments!.Should().HaveCount(4);
+        email.Options.InlineAttachments.Should().Contain(attachment =>
+            attachment.ContentId == "legalsynq-brand-icon" &&
+            attachment.FileName == "legalsynq-brand-icon.png" &&
+            attachment.ContentType == "image/png" &&
+            !string.IsNullOrWhiteSpace(attachment.Base64Content));
+        email.Options.InlineAttachments.Should().Contain(attachment =>
+            attachment.ContentId == "seller-information-icon" &&
+            attachment.ContentType == "image/png" &&
+            !string.IsNullOrWhiteSpace(attachment.Base64Content));
+        email.Options.InlineAttachments.Should().Contain(attachment =>
+            attachment.ContentId == "asset-overview-icon" &&
+            attachment.ContentType == "image/png" &&
+            !string.IsNullOrWhiteSpace(attachment.Base64Content));
+        email.Options.InlineAttachments.Should().Contain(attachment =>
+            attachment.ContentId == "supporting-documents-icon" &&
+            attachment.ContentType == "image/png" &&
+            !string.IsNullOrWhiteSpace(attachment.Base64Content));
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_returns_temporary_portal_json_with_real_data()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var caseManagerId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            dateOfIncident: new DateOnly(2026, 3, 12),
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            endServiceDate: new DateOnly(2026, 6, 30),
+            caseNotes: $"caseManagerId={caseManagerId}",
+            lienNotes: "Medical provider lien filed after treatment and pending review.",
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.portal@smithlaw.test",
+            buyerEmail: "buyer.portal@capital.test",
+            caseManagerId: caseManagerId,
+            documentFileName: "signed-lien-real.pdf");
+
+        var confirmResponse = await PostConfirmSaleAsync(lienId, "confirm-sale-public-portal");
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await confirmResponse.Content.ReadAsStringAsync()}");
+
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        var token = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
+
+        using var anonClient = _factory.CreateClient();
+        var response = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var serialized = json.GetRawText();
+        json.GetProperty("lien").GetProperty("lienCode").GetString().Should().StartWith("LIEN-");
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Offered);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.SubmittedForSale);
+        json.GetProperty("lien").GetProperty("listingVisibility").GetString().Should().Be(SellingListingVisibility.Private);
+        json.GetProperty("lien").GetProperty("initialServiceDate").GetString().Should().Be("2026-06-01");
+        json.GetProperty("lien").GetProperty("endServiceDate").GetString().Should().Be("2026-06-30");
+        json.GetProperty("lien").GetProperty("notes").GetString().Should().Be("Medical provider lien filed after treatment and pending review.");
+        json.GetProperty("seller").GetProperty("name").GetString().Should().Be("Seller Operator");
+        json.GetProperty("seller").GetProperty("company").GetString().Should().Be("Smith & Associates LLP");
+        json.GetProperty("seller").GetProperty("email").GetString().Should().Be("seller.portal@smithlaw.test");
+        json.GetProperty("buyer").GetProperty("company").GetString().Should().Be("Capital Fund LLC");
+        json.GetProperty("case").GetProperty("caseManager").GetString().Should().Be("Case Manager");
+        json.GetProperty("case").GetProperty("handlingLawFirm").GetString().Should().Be("Smith & Associates LLP");
+        json.GetProperty("accessLink").GetProperty("expiresAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+
+        var documents = json.GetProperty("documents").EnumerateArray().ToList();
+        documents.Should().ContainSingle();
+        documents[0].GetProperty("fileName").GetString().Should().Be("signed-lien-real.pdf");
+        documents[0].GetProperty("category").GetString().Should().Be("Lien Document");
+        documents[0].GetProperty("sizeOrType").GetString().Should().Be("PDF");
+
+        serialized.Should().NotContain("<!doctype html>");
+        serialized.Should().NotContain("<html");
+        serialized.Should().NotContain("John Doe");
+        serialized.Should().NotContain("Velantrix");
+        serialized.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        serialized.Should().NotContain("ApexIndustries");
+        serialized.Should().NotContain("example.com");
+        serialized.Should().NotContain("class=\"safari\"");
+        serialized.Should().NotContain("toolbar-icons");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.SellingBuyerAccessLinks.Single(link => link.Token == token)
+            .LastAccessedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_without_documents_uses_empty_state_without_sample_files()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.no-docs@smithlaw.test",
+            buyerEmail: "buyer.no-docs@capital.test");
+
+        var confirmResponse = await PostConfirmSaleAsync(lienId, "confirm-sale-public-no-docs");
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        var token = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
+
+        using var anonClient = _factory.CreateClient();
+        var response = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("documents").EnumerateArray().Should().BeEmpty();
+        var serialized = json.GetRawText();
+        serialized.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
+        serialized.Should().NotContain("ApexIndustries");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_activate_account_provisions_synqlien_buyer_from_token_contact()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync(
+            "activate-account",
+            buyerPhone: "3105551212");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>()
+                .NextResult = PublicBuyerAccountProvisioningResult.Created(
+                    new Guid("20000000-0000-0000-0000-000000000201"),
+                    isNew: true);
+        }
+
+        var response = await PostPublicBuyerActivationAsync(
+            token,
+            new
+            {
+                companyName = "Overridden Company",
+                email = "override@capital.test",
+                firstName = "Override",
+                lastName = "Person",
+                phone = "9999999999",
+                password = "Password123!",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("userId").GetGuid().Should().Be(new Guid("20000000-0000-0000-0000-000000000201"));
+        json.GetProperty("isNew").GetBoolean().Should().BeTrue();
+        json.GetProperty("loginUrl").GetString().Should().Be("/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var provisioning = verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>();
+        provisioning.Requests.Should().ContainSingle();
+        var request = provisioning.Requests.Single();
+        request.TenantId.Should().Be(SeedHelper.TenantId);
+        request.BuyerOrgId.Should().Be(SeedHelper.FundingCompanyId);
+        request.BuyerCompanyName.Should().Be("Capital Fund LLC");
+        request.Email.Should().Be("buyer.activate-account@capital.test");
+        request.FirstName.Should().Be("Buyer");
+        request.LastName.Should().Be("Reviewer");
+        request.Phone.Should().Be("+13105551212");
+        request.Password.Should().Be("Password123!");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_activate_account_rejects_unknown_token_without_provisioning()
+    {
+        var response = await PostPublicBuyerActivationAsync(
+            "not-a-real-token",
+            new
+            {
+                email = "buyer@capital.test",
+                firstName = "Buyer",
+                password = "Password123!",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>()
+            .Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_accept_records_buyer_response_and_marks_lien_accepted_without_finalizing_sale()
+    {
+        var (lienId, token) = await CreatePublicLienOfferAsync("accept");
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "accept",
+            new { notes = "Accepted at ask from public portal" },
+            "public-accept-response");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var accessLink = json.GetProperty("accessLink");
+        accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Accepted);
+        accessLink.GetProperty("responseAmount").GetDecimal().Should().Be(2500m);
+        accessLink.GetProperty("responseNotes").GetString().Should().Be("Accepted at ask from public portal");
+        accessLink.GetProperty("respondedAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Accepted);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Accepted);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+        persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Accepted);
+        persistedLink.ResponseAmount.Should().Be(2500m);
+        persistedLink.ResponseNotes.Should().Be("Accepted at ask from public portal");
+        persistedLink.ResponseIdempotencyKey.Should().Be("public-accept-response");
+        persistedLink.RespondedAtUtc.Should().NotBeNull();
+        persistedLink.LastAccessedAtUtc.Should().NotBeNull();
+
+        var lien = db.Liens.Single(l => l.Id == lienId);
+        lien.Status.Should().Be(LienStatus.Accepted);
+        lien.SellerStatus.Should().Be(SellingLienStatus.Accepted);
+        lien.SoldAtUtc.Should().BeNull();
+        lien.BuyingOrgId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_offers_alias_records_accepted_buyer_response()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("offers-alias");
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "offers",
+            new { offerAmount = 999m, message = "Accepted through legacy public offer route" },
+            "public-offers-alias-response");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var accessLink = json.GetProperty("accessLink");
+        accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Accepted);
+        accessLink.GetProperty("responseAmount").GetDecimal().Should().Be(2500m);
+        accessLink.GetProperty("responseNotes").GetString().Should().Be("Accepted through legacy public offer route");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_decline_records_buyer_response()
+    {
+        var (lienId, token) = await CreatePublicLienOfferAsync("decline");
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Not in buying criteria" },
+            "public-decline-response");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var accessLink = json.GetProperty("accessLink");
+        accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Declined);
+        accessLink.GetProperty("responseAmount").ValueKind.Should().Be(JsonValueKind.Null);
+        accessLink.GetProperty("responseNotes").GetString().Should().Be("Not in buying criteria");
+        accessLink.GetProperty("respondedAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Declined);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Declined);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+        persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Declined);
+        persistedLink.ResponseAmount.Should().BeNull();
+        persistedLink.ResponseNotes.Should().Be("Not in buying criteria");
+
+        var lien = db.Liens.Single(l => l.Id == lienId);
+        lien.Status.Should().Be(LienStatus.Declined);
+        lien.SellerStatus.Should().Be(SellingLienStatus.Declined);
+        lien.ClosedAtUtc.Should().NotBeNull();
+        lien.WithdrawnAtUtc.Should().BeNull();
+        lien.SoldAtUtc.Should().BeNull();
+        lien.BuyingOrgId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_repeated_same_response_is_idempotent()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("idempotent");
+
+        var first = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Not this one" },
+            "public-decline-idempotent");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var second = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Different duplicate reason" },
+            "public-decline-idempotent-replay");
+
+        second.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await second.Content.ReadAsStringAsync()}");
+        var json = await second.Content.ReadFromJsonAsync<JsonElement>();
+        var accessLink = json.GetProperty("accessLink");
+        accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Declined);
+        accessLink.GetProperty("responseNotes").GetString().Should().Be("Not this one");
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Declined);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Declined);
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_opposite_response_after_recorded_response_conflicts()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("conflict");
+
+        var first = await PostPublicBuyerResponseAsync(
+            token,
+            "accept",
+            new { },
+            "public-accept-before-conflict");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var second = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Changed mind" },
+            "public-decline-conflict");
+
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var json = await second.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("response-conflict");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_response_rejects_unknown_token_without_authentication()
+    {
+        var response = await PostPublicBuyerResponseAsync(
+            "not-a-real-token",
+            "accept",
+            new { },
+            "public-accept-unknown");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("not-found");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_response_rejects_expired_token()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("expired");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var accessLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+            SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.ExpiresAtUtc), DateTime.UtcNow.AddMinutes(-1));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "accept",
+            new { },
+            "public-accept-expired");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Gone);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("expired");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_response_rejects_revoked_token()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("revoked");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var accessLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+            accessLink.Revoke(SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "No longer interested" },
+            "public-decline-revoked");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Gone);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("revoked");
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_rejects_unknown_token_without_authentication()
+    {
+        using var anonClient = _factory.CreateClient();
+        var response = await anonClient.GetAsync("/api/liens/selling/public/not-a-real-token");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("not-found");
+        json.GetProperty("error").GetProperty("title").GetString().Should().Be("Lien offer link unavailable");
+        json.GetProperty("error").GetProperty("message").GetString().Should().Be("The secure link could not be found.");
+        json.GetRawText().Should().NotContain("example.com");
+    }
+
+    [Fact]
+    public async Task ConfirmSale_without_notification_transitions_lien_without_sending_email()
+    {
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            originalAmount: 4000m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            Guid.CreateVersion7(),
+            sellerEmail: null,
+            buyerEmail: "unused.buyer@capital.test");
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/confirm-sale",
+            new ConfirmSellingLienSaleRequest
+            {
+                ConfirmationAccepted = true,
+                SendBuyerNotification = false,
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        body!.Status.Should().Be(LienStatus.Offered);
+        body.SellerStatus.Should().Be(SellingLienStatus.SubmittedForSale);
+        body.Notification.Should().BeNull();
+
+        using var verifyScope = _factory.Services.CreateScope();
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConfirmSale_rejects_notification_when_buyer_contact_email_is_missing()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.operations@smithlaw.test",
+            buyerEmail: null);
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-missing-buyer-email");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Draft);
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConfirmSale_rejects_notification_when_seller_email_is_missing()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: null,
+            buyerEmail: "buyer.reviewer@capital.test");
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-missing-seller-email");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Draft);
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConfirmSale_replay_with_same_idempotency_key_does_not_send_duplicate_email()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.operations@smithlaw.test",
+            buyerEmail: "buyer.reviewer@capital.test");
+
+        var first = await PostConfirmSaleAsync(lienId, "confirm-sale-replay");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var second = await PostConfirmSaleAsync(lienId, "confirm-sale-replay");
+        second.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await second.Content.ReadAsStringAsync()}");
+        var secondBody = await second.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        secondBody!.Notification!.Submitted.Should().BeTrue();
+
+        using var verifyScope = _factory.Services.CreateScope();
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ConfirmSale_notification_failure_does_not_roll_back_lien_transition()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1));
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.operations@smithlaw.test",
+            buyerEmail: "buyer.reviewer@capital.test");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().FailEmailSends = true;
+        }
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-notification-failure");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        body!.Status.Should().Be(LienStatus.Offered);
+        body.Notification!.Submitted.Should().BeFalse();
+        body.Notification.NotificationStatus.Should().Be("failed");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Offered);
+    }
+
     private async Task<SellingPortfolioResponse> CreatePortfolioAsync()
     {
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
@@ -900,6 +1596,175 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await response.Content.ReadFromJsonAsync<SellingPortfolioResponse>())!;
+    }
+
+    private Task<HttpResponseMessage> PostConfirmSaleAsync(Guid lienId, string idempotencyKey)
+    {
+        var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/liens/selling/liens/{lienId}/confirm-sale");
+        message.Headers.Add("Idempotency-Key", idempotencyKey);
+        message.Content = JsonContent.Create(new ConfirmSellingLienSaleRequest
+        {
+            ConfirmationAccepted = true,
+            SendBuyerNotification = true,
+        });
+
+        return _client.SendAsync(message);
+    }
+
+    private async Task<(Guid LienId, string Token)> CreatePublicLienOfferAsync(
+        string scenario,
+        string? buyerPhone = null)
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: $"seller.{scenario}@smithlaw.test",
+            buyerEmail: $"buyer.{scenario}@capital.test",
+            buyerPhone: buyerPhone);
+
+        var confirmResponse = await PostConfirmSaleAsync(
+            lienId,
+            $"confirm-sale-public-response-{scenario}-{Guid.NewGuid():N}");
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await confirmResponse.Content.ReadAsStringAsync()}");
+
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        return (lienId, ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!));
+    }
+
+    private async Task<HttpResponseMessage> PostPublicBuyerResponseAsync(
+        string token,
+        string action,
+        object body,
+        string idempotencyKey)
+    {
+        using var anonClient = _factory.CreateClient();
+        var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/liens/selling/public/{token}/{action}");
+        message.Headers.Add("Idempotency-Key", idempotencyKey);
+        message.Content = JsonContent.Create(body);
+        return await anonClient.SendAsync(message);
+    }
+
+    private async Task<HttpResponseMessage> PostPublicBuyerActivationAsync(
+        string token,
+        object body)
+    {
+        using var anonClient = _factory.CreateClient();
+        return await anonClient.PostAsJsonAsync(
+            $"/api/liens/selling/public/{token}/activate-account",
+            body);
+    }
+
+    private async Task PrepareConfirmSaleDataAsync(
+        Guid lienId,
+        Guid buyerContactId,
+        string? sellerEmail,
+        string? buyerEmail,
+        Guid? caseManagerId = null,
+        string? documentFileName = null,
+        string? buyerPhone = null)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+        if (sellerEmail is null)
+        {
+            foreach (var contact in db.Contacts.Where(c =>
+                         c.TenantId == SeedHelper.TenantId &&
+                         c.OrgId == SeedHelper.OrgId &&
+                         c.Email != null &&
+                         c.IsActive))
+            {
+                contact.Deactivate(SeedHelper.UserId);
+            }
+        }
+        else
+        {
+            foreach (var contact in db.Contacts.Where(c =>
+                         c.TenantId == SeedHelper.TenantId &&
+                         c.OrgId == SeedHelper.OrgId &&
+                         c.Email != null &&
+                         c.IsActive))
+            {
+                contact.Deactivate(SeedHelper.UserId);
+            }
+
+            db.Contacts.Add(Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.LawFirm,
+                "Seller",
+                "Operator",
+                SeedHelper.UserId,
+                organization: "Smith & Associates LLP",
+                email: sellerEmail));
+        }
+
+        var buyerContact = Contact.Create(
+            SeedHelper.TenantId,
+            SeedHelper.FundingCompanyId,
+            ContactType.LienHolder,
+            "Buyer",
+            "Reviewer",
+            SeedHelper.UserId,
+            organization: "Capital Fund LLC",
+            email: buyerEmail,
+            phone: buyerPhone);
+        SetId(buyerContact, buyerContactId);
+        db.Contacts.Add(buyerContact);
+
+        if (caseManagerId.HasValue)
+        {
+            var caseManager = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.InternalUser,
+                "Case",
+                "Manager",
+                SeedHelper.UserId,
+                organization: "Smith & Associates LLP",
+                email: "case.manager@smithlaw.test");
+            SetId(caseManager, caseManagerId.Value);
+            db.Contacts.Add(caseManager);
+        }
+
+        var lien = db.Liens.Single(l => l.Id == lienId);
+        lien.UpdateSellingAnalyticsFields(
+            SeedHelper.UserId,
+            sellerStatus: SellingLienStatus.PreparedForSale,
+            listingVisibility: SellingListingVisibility.Private,
+            fundingCompanyId: SeedHelper.FundingCompanyId,
+            fundingCompanyContactId: buyerContactId,
+            askAmount: 2500m);
+
+        if (!string.IsNullOrWhiteSpace(documentFileName))
+        {
+            var documentId = Guid.CreateVersion7();
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"DOC-{Guid.CreateVersion7():N}"[..36],
+                "LegacyLienDocument",
+                $"Lien document uploaded: {Path.GetFileNameWithoutExtension(documentFileName)}",
+                "Seller Operator",
+                SeedHelper.UserId,
+                lienId: lienId,
+                notes: $"documentId={documentId}; url=/documents/{documentId}; filename={Path.GetFileNameWithoutExtension(documentFileName)}; originalFileName={documentFileName}"));
+        }
+
+        await db.SaveChangesAsync();
     }
 
     private async Task<SellingPortfolioResponse> CreateEmptyPortfolioAsync()
@@ -920,6 +1785,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         string lienExternalId,
         string lienNumber,
         DateOnly? dateOfIncident = null,
+        DateOnly? initialServiceDate = null,
+        DateOnly? endServiceDate = null,
+        string? caseNotes = null,
+        string? lienNotes = null,
         string? status = null,
         decimal originalAmount = 12345m)
     {
@@ -937,7 +1806,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             "Client",
             SeedHelper.UserId,
             externalReference: caseExternalId,
-            dateOfIncident: dateOfIncident);
+            dateOfIncident: dateOfIncident,
+            notes: caseNotes);
 
         SetId(caseEntity, caseId);
         db.Cases.Add(caseEntity);
@@ -950,7 +1820,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             originalAmount,
             SeedHelper.UserId,
             externalReference: lienExternalId,
-            caseId: caseId);
+            caseId: caseId,
+            initialServiceDate: initialServiceDate,
+            endServiceDate: endServiceDate,
+            notes: lienNotes);
 
         if (status == LienStatus.Sold)
         {
@@ -1016,5 +1889,18 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var prop = typeof(T).GetProperty(propertyName,
             System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
         prop?.SetValue(entity, value);
+    }
+
+    private static void SetDateTimeProperty<T>(T entity, string propertyName, DateTime value) where T : class
+    {
+        var prop = typeof(T).GetProperty(propertyName,
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        prop?.SetValue(entity, value);
+    }
+
+    private static string ExtractBuyerAccessToken(string buyerPortalUrl)
+    {
+        var uri = new Uri(buyerPortalUrl, UriKind.Absolute);
+        return Uri.UnescapeDataString(uri.Segments.Last().Trim('/'));
     }
 }

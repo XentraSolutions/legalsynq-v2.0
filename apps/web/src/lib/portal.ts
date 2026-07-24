@@ -9,9 +9,10 @@
  * subdomain-based detection works the same as production:
  *
  *   127.0.0.1   careconnect-demo.localhost
+ *   127.0.0.1   synqlien-demo.localhost
  *   127.0.0.1   provider.localhost
  *
- * Then access via http://careconnect-demo.localhost:3000
+ * Then access via http://careconnect-demo.localhost:5000
  * (Use .localhost — not .local.dev — to avoid Chrome's HSTS enforcement)
  */
 
@@ -40,7 +41,7 @@ function buildPortalConfigs(): Record<string, PortalConfig> {
   const synqLienSub = (process.env.PORTAL_SYNQLIEN_SUBDOMAIN ?? 'synqlien-demo').trim();
   if (synqLienSub) configs[synqLienSub] = {
     productId:       'synqlien',
-    landingPath:     '/lien/dashboard',
+    landingPath:     '/funding/dashboard',
     showAppSwitcher: false,
     showBottomNav:   false,
     logoSrc:         '/product-icons/synqlien.png',

@@ -238,8 +238,8 @@ public class Lien : AuditableEntity
 
     public void Withdraw(Guid updatedByUserId)
     {
-        if (Status != LienStatus.Offered && Status != LienStatus.UnderReview)
-            throw new InvalidOperationException($"Only offered or under-review liens can be withdrawn. Current status: '{Status}'.");
+        if (Status != LienStatus.Offered && Status != LienStatus.Accepted && Status != LienStatus.UnderReview)
+            throw new InvalidOperationException($"Only offered, accepted, or under-review liens can be withdrawn. Current status: '{Status}'.");
 
         Status          = LienStatus.Withdrawn;
         ClosedAtUtc     = DateTime.UtcNow;
@@ -251,8 +251,8 @@ public class Lien : AuditableEntity
 
     public void MarkSold(decimal purchasePrice, Guid buyingOrgId, Guid updatedByUserId)
     {
-        if (Status != LienStatus.Offered && Status != LienStatus.UnderReview)
-            throw new InvalidOperationException($"Only offered or under-review liens can be sold. Current status: '{Status}'.");
+        if (Status != LienStatus.Offered && Status != LienStatus.Accepted && Status != LienStatus.UnderReview)
+            throw new InvalidOperationException($"Only offered, accepted, or under-review liens can be sold. Current status: '{Status}'.");
 
         if (purchasePrice <= 0)
             throw new ArgumentOutOfRangeException(nameof(purchasePrice), "Purchase price must be positive.");
@@ -373,6 +373,16 @@ public class Lien : AuditableEntity
         if (caseId == Guid.Empty) throw new ArgumentException("CaseId is required.", nameof(caseId));
 
         CaseId          = caseId;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
+    public void DetachCase(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        CaseId          = null;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
     }

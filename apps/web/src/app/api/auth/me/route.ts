@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
+const IS_PROD = process.env.NODE_ENV === 'production';
 
 /**
  * BFF /auth/me route — GET /api/auth/me
@@ -50,11 +51,31 @@ export async function GET(request: NextRequest) {
   }
 
   const data = await identityRes.json();
+  const { refreshedAccessToken, ...sessionEnvelope } = data as Record<string, unknown>;
 
   // Forward X-Correlation-Id from the identity response if present
   const correlationId = identityRes.headers.get('X-Correlation-Id');
   const headers: Record<string, string> = {};
   if (correlationId) headers['X-Correlation-Id'] = correlationId;
 
-  return NextResponse.json(data, { status: 200, headers });
+  const response = NextResponse.json(sessionEnvelope, { status: 200, headers });
+
+  if (typeof refreshedAccessToken === 'string' && refreshedAccessToken.length > 0) {
+    const expiresAtUtc = typeof sessionEnvelope.expiresAtUtc === 'string'
+      ? sessionEnvelope.expiresAtUtc
+      : null;
+    const maxAgeSeconds = expiresAtUtc
+      ? Math.max(0, Math.floor((new Date(expiresAtUtc).getTime() - Date.now()) / 1000))
+      : undefined;
+
+    response.cookies.set('platform_session', refreshedAccessToken, {
+      httpOnly: true,
+      secure: IS_PROD,
+      sameSite: IS_PROD ? 'strict' : 'lax',
+      path: '/',
+      ...(maxAgeSeconds !== undefined ? { maxAge: maxAgeSeconds } : {}),
+    });
+  }
+
+  return response;
 }

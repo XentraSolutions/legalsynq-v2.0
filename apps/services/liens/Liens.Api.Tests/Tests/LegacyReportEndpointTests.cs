@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
@@ -186,20 +187,62 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
-    public async Task ExportReport_returns200_with_base64_data()
+    public async Task ExportReport_returns_case_export_compatible_base64_csv()
     {
-        var resp = await _client.PostAsJsonAsync("/report/diy/export", new
+        var request = new
         {
-            config = new { status = "Open" },
-            page   = 1,
-            limit  = 10,
-        });
-        resp.StatusCode.Should().Be(HttpStatusCode.OK,
-            $"Body: {await resp.Content.ReadAsStringAsync()}");
+            viewBy = "CASE",
+            reportType = "CASE",
+            statusView = "",
+            lienStatusIds = Array.Empty<string>(),
+            purchaseDateFrom = Array.Empty<string>(),
+            purchaseDateTo = (string?)null,
+            closedDateFrom = (string?)null,
+            closedDateTo = (string?)null,
+            isBulk = "N",
+            plaintiffCaseIds = Array.Empty<string>(),
+            lawFirmIds = Array.Empty<string>(),
+            attorneyIds = Array.Empty<string>(),
+            fundingCompanyIds = Array.Empty<string>(),
+            medicalFacilityIds = Array.Empty<string>(),
+            caseManagerIds = Array.Empty<string>(),
+            medicalProviderIds = Array.Empty<string>(),
+            columns = new[]
+            {
+                "billing_amt",
+                "case_status",
+                "plaintiff_last_name",
+                "plaintiff_first_name",
+            },
+            format = "csv",
+            page = 1,
+            limit = 10,
+        };
 
-        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
-        doc!.RootElement.TryGetProperty("data", out var dataProp).Should().BeTrue();
-        dataProp.GetString().Should().NotBeNull();
+        var exportResp = await _client.PostAsJsonAsync("/report/diy/export", request);
+        exportResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResp.Content.ReadAsStringAsync()}");
+
+        var exportDoc = await exportResp.Content.ReadFromJsonAsync<JsonDocument>();
+        exportDoc.Should().NotBeNull();
+
+        exportDoc!.RootElement.GetProperty("isSuccess").GetBoolean()
+            .Should().BeTrue();
+        exportDoc.RootElement.GetProperty("message").GetString()
+            .Should().Be("CSV generated successfully.");
+        exportDoc.RootElement.TryGetProperty("summaryTotals", out _).Should().BeFalse();
+        exportDoc.RootElement.TryGetProperty("page", out _).Should().BeFalse();
+        exportDoc.RootElement.TryGetProperty("limit", out _).Should().BeFalse();
+        exportDoc.RootElement.TryGetProperty("totalCount", out _).Should().BeFalse();
+
+        var exportItems = exportDoc.RootElement.GetProperty("data").EnumerateArray().ToList();
+        exportItems.Should().ContainSingle();
+        var exportItem = exportItems.Single();
+        exportItem.GetProperty("filename").GetString().Should().StartWith("diy_report_");
+        exportItem.GetProperty("export_format").GetString().Should().Be("csv");
+
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(exportItem.GetProperty("base64").GetString()!));
+        csv.Should().StartWith("billing_amt,case_status,plaintiff_last_name,plaintiff_first_name");
     }
 
     // ── POST /report/diy/save ─────────────────────────────────────────────────
@@ -382,10 +425,119 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         doc!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         doc.RootElement.GetProperty("reportType").GetString().Should().Be("LIENS");
         doc.RootElement.TryGetProperty("defaultColumn", out var defaults).Should().BeTrue();
-        defaults.EnumerateArray().Select(x => x.GetString()).Should().Contain("billing_amt");
+        defaults.EnumerateArray().Select(x => x.GetString()).Should().Equal(
+        [
+            "plaintiff_first_name",
+            "plaintiff_last_name",
+            "case_id",
+            "lien_id",
+            "purchase_date",
+            "purchase_amt",
+            "billing_amt",
+            "date_closed",
+            "returned_amount",
+            "days_since_reduction_approval",
+            "medical_facility",
+            "lawfirm",
+            "case_type",
+            "case_manager",
+            "case_status",
+            "date_of_loss",
+        ]);
         doc.RootElement.TryGetProperty("data", out var data).Should().BeTrue();
         data.EnumerateArray().Any(x => x.GetProperty("key").GetString() == "plaintiff_first_name")
             .Should().BeTrue();
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "days_since_purchase" &&
+            x.GetProperty("label").GetString() == "Days Since Purchase");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "expected_settlement_amount" &&
+            x.GetProperty("label").GetString() == "Expected Settlement Amount");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "days_since_reduction_approval" &&
+            x.GetProperty("label").GetString() == "Days Since Reduction Approval");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "date_closed" &&
+            x.GetProperty("label").GetString() == "Date Closed");
+        data.EnumerateArray().Count(x => x.GetProperty("key").GetString() == "date_closed")
+            .Should().Be(1);
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "medical_provider" &&
+            x.GetProperty("label").GetString() == "Medical Provider");
+        data.EnumerateArray().Count(x => x.GetProperty("key").GetString() == "medical_facility")
+            .Should().Be(1);
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "medical_facility" &&
+            x.GetProperty("label").GetString() == "Medical Facility");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "lawfirm_email" &&
+            x.GetProperty("label").GetString() == "Lawfirm Email");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "date_of_loss" &&
+            x.GetProperty("label").GetString() == "Date of Loss");
+        data.EnumerateArray().Count(x => x.GetProperty("key").GetString() == "date_of_loss")
+            .Should().Be(1);
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "plaintiff_date_of_birth" &&
+            x.GetProperty("label").GetString() == "Plaintiff Date of Birth");
+
+        var liensInfo = doc.RootElement.GetProperty("liensInfo").EnumerateArray().ToList();
+        liensInfo.Should().Contain(x => x.GetProperty("key").GetString() == "date_closed");
+        liensInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "medical_facility");
+        liensInfo.Should().Contain(x =>
+            x.GetProperty("key").GetString() == "number_of_liens" &&
+            x.GetProperty("label").GetString() == "Number Of Liens");
+        liensInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "l_id");
+
+        var procedureInfo = doc.RootElement.GetProperty("procedureInfo").EnumerateArray().ToList();
+        procedureInfo.Should().Contain(x => x.GetProperty("key").GetString() == "medical_facility");
+
+        var caseTrackingInfo = doc.RootElement.GetProperty("caseTrackingInfo").EnumerateArray().ToList();
+        caseTrackingInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "date_closed");
+        caseTrackingInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "date_of_loss");
+
+        var settlementInfo = doc.RootElement.GetProperty("settlementInfo").EnumerateArray().ToList();
+        settlementInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "returned_amt");
+        settlementInfo.Should().Contain(x =>
+            x.GetProperty("key").GetString() == "returned_amount" &&
+            x.GetProperty("label").GetString() == "Returned Amount");
+
+        var caseInfo = doc.RootElement.GetProperty("caseInfo").EnumerateArray().ToList();
+        caseInfo.Should().Contain(x =>
+            x.GetProperty("key").GetString() == "date_of_loss" &&
+            x.GetProperty("label").GetString() == "Date of Loss");
+    }
+
+    [Fact]
+    public async Task RunReport_projects_new_legacy_columns_when_requested()
+    {
+        var resp = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            config = new
+            {
+                columns = new[]
+                {
+                    "days_since_purchase",
+                    "expected_settlement_amount",
+                    "medical_provider",
+                    "lawfirm_email",
+                    "plaintiff_date_of_birth",
+                },
+            },
+            page = 1,
+            limit = 10,
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        var rows = doc!.RootElement.GetProperty("data").EnumerateArray().ToList();
+        rows.Should().NotBeEmpty();
+        rows[0].TryGetProperty("days_since_purchase", out _).Should().BeTrue();
+        rows[0].TryGetProperty("expected_settlement_amount", out _).Should().BeTrue();
+        rows[0].TryGetProperty("medical_provider", out _).Should().BeTrue();
+        rows[0].TryGetProperty("lawfirm_email", out _).Should().BeTrue();
+        rows[0].TryGetProperty("plaintiff_date_of_birth", out _).Should().BeTrue();
     }
 
     [Fact]
