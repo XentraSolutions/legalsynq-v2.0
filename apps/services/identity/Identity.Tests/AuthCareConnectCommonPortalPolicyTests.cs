@@ -195,7 +195,7 @@ public class AuthCareConnectCommonPortalPolicyTests
     }
 
     [Fact]
-    public async Task Login_ResolveByEmail_SynqLien_AllowsBuyerAndHolder()
+    public async Task Login_ResolveByEmail_SynqLien_DeniesBuyerAndHolder()
     {
         using var factory = BuildFactory();
         var seeded = await SeedSynqLienPortalUserAsync(
@@ -206,15 +206,14 @@ public class AuthCareConnectCommonPortalPolicyTests
         using var scope = factory.Services.CreateScope();
         var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
 
-        var response = await authService.LoginAsync(new LoginRequest(
-            Email: seeded.Email,
-            Password: seeded.Password,
-            ResolveByEmail: true,
-            PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens));
+        var ex = await Assert.ThrowsAsync<SynqLienPortalRoleRestrictedException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: seeded.Email,
+                Password: seeded.Password,
+                ResolveByEmail: true,
+                PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens)));
 
-        Assert.Equal(seeded.TenantId, response.User.TenantId);
-        Assert.Contains("SYNQ_LIENS:SYNQLIEN_BUYER", response.User.ProductRoles ?? []);
-        Assert.Contains("SYNQ_LIENS:SYNQLIEN_HOLDER", response.User.ProductRoles ?? []);
+        Assert.Equal(SynqLienPortalRestrictionMessage, ex.Message);
     }
 
     [Fact]

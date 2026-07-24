@@ -754,17 +754,11 @@ public class AuthService : IAuthService
             .Select(r => r[(BuildingBlocks.Authorization.ProductCodes.SynqLiens.Length + 1)..])
             .ToList();
 
-        if (!synqLienRoles.Any(role =>
-                string.Equals(role, ProductRoleCodes.SynqLienBuyer, StringComparison.OrdinalIgnoreCase)))
-            return false;
-
-        if (synqLienRoles.Any(role =>
-                string.Equals(role, ProductRoleCodes.SynqLienSeller, StringComparison.OrdinalIgnoreCase)))
+        if (synqLienRoles.Count == 0)
             return false;
 
         return synqLienRoles.All(role =>
-            string.Equals(role, ProductRoleCodes.SynqLienBuyer, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(role, ProductRoleCodes.SynqLienHolder, StringComparison.OrdinalIgnoreCase));
+            string.Equals(role, ProductRoleCodes.SynqLienBuyer, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? NormalizePortalProductCode(string? productCode)

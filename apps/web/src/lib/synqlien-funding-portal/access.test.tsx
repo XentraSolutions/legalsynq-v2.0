@@ -11,12 +11,12 @@ describe('isEligibleForSynqLienFundingPortal', () => {
     })).toBe(true);
   });
 
-  test('allows buyer and holder', () => {
+  test('denies buyer and holder', () => {
     expect(isEligibleForSynqLienFundingPortal({
       isPlatformAdmin: false,
       isTenantAdmin: false,
       productRoles: [ProductRole.SynqLienBuyer, ProductRole.SynqLienHolder],
-    })).toBe(true);
+    })).toBe(false);
   });
 
   test('denies seller', () => {

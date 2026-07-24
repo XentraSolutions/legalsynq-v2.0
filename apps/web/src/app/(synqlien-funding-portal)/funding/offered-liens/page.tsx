@@ -22,7 +22,7 @@ interface OfferedLiensPageProps {
   }>;
 }
 
-const STATUS_FILTERS = ["", "Pending", "Accepted", "Declined", "Expired"];
+const STATUS_FILTERS = ["", "Pending", "Accepted", "Declined"];
 
 export default async function OfferedLiensPage({
   searchParams,
@@ -38,26 +38,20 @@ export default async function OfferedLiensPage({
   const hasFilters = Boolean(query.status || query.search);
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">
-            Offer Inbox
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
-            Offered Liens
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Review lien offers returned by the SynqLien buyer API.
-          </p>
-        </div>
-        <SearchForm query={query} />
+    <div className="w-full space-y-4">
+      <div>
+        <h1 className="text-[28px] font-semibold leading-9 tracking-normal text-[#0a0a0a]">
+          Offered Liens
+        </h1>
+        <p className="mt-1 text-[14px] font-normal leading-[1.6] text-[#737373]">
+          Track and evaluate lien opportunities submitted directly to your portal.
+        </p>
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
-          <StatusTabs query={query} />
-        </div>
+      <SearchForm query={query} />
+      <StatusTabs query={query} />
+
+      <section className="overflow-hidden rounded-[16px] border border-[#e5e5e5] bg-white shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]">
         <OfferedLiensTable result={result} hasFilters={hasFilters} />
         <Pagination result={result} query={query} />
       </section>
@@ -67,32 +61,28 @@ export default async function OfferedLiensPage({
 
 function SearchForm({ query }: { query: OfferedLiensQuery }) {
   return (
-    <form action="/funding/offered-liens" className="flex flex-col gap-2 sm:flex-row sm:items-center">
+    <form action="/funding/offered-liens" className="w-full">
       {query.status ? <input type="hidden" name="status" value={query.status} /> : null}
-      <label className="relative block">
-        <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-slate-400" />
+      {query.pageSize && query.pageSize !== 10 ? (
+        <input type="hidden" name="pageSize" value={query.pageSize} />
+      ) : null}
+      <label className="relative block w-full">
+        <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-[#737373]" />
         <input
           type="search"
           name="search"
           defaultValue={query.search}
-          placeholder="Search lien, provider, or seller"
-          className="h-10 w-full min-w-0 rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100 sm:w-[320px]"
+          placeholder="Search..."
+          className="h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white pl-9 pr-3 text-[14px] font-normal leading-[1.6] text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.04)] outline-none transition focus:border-[#f4a076] focus:ring-2 focus:ring-[#fdf1eb]"
         />
       </label>
-      <button
-        type="submit"
-        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-800"
-      >
-        <i className="ri-filter-3-line text-[15px]" />
-        Apply
-      </button>
     </form>
   );
 }
 
 function StatusTabs({ query }: { query: OfferedLiensQuery }) {
   return (
-    <div className="flex gap-1 overflow-x-auto">
+    <div className="grid h-9 grid-cols-4 overflow-hidden rounded-[8px] bg-[#f5f5f5] p-px">
       {STATUS_FILTERS.map(status => {
         const active = (query.status ?? "") === status;
         const href = buildHref({
@@ -104,10 +94,10 @@ function StatusTabs({ query }: { query: OfferedLiensQuery }) {
           <Link
             key={status || "all"}
             href={href}
-            className={`inline-flex h-9 shrink-0 items-center rounded-md px-3 text-sm font-medium transition-colors ${
+            className={`flex items-center justify-center rounded-[7px] text-[12px] font-medium leading-[1.6] transition-colors ${
               active
-                ? "bg-slate-950 text-white"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                ? "border border-[#e5e5e5] bg-white text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.08)]"
+                : "text-[#737373] hover:bg-white/70 hover:text-[#0a0a0a]"
             }`}
           >
             {status || "All"}
@@ -128,20 +118,20 @@ function OfferedLiensTable({
   const emptyCopy = getOfferedLiensEmptyStateCopy(hasFilters);
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-100">
-        <thead className="bg-slate-50/70">
-          <tr className="text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-            <th className="px-5 py-3">Lien</th>
-            <th className="px-5 py-3">Provider</th>
-            <th className="px-5 py-3">Seller / Law Firm</th>
-            <th className="px-5 py-3">Offered Amount</th>
-            <th className="px-5 py-3">Received</th>
-            <th className="px-5 py-3">Due</th>
-            <th className="px-5 py-3">Status</th>
-            <th className="px-5 py-3 text-right">Actions</th>
+      <table className="min-w-[1120px] w-full border-collapse">
+        <thead className="bg-[#f5f5f5]">
+          <tr>
+            <SortableHeaderCell>Lien ID</SortableHeaderCell>
+            <SortableHeaderCell>Seller Name</SortableHeaderCell>
+            <SortableHeaderCell>Initial Service Date</SortableHeaderCell>
+            <SortableHeaderCell>Billing Amount</SortableHeaderCell>
+            <SortableHeaderCell>Ask Amount</SortableHeaderCell>
+            <SortableHeaderCell>Highest Bid</SortableHeaderCell>
+            <SortableHeaderCell>Status</SortableHeaderCell>
+            <th aria-label="Actions" className="h-10 w-12 px-4" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 bg-white">
+        <tbody>
           {result.rows.length === 0 ? (
             <tr>
               <td colSpan={8} className="px-5 py-14">
@@ -160,54 +150,70 @@ function OfferedLiensTable({
   );
 }
 
+function SortableHeaderCell({ children }: { children: React.ReactNode }) {
+  return (
+    <th className="h-10 px-4 text-left text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate">{children}</span>
+        <i className="ri-arrow-up-s-line shrink-0 text-[14px] text-[#525252]" />
+      </div>
+    </th>
+  );
+}
+
 function OfferedLienTableRow({ row }: { row: OfferedLienRow }) {
-  const detailHref = row.allowedActions.includes("view") ? safeHref(row.detailHref) : null;
-  const decisionActions = row.allowedActions.filter(action => action !== "view");
+  const allowedActions = Array.isArray(row.allowedActions) ? row.allowedActions : [];
+  const detailHref = allowedActions.includes("view") ? safeHref(row.detailHref) : null;
+  const initialServiceDate = row.initialServiceDate ?? row.serviceDate ?? null;
+  const billingAmount = row.billingAmount ?? row.originalAmount ?? null;
+  const askAmount = row.askAmount ?? row.offeredAmount;
+  const highestBidAmount = row.highestBidAmount ?? row.highestBid ?? null;
 
   return (
-    <tr className="transition-colors hover:bg-slate-50/70">
-      <td className="px-5 py-4">
+    <tr className="border-b border-[#e5e5e5] last:border-b-0">
+      <BodyCell>
         {detailHref ? (
-          <Link href={detailHref} className="text-sm font-semibold text-slate-950 hover:text-orange-700">
+          <Link href={detailHref} className="transition-colors hover:text-[#ee7132]">
             {row.lienNumber}
           </Link>
         ) : (
-          <span className="text-sm font-semibold text-slate-950">{row.lienNumber}</span>
+          row.lienNumber
         )}
-      </td>
-      <td className="px-5 py-4 text-sm text-slate-600">{row.providerName}</td>
-      <td className="px-5 py-4 text-sm text-slate-600">{row.sellerName}</td>
-      <td className="px-5 py-4 text-sm font-medium text-slate-900">
-        {formatFundingCurrency(row.offeredAmount)}
-      </td>
-      <td className="px-5 py-4 text-sm text-slate-600">{formatFundingDate(row.receivedAtUtc)}</td>
-      <td className="px-5 py-4 text-sm text-slate-600">{formatFundingDate(row.responseDueAtUtc)}</td>
-      <td className="px-5 py-4">
-        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ring-1 ${statusBadgeClass(row.status)}`}>
+      </BodyCell>
+      <BodyCell>{row.sellerName}</BodyCell>
+      <BodyCell>{formatOptionalDate(initialServiceDate)}</BodyCell>
+      <BodyCell>{formatOptionalCurrency(billingAmount)}</BodyCell>
+      <BodyCell>{formatOptionalCurrency(askAmount)}</BodyCell>
+      <BodyCell>{formatOptionalCurrency(highestBidAmount)}</BodyCell>
+      <td className="h-[53px] px-4 text-[14px] font-normal leading-[1.6] text-[#0a0a0a]">
+        <span className={`inline-flex rounded-full px-3 py-1 text-[14px] font-medium leading-[1.6] ring-1 ${statusBadgeClass(row.status)}`}>
           {row.status}
         </span>
       </td>
-      <td className="px-5 py-4">
-        <div className="flex justify-end gap-2">
-          {detailHref ? (
-            <Link
-              href={detailHref}
-              className="inline-flex h-8 items-center justify-center rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-700 transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700"
-            >
-              View
-            </Link>
-          ) : null}
-          {decisionActions.length > 0 ? (
-            <span className="inline-flex h-8 items-center justify-center rounded-md bg-slate-50 px-3 text-xs font-medium text-slate-500">
-              {decisionActions.join(", ")}
-            </span>
-          ) : null}
-          {!detailHref && decisionActions.length === 0 ? (
-            <span className="text-sm text-slate-300">-</span>
-          ) : null}
-        </div>
+      <td className="h-[53px] w-12 px-4 text-center">
+        {detailHref ? (
+          <Link
+            href={detailHref}
+            aria-label={`View ${row.lienNumber}`}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+          >
+            <i className="ri-more-2-fill text-[20px]" />
+          </Link>
+        ) : (
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[#525252]">
+            <i className="ri-more-2-fill text-[20px]" />
+          </span>
+        )}
       </td>
     </tr>
+  );
+}
+
+function BodyCell({ children }: { children: React.ReactNode }) {
+  return (
+    <td className="h-[53px] px-4 text-[14px] font-normal leading-[1.6] text-[#0a0a0a]">
+      <div className="truncate">{children}</div>
+    </td>
   );
 }
 
@@ -222,65 +228,108 @@ function Pagination({
   const currentPage = Math.min(Math.max(result.page, 1), totalPages);
   const firstItem = result.total === 0 ? 0 : (currentPage - 1) * result.pageSize + 1;
   const lastItem = Math.min(result.total, currentPage * result.pageSize);
+  const pageNumbers = buildPageNumbers(currentPage, totalPages);
 
   return (
-    <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm text-slate-500">
-        Showing {formatFundingNumber(firstItem)}-{formatFundingNumber(lastItem)} of {formatFundingNumber(result.total)}
-      </p>
+    <div className="flex flex-col gap-4 px-6 pb-6 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center gap-3 text-[14px] font-normal leading-5 text-[#737373]">
+        <span>Showing</span>
+        <span className="inline-flex h-9 min-w-[92px] items-center justify-between rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.08)]">
+          {formatFundingNumber(firstItem)}-{formatFundingNumber(lastItem)}
+          <i className="ri-arrow-down-s-line ml-2 text-[16px] text-[#525252]" />
+        </span>
+        <span>of {formatFundingNumber(result.total)} entries.</span>
+      </div>
+
       <div className="flex items-center gap-2">
-        <PaginationLink
+        <PaginationIcon
+          href={buildHref({ ...query, page: 1 })}
+          disabled={currentPage <= 1}
+          icon="ri-skip-left-line"
+          label="First page"
+        />
+        <PaginationIcon
           href={buildHref({ ...query, page: Math.max(1, currentPage - 1) })}
           disabled={currentPage <= 1}
-          label="Previous"
-          icon="ri-arrow-left-line"
+          icon="ri-arrow-left-s-line"
+          label="Previous page"
         />
-        <span className="min-w-16 text-center text-sm font-medium text-slate-600">
-          {currentPage} / {totalPages}
-        </span>
-        <PaginationLink
+        {pageNumbers.map(page => (
+          <PaginationNumber
+            key={page}
+            href={buildHref({ ...query, page })}
+            active={page === currentPage}
+            page={page}
+          />
+        ))}
+        <PaginationIcon
           href={buildHref({ ...query, page: Math.min(totalPages, currentPage + 1) })}
           disabled={currentPage >= totalPages}
-          label="Next"
-          icon="ri-arrow-right-line"
-          iconAfter
+          icon="ri-arrow-right-s-line"
+          label="Next page"
+        />
+        <PaginationIcon
+          href={buildHref({ ...query, page: totalPages })}
+          disabled={currentPage >= totalPages}
+          icon="ri-skip-right-line"
+          label="Last page"
         />
       </div>
     </div>
   );
 }
 
-function PaginationLink({
+function PaginationIcon({
   href,
   disabled,
-  label,
   icon,
-  iconAfter = false,
+  label,
 }: {
   href: string;
   disabled: boolean;
-  label: string;
   icon: string;
-  iconAfter?: boolean;
+  label: string;
 }) {
+  const className = "inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#e5e5e5] bg-white text-[#0a0a0a] shadow-[0_1px_2px_rgba(0,0,0,0.08)]";
+
   if (disabled) {
     return (
-      <span className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-100 px-3 text-sm font-medium text-slate-300">
-        {!iconAfter ? <i className={`${icon} text-[15px]`} /> : null}
-        {label}
-        {iconAfter ? <i className={`${icon} text-[15px]`} /> : null}
+      <span aria-label={label} aria-disabled="true" className={`${className} opacity-50`}>
+        <i className={`${icon} text-[16px]`} />
       </span>
     );
   }
 
   return (
-    <Link
-      href={href}
-      className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700"
-    >
-      {!iconAfter ? <i className={`${icon} text-[15px]`} /> : null}
-      {label}
-      {iconAfter ? <i className={`${icon} text-[15px]`} /> : null}
+    <Link href={href} aria-label={label} className={`${className} transition-colors hover:border-[#f4a076] hover:text-[#ee7132]`}>
+      <i className={`${icon} text-[16px]`} />
+    </Link>
+  );
+}
+
+function PaginationNumber({
+  href,
+  active,
+  page,
+}: {
+  href: string;
+  active: boolean;
+  page: number;
+}) {
+  const className =
+    "inline-flex h-9 w-9 items-center justify-center rounded-[8px] text-[14px] font-medium leading-5 text-[#0a0a0a]";
+
+  if (active) {
+    return (
+      <span className={`${className} border border-[#e5e5e5] bg-white shadow-[0_1px_1px_rgba(0,0,0,0.08)]`}>
+        {page}
+      </span>
+    );
+  }
+
+  return (
+    <Link href={href} className={`${className} transition-colors hover:bg-[#f5f5f5]`}>
+      {page}
     </Link>
   );
 }
@@ -294,11 +343,11 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-md bg-slate-50 text-slate-400">
+      <span className="flex h-11 w-11 items-center justify-center rounded-[8px] bg-[#f5f5f5] text-[#737373]">
         <i className="ri-file-list-3-line text-[20px]" />
       </span>
-      <p className="mt-3 text-sm font-semibold text-slate-700">{title}</p>
-      <p className="mt-1 max-w-md text-sm text-slate-500">{description}</p>
+      <p className="mt-3 text-[14px] font-semibold leading-[1.6] text-[#525252]">{title}</p>
+      <p className="mt-1 max-w-md text-[14px] font-normal leading-[1.6] text-[#737373]">{description}</p>
     </div>
   );
 }
@@ -312,6 +361,12 @@ function buildHref(query: OfferedLiensQuery): string {
 
   const encoded = params.toString();
   return encoded ? `/funding/offered-liens?${encoded}` : "/funding/offered-liens";
+}
+
+function buildPageNumbers(currentPage: number, totalPages: number): number[] {
+  const count = Math.min(3, totalPages);
+  const start = Math.min(Math.max(1, currentPage - 1), Math.max(1, totalPages - count + 1));
+  return Array.from({ length: count }, (_, index) => start + index);
 }
 
 function normalizeFilter(value?: string): string | undefined {
@@ -328,4 +383,14 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 function safeHref(value?: string | null): string | null {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
   return value;
+}
+
+function formatOptionalCurrency(value?: number | null): string {
+  return value === undefined || value === null || !Number.isFinite(value)
+    ? "-"
+    : formatFundingCurrency(value);
+}
+
+function formatOptionalDate(value?: string | null): string {
+  return value ? formatFundingDate(value) : "-";
 }

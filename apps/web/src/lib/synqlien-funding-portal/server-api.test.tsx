@@ -79,12 +79,48 @@ describe('SynqLien funding portal server API', () => {
     expect(serverGet).toHaveBeenCalledWith('/liens/api/liens/selling/buyer/dashboard?range=last7Days');
   });
 
+  test('normalizes partial dashboard data without adding rows', async () => {
+    serverGet.mockResolvedValueOnce({
+      summary: {
+        totalPendingOfferCount: 2,
+        totalPendingOfferedAmount: 50000,
+      },
+    });
+
+    await expect(getFundingDashboard()).resolves.toMatchObject({
+      summary: {
+        totalLienPendingCount: 0,
+        totalLienPendingAmount: 0,
+        totalPendingOfferCount: 2,
+        totalPendingOfferedAmount: 50000,
+        purchasedLienCount: 0,
+        capitalDeployedAmount: 0,
+      },
+      pendingOffers: [],
+      pipelineStages: [],
+      providerPerformance: [],
+    });
+  });
+
   test('returns empty offered liens for no-content future endpoint', async () => {
     serverGet.mockResolvedValueOnce(undefined);
 
     await expect(getOfferedLiens({ status: 'Pending', page: 2, pageSize: 25 }))
       .resolves
       .toEqual(emptyOfferedLiensResult({ status: 'Pending', page: 2, pageSize: 25 }));
+  });
+
+  test('normalizes partial offered liens response without adding rows', async () => {
+    serverGet.mockResolvedValueOnce({ total: 4 });
+
+    await expect(getOfferedLiens({ page: 2, pageSize: 10 }))
+      .resolves
+      .toEqual({
+        rows: [],
+        page: 2,
+        pageSize: 10,
+        total: 4,
+      });
   });
 
   test('keeps filtered no-results copy distinct from no-data copy', () => {

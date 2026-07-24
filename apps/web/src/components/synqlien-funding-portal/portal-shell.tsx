@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { PlatformSession } from "@/types";
+import { useSession } from "@/hooks/use-session";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -27,39 +28,45 @@ export function SynqLienFundingPortalShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const orgName = session.orgName || "Funding portal";
-  const initials = buildInitials(session.email);
+  const { session: liveSession, logout } = useSession();
+  const activeSession = liveSession ?? session;
+  const orgName = activeSession.orgName || "Funding portal";
+  const initials = buildInitials(orgName, activeSession.email);
+  const currentNavItem =
+    NAV_ITEMS.find(item => pathname === item.href || pathname.startsWith(`${item.href}/`)) ??
+    NAV_ITEMS[0];
 
-  async function handleSignOut() {
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
-    window.location.href = "/login";
+  function handleSignOut() {
+    void logout("/login");
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f6f8] text-slate-950">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[244px] flex-col border-r border-slate-200 bg-white lg:flex">
-        <div className="flex h-16 items-center gap-3 border-b border-slate-100 px-5">
-          <Image
-            src="/product-icons/synqlien.png"
-            alt=""
-            width={36}
-            height={36}
-            priority
-            unoptimized
-            className="h-9 w-9 rounded-lg"
-          />
-          <div className="min-w-0">
-            <p className="truncate text-[15px] font-semibold tracking-tight text-slate-950">
-              SynqLien
-            </p>
-            <p className="truncate text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
-              Funding Portal
-            </p>
-          </div>
+    <div
+      className="min-h-screen bg-white text-[#0a0a0a]"
+      style={{
+        fontFamily: '"Plus Jakarta Sans", Inter, Arial, "Helvetica Neue", sans-serif',
+      }}
+    >
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[255px] flex-col border-r border-[#e5e5e5] bg-[#fafafa] lg:flex">
+        <div className="flex h-[81px] w-full items-center border-b border-[#e5e5e5] px-2">
+          <Link href="/funding/dashboard" className="flex h-6 items-center gap-[9.5px] px-[4.5px]">
+            <Image
+              src="/product-icons/synqlien.png"
+              alt=""
+              width={18}
+              height={18}
+              priority
+              unoptimized
+              className="h-[18px] w-[18px]"
+            />
+            <span className="text-[15px] font-bold leading-5 text-[#0a0a0a]">
+              Synq<span className="text-[#ee7132]">Lien</span>
+            </span>
+          </Link>
         </div>
 
-        <nav className="flex-1 px-3 py-4">
-          <div className="space-y-1">
+        <nav className="flex-1 pb-6 pt-4">
+          <div className="flex w-full flex-col gap-1 p-2">
             {NAV_ITEMS.map(item => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
@@ -67,102 +74,101 @@ export function SynqLienFundingPortalShell({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors",
+                    "flex h-8 w-[239px] items-center gap-2 rounded-[8px] px-2 text-[14px] font-normal leading-[1.6] transition-colors",
                     active
-                      ? "bg-orange-50 text-orange-700"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-950",
+                      ? "bg-[rgba(238,113,50,0.05)] text-[#ee7132]"
+                      : "text-[#0a0a0a] hover:bg-white hover:text-[#ee7132]",
                   )}
                 >
-                  <i className={`${item.icon} text-[17px]`} />
-                  <span>{item.label}</span>
+                  <i className={`${item.icon} text-[16px]`} />
+                  <span className="truncate">{item.label}</span>
                 </Link>
               );
             })}
           </div>
         </nav>
-
-        <div className="border-t border-slate-100 px-4 py-4">
-          <p className="truncate text-xs font-medium text-slate-500">{orgName}</p>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900"
-          >
-            <i className="ri-logout-box-r-line text-[14px]" />
-            Sign out
-          </button>
-        </div>
       </aside>
 
-      <div className="lg:pl-[244px]">
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-          <div className="flex min-h-16 items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
-            <div className="flex min-w-0 items-center gap-3">
-              <Link href="/funding/dashboard" className="flex items-center gap-2 lg:hidden">
+      <div className="lg:pl-[255px]">
+        <header className="sticky top-0 z-30 border-b border-[#e5e5e5] bg-white">
+          <div className="flex min-h-[81px] items-center justify-between gap-3 px-4 py-5 sm:px-6">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Link href="/funding/dashboard" className="flex shrink-0 items-center gap-2 lg:hidden">
                 <Image
                   src="/product-icons/synqlien.png"
                   alt=""
-                  width={32}
-                  height={32}
+                  width={22}
+                  height={22}
                   priority
                   unoptimized
-                  className="h-8 w-8 rounded-lg"
+                  className="h-[22px] w-[22px]"
                 />
-                <span className="text-sm font-semibold text-slate-950">SynqLien</span>
+                <span className="text-sm font-bold text-[#0a0a0a]">
+                  Synq<span className="text-[#ee7132]">Lien</span>
+                </span>
               </Link>
-              <div className="hidden min-w-0 lg:block">
-                <p className="truncate text-xs font-medium uppercase tracking-[0.14em] text-slate-400">
-                  Funding Common Portal
-                </p>
-                <p className="truncate text-sm font-medium text-slate-700">{orgName}</p>
+              <div className="hidden h-7 w-7 items-center justify-center lg:flex">
+                <i className="ri-sidebar-unfold-line text-[16px] text-[#0a0a0a]" />
               </div>
+              <span className="hidden h-[17px] w-px bg-[#e5e5e5] lg:block" />
+              <p className="hidden truncate text-[14px] font-normal leading-[1.6] text-[#0a0a0a] lg:block">
+                {currentNavItem.label}
+              </p>
+              <nav className="ml-auto flex items-center gap-1 lg:hidden">
+                {NAV_ITEMS.map(item => {
+                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      aria-label={item.label}
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center rounded-[8px] transition-colors",
+                        active
+                          ? "bg-[rgba(238,113,50,0.08)] text-[#ee7132]"
+                          : "text-[#525252] hover:bg-[#f5f5f5] hover:text-[#0a0a0a]",
+                      )}
+                      title={item.label}
+                    >
+                      <i className={`${item.icon} text-[18px]`} />
+                    </Link>
+                  );
+                })}
+              </nav>
             </div>
 
-            <nav className="flex items-center gap-1 lg:hidden">
-              {NAV_ITEMS.map(item => {
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-label={item.label}
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
-                      active
-                        ? "bg-orange-50 text-orange-700"
-                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-950",
-                    )}
-                    title={item.label}
-                  >
-                    <i className={`${item.icon} text-[18px]`} />
-                  </Link>
-                );
-              })}
-            </nav>
-
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <Link
                 href="/funding/offered-liens?status=Pending"
-                aria-label="Offer inbox"
-                title="Offer inbox"
-                className="hidden h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950 sm:flex"
+                aria-label="Notifications"
+                title="Notifications"
+                className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#0a0a0a] transition-colors hover:bg-[#f5f5f5]"
               >
-                <i className="ri-inbox-2-line text-[18px]" />
+                <i className="ri-notification-3-line text-[16px]" />
               </Link>
-              <div className="hidden min-w-0 text-right sm:block">
-                <p className="max-w-[220px] truncate text-xs font-medium text-slate-700">
-                  {session.email}
-                </p>
-                <p className="text-[11px] text-slate-400">Buyer access</p>
-              </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fdf1eb] text-center text-[18px] font-medium leading-[1.6] text-[#a95024]">
                 {initials}
               </div>
+              <div className="hidden min-w-0 flex-col items-start leading-[1.6] text-[#0a0a0a] sm:flex">
+                <p className="max-w-[220px] truncate text-[14px] font-bold">
+                  {orgName}
+                </p>
+                <p className="text-[12px] font-normal text-[#525252]">Funding Company</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                aria-label="Sign out"
+                title="Sign out"
+                className="hidden h-7 w-7 items-center justify-center rounded-[8px] text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a] sm:flex"
+              >
+                <i className="ri-logout-box-r-line text-[16px]" />
+              </button>
             </div>
           </div>
         </header>
 
-        <main className="px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+        <main className="px-4 py-5 sm:px-6 lg:px-6">
           {children}
         </main>
       </div>
@@ -170,7 +176,18 @@ export function SynqLienFundingPortalShell({
   );
 }
 
-function buildInitials(email: string): string {
+function buildInitials(orgName: string, email: string): string {
+  const orgParts = orgName
+    .split(/\s+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+  if (orgParts.length >= 2) {
+    return `${orgParts[0][0]}${orgParts[1][0]}`.toUpperCase();
+  }
+  if (orgParts.length === 1) {
+    return orgParts[0].slice(0, 2).toUpperCase();
+  }
+
   const local = email.split("@")[0] ?? "";
   const parts = local.split(/[._-]/).filter(Boolean);
   if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();

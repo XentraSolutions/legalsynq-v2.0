@@ -80,11 +80,18 @@ export interface OfferedLienRow {
   lienNumber: string;
   providerName: string;
   sellerName: string;
+  initialServiceDate?: string | null;
+  serviceDate?: string | null;
+  billingAmount?: number | null;
+  originalAmount?: number | null;
+  askAmount?: number | null;
+  highestBidAmount?: number | null;
+  highestBid?: number | null;
   offeredAmount: number;
   receivedAtUtc: string;
   status: string;
   responseDueAtUtc?: string | null;
-  allowedActions: OfferedLienAction[];
+  allowedActions?: OfferedLienAction[];
   detailHref?: string | null;
 }
 
