@@ -2,7 +2,6 @@ import { ProductRole, type PlatformSession } from '@/types';
 
 const ALLOWED_FUNDING_PORTAL_ROLES = new Set<string>([
   ProductRole.SynqLienBuyer,
-  ProductRole.SynqLienHolder,
 ]);
 
 export function isEligibleForSynqLienFundingPortal(

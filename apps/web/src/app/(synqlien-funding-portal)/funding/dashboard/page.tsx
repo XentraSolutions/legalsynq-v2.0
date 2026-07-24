@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   formatFundingCurrency,
-  formatFundingDate,
   formatFundingDateTime,
   formatFundingNumber,
   formatFundingPercent,
@@ -32,6 +31,8 @@ const RANGE_LABELS: Record<FundingDashboardRange, string> = {
   custom: "Custom",
 };
 
+const RANGE_OPTIONS: FundingDashboardRange[] = ["last7Days", "last30Days", "custom"];
+
 export default async function SynqLienFundingDashboardPage({
   searchParams,
 }: DashboardPageProps) {
@@ -44,33 +45,40 @@ export default async function SynqLienFundingDashboardPage({
   });
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">
-            SynqLien Funding
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+    <div className="w-full space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-[28px] font-semibold leading-9 tracking-normal text-[#0a0a0a]">
             Dashboard
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Review offered liens, acquisition flow, and provider performance.
+          <p className="mt-1 max-w-[760px] text-[14px] font-normal leading-[1.6] text-[#737373]">
+            Manage and monitor lien offers submitted to your company. Review opportunities, track activity, and take action from one centralized dashboard.
           </p>
         </div>
-        <RangeControls range={range} from={sp.from} to={sp.to} />
+        <Link
+          href="/funding/offered-liens?status=Pending"
+          className="hidden h-[38px] shrink-0 items-center justify-center rounded-[10px] bg-[#ee7132] px-4 text-[14px] font-medium leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#d86228] sm:inline-flex"
+          aria-label="Open Offer Inbox"
+        >
+          OfferInbox
+        </Link>
       </div>
 
       <KpiGrid dashboard={dashboard} />
 
-      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-6 xl:grid-cols-2">
         <PendingOffersCard rows={dashboard.pendingOffers} />
-        <PipelineCard range={range} stages={dashboard.pipelineStages} />
+        <PipelineCard
+          range={range}
+          from={sp.from}
+          to={sp.to}
+          stages={dashboard.pipelineStages}
+        />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
-        <ProviderPerformanceCard rows={dashboard.providerPerformance} />
-        <OfferInboxCard dashboard={dashboard} />
-      </div>
+      <ProviderPerformanceCard rows={dashboard.providerPerformance} />
+
+      <OfferInboxCard />
     </div>
   );
 }
@@ -82,308 +90,188 @@ function KpiGrid({ dashboard }: { dashboard: SynqLienFundingDashboard }) {
     key: FundingMetricKey;
     label: string;
     value: string;
-    sublabel: string;
-    icon: string;
   }> = [
     {
       key: "totalLienPending",
       label: "Total Lien Pending",
-      value: formatFundingCurrency(summary.totalLienPendingAmount),
-      sublabel: `${formatFundingNumber(summary.totalLienPendingCount)} lien${summary.totalLienPendingCount === 1 ? "" : "s"}`,
-      icon: "ri-time-line",
+      value: formatFundingNumber(summary.totalLienPendingCount),
     },
     {
       key: "totalPendingOffered",
       label: "Total Pending Offered",
       value: formatFundingCurrency(summary.totalPendingOfferedAmount),
-      sublabel: `${formatFundingNumber(summary.totalPendingOfferCount)} offer${summary.totalPendingOfferCount === 1 ? "" : "s"}`,
-      icon: "ri-inbox-2-line",
     },
     {
       key: "purchasedLiens",
       label: "Purchased Liens",
       value: formatFundingNumber(summary.purchasedLienCount),
-      sublabel: "Buyer-scoped acquisitions",
-      icon: "ri-checkbox-circle-line",
     },
     {
       key: "capitalDeployed",
       label: "Capital Deployed",
       value: formatFundingCurrency(summary.capitalDeployedAmount),
-      sublabel: "Accepted purchase value",
-      icon: "ri-bank-card-line",
     },
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
       {cards.map(card => (
         <section
           key={card.key}
-          className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+          className="min-h-[138px] rounded-[16px] border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]"
         >
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-slate-500">{card.label}</p>
-              <p className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
-                {card.value}
-              </p>
-              <p className="mt-1 text-xs text-slate-400">{card.sublabel}</p>
-            </div>
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-50 text-slate-600">
-              <i className={`${card.icon} text-[18px]`} />
-            </span>
+            <p className="text-[14px] font-normal leading-[1.6] text-[#737373]">
+              {card.label}
+            </p>
+            <TrendPill trend={trends[card.key] ?? null} />
           </div>
-          <TrendChip trend={trends[card.key] ?? null} />
+          <p className="mt-1 text-[24px] font-semibold leading-8 tracking-normal text-[#0a0a0a]">
+            {card.value}
+          </p>
+          <TrendSummary trend={trends[card.key] ?? null} />
         </section>
       ))}
     </div>
   );
 }
 
-function TrendChip({ trend }: { trend?: FundingMetricTrend | null }) {
+function TrendPill({ trend }: { trend?: FundingMetricTrend | null }) {
   if (!trend) return null;
 
-  const directionIcon =
-    trend.direction === "up"
-      ? "ri-arrow-up-line"
-      : trend.direction === "down"
-        ? "ri-arrow-down-line"
-        : "ri-subtract-line";
   const tone =
-    trend.direction === "up"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-      : trend.direction === "down"
-        ? "bg-rose-50 text-rose-700 ring-rose-200"
-        : "bg-slate-50 text-slate-600 ring-slate-200";
+    trend.direction === "down"
+      ? "bg-[#fee2e2] text-[#b91c1c]"
+      : trend.direction === "flat"
+        ? "bg-[#f5f5f5] text-[#525252]"
+        : "bg-[#dcfce7] text-[#15803d]";
 
   return (
-    <div className="mt-4">
-      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ring-1 ${tone}`}>
-        <i className={`${directionIcon} text-[13px]`} />
-        {formatFundingPercent(trend.value)}
-        {trend.label ? <span className="font-normal opacity-75">{trend.label}</span> : null}
-      </span>
+    <span className={`inline-flex h-6 items-center rounded-full px-2 text-[12px] font-medium leading-[1.6] ${tone}`}>
+      {formatSignedPercent(trend)}
+    </span>
+  );
+}
+
+function TrendSummary({ trend }: { trend?: FundingMetricTrend | null }) {
+  if (!trend) return <div className="mt-4 h-10" aria-hidden />;
+
+  const verb =
+    trend.direction === "down"
+      ? "Trending down this month"
+      : trend.direction === "flat"
+        ? "Stable this month"
+        : "Trending up this month";
+  const directionLabel =
+    trend.direction === "down"
+      ? "Down"
+      : trend.direction === "flat"
+        ? "No change"
+        : "Up";
+
+  return (
+    <div className="mt-4 space-y-1">
+      <p className="text-[12px] font-semibold leading-[1.6] text-[#0a0a0a]">
+        {verb} <i className={trend.direction === "down" ? "ri-line-chart-line" : "ri-line-chart-line"} />
+      </p>
+      <p className="text-[12px] font-normal leading-[1.6] text-[#737373]">
+        {directionLabel} {formatFundingPercent(Math.abs(trend.value))}
+        {trend.label ? ` ${trend.label}` : ""}
+      </p>
     </div>
   );
 }
 
 function PendingOffersCard({ rows }: { rows: PendingFundingOfferRow[] }) {
+  const visibleRows = rows.slice(0, 5);
+
   return (
-    <Card
-      title="Pending Offers"
-      description="Offers awaiting funding-company review."
-      actionHref="/funding/offered-liens?status=Pending"
-      actionLabel="View all"
-    >
-      {rows.length === 0 ? (
+    <section className="rounded-[16px] border border-[#e5e5e5] bg-white shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]">
+      <div className="flex min-h-[53px] items-center justify-between gap-3 px-6 py-4">
+        <h2 className="text-[16px] font-semibold leading-5 text-[#0a0a0a]">
+          Pending Offers
+        </h2>
+        <Link
+          href="/funding/offered-liens?status=Pending"
+          className="inline-flex h-[38px] items-center gap-3 rounded-[10px] border border-[#e5e5e5] bg-white px-4 text-[14px] font-medium leading-[1.6] text-[#0a0a0a] shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-colors hover:border-[#f4a076] hover:text-[#ee7132]"
+        >
+          View All
+          <i className="ri-arrow-right-line text-[16px]" />
+        </Link>
+      </div>
+
+      {visibleRows.length === 0 ? (
         <EmptyState icon="ri-inbox-line" title="No pending offers" />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-100">
-            <thead>
-              <tr className="text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-                <th className="py-3 pr-4">Lien</th>
-                <th className="px-4 py-3">Provider</th>
-                <th className="px-4 py-3">Offer</th>
-                <th className="px-4 py-3">Due</th>
-                <th className="py-3 pl-4">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.map(row => (
-                <tr key={row.id}>
-                  <td className="py-3 pr-4">
-                    <div className="min-w-[150px]">
-                      <p className="text-sm font-semibold text-slate-950">{row.lienNumber}</p>
-                      <p className="mt-0.5 text-xs text-slate-400">{row.sellerName}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">{row.providerName}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-slate-900">
-                    {formatFundingCurrency(row.offeredAmount)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-500">
-                    {formatFundingDate(row.responseDueAtUtc)}
-                  </td>
-                  <td className="py-3 pl-4">
-                    <StatusBadge status={row.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-[#e5e5e5] px-6">
+          {visibleRows.map(row => (
+            <li key={row.id} className="flex min-h-[86px] items-center justify-between gap-5 py-3">
+              <div className="min-w-0">
+                <StatusBadge status={row.status} size="sm" />
+                <p className="mt-2 truncate text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
+                  {row.providerName}
+                </p>
+                <p className="truncate text-[12px] font-normal leading-[1.6] text-[#737373]">
+                  {row.sellerName}
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
+                  {formatFundingCurrency(row.offeredAmount)}
+                </p>
+                <p className="mt-1 text-[12px] font-normal leading-[1.6] text-[#737373]">
+                  {formatFundingDateTime(row.receivedAtUtc)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
-    </Card>
+    </section>
   );
 }
 
 function PipelineCard({
   range,
+  from,
+  to,
   stages,
 }: {
   range: FundingDashboardRange;
+  from?: string;
+  to?: string;
   stages: AcquisitionPipelineStage[];
 }) {
-  const maxAmount = Math.max(0, ...stages.map(stage => stage.totalAmount));
-  const totalAmount = stages.reduce((sum, stage) => sum + stage.totalAmount, 0);
-  const hasStages = stages.length > 0;
+  const totalCount = stages.reduce((sum, stage) => sum + stage.count, 0);
 
   return (
-    <Card
-      title="Acquisition Pipeline"
-      description={`Range: ${RANGE_LABELS[range]}`}
-    >
-      <div className="mb-4 flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
-        <span className="text-xs font-medium text-slate-500">Total pipeline value</span>
-        <span className="text-sm font-semibold text-slate-950">
-          {formatFundingCurrency(totalAmount)}
-        </span>
-      </div>
+    <section className="rounded-[16px] border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]">
+      <h2 className="text-[16px] font-semibold leading-5 text-[#0a0a0a]">
+        Acquisition Pipeline
+      </h2>
+      <RangeTabs range={range} from={from} to={to} />
 
-      {hasStages ? (
-        <div className="space-y-4">
-          {stages.map(stage => (
-            <PipelineStageRow key={stage.key} stage={stage} maxAmount={maxAmount} />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="text-sm font-medium text-slate-600">Total</span>
-              <span className="text-sm font-semibold text-slate-950">$0</span>
-            </div>
-            <div className="h-2 rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-orange-500" style={{ width: "0%" }} />
-            </div>
-          </div>
-          <EmptyState icon="ri-bar-chart-horizontal-line" title="No pipeline activity for this range" compact />
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function PipelineStageRow({
-  stage,
-  maxAmount,
-}: {
-  stage: AcquisitionPipelineStage;
-  maxAmount: number;
-}) {
-  const width = maxAmount > 0 ? Math.round((stage.totalAmount / maxAmount) * 100) : 0;
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-700">{stage.label}</p>
-          <p className="mt-0.5 text-xs text-slate-400">
-            {formatFundingNumber(stage.count)} lien{stage.count === 1 ? "" : "s"}
-            {stage.conversionRatePercent != null ? ` - ${formatFundingPercent(stage.conversionRatePercent)} conversion` : ""}
-          </p>
-        </div>
-        <p className="shrink-0 text-sm font-semibold text-slate-950">
-          {formatFundingCurrency(stage.totalAmount)}
+      <div className="mt-8 flex items-center justify-between gap-3">
+        <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">Total:</p>
+        <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">
+          {formatFundingNumber(totalCount)}
         </p>
       </div>
-      <div className="h-2 rounded-full bg-slate-100">
-        <div
-          className="h-2 rounded-full bg-orange-500"
-          style={{ width: `${width}%` }}
-        />
-      </div>
-    </div>
-  );
-}
 
-function ProviderPerformanceCard({ rows }: { rows: ProviderPerformanceRow[] }) {
-  return (
-    <Card title="Provider Performance" description="Buyer-facing provider metrics.">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-100">
-          <thead>
-            <tr className="text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-              <th className="py-3 pr-4">Provider</th>
-              <th className="px-4 py-3">Liens</th>
-              <th className="px-4 py-3">Offered</th>
-              <th className="px-4 py-3">Accepted</th>
-              <th className="py-3 pl-4">Avg Response</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="py-10">
-                  <EmptyState icon="ri-hospital-line" title="No provider performance data" compact />
-                </td>
-              </tr>
-            ) : rows.map(row => (
-              <tr key={row.providerId}>
-                <td className="py-3 pr-4 text-sm font-medium text-slate-950">{row.providerName}</td>
-                <td className="px-4 py-3 text-sm text-slate-600">{formatFundingNumber(row.lienCount)}</td>
-                <td className="px-4 py-3 text-sm text-slate-600">{formatFundingCurrency(row.offeredAmount)}</td>
-                <td className="px-4 py-3 text-sm text-slate-600">{formatFundingCurrency(row.acceptedAmount)}</td>
-                <td className="py-3 pl-4 text-sm text-slate-600">
-                  {row.averageResponseHours == null ? "-" : `${formatFundingNumber(row.averageResponseHours)}h`}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  );
-}
-
-function OfferInboxCard({ dashboard }: { dashboard: SynqLienFundingDashboard }) {
-  const pendingCount = dashboard.offerInbox?.pendingCount ?? dashboard.summary.totalPendingOfferCount;
-  const unreadCount = dashboard.offerInbox?.unreadCount ?? null;
-
-  return (
-    <Card title="Offer Inbox" description="Funding opportunities requiring review.">
-      <div className="rounded-lg border border-orange-100 bg-orange-50 p-4">
-        <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-orange-600">
-            <i className="ri-inbox-2-line text-[19px]" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-2xl font-semibold tracking-tight text-slate-950">
-              {formatFundingNumber(pendingCount)}
-            </p>
-            <p className="mt-1 text-sm text-slate-600">
-              Pending offer{pendingCount === 1 ? "" : "s"}
-            </p>
-            {unreadCount != null ? (
-              <p className="mt-1 text-xs text-slate-500">
-                {formatFundingNumber(unreadCount)} unread
-              </p>
-            ) : null}
-          </div>
+      {stages.length === 0 ? (
+        <EmptyState icon="ri-bar-chart-horizontal-line" title="No pipeline activity for this range" compact />
+      ) : (
+        <div className="mt-7 space-y-8">
+          {stages.map(stage => (
+            <PipelineStageRow key={stage.key} stage={stage} totalCount={totalCount} />
+          ))}
         </div>
-      </div>
-
-      <div className="mt-4 space-y-3 text-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <span className="text-slate-500">Latest received</span>
-          <span className="font-medium text-slate-900">
-            {formatFundingDateTime(dashboard.offerInbox?.latestReceivedAtUtc)}
-          </span>
-        </div>
-        <Link
-          href="/funding/offered-liens?status=Pending"
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-800"
-        >
-          Open Offer Inbox
-          <i className="ri-arrow-right-line text-[15px]" />
-        </Link>
-      </div>
-    </Card>
+      )}
+    </section>
   );
 }
 
-function RangeControls({
+function RangeTabs({
   range,
   from,
   to,
@@ -393,86 +281,142 @@ function RangeControls({
   to?: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-        <div className="grid grid-cols-2 gap-1 sm:flex">
-          {(["last7Days", "last30Days"] as const).map(item => (
-            <Link
-              key={item}
-              href={`/funding/dashboard?range=${item}`}
-              className={`inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors ${
-                range === item
-                  ? "bg-slate-950 text-white"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
-              }`}
-            >
-              {RANGE_LABELS[item]}
-            </Link>
-          ))}
-        </div>
-        <form action="/funding/dashboard" className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <input type="hidden" name="range" value="custom" />
-          <input
-            type="date"
-            name="from"
-            defaultValue={from}
-            className="h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-            aria-label="Custom range start"
-          />
-          <input
-            type="date"
-            name="to"
-            defaultValue={to}
-            className="h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-            aria-label="Custom range end"
-          />
-          <button
-            type="submit"
-            className={`inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors ${
-              range === "custom"
-                ? "bg-slate-950 text-white"
-                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+    <div className="mt-4 grid h-9 grid-cols-3 overflow-hidden rounded-[8px] bg-[#f5f5f5] p-px">
+      {RANGE_OPTIONS.map(item => {
+        const active = range === item;
+        return (
+          <Link
+            key={item}
+            href={buildDashboardHref(item, from, to)}
+            className={`flex items-center justify-center rounded-[7px] text-[12px] font-medium leading-[1.6] transition-colors ${
+              active
+                ? "border border-[#e5e5e5] bg-white text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.08)]"
+                : "text-[#0a0a0a] hover:bg-white/70"
             }`}
           >
-            Custom
-          </button>
-        </form>
+            {RANGE_LABELS[item]}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function PipelineStageRow({
+  stage,
+  totalCount,
+}: {
+  stage: AcquisitionPipelineStage;
+  totalCount: number;
+}) {
+  const percent = totalCount > 0 ? (stage.count / totalCount) * 100 : 0;
+  const tone = getPipelineTone(stage.label);
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] ${tone.iconBg}`}>
+            <i className={`${tone.icon} text-[16px] ${tone.iconText}`} />
+          </span>
+          <p className="truncate text-[16px] font-medium leading-5 text-[#0a0a0a]">
+            {stage.label}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 text-[16px] font-medium leading-5">
+          <p className="text-[#0a0a0a]">{formatFundingNumber(stage.count)}</p>
+          <p className="text-[#737373]">({formatFundingPercent(percent)})</p>
+        </div>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-[#f5f5f5]">
+        <div
+          className={`h-2 rounded-full ${tone.bar}`}
+          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+        />
       </div>
     </div>
   );
 }
 
-function Card({
-  title,
-  description,
-  actionHref,
-  actionLabel,
-  children,
-}: {
-  title: string;
-  description?: string;
-  actionHref?: string;
-  actionLabel?: string;
-  children: React.ReactNode;
-}) {
+function ProviderPerformanceCard({ rows }: { rows: ProviderPerformanceRow[] }) {
+  const visibleRows = rows.slice(0, 5);
+
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-          {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+    <section className="overflow-hidden rounded-[16px] border border-[#e5e5e5] bg-white shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]">
+      <div className="flex min-h-[53px] items-center border-b border-[#e5e5e5]">
+        <div className="flex w-11 shrink-0 items-center justify-center">
+          <i className="ri-draggable text-[14px] text-[#737373]" />
         </div>
-        {actionHref && actionLabel ? (
-          <Link
-            href={actionHref}
-            className="shrink-0 text-sm font-medium text-orange-700 transition-colors hover:text-orange-800"
-          >
-            {actionLabel}
-          </Link>
-        ) : null}
+        <h2 className="text-[16px] font-semibold leading-[1.6] text-[#0a0a0a]">
+          Provider Performance
+        </h2>
       </div>
-      {children}
+      <div className="overflow-x-auto">
+        <table className="min-w-full border-collapse">
+          <thead className="bg-[#f5f5f5]">
+            <tr>
+              <ProviderHeaderCell>Providers</ProviderHeaderCell>
+              <ProviderHeaderCell>Offered Liens</ProviderHeaderCell>
+              <ProviderHeaderCell>Acceptance</ProviderHeaderCell>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="py-10">
+                  <EmptyState icon="ri-hospital-line" title="No provider performance data" compact />
+                </td>
+              </tr>
+            ) : visibleRows.map(row => (
+              <tr key={row.providerId} className="border-b border-[#e5e5e5] last:border-b-0">
+                <ProviderBodyCell>{row.providerName}</ProviderBodyCell>
+                <ProviderBodyCell>{formatFundingNumber(row.lienCount)}</ProviderBodyCell>
+                <ProviderBodyCell>{formatAcceptance(row)}</ProviderBodyCell>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
+  );
+}
+
+function ProviderHeaderCell({ children }: { children: React.ReactNode }) {
+  return (
+    <th className="h-10 px-4 text-left text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
+      {children}
+    </th>
+  );
+}
+
+function ProviderBodyCell({ children }: { children: React.ReactNode }) {
+  return (
+    <td className="h-[53px] px-4 text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
+      {children}
+    </td>
+  );
+}
+
+function OfferInboxCard() {
+  return (
+    <Link
+      href="/funding/offered-liens?status=Pending"
+      className="flex rounded-[16px] border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.08)] transition-colors hover:border-[#f4a076]"
+    >
+      <div className="flex w-full items-start gap-6">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] bg-[#f5f5f5] text-[#0a0a0a]">
+          <i className="ri-mail-line text-[24px]" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-[16px] font-semibold leading-5 text-[#0a0a0a]">
+            Offer Inbox
+          </h2>
+          <p className="mt-2 text-[14px] font-normal leading-[1.6] text-[#737373]">
+            Review and accept incoming lien offers.
+          </p>
+        </div>
+      </div>
+    </Link>
   );
 }
 
@@ -486,21 +430,77 @@ function EmptyState({
   compact?: boolean;
 }) {
   return (
-    <div className={`flex flex-col items-center justify-center text-center ${compact ? "py-4" : "py-12"}`}>
-      <span className="flex h-10 w-10 items-center justify-center rounded-md bg-slate-50 text-slate-400">
+    <div className={`flex flex-col items-center justify-center text-center ${compact ? "py-6" : "py-12"}`}>
+      <span className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f5f5f5] text-[#737373]">
         <i className={`${icon} text-[19px]`} />
       </span>
-      <p className="mt-3 text-sm font-medium text-slate-600">{title}</p>
+      <p className="mt-3 text-[14px] font-medium leading-[1.6] text-[#525252]">{title}</p>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({
+  status,
+  size = "md",
+}: {
+  status: string;
+  size?: "sm" | "md";
+}) {
   return (
-    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ring-1 ${statusBadgeClass(status)}`}>
+    <span className={`inline-flex rounded-full font-medium ring-1 ${size === "sm" ? "px-2 py-0.5 text-[12px]" : "px-3 py-1 text-[14px]"} ${statusBadgeClass(status)}`}>
       {status}
     </span>
   );
+}
+
+function formatAcceptance(row: ProviderPerformanceRow): string {
+  if (row.offeredAmount <= 0) return "-";
+  return formatFundingPercent((row.acceptedAmount / row.offeredAmount) * 100);
+}
+
+function formatSignedPercent(trend: FundingMetricTrend): string {
+  const sign = trend.direction === "down" ? "-" : trend.direction === "flat" ? "" : "+";
+  return `${sign}${formatFundingPercent(Math.abs(trend.value))}`;
+}
+
+function getPipelineTone(label: string): {
+  icon: string;
+  iconBg: string;
+  iconText: string;
+  bar: string;
+} {
+  const normalized = label.trim().toLowerCase();
+  if (normalized.includes("accepted") || normalized.includes("purchased")) {
+    return {
+      icon: "ri-checkbox-circle-line",
+      iconBg: "bg-[#dcfce7]",
+      iconText: "text-[#15803d]",
+      bar: "bg-[#22c55e]",
+    };
+  }
+  if (normalized.includes("declined") || normalized.includes("expired")) {
+    return {
+      icon: "ri-close-circle-line",
+      iconBg: "bg-[#fee2e2]",
+      iconText: "text-[#b91c1c]",
+      bar: "bg-[#ef4444]",
+    };
+  }
+  return {
+    icon: "ri-time-line",
+    iconBg: "bg-[#fef3c7]",
+    iconText: "text-[#a16207]",
+    bar: "bg-[#eab308]",
+  };
+}
+
+function buildDashboardHref(range: FundingDashboardRange, from?: string, to?: string): string {
+  const params = new URLSearchParams({ range });
+  if (range === "custom") {
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+  }
+  return `/funding/dashboard?${params.toString()}`;
 }
 
 function parseRange(value?: string): FundingDashboardRange {

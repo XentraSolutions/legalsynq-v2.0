@@ -113,7 +113,7 @@ SYNQLIEN_COMMON_PORTAL_HOSTNAME=synqlien-demo.localhost
 PORTAL_SYNQLIEN_SUBDOMAIN=synqlien-demo
 ```
 
-Eligibility is enforced in Identity and again in the web route layout: users must have SynqLien product access and `SYNQ_LIENS:SYNQLIEN_BUYER`, may also have `SYNQ_LIENS:SYNQLIEN_HOLDER`, and must not have platform/tenant system roles or `SYNQ_LIENS:SYNQLIEN_SELLER`.
+Eligibility is enforced in Identity and again in the web route layout: users must have SynqLien product access and only the `SYNQ_LIENS:SYNQLIEN_BUYER` role for SynqLien. Any other SynqLien role, including `SYNQ_LIENS:SYNQLIEN_HOLDER` or `SYNQ_LIENS:SYNQLIEN_SELLER`, and any platform/tenant system role is rejected for the funding portal.
 
 Implemented routes:
 

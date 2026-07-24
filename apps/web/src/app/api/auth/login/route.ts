@@ -21,6 +21,10 @@ const LOGIN_LIMIT     = 20;
 const LOGIN_WINDOW    = 5 * 60 * 1000;
 const CARECONNECT_PORTAL_RESTRICTED_TITLE = 'CareConnectPortalRoleRestricted';
 const SYNQLIEN_PORTAL_RESTRICTED_TITLE = 'SynqLienPortalRoleRestricted';
+const SYNQLIEN_PRODUCT_CODE = 'SYNQ_LIENS';
+const SYNQLIEN_BUYER_ROLE = `${SYNQLIEN_PRODUCT_CODE}:SYNQLIEN_BUYER`;
+const SYNQLIEN_PORTAL_RESTRICTED_MESSAGE =
+  'This account is not eligible to access the SynqLien funding portal.';
 
 function checkLoginRateLimit(ip: string): boolean {
   const now   = Date.now();
@@ -99,7 +103,7 @@ export async function POST(request: NextRequest) {
     (!!SYNQLIEN_COMMON_PORTAL_HOSTNAME && incomingHost === SYNQLIEN_COMMON_PORTAL_HOSTNAME);
   const portalProductCode =
     !!SYNQLIEN_COMMON_PORTAL_HOSTNAME && incomingHost === SYNQLIEN_COMMON_PORTAL_HOSTNAME
-      ? 'SYNQ_LIENS'
+      ? SYNQLIEN_PRODUCT_CODE
       : isCommonPortalHost
         ? 'SYNQ_CARECONNECT'
         : null;
@@ -203,7 +207,7 @@ export async function POST(request: NextRequest) {
 
     if (isCommonPortalHost && upstreamTitle === SYNQLIEN_PORTAL_RESTRICTED_TITLE) {
       return NextResponse.json(
-        { message: upstreamMessage ?? 'This account cannot sign in to the SynqLien funding portal.' },
+        { message: upstreamMessage ?? SYNQLIEN_PORTAL_RESTRICTED_MESSAGE },
         { status: 403 },
       );
     }
@@ -251,6 +255,16 @@ export async function POST(request: NextRequest) {
 
   const data = await identityRes.json();
   const { accessToken, expiresAtUtc, user } = data;
+
+  if (
+    portalProductCode === SYNQLIEN_PRODUCT_CODE &&
+    !isSynqLienFundingPortalLoginEligible(user?.productRoles, user?.roles)
+  ) {
+    return NextResponse.json(
+      { message: SYNQLIEN_PORTAL_RESTRICTED_MESSAGE },
+      { status: 403 },
+    );
+  }
 
   // Compute Max-Age in seconds
   const expiresDate = new Date(expiresAtUtc);
@@ -321,4 +335,26 @@ function extractRawSubdomain(rawHost: string): string | null {
   if (parts.length === 2 && parts[1] === 'localhost') return parts[0];
 
   return null;
+}
+
+function isSynqLienFundingPortalLoginEligible(
+  productRoles: unknown,
+  systemRoles: unknown,
+): boolean {
+  const roleNames = toStringList(systemRoles);
+  if (roleNames.length > 0) return false;
+
+  const synqLienRoles = toStringList(productRoles).filter(role =>
+    role.startsWith('SYNQLIEN_') ||
+    role.startsWith(`${SYNQLIEN_PRODUCT_CODE}:`),
+  );
+
+  return synqLienRoles.length > 0
+    && synqLienRoles.every(role => role === SYNQLIEN_BUYER_ROLE || role === 'SYNQLIEN_BUYER');
+}
+
+function toStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
