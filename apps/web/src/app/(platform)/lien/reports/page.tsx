@@ -3,11 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/lien/page-header";
-import CreateUpdateReport from "./components/create-update-report";
-import { lienReportsApi } from "@/lib/liens/lien-reports.api";
-import { lookupService } from "@/lib/lookup";
 import ReportDisplay from "./components/report-display";
-import { CreateReports, ReportTemplate } from "@/lib/liens/lien-report.types";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { ReportListItem } from "@/lib/liens/lien-reports.mapper";
 
@@ -111,19 +107,6 @@ export default function ReportsPage() {
             setTimeout(() => {
               fetchReports();
             }, 500);
-          }}
-        />
-      )}
-      {showCreate.isOpen && (
-        <CreateUpdateReport
-          mode={showCreate.mode}
-          onClose={() => setShowCreate({ isOpen: false })}
-          template={template}
-          initialData={template}
-          onSaved={(data: any) => {
-            setShowCreate({ isOpen: false });
-            setTemplate(data);
-            setIsSettingTemplate(true);
           }}
         />
       )}
