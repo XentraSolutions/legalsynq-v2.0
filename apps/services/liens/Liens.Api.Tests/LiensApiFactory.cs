@@ -85,6 +85,11 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<CapturingLegacyDocumentUploadClient>();
             services.AddSingleton<ILegacyDocumentUploadClient>(sp => sp.GetRequiredService<CapturingLegacyDocumentUploadClient>());
 
+            services.RemoveAll<IPublicBuyerAccountProvisioningService>();
+            services.AddSingleton<CapturingPublicBuyerAccountProvisioningService>();
+            services.AddSingleton<IPublicBuyerAccountProvisioningService>(
+                sp => sp.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>());
+
             services.AddHttpClient("MedicareProcedureLookup")
                 .ConfigurePrimaryHttpMessageHandler(() => new StubMedicareProcedureLookupHandler());
             services.AddHttpClient("Identity")
@@ -231,6 +236,30 @@ internal sealed record CapturedEmail(
     IReadOnlyDictionary<string, string> Metadata,
     NotificationEmailSendOptions? Options,
     Guid NotificationId);
+
+internal sealed class CapturingPublicBuyerAccountProvisioningService : IPublicBuyerAccountProvisioningService
+{
+    private readonly List<PublicBuyerAccountProvisioningRequest> _requests = [];
+
+    public IReadOnlyList<PublicBuyerAccountProvisioningRequest> Requests => _requests;
+    public PublicBuyerAccountProvisioningResult? NextResult { get; set; }
+
+    public void Clear()
+    {
+        _requests.Clear();
+        NextResult = null;
+    }
+
+    public Task<PublicBuyerAccountProvisioningResult> ProvisionBuyerAccountAsync(
+        PublicBuyerAccountProvisioningRequest request,
+        CancellationToken ct = default)
+    {
+        _requests.Add(request);
+        return Task.FromResult(
+            NextResult
+            ?? PublicBuyerAccountProvisioningResult.Created(Guid.CreateVersion7(), isNew: true));
+    }
+}
 
 internal sealed class CapturingAuditPublisher : IAuditPublisher
 {

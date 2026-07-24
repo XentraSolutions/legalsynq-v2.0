@@ -94,7 +94,7 @@ function PortalContent({
       className="flex flex-col items-center gap-6 bg-white px-5 py-6 pb-8 max-sm:px-3.5 max-sm:py-[18px]"
       aria-label="Temporary funding company portal"
     >
-      <HeroBanner />
+      <HeroBanner token={token} />
       <PublicBuyerPortalInteractiveContent token={token} data={data} />
       <DocumentsCard documents={data.documents} />
       <MessagesCard />
@@ -106,7 +106,7 @@ function PortalContent({
   );
 }
 
-function HeroBanner() {
+function HeroBanner({ token }: { token: string }) {
   return (
     <section
       className="relative w-full max-w-[700px] overflow-hidden rounded-2xl bg-[#0d1e34] p-8 text-[#fafafa] shadow-[0_1px_3px_rgba(0,0,0,0.1)] max-sm:rounded-[14px] max-sm:p-6"
@@ -123,12 +123,12 @@ function HeroBanner() {
           <h1 id="manage-offered-liens-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal">
             Manage Offered Liens
           </h1>
-          <button
-            type="button"
+          <a
+            href={`/selling/public/${encodeURIComponent(token)}/activate`}
             className="public-portal-primary inline-flex h-[38px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[10px] border border-transparent px-4 py-2 text-sm font-semibold leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:shadow-[0_4px_10px_rgba(238,113,50,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]"
           >
             Activate Free Account
-          </button>
+          </a>
         </div>
         <p className="m-0 max-w-[560px] text-base leading-[1.6] text-white/90">
           Manage all lien submissions sent to your company, from initial review
