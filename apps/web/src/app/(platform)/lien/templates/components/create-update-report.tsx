@@ -823,7 +823,7 @@ export default function CreateUpdateReport({
                   required
                   value={form.statusView}
                   options={data.statusView}
-                  placeholder=""
+                  placeholder="Select one status"
                   onChange={(v: string) => {
                     setForm({ ...form, statusView: v });
                   }}
@@ -835,7 +835,7 @@ export default function CreateUpdateReport({
                   required
                   value={form.lienStatusIds}
                   options={data.liensStatus ? data.liensStatus : []}
-                  placeholder="Select one or more lien statuses"
+                  placeholder="Select one status"
                   onChange={(v: string) =>
                     setForm({
                       ...form,
