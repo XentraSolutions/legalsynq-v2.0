@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
@@ -242,6 +243,65 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
                 item.GetProperty("id").GetString() == AliasedProviderLienId.ToString() &&
                 item.GetProperty("medicalProvider").GetString() == "City Medical Center" &&
                 item.GetProperty("medicalProviderId").GetString() == SeedHelper.MedicalProviderId.ToString());
+    }
+
+    [Theory]
+    [InlineData("/api/liens/cases/dashboard/total-case-report-export/v3", "yes", "Case ID,Plaintiff Name,Date of Loss,Status")]
+    [InlineData("/api/liens/cases/dashboard/lawfirm-case-report-export/v3", "yes", "Case ID,Plaintiff Name,Date of Loss,Law Firm")]
+    [InlineData("/api/liens/cases/dashboard/medical-provider-report-export/v3", "yes", "Case ID,Plaintiff Name,Date of Loss,Medical Facility")]
+    [InlineData("/api/liens/cases/dashboard/total-lien-report-export/v3", "yes", "Lien ID,Case ID,Plaintiff Name,Lien Status")]
+    [InlineData("/api/liens/cases/dashboard/total-lien-report-export/v3", "true", "Lien ID,Case ID,Plaintiff Name,Lien Status")]
+    public async Task DashboardReportV3_returns_base64_csv_when_is_csv_is_yes_or_true(
+        string path,
+        string isCsv,
+        string expectedHeader)
+    {
+        var response = await _client.PostAsJsonAsync(path, new { page = 1, limit = 10, isCsv });
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        payload.RootElement.GetProperty("message").GetString().Should().Be("CSV generated successfully.");
+        payload.RootElement.TryGetProperty("items", out _).Should().BeFalse();
+
+        var exportItems = payload.RootElement.GetProperty("data").EnumerateArray().ToList();
+        exportItems.Should().ContainSingle();
+        var exportItem = exportItems.Single();
+        exportItem.GetProperty("filename").GetString().Should().EndWith(".csv");
+        exportItem.GetProperty("export_format").GetString().Should().Be("csv");
+
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(exportItem.GetProperty("base64").GetString()!));
+        csv.Split('\n')[0].TrimEnd('\r').Should().Be(expectedHeader);
+    }
+
+    [Fact]
+    public async Task TotalCaseReportV3_returns_base64_csv_when_is_csv_is_boolean_true()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-case-report-export/v3",
+            new { page = 1, limit = 10, isCsv = true });
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(
+            payload.RootElement.GetProperty("data")[0].GetProperty("base64").GetString()!));
+        csv.Split('\n')[0].TrimEnd('\r').Should().Be("Case ID,Plaintiff Name,Date of Loss,Status");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("false")]
+    [InlineData("no")]
+    public async Task TotalCaseReportV3_returns_paginated_json_when_is_csv_is_not_true_or_yes(string isCsv)
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-case-report-export/v3",
+            new { page = 1, limit = 10, isCsv });
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("items").ValueKind.Should().Be(JsonValueKind.Array);
+        payload.RootElement.TryGetProperty("data", out _).Should().BeFalse();
     }
 
     private static async Task SeedDashboardDataAsync(LiensDbContext db)

@@ -14,15 +14,18 @@ public class DIYReportService : IDIYReportService
     private readonly IDIYReportConfigRepository _repo;
     private readonly ILienRepository            _lienRepo;
     private readonly ICaseRepository            _caseRepo;
+    private readonly IServicingItemRepository   _servicingItemRepo;
 
     public DIYReportService(
         IDIYReportConfigRepository repo,
         ILienRepository lienRepo,
-        ICaseRepository caseRepo)
+        ICaseRepository caseRepo,
+        IServicingItemRepository servicingItemRepo)
     {
-        _repo        = repo;
-        _lienRepo    = lienRepo;
-        _caseRepo    = caseRepo;
+        _repo              = repo;
+        _lienRepo          = lienRepo;
+        _caseRepo          = caseRepo;
+        _servicingItemRepo = servicingItemRepo;
     }
 
     public async Task<List<DIYReportConfigResponse>> GetSavedReportsAsync(
@@ -144,15 +147,20 @@ public class DIYReportService : IDIYReportService
                 casesById[caseId] = caseEntity;
         }
 
+        var legacyMedicalAmounts = await GetLegacyMedicalAmountsByLienIdAsync(
+            tenantId,
+            reportData.AllItems,
+            ct);
+
         var rows = isCasesReport
-            ? BuildCaseRows(reportData.AllItems, casesById, page, limit)
-            : reportData.PageItems.Select(l => BuildLienRow(l, casesById)).ToList();
+            ? BuildCaseRows(reportData.AllItems, casesById, legacyMedicalAmounts, page, limit)
+            : reportData.PageItems.Select(l => BuildLienRow(l, casesById, legacyMedicalAmounts)).ToList();
 
         var totalCount = isCasesReport
             ? reportData.AllItems.Select(l => l.CaseId).Where(id => id.HasValue).Distinct().Count()
             : reportData.TotalCount;
 
-        var summary = await BuildSummaryAsync(tenantId, reportData.AllItems, ct);
+        var summary = await BuildSummaryAsync(tenantId, reportData.AllItems, legacyMedicalAmounts, ct);
 
         return new DIYReportResult
         {
@@ -200,7 +208,10 @@ public class DIYReportService : IDIYReportService
         }
     }
 
-    private static DIYReportRow BuildLienRow(Lien l, IReadOnlyDictionary<Guid, Case> casesById)
+    private static DIYReportRow BuildLienRow(
+        Lien l,
+        IReadOnlyDictionary<Guid, Case> casesById,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts)
     {
         Case? caseEntity = null;
         if (l.CaseId.HasValue)
@@ -222,8 +233,8 @@ public class DIYReportService : IDIYReportService
             DateOfLoss = caseEntity?.DateOfIncident ?? l.IncidentDate,
             DateClosed = l.ClosedAtUtc ?? caseEntity?.ClosedAtUtc,
             InitialServiceDate = l.InitialServiceDate,
-            BillingAmount = l.OriginalAmount,
-            PurchaseAmount = l.PurchasePrice,
+            BillingAmount = ResolveBillingAmount(l, legacyMedicalAmounts),
+            PurchaseAmount = ResolvePurchaseAmount(l, legacyMedicalAmounts),
             ReturnedAmount = l.PayoffAmount,
             LienTotal = l.CurrentBalance,
             NumberOfLiens = 1,
@@ -240,6 +251,7 @@ public class DIYReportService : IDIYReportService
     private static List<DIYReportRow> BuildCaseRows(
         IReadOnlyCollection<Lien> liens,
         IReadOnlyDictionary<Guid, Case> casesById,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts,
         int page,
         int limit)
     {
@@ -270,8 +282,8 @@ public class DIYReportService : IDIYReportService
                     DateOfLoss = caseEntity?.DateOfIncident ?? first.IncidentDate,
                     DateClosed = caseEntity?.ClosedAtUtc ?? g.Max(l => l.ClosedAtUtc),
                     InitialServiceDate = g.Min(l => l.InitialServiceDate),
-                    BillingAmount = g.Sum(l => l.OriginalAmount),
-                    PurchaseAmount = g.Sum(l => l.PurchasePrice ?? 0m),
+                    BillingAmount = g.Sum(l => ResolveBillingAmount(l, legacyMedicalAmounts)),
+                    PurchaseAmount = g.Sum(l => ResolvePurchaseAmount(l, legacyMedicalAmounts) ?? 0m),
                     ReturnedAmount = g.Sum(l => l.PayoffAmount ?? 0m),
                     LienTotal = g.Sum(l => l.CurrentBalance ?? 0m),
                     NumberOfLiens = g.Count(),
@@ -391,10 +403,11 @@ public class DIYReportService : IDIYReportService
     private async Task<DIYReportSummaryTotals> BuildSummaryAsync(
         Guid tenantId,
         IReadOnlyCollection<Lien> liens,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts,
         CancellationToken ct)
     {
-        var totalPurchase = liens.Sum(l => l.PurchasePrice ?? 0m);
-        var totalBilling = liens.Sum(l => l.OriginalAmount);
+        var totalPurchase = liens.Sum(l => ResolvePurchaseAmount(l, legacyMedicalAmounts) ?? 0m);
+        var totalBilling = liens.Sum(l => ResolveBillingAmount(l, legacyMedicalAmounts));
         var totalReturned = liens.Sum(l => l.PayoffAmount ?? 0m);
         var totalAmtToSettle = liens.Sum(l => l.CurrentBalance ?? 0m);
         var totalGrossProfit = totalReturned - totalPurchase;
@@ -433,6 +446,78 @@ public class DIYReportService : IDIYReportService
             TotalOpenLiens = liens.Count - closedLiens,
             TotalClosedLiens = closedLiens,
         };
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, LegacyMedicalAmounts>> GetLegacyMedicalAmountsByLienIdAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Lien> liens,
+        CancellationToken ct)
+    {
+        var lienIds = liens.Select(l => l.Id).Distinct().ToList();
+        var medicalCodeItems = await _servicingItemRepo.GetByLienIdsAsync(tenantId, lienIds, ct);
+
+        return medicalCodeItems
+            .Where(item => item.LienId.HasValue &&
+                           string.Equals(item.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
+            .GroupBy(item => item.LienId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Aggregate(
+                    new LegacyMedicalAmounts(),
+                    (amounts, item) => amounts.Add(ParseLegacyMedicalAmounts(item.Notes))));
+    }
+
+    private static LegacyMedicalAmounts ParseLegacyMedicalAmounts(string? notes)
+    {
+        var amounts = new LegacyMedicalAmounts();
+        if (string.IsNullOrWhiteSpace(notes))
+            return amounts;
+
+        foreach (var segment in notes.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0)
+                continue;
+
+            var key = segment[..separator].Trim();
+            var value = segment[(separator + 1)..].Trim();
+            if (!decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
+                continue;
+
+            if (string.Equals(key, "purchaseAmount", StringComparison.Ordinal))
+                amounts = amounts with { PurchaseAmount = amount, HasPurchaseAmount = true };
+            else if (string.Equals(key, "billingAmount", StringComparison.Ordinal))
+                amounts = amounts with { BillingAmount = amount, HasBillingAmount = true };
+        }
+
+        return amounts;
+    }
+
+    private static decimal ResolveBillingAmount(
+        Lien lien,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts) =>
+        legacyMedicalAmounts.TryGetValue(lien.Id, out var amounts) && amounts.HasBillingAmount
+            ? amounts.BillingAmount
+            : lien.OriginalAmount;
+
+    private static decimal? ResolvePurchaseAmount(
+        Lien lien,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts) =>
+        legacyMedicalAmounts.TryGetValue(lien.Id, out var amounts) && amounts.HasPurchaseAmount
+            ? amounts.PurchaseAmount
+            : lien.PurchasePrice;
+
+    private readonly record struct LegacyMedicalAmounts(
+        decimal PurchaseAmount = 0m,
+        bool HasPurchaseAmount = false,
+        decimal BillingAmount = 0m,
+        bool HasBillingAmount = false)
+    {
+        public LegacyMedicalAmounts Add(LegacyMedicalAmounts other) => new(
+            PurchaseAmount + other.PurchaseAmount,
+            HasPurchaseAmount || other.HasPurchaseAmount,
+            BillingAmount + other.BillingAmount,
+            HasBillingAmount || other.HasBillingAmount);
     }
 
     private static DIYReportConfigResponse Map(DIYReportConfig r)

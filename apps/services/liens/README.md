@@ -40,6 +40,11 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `GET` | `/api/liens/cases/{id}` | Case detail |
 | `DELETE` | `/api/liens/cases/delete/{id}` | Legacy case deletion; blocks when a linked lien is active, and detaches terminal/rejected liens before removing the case |
 | `POST` | `/api/liens/reports/diy/export` | Export a DIY report as Base64-encoded CSV in the legacy `data` export envelope |
+| `POST` | `/api/liens/cases/dashboard/*-report-export/v3` | Returns the paginated JSON report by default; include `isCsv: true` or `isCsv: "yes"` for a Base64-encoded CSV export envelope with the report's four designated columns |
+
+DIY reports treat `isBulk: "N"` as non-bulk for legacy `N`, canonical `No`, and unset lien values, so a newly created ordinary lien is included in its report.
+
+DIY report billing and purchase columns aggregate `billingAmount` and `purchaseAmount` from linked legacy medical-code records, falling back to lien-level amounts when none exist.
 
 ## Selling Workflow
 

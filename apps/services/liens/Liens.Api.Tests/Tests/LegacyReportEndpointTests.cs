@@ -84,6 +84,121 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         }
     }
 
+    [Fact]
+    public async Task RunReport_includes_a_new_non_bulk_case_and_lien_when_the_ui_submits_N()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-NON-BULK-{Guid.CreateVersion7():N}"[..30],
+                "New",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-NON-BULK-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            statusView = "",
+            lienStatusIds = Array.Empty<string>(),
+            isBulk = "N",
+            columns = new[] { "case_id", "lien_id" },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
+        payload.RootElement.GetProperty("data").EnumerateArray()
+            .Should().Contain(row => row.GetProperty("lien_id").GetString() == lienNumber);
+    }
+
+    [Fact]
+    public async Task RunReport_uses_legacy_medical_code_billing_and_purchase_amounts()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-AMOUNTS-{Guid.CreateVersion7():N}"[..30],
+                "Amount",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-AMOUNTS-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+            var medicalCode = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMC-DIY-AMOUNTS-{Guid.CreateVersion7():N}"[..40],
+                "LegacyMedicalCode",
+                "Medical code amount entry",
+                "system",
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                lienId: lien.Id,
+                notes: "billingAmount=600.75; purchaseAmount=275.50");
+
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.ServicingItems.Add(medicalCode);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            isBulk = "N",
+            columns = new[] { "lien_id", "purchase_amt", "billing_amt" },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("lien_id").GetString() == lienNumber);
+        row.GetProperty("purchase_amt").GetString().Should().Be("275.50");
+        row.GetProperty("billing_amt").GetString().Should().Be("600.75");
+        payload.RootElement.GetProperty("summaryTotals").GetProperty("totalPurchaseAmt").GetDecimal()
+            .Should().BeGreaterThanOrEqualTo(275.50m);
+        payload.RootElement.GetProperty("summaryTotals").GetProperty("totalBillingAmt").GetDecimal()
+            .Should().BeGreaterThanOrEqualTo(600.75m);
+    }
+
     // ── POST /report/diy/export ───────────────────────────────────────────────
 
     [Fact]

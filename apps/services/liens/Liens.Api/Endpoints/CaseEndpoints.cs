@@ -6089,6 +6089,7 @@ public static class CaseEndpoints
         public string? endDate      { get; init; }
         public string? purchaseDateFrom { get; init; }
         public string? purchaseDateTo   { get; init; }
+        public JsonElement? IsCsv { get; init; }
     }
 
     private sealed class DashboardCaseReportRow
@@ -6320,7 +6321,12 @@ public static class CaseEndpoints
         LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
-        => Results.Ok(await BuildDashboardLienReportResultAsync(request, db, ctx, ct));
+    {
+        var result = await BuildDashboardLienReportResultAsync(request, db, ctx, ct);
+        return IsDashboardCsvRequested(request)
+            ? BuildDashboardCsvResponse(BuildTotalLienReportCsv(result.Items), "total_lien_report")
+            : Results.Ok(result);
+    }
 
     private static async Task<IResult> GetTotalCaseReport(
         LiensDbContext db,
@@ -6340,7 +6346,12 @@ public static class CaseEndpoints
         LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
-        => Results.Ok(await BuildDashboardCaseReportResultAsync(request, db, ctx, ct));
+    {
+        var result = await BuildDashboardCaseReportResultAsync(request, db, ctx, ct);
+        return IsDashboardCsvRequested(request)
+            ? BuildDashboardCsvResponse(BuildTotalCaseReportCsv(result.Items), "total_case_report")
+            : Results.Ok(result);
+    }
 
     private static async Task<IResult> GetLawFirmCaseReport(
         LiensDbContext db,
@@ -6361,7 +6372,12 @@ public static class CaseEndpoints
         LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
-        => Results.Ok(await BuildDashboardCaseReportResultAsync(request, db, ctx, ct, requireLawFirm: true));
+    {
+        var result = await BuildDashboardCaseReportResultAsync(request, db, ctx, ct, requireLawFirm: true);
+        return IsDashboardCsvRequested(request)
+            ? BuildDashboardCsvResponse(BuildLawFirmCaseReportCsv(result.Items), "lawfirm_case_report")
+            : Results.Ok(result);
+    }
 
     private static async Task<IResult> GetMedicalProviderReport(
         LiensDbContext db,
@@ -6382,7 +6398,92 @@ public static class CaseEndpoints
         LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
-        => Results.Ok(await BuildDashboardLienReportResultAsync(request, db, ctx, ct, requireMedicalProvider: true));
+    {
+        var result = await BuildDashboardLienReportResultAsync(request, db, ctx, ct, requireMedicalProvider: true);
+        return IsDashboardCsvRequested(request)
+            ? BuildDashboardCsvResponse(BuildMedicalProviderReportCsv(result.Items), "medical_provider_report")
+            : Results.Ok(result);
+    }
+
+    private static bool IsDashboardCsvRequested(ReportFilterRequest request)
+    {
+        if (!request.IsCsv.HasValue)
+            return false;
+
+        var value = request.IsCsv.Value;
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.String => string.Equals(value.GetString()?.Trim(), "true", StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(value.GetString()?.Trim(), "yes", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
+    }
+
+    private static IResult BuildDashboardCsvResponse(byte[] csvBytes, string filenamePrefix)
+    {
+        var exportItem = new
+        {
+            base64 = Convert.ToBase64String(csvBytes),
+            filename = $"{filenamePrefix}_{DateTime.UtcNow:yyyyMMddHHmmss}.csv",
+            export_format = "csv",
+        };
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "CSV generated successfully.",
+            data = new object[] { exportItem },
+        });
+    }
+
+    private static byte[] BuildTotalCaseReportCsv(IReadOnlyList<DashboardCaseReportRow> rows) =>
+        BuildDashboardCsv(
+            rows,
+            ["Case ID", "Plaintiff Name", "Date of Loss", "Status"],
+            row => [row.CaseNumber, row.ClientName, row.DateOfIncident, row.Status]);
+
+    private static byte[] BuildTotalLienReportCsv(IReadOnlyList<DashboardLienReportRow> rows) =>
+        BuildDashboardCsv(
+            rows,
+            ["Lien ID", "Case ID", "Plaintiff Name", "Lien Status"],
+            row => [row.LienNumber, row.CaseId, row.ClientName, row.Status]);
+
+    private static byte[] BuildMedicalProviderReportCsv(IReadOnlyList<DashboardLienReportRow> rows) =>
+        BuildDashboardCsv(
+            rows,
+            ["Case ID", "Plaintiff Name", "Date of Loss", "Medical Facility"],
+            row => [row.CaseId, row.ClientName, row.IncidentDate, row.FacilityName]);
+
+    private static byte[] BuildLawFirmCaseReportCsv(IReadOnlyList<DashboardCaseReportRow> rows) =>
+        BuildDashboardCsv(
+            rows,
+            ["Case ID", "Plaintiff Name", "Date of Loss", "Law Firm"],
+            row => [row.CaseNumber, row.ClientName, row.DateOfIncident, row.LawFirm]);
+
+    private static byte[] BuildDashboardCsv<T>(
+        IReadOnlyList<T> rows,
+        IReadOnlyList<string> columns,
+        Func<T, IEnumerable<object?>> mapValues)
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine(string.Join(',', columns.Select(EscapeLegacyCsv)));
+
+        foreach (var row in rows)
+        {
+            csv.AppendLine(string.Join(',', mapValues(row).Select(value => EscapeLegacyCsv(FormatDashboardCsvValue(value)))));
+        }
+
+        return Encoding.UTF8.GetBytes(csv.ToString());
+    }
+
+    private static string FormatDashboardCsvValue(object? value) => value switch
+    {
+        null => string.Empty,
+        DateTime timestamp => timestamp.ToString("O", CultureInfo.InvariantCulture),
+        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? string.Empty,
+    };
 
     private static async Task<PaginatedResult<DashboardCaseReportRow>> BuildDashboardCaseReportResultAsync(
         ReportFilterRequest? request,

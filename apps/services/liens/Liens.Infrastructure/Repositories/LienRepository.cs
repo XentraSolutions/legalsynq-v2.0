@@ -167,7 +167,30 @@ public class LienRepository : ILienRepository
         if (!string.IsNullOrWhiteSpace(isBulk))
         {
             var bulk = isBulk.Trim();
-            q = q.Where(l => l.IsBulk == bulk);
+            if (string.Equals(bulk, "No", StringComparison.OrdinalIgnoreCase))
+            {
+                // The legacy UI submits "N", while newly created liens may leave
+                // IsBulk unset. Both represent a non-bulk lien.
+                q = q.Where(l =>
+                    l.IsBulk == null ||
+                    l.IsBulk == string.Empty ||
+                    l.IsBulk == "N" ||
+                    l.IsBulk == "No" ||
+                    l.IsBulk == "False" ||
+                    l.IsBulk == "0");
+            }
+            else if (string.Equals(bulk, "Yes", StringComparison.OrdinalIgnoreCase))
+            {
+                q = q.Where(l =>
+                    l.IsBulk == "Y" ||
+                    l.IsBulk == "Yes" ||
+                    l.IsBulk == "True" ||
+                    l.IsBulk == "1");
+            }
+            else
+            {
+                q = q.Where(l => l.IsBulk == bulk);
+            }
         }
 
         if (caseIds.Count > 0)
