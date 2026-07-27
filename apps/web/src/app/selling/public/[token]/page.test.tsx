@@ -172,7 +172,8 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.queryByRole("link", { name: "Activate Free Account" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept Lien" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Decline Lien" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Message" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeInTheDocument();
+    expect(screen.getByText("No messages yet. Send a message to the buyer below.")).toBeInTheDocument();
   });
 
   test("renders the public link state when Liens returns an error", async () => {

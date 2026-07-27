@@ -42,12 +42,22 @@ export interface PublicBuyerPortalData {
     caseManager: string | null;
   };
   documents: PublicBuyerPortalDocument[];
+  messages?: PublicBuyerPortalMessage[];
 }
 
 export interface PublicBuyerPortalDocument {
   fileName: string;
   category: string | null;
   sizeOrType: string;
+}
+
+export interface PublicBuyerPortalMessage {
+  id: string;
+  senderType: "buyer" | "seller";
+  senderName: string;
+  senderEmail: string | null;
+  message: string;
+  createdAtUtc: string;
 }
 
 export interface PublicBuyerPortalError {

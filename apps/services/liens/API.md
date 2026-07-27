@@ -315,7 +315,7 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 When `sendBuyerNotification=true`, the lien must have real `FundingCompanyId`, `FundingCompanyContactId`,
 `InitialServiceDate`, `AskAmount`, buyer email, seller name/company/email, and handling law firm data. The API creates a
-30-day buyer response access link and a separate 30-day seller read-only access link from
+30-day buyer response access link and a separate 30-day seller-view access link from
 `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide CTA URLs. If the explicit base URL is absent, the API
 derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
 `http://synqlien-demo.localhost:5000/selling/public` for the full `scripts/run-dev.sh` proxy. The configured buyer
@@ -324,7 +324,7 @@ portal base URL must be absolute and must match the active tenant-web browser or
 such as `localhost` or `127.0.0.1` are rejected because the email CTA must work from the recipient's inbox, while named
 `.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. The buyer email uses the
 `New Lien Offer` copy with a response CTA. After the buyer email is submitted, the seller receives the same branded
-format with buyer/funding-company information and a read-only `View Lien Details` CTA. Neither email inserts sample
+format with buyer/funding-company information and a `View Lien Details` CTA. Neither email inserts sample
 document data; both include only real supporting document names found in lien/case document metadata. The LegalSynq mark
 and section icons are sent as inline CID image attachments; no remote placeholder assets are required.
 For a CTA hosted by the tenant portal, use
@@ -452,12 +452,57 @@ caller-provided CTA data.
       "category": "Lien Document",
       "sizeOrType": "PDF"
     }
+  ],
+  "messages": [
+    {
+      "id": "guid",
+      "senderType": "buyer",
+      "senderName": "Buyer contact",
+      "senderEmail": "buyer@company.test",
+      "message": "Can you confirm the signed LOP is final?",
+      "createdAtUtc": "2026-07-23T14:05:00Z"
+    }
   ]
 }
 ```
 
-For seller-view links, `audience` is `seller`; the same JSON includes buyer/funding-company details for read-only
-review, but response and activation endpoints reject that token with `403 read-only-link`.
+For seller-view links, `audience` is `seller`; the same JSON includes buyer/funding-company details. Seller-view links
+can post messages, but response and activation endpoints reject that token with `403 read-only-link`.
+
+### POST `/api/liens/selling/public/{token}/messages`
+
+Adds a message to the token-scoped buyer/seller offer thread. This is anonymous and uses the same token validation as
+the public `GET`. Liens derives the sender from the access-link purpose (`buyer` for buyer-response links, `seller` for
+seller-view links); callers do not provide or override `senderType`. The message is persisted for the exact tenant,
+lien, seller organization, buyer organization, and buyer contact represented by the token, so both public links see the
+same chronological thread. After the message is saved, Liens emails the other party with that party's public link using
+`lien.offer.message.created` and a message/recipient-specific idempotency key. Notification failures are logged and do
+not roll back the saved message.
+
+**Authentication:** None.
+
+**Request:**
+
+```json
+{
+  "message": "Can you confirm the signed LOP is final?"
+}
+```
+
+Messages must be 400 characters or fewer.
+
+**Response:** `201 Created`
+
+```json
+{
+  "id": "guid",
+  "senderType": "buyer",
+  "senderName": "Buyer contact",
+  "senderEmail": "buyer@company.test",
+  "message": "Can you confirm the signed LOP is final?",
+  "createdAtUtc": "2026-07-23T14:05:00Z"
+}
+```
 
 ### POST `/api/liens/selling/public/{token}/activate-account`
 

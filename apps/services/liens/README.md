@@ -57,9 +57,9 @@ confirm-sale route is:
 
 Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. When
 `sendBuyerNotification=true`, the service validates real buyer/seller contact data, creates a 30-day buyer response
-link and a separate 30-day seller read-only link, then sends the buyer email through Notifications with an idempotency
+link and a separate 30-day seller-view link, then sends the buyer email through Notifications with an idempotency
 key. After the buyer email is submitted, the seller receives a matching branded email with buyer/funding-company
-information and a read-only `View Lien Details` link. Supporting document names are pulled from existing legacy
+information and a `View Lien Details` link. Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
 email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark
 text, and the section icons are also delivered as inline CID image attachments. No remote placeholder assets are
@@ -77,8 +77,10 @@ token is substituted, otherwise the token is appended as the final path segment.
 The temporary public portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
 JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only, including
 `audience=buyer|seller`. It does not render HTML; the tenant portal route `/selling/public/{token}` in `apps/web`
-fetches this JSON through the gateway and renders either the funding-company response page or the seller read-only
-details page. Buyer-purpose links record buyer responses with
+fetches this JSON through the gateway and renders either the funding-company response page or the seller details page.
+Both buyer-purpose and seller-purpose links can view and post public messages on the offer thread with
+`POST /api/liens/selling/public/{token}/messages`; Liens derives the sender from the token purpose, stores the message,
+and emails the other party's public link with an idempotent message notification. Buyer-purpose links record buyer responses with
 `POST /api/liens/selling/public/{token}/accept` and `POST /api/liens/selling/public/{token}/decline`; accepting records
 the current ask amount and moves the lien to `Status=Accepted` / `SellerStatus=Accepted`; declining records an optional
 reason and moves the lien to `Status=Declined` / `SellerStatus=Declined`. `POST

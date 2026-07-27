@@ -1247,6 +1247,117 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task PublicSellerAndBuyerPortal_messages_round_trip_between_public_links()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.messages@smithlaw.test",
+            buyerEmail: "buyer.messages@capital.test",
+            buyerPhone: "3105551212");
+
+        var confirmResponse = await PostConfirmSaleAsync(lienId, "confirm-sale-public-messages");
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await confirmResponse.Content.ReadAsStringAsync()}");
+
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        var buyerToken = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
+        var sellerToken = ExtractBuyerAccessToken(confirmBody.SellerNotification!.SellerPortalUrl!);
+        ClearCapturedEmails();
+
+        using var anonClient = _factory.CreateClient();
+        var buyerPost = await anonClient.PostAsJsonAsync(
+            $"/api/liens/selling/public/{buyerToken}/messages",
+            new { message = "Can you confirm the signed LOP is final?" });
+
+        buyerPost.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await buyerPost.Content.ReadAsStringAsync()}");
+        var buyerMessage = await buyerPost.Content.ReadFromJsonAsync<JsonElement>();
+        buyerMessage.GetProperty("senderType").GetString().Should().Be("buyer");
+        buyerMessage.GetProperty("senderName").GetString().Should().Be("Buyer Reviewer");
+        buyerMessage.GetProperty("message").GetString().Should().Be("Can you confirm the signed LOP is final?");
+
+        var sellerView = await anonClient.GetAsync($"/api/liens/selling/public/{sellerToken}");
+        sellerView.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await sellerView.Content.ReadAsStringAsync()}");
+        var sellerJson = await sellerView.Content.ReadFromJsonAsync<JsonElement>();
+        var sellerMessages = sellerJson.GetProperty("messages").EnumerateArray().ToList();
+        sellerMessages.Should().ContainSingle();
+        sellerMessages[0].GetProperty("senderType").GetString().Should().Be("buyer");
+        sellerMessages[0].GetProperty("message").GetString().Should().Be("Can you confirm the signed LOP is final?");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+            publisher.Emails.Should().ContainSingle();
+            var sellerEmail = publisher.Emails.Single();
+            sellerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
+            sellerEmail.RecipientEmail.Should().Be("seller.messages@smithlaw.test");
+            sellerEmail.Subject.Should().StartWith("New message on lien offer LIEN-");
+            sellerEmail.Body.Should().Contain("Buyer Reviewer sent a message");
+            sellerEmail.Body.Should().Contain("Can you confirm the signed LOP is final?");
+            sellerEmail.Body.Should().Contain($"/selling/public/{sellerToken}");
+            sellerEmail.Metadata["recipientRole"].Should().Be("seller");
+            sellerEmail.Metadata["senderType"].Should().Be("buyer");
+            sellerEmail.Metadata["messageId"].Should().Be(buyerMessage.GetProperty("id").GetGuid().ToString());
+            sellerEmail.Options.Should().NotBeNull();
+            sellerEmail.Options!.DisableClickTracking.Should().BeTrue();
+            sellerEmail.Options.HtmlBody.Should().Contain("View &amp; Reply");
+            sellerEmail.Options.IdempotencyKey.Should().Contain(":seller");
+        }
+
+        ClearCapturedEmails();
+
+        var sellerPost = await anonClient.PostAsJsonAsync(
+            $"/api/liens/selling/public/{sellerToken}/messages",
+            new { message = "The LOP is final and attached to the package." });
+
+        sellerPost.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await sellerPost.Content.ReadAsStringAsync()}");
+        var sellerMessage = await sellerPost.Content.ReadFromJsonAsync<JsonElement>();
+        sellerMessage.GetProperty("senderType").GetString().Should().Be("seller");
+        sellerMessage.GetProperty("senderName").GetString().Should().Be("Seller Operator");
+
+        var buyerView = await anonClient.GetAsync($"/api/liens/selling/public/{buyerToken}");
+        buyerView.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await buyerView.Content.ReadAsStringAsync()}");
+        var buyerJson = await buyerView.Content.ReadFromJsonAsync<JsonElement>();
+        var buyerMessages = buyerJson.GetProperty("messages").EnumerateArray().ToList();
+        buyerMessages.Should().HaveCount(2);
+        buyerMessages[0].GetProperty("senderType").GetString().Should().Be("buyer");
+        buyerMessages[1].GetProperty("senderType").GetString().Should().Be("seller");
+        buyerMessages[1].GetProperty("message").GetString().Should().Be("The LOP is final and attached to the package.");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.SellingPortalMessages.Count(message => message.TenantId == SeedHelper.TenantId && message.LienId == lienId)
+                .Should().Be(2);
+
+            var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+            publisher.Emails.Should().ContainSingle();
+            var buyerEmail = publisher.Emails.Single();
+            buyerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
+            buyerEmail.RecipientEmail.Should().Be("buyer.messages@capital.test");
+            buyerEmail.Subject.Should().StartWith("New message on lien offer LIEN-");
+            buyerEmail.Body.Should().Contain("Seller Operator sent a message");
+            buyerEmail.Body.Should().Contain("The LOP is final and attached to the package.");
+            buyerEmail.Body.Should().Contain($"/selling/public/{buyerToken}");
+            buyerEmail.Metadata["recipientRole"].Should().Be("buyer");
+            buyerEmail.Metadata["senderType"].Should().Be("seller");
+            buyerEmail.Metadata["messageId"].Should().Be(sellerMessage.GetProperty("id").GetGuid().ToString());
+        }
+    }
+
+    [Fact]
     public async Task PublicBuyerPortal_without_documents_uses_empty_state_without_sample_files()
     {
         var buyerContactId = Guid.CreateVersion7();

@@ -30,6 +30,7 @@ public class LiensDbContext : DbContext
     public DbSet<SellingPortfolioStatusHistory> SellingPortfolioStatusHistory => Set<SellingPortfolioStatusHistory>();
     public DbSet<SellingPortfolioActivity> SellingPortfolioActivities => Set<SellingPortfolioActivity>();
     public DbSet<SellingBuyerAccessLink> SellingBuyerAccessLinks => Set<SellingBuyerAccessLink>();
+    public DbSet<SellingPortalMessage> SellingPortalMessages => Set<SellingPortalMessage>();
     public DbSet<BillOfSale> BillsOfSale => Set<BillOfSale>();
     public DbSet<ServicingItem> ServicingItems => Set<ServicingItem>();
     public DbSet<LienTask> LienTasks => Set<LienTask>();

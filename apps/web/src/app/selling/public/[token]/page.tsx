@@ -5,6 +5,7 @@ import {
   type PublicBuyerPortalError,
   type PublicBuyerPortalResult,
 } from "@/lib/liens/public-buyer-portal";
+import { PublicPortalMessagesCard } from "./messages-client";
 import { PublicBuyerPortalInteractiveContent } from "./response-client";
 
 export const dynamic = "force-dynamic";
@@ -98,7 +99,7 @@ function PortalContent({
       <HeroBanner token={token} audience={data.audience} />
       <PublicBuyerPortalInteractiveContent token={token} data={data} />
       <DocumentsCard documents={data.documents} />
-      <MessagesCard audience={data.audience} />
+      <PublicPortalMessagesCard token={token} audience={data.audience} initialMessages={data.messages} />
       <p className="m-0 w-full max-w-[700px] text-center text-sm leading-[1.6] text-[#737373]">
         Accessible only with the secure link from the email. The link will
         expire 30 days from the date it was sent.
@@ -204,48 +205,6 @@ function DocumentsCard({ documents }: { documents: PublicBuyerPortalDocument[] }
                 </div>
               </article>
             ))}
-          </div>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function MessagesCard({ audience }: { audience: "buyer" | "seller" }) {
-  const isSellerView = audience === "seller";
-  return (
-    <details
-      open
-      className="public-portal-details group w-full max-w-[700px] rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px]"
-      aria-labelledby="messages-title"
-    >
-      <summary className="-mx-2 flex min-h-10 cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-1 transition-colors hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] [&::-webkit-details-marker]:hidden">
-        <i className="ri-arrow-down-s-line -rotate-90 text-2xl leading-none text-[#0a0a0a] transition-transform group-open:rotate-0" aria-hidden="true" />
-        <h2 id="messages-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal">
-          Messages
-        </h2>
-      </summary>
-      <div className="details-content mt-6 flex flex-col gap-6">
-        <EmptyState
-          icon="ri-message-3-line"
-          message={isSellerView ? "No messages yet." : "No messages yet. Send a message to the seller below."}
-        />
-        {isSellerView ? null : (
-          <div className="flex w-full items-center gap-4 rounded-xl border border-[#e5e5e5] py-3 pl-4 pr-3 shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors focus-within:border-[#ee7132]">
-            <input
-              aria-label="Message"
-              placeholder="Type a message..."
-              maxLength={400}
-              className="min-w-0 flex-1 border-0 text-sm text-[#737373] outline-none"
-            />
-            <span className="whitespace-nowrap text-sm text-[#737373]">0/400</span>
-            <button
-              type="button"
-              aria-label="Send message"
-              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-0 bg-[#ee7132] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#d85f25] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] active:bg-[#c95720]"
-            >
-              <i className="ri-send-plane-2-line text-base leading-none" aria-hidden="true" />
-            </button>
           </div>
         )}
       </div>
