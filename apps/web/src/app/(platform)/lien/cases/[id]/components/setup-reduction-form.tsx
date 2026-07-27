@@ -65,7 +65,6 @@ export function SetupReductionForm({
   onSaved,
 }: SetupReductionFormProps) {
   const addToast = useLienStore((s) => s.addToast);
-  console.log(liens, open);
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [reductionInput, setReductionInput] = useState("");
   const [isPercent, setIsPercent] = useState(false);
