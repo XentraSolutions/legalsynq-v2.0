@@ -8748,8 +8748,9 @@ public static partial class AdminEndpointsLscc010
     /// POST /api/admin/organizations/{orgId}/synqlien-buyer-self-register
     ///
     /// M2M endpoint called by SynqLien during public buyer account activation.
-    /// Creates or links an active user, grants SYNQ_LIENS product access, and
-    /// assigns SYNQLIEN_BUYER scoped to the buyer organization.
+    /// Creates an active user, grants SYNQ_LIENS product access, and assigns
+    /// SYNQLIEN_BUYER scoped to the buyer organization. Existing accounts are
+    /// rejected so the public activation flow cannot silently reuse a login.
     /// </summary>
     public static async Task<IResult> SelfRegisterSynqLienBuyer(
         Guid                    id,
@@ -8822,82 +8823,16 @@ public static partial class AdminEndpointsLscc010
 
         if (existingUser is not null)
         {
-            existingUser.SetPhone(normalisedPhone);
-
-            var alreadyInTenant = await db.UserTenants.AnyAsync(
-                ut => ut.UserId == existingUser.Id &&
-                      ut.TenantId == targetTenantId.Value &&
-                      ut.IsActive,
-                ct);
-
-            if (alreadyInTenant)
-            {
-                await EnsureUserOrganizationMembershipAsync(db, existingUser.Id, org.Id, ct);
-                await db.SaveChangesAsync(ct);
-
-                await EnsureSynqLienBuyerUserProductAccessAsync(
-                    targetTenantId.Value,
-                    existingUser.Id,
-                    provisioningEngine,
-                    userProductAccessService,
-                    actorUserId: null,
-                    ct);
-
-                await EnsureSynqLienBuyerRoleAsync(
-                    db,
-                    targetTenantId.Value,
-                    existingUser.Id,
-                    org.Id,
-                    actorUserId: null,
-                    ct);
-
-                logger.LogInformation(
-                    "SynqLien buyer self-registration returned existing user {UserId} for tenant {TenantId} org {OrgId}.",
-                    existingUser.Id,
-                    targetTenantId.Value,
-                    id);
-                return Results.Ok(new SelfRegisterUserResponse(existingUser.Id, IsNew: false));
-            }
-
-            if (!passwordHasher.Verify(body.Password, existingUser.PasswordHash))
-            {
-                logger.LogWarning(
-                    "SynqLien buyer self-registration password mismatch for existing email {Email}.",
-                    emailLower);
-                return Results.Conflict(new
-                {
-                    error = "An account with this email already exists. Please use your existing password to activate SynqLien buyer access.",
-                    code = "EXISTING_ACCOUNT_PASSWORD_MISMATCH",
-                });
-            }
-
-            db.UserTenants.Add(UserTenant.Create(existingUser.Id, targetTenantId.Value));
-            await EnsureUserOrganizationMembershipAsync(db, existingUser.Id, org.Id, ct);
-            await db.SaveChangesAsync(ct);
-
-            await EnsureSynqLienBuyerUserProductAccessAsync(
-                targetTenantId.Value,
-                existingUser.Id,
-                provisioningEngine,
-                userProductAccessService,
-                actorUserId: null,
-                ct);
-
-            await EnsureSynqLienBuyerRoleAsync(
-                db,
-                targetTenantId.Value,
-                existingUser.Id,
-                org.Id,
-                actorUserId: null,
-                ct);
-
             logger.LogInformation(
-                "SynqLien buyer self-registration linked existing user {UserId} to tenant {TenantId} org {OrgId}.",
+                "SynqLien buyer self-registration rejected existing user {UserId} for tenant {TenantId} org {OrgId}.",
                 existingUser.Id,
                 targetTenantId.Value,
                 id);
-
-            return Results.Ok(new SelfRegisterUserResponse(existingUser.Id, IsNew: false));
+            return Results.Conflict(new
+            {
+                error = "An account with this email already exists. Log in with your existing account instead.",
+                code = "ACCOUNT_ALREADY_EXISTS",
+            });
         }
 
         var lastName = body.LastName?.Trim() ?? string.Empty;

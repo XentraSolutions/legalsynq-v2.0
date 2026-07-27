@@ -1457,6 +1457,39 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task PublicBuyerPortal_activate_account_returns_error_when_account_already_exists()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("activate-account-conflict");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>()
+                .NextResult = PublicBuyerAccountProvisioningResult.Failed(
+                    "account-conflict",
+                    "An account with this email already exists. Log in with your existing account instead.",
+                    (int)HttpStatusCode.Conflict);
+        }
+
+        var response = await PostPublicBuyerActivationAsync(
+            token,
+            new
+            {
+                companyName = "Capital Fund LLC",
+                email = "buyer.activate-account-conflict@capital.test",
+                firstName = "Buyer",
+                lastName = "Reviewer",
+                password = "Password123!",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var error = json.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be("account-conflict");
+        error.GetProperty("message").GetString().Should().Be(
+            "An account with this email already exists. Log in with your existing account instead.");
+    }
+
+    [Fact]
     public async Task PublicBuyerPortal_accept_records_buyer_response_and_marks_lien_accepted_without_finalizing_sale()
     {
         var (lienId, token) = await CreatePublicLienOfferAsync("accept");

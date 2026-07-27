@@ -25,6 +25,7 @@ public enum AssistantProviderPurpose
 {
     Chat = 0,
     ToolSelection = 1,
+    TitleGeneration = 2,
 }
 
 public sealed record AssistantProviderEvent(

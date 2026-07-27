@@ -506,12 +506,13 @@ Messages must be 400 characters or fewer.
 
 ### POST `/api/liens/selling/public/{token}/activate-account`
 
-Creates or links a buyer portal account for the token-scoped buyer organization. This endpoint is anonymous, uses the
+Creates a buyer portal account for the token-scoped buyer organization. This endpoint is anonymous, uses the
 same token validation as the public `GET`, and is intended to be called by the tenant portal BFF path
 `/api/lien/api/liens/selling/public/{token}/activate-account`. Liens asks Identity to create or resolve a tenant-scoped
 `LIEN_OWNER` organization for the source Liens buyer organization id, then Identity grants `SYNQ_LIENS` product access
 and assigns `SYNQLIEN_BUYER` scoped to that Identity organization. Existing buyer contact values from the token win over
-editable request values; request values only fill missing contact data.
+editable request values; request values only fill missing contact data. Existing account emails return `409` and should
+be handled by prompting the buyer to log in with the existing account.
 
 This account activation does not accept or decline the lien, create a Bill of Sale, mark a lien sold, or otherwise
 finalize sale. Seller-view tokens are read-only and return `403 read-only-link`.

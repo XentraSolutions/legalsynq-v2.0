@@ -8,6 +8,30 @@ namespace Xenia.Tests.Assistant;
 public sealed class FakeAssistantProviderTests
 {
     [Fact]
+    public async Task StreamAsync_TitleGeneration_ReturnsConversationTitleOnly()
+    {
+        var provider = new FakeAssistantProvider();
+        var request = new AssistantProviderRequest(
+            AgentKey: "generic",
+            AgentVersion: "1.0.0",
+            SystemPrompt: AssistantConversationTitlePolicy.BuildTitlePrompt(),
+            ModelKey: "fake",
+            Messages:
+            [
+                new AssistantProviderMessage(
+                    "user",
+                    "Generate a funded amount report")
+            ],
+            ContextJson: "{}",
+            CorrelationId: "corr-title",
+            Purpose: AssistantProviderPurpose.TitleGeneration);
+
+        var title = await CollectTextAsync(provider, request);
+
+        Assert.Equal("Funded Amount Report", title);
+    }
+
+    [Fact]
     public async Task StreamAsync_ToolSelection_UsesReferralSearch_ForNaturalLanguageReferralLookup()
     {
         var provider = new FakeAssistantProvider();

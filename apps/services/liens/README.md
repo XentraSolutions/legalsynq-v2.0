@@ -100,8 +100,10 @@ the production secret.
 The public page's `Activate Free Account` CTA opens `/selling/public/{token}/activate`, which submits account
 activation through the tenant-portal BFF to `POST /api/liens/selling/public/{token}/activate-account`. That endpoint
 uses the token-scoped buyer organization/contact data to ask Identity to create or resolve a tenant-scoped
-`LIEN_OWNER` organization for the source Liens buyer org, then create or link an active user with
-`SYNQ_LIENS:SYNQLIEN_BUYER`; it does not accept or decline the lien and does not finalize sale.
+`LIEN_OWNER` organization for the source Liens buyer org, then create an active user with
+`SYNQ_LIENS:SYNQLIEN_BUYER`. If the email already belongs to an Identity account, activation returns a `409`
+error so the buyer can log in with the existing account instead. It does not accept or decline the lien and does
+not finalize sale.
 When sending links through the tenant portal host, configure
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain, so the public web route can render without a

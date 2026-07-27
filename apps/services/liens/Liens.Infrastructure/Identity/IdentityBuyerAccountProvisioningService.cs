@@ -118,6 +118,14 @@ public sealed class IdentityBuyerAccountProvisioningService : IPublicBuyerAccoun
                     ServiceUnavailableStatusCode);
             }
 
+            if (!result.IsNew)
+            {
+                return PublicBuyerAccountProvisioningResult.Failed(
+                    "account-conflict",
+                    "An account with this email already exists. Log in with your existing account instead.",
+                    (int)HttpStatusCode.Conflict);
+            }
+
             return PublicBuyerAccountProvisioningResult.Created(result.UserId, result.IsNew);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

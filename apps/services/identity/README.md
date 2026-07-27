@@ -43,7 +43,7 @@ Identity.Api.Tests/      Integration and unit tests
 | `POST` | `/api/internal/tenant-provisioning/provision` | Internal: full tenant provision |
 | `POST` | `/api/admin/products/{code}/provision` | Enable/disable product for tenant |
 | `POST` | `/api/admin/organizations/synqlien-buyer` | Internal: create/resolve a tenant-scoped `LIEN_OWNER` org for SynqLien public buyer activation |
-| `POST` | `/api/admin/organizations/{id}/synqlien-buyer-self-register` | Internal: create/link a SynqLien buyer user and grant `SYNQ_LIENS:SYNQLIEN_BUYER` |
+| `POST` | `/api/admin/organizations/{id}/synqlien-buyer-self-register` | Internal: create a SynqLien buyer user and grant `SYNQ_LIENS:SYNQLIEN_BUYER`; returns `409 ACCOUNT_ALREADY_EXISTS` for existing emails |
 | `GET` | `/api/tenants/current/branding` | Anonymous branding by tenant code |
 
 ## Database

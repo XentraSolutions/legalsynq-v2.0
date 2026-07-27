@@ -54,6 +54,62 @@ public sealed class IdentityBuyerAccountProvisioningServiceTests
             .Should().Be("+13105551212");
     }
 
+    [Fact]
+    public async Task ProvisionBuyerAccountAsync_rejects_identity_existing_account_success_response()
+    {
+        var handler = new CapturingIdentityHandler(
+            Guid.Parse("30000000-0000-0000-0000-000000000301"),
+            Guid.Parse("30000000-0000-0000-0000-000000000302"),
+            selfRegisterIsNew: false);
+        var sut = CreateSut(handler);
+
+        var result = await sut.ProvisionBuyerAccountAsync(
+            new PublicBuyerAccountProvisioningRequest(
+                Guid.Parse("10000000-0000-0000-0000-000000000001"),
+                Guid.Parse("40000000-0000-0000-0000-000000000012"),
+                "Capital Fund LLC",
+                "buyer@capital.test",
+                "Password123!",
+                "Buyer",
+                "Reviewer",
+                "+13105551212"));
+
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be("account-conflict");
+        result.StatusCode.Should().Be((int)HttpStatusCode.Conflict);
+        result.ErrorMessage.Should().Be(
+            "An account with this email already exists. Log in with your existing account instead.");
+    }
+
+    [Fact]
+    public async Task ProvisionBuyerAccountAsync_preserves_identity_existing_account_conflict()
+    {
+        var handler = new CapturingIdentityHandler(
+            Guid.Parse("30000000-0000-0000-0000-000000000301"),
+            Guid.Parse("30000000-0000-0000-0000-000000000302"),
+            selfRegisterStatus: HttpStatusCode.Conflict,
+            selfRegisterErrorJson:
+                """{"error":"An account with this email already exists. Log in with your existing account instead.","code":"ACCOUNT_ALREADY_EXISTS"}""");
+        var sut = CreateSut(handler);
+
+        var result = await sut.ProvisionBuyerAccountAsync(
+            new PublicBuyerAccountProvisioningRequest(
+                Guid.Parse("10000000-0000-0000-0000-000000000001"),
+                Guid.Parse("40000000-0000-0000-0000-000000000012"),
+                "Capital Fund LLC",
+                "buyer@capital.test",
+                "Password123!",
+                "Buyer",
+                "Reviewer",
+                "+13105551212"));
+
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be("account_already_exists");
+        result.StatusCode.Should().Be((int)HttpStatusCode.Conflict);
+        result.ErrorMessage.Should().Be(
+            "An account with this email already exists. Log in with your existing account instead.");
+    }
+
     private static IdentityBuyerAccountProvisioningService CreateSut(
         CapturingIdentityHandler handler)
     {
@@ -73,7 +129,12 @@ public sealed class IdentityBuyerAccountProvisioningServiceTests
         public HttpClient CreateClient(string name) => client;
     }
 
-    private sealed class CapturingIdentityHandler(Guid identityOrgId, Guid userId) : HttpMessageHandler
+    private sealed class CapturingIdentityHandler(
+        Guid identityOrgId,
+        Guid userId,
+        bool selfRegisterIsNew = true,
+        HttpStatusCode selfRegisterStatus = HttpStatusCode.OK,
+        string? selfRegisterErrorJson = null) : HttpMessageHandler
     {
         public List<string> Paths { get; } = [];
         public List<string> Bodies { get; } = [];
@@ -92,7 +153,18 @@ public sealed class IdentityBuyerAccountProvisioningServiceTests
 
             if (request.RequestUri.AbsolutePath == $"/api/admin/organizations/{identityOrgId}/synqlien-buyer-self-register")
             {
-                return JsonResponse($$"""{"userId":"{{userId}}","isNew":true}""");
+                if (selfRegisterStatus != HttpStatusCode.OK)
+                {
+                    return new HttpResponseMessage(selfRegisterStatus)
+                    {
+                        Content = new StringContent(
+                            selfRegisterErrorJson ?? """{"error":"Account activation failed.","code":"IDENTITY_ERROR"}""",
+                            Encoding.UTF8,
+                            "application/json"),
+                    };
+                }
+
+                return JsonResponse($$"""{"userId":"{{userId}}","isNew":{{selfRegisterIsNew.ToString().ToLowerInvariant()}}}""");
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
