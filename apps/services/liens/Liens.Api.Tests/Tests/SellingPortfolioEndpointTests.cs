@@ -1301,7 +1301,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             var sellerEmail = publisher.Emails.Single();
             sellerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
             sellerEmail.RecipientEmail.Should().Be("seller.messages@smithlaw.test");
-            sellerEmail.Subject.Should().StartWith("New message on lien offer LIEN-");
+            sellerEmail.Subject.Should().Be("New message on lien offer");
             sellerEmail.Body.Should().Contain("Buyer Reviewer sent a message");
             sellerEmail.Body.Should().Contain("Can you confirm the signed LOP is final?");
             sellerEmail.Body.Should().Contain($"/selling/public/{sellerToken}");
@@ -1347,7 +1347,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             var buyerEmail = publisher.Emails.Single();
             buyerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
             buyerEmail.RecipientEmail.Should().Be("buyer.messages@capital.test");
-            buyerEmail.Subject.Should().StartWith("New message on lien offer LIEN-");
+            buyerEmail.Subject.Should().Be("New message on lien offer");
             buyerEmail.Body.Should().Contain("Seller Operator sent a message");
             buyerEmail.Body.Should().Contain("The LOP is final and attached to the package.");
             buyerEmail.Body.Should().Contain($"/selling/public/{buyerToken}");

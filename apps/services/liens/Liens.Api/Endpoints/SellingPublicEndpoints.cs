@@ -668,7 +668,7 @@ public static class SellingPublicEndpoints
             ? null
             : BuildPublicPortalUrl(configuration, httpContext, recipientAccessLink.Token);
         var lienCode = ResolveLienCode(view.Lien);
-        var subject = $"New message on lien offer {lienCode}";
+        var subject = "New message on lien offer";
         var body = BuildPublicMessageEmailBody(message, lienCode, portalUrl);
         var htmlBody = BuildPublicMessageEmailHtmlBody(message, lienCode, portalUrl);
         var metadata = new Dictionary<string, string>
