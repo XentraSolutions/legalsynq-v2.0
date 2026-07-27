@@ -849,7 +849,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         }
 
         ConfirmSaleNotificationContext? notificationContext = null;
-        string? notificationIdempotencyKey = null;
+        string? buyerNotificationIdempotencyKey = null;
+        string? sellerNotificationIdempotencyKey = null;
         if (request.SendBuyerNotification)
         {
             notificationContext = await BuildConfirmSaleNotificationContextAsync(
@@ -859,14 +860,21 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 lien,
                 ct);
 
-            notificationIdempotencyKey = BuildConfirmSaleNotificationIdempotencyKey(
+            buyerNotificationIdempotencyKey = BuildConfirmSaleNotificationIdempotencyKey(
                 tenantId,
                 lien.Id,
                 notificationContext.BuyerContact.Id,
                 idempotencyKey);
+            sellerNotificationIdempotencyKey = BuildConfirmSaleSellerNotificationIdempotencyKey(
+                tenantId,
+                lien.Id,
+                notificationContext.SellerContact.Id,
+                notificationContext.BuyerContact.Id,
+                idempotencyKey);
         }
 
-        SellingBuyerAccessLinkResult? accessLink = null;
+        SellingBuyerAccessLinkResult? buyerAccessLink = null;
+        SellingBuyerAccessLinkResult? sellerAccessLink = null;
         await InTransactionAsync(async () =>
         {
             if (lien.Status == LienStatus.Draft)
@@ -876,30 +884,62 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
             if (notificationContext is not null)
             {
-                accessLink = await _buyerAccessLinks.CreateOrGetForConfirmSaleAsync(
+                buyerAccessLink = await _buyerAccessLinks.CreateOrGetForConfirmSaleAsync(
                     tenantId,
                     lien.Id,
                     sellerOrgId,
                     notificationContext.BuyerContact.OrgId,
                     notificationContext.BuyerContact.Id,
                     actingUserId,
-                    notificationIdempotencyKey!,
+                    buyerNotificationIdempotencyKey!,
+                    TimeSpan.FromDays(30),
+                    ct);
+
+                sellerAccessLink = await _buyerAccessLinks.CreateOrGetForConfirmSaleSellerViewAsync(
+                    tenantId,
+                    lien.Id,
+                    sellerOrgId,
+                    notificationContext.BuyerContact.OrgId,
+                    notificationContext.BuyerContact.Id,
+                    actingUserId,
+                    sellerNotificationIdempotencyKey!,
                     TimeSpan.FromDays(30),
                     ct);
             }
         }, ct);
 
         ConfirmSellingLienBuyerNotificationResponse? notification = null;
-        if (notificationContext is not null && accessLink is not null)
+        ConfirmSellingLienSellerNotificationResponse? sellerNotification = null;
+        if (notificationContext is not null && buyerAccessLink is not null)
         {
             notification = await SendConfirmSaleNotificationAsync(
                 tenantId,
                 actingUserId,
                 lien,
                 notificationContext,
-                accessLink,
-                notificationIdempotencyKey!,
+                buyerAccessLink,
+                buyerNotificationIdempotencyKey!,
                 ct);
+
+            if (notification.Submitted && sellerAccessLink is not null)
+            {
+                sellerNotification = await SendConfirmSaleSellerNotificationAsync(
+                    tenantId,
+                    actingUserId,
+                    lien,
+                    notificationContext,
+                    sellerAccessLink,
+                    buyerAccessLink,
+                    sellerNotificationIdempotencyKey!,
+                    ct);
+            }
+            else if (sellerAccessLink is not null)
+            {
+                sellerNotification = BuildSkippedSellerNotificationResponse(
+                    notificationContext,
+                    sellerAccessLink,
+                    "Seller notification skipped because the buyer notification was not submitted.");
+            }
         }
 
         _audit.Publish(
@@ -912,7 +952,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             entityId: lien.Id.ToString(),
             metadata: $"{{\"sendBuyerNotification\":{request.SendBuyerNotification.ToString().ToLowerInvariant()}}}");
 
-        return MapConfirmSaleResponse(lien, notification);
+        return MapConfirmSaleResponse(lien, notification, sellerNotification);
     }
 
     private async Task<ConfirmSaleNotificationContext> BuildConfirmSaleNotificationContextAsync(
@@ -1099,42 +1139,219 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         }
     }
 
+    private async Task<ConfirmSellingLienSellerNotificationResponse> SendConfirmSaleSellerNotificationAsync(
+        Guid tenantId,
+        Guid actingUserId,
+        Lien lien,
+        ConfirmSaleNotificationContext context,
+        SellingBuyerAccessLinkResult sellerAccessLink,
+        SellingBuyerAccessLinkResult buyerAccessLink,
+        string idempotencyKey,
+        CancellationToken ct)
+    {
+        if (IsSubmittedNotificationStatus(sellerAccessLink.NotificationStatus))
+        {
+            return new ConfirmSellingLienSellerNotificationResponse
+            {
+                Requested = true,
+                Submitted = true,
+                NotificationId = sellerAccessLink.NotificationId,
+                NotificationStatus = sellerAccessLink.NotificationStatus,
+                SellerAccessLinkId = sellerAccessLink.Id,
+                SellerPortalUrl = sellerAccessLink.PublicPortalUrl,
+                ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
+                SellerContactId = context.SellerContact.Id,
+                SellerOrgId = context.SellerContact.OrgId,
+                SellerEmail = context.SellerContact.Email!.Trim(),
+            };
+        }
+
+        var email = BuildConfirmSaleSellerEmail(lien, context, sellerAccessLink);
+        var metadata = new Dictionary<string, string>
+        {
+            ["tenantId"] = tenantId.ToString(),
+            ["lienId"] = lien.Id.ToString(),
+            ["lienCode"] = ResolveLienCode(lien),
+            ["buyerContactId"] = context.BuyerContact.Id.ToString(),
+            ["buyerOrgId"] = context.BuyerContact.OrgId.ToString(),
+            ["sellerContactId"] = context.SellerContact.Id.ToString(),
+            ["sellerOrgId"] = context.SellerContact.OrgId.ToString(),
+            ["buyerAccessLinkId"] = buyerAccessLink.Id.ToString(),
+            ["sellerAccessLinkId"] = sellerAccessLink.Id.ToString(),
+            ["sellerAccessExpiresAtUtc"] = sellerAccessLink.ExpiresAtUtc.ToString("O", CultureInfo.InvariantCulture),
+            ["requestedBy"] = actingUserId.ToString(),
+            ["audience"] = "seller",
+        };
+
+        try
+        {
+            var notificationResult = await _notifications.SendEmailAsync(
+                NotificationTaxonomy.Liens.Events.SellingLienSubmitted,
+                tenantId,
+                context.SellerContact.Email!.Trim(),
+                email.Subject,
+                email.TextBody,
+                metadata,
+                ct,
+                new NotificationEmailSendOptions(
+                    IdempotencyKey: idempotencyKey,
+                    TemplateKey: NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail,
+                    TemplateData: email.TemplateData,
+                    RequestedBy: actingUserId.ToString(),
+                    BrandedRendering: true,
+                    HtmlBody: email.HtmlBody,
+                    TextBody: email.TextBody,
+                    InlineAttachments: email.InlineAttachments,
+                    DisableClickTracking: true));
+
+            await _buyerAccessLinks.MarkNotificationSubmittedAsync(
+                tenantId,
+                sellerAccessLink.Id,
+                notificationResult.NotificationId,
+                notificationResult.Status,
+                ct);
+
+            var submitted = IsSubmittedNotificationStatus(notificationResult.Status) &&
+                            !notificationResult.BlockedByPolicy &&
+                            string.IsNullOrWhiteSpace(notificationResult.FailureCategory);
+
+            return new ConfirmSellingLienSellerNotificationResponse
+            {
+                Requested = true,
+                Submitted = submitted,
+                NotificationId = notificationResult.NotificationId,
+                NotificationStatus = notificationResult.Status,
+                FailureMessage = submitted ? null : notificationResult.LastErrorMessage,
+                SellerAccessLinkId = sellerAccessLink.Id,
+                SellerPortalUrl = sellerAccessLink.PublicPortalUrl,
+                ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
+                SellerContactId = context.SellerContact.Id,
+                SellerOrgId = context.SellerContact.OrgId,
+                SellerEmail = context.SellerContact.Email.Trim(),
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Confirm-sale seller notification failed: Tenant={TenantId} Lien={LienId} SellerContact={SellerContactId}",
+                tenantId, lien.Id, context.SellerContact.Id);
+
+            await _buyerAccessLinks.MarkNotificationSubmittedAsync(
+                tenantId,
+                sellerAccessLink.Id,
+                null,
+                "failed",
+                ct);
+
+            return new ConfirmSellingLienSellerNotificationResponse
+            {
+                Requested = true,
+                Submitted = false,
+                NotificationStatus = "failed",
+                FailureMessage = ex.Message,
+                SellerAccessLinkId = sellerAccessLink.Id,
+                SellerPortalUrl = sellerAccessLink.PublicPortalUrl,
+                ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
+                SellerContactId = context.SellerContact.Id,
+                SellerOrgId = context.SellerContact.OrgId,
+                SellerEmail = context.SellerContact.Email!.Trim(),
+            };
+        }
+    }
+
+    private static ConfirmSellingLienSellerNotificationResponse BuildSkippedSellerNotificationResponse(
+        ConfirmSaleNotificationContext context,
+        SellingBuyerAccessLinkResult sellerAccessLink,
+        string failureMessage)
+        => new()
+        {
+            Requested = true,
+            Submitted = false,
+            NotificationStatus = "skipped",
+            FailureMessage = failureMessage,
+            SellerAccessLinkId = sellerAccessLink.Id,
+            SellerPortalUrl = sellerAccessLink.PublicPortalUrl,
+            ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
+            SellerContactId = context.SellerContact.Id,
+            SellerOrgId = context.SellerContact.OrgId,
+            SellerEmail = context.SellerContact.Email!.Trim(),
+        };
+
     private static ConfirmSaleEmail BuildConfirmSaleEmail(
         Lien lien,
         ConfirmSaleNotificationContext context,
         SellingBuyerAccessLinkResult accessLink)
+        => BuildConfirmSaleEmail(lien, context, accessLink, ConfirmSaleEmailAudience.Buyer);
+
+    private static ConfirmSaleEmail BuildConfirmSaleSellerEmail(
+        Lien lien,
+        ConfirmSaleNotificationContext context,
+        SellingBuyerAccessLinkResult accessLink)
+        => BuildConfirmSaleEmail(lien, context, accessLink, ConfirmSaleEmailAudience.Seller);
+
+    private static ConfirmSaleEmail BuildConfirmSaleEmail(
+        Lien lien,
+        ConfirmSaleNotificationContext context,
+        SellingBuyerAccessLinkResult accessLink,
+        ConfirmSaleEmailAudience audience)
     {
         const string subject = "New Lien Offer";
+        var isSellerView = audience == ConfirmSaleEmailAudience.Seller;
         var lienCode = ResolveLienCode(lien);
         var billingAmount = lien.OriginalAmount.ToString("C", CultureInfo.GetCultureInfo("en-US"));
         var initialServiceDate = lien.InitialServiceDate!.Value.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
         var sellerName = context.SellerContact.DisplayName.Trim();
         var sellerCompany = context.SellerContact.Organization!.Trim();
         var sellerEmail = context.SellerContact.Email!.Trim();
+        var buyerName = context.BuyerContact.DisplayName.Trim();
+        var buyerCompany = context.BuyerContact.Organization?.Trim();
+        var buyerEmail = context.BuyerContact.Email!.Trim();
+        var buyerPhone = context.BuyerContact.Phone?.Trim();
         var handlingLawFirm = context.HandlingLawFirm.Trim();
         var caseManager = context.CaseManager?.Trim();
         var documentNames = context.DocumentNames
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name.Trim())
             .ToList();
+        var status = isSellerView ? FormatStatusLabel(lien.Status) : "Awaiting Your Response";
+        var intro = isSellerView
+            ? "A medical lien has been sent to the funding company for review. Review the buyer and asset details below."
+            : "A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.";
+        var informationSectionTitle = isSellerView ? "Buyer Information" : "Seller Information";
+        var contactPerson = isSellerView ? buyerName : sellerName;
+        var contactEmail = isSellerView ? buyerEmail : sellerEmail;
+        var ctaLabel = isSellerView ? "View Lien Details" : "View Lien for Sale";
+        var footerCompany = isSellerView
+            ? FirstNonEmpty(buyerCompany, buyerName, "the funding company")!
+            : sellerCompany;
+        var footerEmail = isSellerView ? buyerEmail : sellerEmail;
 
         var templateData = new Dictionary<string, string>
         {
             ["subject"] = subject,
-            ["status"] = "Awaiting Your Response",
-            ["intro"] = "A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.",
+            ["audience"] = isSellerView ? "seller" : "buyer",
+            ["status"] = status,
+            ["intro"] = intro,
             ["sellerName"] = sellerName,
             ["sellerCompany"] = sellerCompany,
+            ["sellerEmail"] = sellerEmail,
+            ["buyerName"] = buyerName,
+            ["buyerEmail"] = buyerEmail,
             ["billingAmount"] = billingAmount,
             ["initialServiceDate"] = initialServiceDate,
-            ["contactPerson"] = sellerName,
-            ["emailAddress"] = sellerEmail,
+            ["contactPerson"] = contactPerson,
+            ["emailAddress"] = contactEmail,
             ["handlingLawFirm"] = handlingLawFirm,
             ["lienCode"] = lienCode,
             ["buyerPortalUrl"] = accessLink.BuyerPortalUrl,
+            ["publicPortalUrl"] = accessLink.PublicPortalUrl,
             ["expiresAtUtc"] = accessLink.ExpiresAtUtc.ToString("O", CultureInfo.InvariantCulture),
         };
 
+        if (!string.IsNullOrWhiteSpace(buyerCompany))
+            templateData["buyerCompany"] = buyerCompany;
+        if (!string.IsNullOrWhiteSpace(buyerPhone))
+            templateData["buyerPhone"] = buyerPhone;
         if (!string.IsNullOrWhiteSpace(caseManager))
             templateData["caseManager"] = caseManager;
 
@@ -1147,12 +1364,20 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             ("Seller Company", sellerCompany),
         };
 
+        var buyerRows = new (string Label, string? Value)[]
+        {
+            ("Buyer Name", buyerName),
+            ("Funding Company", buyerCompany),
+            ("Phone Number", buyerPhone),
+        };
+
+        var informationRows = isSellerView ? buyerRows : sellerRows;
         var assetRows = new (string Label, string? Value)[]
         {
             ("Billing Amount", billingAmount),
             ("Initial Service Date", initialServiceDate),
-            ("Contact Person", sellerName),
-            ("Email Address", sellerEmail),
+            ("Contact Person", contactPerson),
+            ("Email Address", contactEmail),
             ("Handling Law Firm", handlingLawFirm),
             ("Case Manager", caseManager),
         };
@@ -1185,14 +1410,18 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         AppendLegalSynqEmailBrand(htmlBody);
         htmlBody.AppendLine("</td>");
         htmlBody.AppendLine("<td align=\"right\" style=\"vertical-align:middle;padding:0;\">");
-        htmlBody.AppendLine("<span style=\"display:inline-block;background-color:#263127 !important;color:#f3c400 !important;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;line-height:1.1;white-space:nowrap;\">Awaiting Your Response</span>");
+        htmlBody.Append("<span style=\"display:inline-block;background-color:#263127 !important;color:#f3c400 !important;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;line-height:1.1;white-space:nowrap;\">")
+            .Append(Html(status))
+            .AppendLine("</span>");
         htmlBody.AppendLine("</td>");
         htmlBody.AppendLine("</tr></table>");
         htmlBody.AppendLine("<h1 style=\"margin:0 0 10px 0;color:#ffffff !important;font-size:24px;line-height:1.25;font-weight:700;letter-spacing:0;\">New Lien Offer</h1>");
-        htmlBody.AppendLine("<p style=\"margin:0;color:#ffffff !important;font-size:16px;line-height:1.55;font-weight:400;opacity:.92;\">A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.</p>");
+        htmlBody.Append("<p style=\"margin:0;color:#ffffff !important;font-size:16px;line-height:1.55;font-weight:400;opacity:.92;\">")
+            .Append(Html(intro))
+            .AppendLine("</p>");
         htmlBody.AppendLine("</td></tr>");
         htmlBody.AppendLine("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"background-color:#ffffff !important;color:#111827 !important;border:1px solid #e5e5e5;border-top:0;border-radius:0 0 10px 10px;padding:24px 24px 28px;\">");
-        AppendEmailSection(htmlBody, "Seller Information", sellerRows);
+        AppendEmailSection(htmlBody, informationSectionTitle, informationRows);
         AppendEmailSection(htmlBody, "Asset Overview", assetRows);
 
         if (documentNames.Count > 0)
@@ -1200,8 +1429,10 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
         htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:separate;border-spacing:0;margin:4px 0 12px 0;\"><tr>");
         htmlBody.Append("<td align=\"center\" bgcolor=\"#f26a2e\" style=\"background-color:#f26a2e !important;border-radius:8px;\"><a href=\"")
-            .Append(Html(accessLink.BuyerPortalUrl))
-            .AppendLine("\" style=\"display:block;padding:12px 20px;color:#ffffff !important;text-decoration:none;font-size:13px;font-weight:700;line-height:1.1;\">View Lien for Sale</a></td>");
+            .Append(Html(accessLink.PublicPortalUrl))
+            .Append("\" style=\"display:block;padding:12px 20px;color:#ffffff !important;text-decoration:none;font-size:13px;font-weight:700;line-height:1.1;\">")
+            .Append(Html(ctaLabel))
+            .AppendLine("</a></td>");
         htmlBody.AppendLine("</tr></table>");
         htmlBody.AppendLine("<p class=\"email-label\" style=\"margin:0 0 20px 0;text-align:center;color:#7a7a7a !important;font-size:13px;line-height:1.5;\">This Link Expires in 30 Days</p>");
         htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card email-rule\" style=\"border-collapse:separate;border-spacing:0;background-color:#ffffff !important;\"><tr>");
@@ -1210,12 +1441,12 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             .AppendLine("\"><span style=\"display:inline-block;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;border:1px solid #f3c400;color:#f3a800 !important;font-size:10px;font-weight:700;\">i</span></td>");
         htmlBody.Append("<td class=\"email-label\" style=\"padding:14px 16px 14px 8px;color:#6f6f6f !important;font-size:13px;line-height:1.55;")
             .Append(EmailTableCellBorder(isFirstRow: true, isLastRow: true, leftEdge: false, rightEdge: true))
-            .Append("\">This offer was sent on behalf of the <strong class=\"email-value\" style=\"color:#111111 !important;font-weight:700;\">")
-            .Append(Html(sellerCompany))
-            .Append("</strong>. Please reply directly to <a href=\"mailto:")
-            .Append(Html(sellerEmail))
+            .Append(isSellerView ? "\">This offer was sent to <strong class=\"email-value\" style=\"color:#111111 !important;font-weight:700;\">" : "\">This offer was sent on behalf of the <strong class=\"email-value\" style=\"color:#111111 !important;font-weight:700;\">")
+            .Append(Html(footerCompany))
+            .Append(isSellerView ? "</strong>. Please contact <a href=\"mailto:" : "</strong>. Please reply directly to <a href=\"mailto:")
+            .Append(Html(footerEmail))
             .Append("\" style=\"color:#f26a2e !important;text-decoration:underline;\">")
-            .Append(Html(sellerEmail))
+            .Append(Html(footerEmail))
             .AppendLine("</a> for any questions.</td>");
         htmlBody.AppendLine("</tr></table>");
         htmlBody.AppendLine("</td></tr>");
@@ -1225,10 +1456,15 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         htmlBody.AppendLine("</body></html>");
 
         var textBody = BuildConfirmSaleTextBody(
-            accessLink.BuyerPortalUrl,
-            sellerCompany,
-            sellerEmail,
-            sellerRows,
+            status,
+            intro,
+            accessLink.PublicPortalUrl,
+            ctaLabel,
+            footerCompany,
+            footerEmail,
+            isSellerView,
+            informationSectionTitle,
+            informationRows,
             assetRows,
             documentNames);
 
@@ -1310,6 +1546,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         => title switch
         {
             "Seller Information" => SellerInformationIconContentId,
+            "Buyer Information" => SellerInformationIconContentId,
             "Asset Overview" => AssetOverviewIconContentId,
             "Supporting Documents" => SupportingDocumentsIconContentId,
             _ => AssetOverviewIconContentId,
@@ -1374,6 +1611,29 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         return border.ToString();
     }
 
+    private static string FormatStatusLabel(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return LienStatus.Offered;
+
+        var trimmed = status.Trim();
+        var label = new StringBuilder(trimmed.Length + 4);
+        for (var i = 0; i < trimmed.Length; i++)
+        {
+            var current = trimmed[i];
+            if (i > 0 &&
+                char.IsUpper(current) &&
+                char.IsLower(trimmed[i - 1]))
+            {
+                label.Append(' ');
+            }
+
+            label.Append(current);
+        }
+
+        return label.ToString();
+    }
+
     private static IReadOnlyList<NotificationEmailInlineAttachment> BuildConfirmSaleInlineAttachments()
         =>
         [
@@ -1400,21 +1660,26 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         ];
 
     private static string BuildConfirmSaleTextBody(
-        string buyerPortalUrl,
-        string sellerCompany,
-        string sellerEmail,
-        IReadOnlyList<(string Label, string? Value)> sellerRows,
+        string status,
+        string intro,
+        string publicPortalUrl,
+        string ctaLabel,
+        string footerCompany,
+        string footerEmail,
+        bool isSellerView,
+        string informationSectionTitle,
+        IReadOnlyList<(string Label, string? Value)> informationRows,
         IReadOnlyList<(string Label, string? Value)> assetRows,
         IReadOnlyList<string> documentNames)
     {
         var body = new StringBuilder();
         body.AppendLine("LegalSynq");
-        body.AppendLine("Awaiting Your Response");
+        body.AppendLine(status);
         body.AppendLine();
         body.AppendLine("New Lien Offer");
-        body.AppendLine("A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.");
+        body.AppendLine(intro);
         body.AppendLine();
-        AppendTextSection(body, "Seller Information", sellerRows);
+        AppendTextSection(body, informationSectionTitle, informationRows);
         AppendTextSection(body, "Asset Overview", assetRows);
 
         if (documentNames.Count > 0)
@@ -1425,12 +1690,12 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             body.AppendLine();
         }
 
-        body.Append("View Lien for Sale: ").AppendLine(buyerPortalUrl);
+        body.Append(ctaLabel).Append(": ").AppendLine(publicPortalUrl);
         body.AppendLine("This Link Expires in 30 Days");
-        body.Append("This offer was sent on behalf of the ")
-            .Append(sellerCompany)
-            .Append(". Please reply directly to ")
-            .Append(sellerEmail)
+        body.Append(isSellerView ? "This offer was sent to " : "This offer was sent on behalf of the ")
+            .Append(footerCompany)
+            .Append(isSellerView ? ". Please contact " : ". Please reply directly to ")
+            .Append(footerEmail)
             .AppendLine(" for any questions.");
 
         return body.ToString();
@@ -1567,7 +1832,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
     private static ConfirmSellingLienSaleResponse MapConfirmSaleResponse(
         Lien lien,
-        ConfirmSellingLienBuyerNotificationResponse? notification)
+        ConfirmSellingLienBuyerNotificationResponse? notification,
+        ConfirmSellingLienSellerNotificationResponse? sellerNotification)
         => new()
         {
             LienId = lien.Id,
@@ -1579,6 +1845,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             SubmittedForSaleAtUtc = lien.SubmittedForSaleAtUtc,
             SoldAtUtc = lien.SoldAtUtc,
             Notification = notification,
+            SellerNotification = sellerNotification,
         };
 
     private static string BuildConfirmSaleNotificationIdempotencyKey(
@@ -1596,6 +1863,30 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             "liens.confirm-sale.email",
             tenantId.ToString("N"),
             lienId.ToString("N"),
+            buyerContactId.ToString("N"),
+            requestSegment,
+        });
+
+        return key.Length > 280 ? key[..280] : key;
+    }
+
+    private static string BuildConfirmSaleSellerNotificationIdempotencyKey(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerContactId,
+        Guid buyerContactId,
+        string? requestIdempotencyKey)
+    {
+        var requestSegment = string.IsNullOrWhiteSpace(requestIdempotencyKey)
+            ? "default"
+            : requestIdempotencyKey.Trim();
+
+        var key = string.Join(":", new[]
+        {
+            "liens.confirm-sale.seller-email",
+            tenantId.ToString("N"),
+            lienId.ToString("N"),
+            sellerContactId.ToString("N"),
             buyerContactId.ToString("N"),
             requestSegment,
         });
@@ -1652,6 +1943,12 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         string TextBody,
         Dictionary<string, string> TemplateData,
         IReadOnlyList<NotificationEmailInlineAttachment> InlineAttachments);
+
+    private enum ConfirmSaleEmailAudience
+    {
+        Buyer,
+        Seller,
+    }
 
     private static void ValidateCreateRequest(CreateSellingPortfolioRequest request)
     {

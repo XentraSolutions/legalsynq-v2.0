@@ -315,15 +315,18 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 When `sendBuyerNotification=true`, the lien must have real `FundingCompanyId`, `FundingCompanyContactId`,
 `InitialServiceDate`, `AskAmount`, buyer email, seller name/company/email, and handling law firm data. The API creates a
-30-day buyer access link from `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide the CTA URL. If the explicit
-base URL is absent, the API derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
+30-day buyer response access link and a separate 30-day seller read-only access link from
+`Liens:Selling:BuyerPortalBaseUrl`; callers do not provide CTA URLs. If the explicit base URL is absent, the API
+derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
 `http://synqlien-demo.localhost:5000/selling/public` for the full `scripts/run-dev.sh` proxy. The configured buyer
 portal base URL must be absolute and must match the active tenant-web browser origin; use
 `http://synqlien-demo.localhost:3000/selling/public` when running only `pnpm --dir apps/web dev`. Literal loopback hosts
 such as `localhost` or `127.0.0.1` are rejected because the email CTA must work from the recipient's inbox, while named
 `.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. The buyer email uses the
-`New Lien Offer` copy and includes only real supporting document names found in lien/case document metadata. The
-LegalSynq mark and section icons are sent as inline CID image attachments; no remote placeholder assets are required.
+`New Lien Offer` copy with a response CTA. After the buyer email is submitted, the seller receives the same branded
+format with buyer/funding-company information and a read-only `View Lien Details` CTA. Neither email inserts sample
+document data; both include only real supporting document names found in lien/case document metadata. The LegalSynq mark
+and section icons are sent as inline CID image attachments; no remote placeholder assets are required.
 For a CTA hosted by the tenant portal, use
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain; that public browser route renders in `apps/web`,
@@ -363,18 +366,34 @@ Liens__Selling__BuyerPortalBaseUrl=http://synqlien-demo.localhost:3000/selling/p
     "buyerContactId": "guid",
     "buyerOrgId": "guid",
     "buyerEmail": "<buyer-contact-email>"
+  },
+  "sellerNotification": {
+    "requested": true,
+    "submitted": true,
+    "notificationId": "guid",
+    "notificationStatus": "sent",
+    "sellerAccessLinkId": "guid",
+    "sellerPortalUrl": "<configured-buyer-portal-url>/<seller-token>",
+    "expiresAtUtc": "2026-08-21T00:00:00Z",
+    "sellerContactId": "guid",
+    "sellerOrgId": "guid",
+    "sellerEmail": "<seller-contact-email>"
   }
 }
 ```
 
 If notification submission fails after the lien is confirmed, the lien transition remains committed and
-`notification.submitted=false` reports the failure for retry.
+`notification.submitted=false` reports the buyer-email failure for retry. The seller email is skipped unless the buyer
+email is submitted or already submitted; in that case `sellerNotification.notificationStatus` is `skipped`. If seller
+email submission itself fails, `sellerNotification.submitted=false` reports the failure without rolling back the lien
+transition or buyer notification.
 
 ### GET `/api/liens/selling/public/{token}`
 
-Returns the temporary funding-company portal data opened from the `New Lien Offer` email CTA. This endpoint is
-anonymous; the opaque token controls tenant, lien, buyer contact, expiry, and revocation. It does not render HTML. The
-tenant portal route `/selling/public/{token}` fetches this JSON through the gateway and owns the Figma UI rendering.
+Returns the temporary funding-company or seller-view portal data opened from a `New Lien Offer` email CTA. This endpoint
+is anonymous; the opaque token controls tenant, lien, buyer contact, expiry, revocation, and audience. It does not
+render HTML. The tenant portal route `/selling/public/{token}` fetches this JSON through the gateway and owns the UI
+rendering.
 
 **Authentication:** None.
 
@@ -387,6 +406,7 @@ caller-provided CTA data.
 
 ```json
 {
+  "audience": "buyer",
   "accessLink": {
     "createdAtUtc": "2026-07-23T13:59:57.67655Z",
     "expiresAtUtc": "2026-08-22T13:59:57.67655Z",
@@ -436,6 +456,9 @@ caller-provided CTA data.
 }
 ```
 
+For seller-view links, `audience` is `seller`; the same JSON includes buyer/funding-company details for read-only
+review, but response and activation endpoints reject that token with `403 read-only-link`.
+
 ### POST `/api/liens/selling/public/{token}/activate-account`
 
 Creates or links a buyer portal account for the token-scoped buyer organization. This endpoint is anonymous, uses the
@@ -446,7 +469,7 @@ and assigns `SYNQLIEN_BUYER` scoped to that Identity organization. Existing buye
 editable request values; request values only fill missing contact data.
 
 This account activation does not accept or decline the lien, create a Bill of Sale, mark a lien sold, or otherwise
-finalize sale.
+finalize sale. Seller-view tokens are read-only and return `403 read-only-link`.
 
 **Authentication:** None.
 
@@ -481,8 +504,17 @@ Records an accepted buyer response for the token-scoped lien. This is anonymous 
 the public `GET`: missing or unknown tokens return `404`, revoked or expired tokens return `410`, and contradictory
 repeat responses return `409`. Accepting records the current ask amount on the access link and moves the lien lifecycle
 status from `Offered` to `Accepted` with `SellerStatus=Accepted`; it does not create a Bill of Sale, mark the lien sold,
-or finalize sale. The
-`/offers` alias accepts the same response shape; legacy `message` fields are stored as response notes.
+or finalize sale. Seller-view tokens are read-only and return `403 read-only-link`. The
+`/offers` alias accepts the same response shape; legacy `message` fields are stored as response notes. The first
+accepted response submits `lien.offer.accepted` emails to both the buyer and seller through Notifications with
+recipient-specific idempotency keys. Repeated same-response posts return the recorded response and retry those
+idempotent notification submissions, so transient failures can recover without duplicate emails. Notification submission
+failures are logged and do not roll back the recorded buyer response. The email subject is exactly
+`Lien Offer Accepted`, and the email includes a pre-rendered HTML body. Liens does not supply a notification template key
+for this outcome email, so template rendering cannot override the fixed subject or HTML design.
+Liens must be configured with `NotificationsService:BaseUrl` (or legacy `Services:NotificationsUrl`) and the shared
+service-token signing key through `FLOW_SERVICE_TOKEN_SECRET` or `ServiceTokens:SigningKey`, because Notifications
+requires service JWT auth for producer submissions.
 
 **Authentication:** None.
 
@@ -522,7 +554,16 @@ or finalize sale. The
 Records a declined buyer response for the token-scoped lien. This is anonymous and uses the same token validation and
 conflict behavior as public accept. Declining can record an optional reason and marks the offered lien with
 `Status=Declined` and `SellerStatus=Declined`; it does not mark the lien sold, withdraw the seller listing, or create a
-Bill of Sale.
+Bill of Sale. Seller-view tokens are read-only and return `403 read-only-link`. The first declined response submits
+`lien.offer.rejected` emails to both the buyer and seller through Notifications with recipient-specific idempotency
+keys. Repeated same-response posts return the recorded response and retry those idempotent notification submissions, so
+transient failures can recover without duplicate emails. Notification submission failures are logged and do not roll back
+the recorded buyer response. The email subject is exactly `Lien Offer Declined`, and the email includes a pre-rendered
+HTML body. Liens does not supply a notification template key for this outcome email, so template rendering cannot
+override the fixed subject or HTML design.
+Liens must be configured with `NotificationsService:BaseUrl` (or legacy `Services:NotificationsUrl`) and the shared
+service-token signing key through `FLOW_SERVICE_TOKEN_SECRET` or `ServiceTokens:SigningKey`, because Notifications
+requires service JWT auth for producer submissions.
 
 **Authentication:** None.
 
@@ -556,6 +597,7 @@ Bill of Sale.
 | Status | Description |
 |---|---|
 | `404 Not Found` | Token or linked lien data cannot be resolved |
+| `403 Forbidden` | Token is a seller read-only link and cannot record buyer actions |
 | `410 Gone` | Token is expired or revoked |
 | `409 Conflict` | Lien is no longer actionable, ask amount is unavailable, or a different response was already recorded |
 

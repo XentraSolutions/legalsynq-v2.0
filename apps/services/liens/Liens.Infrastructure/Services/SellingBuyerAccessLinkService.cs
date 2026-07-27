@@ -10,8 +10,6 @@ namespace Liens.Infrastructure.Services;
 
 public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkService
 {
-    private const string ConfirmSalePurpose = "ConfirmSale";
-
     private readonly LiensDbContext _db;
     private readonly IConfiguration _configuration;
 
@@ -23,13 +21,58 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
         _configuration = configuration;
     }
 
-    public async Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleAsync(
+    public Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleAsync(
         Guid tenantId,
         Guid lienId,
         Guid sellerOrgId,
         Guid buyerOrgId,
         Guid buyerContactId,
         Guid actingUserId,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default)
+        => CreateOrGetAsync(
+            tenantId,
+            lienId,
+            sellerOrgId,
+            buyerOrgId,
+            buyerContactId,
+            actingUserId,
+            SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
+            idempotencyKey,
+            ttl,
+            ct);
+
+    public Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleSellerViewAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid actingUserId,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default)
+        => CreateOrGetAsync(
+            tenantId,
+            lienId,
+            sellerOrgId,
+            buyerOrgId,
+            buyerContactId,
+            actingUserId,
+            SellingAccessLinkPurposes.ConfirmSaleSellerView,
+            idempotencyKey,
+            ttl,
+            ct);
+
+    private async Task<SellingBuyerAccessLinkResult> CreateOrGetAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid actingUserId,
+        string purpose,
         string idempotencyKey,
         TimeSpan ttl,
         CancellationToken ct = default)
@@ -54,7 +97,7 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
             buyerOrgId,
             buyerContactId,
             token,
-            ConfirmSalePurpose,
+            purpose,
             trimmedIdempotencyKey,
             DateTime.UtcNow.Add(ttl),
             actingUserId);

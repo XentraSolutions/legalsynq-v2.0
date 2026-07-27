@@ -27,6 +27,7 @@ describe("PublicBuyerPortalPage", () => {
       status: 200,
       correlationId: "corr-123",
       data: {
+        audience: "buyer",
         accessLink: {
           createdAtUtc: "2026-07-23T13:59:57.67655Z",
           expiresAtUtc: "2026-08-22T13:59:57.67655Z",
@@ -60,6 +61,7 @@ describe("PublicBuyerPortalPage", () => {
           contactName: "Ralph Buyer",
           company: "Xentra Group Funding Review",
           email: "ralph.lopez+200@xentragroup.com",
+          phone: "3105551212",
         },
         case: {
           handlingLawFirm: "RL Liens1",
@@ -102,6 +104,75 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.getByText("signed-lien-real.pdf")).toBeInTheDocument();
     expect(screen.queryByText("John Doe")).not.toBeInTheDocument();
     expect(screen.queryByText("Velantrix")).not.toBeInTheDocument();
+  });
+
+  test("renders seller public links as read-only without activation or response actions", async () => {
+    fetchPublicBuyerPortalMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      correlationId: "corr-seller",
+      data: {
+        audience: "seller",
+        accessLink: {
+          createdAtUtc: "2026-07-23T13:59:57.67655Z",
+          expiresAtUtc: "2026-08-22T13:59:57.67655Z",
+          lastAccessedAtUtc: null,
+          notificationSubmittedAtUtc: "2026-07-23T13:59:58Z",
+          responseStatus: null,
+          responseAmount: null,
+          responseNotes: null,
+          respondedAtUtc: null,
+        },
+        lien: {
+          id: "019f8a97-aa3c-7fe0-aa87-e3b8c693f96b",
+          lienCode: "LIEN-CONF-20260722161022",
+          status: "Offered",
+          sellerStatus: "SubmittedForSale",
+          submittedAtUtc: "2026-07-22T16:10:23.33274Z",
+          listingVisibility: "Private",
+          initialServiceDate: "2026-01-12",
+          endServiceDate: "2026-02-14",
+          originalAmount: 24850,
+          askAmount: 21000,
+          offerPrice: 21000,
+          notes: "Medical provider lien filed after treatment and pending review.",
+        },
+        seller: {
+          name: "Seller Operator",
+          company: "Smith & Associates LLP",
+          email: "seller@example.test",
+        },
+        buyer: {
+          contactName: "Buyer Reviewer",
+          company: "Capital Fund LLC",
+          email: "buyer@example.test",
+          phone: "3105551212",
+        },
+        case: {
+          handlingLawFirm: "Smith & Associates LLP",
+          caseManager: "Case Manager",
+        },
+        documents: [],
+      },
+    });
+
+    const page = await PublicBuyerPortalPage({
+      params: Promise.resolve({ token: "seller-token" }),
+    });
+    render(page);
+
+    expect(screen.getByText("View Offered Liens")).toBeInTheDocument();
+    expect(screen.getByText("Offered")).toBeInTheDocument();
+    expect(screen.queryByText("Lien Details Sent")).not.toBeInTheDocument();
+    expect(screen.queryByText(/This lien offer was sent to/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Sent to Funding Company")).not.toBeInTheDocument();
+    expect(screen.getByText("Buyer Information")).toBeInTheDocument();
+    expect(screen.getByText("Buyer Reviewer")).toBeInTheDocument();
+    expect(screen.getAllByText("Capital Fund LLC").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "Activate Free Account" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept Lien" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Decline Lien" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Message" })).not.toBeInTheDocument();
   });
 
   test("renders the public link state when Liens returns an error", async () => {

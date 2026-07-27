@@ -397,13 +397,14 @@ export function SessionProvider({
   return (
     <SessionContext.Provider value={ctxValue}>
       {children}
-      {showWarning && (
+      {/* REMOVING FOR NOW: Per QA findings, it is not working as expected and is causing confusion for users. We will revisit this in the future. */}
+      {/* {showWarning && (
         <IdleWarningDialog
           countdown={countdown}
           onStay={stayActive}
           onLogout={doLogout}
         />
-      )}
+      )} */}
     </SessionContext.Provider>
   );
 }

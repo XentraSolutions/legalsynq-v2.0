@@ -924,11 +924,16 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body.Notification.BuyerEmail.Should().Be("buyer.reviewer@capital.test");
         body.Notification.BuyerPortalUrl.Should().StartWith("https://app.legalsynq.test/selling/public/");
         body.Notification.BuyerPortalUrl.Should().NotContain("example.com");
+        body.SellerNotification.Should().NotBeNull();
+        body.SellerNotification!.Submitted.Should().BeTrue();
+        body.SellerNotification.SellerEmail.Should().Be("seller.operations@smithlaw.test");
+        body.SellerNotification.SellerPortalUrl.Should().StartWith("https://app.legalsynq.test/selling/public/");
+        body.SellerNotification.SellerPortalUrl.Should().NotBe(body.Notification.BuyerPortalUrl);
 
         using var verifyScope = _factory.Services.CreateScope();
         var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
-        publisher.Emails.Should().ContainSingle();
-        var email = publisher.Emails[0];
+        publisher.Emails.Should().HaveCount(2);
+        var email = publisher.Emails.Single(captured => captured.RecipientEmail == "buyer.reviewer@capital.test");
         email.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.SellingLienSubmitted);
         email.Subject.Should().Be("New Lien Offer");
         email.RecipientEmail.Should().Be("buyer.reviewer@capital.test");
@@ -1020,6 +1025,53 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             attachment.ContentId == "supporting-documents-icon" &&
             attachment.ContentType == "image/png" &&
             !string.IsNullOrWhiteSpace(attachment.Base64Content));
+
+        var sellerEmail = publisher.Emails.Single(captured => captured.RecipientEmail == "seller.operations@smithlaw.test");
+        sellerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.SellingLienSubmitted);
+        sellerEmail.Subject.Should().Be("New Lien Offer");
+        sellerEmail.Body.Should().Contain("LegalSynq");
+        sellerEmail.Body.Should().Contain("Offered");
+        sellerEmail.Body.Should().Contain("Buyer Information");
+        sellerEmail.Body.Should().Contain("Buyer Reviewer");
+        sellerEmail.Body.Should().Contain("Capital Fund LLC");
+        sellerEmail.Body.Should().Contain("buyer.reviewer@capital.test");
+        var sellerBuyerInformation = ExtractSection(sellerEmail.Body, "Buyer Information", "Asset Overview");
+        sellerBuyerInformation.Should().Contain("Buyer Reviewer");
+        sellerBuyerInformation.Should().Contain("Capital Fund LLC");
+        sellerBuyerInformation.Should().NotContain("Email Address");
+        sellerBuyerInformation.Should().NotContain("buyer.reviewer@capital.test");
+        sellerEmail.Body.Should().Contain("View Lien Details");
+        sellerEmail.Body.Should().Contain("$3,875.00");
+        sellerEmail.Body.Should().Contain("06/01/2026");
+        sellerEmail.Body.Should().Contain("signed-lien-real.pdf");
+        sellerEmail.Body.Should().NotContain("Accept Lien");
+        sellerEmail.Body.Should().NotContain("Decline Lien");
+        sellerEmail.Body.Should().NotContain("Awaiting Your Response");
+        sellerEmail.Body.Should().NotContain("Sent to Funding Company");
+        sellerEmail.Metadata["audience"].Should().Be("seller");
+        sellerEmail.Metadata["sellerContactId"].Should().NotBeNullOrWhiteSpace();
+        sellerEmail.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
+        sellerEmail.Options.Should().NotBeNull();
+        sellerEmail.Options!.IdempotencyKey.Should().Contain("confirm-sale-success");
+        sellerEmail.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
+        sellerEmail.Options.TextBody.Should().Be(sellerEmail.Body);
+        sellerEmail.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
+        sellerEmail.Options.HtmlBody.Should().Contain("Offered");
+        sellerEmail.Options.HtmlBody.Should().Contain("Buyer Information");
+        sellerEmail.Options.HtmlBody.Should().Contain("View Lien Details");
+        sellerEmail.Options.HtmlBody.Should().Contain("Capital Fund LLC");
+        sellerEmail.Options.HtmlBody.Should().Contain("buyer.reviewer@capital.test");
+        var sellerBuyerInformationHtml = ExtractSection(sellerEmail.Options.HtmlBody!, "Buyer Information", "Asset Overview");
+        sellerBuyerInformationHtml.Should().Contain("Buyer Reviewer");
+        sellerBuyerInformationHtml.Should().Contain("Capital Fund LLC");
+        sellerBuyerInformationHtml.Should().NotContain("Email Address");
+        sellerBuyerInformationHtml.Should().NotContain("buyer.reviewer@capital.test");
+        sellerEmail.Options.HtmlBody.Should().NotContain("Accept Lien");
+        sellerEmail.Options.HtmlBody.Should().NotContain("Decline Lien");
+        sellerEmail.Options.HtmlBody.Should().NotContain("Sent to Funding Company");
+        sellerEmail.Options.DisableClickTracking.Should().BeTrue();
+        sellerEmail.Options.InlineAttachments.Should().NotBeNull();
+        sellerEmail.Options.InlineAttachments!.Should().HaveCount(4);
     }
 
     [Fact]
@@ -1062,6 +1114,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         var serialized = json.GetRawText();
+        json.GetProperty("audience").GetString().Should().Be("buyer");
         json.GetProperty("lien").GetProperty("lienCode").GetString().Should().StartWith("LIEN-");
         json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Offered);
         json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.SubmittedForSale);
@@ -1097,6 +1150,100 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         db.SellingBuyerAccessLinks.Single(link => link.Token == token)
             .LastAccessedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task PublicSellerPortal_returns_read_only_json_and_rejects_buyer_actions()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.readonly@smithlaw.test",
+            buyerEmail: "buyer.readonly@capital.test",
+            buyerPhone: "3105551212");
+
+        var confirmResponse = await PostConfirmSaleAsync(lienId, "confirm-sale-public-seller-view");
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await confirmResponse.Content.ReadAsStringAsync()}");
+
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        var buyerToken = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
+        var sellerToken = ExtractBuyerAccessToken(confirmBody.SellerNotification!.SellerPortalUrl!);
+
+        using var anonClient = _factory.CreateClient();
+        var response = await anonClient.GetAsync($"/api/liens/selling/public/{sellerToken}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("audience").GetString().Should().Be("seller");
+        json.GetProperty("buyer").GetProperty("contactName").GetString().Should().Be("Buyer Reviewer");
+        json.GetProperty("buyer").GetProperty("company").GetString().Should().Be("Capital Fund LLC");
+        json.GetProperty("buyer").GetProperty("email").GetString().Should().Be("buyer.readonly@capital.test");
+        json.GetProperty("buyer").GetProperty("phone").GetString().Should().Be("3105551212");
+        json.GetProperty("accessLink").GetProperty("responseStatus").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Offered);
+
+        var accept = await PostPublicBuyerResponseAsync(
+            sellerToken,
+            "accept",
+            new { notes = "seller cannot accept" },
+            "seller-view-accept");
+        accept.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        await AssertReadOnlyLinkErrorAsync(accept);
+
+        var decline = await PostPublicBuyerResponseAsync(
+            sellerToken,
+            "decline",
+            new { reason = "seller cannot decline" },
+            "seller-view-decline");
+        decline.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        await AssertReadOnlyLinkErrorAsync(decline);
+
+        var activation = await PostPublicBuyerActivationAsync(
+            sellerToken,
+            new
+            {
+                companyName = "Capital Fund LLC",
+                email = "buyer.readonly@capital.test",
+                firstName = "Buyer",
+                lastName = "Reviewer",
+                password = "Password123!",
+            });
+        activation.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        await AssertReadOnlyLinkErrorAsync(activation);
+
+        var buyerAccept = await PostPublicBuyerResponseAsync(
+            buyerToken,
+            "accept",
+            new { notes = "buyer accepted while seller views read-only link" },
+            "seller-view-buyer-accept");
+        buyerAccept.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await buyerAccept.Content.ReadAsStringAsync()}");
+
+        var updatedSellerResponse = await anonClient.GetAsync($"/api/liens/selling/public/{sellerToken}");
+        updatedSellerResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatedSellerResponse.Content.ReadAsStringAsync()}");
+        var updatedSellerJson = await updatedSellerResponse.Content.ReadFromJsonAsync<JsonElement>();
+        updatedSellerJson.GetProperty("audience").GetString().Should().Be("seller");
+        updatedSellerJson.GetProperty("accessLink").GetProperty("responseStatus").GetString()
+            .Should().Be(SellingBuyerResponseStatus.Accepted);
+        updatedSellerJson.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Accepted);
+        updatedSellerJson.GetProperty("lien").GetProperty("sellerStatus").GetString()
+            .Should().Be(SellingLienStatus.Accepted);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.SellingBuyerAccessLinks.Single(link => link.Token == sellerToken)
+            .Purpose.Should().Be(SellingAccessLinkPurposes.ConfirmSaleSellerView);
     }
 
     [Fact]
@@ -1202,6 +1349,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     public async Task PublicBuyerPortal_accept_records_buyer_response_and_marks_lien_accepted_without_finalizing_sale()
     {
         var (lienId, token) = await CreatePublicLienOfferAsync("accept");
+        ClearCapturedEmails();
 
         var response = await PostPublicBuyerResponseAsync(
             token,
@@ -1235,6 +1383,59 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         lien.SellerStatus.Should().Be(SellingLienStatus.Accepted);
         lien.SoldAtUtc.Should().BeNull();
         lien.BuyingOrgId.Should().BeNull();
+
+        var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().HaveCount(2);
+        var buyerEmail = publisher.Emails.Single(email => email.Metadata["recipientRole"] == "buyer");
+        buyerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferAccepted);
+        buyerEmail.RecipientEmail.Should().Be("buyer.accept@capital.test");
+        buyerEmail.Subject.Should().Be("Lien Offer Accepted");
+        buyerEmail.Body.Should().Contain("LegalSynq");
+        buyerEmail.Body.Should().Contain("accepted lien offer");
+        buyerEmail.Body.Should().Contain("Capital Fund LLC");
+        buyerEmail.Body.Should().Contain("Seller: Smith & Associates LLP");
+        buyerEmail.Body.Should().Contain("Response notes: Accepted at ask from public portal");
+        buyerEmail.Metadata["lienId"].Should().Be(lienId.ToString());
+        buyerEmail.Metadata["buyerAccessLinkId"].Should().Be(persistedLink.Id.ToString());
+        buyerEmail.Metadata["responseStatus"].Should().Be(SellingBuyerResponseStatus.Accepted);
+        buyerEmail.Options.Should().NotBeNull();
+        buyerEmail.Options!.TemplateKey.Should().BeNull();
+        buyerEmail.Options.IdempotencyKey.Should().Contain(":accepted:buyer");
+        buyerEmail.Options.TemplateData.Should().BeNull();
+        buyerEmail.Options.BrandedRendering.Should().BeNull();
+        buyerEmail.Options.TextBody.Should().Be(buyerEmail.Body);
+        buyerEmail.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
+        buyerEmail.Options.HtmlBody.Should().Contain("<!doctype html>");
+        buyerEmail.Options.HtmlBody.Should().Contain("Lien Offer Accepted");
+        buyerEmail.Options.HtmlBody.Should().Contain("Lien Number");
+        buyerEmail.Options.HtmlBody.Should().Contain("Capital Fund LLC");
+        AssertPublicResponseEmailBranding(buyerEmail);
+
+        var sellerEmail = publisher.Emails.Single(email => email.Metadata["recipientRole"] == "seller");
+        sellerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferAccepted);
+        sellerEmail.RecipientEmail.Should().Be("seller.accept@smithlaw.test");
+        sellerEmail.Subject.Should().Be(buyerEmail.Subject);
+        sellerEmail.Body.Should().Contain("LegalSynq");
+        sellerEmail.Body.Should().Contain("Buyer Reviewer from Capital Fund LLC accepted lien offer");
+        sellerEmail.Body.Should().Contain("Seller: Smith & Associates LLP");
+        sellerEmail.Body.Should().Contain("Response notes: Accepted at ask from public portal");
+        sellerEmail.Body.Should().NotContain("Accept Lien");
+        sellerEmail.Body.Should().NotContain("Decline Lien");
+        sellerEmail.Metadata["lienId"].Should().Be(lienId.ToString());
+        sellerEmail.Metadata["buyerAccessLinkId"].Should().Be(persistedLink.Id.ToString());
+        sellerEmail.Metadata["responseStatus"].Should().Be(SellingBuyerResponseStatus.Accepted);
+        sellerEmail.Options.Should().NotBeNull();
+        sellerEmail.Options!.TemplateKey.Should().BeNull();
+        sellerEmail.Options.IdempotencyKey.Should().Contain(":accepted:seller");
+        sellerEmail.Options.TemplateData.Should().BeNull();
+        sellerEmail.Options.BrandedRendering.Should().BeNull();
+        sellerEmail.Options.TextBody.Should().Be(sellerEmail.Body);
+        sellerEmail.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
+        sellerEmail.Options.HtmlBody.Should().Contain("<!doctype html>");
+        sellerEmail.Options.HtmlBody.Should().Contain("Lien Offer Accepted");
+        sellerEmail.Options.HtmlBody.Should().Contain("Buyer Reviewer");
+        sellerEmail.Options.HtmlBody.Should().Contain("Smith &amp; Associates LLP");
+        AssertPublicResponseEmailBranding(sellerEmail);
     }
 
     [Fact]
@@ -1261,6 +1462,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     public async Task PublicBuyerPortal_decline_records_buyer_response()
     {
         var (lienId, token) = await CreatePublicLienOfferAsync("decline");
+        ClearCapturedEmails();
 
         var response = await PostPublicBuyerResponseAsync(
             token,
@@ -1293,12 +1495,66 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         lien.WithdrawnAtUtc.Should().BeNull();
         lien.SoldAtUtc.Should().BeNull();
         lien.BuyingOrgId.Should().BeNull();
+
+        var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().HaveCount(2);
+        var buyerEmail = publisher.Emails.Single(email => email.Metadata["recipientRole"] == "buyer");
+        buyerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferRejected);
+        buyerEmail.RecipientEmail.Should().Be("buyer.decline@capital.test");
+        buyerEmail.Subject.Should().Be("Lien Offer Declined");
+        buyerEmail.Body.Should().Contain("LegalSynq");
+        buyerEmail.Body.Should().Contain("declined lien offer");
+        buyerEmail.Body.Should().Contain("Capital Fund LLC");
+        buyerEmail.Body.Should().Contain("Seller: Smith & Associates LLP");
+        buyerEmail.Body.Should().Contain("Response notes: Not in buying criteria");
+        buyerEmail.Metadata["lienId"].Should().Be(lienId.ToString());
+        buyerEmail.Metadata["buyerAccessLinkId"].Should().Be(persistedLink.Id.ToString());
+        buyerEmail.Metadata["responseStatus"].Should().Be(SellingBuyerResponseStatus.Declined);
+        buyerEmail.Options.Should().NotBeNull();
+        buyerEmail.Options!.TemplateKey.Should().BeNull();
+        buyerEmail.Options.IdempotencyKey.Should().Contain(":declined:buyer");
+        buyerEmail.Options.TemplateData.Should().BeNull();
+        buyerEmail.Options.BrandedRendering.Should().BeNull();
+        buyerEmail.Options.TextBody.Should().Be(buyerEmail.Body);
+        buyerEmail.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
+        buyerEmail.Options.HtmlBody.Should().Contain("<!doctype html>");
+        buyerEmail.Options.HtmlBody.Should().Contain("Lien Offer Declined");
+        buyerEmail.Options.HtmlBody.Should().Contain("Lien Number");
+        buyerEmail.Options.HtmlBody.Should().Contain("Capital Fund LLC");
+        AssertPublicResponseEmailBranding(buyerEmail);
+
+        var sellerEmail = publisher.Emails.Single(email => email.Metadata["recipientRole"] == "seller");
+        sellerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferRejected);
+        sellerEmail.RecipientEmail.Should().Be("seller.decline@smithlaw.test");
+        sellerEmail.Subject.Should().Be(buyerEmail.Subject);
+        sellerEmail.Body.Should().Contain("LegalSynq");
+        sellerEmail.Body.Should().Contain("Buyer Reviewer from Capital Fund LLC declined lien offer");
+        sellerEmail.Body.Should().Contain("Seller: Smith & Associates LLP");
+        sellerEmail.Body.Should().Contain("Response notes: Not in buying criteria");
+        sellerEmail.Body.Should().NotContain("Accept Lien");
+        sellerEmail.Body.Should().NotContain("Decline Lien");
+        sellerEmail.Metadata["lienId"].Should().Be(lienId.ToString());
+        sellerEmail.Metadata["buyerAccessLinkId"].Should().Be(persistedLink.Id.ToString());
+        sellerEmail.Metadata["responseStatus"].Should().Be(SellingBuyerResponseStatus.Declined);
+        sellerEmail.Options.Should().NotBeNull();
+        sellerEmail.Options!.TemplateKey.Should().BeNull();
+        sellerEmail.Options.IdempotencyKey.Should().Contain(":declined:seller");
+        sellerEmail.Options.TemplateData.Should().BeNull();
+        sellerEmail.Options.BrandedRendering.Should().BeNull();
+        sellerEmail.Options.TextBody.Should().Be(sellerEmail.Body);
+        sellerEmail.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
+        sellerEmail.Options.HtmlBody.Should().Contain("<!doctype html>");
+        sellerEmail.Options.HtmlBody.Should().Contain("Lien Offer Declined");
+        sellerEmail.Options.HtmlBody.Should().Contain("Buyer Reviewer");
+        sellerEmail.Options.HtmlBody.Should().Contain("Smith &amp; Associates LLP");
+        AssertPublicResponseEmailBranding(sellerEmail);
     }
 
     [Fact]
     public async Task PublicBuyerPortal_repeated_same_response_is_idempotent()
     {
         var (_, token) = await CreatePublicLienOfferAsync("idempotent");
+        ClearCapturedEmails();
 
         var first = await PostPublicBuyerResponseAsync(
             token,
@@ -1306,6 +1562,11 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             new { reason = "Not this one" },
             "public-decline-idempotent");
         first.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var firstScope = _factory.Services.CreateScope())
+        {
+            firstScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+                .Emails.Should().HaveCount(2);
+        }
 
         var second = await PostPublicBuyerResponseAsync(
             token,
@@ -1321,6 +1582,63 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         accessLink.GetProperty("responseNotes").GetString().Should().Be("Not this one");
         json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Declined);
         json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Declined);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_repeated_same_response_retries_failed_notifications()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("retry-response-notifications");
+        ClearCapturedEmails();
+
+        using (var failingScope = _factory.Services.CreateScope())
+        {
+            failingScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+                .FailEmailSends = true;
+        }
+
+        var first = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Temporarily not buying this lien" },
+            "public-decline-notification-fails");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using (var failedScope = _factory.Services.CreateScope())
+        {
+            var publisher = failedScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+            publisher.Emails.Should().BeEmpty();
+            publisher.FailEmailSends = false;
+        }
+
+        var second = await PostPublicBuyerResponseAsync(
+            token,
+            "decline",
+            new { reason = "Different duplicate reason" },
+            "public-decline-notification-retry");
+
+        second.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await second.Content.ReadAsStringAsync()}");
+        var json = await second.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("accessLink").GetProperty("responseStatus").GetString()
+            .Should().Be(SellingBuyerResponseStatus.Declined);
+        json.GetProperty("accessLink").GetProperty("responseNotes").GetString()
+            .Should().Be("Temporarily not buying this lien");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var notifications = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().Emails;
+        notifications.Should().HaveCount(2);
+        notifications.Should().ContainSingle(email =>
+            email.Metadata["recipientRole"] == "buyer" &&
+            email.NotificationType == NotificationTaxonomy.Liens.Events.OfferRejected);
+        notifications.Should().ContainSingle(email =>
+            email.Metadata["recipientRole"] == "seller" &&
+            email.NotificationType == NotificationTaxonomy.Liens.Events.OfferRejected);
+        notifications.Should().OnlyContain(email =>
+            email.Body.Contains("Response notes: Temporarily not buying this lien", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1541,7 +1859,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         using var verifyScope = _factory.Services.CreateScope();
         verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
-            .Emails.Should().ContainSingle();
+            .Emails.Should().HaveCount(2);
     }
 
     [Fact]
@@ -1573,10 +1891,16 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body!.Status.Should().Be(LienStatus.Offered);
         body.Notification!.Submitted.Should().BeFalse();
         body.Notification.NotificationStatus.Should().Be("failed");
+        body.SellerNotification.Should().NotBeNull();
+        body.SellerNotification!.Submitted.Should().BeFalse();
+        body.SellerNotification.NotificationStatus.Should().Be("skipped");
+        body.SellerNotification.FailureMessage.Should().Contain("buyer notification was not submitted");
 
         using var verifyScope = _factory.Services.CreateScope();
         var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
         db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Offered);
+        verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
+            .Emails.Should().BeEmpty();
     }
 
     private async Task<SellingPortfolioResponse> CreatePortfolioAsync()
@@ -1611,6 +1935,44 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         });
 
         return _client.SendAsync(message);
+    }
+
+    private static async Task AssertReadOnlyLinkErrorAsync(HttpResponseMessage response)
+    {
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetProperty("code").GetString().Should().Be("read-only-link");
+        json.GetProperty("error").GetProperty("title").GetString().Should().Be("Lien offer is read-only");
+    }
+
+    private void ClearCapturedEmails()
+    {
+        using var scope = _factory.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().Clear();
+    }
+
+    private static void AssertPublicResponseEmailBranding(CapturedEmail email)
+    {
+        email.Body.Should().NotContain("This notification does not finalize");
+        email.Options.Should().NotBeNull();
+        email.Options!.HtmlBody.Should().NotContain("This notification does not finalize");
+        email.Options.HtmlBody.Should().Contain("src=\"cid:legalsynq-brand-icon\"");
+        email.Options.InlineAttachments.Should().NotBeNull();
+        email.Options.InlineAttachments!.Should().ContainSingle(attachment =>
+            attachment.ContentId == "legalsynq-brand-icon" &&
+            attachment.FileName == "legalsynq-brand-icon.png" &&
+            attachment.ContentType == "image/png");
+    }
+
+    private static string ExtractSection(string value, string start, string end)
+    {
+        var startIndex = value.IndexOf(start, StringComparison.Ordinal);
+        startIndex.Should().BeGreaterThanOrEqualTo(0);
+        startIndex += start.Length;
+
+        var endIndex = value.IndexOf(end, startIndex, StringComparison.Ordinal);
+        endIndex.Should().BeGreaterThanOrEqualTo(0);
+
+        return value[startIndex..endIndex];
     }
 
     private async Task<(Guid LienId, string Token)> CreatePublicLienOfferAsync(

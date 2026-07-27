@@ -167,12 +167,14 @@ internal sealed class NoOpFlowInstanceResolver : IFlowInstanceResolver
 internal sealed class CapturingNotificationPublisher : INotificationPublisher
 {
     private readonly List<CapturedEmail> _emails = [];
+    private readonly Dictionary<string, Guid> _idempotentEmails = new(StringComparer.Ordinal);
 
     public IReadOnlyList<CapturedEmail> Emails => _emails;
 
     public void Clear()
     {
         _emails.Clear();
+        _idempotentEmails.Clear();
         FailEmailSends = false;
     }
 
@@ -206,7 +208,23 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
                 "Simulated notification failure."));
         }
 
+        var idempotencyKey = options?.IdempotencyKey;
+        if (!string.IsNullOrWhiteSpace(idempotencyKey) &&
+            _idempotentEmails.TryGetValue($"{tenantId:N}:{idempotencyKey}", out var existingNotificationId))
+        {
+            return Task.FromResult(new NotificationEmailSendResult(
+                existingNotificationId,
+                "sent",
+                false,
+                null,
+                null,
+                null));
+        }
+
         var notificationId = Guid.CreateVersion7();
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            _idempotentEmails[$"{tenantId:N}:{idempotencyKey}"] = notificationId;
+
         _emails.Add(new CapturedEmail(
             notificationType,
             tenantId,

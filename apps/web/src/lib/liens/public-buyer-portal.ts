@@ -1,6 +1,7 @@
 const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://127.0.0.1:5010";
 
 export interface PublicBuyerPortalData {
+  audience: "buyer" | "seller";
   accessLink: {
     createdAtUtc: string;
     expiresAtUtc: string;

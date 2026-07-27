@@ -43,12 +43,14 @@ export function PublicBuyerPortalInteractiveContent({
 
   return (
     <>
-      <ResponseCard
-        data={portalData}
-        submitting={submitting}
-        error={error}
-        onRespond={handleResponse}
-      />
+      {portalData.audience === "seller" ? null : (
+        <ResponseCard
+          data={portalData}
+          submitting={submitting}
+          error={error}
+          onRespond={handleResponse}
+        />
+      )}
       <LienSummaryCard data={portalData} />
     </>
   );
@@ -121,9 +123,25 @@ function ResponseCard({
 }
 
 function LienSummaryCard({ data }: { data: PublicBuyerPortalData }) {
+  const isSellerView = data.audience === "seller";
   const sellerRows: FieldRow[] = [
     { label: "Seller Name", value: data.seller.name },
     { label: "Seller Company", value: data.seller.company },
+    {
+      label: "Email Address",
+      value: data.seller.email,
+      href: data.seller.email ? `mailto:${data.seller.email}` : undefined,
+    },
+  ];
+  const buyerRows: FieldRow[] = [
+    { label: "Buyer Name", value: data.buyer.contactName },
+    { label: "Funding Company", value: data.buyer.company },
+    {
+      label: "Email Address",
+      value: data.buyer.email,
+      href: data.buyer.email ? `mailto:${data.buyer.email}` : undefined,
+    },
+    { label: "Phone Number", value: data.buyer.phone },
   ];
   const lienRows: FieldRow[] = [
     { label: "Submitted Date", value: formatDateTime(data.lien.submittedAtUtc) },
@@ -142,6 +160,10 @@ function LienSummaryCard({ data }: { data: PublicBuyerPortalData }) {
       href: data.seller.email ? `mailto:${data.seller.email}` : undefined,
     },
   ];
+  const caseRows: FieldRow[] = [
+    { label: "Handling Law Firm", value: data.case.handlingLawFirm },
+    { label: "Case Manager", value: data.case.caseManager },
+  ];
 
   return (
     <details
@@ -156,35 +178,51 @@ function LienSummaryCard({ data }: { data: PublicBuyerPortalData }) {
             Lien Summary
           </h2>
         </div>
-        <ResponseStatusBadge status={data.accessLink.responseStatus} />
+        <ResponseStatusBadge
+          status={data.accessLink.responseStatus}
+          fallbackStatus={isSellerView ? data.lien.status : undefined}
+        />
       </summary>
       <div className="details-content mt-6 flex flex-col gap-6">
-        <FieldSection title="Seller Information" icon="ri-file-text-line" rows={sellerRows} />
+        <FieldSection
+          title={isSellerView ? "Buyer Information" : "Seller Information"}
+          icon="ri-file-text-line"
+          rows={isSellerView ? buyerRows : sellerRows}
+        />
         <FieldSection
           title="Lien Information"
           icon="ri-file-text-line"
           rows={lienRows}
           notes={data.lien.notes}
         />
-        <FieldSection title="Funding Company & Case Information" icon="ri-building-2-line" rows={fundingRows} />
+        <FieldSection
+          title={isSellerView ? "Case Information" : "Funding Company & Case Information"}
+          icon="ri-building-2-line"
+          rows={isSellerView ? caseRows : fundingRows}
+        />
       </div>
     </details>
   );
 }
 
-function ResponseStatusBadge({ status }: { status?: string | null }) {
-  const normalized = normalizeResponseStatus(status);
-  const label = normalized ?? "Awaiting Your Response";
+function ResponseStatusBadge({
+  status,
+  fallbackStatus,
+}: {
+  status?: string | null;
+  fallbackStatus?: string | null;
+}) {
+  const presentation = resolveStatusPresentation(status, fallbackStatus);
   const className =
-    normalized === "Accepted"
+    presentation.responseStatus === "Accepted"
       ? "bg-emerald-500/15 text-emerald-700"
-      : normalized === "Declined"
+      : presentation.responseStatus === "Declined"
         ? "bg-red-500/15 text-red-700"
         : "bg-yellow-500/15 text-[#a16207]";
 
   return (
     <span className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3 py-1 text-sm font-semibold leading-[1.6] max-sm:text-xs ${className}`}>
-      {label}
+      {presentation.label}
     </span>
   );
 }
@@ -245,6 +283,26 @@ function FieldSection({
 function normalizeResponseStatus(status?: string | null): "Accepted" | "Declined" | null {
   if (status === "Accepted" || status === "Declined") return status;
   return null;
+}
+
+function resolveStatusPresentation(
+  responseStatus?: string | null,
+  fallbackStatus?: string | null,
+): { label: string; responseStatus: "Accepted" | "Declined" | null } {
+  const normalized = normalizeResponseStatus(responseStatus) ?? normalizeResponseStatus(fallbackStatus);
+  return {
+    label: normalized ?? formatStatusLabel(fallbackStatus) ?? "Awaiting Your Response",
+    responseStatus: normalized,
+  };
+}
+
+function formatStatusLabel(status?: string | null): string | null {
+  const trimmed = status?.trim();
+  if (!trimmed) return null;
+
+  return trimmed
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ");
 }
 
 function formatDate(value: string | null): string | null {

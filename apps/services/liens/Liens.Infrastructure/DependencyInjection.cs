@@ -135,7 +135,10 @@ public static class DependencyInjection
         services.AddServiceTokenIssuer(configuration, "liens-service");
         services.AddTransient<NotificationsAuthDelegatingHandler>();
 
-        var notifBaseUrl = configuration["Services:NotificationsUrl"] ?? "http://localhost:5008";
+        var notifBaseUrl = configuration["NotificationsService:BaseUrl"]
+                           ?? configuration["Services:NotificationsUrl"]
+                           ?? configuration["ExternalServices:Notifications:BaseUrl"]
+                           ?? "http://localhost:5008";
         services.AddHttpClient("NotificationsService", client =>
         {
             client.BaseAddress = new Uri(notifBaseUrl);

@@ -92,6 +92,7 @@ describe("PublicBuyerActivationForm", () => {
 
 function basePortalData(): PublicBuyerPortalData {
   return {
+    audience: "buyer",
     accessLink: {
       createdAtUtc: "2026-07-23T13:59:57Z",
       expiresAtUtc: "2026-08-22T13:59:57Z",

@@ -53,15 +53,17 @@ confirm-sale route is:
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and optionally sends the buyer `New Lien Offer` email |
+| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and optionally sends buyer and seller `New Lien Offer` emails |
 
 Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. When
-`sendBuyerNotification=true`, the service validates real buyer/seller contact data, creates a 30-day buyer access link,
-and sends the email through Notifications with an idempotency key. Supporting document names are pulled from existing
-legacy lien/case document servicing metadata; the email omits the document section when no real document names exist.
-The email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange
-wordmark text, and the section icons are also delivered as inline CID image attachments. No remote placeholder assets
-are required.
+`sendBuyerNotification=true`, the service validates real buyer/seller contact data, creates a 30-day buyer response
+link and a separate 30-day seller read-only link, then sends the buyer email through Notifications with an idempotency
+key. After the buyer email is submitted, the seller receives a matching branded email with buyer/funding-company
+information and a read-only `View Lien Details` link. Supporting document names are pulled from existing legacy
+lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
+email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark
+text, and the section icons are also delivered as inline CID image attachments. No remote placeholder assets are
+required.
 Configure the buyer portal URL with `Liens:Selling:BuyerPortalBaseUrl` or the environment variable
 `Liens__Selling__BuyerPortalBaseUrl`. If that value is absent, the API derives it from
 `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
@@ -72,15 +74,27 @@ such as `localhost` and `127.0.0.1` are rejected because outbound email recipien
 `.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. If it contains `{token}` the
 token is substituted, otherwise the token is appended as the final path segment.
 
-The temporary buyer portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
-JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only. It does not render
-HTML; the tenant portal route `/selling/public/{token}` in `apps/web` fetches this JSON through the gateway and renders
-the funding-company review page. The page records buyer responses with
+The temporary public portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
+JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only, including
+`audience=buyer|seller`. It does not render HTML; the tenant portal route `/selling/public/{token}` in `apps/web`
+fetches this JSON through the gateway and renders either the funding-company response page or the seller read-only
+details page. Buyer-purpose links record buyer responses with
 `POST /api/liens/selling/public/{token}/accept` and `POST /api/liens/selling/public/{token}/decline`; accepting records
 the current ask amount and moves the lien to `Status=Accepted` / `SellerStatus=Accepted`; declining records an optional
 reason and moves the lien to `Status=Declined` / `SellerStatus=Declined`. `POST
 /api/liens/selling/public/{token}/offers` is a compatibility alias for public accept. These public responses do not
-finalize the sale, create a Bill of Sale, or mark the lien sold.
+finalize the sale, create a Bill of Sale, or mark the lien sold. The first accepted or declined response submits
+outcome emails to both the buyer and seller through Notifications using idempotent recipient-specific keys; repeated
+same-response posts return the recorded response and retry those idempotent notification submissions, so transient
+notification failures can recover without duplicate emails. These outcome emails use HTML rendering and have status-only
+subjects: `Lien Offer Accepted` or `Lien Offer Declined`. Liens submits these outcome emails with pre-rendered HTML and
+without a notification template key, so template rendering cannot override the fixed subject or branded HTML. Seller-purpose
+links are read-only and reject accept/decline/account-activation posts.
+Liens sends these emails through `NotificationsService:BaseUrl` (also accepted through the legacy
+`Services:NotificationsUrl` key). Because Notifications protects `POST /v1/notifications` with service JWT auth, Liens
+must share the platform service-token signing key through `FLOW_SERVICE_TOKEN_SECRET` or `ServiceTokens:SigningKey`.
+The local development appsettings and startup scripts provide the development value; deployed environments must provide
+the production secret.
 The public page's `Activate Free Account` CTA opens `/selling/public/{token}/activate`, which submits account
 activation through the tenant-portal BFF to `POST /api/liens/selling/public/{token}/activate-account`. That endpoint
 uses the token-scoped buyer organization/contact data to ask Identity to create or resolve a tenant-scoped

@@ -121,9 +121,9 @@ Implemented routes:
 |---|---|
 | `/funding/dashboard` | Funding dashboard with KPI summary, pending offers, acquisition pipeline, provider performance, and Offer Inbox. |
 | `/funding/offered-liens` | Server-rendered offered-liens list with search, status filters, pagination, and API-authorized row actions. |
-| `/selling/public/{token}` | Public, token-gated buyer offer page opened from `New Lien Offer` emails; rendered by `apps/web` from Liens JSON without a `platform_session` cookie. Includes accept/decline buttons that record the buyer response without finalizing sale. |
-| `/selling/public/{token}/activate` | Public SynqLien buyer account activation page. Prefills and locks available buyer contact data from the lien offer, then creates or links a `SYNQ_LIENS:SYNQLIEN_BUYER` login through Liens and Identity. |
-| `/api/lien/api/liens/selling/public/{token}` | Public BFF path for the Liens JSON data endpoint and response/account-activation actions. Accept/decline posts use `/api/lien/api/liens/selling/public/{token}/{action}` and account activation uses `/api/lien/api/liens/selling/public/{token}/activate-account`, so browser traffic always runs through the tenant portal BFF before reaching the gateway. |
+| `/selling/public/{token}` | Public, token-gated buyer or seller-view offer page opened from `New Lien Offer` emails; rendered by `apps/web` from Liens JSON without a `platform_session` cookie. Buyer-audience links include accept/decline buttons; seller-audience links are read-only and show buyer/funding-company details. |
+| `/selling/public/{token}/activate` | Public SynqLien buyer account activation page for buyer-audience links. Prefills and locks available buyer contact data from the lien offer, then creates or links a `SYNQ_LIENS:SYNQLIEN_BUYER` login through Liens and Identity. |
+| `/api/lien/api/liens/selling/public/{token}` | Public BFF path for the Liens JSON data endpoint and response/account-activation actions. Accept/decline posts use `/api/lien/api/liens/selling/public/{token}/{action}` and account activation uses `/api/lien/api/liens/selling/public/{token}/activate-account`; seller-view tokens are rejected for those mutation paths, so browser traffic always runs through the tenant portal BFF before reaching the gateway. |
 
 The frontend is API-ready but does not include mock rows. Server components target the future Liens endpoints through the gateway:
 
