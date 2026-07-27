@@ -13,7 +13,7 @@ import {
 import type { PlatformSession } from "@/types";
 import { LookupResponse } from "@/lib/lookup/lookup.types";
 import { lookupService } from "@/lib/lookup";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 interface SessionContextValue {
   session: PlatformSession | null;
@@ -50,6 +50,10 @@ const PERMISSION_SYNC_INTERVAL_MS = 60_000;
  * not attempted — polling covers that gap.
  */
 const SESSION_BROADCAST_CHANNEL = "platform_session_sync";
+
+function shouldPreloadLookupCache(pathname: string | null): boolean {
+  return pathname === "/lien" || pathname?.startsWith("/lien/") === true;
+}
 
 /**
  * Fetches session from the BFF /api/auth/me route on mount.
@@ -92,6 +96,7 @@ export function SessionProvider({
   // Seed state from the SSR-resolved session so the UI is populated instantly.
   // isLoading starts false when we already have data; true only on a cold client load.
   const router = useRouter();
+  const pathname = usePathname();
   const seeded = initialSession ? deserializeSession(initialSession) : null;
   const [session, setSession] = useState<PlatformSession | null>(seeded);
   const [isLoading, setIsLoading] = useState(initialSession == null);
@@ -369,13 +374,13 @@ export function SessionProvider({
   }, [session, resetIdleTimer]);
 
   useEffect(() => {
-    if (!session || lookup) return;
+    if (!session || lookup || !shouldPreloadLookupCache(pathname)) return;
 
     void (async () => {
       const data = await lookupService.getLookupAll();
       setLookup(data);
     })();
-  }, [session, lookup]);
+  }, [session, lookup, pathname]);
 
   const ctxValue = useMemo(
     () => ({
