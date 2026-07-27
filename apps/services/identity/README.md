@@ -41,6 +41,7 @@ Identity.Api.Tests/      Integration and unit tests
 | `POST` | `/api/users` | Create user |
 | `GET` | `/api/users` | List users (tenant-scoped) |
 | `POST` | `/api/internal/tenant-provisioning/provision` | Internal: full tenant provision |
+| `GET` | `/api/internal/users/account-exists` | Internal: trusted product services can check whether an email already belongs to an Identity account |
 | `POST` | `/api/admin/products/{code}/provision` | Enable/disable product for tenant |
 | `POST` | `/api/admin/organizations/synqlien-buyer` | Internal: create/resolve a tenant-scoped `LIEN_OWNER` org for SynqLien public buyer activation |
 | `POST` | `/api/admin/organizations/{id}/synqlien-buyer-self-register` | Internal: create a SynqLien buyer user and grant `SYNQ_LIENS:SYNQLIEN_BUYER`; returns `409 ACCOUNT_ALREADY_EXISTS` for existing emails |

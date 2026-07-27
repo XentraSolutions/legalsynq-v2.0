@@ -15,6 +15,8 @@ namespace Liens.Api.Endpoints;
 public static class SellingPublicEndpoints
 {
     private const int MaxPublicMessageLength = 400;
+    private const string SynqLienBuyerLoginUrl =
+        "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation";
     private const string LegalSynqBrandIconContentId = "legalsynq-brand-icon";
     private const string LegalSynqBrandIconPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAFH0lEQVR42u2d23HiMBSGU4JLcAmOSWZ4pIR0sDxsAYLdfQ4dLB2QDrYEtgOX4AZCVILXwmJyWRsdCev+/zPnFbA+jq7Wf+7uIAiCvIqzVcG39fq0XRzeNnXbR0cI/rZZHE/bmnG2LNGKocLd1s8DLBLUyRB/DoAOKmuXZZ+Bza1gv2a1yGi0bhBwyV2xdoheAa2cKNz3LhuZ7EViYmQb7qW7xpjsWK/9TNkRXBmLI1rdbfY2bgH34zF7rNDy7sZe9djJ6p2qa+WsKjg79wYtYSzeofUdqAfHVDBee2h6f5qKMGFDN+0G8KbeK5Y2B7Oe4WGlmmyh9QOYPZsua0R3rR6HqwIEPAMWM2zzz1YCxnIJgCEAhgA4610ssSadils2JAA4+d4BgAEYAmAIgPNS13VFH099sD52DuLJBHCvveJzxe9fiecB1QHsuo9j514HQ8A6Es+1zhWs+Je3nT+5AHyReM4yJ7jPnX+5BHzRcw5wD10Y8gE4bciBZK5vwEIs1TG3A+CzeHJjsucJVWiAzzPs1JZCOksL1Voz1HXwXnPJt0oF8JEI1nu3NcdOlngOYo+1T2WHSqUmta1KIuQ2l8lVmRpgjWcvYge8jmmyMfdhg5wxX1MVO2BmMptNCHCT9ERLzi5zBnwE4LQBV3IsnooCgCMGnMPhAgADMAADMADnA/hsdsaWpY1QAv75sLL13apwAoz/eqwGJ7ma/Xej4MfiyQVg9/4cQcXZlU+0wWzQpT2g0kVu7OI1AFuN9mYfLx17QAD2CFo3m0XW6vpQAbBvyMRLdxJuY2D7B8AxZLK04u0AOMZQOAHd0ngAHEaIpdy1hX4LwIlmMcEn6oOX8uLwNfiI+VhsO1khS+yiCfc+mu3iyI4bZewVJmQ6XlEAbAO0ugcb9SlRzZxNHOQA2NaeucIMrk/EsfGXGw/eAOxUKr/O0WS0cZKSO2B5qX19JYze6FBNNAHYHWAr72QBMAADMAADMAADMABfXHSmggFwxIBzly3ARmUNbGx0ALAdwKpDodEKMeo3OBYNkPkFLN+POxgdGarS/nIUhTJv9gGLN1TF26sf47R9+E08zuUT/w7ycWE3HEyIjM8rXN0unPtcXqObzvxtiRgAX/uNelkMwKEBJpXfo741AMBhAT5t7l/oC+nN4gVA4wGsBReZHBVgLg7/jaf51NKrAOwcMJfvx82zZB1AY4btCnA/RO7H3lwd6kKJK6wWi2SKOzDDl/gJ9dBx/9fWd4eyVZm0jE5SEtuLBmAABmAABmAABuDMAfu4XQjAbh9wnTngJnfAPFXA0vVdpej9oikPyRIFrKwTlcSkiOB6znX+yTEA7p/nWzaldWS5GVLZN0r9hpABSw9oavm+dSqAZ696ZgI4sMJcaVUk7R/mBYA/aZfU5oSsn9QCcCL1kiYauCJMuFIHnFbXbAtypIDThvtlbdxmBvjY5VTm/cM+dZs4YJ76FVnqduYfHdiBA27lWnh1B0124ZPRfK+YIeDSdoDeDIrpNAkCYAiAARiAAZimsZv1nwLuBnEDVl3PGfVhhgAYAmAIgAEYgHMAPOkTRQJ8/eI13P4cSNxPJrjNMP3PPRfihF9nCKJURBWVUynrVmkP+JtSGxAt70g028V3MIq43UEOmrubrsrQ/Tkgt1l8U5Ac5KDZs7hwZPGEsddzV20TcouuOVnI+vbBkM0xeT7rRWEPiDE31Gw2dOXjQ8bWzKqLHDQ38GV53b1OuPbhEB+CoND1D6mLXlFVwRdjAAAAAElFTkSuQmCC";
 
@@ -60,6 +62,7 @@ public static class SellingPublicEndpoints
 
     private static async Task<IResult> GetTemporaryBuyerPortal(
         string token,
+        IPublicBuyerAccountProvisioningService buyerAccountService,
         LiensDbContext db,
         CancellationToken ct = default)
     {
@@ -77,10 +80,11 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status404NotFound);
         }
 
+        var account = await ResolvePublicBuyerAccountAsync(view, buyerAccountService, ct);
         resolved.AccessLink!.MarkAccessed();
         await db.SaveChangesAsync(ct);
 
-        return Results.Ok(MapPublicPortalResponse(view));
+        return Results.Ok(MapPublicPortalResponse(view, account));
     }
 
     private static async Task<IResult> PostTemporaryBuyerPortalMessage(
@@ -343,7 +347,7 @@ public static class SellingPublicEndpoints
         return Results.Ok(new PublicBuyerAccountActivationResponse(
             result.UserId!.Value,
             result.IsNew,
-            "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation"));
+            SynqLienBuyerLoginUrl));
     }
 
     private static async Task<(SellingBuyerAccessLink? AccessLink, IResult? Error)> ResolvePublicAccessLinkAsync(
@@ -1134,6 +1138,27 @@ public static class SellingPublicEndpoints
             buyerResponseAccessLink);
     }
 
+    private static async Task<PublicBuyerAccountResponse?> ResolvePublicBuyerAccountAsync(
+        PublicPortalView view,
+        IPublicBuyerAccountProvisioningService buyerAccountService,
+        CancellationToken ct)
+    {
+        if (!IsBuyerResponseLink(view.AccessLink))
+            return null;
+
+        var email = view.BuyerContact?.Email?.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+            return new PublicBuyerAccountResponse(false, SynqLienBuyerLoginUrl);
+
+        var status = await buyerAccountService.GetBuyerAccountStatusAsync(
+            new PublicBuyerAccountStatusRequest(view.AccessLink.TenantId, email),
+            ct);
+
+        return new PublicBuyerAccountResponse(
+            status.Success && status.AccountExists,
+            SynqLienBuyerLoginUrl);
+    }
+
     private static async Task<IReadOnlyList<SellingPortalMessage>> ResolveMessagesAsync(
         LiensDbContext db,
         SellingBuyerAccessLink accessLink,
@@ -1277,7 +1302,9 @@ public static class SellingPublicEndpoints
         return new PublicDocumentView(fileName.Trim(), category, FormatDocumentSize(size));
     }
 
-    private static PublicBuyerPortalResponse MapPublicPortalResponse(PublicPortalView view)
+    private static PublicBuyerPortalResponse MapPublicPortalResponse(
+        PublicPortalView view,
+        PublicBuyerAccountResponse? account = null)
     {
         var responseAccessLink = view.BuyerResponseAccessLink ?? view.AccessLink;
 
@@ -1325,7 +1352,8 @@ public static class SellingPublicEndpoints
                 .ToList(),
             view.Messages
                 .Select(MapPublicMessage)
-                .ToList());
+                .ToList(),
+            account);
     }
 
     private static PublicPortalMessageResponse MapPublicMessage(SellingPortalMessage message)
@@ -1514,7 +1542,12 @@ public static class SellingPublicEndpoints
         PublicBuyerOrganizationResponse Buyer,
         PublicBuyerCaseResponse Case,
         IReadOnlyList<PublicBuyerDocumentResponse> Documents,
-        IReadOnlyList<PublicPortalMessageResponse> Messages);
+        IReadOnlyList<PublicPortalMessageResponse> Messages,
+        PublicBuyerAccountResponse? Account);
+
+    private sealed record PublicBuyerAccountResponse(
+        bool HasExistingAccount,
+        string LoginUrl);
 
     private sealed record PublicBuyerAccessLinkResponse(
         DateTime CreatedAtUtc,

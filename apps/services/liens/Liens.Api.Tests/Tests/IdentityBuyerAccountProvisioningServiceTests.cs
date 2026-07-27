@@ -11,6 +11,27 @@ namespace Liens.Api.Tests.Tests;
 public sealed class IdentityBuyerAccountProvisioningServiceTests
 {
     [Fact]
+    public async Task GetBuyerAccountStatusAsync_calls_identity_account_exists()
+    {
+        var handler = new CapturingIdentityHandler(
+            Guid.Parse("30000000-0000-0000-0000-000000000301"),
+            Guid.Parse("30000000-0000-0000-0000-000000000302"),
+            accountExists: true);
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetBuyerAccountStatusAsync(
+            new PublicBuyerAccountStatusRequest(
+                Guid.Parse("10000000-0000-0000-0000-000000000001"),
+                "buyer+existing@capital.test"));
+
+        result.Success.Should().BeTrue();
+        result.AccountExists.Should().BeTrue();
+        handler.Paths.Should().Equal("/api/internal/users/account-exists");
+        handler.Uris.Single().Should().Contain("email=buyer%2Bexisting%40capital.test");
+        handler.Uris.Single().Should().Contain("tenantId=10000000-0000-0000-0000-000000000001");
+    }
+
+    [Fact]
     public async Task ProvisionBuyerAccountAsync_ensures_identity_org_before_self_registering_user()
     {
         var identityOrgId = Guid.Parse("30000000-0000-0000-0000-000000000301");
@@ -132,11 +153,13 @@ public sealed class IdentityBuyerAccountProvisioningServiceTests
     private sealed class CapturingIdentityHandler(
         Guid identityOrgId,
         Guid userId,
+        bool accountExists = false,
         bool selfRegisterIsNew = true,
         HttpStatusCode selfRegisterStatus = HttpStatusCode.OK,
         string? selfRegisterErrorJson = null) : HttpMessageHandler
     {
         public List<string> Paths { get; } = [];
+        public List<string> Uris { get; } = [];
         public List<string> Bodies { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -144,7 +167,15 @@ public sealed class IdentityBuyerAccountProvisioningServiceTests
             CancellationToken cancellationToken)
         {
             Paths.Add(request.RequestUri!.AbsolutePath);
-            Bodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
+            Uris.Add(request.RequestUri.PathAndQuery);
+            Bodies.Add(request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken));
+
+            if (request.RequestUri.AbsolutePath == "/api/internal/users/account-exists")
+            {
+                return JsonResponse($$"""{"exists":{{accountExists.ToString().ToLowerInvariant()}}}""");
+            }
 
             if (request.RequestUri.AbsolutePath == "/api/admin/organizations/synqlien-buyer")
             {

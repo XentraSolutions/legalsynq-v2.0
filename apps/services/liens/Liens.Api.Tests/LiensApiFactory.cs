@@ -258,14 +258,29 @@ internal sealed record CapturedEmail(
 internal sealed class CapturingPublicBuyerAccountProvisioningService : IPublicBuyerAccountProvisioningService
 {
     private readonly List<PublicBuyerAccountProvisioningRequest> _requests = [];
+    private readonly List<PublicBuyerAccountStatusRequest> _statusRequests = [];
 
     public IReadOnlyList<PublicBuyerAccountProvisioningRequest> Requests => _requests;
+    public IReadOnlyList<PublicBuyerAccountStatusRequest> StatusRequests => _statusRequests;
+    public PublicBuyerAccountStatusResult? NextStatusResult { get; set; }
     public PublicBuyerAccountProvisioningResult? NextResult { get; set; }
 
     public void Clear()
     {
         _requests.Clear();
+        _statusRequests.Clear();
+        NextStatusResult = null;
         NextResult = null;
+    }
+
+    public Task<PublicBuyerAccountStatusResult> GetBuyerAccountStatusAsync(
+        PublicBuyerAccountStatusRequest request,
+        CancellationToken ct = default)
+    {
+        _statusRequests.Add(request);
+        return Task.FromResult(
+            NextStatusResult
+            ?? PublicBuyerAccountStatusResult.Found(accountExists: false));
     }
 
     public Task<PublicBuyerAccountProvisioningResult> ProvisionBuyerAccountAsync(

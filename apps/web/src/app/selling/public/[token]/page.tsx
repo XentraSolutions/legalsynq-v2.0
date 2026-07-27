@@ -1,6 +1,8 @@
 import { headers } from "next/headers";
 import {
   fetchPublicBuyerPortal,
+  SYNQLIEN_BUYER_LOGIN_URL,
+  type PublicBuyerPortalAccount,
   type PublicBuyerPortalDocument,
   type PublicBuyerPortalError,
   type PublicBuyerPortalResult,
@@ -96,7 +98,7 @@ function PortalContent({
       className="flex flex-col items-center gap-6 bg-white px-5 py-6 pb-8 max-sm:px-3.5 max-sm:py-[18px]"
       aria-label={isSellerView ? "Temporary seller lien portal" : "Temporary funding company portal"}
     >
-      <HeroBanner token={token} audience={data.audience} />
+      <HeroBanner token={token} audience={data.audience} account={data.account} />
       <PublicBuyerPortalInteractiveContent token={token} data={data} />
       <DocumentsCard documents={data.documents} />
       <PublicPortalMessagesCard token={token} audience={data.audience} initialMessages={data.messages} />
@@ -108,8 +110,22 @@ function PortalContent({
   );
 }
 
-function HeroBanner({ token, audience }: { token: string; audience: "buyer" | "seller" }) {
+function HeroBanner({
+  token,
+  audience,
+  account,
+}: {
+  token: string;
+  audience: "buyer" | "seller";
+  account?: PublicBuyerPortalAccount | null;
+}) {
   const isSellerView = audience === "seller";
+  const hasExistingAccount = account?.hasExistingAccount === true;
+  const ctaHref = hasExistingAccount
+    ? account?.loginUrl || SYNQLIEN_BUYER_LOGIN_URL
+    : `/selling/public/${encodeURIComponent(token)}/activate`;
+  const ctaLabel = hasExistingAccount ? "Log In" : "Activate Free Account";
+
   return (
     <section
       className="relative w-full max-w-[700px] overflow-hidden rounded-2xl bg-[#0d1e34] p-8 text-[#fafafa] shadow-[0_1px_3px_rgba(0,0,0,0.1)] max-sm:rounded-[14px] max-sm:p-6"
@@ -128,10 +144,10 @@ function HeroBanner({ token, audience }: { token: string; audience: "buyer" | "s
           </h1>
           {isSellerView ? null : (
             <a
-              href={`/selling/public/${encodeURIComponent(token)}/activate`}
+              href={ctaHref}
               className="public-portal-primary inline-flex h-[38px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[10px] border border-transparent px-4 py-2 text-sm font-semibold leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:shadow-[0_4px_10px_rgba(238,113,50,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]"
             >
-              Activate Free Account
+              {ctaLabel}
             </a>
           )}
         </div>

@@ -1,4 +1,6 @@
 const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://127.0.0.1:5010";
+export const SYNQLIEN_BUYER_LOGIN_URL =
+  "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation";
 
 export interface PublicBuyerPortalData {
   audience: "buyer" | "seller";
@@ -43,6 +45,12 @@ export interface PublicBuyerPortalData {
   };
   documents: PublicBuyerPortalDocument[];
   messages?: PublicBuyerPortalMessage[];
+  account?: PublicBuyerPortalAccount | null;
+}
+
+export interface PublicBuyerPortalAccount {
+  hasExistingAccount: boolean;
+  loginUrl: string;
 }
 
 export interface PublicBuyerPortalDocument {

@@ -1129,6 +1129,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         json.GetProperty("case").GetProperty("caseManager").GetString().Should().Be("Case Manager");
         json.GetProperty("case").GetProperty("handlingLawFirm").GetString().Should().Be("Smith & Associates LLP");
         json.GetProperty("accessLink").GetProperty("expiresAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+        json.GetProperty("account").GetProperty("hasExistingAccount").GetBoolean().Should().BeFalse();
+        json.GetProperty("account").GetProperty("loginUrl").GetString()
+            .Should().Be("/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation");
 
         var documents = json.GetProperty("documents").EnumerateArray().ToList();
         documents.Should().ContainSingle();
@@ -1150,6 +1153,36 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         db.SellingBuyerAccessLinks.Single(link => link.Token == token)
             .LastAccessedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_marks_existing_identity_account_for_login_cta()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync("account-exists");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>()
+                .NextStatusResult = PublicBuyerAccountStatusResult.Found(accountExists: true);
+        }
+
+        using var anonClient = _factory.CreateClient();
+        var response = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("account").GetProperty("hasExistingAccount").GetBoolean().Should().BeTrue();
+        json.GetProperty("account").GetProperty("loginUrl").GetString()
+            .Should().Be("/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var provisioning = verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>();
+        provisioning.StatusRequests.Should().ContainSingle();
+        var request = provisioning.StatusRequests.Single();
+        request.TenantId.Should().Be(SeedHelper.TenantId);
+        request.Email.Should().Be("buyer.account-exists@capital.test");
+        provisioning.Requests.Should().BeEmpty();
     }
 
     [Fact]

@@ -33,6 +33,74 @@ public sealed class IdentityBuyerAccountProvisioningService : IPublicBuyerAccoun
         }
     }
 
+    public async Task<PublicBuyerAccountStatusResult> GetBuyerAccountStatusAsync(
+        PublicBuyerAccountStatusRequest request,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+        {
+            return PublicBuyerAccountStatusResult.Failed(
+                "identity-unavailable",
+                "Buyer account status is temporarily unavailable.",
+                ServiceUnavailableStatusCode);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return PublicBuyerAccountStatusResult.Found(accountExists: false);
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var path =
+                "api/internal/users/account-exists" +
+                $"?email={Uri.EscapeDataString(request.Email.Trim())}" +
+                $"&tenantId={Uri.EscapeDataString(request.TenantId.ToString())}";
+
+            using var response = await client.GetAsync(path, timeoutCts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Identity account-exists returned HTTP {Status} for tenant {TenantId}.",
+                    (int)response.StatusCode,
+                    request.TenantId);
+
+                return PublicBuyerAccountStatusResult.Failed(
+                    "identity-status-error",
+                    "Buyer account status could not be resolved.",
+                    (int)response.StatusCode);
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<AccountExistsResponse>(
+                cancellationToken: timeoutCts.Token);
+
+            return PublicBuyerAccountStatusResult.Found(result?.Exists == true);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "Identity account-exists timed out for tenant {TenantId}.",
+                request.TenantId);
+            return PublicBuyerAccountStatusResult.Failed(
+                "identity-timeout",
+                "Buyer account status timed out.",
+                ServiceUnavailableStatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Identity account-exists failed for tenant {TenantId}.",
+                request.TenantId);
+            return PublicBuyerAccountStatusResult.Failed(
+                "identity-status-error",
+                "Buyer account status could not be resolved.",
+                ServiceUnavailableStatusCode);
+        }
+    }
+
     public async Task<PublicBuyerAccountProvisioningResult> ProvisionBuyerAccountAsync(
         PublicBuyerAccountProvisioningRequest request,
         CancellationToken ct = default)
@@ -256,6 +324,12 @@ public sealed class IdentityBuyerAccountProvisioningService : IPublicBuyerAccoun
     {
         [JsonPropertyName("id")]
         public Guid Id { get; set; }
+    }
+
+    private sealed class AccountExistsResponse
+    {
+        [JsonPropertyName("exists")]
+        public bool Exists { get; set; }
     }
 
     private sealed class ErrorResponse

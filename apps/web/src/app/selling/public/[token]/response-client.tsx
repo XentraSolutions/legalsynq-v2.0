@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { PublicBuyerPortalData } from "@/lib/liens/public-buyer-portal";
+import {
+  SYNQLIEN_BUYER_LOGIN_URL,
+  type PublicBuyerPortalData,
+} from "@/lib/liens/public-buyer-portal";
 import {
   submitPublicBuyerPortalResponse,
   type PublicBuyerPortalResponseAction,
@@ -107,7 +110,10 @@ function ResponseCard({
         </div>
         <p className="m-0 text-sm leading-[1.6] text-[#737373]">
           {hasResponded ? "Your response was securely recorded." : "Your response is securely recorded."}{" "}
-          <a href="/login" className="cursor-pointer text-[#ee7132] underline underline-offset-2 transition-colors hover:text-[#d85f25]">
+          <a
+            href={data.account?.loginUrl || SYNQLIEN_BUYER_LOGIN_URL}
+            className="cursor-pointer text-[#ee7132] underline underline-offset-2 transition-colors hover:text-[#d85f25]"
+          >
             Log in
           </a>{" "}
           to manage from your dashboard.

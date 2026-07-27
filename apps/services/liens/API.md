@@ -402,7 +402,8 @@ rendering.
 The JSON payload is populated only from persisted lien, case, contact, buyer, seller, access-link, and servicing
 document metadata. It includes seller, buyer/funding company, lien summary, case, access-link expiry, and real
 supporting-document fields. It never inserts sample company names, sample people, sample files, `example.com`, or
-caller-provided CTA data.
+caller-provided CTA data. For buyer-purpose links, the `account` block indicates whether the token-scoped buyer email
+already belongs to an Identity account so the tenant portal can render `Log In` instead of `Activate Free Account`.
 
 ```json
 {
@@ -462,12 +463,17 @@ caller-provided CTA data.
       "message": "Can you confirm the signed LOP is final?",
       "createdAtUtc": "2026-07-23T14:05:00Z"
     }
-  ]
+  ],
+  "account": {
+    "hasExistingAccount": false,
+    "loginUrl": "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation"
+  }
 }
 ```
 
 For seller-view links, `audience` is `seller`; the same JSON includes buyer/funding-company details. Seller-view links
-can post messages, but response and activation endpoints reject that token with `403 read-only-link`.
+can post messages, but response and activation endpoints reject that token with `403 read-only-link`. Seller-view JSON
+does not include an account-action requirement; `account` may be `null`.
 
 ### POST `/api/liens/selling/public/{token}/messages`
 

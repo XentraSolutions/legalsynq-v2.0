@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import {
   fetchPublicBuyerPortal,
+  SYNQLIEN_BUYER_LOGIN_URL,
   type PublicBuyerPortalData,
   type PublicBuyerPortalError,
   type PublicBuyerPortalResult,
@@ -92,17 +93,52 @@ function ActivationContent({
       aria-label="Activate SynqLien buyer account"
     >
       <HeroBanner token={token} />
-      <PublicBuyerActivationForm token={token} data={data} />
-      <p className="m-0 w-full max-w-[700px] text-center text-sm leading-[1.6] text-[#737373]">
-        Already have platform access?{" "}
-        <a
-          href="/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation"
-          className="cursor-pointer text-[#ee7132] underline underline-offset-2 transition-colors hover:text-[#d85f25]"
-        >
-          Log in
-        </a>{" "}
-        with your existing account.
-      </p>
+      {data.account?.hasExistingAccount ? (
+        <ExistingAccountCard loginUrl={data.account.loginUrl || SYNQLIEN_BUYER_LOGIN_URL} />
+      ) : (
+        <PublicBuyerActivationForm token={token} data={data} />
+      )}
+      {data.account?.hasExistingAccount ? null : (
+        <p className="m-0 w-full max-w-[700px] text-center text-sm leading-[1.6] text-[#737373]">
+          Already have platform access?{" "}
+          <a
+            href={data.account?.loginUrl || SYNQLIEN_BUYER_LOGIN_URL}
+            className="cursor-pointer text-[#ee7132] underline underline-offset-2 transition-colors hover:text-[#d85f25]"
+          >
+            Log in
+          </a>{" "}
+          with your existing account.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ExistingAccountCard({ loginUrl }: { loginUrl: string }) {
+  return (
+    <section
+      className="flex w-full max-w-[700px] flex-col gap-5 rounded-2xl border border-[#d1fae5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px]"
+      aria-labelledby="existing-account-title"
+    >
+      <div className="flex items-start gap-4">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-700">
+          <i className="ri-login-circle-line text-2xl leading-none" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <h2 id="existing-account-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal text-[#0a0a0a]">
+            Account already exists
+          </h2>
+          <p className="m-0 text-sm leading-[1.6] text-[#737373]">
+            Log in with your existing account to manage offered liens.
+          </p>
+        </div>
+      </div>
+      <a
+        href={loginUrl}
+        className="public-portal-primary inline-flex h-11 items-center justify-center rounded-[10px] px-4 py-2 text-sm font-semibold leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:shadow-[0_4px_10px_rgba(238,113,50,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]"
+      >
+        Log In
+      </a>
     </section>
   );
 }
