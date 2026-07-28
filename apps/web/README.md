@@ -125,11 +125,11 @@ Implemented routes:
 | `/selling/public/{token}/activate` | Public SynqLien buyer account activation page for buyer-audience links. Prefills and locks available buyer contact data from the lien offer, then creates or links a `SYNQ_LIENS:SYNQLIEN_BUYER` login through Liens and Identity. |
 | `/api/lien/api/liens/selling/public/{token}` | Public BFF path for the Liens JSON data endpoint and response/account-activation actions. Accept/decline posts use `/api/lien/api/liens/selling/public/{token}/{action}` and account activation uses `/api/lien/api/liens/selling/public/{token}/activate-account`; seller-view tokens are rejected for those mutation paths, so browser traffic always runs through the tenant portal BFF before reaching the gateway. |
 
-The frontend is API-ready but does not include mock rows. Server components target the future Liens endpoints through the gateway:
+The frontend does not include mock rows. Server components target Liens endpoints through the gateway:
 
 | Frontend server request | Liens service endpoint after gateway prefix removal |
 |---|---|
 | `/liens/api/liens/selling/buyer/dashboard?range=last7Days\|last30Days\|custom&from=&to=` | `/api/liens/selling/buyer/dashboard` |
-| `/liens/api/liens/selling/buyer/liens?status=&search=&page=&pageSize=` | `/api/liens/selling/buyer/liens` |
+| `/liens/api/liens/selling/buyer/liens?status=&search=&page=&pageSize=&sort=&direction=` | `/api/liens/selling/buyer/liens` |
 
-Until those backend endpoints exist, the funding portal converts only `404`, `501`, and `204` responses into semantic empty states. `401`, `403`, and `5xx` remain auth/error states.
+The dashboard endpoint can still be deployed independently; the funding portal converts only `404`, `501`, and `204` responses into semantic empty states. `401`, `403`, and `5xx` remain auth/error states.

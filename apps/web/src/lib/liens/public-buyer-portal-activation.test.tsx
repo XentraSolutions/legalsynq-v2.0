@@ -20,7 +20,7 @@ describe("public buyer portal account activation", () => {
         JSON.stringify({
           userId: "user-123",
           isNew: true,
-          loginUrl: "/login?returnTo=%2Ffunding%2Foffered-liens",
+          loginUrl: "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation",
         }),
         {
           status: 200,
@@ -72,7 +72,7 @@ describe("public buyer portal account activation", () => {
       data: {
         userId: "user-123",
         isNew: true,
-        loginUrl: "/login?returnTo=%2Ffunding%2Foffered-liens",
+        loginUrl: "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
       },
     });
   });

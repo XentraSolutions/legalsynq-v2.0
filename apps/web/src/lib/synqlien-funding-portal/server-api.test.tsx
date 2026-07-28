@@ -123,6 +123,23 @@ describe('SynqLien funding portal server API', () => {
       });
   });
 
+  test('passes offered lien list search, filters, pagination, and sort to the API', async () => {
+    serverGet.mockResolvedValueOnce({ rows: [], page: 3, pageSize: 25, total: 0 });
+
+    await getOfferedLiens({
+      status: 'Accepted',
+      search: 'Xentra',
+      page: 3,
+      pageSize: 25,
+      sort: 'sellerName',
+      direction: 'desc',
+    });
+
+    expect(serverGet).toHaveBeenCalledWith(
+      '/liens/api/liens/selling/buyer/liens?status=Accepted&search=Xentra&page=3&pageSize=25&sort=sellerName&direction=desc',
+    );
+  });
+
   test('keeps filtered no-results copy distinct from no-data copy', () => {
     expect(getOfferedLiensEmptyStateCopy(false).title).toBe('No offered liens yet');
     expect(getOfferedLiensEmptyStateCopy(true).title).toBe('No results match your filters');

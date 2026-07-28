@@ -388,6 +388,61 @@ email is submitted or already submitted; in that case `sellerNotification.notifi
 email submission itself fails, `sellerNotification.submitted=false` reports the failure without rolling back the lien
 transition or buyer notification.
 
+### GET `/api/liens/selling/buyer/liens`
+
+Returns offered-liens rows for the authenticated SynqLien buyer/funding company. The endpoint reads confirmed buyer
+access links created by seller confirm-sale notifications and scopes results to the current organization. It also
+includes source buyer organizations for active funding-company contacts whose email matches the authenticated user,
+which supports accounts provisioned from public buyer activation.
+
+**Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `status` | `string` | No | `null` | `Pending`, `Accepted`, or `Declined`; omit or use `All` for every status |
+| `search` | `string` | No | `null` | Case-insensitive search across lien number, seller, provider, status, dates, amounts, external reference, and subject name |
+| `page` | `integer` | No | `1` | 1-based page number |
+| `pageSize` | `integer` | No | `10` | Items per page, clamped from 1 to 100 |
+| `sort` | `string` | No | `receivedAtUtc` | `lienNumber`, `sellerName`, `initialServiceDate`, `billingAmount`, `askAmount`, `highestBidAmount`, or `status` |
+| `direction` | `string` | No | `asc` | `asc` or `desc`; default endpoint ordering is newest received offer first when `sort` is omitted |
+
+**Response:** `200 OK`
+
+```json
+{
+  "rows": [
+    {
+      "id": "access-link-guid",
+      "lienNumber": "LIEN-001",
+      "providerName": "Sunrise Clinic",
+      "sellerName": "Smith & Associates LLP",
+      "initialServiceDate": "2026-05-01",
+      "serviceDate": "2026-05-01",
+      "billingAmount": 9000.00,
+      "originalAmount": 9000.00,
+      "askAmount": 2500.00,
+      "highestBidAmount": null,
+      "highestBid": null,
+      "offeredAmount": 2500.00,
+      "receivedAtUtc": "2026-07-28T12:00:00Z",
+      "status": "Pending",
+      "responseDueAtUtc": "2026-08-27T12:00:00Z",
+      "allowedActions": ["view", "accept", "decline"],
+      "detailHref": "/selling/public/<token>"
+    }
+  ],
+  "page": 1,
+  "pageSize": 10,
+  "total": 1
+}
+```
+
+`status` is derived from `SellingBuyerAccessLinks.ResponseStatus`: missing response is `Pending`, accepted responses are
+`Accepted`, and declined responses are `Declined`. Pending rows expose `view`, `accept`, and `decline` actions; responded
+rows expose `view` only.
+
 ### GET `/api/liens/selling/public/{token}`
 
 Returns the temporary funding-company or seller-view portal data opened from a `New Lien Offer` email CTA. This endpoint
@@ -466,7 +521,7 @@ already belongs to an Identity account so the tenant portal can render `Log In` 
   ],
   "account": {
     "hasExistingAccount": false,
-    "loginUrl": "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation"
+    "loginUrl": "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation"
   }
 }
 ```
@@ -544,7 +599,7 @@ finalize sale. Seller-view tokens are read-only and return `403 read-only-link`.
 {
   "userId": "guid",
   "isNew": true,
-  "loginUrl": "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation"
+  "loginUrl": "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation"
 }
 ```
 

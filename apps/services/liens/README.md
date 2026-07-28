@@ -74,6 +74,13 @@ such as `localhost` and `127.0.0.1` are rejected because outbound email recipien
 `.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. If it contains `{token}` the
 token is substituted, otherwise the token is appended as the final path segment.
 
+The authenticated funding-company portal reads offered liens from
+`GET /api/liens/selling/buyer/liens`. That endpoint projects buyer response access links into table rows scoped to the
+current buyer organization, with an email-based source buyer organization fallback for accounts created from public
+activation. It supports `status=Pending|Accepted|Declined`, free-text `search`, `page`, `pageSize`, `sort`, and
+`direction` query parameters for the `/funding/offered-liens` page. Pending rows return `view`, `accept`, and `decline`
+actions; accepted or declined rows return `view` only.
+
 The temporary public portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
 JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only, including
 `audience=buyer|seller`. It does not render HTML; the tenant portal route `/selling/public/{token}` in `apps/web`
@@ -105,7 +112,7 @@ uses the token-scoped buyer organization/contact data to ask Identity to create 
 error so the buyer can log in with the existing account instead. It does not accept or decline the lien and does
 not finalize sale. The public `GET /api/liens/selling/public/{token}` response also includes an `account` block for
 buyer-purpose links; when Identity reports `hasExistingAccount=true`, the tenant portal replaces `Activate Free Account`
-with `Log In` and sends the buyer to `/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation`.
+with `Log In` and sends the buyer to `/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation`.
 When sending links through the tenant portal host, configure
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain, so the public web route can render without a

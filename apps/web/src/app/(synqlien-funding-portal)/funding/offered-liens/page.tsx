@@ -9,6 +9,8 @@ import {
   type OfferedLienRow,
   type OfferedLiensQuery,
   type OfferedLiensResult,
+  type OfferedLiensSortDirection,
+  type OfferedLiensSortKey,
 } from "@/lib/synqlien-funding-portal";
 
 export const dynamic = "force-dynamic";
@@ -19,20 +21,26 @@ interface OfferedLiensPageProps {
     search?: string;
     page?: string;
     pageSize?: string;
+    sort?: string;
+    direction?: string;
   }>;
 }
 
 const STATUS_FILTERS = ["", "Pending", "Accepted", "Declined"];
+const DEFAULT_SORT_DIRECTION: OfferedLiensSortDirection = "asc";
 
 export default async function OfferedLiensPage({
   searchParams,
 }: OfferedLiensPageProps) {
   const sp = await searchParams;
+  const sort = normalizeSort(sp.sort);
   const query: OfferedLiensQuery = {
     status: normalizeFilter(sp.status),
     search: normalizeFilter(sp.search),
     page: parsePositiveInt(sp.page, 1),
     pageSize: parsePositiveInt(sp.pageSize, 10),
+    sort,
+    direction: sort ? normalizeDirection(sp.direction) : undefined,
   };
   const result = await getOfferedLiens(query);
   const hasFilters = Boolean(query.status || query.search);
@@ -52,7 +60,7 @@ export default async function OfferedLiensPage({
       <StatusTabs query={query} />
 
       <section className="overflow-hidden rounded-[16px] border border-[#e5e5e5] bg-white shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]">
-        <OfferedLiensTable result={result} hasFilters={hasFilters} />
+        <OfferedLiensTable result={result} query={query} hasFilters={hasFilters} />
         <Pagination result={result} query={query} />
       </section>
     </div>
@@ -66,6 +74,8 @@ function SearchForm({ query }: { query: OfferedLiensQuery }) {
       {query.pageSize && query.pageSize !== 10 ? (
         <input type="hidden" name="pageSize" value={query.pageSize} />
       ) : null}
+      {query.sort ? <input type="hidden" name="sort" value={query.sort} /> : null}
+      {query.sort && query.direction ? <input type="hidden" name="direction" value={query.direction} /> : null}
       <label className="relative block w-full">
         <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-[#737373]" />
         <input
@@ -110,9 +120,11 @@ function StatusTabs({ query }: { query: OfferedLiensQuery }) {
 
 function OfferedLiensTable({
   result,
+  query,
   hasFilters,
 }: {
   result: OfferedLiensResult;
+  query: OfferedLiensQuery;
   hasFilters: boolean;
 }) {
   const emptyCopy = getOfferedLiensEmptyStateCopy(hasFilters);
@@ -121,13 +133,13 @@ function OfferedLiensTable({
       <table className="min-w-[1120px] w-full border-collapse">
         <thead className="bg-[#f5f5f5]">
           <tr>
-            <SortableHeaderCell>Lien ID</SortableHeaderCell>
-            <SortableHeaderCell>Seller Name</SortableHeaderCell>
-            <SortableHeaderCell>Initial Service Date</SortableHeaderCell>
-            <SortableHeaderCell>Billing Amount</SortableHeaderCell>
-            <SortableHeaderCell>Ask Amount</SortableHeaderCell>
-            <SortableHeaderCell>Highest Bid</SortableHeaderCell>
-            <SortableHeaderCell>Status</SortableHeaderCell>
+            <SortableHeaderCell query={query} sortKey="lienNumber">Lien ID</SortableHeaderCell>
+            <SortableHeaderCell query={query} sortKey="sellerName">Seller Name</SortableHeaderCell>
+            <SortableHeaderCell query={query} sortKey="initialServiceDate">Initial Service Date</SortableHeaderCell>
+            <SortableHeaderCell query={query} sortKey="billingAmount">Billing Amount</SortableHeaderCell>
+            <SortableHeaderCell query={query} sortKey="askAmount">Ask Amount</SortableHeaderCell>
+            <SortableHeaderCell query={query} sortKey="highestBidAmount">Highest Bid</SortableHeaderCell>
+            <SortableHeaderCell query={query} sortKey="status">Status</SortableHeaderCell>
             <th aria-label="Actions" className="h-10 w-12 px-4" />
           </tr>
         </thead>
@@ -150,13 +162,42 @@ function OfferedLiensTable({
   );
 }
 
-function SortableHeaderCell({ children }: { children: React.ReactNode }) {
+function SortableHeaderCell({
+  children,
+  query,
+  sortKey,
+}: {
+  children: React.ReactNode;
+  query: OfferedLiensQuery;
+  sortKey: OfferedLiensSortKey;
+}) {
+  const active = query.sort === sortKey;
+  const direction = active ? query.direction ?? DEFAULT_SORT_DIRECTION : DEFAULT_SORT_DIRECTION;
+  const nextDirection: OfferedLiensSortDirection = active && direction === "asc" ? "desc" : "asc";
+  const icon = active
+    ? direction === "desc"
+      ? "ri-arrow-down-s-line"
+      : "ri-arrow-up-s-line"
+    : "ri-arrow-up-down-line";
+  const href = buildHref({
+    ...query,
+    sort: sortKey,
+    direction: nextDirection,
+    page: 1,
+  });
+
   return (
-    <th className="h-10 px-4 text-left text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
-      <div className="flex min-w-0 items-center gap-2">
+    <th
+      className="h-10 px-4 text-left text-[14px] font-medium leading-[1.6] text-[#0a0a0a]"
+      aria-sort={active ? (direction === "desc" ? "descending" : "ascending") : undefined}
+    >
+      <Link
+        href={href}
+        className="flex min-w-0 items-center gap-2 transition-colors hover:text-[#ee7132]"
+      >
         <span className="truncate">{children}</span>
-        <i className="ri-arrow-up-s-line shrink-0 text-[14px] text-[#525252]" />
-      </div>
+        <i className={`${icon} shrink-0 text-[14px] text-[#525252]`} />
+      </Link>
     </th>
   );
 }
@@ -358,6 +399,10 @@ function buildHref(query: OfferedLiensQuery): string {
   if (query.search) params.set("search", query.search);
   if (query.page && query.page > 1) params.set("page", String(query.page));
   if (query.pageSize && query.pageSize !== 10) params.set("pageSize", String(query.pageSize));
+  if (query.sort) {
+    params.set("sort", query.sort);
+    params.set("direction", query.direction ?? DEFAULT_SORT_DIRECTION);
+  }
 
   const encoded = params.toString();
   return encoded ? `/funding/offered-liens?${encoded}` : "/funding/offered-liens";
@@ -372,6 +417,25 @@ function buildPageNumbers(currentPage: number, totalPages: number): number[] {
 function normalizeFilter(value?: string): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function normalizeSort(value?: string): OfferedLiensSortKey | undefined {
+  switch (value) {
+    case "lienNumber":
+    case "sellerName":
+    case "initialServiceDate":
+    case "billingAmount":
+    case "askAmount":
+    case "highestBidAmount":
+    case "status":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeDirection(value?: string): OfferedLiensSortDirection {
+  return value === "desc" ? "desc" : DEFAULT_SORT_DIRECTION;
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {

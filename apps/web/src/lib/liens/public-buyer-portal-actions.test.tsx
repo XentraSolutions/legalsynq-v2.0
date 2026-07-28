@@ -57,6 +57,10 @@ describe("public buyer portal response actions", () => {
           buyer: { contactName: "Buyer", company: "Buyer Co", email: "buyer@example.test" },
           case: { handlingLawFirm: "Firm", caseManager: null },
           documents: [],
+          account: {
+            hasExistingAccount: true,
+            loginUrl: "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation",
+          },
         }),
         {
           status: 200,
@@ -87,6 +91,9 @@ describe("public buyer portal response actions", () => {
     if (result.ok) {
       expect(result.correlationId).toBe("corr-accept");
       expect(result.data.accessLink.responseStatus).toBe("Accepted");
+      expect(result.data.account?.loginUrl).toBe(
+        "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
+      );
     }
   });
 

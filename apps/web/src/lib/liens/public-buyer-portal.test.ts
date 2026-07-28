@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildPublicBuyerPortalGatewayUrl,
   fetchPublicBuyerPortal,
+  normalizeSynqLienBuyerLoginUrl,
+  SYNQLIEN_BUYER_LOGIN_URL,
 } from "./public-buyer-portal";
 
 describe("public buyer portal data fetch", () => {
@@ -52,6 +54,10 @@ describe("public buyer portal data fetch", () => {
             caseManager: null,
           },
           documents: [],
+          account: {
+            hasExistingAccount: true,
+            loginUrl: "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation",
+          },
         }),
         {
           status: 200,
@@ -86,7 +92,26 @@ describe("public buyer portal data fetch", () => {
       expect(result.correlationId).toBe("corr-123");
       expect(result.data.lien.lienCode).toBe("LIEN-CONF-20260722161022");
       expect(result.data.seller.name).toBe("RL Liens1");
+      expect(result.data.account?.loginUrl).toBe(SYNQLIEN_BUYER_LOGIN_URL);
     }
+  });
+
+  it("normalizes legacy SynqLien buyer login links to the dashboard", () => {
+    expect(SYNQLIEN_BUYER_LOGIN_URL).toBe(
+      "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
+    );
+    expect(
+      normalizeSynqLienBuyerLoginUrl(
+        "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation",
+      ),
+    ).toBe(SYNQLIEN_BUYER_LOGIN_URL);
+    expect(
+      normalizeSynqLienBuyerLoginUrl(
+        "https://synqlien-demo.legalsynq.com/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation",
+      ),
+    ).toBe(
+      "https://synqlien-demo.legalsynq.com/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
+    );
   });
 
   it("normalizes public link error responses", async () => {

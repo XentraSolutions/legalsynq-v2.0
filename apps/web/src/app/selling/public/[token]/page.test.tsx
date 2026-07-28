@@ -16,7 +16,7 @@ vi.mock("next/headers", () => ({
 vi.mock("@/lib/liens/public-buyer-portal", () => ({
   fetchPublicBuyerPortal: vi.fn(),
   SYNQLIEN_BUYER_LOGIN_URL:
-    "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation",
+    "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
 }));
 
 const fetchPublicBuyerPortalMock = vi.mocked(fetchPublicBuyerPortal);
@@ -152,7 +152,7 @@ describe("PublicBuyerPortalPage", () => {
       data: makeBuyerPortalData({
         account: {
           hasExistingAccount: true,
-          loginUrl: "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation",
+          loginUrl: "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
         },
       }),
     });
@@ -164,7 +164,7 @@ describe("PublicBuyerPortalPage", () => {
 
     expect(screen.getByRole("link", { name: "Log In" })).toHaveAttribute(
       "href",
-      "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation",
+      "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
     );
     expect(screen.queryByRole("link", { name: "Activate Free Account" })).not.toBeInTheDocument();
   });

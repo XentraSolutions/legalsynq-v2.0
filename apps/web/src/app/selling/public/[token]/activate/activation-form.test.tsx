@@ -24,7 +24,7 @@ describe("PublicBuyerActivationForm", () => {
       data: {
         userId: "user-123",
         isNew: true,
-        loginUrl: "/login?returnTo=%2Ffunding%2Foffered-liens",
+        loginUrl: "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
       },
     });
 
@@ -60,7 +60,7 @@ describe("PublicBuyerActivationForm", () => {
     expect(await screen.findByText("Account activated")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Log in to Manage Liens" })).toHaveAttribute(
       "href",
-      "/login?returnTo=%2Ffunding%2Foffered-liens",
+      "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
     );
   });
 

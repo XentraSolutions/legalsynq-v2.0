@@ -1131,7 +1131,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         json.GetProperty("accessLink").GetProperty("expiresAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
         json.GetProperty("account").GetProperty("hasExistingAccount").GetBoolean().Should().BeFalse();
         json.GetProperty("account").GetProperty("loginUrl").GetString()
-            .Should().Be("/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation");
+            .Should().Be("/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation");
 
         var documents = json.GetProperty("documents").EnumerateArray().ToList();
         documents.Should().ContainSingle();
@@ -1156,6 +1156,113 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task BuyerOfferedLiens_returns_buyer_scoped_rows_with_filters_search_pagination_and_sort()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var (_, alphaToken) = await CreatePublicLienOfferAsync(
+            "buyer-list-alpha",
+            lienNumber: "ALPHA-100",
+            initialServiceDate: new DateOnly(2026, 5, 1),
+            originalAmount: 9000m,
+            buyerOrgId: buyerOrgId);
+        var (_, betaToken) = await CreatePublicLienOfferAsync(
+            "buyer-list-beta",
+            lienNumber: "BETA-200",
+            initialServiceDate: new DateOnly(2026, 5, 2),
+            originalAmount: 5000m,
+            buyerOrgId: buyerOrgId);
+        var (_, gammaToken) = await CreatePublicLienOfferAsync(
+            "buyer-list-gamma",
+            lienNumber: "GAMMA-300",
+            initialServiceDate: new DateOnly(2026, 5, 3),
+            originalAmount: 7000m,
+            buyerOrgId: buyerOrgId);
+        await SeedOtherBuyerOfferedLienAsync("ZZZ-OTHER-999");
+
+        var acceptResponse = await PostPublicBuyerResponseAsync(
+            betaToken,
+            "accept",
+            new { notes = "Accepted by buyer list regression" },
+            "buyer-list-accept-response");
+        acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await acceptResponse.Content.ReadAsStringAsync()}");
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var pageOne = await buyerClient.GetAsync(
+            "/api/liens/selling/buyer/liens?page=1&pageSize=2&sort=lienNumber&direction=asc");
+
+        pageOne.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await pageOne.Content.ReadAsStringAsync()}");
+        var pageOneJson = await pageOne.Content.ReadFromJsonAsync<JsonElement>();
+        pageOneJson.GetProperty("page").GetInt32().Should().Be(1);
+        pageOneJson.GetProperty("pageSize").GetInt32().Should().Be(2);
+        pageOneJson.GetProperty("total").GetInt32().Should().Be(3);
+        var pageOneRows = pageOneJson.GetProperty("rows").EnumerateArray().ToList();
+        pageOneRows.Should().HaveCount(2);
+        pageOneRows.Select(row => row.GetProperty("lienNumber").GetString())
+            .Should().Equal("ALPHA-100", "BETA-200");
+        pageOneRows[0].GetProperty("sellerName").GetString().Should().Be("Smith & Associates LLP");
+        pageOneRows[0].GetProperty("status").GetString().Should().Be("Pending");
+        pageOneRows[0].GetProperty("billingAmount").GetDecimal().Should().Be(9000m);
+        pageOneRows[0].GetProperty("askAmount").GetDecimal().Should().Be(2500m);
+        pageOneRows[0].GetProperty("initialServiceDate").GetString().Should().Be("2026-05-01");
+        pageOneRows[0].GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
+            .Should().Equal("view", "accept", "decline");
+        pageOneRows[0].GetProperty("detailHref").GetString().Should().Be($"/selling/public/{alphaToken}");
+        pageOneRows.Select(row => row.GetProperty("lienNumber").GetString())
+            .Should().NotContain("ZZZ-OTHER-999");
+
+        var accepted = await buyerClient.GetAsync("/api/liens/selling/buyer/liens?status=Accepted");
+        accepted.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await accepted.Content.ReadAsStringAsync()}");
+        var acceptedJson = await accepted.Content.ReadFromJsonAsync<JsonElement>();
+        acceptedJson.GetProperty("total").GetInt32().Should().Be(1);
+        var acceptedRow = acceptedJson.GetProperty("rows").EnumerateArray().Single();
+        acceptedRow.GetProperty("lienNumber").GetString().Should().Be("BETA-200");
+        acceptedRow.GetProperty("status").GetString().Should().Be("Accepted");
+        acceptedRow.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
+            .Should().Equal("view");
+        acceptedRow.GetProperty("detailHref").GetString().Should().Be($"/selling/public/{betaToken}");
+
+        var search = await buyerClient.GetAsync("/api/liens/selling/buyer/liens?search=gamma");
+        search.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await search.Content.ReadAsStringAsync()}");
+        var searchJson = await search.Content.ReadFromJsonAsync<JsonElement>();
+        searchJson.GetProperty("total").GetInt32().Should().Be(1);
+        searchJson.GetProperty("rows").EnumerateArray().Single()
+            .GetProperty("lienNumber").GetString().Should().Be("GAMMA-300");
+
+        var pageTwo = await buyerClient.GetAsync(
+            "/api/liens/selling/buyer/liens?page=2&pageSize=2&sort=lienNumber&direction=asc");
+        pageTwo.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await pageTwo.Content.ReadAsStringAsync()}");
+        var pageTwoJson = await pageTwo.Content.ReadFromJsonAsync<JsonElement>();
+        pageTwoJson.GetProperty("total").GetInt32().Should().Be(3);
+        pageTwoJson.GetProperty("rows").EnumerateArray().Single()
+            .GetProperty("lienNumber").GetString().Should().Be("GAMMA-300");
+
+        var billingSort = await buyerClient.GetAsync(
+            "/api/liens/selling/buyer/liens?sort=billingAmount&direction=desc");
+        billingSort.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await billingSort.Content.ReadAsStringAsync()}");
+        var billingSortJson = await billingSort.Content.ReadFromJsonAsync<JsonElement>();
+        billingSortJson.GetProperty("rows").EnumerateArray().First()
+            .GetProperty("lienNumber").GetString().Should().Be("ALPHA-100");
+
+        using var activatedBuyerClient = CreateBuyerClient(
+            Guid.Parse("30000000-0000-0000-0000-000000009901"),
+            "buyer.buyer-list-gamma@capital.test");
+        var emailScoped = await activatedBuyerClient.GetAsync(
+            "/api/liens/selling/buyer/liens?search=GAMMA-300");
+        emailScoped.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await emailScoped.Content.ReadAsStringAsync()}");
+        var emailScopedJson = await emailScoped.Content.ReadFromJsonAsync<JsonElement>();
+        emailScopedJson.GetProperty("total").GetInt32().Should().Be(1);
+        emailScopedJson.GetProperty("rows").EnumerateArray().Single()
+            .GetProperty("detailHref").GetString().Should().Be($"/selling/public/{gammaToken}");
+    }
+
+    [Fact]
     public async Task PublicBuyerPortal_marks_existing_identity_account_for_login_cta()
     {
         var (_, token) = await CreatePublicLienOfferAsync("account-exists");
@@ -1174,7 +1281,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         json.GetProperty("account").GetProperty("hasExistingAccount").GetBoolean().Should().BeTrue();
         json.GetProperty("account").GetProperty("loginUrl").GetString()
-            .Should().Be("/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation");
+            .Should().Be("/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation");
 
         using var verifyScope = _factory.Services.CreateScope();
         var provisioning = verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>();
@@ -1454,7 +1561,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         json.GetProperty("userId").GetGuid().Should().Be(new Guid("20000000-0000-0000-0000-000000000201"));
         json.GetProperty("isNew").GetBoolean().Should().BeTrue();
-        json.GetProperty("loginUrl").GetString().Should().Be("/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation");
+        json.GetProperty("loginUrl").GetString().Should().Be("/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation");
 
         using var verifyScope = _factory.Services.CreateScope();
         var provisioning = verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>();
@@ -2152,24 +2259,42 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         return value[startIndex..endIndex];
     }
 
+    private HttpClient CreateBuyerClient(Guid orgId, string? email = null)
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer",
+                JwtTokenHelper.CreateFullAccessToken(
+                    SeedHelper.TenantId,
+                    SeedHelper.UserId,
+                    orgId,
+                    email));
+        return client;
+    }
+
     private async Task<(Guid LienId, string Token)> CreatePublicLienOfferAsync(
         string scenario,
-        string? buyerPhone = null)
+        string? buyerPhone = null,
+        string? lienNumber = null,
+        DateOnly? initialServiceDate = null,
+        decimal originalAmount = 3875m,
+        Guid? buyerOrgId = null)
     {
         var buyerContactId = Guid.CreateVersion7();
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
             caseExternalId: $"case-{Guid.NewGuid():N}",
             lienExternalId: $"lien-{Guid.NewGuid():N}",
-            lienNumber: $"LIEN-{Guid.NewGuid():N}",
-            initialServiceDate: new DateOnly(2026, 6, 1),
-            originalAmount: 3875m);
+            lienNumber: lienNumber ?? $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: initialServiceDate ?? new DateOnly(2026, 6, 1),
+            originalAmount: originalAmount);
 
         await PrepareConfirmSaleDataAsync(
             lienId,
             buyerContactId,
             sellerEmail: $"seller.{scenario}@smithlaw.test",
             buyerEmail: $"buyer.{scenario}@capital.test",
-            buyerPhone: buyerPhone);
+            buyerPhone: buyerPhone,
+            buyerOrgId: buyerOrgId);
 
         var confirmResponse = await PostConfirmSaleAsync(
             lienId,
@@ -2179,6 +2304,55 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
         return (lienId, ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!));
+    }
+
+    private async Task SeedOtherBuyerOfferedLienAsync(string lienNumber)
+    {
+        var otherBuyerOrgId = Guid.Parse("40000000-0000-0000-0000-000000000099");
+        var otherBuyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: lienNumber,
+            initialServiceDate: new DateOnly(2026, 5, 4),
+            originalAmount: 8000m);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var buyerContact = Contact.Create(
+            SeedHelper.TenantId,
+            otherBuyerOrgId,
+            ContactType.LienHolder,
+            "Other",
+            "Buyer",
+            SeedHelper.UserId,
+            organization: "Other Capital LLC",
+            email: "other.buyer@capital.test");
+        SetId(buyerContact, otherBuyerContactId);
+        db.Contacts.Add(buyerContact);
+
+        var lien = db.Liens.Single(l => l.Id == lienId);
+        lien.UpdateSellingAnalyticsFields(
+            SeedHelper.UserId,
+            sellerStatus: SellingLienStatus.SubmittedForSale,
+            listingVisibility: SellingListingVisibility.Private,
+            fundingCompanyId: otherBuyerOrgId,
+            fundingCompanyContactId: otherBuyerContactId,
+            askAmount: 2500m);
+
+        db.SellingBuyerAccessLinks.Add(SellingBuyerAccessLink.Create(
+            SeedHelper.TenantId,
+            lienId,
+            SeedHelper.OrgId,
+            otherBuyerOrgId,
+            otherBuyerContactId,
+            $"other-buyer-{Guid.NewGuid():N}",
+            SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
+            $"other-buyer-{Guid.NewGuid():N}",
+            DateTime.UtcNow.AddDays(7),
+            SeedHelper.UserId));
+
+        await db.SaveChangesAsync();
     }
 
     private async Task<HttpResponseMessage> PostPublicBuyerResponseAsync(
@@ -2213,10 +2387,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         string? buyerEmail,
         Guid? caseManagerId = null,
         string? documentFileName = null,
-        string? buyerPhone = null)
+        string? buyerPhone = null,
+        Guid? buyerOrgId = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var effectiveBuyerOrgId = buyerOrgId ?? SeedHelper.FundingCompanyId;
 
         if (sellerEmail is null)
         {
@@ -2253,7 +2429,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         var buyerContact = Contact.Create(
             SeedHelper.TenantId,
-            SeedHelper.FundingCompanyId,
+            effectiveBuyerOrgId,
             ContactType.LienHolder,
             "Buyer",
             "Reviewer",
@@ -2284,7 +2460,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             SeedHelper.UserId,
             sellerStatus: SellingLienStatus.PreparedForSale,
             listingVisibility: SellingListingVisibility.Private,
-            fundingCompanyId: SeedHelper.FundingCompanyId,
+            fundingCompanyId: effectiveBuyerOrgId,
             fundingCompanyContactId: buyerContactId,
             askAmount: 2500m);
 

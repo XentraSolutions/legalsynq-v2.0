@@ -1,4 +1,7 @@
-import type { PublicBuyerPortalError } from "./public-buyer-portal";
+import {
+  normalizeSynqLienBuyerLoginUrl,
+  type PublicBuyerPortalError,
+} from "./public-buyer-portal";
 
 export interface PublicBuyerPortalActivationRequest {
   companyName?: string;
@@ -78,7 +81,7 @@ export async function activatePublicBuyerPortalAccount(
       ok: true,
       status: response.status,
       correlationId,
-      data: body as PublicBuyerPortalActivationData,
+      data: normalizePublicBuyerPortalActivationData(body as PublicBuyerPortalActivationData),
     };
   } catch {
     return {
@@ -92,6 +95,15 @@ export async function activatePublicBuyerPortalAccount(
       },
     };
   }
+}
+
+function normalizePublicBuyerPortalActivationData(
+  data: PublicBuyerPortalActivationData,
+): PublicBuyerPortalActivationData {
+  return {
+    ...data,
+    loginUrl: normalizeSynqLienBuyerLoginUrl(data.loginUrl),
+  };
 }
 
 export function buildPublicBuyerPortalActivationUrl(token: string): string {

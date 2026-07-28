@@ -95,11 +95,24 @@ export interface OfferedLienRow {
   detailHref?: string | null;
 }
 
+export type OfferedLiensSortKey =
+  | 'lienNumber'
+  | 'sellerName'
+  | 'initialServiceDate'
+  | 'billingAmount'
+  | 'askAmount'
+  | 'highestBidAmount'
+  | 'status';
+
+export type OfferedLiensSortDirection = 'asc' | 'desc';
+
 export interface OfferedLiensQuery {
   status?: string;
   search?: string;
   page?: number;
   pageSize?: number;
+  sort?: OfferedLiensSortKey;
+  direction?: OfferedLiensSortDirection;
 }
 
 export interface OfferedLiensResult {
