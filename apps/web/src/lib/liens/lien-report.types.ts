@@ -70,6 +70,7 @@ export interface ReportListResponse {
   reportConfig: ReportConfig;
   columnCount?: number;
   summaryTotals?: ReportTotals;
+  totalPages?: number;
 }
 
 export interface ReportConfigResponse {
@@ -115,8 +116,8 @@ export interface ReportTemplate {
   caseManagerIds: Array<string>;
   medicalProviderIds: Array<string>;
   columns: Array<string>;
-  page: string;
-  limit: string;
+  page: number;
+  limit: number;
 }
 export interface ReportsResponse {
   billing_amt: string;
@@ -140,6 +141,8 @@ export interface ReportsResponse {
   reportConfig?: ReportConfig;
   summaryTotals?: ReportTotals;
   reportType: "CASES" | "LIENS";
+  totalCount?: number;
+  totalPages?: number;
 }
 
 interface ReportConfig {
