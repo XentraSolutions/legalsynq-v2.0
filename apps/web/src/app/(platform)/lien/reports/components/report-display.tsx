@@ -3,8 +3,10 @@
 import { StatusBadge } from "@/components/careconnect/status-badge";
 import { KpiCard } from "@/components/lien/kpi-card";
 import { ConfirmDialog } from "@/components/lien/modal";
+import { BaseTable } from "@/components/ui/base-table";
 import { ApiError } from "@/lib/api-client";
 import { CaseListItem } from "@/lib/cases";
+import { PaginationMeta } from "@/lib/contacts";
 import {
   ColumnGroup,
   CreateReports,
@@ -28,6 +30,8 @@ interface ReportDisplayProps {
   onBack: () => void;
   onEdit: () => void;
   onSaved: () => void;
+  onPaginate?: (pagination: PaginationMeta) => void;
+  loadingData?: boolean;
 }
 
 export default function ReportDisplay({
@@ -35,13 +39,20 @@ export default function ReportDisplay({
   onBack,
   onEdit,
   onSaved,
+  onPaginate,
+  loadingData,
 }: ReportDisplayProps) {
-  console.log(report);
   const [loading, setLoading] = useState(true);
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [columns, setColumns] = useState<any>();
   const addToast = useLienStore((s) => s.addToast);
   const [confirmAction, setConfirmAction] = useState<boolean>(false);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: report.page ?? 1,
+    pageSize: report.pageSize ?? 10,
+    totalCount: report?.totalCount ?? 0,
+    totalPages: report?.totalPages ?? 1,
+  });
   const viewBy = report?.reportType.toLowerCase() ?? "case"; // 'cases' | 'liens'
   report;
   const metrics =
@@ -197,8 +208,18 @@ export default function ReportDisplay({
       const cols = groupedCols
         .flatMap((config: any) => config.value)
         .map((item) => {
-          return { key: item.key, label: item.label };
+          return {
+            id: item.key,
+            header: item.label,
+            accessorFn: (row: any) => row[item.key],
+            cell: ({ row }: any) => (
+              <span className="text-xs font-mono text-gray-700">
+                {row.original[item.key]}
+              </span>
+            ),
+          };
         });
+
       setColumns(cols);
       setCases(report.data ?? []);
     } else {
@@ -256,7 +277,17 @@ export default function ReportDisplay({
           })),
         )
         .sort((a, b) => a.sortOrder - b.sortOrder);
-      setColumns(selectedValues);
+      const tableColumns = selectedValues.map((item) => ({
+        id: item.key,
+        header: item.label,
+        accessorFn: (row: any) => row[item.key],
+        cell: ({ row }: any) => (
+          <span className="text-xs font-mono text-gray-700">
+            {row.original[item.key]}
+          </span>
+        ),
+      }));
+      setColumns(tableColumns);
       setCases(report.data ?? []);
     }
 
@@ -266,6 +297,8 @@ export default function ReportDisplay({
   useEffect(() => {
     fetchColumns();
   }, [report.data, report.columns]);
+
+  useEffect(() => {}, []);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
@@ -302,7 +335,34 @@ export default function ReportDisplay({
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+              <BaseTable
+                data={cases ?? []}
+                columns={columns}
+                getRowId={(c) => c.id}
+                isLoading={loadingData}
+                emptyMessage="No data found."
+                manualPagination
+                pageCount={pagination.totalPages}
+                totalCount={pagination.totalCount}
+                pagination={{
+                  pageIndex: pagination.page - 1,
+                  pageSize: pagination.pageSize,
+                }}
+                onPaginationChange={(updater) => {
+                  const next =
+                    typeof updater === "function"
+                      ? updater({
+                          pageIndex: pagination.page - 1,
+                          pageSize: pagination.pageSize,
+                        })
+                      : updater;
+                  setPagination((p) => ({ ...p, page: next.pageIndex + 1 }));
+                  onPaginate?.({ ...pagination, page: next.pageIndex + 1 });
+                }}
+                className="bg-white border-gray-200 rounded-xl"
+              />
+
+              {/* <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100">
                     {columns &&
@@ -331,14 +391,8 @@ export default function ReportDisplay({
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table> */}
             </div>
-            {cases.length === 0 && !loading && (
-              <div className="py-12 text-center">
-                <i className="ri-folder-open-line text-2xl text-gray-300" />
-                <p className="text-sm text-gray-400 mt-2">No data found.</p>
-              </div>
-            )}
           </>
         )}
       </div>
