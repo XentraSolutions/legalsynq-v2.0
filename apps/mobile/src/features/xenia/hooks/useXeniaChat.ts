@@ -3,13 +3,20 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   XeniaApi,
+  type CreateXeniaMessageRequest,
   type XeniaConversationSummary,
   type XeniaMessage,
   type XeniaStreamHandle,
   xeniaKeys,
 } from '@/shared/api/endpoints/Xenia';
 
+import { getXeniaErrorMessage } from '../utils/xeniaErrors';
+
 type DisplayMessage = XeniaMessage & { pending?: boolean };
+type RetryRequest = {
+  conversationId: string;
+  request: CreateXeniaMessageRequest;
+};
 
 function localMessage(conversationId: string, role: 'User' | 'Assistant', content: string) {
   return {
@@ -30,6 +37,7 @@ export function useXeniaChat() {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string>();
+  const [retryRequest, setRetryRequest] = useState<RetryRequest>();
 
   const bootstrapQuery = useQuery({
     queryKey: xeniaKeys.bootstrap(),
@@ -59,6 +67,7 @@ export function useXeniaChat() {
     setConversationId(undefined);
     setMessages([]);
     setSendError(undefined);
+    setRetryRequest(undefined);
     setIsSending(false);
   }, [closeStream]);
 
@@ -67,6 +76,7 @@ export function useXeniaChat() {
       closeStream();
       setConversationId(conversation.id);
       setSendError(undefined);
+      setRetryRequest(undefined);
       setIsSending(false);
       const detail = await queryClient.fetchQuery({
         queryKey: xeniaKeys.conversation(conversation.id),
@@ -84,7 +94,10 @@ export function useXeniaChat() {
 
       closeStream();
       setSendError(undefined);
+      setRetryRequest(undefined);
       setIsSending(true);
+      let pendingRetryRequest: RetryRequest | undefined;
+      let pendingAssistantId: string | undefined;
 
       try {
         let currentConversationId = conversationId;
@@ -99,8 +112,10 @@ export function useXeniaChat() {
 
         const clientMessageId = XeniaApi.createClientMessageId();
         const request = { content, clientMessageId };
+        pendingRetryRequest = { conversationId: currentConversationId, request };
         const optimisticUser = localMessage(currentConversationId, 'User', content);
         const optimisticAssistant = localMessage(currentConversationId, 'Assistant', '');
+        pendingAssistantId = optimisticAssistant.id;
         setMessages((current) => [...current, optimisticUser, optimisticAssistant]);
 
         const finish = (message: XeniaMessage) => {
@@ -109,6 +124,7 @@ export function useXeniaChat() {
             message,
           ]);
           setIsSending(false);
+          setRetryRequest(undefined);
           streamRef.current = undefined;
           void queryClient.invalidateQueries({ queryKey: xeniaKeys.conversations() });
           void queryClient.invalidateQueries({
@@ -122,7 +138,8 @@ export function useXeniaChat() {
           } catch (fallbackError) {
             setMessages((current) => current.filter((item) => item.id !== optimisticAssistant.id));
             setIsSending(false);
-            setSendError(fallbackError instanceof Error ? fallbackError.message : error.message);
+            setRetryRequest({ conversationId: currentConversationId, request });
+            setSendError(getXeniaErrorMessage(fallbackError, error.message));
           }
         };
 
@@ -148,7 +165,11 @@ export function useXeniaChat() {
         }
       } catch (error) {
         setIsSending(false);
-        setSendError(error instanceof Error ? error.message : 'Xenia could not send the message.');
+        if (pendingAssistantId) {
+          setMessages((current) => current.filter((item) => item.id !== pendingAssistantId));
+        }
+        setRetryRequest(pendingRetryRequest);
+        setSendError(getXeniaErrorMessage(error, 'Xenia could not send the message.'));
       }
     },
     [
@@ -161,6 +182,36 @@ export function useXeniaChat() {
     ]
   );
 
+  const retry = useCallback(async () => {
+    if (!retryRequest || isSending) return;
+
+    setSendError(undefined);
+    setIsSending(true);
+    const optimisticAssistant = localMessage(retryRequest.conversationId, 'Assistant', '');
+    setMessages((current) => [...current, optimisticAssistant]);
+
+    try {
+      const message = await XeniaApi.createMessage(
+        retryRequest.conversationId,
+        retryRequest.request
+      );
+      setMessages((current) => [
+        ...current.filter((item) => item.id !== optimisticAssistant.id),
+        message,
+      ]);
+      setRetryRequest(undefined);
+      void queryClient.invalidateQueries({ queryKey: xeniaKeys.conversations() });
+      void queryClient.invalidateQueries({
+        queryKey: xeniaKeys.conversation(retryRequest.conversationId),
+      });
+    } catch (error) {
+      setMessages((current) => current.filter((item) => item.id !== optimisticAssistant.id));
+      setSendError(getXeniaErrorMessage(error, 'Xenia could not send the message.'));
+    } finally {
+      setIsSending(false);
+    }
+  }, [isSending, queryClient, retryRequest]);
+
   return {
     activeAgent,
     bootstrapQuery,
@@ -170,6 +221,8 @@ export function useXeniaChat() {
     isSending,
     messages,
     newChat,
+    retry,
+    retryAvailable: Boolean(retryRequest),
     selectConversation,
     send,
     sendError,

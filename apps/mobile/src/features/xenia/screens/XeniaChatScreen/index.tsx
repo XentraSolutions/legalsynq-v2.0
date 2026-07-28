@@ -112,7 +112,19 @@ export function XeniaChatScreen() {
             </View>
           )}
           {chat.sendError ? (
-            <Text className="px-6 py-2 font-jakarta text-xs text-red-600">{chat.sendError}</Text>
+            <View className="flex-row items-center justify-between gap-4 px-6 py-2">
+              <Text className="flex-1 font-jakarta text-xs text-red-600">{chat.sendError}</Text>
+              {chat.retryAvailable ? (
+                <Pressable
+                  accessibilityLabel="Retry request"
+                  accessibilityRole="button"
+                  disabled={chat.isSending}
+                  onPress={() => void chat.retry()}
+                >
+                  <Text className="font-jakarta-semibold text-xs text-[#ee7132]">Try Again</Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
         </ScrollView>
 

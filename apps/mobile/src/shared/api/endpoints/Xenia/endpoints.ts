@@ -31,6 +31,7 @@ import type {
 
 const store = getDefaultStore();
 const BASE_PATH = '/xenia/assistant';
+export const XENIA_MESSAGE_TIMEOUT_MS = 120000;
 
 function generateClientId(): string {
   return `mobile-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -106,7 +107,9 @@ export const XeniaApi = {
 
   async createMessage(id: string, body: CreateXeniaMessageRequest): Promise<XeniaMessage> {
     assertCurrentApiMode();
-    const response = await apiClient.post(`${BASE_PATH}/conversations/${id}/messages`, body);
+    const response = await apiClient.post(`${BASE_PATH}/conversations/${id}/messages`, body, {
+      timeout: XENIA_MESSAGE_TIMEOUT_MS,
+    });
     return xeniaMessageSchema.parse(response.data);
   },
 
