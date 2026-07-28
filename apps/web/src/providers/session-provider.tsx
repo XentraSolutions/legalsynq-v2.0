@@ -392,13 +392,14 @@ export function SessionProvider({
   return (
     <SessionContext.Provider value={ctxValue}>
       {children}
-      {showWarning && (
+      {/* TEMPORARILY COMMMENTED PER QA but keep autologout */}
+      {/* {showWarning && (
         <IdleWarningDialog
           countdown={countdown}
           onStay={stayActive}
           onLogout={doLogout}
         />
-      )}
+      )} */}
     </SessionContext.Provider>
   );
 }
