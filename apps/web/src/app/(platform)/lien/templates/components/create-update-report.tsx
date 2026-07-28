@@ -601,8 +601,8 @@ export default function CreateUpdateReport({
       };
       const reportDataRes = await lienReportsService.generateTemplate({
         ...payload,
-        page: "1",
-        limit: "10",
+        page: 1,
+        limit: 10,
       });
     } catch {
     } finally {
