@@ -52,6 +52,7 @@ export default function ReportDetailsPage() {
       const generatedTemplate = await lienReportsService.generateTemplate({
         ...result,
         limit: 10,
+        page: pagination.page,
       });
 
       setReport(result);
@@ -71,7 +72,7 @@ export default function ReportDetailsPage() {
       setLoading(false);
       setLoadingData(false);
     }
-  }, [pagination]);
+  }, []);
 
   const fetchReportData = useCallback(async () => {
     setLoadingData(true);
@@ -82,6 +83,7 @@ export default function ReportDetailsPage() {
       const generatedTemplate = await lienReportsService.generateTemplate({
         ...result,
         limit: 10,
+        page: pagination.page,
       });
 
       setReport(result);
