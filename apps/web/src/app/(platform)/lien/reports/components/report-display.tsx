@@ -47,12 +47,12 @@ export default function ReportDisplay({
   const [columns, setColumns] = useState<any>();
   const addToast = useLienStore((s) => s.addToast);
   const [confirmAction, setConfirmAction] = useState<boolean>(false);
-  const [pagination, setPagination] = useState<PaginationMeta>({
+  const pagination: PaginationMeta = {
     page: report.page ?? 1,
     pageSize: report.pageSize ?? 10,
     totalCount: report?.totalCount ?? 0,
     totalPages: report?.totalPages ?? 1,
-  });
+  };
   const viewBy = report?.reportType.toLowerCase() ?? "case"; // 'cases' | 'liens'
   report;
   const metrics =
@@ -356,7 +356,6 @@ export default function ReportDisplay({
                           pageSize: pagination.pageSize,
                         })
                       : updater;
-                  setPagination((p) => ({ ...p, page: next.pageIndex + 1 }));
                   onPaginate?.({ ...pagination, page: next.pageIndex + 1 });
                 }}
                 className="bg-white border-gray-200 rounded-xl"
